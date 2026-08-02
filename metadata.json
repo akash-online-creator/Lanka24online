@@ -1,0 +1,6 @@
+{
+  "name": "සහය සේවා (Sahaya Seva)",
+  "description": "3D Card Style Support Services system with User Registration, Admin Approval, Wrong Login Alert, and Issues Help system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

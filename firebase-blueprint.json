@@ -1,0 +1,26 @@
+{
+  "entities": {
+    "help_posts": {
+      "title": "Help Posts",
+      "description": "Collection of community help request notices and service posts",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "urgency": { "type": "string" },
+        "locationName": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "description": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "postCode": { "type": "string" },
+        "helpersCount": { "type": "number" }
+      },
+      "required": ["title", "description", "category"]
+    }
+  }
+}
