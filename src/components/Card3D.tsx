@@ -46,7 +46,7 @@ export const Card3D: React.FC<Card3DProps> = ({
           transform,
           transition: isHovered ? 'transform 0.1s ease-out' : 'transform 0.5s ease-out',
         }}
-        className={`transform-style-3d relative rounded-[32px] sm:rounded-[40px] border border-white/10 dark:border-white/10 light:border-slate-300 bg-slate-900/90 dark:bg-slate-900/90 light:bg-white/95 backdrop-blur-xl p-6 sm:p-10 shadow-[0_40px_80px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all ${className}`}
+        className={`transform-style-3d relative rounded-[32px] sm:rounded-[40px] border-2 border-emerald-500/25 bg-white backdrop-blur-xl p-6 sm:p-10 shadow-[0_20px_50px_rgba(0,122,75,0.08),0_4px_16px_rgba(0,0,0,0.04)] text-slate-900 transition-all ${className}`}
       >
         {/* Ambient Top Glow Layer */}
         <div

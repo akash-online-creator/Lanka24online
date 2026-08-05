@@ -2,7 +2,8 @@ import React from 'react';
 import { User, Language } from '../types';
 import { translations } from '../data/translations';
 import { Card3D } from './Card3D';
-import { Clock, ShieldAlert, RefreshCw, HelpCircle, ArrowLeft } from 'lucide-react';
+import { MedicalPlusBadge } from './MedicalPlusBadge';
+import { Clock, ShieldAlert, RefreshCw, HelpCircle, ArrowLeft, PhoneCall, CheckCircle } from 'lucide-react';
 
 interface PendingApprovalViewProps {
   user: User;
@@ -25,6 +26,10 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
     <div className="w-full max-w-lg mx-auto py-6">
       <Card3D glowColor="rgba(234, 179, 8, 0.15)">
         <div className="text-center mb-6">
+          <div className="flex justify-center mb-3">
+            <MedicalPlusBadge size="md" showGlow animated />
+          </div>
+
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 font-bold text-xs uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] mb-4 animate-pulse">
             <Clock className="w-4 h-4" />
             <span>{t.pendingStatusBadge}</span>
@@ -41,17 +46,15 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
         {/* User 3D Info Card Preview */}
         <div className="bg-slate-800/60 border border-white/10 rounded-2xl p-5 mb-6 backdrop-blur-md">
           <div className="flex items-center gap-4 mb-4 pb-4 border-b border-white/10">
-            <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-yellow-500/40 shadow-md bg-slate-700 flex-shrink-0">
-              {user.photoUrl ? (
+            <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-yellow-500/40 shadow-md bg-slate-700 flex-shrink-0 flex items-center justify-center">
+              {user.photoUrl && user.photoUrl.trim() !== '' ? (
                 <img
                   src={user.photoUrl}
                   alt={user.name}
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold text-xl">
-                  {user.name.charAt(0)}
-                </div>
+                <MedicalPlusBadge size="sm" showGlow={false} />
               )}
             </div>
             <div className="min-w-0 flex-1">
@@ -64,12 +67,23 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
               <p className="text-xs text-slate-400 font-mono">
                 NIC: {user.nicNumber}
               </p>
+              {user.whatsappNumber && (
+                <p className="text-xs text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                  <PhoneCall className="w-3 h-3" /> WhatsApp: {user.whatsappNumber}
+                </p>
+              )}
             </div>
           </div>
 
-          <p className="text-xs text-slate-300 leading-relaxed bg-yellow-500/5 p-3 rounded-xl border border-yellow-500/10">
-            {t.pendingMsg}
-          </p>
+          {/* Pending Notification Text */}
+          <div className="bg-emerald-950/40 border border-emerald-500/30 p-4 rounded-xl space-y-2">
+            <p className="text-xs text-emerald-200 font-bold leading-relaxed">
+              "ඔබගේ තොරතුරු ලියාපදිංචිය සඳහා යොමු කර ඇත. තොරතුරු පරීක්ෂා කිරීමෙන් පසු ඔබ සඳහන් කර ඇති වට්ස්ඇප් අංකයට පණිවිඩයක් එවනු ඇත."
+            </p>
+            <p className="text-[11px] text-emerald-400 font-black pt-1 border-t border-emerald-800/60">
+              සහය සේවය සමඟ සම්බන්ධ වූ ඔබට ස්තුතියි....!
+            </p>
+          </div>
         </div>
 
         {/* Actions */}

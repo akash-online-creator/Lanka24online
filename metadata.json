@@ -1,6 +1,6 @@
 {
   "name": "සහය සේවා (Sahaya Seva)",
-  "description": "3D Card Style Support Services system with User Registration, Admin Approval, Wrong Login Alert, and Issues Help system.",
-  "requestFramePermissions": [],
+  "description": "සහන සේවා (Sahana Sewa) - සැමට පිහිට community support and emergency assistance platform with 3D card layout and live bulletin board.",
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

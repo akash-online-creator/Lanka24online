@@ -1,5 +1,5 @@
 export type Role = 'user' | 'admin';
-export type UserStatus = 'pending' | 'approved' | 'rejected';
+export type UserStatus = 'pending' | 'approved' | 'rejected' | 'blocked';
 export type IssueStatus = 'pending' | 'in_progress' | 'resolved';
 export type Language = 'si' | 'en' | 'ta';
 export type Theme = 'dark' | 'light';
@@ -21,6 +21,42 @@ export interface PostReply {
   message: string;
   createdAt: string;
   whatsappSent?: boolean;
+}
+
+export interface MultilingualText {
+  si: string;
+  en: string;
+  ta: string;
+}
+
+export interface RegistrationConfig {
+  mainTitle: MultilingualText;
+  subtitle: MultilingualText;
+  noticeBanner: MultilingualText;
+  termsAndConditions: MultilingualText;
+}
+
+export interface CustomFormField {
+  id: string;
+  categoryId?: string;
+  labelSi: string;
+  labelEn: string;
+  labelTa: string;
+  fieldType: 'text' | 'textarea' | 'number' | 'dropdown' | 'checkbox';
+  required: boolean;
+  options?: string[]; // Dropdown choices
+}
+
+export interface CategoryItem {
+  id: string;
+  nameSi: string;
+  nameEn: string;
+  nameTa: string;
+  descSi: string;
+  descEn: string;
+  descTa: string;
+  icon: string;
+  customFields: CustomFormField[];
 }
 
 export interface HelpPost {
@@ -46,6 +82,7 @@ export interface HelpPost {
   replies: PostReply[];
   verifiedOtp?: boolean;
   category?: string;
+  customFieldValues?: Record<string, string | boolean>;
 }
 
 export interface ChatMessage {
@@ -60,17 +97,48 @@ export interface User {
   id: string;
   userId: string; // E.g., SS-980124 or email
   name: string;
+  surname?: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   nicNumber: string;
   phone: string;
   address?: string;
+  birthDate?: string;
+  nearestTown?: string;
+  whatsappNumber?: string;
+  securityCode?: string;
   role: Role;
   status: UserStatus;
   photoUrl?: string;
   idCardPhotoUrl?: string;
+  nicFrontPhotoUrl?: string;
+  nicBackPhotoUrl?: string;
+  facePhotoUrl?: string;
   registeredAt: string;
   key: string; // password
   rejectionReason?: string;
+  ipAddress?: string;
+  registrationLat?: number;
+  registrationLng?: number;
+  registrationLocationName?: string;
+  registrationAccuracy?: number;
+  locationTimestamp?: string;
+  deviceInfo?: string;
+  blockedReason?: string;
+  blockedAt?: string;
+}
+
+export interface BlockedCredential {
+  id: string;
+  userId?: string;
+  userName?: string;
+  email?: string;
+  phone?: string;
+  nicNumber?: string;
+  ipAddress?: string;
+  blockedAt: string;
+  reason: string;
 }
 
 export interface Issue {

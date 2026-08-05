@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Language, LocationOption, HelpPost, Theme } from '../types';
+import { User, Language, LocationOption, HelpPost, Theme, CategoryItem } from '../types';
 import { translations } from '../data/translations';
 import { initialLocations, initialHelpPosts } from '../data/initialData';
 import { LocationBar } from './LocationBar';
@@ -18,6 +18,7 @@ import {
   addHelpPostToFirestore, 
   addReplyToFirestore 
 } from '../lib/firebase';
+import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { 
   ShieldCheck, 
   HelpCircle, 
@@ -32,7 +33,9 @@ import {
   MessageCircle,
   Plus,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  Navigation,
+  Loader2
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -42,6 +45,7 @@ interface UserDashboardProps {
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
   toggleTheme?: () => void;
+  categories?: CategoryItem[];
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -51,10 +55,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   setLanguage,
   theme,
   toggleTheme,
+  categories,
 }) => {
   const t = translations[language];
 
-  // Active Location State (Defaults to Kadawatha)
+  // Active Location State (Defaults to Kadawatha or saved location)
   const [currentLocation, setCurrentLocation] = useState<LocationOption>(() => {
     const saved = localStorage.getItem('sahaya_current_location');
     if (saved) {
@@ -62,6 +67,59 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     }
     return initialLocations[0]; // Kadawatha
   });
+
+  const [isAutoLoadingLocation, setIsAutoLoadingLocation] = useState(false);
+  const [autoLocationMsg, setAutoLocationMsg] = useState<string | null>(null);
+
+  // Auto Load Live Location Immediately on Login / Dashboard Mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const autoFetchLiveLocation = () => {
+      if (!navigator.geolocation) return;
+
+      setIsAutoLoadingLocation(true);
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (!isMounted) return;
+          try {
+            const { latitude, longitude, accuracy } = position.coords;
+            const resolved = await resolveExactLocation(latitude, longitude);
+            const locOpt = toLocationOption(resolved);
+
+            if (isMounted) {
+              setCurrentLocation(locOpt);
+              localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+              setAutoLocationMsg(`📍 සජීවී ස්ථානය ස්වයංක්‍රීයව හඳුනාගන්නා ලදී: ${resolved.shortDisplaySi}`);
+              setTimeout(() => {
+                if (isMounted) setAutoLocationMsg(null);
+              }, 6000);
+            }
+          } catch (err) {
+            console.warn('Auto location resolution error:', err);
+          } finally {
+            if (isMounted) setIsAutoLoadingLocation(false);
+          }
+        },
+        (error) => {
+          // If denied or timed out, silently keep the saved / default location
+          if (isMounted) setIsAutoLoadingLocation(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 30000, // Accept cached position within 30s for lightning speed
+        }
+      );
+    };
+
+    autoFetchLiveLocation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Help Posts Feed State (Synced with Firestore Database)
   const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
@@ -90,6 +148,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Modals
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('ඉක්මන් සේවා');
+  const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
   
@@ -268,43 +327,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto py-4 space-y-8 animate-fadeIn">
-      
-      {/* Node 1 in PDF: උදව් ඉල්ලන්න - ක්ෂණික සේවා (Quick Services Banner Button) */}
-      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-cyan-950 border border-emerald-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_0_30px_rgba(16,185,129,0.15)] flex flex-wrap justify-between items-center gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg">
-            <Zap className="w-6 h-6 fill-slate-950" />
-          </div>
-          <div>
-            <h3 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
-              <span>උදව් ඉල්ලන්න</span>
-              <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                ක්ෂණික සේවා
-              </span>
-            </h3>
-            <p className="text-xs text-slate-300 mt-1">
-              (ක්ෂණික සේවා ක්ලික් කළ පසු ඉක්මන්, උපකාර ලබාගැනීමේ පෝස්ටයක් නිර්මාණය කළ හැක)
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setIsCategoryModalOpen(true)}
-          className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-950 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
-        >
-          <Zap className="w-4 h-4 fill-white" />
-          <span>ක්ෂණික සේවා ඉල්ලීම (Quick Request)</span>
-        </button>
-      </div>
-
       {/* 1. Welcome User Banner */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl backdrop-blur-xl flex flex-wrap justify-between items-center gap-4">
+      <div className="bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] rounded-3xl p-5 sm:p-6 shadow-sm backdrop-blur-xl flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-emerald-500/50 shadow-lg bg-slate-800 flex-shrink-0">
-            {user.photoUrl ? (
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#007a4b]/40 shadow-sm bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+            {user.photoUrl && user.photoUrl.trim() !== '' ? (
               <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center font-bold text-slate-300 text-2xl">
+              <div className="w-full h-full flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-2xl">
                 {user.name.charAt(0)}
               </div>
             )}
@@ -312,13 +342,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[11px] bg-[#007a4b]/15 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
                 <span>VERIFIED USER</span>
               </span>
-              <span className="text-xs font-mono text-cyan-400">ID: {user.userId}</span>
+              <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 font-bold">ID: {user.userId}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
               {t.welcomeUser}, {user.name}!
             </h2>
           </div>
@@ -326,19 +356,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
         <button
           onClick={onNavigateToIssues}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20 transition-all font-bold text-xs cursor-pointer shadow-md"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all font-bold text-xs cursor-pointer shadow-sm"
         >
-          <HelpCircle className="w-4 h-4 text-cyan-400" />
+          <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
           <span>{t.issuesHelpBtn}</span>
         </button>
       </div>
 
-      {/* 2. Step 2.1: Location Button Component */}
+      {/* 2. Step 2.1: Location Button Component with Auto-load GPS */}
       <LocationBar
         currentLocation={currentLocation}
         availableLocations={initialLocations}
         onSelectLocation={setCurrentLocation}
         lang={language}
+        theme={theme}
+        isAutoLoading={isAutoLoadingLocation}
+        autoLoadedNotice={autoLocationMsg}
       />
 
       {/* 3. Step 2.2: Central Glowing "I Need Help" Button */}
@@ -396,23 +429,23 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <div className="space-y-6 pt-2">
         
         {/* Feed Header and Tabs */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-3xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] p-5 rounded-3xl shadow-sm backdrop-blur-md">
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-400" />
-              <h3 className="text-xl font-bold text-white">{t.feedTitle}</h3>
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white">{t.feedTitle}</h3>
             </div>
-            <p className="text-xs text-slate-400 mt-1">{t.feedSub}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t.feedSub}</p>
           </div>
 
           {/* Distance Tabs: <15 km vs >15 km (All Sri Lanka) */}
-          <div className="flex items-center p-1.5 bg-slate-950 border border-slate-800 rounded-2xl w-full sm:w-auto">
+          <div className="flex items-center p-1.5 bg-slate-100 dark:bg-[#0a1c13] border border-slate-200 dark:border-[#132a1d] rounded-2xl w-full sm:w-auto">
             <button
               onClick={() => setFeedDistanceTab('local')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 feedDistanceTab === 'local'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-950/50'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-[#007a4b] text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <MapPin className="w-3.5 h-3.5" />
@@ -421,10 +454,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
             <button
               onClick={() => setFeedDistanceTab('all_sl')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 feedDistanceTab === 'all_sl'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-950/50'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-[#007a4b] text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
@@ -441,7 +474,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="දැන්වීම් සෙවීම (උදා: බයික්, බල්ලා, බෙහෙත්, කඩවත...)"
-            className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 transition-all shadow-inner"
+            className="w-full bg-white dark:bg-[#07130c] border border-slate-200 dark:border-[#132a1d] rounded-2xl py-3 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[#007a4b] transition-all shadow-sm"
           />
         </div>
 
@@ -529,8 +562,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <CategorySelectionModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
-        onSelectCategory={(catKey, catTitle) => {
+        onSelectCategory={(catKey, catTitle, selectedCat) => {
           setSelectedCategoryTitle(catTitle);
+          setSelectedCategoryObj(selectedCat || null);
           setIsCategoryModalOpen(false);
           setIsQuickServiceModalOpen(true);
         }}
@@ -538,6 +572,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         setLanguage={setLanguage}
         theme={theme}
         toggleTheme={toggleTheme}
+        categories={categories}
       />
 
       {/* 1. Quick Services Request Form Modal (Node 2) */}
@@ -549,6 +584,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentUser={user}
         lang={language}
         categoryTitle={selectedCategoryTitle}
+        selectedCategoryObj={selectedCategoryObj}
       />
 
       {/* 2. Quick Services Detail Modal (Node 4) */}

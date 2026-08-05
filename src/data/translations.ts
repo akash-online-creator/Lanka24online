@@ -2,15 +2,15 @@ import { Language } from '../types';
 
 export const translations = {
   si: {
-    appName: 'සහය සේවා',
-    appNameSub: 'සහය සේවා',
+    appName: 'සහන සේවා',
+    appNameSub: 'සැමට පිහිට',
     securityLayer: 'ආරක්ෂිත පද්ධතිය: Encrypted AES-256',
     adminStatus: 'පරිපාලක තත්ත්වය',
     online: 'සජීවීයි',
     serverTime: 'පද්ධති වේලාව',
     
     // Auth & Login
-    loginTitle: 'සහය සේවා',
+    loginTitle: 'සහන සේවා',
     loginSubtitle: 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය',
     userIdLabel: 'පරිශීලක හැඳුනුම්පත (ID / Email)',
     nicLabel: 'හැඳුනුම්පත් අංකය',
@@ -91,7 +91,7 @@ export const translations = {
     userDashboardTitle: 'සහය සේවා ද්වාරය',
     welcomeUser: 'ආයුබෝවන්',
     saveLocationBtn: 'මා සිටින ස්ථානය සුරකින්න',
-    currentLocationLabel: 'දැනට ස්ථානය:',
+    currentLocationLabel: 'දැනට මා සිටින ස්ථානය:',
     selectLocationTitle: 'ඔබගේ වත්මන් ස්ථානය තෝරන්න',
     locationUpdatedMsg: 'ඔබගේ ස්ථානය සාර්ථකව යාවත්කාලීන විය!',
     needHelpGlowingBtn: 'මට උපකාර අවශ්‍යයි',
@@ -135,15 +135,15 @@ export const translations = {
     switchRoleBtn: 'Admin Switch',
   },
   en: {
-    appName: 'Sahaya Seva',
-    appNameSub: 'Support Services',
+    appName: 'Sahana Sewa',
+    appNameSub: 'Samata Pihita • Support Services',
     securityLayer: 'Security Layer: Encrypted AES-256',
     adminStatus: 'Admin Status',
     online: 'Online',
     serverTime: 'Server Time',
     
     // Auth & Login
-    loginTitle: 'Sahaya Seva',
+    loginTitle: 'Sahana Sewa',
     loginSubtitle: 'Secured access for registered members',
     userIdLabel: 'User ID (ID / Email)',
     nicLabel: 'Identity Card Number',

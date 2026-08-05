@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Issue, Language, Theme, ViewMode, Role } from './types';
-import { initialUsers, initialIssues } from './data/initialData';
+import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem } from './types';
+import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
 import { translations } from './data/translations';
 import { Header } from './components/Header';
 import { LoginForm } from './components/LoginForm';
@@ -10,6 +10,7 @@ import { WrongLoginModal } from './components/WrongLoginModal';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
+import { subscribeToHelpPosts } from './lib/firebase';
 
 export default function App() {
   // Persistence state setup
@@ -20,7 +21,7 @@ export default function App() {
 
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('sahaya_theme');
-    return (saved as Theme) || 'dark';
+    return (saved as Theme) || 'light';
   });
 
   const [viewMode, setViewMode] = useState<ViewMode>('login');
@@ -36,6 +37,26 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialIssues;
   });
 
+  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
+    const saved = localStorage.getItem('sahaya_help_posts');
+    return saved ? JSON.parse(saved) : initialHelpPosts;
+  });
+
+  const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>(() => {
+    const saved = localStorage.getItem('sahaya_blocked_credentials');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [registrationConfig, setRegistrationConfig] = useState<RegistrationConfig>(() => {
+    const saved = localStorage.getItem('sahaya_registration_config');
+    return saved ? JSON.parse(saved) : initialRegistrationConfig;
+  });
+
+  const [categories, setCategories] = useState<CategoryItem[]>(() => {
+    const saved = localStorage.getItem('sahaya_categories');
+    return saved ? JSON.parse(saved) : initialCategories;
+  });
+
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('sahaya_current_user');
     return saved ? JSON.parse(saved) : null;
@@ -43,6 +64,16 @@ export default function App() {
 
   const [showWrongLoginModal, setShowWrongLoginModal] = useState(false);
   const [serverTime, setServerTime] = useState('');
+
+  // Sync real-time Firestore help posts
+  useEffect(() => {
+    const unsubscribe = subscribeToHelpPosts((remotePosts) => {
+      if (remotePosts && remotePosts.length > 0) {
+        setHelpPosts(remotePosts);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Persist storage updates
   useEffect(() => {
@@ -69,6 +100,22 @@ export default function App() {
   }, [issues]);
 
   useEffect(() => {
+    localStorage.setItem('sahaya_help_posts', JSON.stringify(helpPosts));
+  }, [helpPosts]);
+
+  useEffect(() => {
+    localStorage.setItem('sahaya_blocked_credentials', JSON.stringify(blockedCredentials));
+  }, [blockedCredentials]);
+
+  useEffect(() => {
+    localStorage.setItem('sahaya_registration_config', JSON.stringify(registrationConfig));
+  }, [registrationConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('sahaya_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
     if (currentUser) {
       localStorage.setItem('sahaya_current_user', JSON.stringify(currentUser));
     } else {
@@ -91,8 +138,24 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  // Helper check if credential is blocked
+  const isCredentialBlocked = (checkStr: string): boolean => {
+    if (!checkStr) return false;
+    const cleanStr = checkStr.trim().toLowerCase();
+    return blockedCredentials.some(
+      (bc) =>
+        (bc.phone && bc.phone.trim().toLowerCase() === cleanStr) ||
+        (bc.nicNumber && bc.nicNumber.trim().toLowerCase() === cleanStr) ||
+        (bc.email && bc.email.trim().toLowerCase() === cleanStr) ||
+        (bc.ipAddress && bc.ipAddress.trim().toLowerCase() === cleanStr) ||
+        (bc.userId && bc.userId.trim().toLowerCase() === cleanStr)
+    );
+  };
+
   // Auth Handler
   const handleLogin = (userIdInput: string, keyInput: string) => {
+    const cleanInput = userIdInput.trim().toLowerCase();
+
     // Admin Master Check
     if (
       (userIdInput.toUpperCase() === '970181547V' && keyInput === '1691@@Devhas') ||
@@ -105,17 +168,30 @@ export default function App() {
       return;
     }
 
+    // Check if input matches any Blocked credentials list
+    if (isCredentialBlocked(cleanInput)) {
+      alert('⛔ අවධානයයි: ඔබගේ ගිණුම, දුරකථන අංකය, ජා.හැ. අංකය, Gmail හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. පද්ධතියට ඇතුළු විය නොහැක.');
+      return;
+    }
+
     const foundUser = users.find(
       (u) =>
-        (u.userId.toLowerCase() === userIdInput.toLowerCase() ||
-          u.nicNumber?.toLowerCase() === userIdInput.toLowerCase() ||
-          u.email.toLowerCase() === userIdInput.toLowerCase()) &&
+        (u.userId.toLowerCase() === cleanInput ||
+          u.nicNumber?.toLowerCase() === cleanInput ||
+          u.email.toLowerCase() === cleanInput ||
+          u.phone.toLowerCase() === cleanInput) &&
         u.key === keyInput
     );
 
     if (!foundUser) {
       // Piyawara 1.2: Invalid Login trigger
       setShowWrongLoginModal(true);
+      return;
+    }
+
+    // Check if user account status is explicitly blocked
+    if (foundUser.status === 'blocked') {
+      alert(`⛔ අවධානයයි: පරිපාලක (Admin) විසින් ඔබගේ ගිණුම අවහිර (Block) කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
       return;
     }
 
@@ -136,9 +212,29 @@ export default function App() {
   };
 
   const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
+    // Check if any of user's details (Phone, NIC, Email, IP) are blocked
+    const isBlocked =
+      isCredentialBlocked(newUser.phone) ||
+      isCredentialBlocked(newUser.nicNumber) ||
+      isCredentialBlocked(newUser.email) ||
+      isCredentialBlocked(newUser.ipAddress || '') ||
+      users.some(
+        (u) =>
+          u.status === 'blocked' &&
+          (u.phone === newUser.phone ||
+            u.nicNumber === newUser.nicNumber ||
+            u.email === newUser.email)
+      );
+
+    if (isBlocked) {
+      alert('⛔ අවධානයයි: ඔබගේ දුරකථන අංකය, ජා.හැ. අංකය, Gmail ලිපිනය හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. මෙම පද්ධතියට නැවත ලියාපදිංචි විය නොහැක.');
+      return;
+    }
+
     const createdUser: User = {
       ...newUser,
       id: `usr_${Date.now()}`,
+      ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
       registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
 
@@ -153,7 +249,7 @@ export default function App() {
     setViewMode('login');
   };
 
-  // Admin approval actions (Piyawara 1.1)
+  // Admin User Actions
   const handleApproveUser = (targetUserId: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === targetUserId ? { ...u, status: 'approved' } : u))
@@ -171,6 +267,68 @@ export default function App() {
           : u
       )
     );
+  };
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    if (currentUser && currentUser.id === updatedUser.id) {
+      setCurrentUser(updatedUser);
+    }
+  };
+
+  const handleBlockUser = (targetUserId: string, reason: string) => {
+    const userToBlock = users.find((u) => u.id === targetUserId);
+    if (!userToBlock) return;
+
+    const blockedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    // Update user status
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === targetUserId
+          ? {
+              ...u,
+              status: 'blocked',
+              blockedReason: reason,
+              blockedAt,
+            }
+          : u
+      )
+    );
+
+    // Append credential entries to blocked list so Phone, NIC, Email, IP are all blocked
+    const newBlockedCred: BlockedCredential = {
+      id: `block_${Date.now()}`,
+      userId: userToBlock.userId,
+      userName: userToBlock.name,
+      phone: userToBlock.phone,
+      nicNumber: userToBlock.nicNumber,
+      email: userToBlock.email,
+      ipAddress: userToBlock.ipAddress || '192.168.1.102',
+      blockedAt,
+      reason,
+    };
+
+    setBlockedCredentials((prev) => [newBlockedCred, ...prev]);
+  };
+
+  const handleUnblockCredential = (credentialId: string) => {
+    const cred = blockedCredentials.find((c) => c.id === credentialId);
+    setBlockedCredentials((prev) => prev.filter((c) => c.id !== credentialId));
+
+    if (cred && cred.userId) {
+      setUsers((prev) =>
+        prev.map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
+      );
+    }
+  };
+
+  const handleDeletePost = (postId: string) => {
+    setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
+  };
+
+  const handleUpdatePost = (updatedPost: HelpPost) => {
+    setHelpPosts((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
   };
 
   // Issue creation action (Piyawara 1.3)
@@ -206,6 +364,7 @@ export default function App() {
   const handleSeedDemoData = () => {
     setUsers(initialUsers);
     setIssues(initialIssues);
+    setBlockedCredentials([]);
     alert('දර්ශන පරීක්ෂණ දත්ත (Demo Seed Data) සාර්ථකව ප්‍රතිස්ථාපනය කෙරිණි!');
   };
 
@@ -214,20 +373,16 @@ export default function App() {
   return (
     <div
       className={`min-h-screen w-full font-sans flex flex-col justify-between p-4 sm:p-8 relative overflow-x-hidden transition-colors ${
-        viewMode === 'login'
-          ? theme === 'dark'
-            ? 'bg-gradient-to-b from-[#08140e] via-[#0a1810] to-[#06110a] text-slate-100'
-            : 'bg-gradient-to-b from-[#eff8f2] via-[#f4faf5] to-[#f8fdf9] text-slate-900'
-          : theme === 'dark'
-          ? 'bg-[#0c0e14] text-slate-100'
-          : 'bg-slate-100 text-slate-900'
+        theme === 'dark'
+          ? 'bg-[#05120a] text-slate-100'
+          : 'bg-[#f2f7f4] text-slate-900'
       }`}
     >
       {/* Background Glow Orbs */}
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Navigation Header (Hidden on Login screen to match mockup layout) */}
+      {/* Navigation Header */}
       {viewMode !== 'login' && (
         <Header
           language={language}
@@ -260,6 +415,7 @@ export default function App() {
           <RegisterForm
             onRegister={handleRegister}
             onNavigateToLogin={() => setViewMode('login')}
+            registrationConfig={registrationConfig}
             language={language}
           />
         )}
@@ -274,6 +430,9 @@ export default function App() {
                 setCurrentUser(latestUser);
                 if (latestUser.status === 'approved') {
                   setViewMode('dashboard');
+                } else if (latestUser.status === 'blocked') {
+                  alert(`ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${latestUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
+                  handleLogout();
                 } else {
                   alert('ඔබගේ ගිණුම තවමත් පරිපාලක (Admin) අනුමැතිය සඳහා පොරොත්තුවෙන් පවතී.');
                 }
@@ -303,8 +462,19 @@ export default function App() {
           <AdminPanel
             users={users}
             issues={issues}
+            helpPosts={helpPosts}
+            blockedCredentials={blockedCredentials}
+            registrationConfig={registrationConfig}
+            onUpdateRegistrationConfig={setRegistrationConfig}
+            categories={categories}
+            onUpdateCategories={setCategories}
             onApproveUser={handleApproveUser}
             onRejectUser={handleRejectUser}
+            onUpdateUser={handleUpdateUser}
+            onBlockUser={handleBlockUser}
+            onUnblockCredential={handleUnblockCredential}
+            onDeletePost={handleDeletePost}
+            onUpdatePost={handleUpdatePost}
             onReplyIssue={handleReplyIssue}
             onSeedDemoData={handleSeedDemoData}
             language={language}
@@ -319,11 +489,12 @@ export default function App() {
             setLanguage={setLanguage}
             theme={theme}
             toggleTheme={toggleTheme}
+            categories={categories}
           />
         )}
       </main>
 
-      {/* Piyawara 1.2: Wrong Login Overlay Dialog */}
+      {/* Wrong Login Modal */}
       <WrongLoginModal
         isOpen={showWrongLoginModal}
         onRetry={() => setShowWrongLoginModal(false)}
@@ -358,3 +529,4 @@ export default function App() {
     </div>
   );
 }
+

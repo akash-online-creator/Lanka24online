@@ -2,6 +2,7 @@ import React from 'react';
 import { Language, Theme, Role, User } from '../types';
 import { translations } from '../data/translations';
 import { Sun, Moon, Shield, UserCheck, HelpCircle, LogOut } from 'lucide-react';
+import { AppLogo } from './AppLogo';
 
 interface HeaderProps {
   language: Language;
@@ -29,21 +30,20 @@ export const Header: React.FC<HeaderProps> = ({
   const t = translations[language];
 
   return (
-    <header className="flex flex-wrap justify-between items-center gap-4 z-20 mb-6 p-2 sm:p-4 rounded-2xl bg-slate-900/60 dark:bg-slate-900/80 light:bg-white/80 border border-white/10 shadow-xl backdrop-blur-md transition-all">
+    <header className="flex flex-wrap justify-between items-center gap-4 z-20 mb-6 p-2.5 sm:p-4 rounded-2xl bg-white/90 dark:bg-[#0a1c13]/90 border border-slate-200/80 dark:border-[#163625] shadow-md backdrop-blur-md transition-all">
       {/* Brand Logo & Name */}
       <div 
         onClick={() => onNavigate('login')} 
         className="flex items-center gap-3 cursor-pointer group"
       >
-        <div className="w-10 h-10 bg-gradient-to-tr from-blue-500 to-cyan-400 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.5)] flex items-center justify-center text-white font-bold text-xl group-hover:scale-105 transition-transform">
-          S
-        </div>
+        <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
         <div>
-          <h1 className="text-xl sm:text-2xl font-light tracking-widest uppercase text-slate-100 dark:text-slate-100 light:text-slate-800">
-            <span className="font-bold text-blue-400">සහය</span> සේවා
+          <h1 className="text-lg sm:text-xl font-black tracking-wide text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+            <span className="text-[#007a4b] dark:text-[#00a86b]">සහන</span>
+            <span className="text-amber-600 dark:text-amber-400">සේවා</span>
           </h1>
-          <p className="text-[10px] text-slate-400 font-medium tracking-wider">
-            {t.appNameSub} • SUPPORT SERVICES
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wider">
+            සැමට පිහිට • SAHANA SEWA
           </p>
         </div>
       </div>
@@ -52,10 +52,10 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2">
         <button
           onClick={() => onNavigate('issues_help')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 transition-all shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all shadow-sm"
           title={t.issuesHelpBtn}
         >
-          <HelpCircle className="w-4 h-4" />
+          <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
           <span className="hidden sm:inline">{t.issuesHelpBtn}</span>
         </button>
 
@@ -76,48 +76,48 @@ export const Header: React.FC<HeaderProps> = ({
           }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
             activeRoleView === 'admin'
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]'
-              : 'bg-slate-800/60 text-slate-300 border-white/10 hover:bg-slate-700/60'
+              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+              : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200 dark:hover:bg-[#173827]'
           }`}
           title="Switch to Admin Panel"
         >
-          <Shield className="w-4 h-4 text-amber-400" />
+          <Shield className="w-4 h-4 text-amber-500" />
           <span>{activeRoleView === 'admin' ? 'Admin Mode ON' : 'Switch Admin'}</span>
         </button>
       </div>
 
       {/* Tools: Language & Theme Controls */}
-      <div className="flex items-center gap-3 bg-slate-800/60 dark:bg-slate-800/60 light:bg-slate-100/80 p-1.5 rounded-2xl border border-white/10 dark:border-white/10 light:border-slate-200 backdrop-blur-sm shadow-inner">
+      <div className="flex items-center gap-3 bg-slate-100/80 dark:bg-[#122a1d] p-1.5 rounded-2xl border border-slate-200 dark:border-[#1a3d2b] backdrop-blur-sm shadow-inner">
         {/* Languages */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-700/40 dark:bg-slate-700/40 light:bg-white/90">
+        <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white/90 dark:bg-[#0a1c13]">
           <button
             onClick={() => setLanguage('si')}
             className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
               language === 'si'
-                ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#007a4b] text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             සිංහල
           </button>
-          <span className="text-slate-600 text-xs">|</span>
+          <span className="text-slate-300 dark:text-slate-600 text-xs">|</span>
           <button
             onClick={() => setLanguage('en')}
             className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
               language === 'en'
-                ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#007a4b] text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             EN
           </button>
-          <span className="text-slate-600 text-xs">|</span>
+          <span className="text-slate-300 dark:text-slate-600 text-xs">|</span>
           <button
             onClick={() => setLanguage('ta')}
             className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
               language === 'ta'
-                ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#007a4b] text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             தமிழ்
@@ -127,11 +127,11 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Theme Switcher */}
         <button
           onClick={toggleTheme}
-          className="w-8 h-8 rounded-xl bg-slate-700 dark:bg-slate-700 light:bg-slate-200 flex items-center justify-center text-yellow-400 hover:scale-110 active:scale-95 transition-all shadow-md"
+          className="w-8 h-8 rounded-xl bg-white dark:bg-[#0a1c13] border border-slate-200 dark:border-[#1e4230] flex items-center justify-center text-amber-500 hover:scale-105 active:scale-95 transition-all shadow-sm"
           title="Toggle Light / Dark Mode"
         >
           {theme === 'dark' ? (
-            <div className="w-4 h-4 bg-yellow-400 rounded-full shadow-[0_0_10px_#facc15]" />
+            <div className="w-4 h-4 bg-amber-400 rounded-full shadow-[0_0_8px_#facc15]" />
           ) : (
             <Moon className="w-4 h-4 text-slate-700" />
           )}
@@ -139,13 +139,13 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Logged in User Indicator & Logout */}
         {currentUser && (
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
-            <span className="text-xs font-medium text-slate-200 truncate max-w-[100px] hidden md:inline">
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[100px] hidden md:inline">
               {currentUser.name}
             </span>
             <button
               onClick={onLogout}
-              className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+              className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-900/50 transition-all"
               title={t.logoutBtn}
             >
               <LogOut className="w-3.5 h-3.5" />

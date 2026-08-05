@@ -1,5 +1,6 @@
 import React from 'react';
-import { Language, Theme } from '../types';
+import { Language, Theme, CategoryItem } from '../types';
+import { initialCategories } from '../data/initialData';
 import { 
   Zap, 
   Pencil, 
@@ -11,17 +12,23 @@ import {
   ArrowLeft,
   Moon,
   Sun,
-  Languages
+  Languages,
+  PhoneCall,
+  Car,
+  Wrench,
+  Sparkles,
+  HelpCircle
 } from 'lucide-react';
 
 interface CategorySelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectCategory: (categoryKey: string, categoryTitle: string) => void;
+  onSelectCategory: (categoryKey: string, categoryTitle: string, selectedCatObj?: CategoryItem) => void;
   language: Language;
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
   toggleTheme?: () => void;
+  categories?: CategoryItem[];
 }
 
 export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
@@ -32,6 +39,7 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
   setLanguage,
   theme = 'light',
   toggleTheme,
+  categories = initialCategories,
 }) => {
   if (!isOpen) return null;
 
@@ -55,84 +63,40 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
     }
   };
 
-  const categories = [
-    {
-      key: 'quick_services',
-      titleSi: 'ඉක්මන් සේවා',
-      titleEn: 'Quick Services',
-      titleTa: 'விரைவான சேவைகள்',
-      descSi: 'ඉක්මන් උපකාර සඳහා',
-      descEn: 'For quick & emergency help',
-      descTa: 'உடனடி உதவிக்கு',
-      icon: Zap,
-      iconContainerClass: 'bg-[#00a86b] text-white',
-    },
-    {
-      key: 'standard_services',
-      titleSi: 'සාමාන්‍ය සේවා',
-      titleEn: 'Standard Services',
-      titleTa: 'இயல்பான சேவைகள்',
-      descSi: 'සාමාන්‍ය සේවා ඉල්ලීම්',
-      descEn: 'General service requests',
-      descTa: 'பொது சேவை கோரிக்கைகள்',
-      icon: Pencil,
-      iconContainerClass: 'bg-[#f59e0b] text-white',
-    },
-    {
-      key: 'find_for_me',
-      titleSi: 'සොයාදෙන්න',
-      titleEn: 'Find For Me',
-      titleTa: 'கண்டுபிடித்துத் தருக',
-      descSi: 'මට යමක් සොයාදෙන්න',
-      descEn: 'Find something for me',
-      descTa: 'எனக்கு எதையாவது கண்டுபிடி',
-      icon: Search,
-      iconContainerClass: 'bg-[#e6f7f0] dark:bg-[#0e291c] text-[#00a86b] dark:text-[#00c880]',
-    },
-    {
-      key: 'from_me_to_you',
-      titleSi: 'මගෙන් ඔබට',
-      titleEn: 'From Me To You',
-      titleTa: 'என்னிடமிருந்து உங்களுக்கு',
-      descSi: 'මගෙන් අලෙවියට',
-      descEn: 'For sale from me',
-      descTa: 'என்னிடமிருந்து விற்பனைக்கு',
-      icon: Package,
-      iconContainerClass: 'bg-[#fef3c7] dark:bg-[#2b1f0c] text-[#d97706] dark:text-[#f59e0b]',
-    },
-    {
-      key: 'traders',
-      titleSi: 'වෙළෙන්දෝ',
-      titleEn: 'Traders',
-      titleTa: 'வியாபாரிகள்',
-      descSi: 'වෙළෙන්දන් සඳහා',
-      descEn: 'For traders & merchants',
-      descTa: 'வியாபாரிகளுக்கு',
-      icon: Users,
-      iconContainerClass: 'bg-[#f3e8ff] dark:bg-[#261238] text-[#9333ea] dark:text-[#c084fc]',
-    },
-    {
-      key: 'stores',
-      titleSi: 'වෙළඳසැල්',
-      titleEn: 'Stores & Shops',
-      titleTa: 'கடைகள்',
-      descSi: 'වෙළඳසැල් සඳහා',
-      descEn: 'For stores & shop owners',
-      descTa: 'கடைகளுக்கு',
-      icon: Store,
-      iconContainerClass: 'bg-[#e0f2fe] dark:bg-[#0c2438] text-[#0284c7] dark:text-[#38bdf8]',
-    },
-  ];
-
-  const getTitle = (cat: typeof categories[0]) => {
-    if (language === 'en') return cat.titleEn;
-    if (language === 'ta') return cat.titleTa;
-    return cat.titleSi;
+  const getCategoryIcon = (iconName?: string) => {
+    switch (iconName) {
+      case 'Zap':
+        return Zap;
+      case 'PhoneCall':
+        return PhoneCall;
+      case 'Car':
+        return Car;
+      case 'Wrench':
+        return Wrench;
+      case 'Pencil':
+        return Pencil;
+      case 'Search':
+        return Search;
+      case 'Package':
+        return Package;
+      case 'Users':
+        return Users;
+      case 'Store':
+        return Store;
+      default:
+        return Sparkles;
+    }
   };
 
-  const getDesc = (cat: typeof categories[0]) => {
-    if (language === 'en') return cat.descEn;
-    if (language === 'ta') return cat.descTa;
+  const getTitle = (cat: CategoryItem) => {
+    if (language === 'en') return cat.nameEn || cat.nameSi;
+    if (language === 'ta') return cat.nameTa || cat.nameSi;
+    return cat.nameSi;
+  };
+
+  const getDesc = (cat: CategoryItem) => {
+    if (language === 'en') return cat.descEn || cat.descSi;
+    if (language === 'ta') return cat.descTa || cat.descSi;
     return cat.descSi;
   };
 
@@ -149,6 +113,8 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
     : 'පහත වර්ග වලින් එකක් තෝරන්න.';
 
   const backText = language === 'en' ? 'Back' : language === 'ta' ? 'திரும்பி' : 'ආපසු';
+
+  const displayCategoryList = categories && categories.length > 0 ? categories : initialCategories;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-gradient-to-b from-[#f4faf5] via-[#f8fdf9] to-[#ffffff] dark:from-[#06110a] dark:via-[#08140e] dark:to-[#040b07] text-slate-900 dark:text-slate-100 animate-fadeIn min-h-screen p-4 sm:p-6 flex flex-col justify-start items-center">
@@ -211,20 +177,30 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
         {/* Category Cards List */}
         <div className="space-y-3.5 w-full">
-          {categories.map((cat) => {
-            const Icon = cat.icon;
+          {displayCategoryList.map((cat, idx) => {
+            const Icon = getCategoryIcon(cat.icon);
             const title = getTitle(cat);
             const desc = getDesc(cat);
 
+            // Give nice colorful icon containers
+            const iconBgClasses = [
+              'bg-[#00a86b] text-white',
+              'bg-[#0284c7] text-white',
+              'bg-[#f59e0b] text-white',
+              'bg-[#9333ea] text-white',
+              'bg-[#e11d48] text-white',
+            ];
+            const bgClass = iconBgClasses[idx % iconBgClasses.length];
+
             return (
               <div
-                key={cat.key}
-                onClick={() => onSelectCategory(cat.key, title)}
+                key={cat.id}
+                onClick={() => onSelectCategory(cat.id, title, cat)}
                 className="w-full bg-white dark:bg-[#0c1811] hover:bg-slate-50 dark:hover:bg-[#112218] border border-slate-200/70 dark:border-[#173222] rounded-[1.5rem] p-4 sm:p-4.5 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group active:scale-[0.99]"
               >
                 <div className="flex items-center gap-3.5">
                   {/* Category Circular Icon Container */}
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 font-bold shadow-sm ${cat.iconContainerClass}`}>
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 font-bold shadow-sm ${bgClass}`}>
                     <Icon className="w-6 h-6" />
                   </div>
 
@@ -236,6 +212,11 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-[#708a79] font-medium mt-0.5">
                       {desc}
                     </p>
+                    {cat.customFields && cat.customFields.length > 0 && (
+                      <span className="inline-block mt-1 text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md font-extrabold">
+                        {cat.customFields.length} Form Fields
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -252,3 +233,4 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
     </div>
   );
 };
+

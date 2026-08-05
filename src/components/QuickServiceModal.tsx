@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Sparkles, AlertCircle, CheckSquare, Zap, ArrowRight } from 'lucide-react';
-import { HelpPost, Language, LocationOption, User } from '../types';
+import { Sparkles, AlertCircle, CheckSquare, Zap, ArrowRight, ListPlus } from 'lucide-react';
+import { HelpPost, Language, LocationOption, User, CategoryItem } from '../types';
 import { translations } from '../data/translations';
 
 interface QuickServiceModalProps {
@@ -11,6 +11,7 @@ interface QuickServiceModalProps {
   currentUser: User;
   lang: Language;
   categoryTitle?: string;
+  selectedCategoryObj?: CategoryItem | null;
 }
 
 export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
@@ -21,6 +22,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   currentUser,
   lang,
   categoryTitle,
+  selectedCategoryObj,
 }) => {
   const t = translations[lang];
 
@@ -34,6 +36,9 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [helpersNeeded, setHelpersNeeded] = useState<number>(2);
   const [feeAgreed, setFeeAgreed] = useState<boolean>(true);
 
+  // Dynamic custom form fields values
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+
   if (!isOpen) return null;
 
   const transportOptions = [
@@ -43,6 +48,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     'මම ගෙනැවිත්දෙන්නම්',
     'ඔබට එවන්නම්'
   ];
+
+  const handleCustomFieldChange = (fieldId: string, val: any) => {
+    setCustomFieldValues(prev => ({ ...prev, [fieldId]: val }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,12 +68,28 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       ? 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි'
       : `රු. ${customPaymentAmount}/= (ගෙවිය හැක)`;
 
+    // Format dynamic form fields text
+    const extraDetailsArray: string[] = [];
+    if (selectedCategoryObj?.customFields && selectedCategoryObj.customFields.length > 0) {
+      selectedCategoryObj.customFields.forEach(f => {
+        const rawVal = customFieldValues[f.id];
+        if (rawVal !== undefined && rawVal !== '') {
+          const label = lang === 'en' ? f.labelEn : lang === 'ta' ? f.labelTa : f.labelSi;
+          extraDetailsArray.push(`${label}: ${rawVal}`);
+        }
+      });
+    }
+
+    const combinedConditions = extraDetailsArray.length > 0
+      ? `${conditions.trim()}\n--- ${categoryTitle || 'Category'} Form Details ---\n${extraDetailsArray.join('\n')}`
+      : conditions.trim();
+
     onSubmitPost({
       userName: currentUser.name || 'විමල්සි',
       userPhone: currentUser.phone || '0771234567',
       whatHappened: whatHappened.trim(),
       whatIsNeeded: whatIsNeeded.trim(),
-      conditions: conditions.trim(),
+      conditions: combinedConditions,
       transport: transport,
       payment: paymentText,
       helpersNeeded: helpersNeeded,
@@ -142,6 +167,91 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
               className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 px-3.5 text-slate-100 text-sm focus:border-cyan-500 focus:outline-none"
             />
           </div>
+
+          {/* Dynamic Category Form Fields Section (Admin Controlled) */}
+          {selectedCategoryObj?.customFields && selectedCategoryObj.customFields.length > 0 && (
+            <div className="bg-emerald-950/30 border border-emerald-500/30 p-4 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 border-b border-emerald-500/20 pb-2">
+                <ListPlus className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-extrabold text-emerald-300 uppercase tracking-wider">
+                  {categoryTitle ? `"${categoryTitle}"` : 'Category'} Form Questions / Fields
+                </h4>
+              </div>
+
+              <div className="space-y-3">
+                {selectedCategoryObj.customFields.map((field) => {
+                  const label = lang === 'en' ? field.labelEn : lang === 'ta' ? field.labelTa : field.labelSi;
+                  const value = customFieldValues[field.id] ?? '';
+
+                  return (
+                    <div key={field.id} className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-200">
+                        {label} {field.required && <span className="text-rose-400">*</span>}
+                      </label>
+
+                      {field.fieldType === 'text' && (
+                        <input
+                          type="text"
+                          required={field.required}
+                          value={value}
+                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-xs focus:border-emerald-500 focus:outline-none"
+                        />
+                      )}
+
+                      {field.fieldType === 'textarea' && (
+                        <textarea
+                          rows={2}
+                          required={field.required}
+                          value={value}
+                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-xs focus:border-emerald-500 focus:outline-none"
+                        />
+                      )}
+
+                      {field.fieldType === 'number' && (
+                        <input
+                          type="number"
+                          required={field.required}
+                          value={value}
+                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-xs focus:border-emerald-500 focus:outline-none"
+                        />
+                      )}
+
+                      {field.fieldType === 'dropdown' && (
+                        <select
+                          required={field.required}
+                          value={value || (field.options?.[0] || '')}
+                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-xs focus:border-emerald-500 focus:outline-none"
+                        >
+                          {!value && <option value="">-- තෝරන්න (Select Option) --</option>}
+                          {field.options?.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {field.fieldType === 'checkbox' && (
+                        <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            checked={!!value}
+                            onChange={(e) => handleCustomFieldChange(field.id, e.target.checked)}
+                            className="accent-emerald-500 w-4 h-4"
+                          />
+                          <span>{label}</span>
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* 3. කොන්දේසි */}
           <div>
@@ -279,3 +389,4 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     </div>
   );
 };
+

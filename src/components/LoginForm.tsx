@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Language, Theme } from '../types';
 import { translations } from '../data/translations';
+import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { 
   Moon, 
   Sun, 
   Languages, 
   Heart, 
   KeyRound, 
-  Contact2 
+  Contact2,
+  Sparkles
 } from 'lucide-react';
+import { AppLogo } from './AppLogo';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => void;
@@ -32,6 +35,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
   const t = (translations[language] || translations.si) as any;
+
+  // Background Auto-load Location prefetching so it's ready upon login
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            const { latitude, longitude } = pos.coords;
+            const geo = await resolveExactLocation(latitude, longitude);
+            const locOpt = toLocationOption(geo);
+            localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+          } catch (e) {
+            // Ignore prefetch error
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,15 +115,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
       {/* App Branding Header */}
       <div className="text-center mb-8 flex flex-col items-center">
-        <div className="w-20 h-20 sm:w-22 sm:h-22 bg-[#00a86b] rounded-[1.75rem] shadow-xl shadow-emerald-600/20 flex items-center justify-center mb-5 text-white transform hover:scale-105 transition-transform duration-300">
-          <div className="relative flex items-center justify-center">
-            <Heart className="w-10 h-10 text-white fill-white" />
-          </div>
+        <div className="mb-4 transform hover:scale-105 transition-transform duration-300">
+          <AppLogo size="xl" showGlow animated />
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">
-          {t.loginTitle || 'සහය සේවා'}
+        <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-1 flex items-center justify-center gap-2">
+          <span className="text-[#007a4b] dark:text-[#00c880]">සහන</span>
+          <span className="text-amber-600 dark:text-amber-400">සේවා</span>
         </h1>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black mb-2">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <span>සැමට පිහිට • SAHANA SEWA</span>
+        </div>
         <p className="text-slate-500 dark:text-[#8ba294] text-xs sm:text-sm font-medium max-w-xs leading-relaxed">
           {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}
         </p>
