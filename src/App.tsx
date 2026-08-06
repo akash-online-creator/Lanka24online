@@ -10,6 +10,7 @@ import { WrongLoginModal } from './components/WrongLoginModal';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { subscribeToHelpPosts } from './lib/firebase';
 
 export default function App() {
@@ -63,6 +64,7 @@ export default function App() {
   });
 
   const [showWrongLoginModal, setShowWrongLoginModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [serverTime, setServerTime] = useState('');
 
   // Sync real-time Firestore help posts
@@ -180,7 +182,9 @@ export default function App() {
           u.nicNumber?.toLowerCase() === cleanInput ||
           u.email.toLowerCase() === cleanInput ||
           u.phone.toLowerCase() === cleanInput) &&
-        u.key === keyInput
+        (u.key === keyInput ||
+          (u.securityCode && u.securityCode === keyInput) ||
+          (u.tempCode && u.tempCode === keyInput))
     );
 
     if (!foundUser) {
@@ -206,6 +210,10 @@ export default function App() {
       setViewMode('pending');
     } else if (foundUser.status === 'approved') {
       setViewMode('dashboard');
+      // Show password change modal if user hasn't changed default/temp password yet
+      if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
+        setShowChangePasswordModal(true);
+      }
     } else if (foundUser.status === 'rejected') {
       setShowWrongLoginModal(true);
     }
@@ -239,8 +247,8 @@ export default function App() {
     };
 
     setUsers((prev) => [createdUser, ...prev]);
-    setCurrentUser(createdUser);
-    setViewMode('pending'); // Piyawara 1.1: Goes to pending status screen immediately
+    setCurrentUser(null);
+    setViewMode('login'); // Redirect to login page upon registration completion
   };
 
   const handleLogout = () => {
@@ -274,6 +282,19 @@ export default function App() {
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
     }
+  };
+
+  const handleSaveNewPassword = (newPassword: string) => {
+    if (!currentUser) return;
+    const updatedUser: User = {
+      ...currentUser,
+      key: newPassword,
+      securityCode: newPassword,
+      isPasswordChanged: true,
+    };
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    setShowChangePasswordModal(false);
   };
 
   const handleBlockUser = (targetUserId: string, reason: string) => {
@@ -499,6 +520,15 @@ export default function App() {
         isOpen={showWrongLoginModal}
         onRetry={() => setShowWrongLoginModal(false)}
         language={language}
+      />
+
+      {/* Change Password Card Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        onSavePassword={handleSaveNewPassword}
+        userName={currentUser?.name}
+        nicNumber={currentUser?.nicNumber}
       />
 
       {/* Footer Status Bar */}

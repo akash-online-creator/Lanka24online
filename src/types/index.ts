@@ -108,6 +108,8 @@ export interface User {
   nearestTown?: string;
   whatsappNumber?: string;
   securityCode?: string;
+  tempCode?: string;
+  isPasswordChanged?: boolean;
   role: Role;
   status: UserStatus;
   photoUrl?: string;

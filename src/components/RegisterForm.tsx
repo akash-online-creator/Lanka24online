@@ -180,6 +180,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
     const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
     const generatedUserId = `SS-${Math.floor(100000 + Math.random() * 900000)}`;
+    // Generate random 6-digit security code / passcode for admin verification and initial login
+    const random6DigitCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     const currentLat = trackedLat ?? 6.9271;
     const currentLng = trackedLng ?? 79.8612;
@@ -198,6 +200,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       birthDate,
       nearestTown,
       whatsappNumber,
+      securityCode: random6DigitCode,
+      tempCode: random6DigitCode,
+      isPasswordChanged: false,
       role: 'user',
       status: 'pending', // Requires admin approval
       photoUrl: facePhoto || '',
@@ -205,7 +210,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       nicFrontPhotoUrl: nicFrontPhoto || '',
       nicBackPhotoUrl: nicBackPhoto || '',
       facePhotoUrl: facePhoto || '',
-      key: '123456',
+      key: random6DigitCode,
       // Accurately tracked GPS location and IP address for admin verification
       ipAddress: ipAddress || '112.134.120.45',
       registrationLat: currentLat,
@@ -225,6 +230,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setShowSuccessModal(false);
     if (pendingUserData) {
       onRegister(pendingUserData);
+    } else {
+      onNavigateToLogin();
     }
   };
 

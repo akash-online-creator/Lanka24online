@@ -33,7 +33,9 @@ import {
   Navigation,
   ExternalLink,
   Compass,
-  Smartphone
+  Smartphone,
+  KeyRound,
+  Copy
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -535,6 +537,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span className="text-slate-600 font-bold">ලියාපදිංචි වේලාව:</span>
                       <span className="text-slate-700 font-semibold">{user.registeredAt}</span>
                     </div>
+                  </div>
+
+                  {/* 6-Digit Random Verification Code / Passcode for Admin */}
+                  <div className="bg-gradient-to-br from-amber-50 via-orange-50/50 to-amber-100/60 border-2 border-amber-400/90 rounded-2xl p-3.5 shadow-md space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black text-amber-950 flex items-center gap-1.5 uppercase tracking-wider">
+                        <KeyRound className="w-4 h-4 text-amber-700 animate-pulse" />
+                        <span>අහඹු පිවිසුම් කේතය (6-Digit Code)</span>
+                      </span>
+                      <span className="text-[10px] font-black text-amber-900 bg-amber-200 border border-amber-300 px-2.5 py-0.5 rounded-full shadow-sm">
+                        NIC + මෙම කේතය
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-mono text-2xl sm:text-3xl font-black text-amber-950 tracking-[0.2em] bg-white px-4 py-2 rounded-xl border-2 border-amber-300 shadow-inner flex items-center justify-center">
+                        {user.securityCode || user.tempCode || user.key || '123456'}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = user.securityCode || user.tempCode || user.key || '123456';
+                          navigator.clipboard.writeText(code);
+                          alert(`අංක 6ක කේතය (${code}) කොපි කර ගන්නා ලදි!`);
+                        }}
+                        className="text-xs font-black text-amber-950 bg-amber-300 hover:bg-amber-400 active:scale-95 px-3 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md border border-amber-400 cursor-pointer"
+                        title="Copy Code"
+                      >
+                        <Copy className="w-4 h-4 text-amber-900" />
+                        <span>Copy Code</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-amber-950 font-bold leading-relaxed bg-amber-200/40 p-2 rounded-xl border border-amber-300/60">
+                      💡 පරිපාලක අවසරය (Accept) දුන් පසු, පරිශීලකයාට හැඳුනුම්පත් අංකය (NIC: <strong className="font-mono text-emerald-950">{user.nicNumber}</strong>) සහ මෙම <strong className="text-amber-900">අංක 6ක කේතය ({user.securityCode || user.tempCode || user.key || '123456'})</strong> ලබාදී Login විය හැක.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 pt-1">
