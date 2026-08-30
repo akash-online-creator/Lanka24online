@@ -17,7 +17,10 @@ import {
   Car,
   Wrench,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  Gift,
+  RefreshCw,
+  Briefcase
 } from 'lucide-react';
 
 interface CategorySelectionModalProps {
@@ -77,12 +80,16 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
         return Pencil;
       case 'Search':
         return Search;
+      case 'Gift':
+        return Gift;
       case 'Package':
         return Package;
       case 'Users':
         return Users;
       case 'Store':
         return Store;
+      case 'Briefcase':
+        return Briefcase;
       default:
         return Sparkles;
     }
@@ -114,7 +121,7 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
   const backText = language === 'en' ? 'Back' : language === 'ta' ? 'திரும்பி' : 'ආපසු';
 
-  const displayCategoryList = categories && categories.length > 0 ? categories : initialCategories;
+  const displayCategoryList = Array.isArray(categories) && categories.length > 0 ? categories.filter(Boolean) : initialCategories;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-gradient-to-b from-[#f4faf5] via-[#f8fdf9] to-[#ffffff] dark:from-[#06110a] dark:via-[#08140e] dark:to-[#040b07] text-slate-900 dark:text-slate-100 animate-fadeIn min-h-screen p-4 sm:p-6 flex flex-col justify-start items-center">
@@ -192,11 +199,20 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
             ];
             const bgClass = iconBgClasses[idx % iconBgClasses.length];
 
+            const isFindForMe = cat.id === 'find_for_me';
+            const isFromMeToYou = cat.id === 'from_me_to_you';
+
             return (
               <div
                 key={cat.id}
                 onClick={() => onSelectCategory(cat.id, title, cat)}
-                className="w-full bg-white dark:bg-[#0c1811] hover:bg-slate-50 dark:hover:bg-[#112218] border border-slate-200/70 dark:border-[#173222] rounded-[1.5rem] p-4 sm:p-4.5 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group active:scale-[0.99]"
+                className={`w-full rounded-[1.5rem] p-4 sm:p-4.5 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group active:scale-[0.99] ${
+                  isFindForMe
+                    ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/80 dark:from-[#091f14] dark:via-[#0c281a] dark:to-[#081a10] border-2 border-emerald-500/80 dark:border-emerald-500/80 shadow-emerald-500/10'
+                    : isFromMeToYou
+                    ? 'bg-gradient-to-r from-purple-50 via-pink-50 to-amber-50/70 dark:from-[#1b0d28] dark:via-[#210f22] dark:to-[#170a1e] border-2 border-purple-400/80 dark:border-purple-500/80 shadow-purple-500/10'
+                    : 'bg-white dark:bg-[#0c1811] hover:bg-slate-50 dark:hover:bg-[#112218] border border-slate-200/70 dark:border-[#173222]'
+                }`}
               >
                 <div className="flex items-center gap-3.5">
                   {/* Category Circular Icon Container */}
@@ -206,17 +222,37 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
                   {/* Title & Description */}
                   <div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
-                      {title}
-                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                        {title}
+                      </h3>
+                      {isFindForMe && (
+                        <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                          නව විශේෂාංගය (NEW)
+                        </span>
+                      )}
+                      {isFromMeToYou && (
+                        <span className="text-[10px] bg-purple-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                          නව විශේෂාංගය (NEW)
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-[#708a79] font-medium mt-0.5">
                       {desc}
                     </p>
-                    {cat.customFields && cat.customFields.length > 0 && (
+                    {isFindForMe ? (
+                      <span className="inline-block mt-1 text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 px-2 py-0.5 rounded-md font-black border border-emerald-300 dark:border-emerald-700">
+                        🔴 නැතිවූ / ⚠️ සොරාගත් / 🔍 සොයාදෙන්න
+                      </span>
+                    ) : isFromMeToYou ? (
+                      <span className="inline-block mt-1 text-[10px] bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 px-2 py-0.5 rounded-md font-black border border-purple-300 dark:border-purple-700">
+                        🎁 පරිත්‍යාගයක් / ♻️ ඉවත්කරන / 🔄 හුවමාරුවට
+                      </span>
+                    ) : Array.isArray(cat.customFields) && cat.customFields.length > 0 ? (
                       <span className="inline-block mt-1 text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md font-extrabold">
                         {cat.customFields.length} Form Fields
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 

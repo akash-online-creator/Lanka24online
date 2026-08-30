@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem } from './types';
+import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem } from './types';
 import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
+import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
 import { translations } from './data/translations';
 import { Header } from './components/Header';
 import { LoginForm } from './components/LoginForm';
@@ -11,7 +12,7 @@ import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
-import { subscribeToHelpPosts } from './lib/firebase';
+import { subscribeToHelpPosts, updateHelpPostInFirestore, deleteHelpPostFromFirestore, seedDemoHelpPostsToFirestore } from './lib/firebase';
 
 export default function App() {
   // Persistence state setup
@@ -26,7 +27,18 @@ export default function App() {
   });
 
   const [viewMode, setViewMode] = useState<ViewMode>('login');
-  const [activeRoleView, setActiveRoleView] = useState<Role>('user');
+  const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
+    const savedUser = localStorage.getItem('sahaya_current_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        return parsed?.role === 'admin' ? 'admin' : 'user';
+      } catch {
+        return 'user';
+      }
+    }
+    return 'user';
+  });
 
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('sahaya_users');
@@ -40,7 +52,7 @@ export default function App() {
 
   const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
     const saved = localStorage.getItem('sahaya_help_posts');
-    return saved ? JSON.parse(saved) : initialHelpPosts;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>(() => {
@@ -55,8 +67,75 @@ export default function App() {
 
   const [categories, setCategories] = useState<CategoryItem[]>(() => {
     const saved = localStorage.getItem('sahaya_categories');
-    return saved ? JSON.parse(saved) : initialCategories;
+    if (saved) {
+      try {
+        let parsed: CategoryItem[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed = parsed.filter((c) => c && typeof c === 'object' && Boolean(c.id));
+          
+          // Ensure normal_services exists
+          const hasNormal = parsed.some((c) => c.id === 'normal_services');
+          if (!hasNormal) {
+            const normalCat = initialCategories.find((c) => c.id === 'normal_services');
+            if (normalCat) {
+              const quickIdx = parsed.findIndex((c) => c.id === 'quick_services');
+              if (quickIdx !== -1) {
+                parsed.splice(quickIdx + 1, 0, normalCat);
+              } else {
+                parsed.unshift(normalCat);
+              }
+            }
+          }
+
+          // Ensure find_for_me exists
+          const hasFindForMe = parsed.some((c) => c.id === 'find_for_me');
+          if (!hasFindForMe) {
+            const findCat = initialCategories.find((c) => c.id === 'find_for_me');
+            if (findCat) {
+              const normalIdx = parsed.findIndex((c) => c.id === 'normal_services');
+              if (normalIdx !== -1) {
+                parsed.splice(normalIdx + 1, 0, findCat);
+              } else {
+                const quickIdx = parsed.findIndex((c) => c.id === 'quick_services');
+                if (quickIdx !== -1) {
+                  parsed.splice(quickIdx + 1, 0, findCat);
+                } else {
+                  parsed.unshift(findCat);
+                }
+              }
+            }
+          }
+
+          // Ensure from_me_to_you exists (immediately after find_for_me)
+          const hasFromMeToYou = parsed.some((c) => c.id === 'from_me_to_you');
+          if (!hasFromMeToYou) {
+            const fromMeCat = initialCategories.find((c) => c.id === 'from_me_to_you');
+            if (fromMeCat) {
+              const findIdx = parsed.findIndex((c) => c.id === 'find_for_me');
+              if (findIdx !== -1) {
+                parsed.splice(findIdx + 1, 0, fromMeCat);
+              } else {
+                const normalIdx = parsed.findIndex((c) => c.id === 'normal_services');
+                if (normalIdx !== -1) {
+                  parsed.splice(normalIdx + 1, 0, fromMeCat);
+                } else {
+                  parsed.push(fromMeCat);
+                }
+              }
+            }
+          }
+
+          localStorage.setItem('sahaya_categories', JSON.stringify(parsed));
+          return parsed;
+        }
+      } catch {
+        return initialCategories;
+      }
+    }
+    return initialCategories;
   });
+
+  const [tags, setTags] = useState<TagItem[]>(() => getStoredTags());
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('sahaya_current_user');
@@ -70,9 +149,7 @@ export default function App() {
   // Sync real-time Firestore help posts
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
-      if (remotePosts && remotePosts.length > 0) {
-        setHelpPosts(remotePosts);
-      }
+      setHelpPosts(remotePosts || []);
     });
     return () => unsubscribe();
   }, []);
@@ -116,6 +193,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('sahaya_categories', JSON.stringify(categories));
   }, [categories]);
+
+  useEffect(() => {
+    saveTagsToStorage(tags);
+  }, [tags]);
 
   useEffect(() => {
     if (currentUser) {
@@ -260,7 +341,7 @@ export default function App() {
   // Admin User Actions
   const handleApproveUser = (targetUserId: string) => {
     setUsers((prev) =>
-      prev.map((u) => (u.id === targetUserId ? { ...u, status: 'approved' } : u))
+      (prev || []).map((u) => (u.id === targetUserId ? { ...u, status: 'approved' } : u))
     );
     if (currentUser && currentUser.id === targetUserId) {
       setCurrentUser((prev) => (prev ? { ...prev, status: 'approved' } : null));
@@ -269,7 +350,7 @@ export default function App() {
 
   const handleRejectUser = (targetUserId: string, reason?: string) => {
     setUsers((prev) =>
-      prev.map((u) =>
+      (prev || []).map((u) =>
         u.id === targetUserId
           ? { ...u, status: 'rejected', rejectionReason: reason }
           : u
@@ -278,7 +359,7 @@ export default function App() {
   };
 
   const handleUpdateUser = (updatedUser: User) => {
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
     }
@@ -293,7 +374,7 @@ export default function App() {
       isPasswordChanged: true,
     };
     setCurrentUser(updatedUser);
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     setShowChangePasswordModal(false);
   };
 
@@ -305,7 +386,7 @@ export default function App() {
 
     // Update user status
     setUsers((prev) =>
-      prev.map((u) =>
+      (prev || []).map((u) =>
         u.id === targetUserId
           ? {
               ...u,
@@ -330,26 +411,75 @@ export default function App() {
       reason,
     };
 
-    setBlockedCredentials((prev) => [newBlockedCred, ...prev]);
+    setBlockedCredentials((prev) => [newBlockedCred, ...(prev || [])]);
   };
 
   const handleUnblockCredential = (credentialId: string) => {
-    const cred = blockedCredentials.find((c) => c.id === credentialId);
-    setBlockedCredentials((prev) => prev.filter((c) => c.id !== credentialId));
+    const cred = (blockedCredentials || []).find((c) => c.id === credentialId);
+    setBlockedCredentials((prev) => (prev || []).filter((c) => c.id !== credentialId));
 
     if (cred && cred.userId) {
       setUsers((prev) =>
-        prev.map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
+        (prev || []).map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
       );
     }
   };
 
-  const handleDeletePost = (postId: string) => {
-    setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
+  const handleDeletePost = async (postId: string) => {
+    const postToDelete = (helpPosts || []).find((p) => p.id === postId);
+    const deletedPayload: Partial<HelpPost> = {
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser ? `Admin (${currentUser.name})` : 'Admin',
+      status: 'deleted',
+    };
+
+    setHelpPosts((prev) =>
+      (prev || []).map((p) => (p.id === postId ? { ...p, ...deletedPayload } : p))
+    );
+
+    try {
+      await updateHelpPostInFirestore(postId, deletedPayload);
+    } catch (err) {
+      console.warn('Post deletion sync notice:', err);
+    }
   };
 
-  const handleUpdatePost = (updatedPost: HelpPost) => {
-    setHelpPosts((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+  const handlePermanentDeletePost = async (postId: string) => {
+    setHelpPosts((prev) => (prev || []).filter((p) => p.id !== postId));
+    try {
+      await deleteHelpPostFromFirestore(postId);
+    } catch (err) {
+      console.warn('Post permanent deletion sync notice:', err);
+    }
+  };
+
+  const handleRestorePost = async (postId: string) => {
+    const restorePayload: Partial<HelpPost> = {
+      isDeleted: false,
+      deletedAt: undefined,
+      deletedBy: undefined,
+      status: 'active',
+    };
+
+    setHelpPosts((prev) =>
+      (prev || []).map((p) => (p.id === postId ? { ...p, isDeleted: false, deletedAt: undefined, deletedBy: undefined, status: 'active' } : p))
+    );
+
+    try {
+      await updateHelpPostInFirestore(postId, restorePayload);
+    } catch (err) {
+      console.warn('Post restore sync notice:', err);
+    }
+  };
+
+  const handleUpdatePost = async (updatedPost: HelpPost) => {
+    setHelpPosts((prev) => (prev || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+    try {
+      await updateHelpPostInFirestore(updatedPost.id, updatedPost);
+    } catch (err) {
+      console.warn('Post update sync notice:', err);
+    }
   };
 
   // Issue creation action (Piyawara 1.3)
@@ -364,12 +494,12 @@ export default function App() {
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
 
-    setIssues((prev) => [createdIssue, ...prev]);
+    setIssues((prev) => [createdIssue, ...(prev || [])]);
   };
 
   const handleReplyIssue = (issueId: string, reply: string, resolve: boolean) => {
     setIssues((prev) =>
-      prev.map((iss) =>
+      (prev || []).map((iss) =>
         iss.id === issueId
           ? {
               ...iss,
@@ -382,11 +512,28 @@ export default function App() {
     );
   };
 
-  const handleSeedDemoData = () => {
+  const handleSeedDemoData = async () => {
     setUsers(initialUsers);
     setIssues(initialIssues);
     setBlockedCredentials([]);
+    try {
+      await seedDemoHelpPostsToFirestore();
+    } catch (e) {
+      console.warn('Demo seed notice:', e);
+    }
     alert('දර්ශන පරීක්ෂණ දත්ත (Demo Seed Data) සාර්ථකව ප්‍රතිස්ථාපනය කෙරිණි!');
+  };
+
+  const handleNavigate = (targetView: ViewMode) => {
+    if (targetView === 'admin' && currentUser?.role !== 'admin') {
+      if (currentUser && currentUser.status === 'approved') {
+        setViewMode('dashboard');
+      } else {
+        setViewMode('login');
+      }
+      return;
+    }
+    setViewMode(targetView);
   };
 
   const t = translations[language];
@@ -413,7 +560,7 @@ export default function App() {
           currentUser={currentUser}
           activeRoleView={activeRoleView}
           setActiveRoleView={setActiveRoleView}
-          onNavigate={(targetView) => setViewMode(targetView)}
+          onNavigate={handleNavigate}
           onLogout={handleLogout}
         />
       )}
@@ -479,7 +626,7 @@ export default function App() {
           />
         )}
 
-        {viewMode === 'admin' && (
+        {viewMode === 'admin' && currentUser?.role === 'admin' && (
           <AdminPanel
             users={users}
             issues={issues}
@@ -489,13 +636,24 @@ export default function App() {
             onUpdateRegistrationConfig={setRegistrationConfig}
             categories={categories}
             onUpdateCategories={setCategories}
+            tags={tags}
+            onUpdateTags={setTags}
             onApproveUser={handleApproveUser}
             onRejectUser={handleRejectUser}
             onUpdateUser={handleUpdateUser}
             onBlockUser={handleBlockUser}
             onUnblockCredential={handleUnblockCredential}
             onDeletePost={handleDeletePost}
+            onPermanentDeletePost={handlePermanentDeletePost}
+            onRestorePost={handleRestorePost}
             onUpdatePost={handleUpdatePost}
+            onRestoreAllPosts={(restored) => {
+              setHelpPosts((prev) => {
+                const map = new Map((prev || []).map((p) => [p.id, p]));
+                (restored || []).forEach((p) => map.set(p.id, p));
+                return Array.from(map.values());
+              });
+            }}
             onReplyIssue={handleReplyIssue}
             onSeedDemoData={handleSeedDemoData}
             language={language}
@@ -511,6 +669,10 @@ export default function App() {
             theme={theme}
             toggleTheme={toggleTheme}
             categories={categories}
+            helpPosts={helpPosts}
+            onDeletePost={handleDeletePost}
+            onPermanentDeletePost={handlePermanentDeletePost}
+            onUpdatePost={handleUpdatePost}
           />
         )}
       </main>

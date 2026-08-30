@@ -3,6 +3,7 @@ import { Language, Theme, Role, User } from '../types';
 import { translations } from '../data/translations';
 import { Sun, Moon, Shield, UserCheck, HelpCircle, LogOut } from 'lucide-react';
 import { AppLogo } from './AppLogo';
+import { FontSizeController } from './FontSizeController';
 
 interface HeaderProps {
   language: Language;
@@ -33,17 +34,25 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="flex flex-wrap justify-between items-center gap-4 z-20 mb-6 p-2.5 sm:p-4 rounded-2xl bg-white/90 dark:bg-[#0a1c13]/90 border border-slate-200/80 dark:border-[#163625] shadow-md backdrop-blur-md transition-all">
       {/* Brand Logo & Name */}
       <div 
-        onClick={() => onNavigate('login')} 
+        onClick={() => {
+          if (currentUser?.role === 'admin') {
+            onNavigate(activeRoleView === 'admin' ? 'admin' : 'dashboard');
+          } else if (currentUser && currentUser.status === 'approved') {
+            onNavigate('dashboard');
+          } else {
+            onNavigate('login');
+          }
+        }} 
         className="flex items-center gap-3 cursor-pointer group"
       >
         <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
         <div>
           <h1 className="text-lg sm:text-xl font-black tracking-wide text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-            <span className="text-[#007a4b] dark:text-[#00a86b]">සහන</span>
+            <span className="text-[#007a4b] dark:text-[#00a86b]">සහය</span>
             <span className="text-amber-600 dark:text-amber-400">සේවා</span>
           </h1>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wider">
-            සැමට පිහිට • SAHANA SEWA
+            සැමට පිහිට • SAHAYA SEWA
           </p>
         </div>
       </div>
@@ -59,37 +68,35 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden sm:inline">{t.issuesHelpBtn}</span>
         </button>
 
-        {/* Quick Admin View Switcher */}
-        <button
-          onClick={() => {
-            const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
-            setActiveRoleView(nextRole);
-            if (nextRole === 'admin') {
-              onNavigate('admin');
-            } else {
-              if (currentUser && currentUser.status === 'approved') {
-                onNavigate('dashboard');
+        {/* Quick Admin View Switcher - Only visible to Admin users */}
+        {currentUser?.role === 'admin' && (
+          <button
+            onClick={() => {
+              const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
+              setActiveRoleView(nextRole);
+              if (nextRole === 'admin') {
+                onNavigate('admin');
               } else {
-                onNavigate('login');
+                onNavigate('dashboard');
               }
-            }
-          }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-            activeRoleView === 'admin'
-              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-              : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200 dark:hover:bg-[#173827]'
-          }`}
-          title="Switch to Admin Panel"
-        >
-          <Shield className="w-4 h-4 text-amber-500" />
-          <span>{activeRoleView === 'admin' ? 'Admin Mode ON' : 'Switch Admin'}</span>
-        </button>
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              activeRoleView === 'admin'
+                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200 dark:hover:bg-[#173827]'
+            }`}
+            title="Switch to Admin Panel"
+          >
+            <Shield className="w-4 h-4 text-amber-500" />
+            <span>{activeRoleView === 'admin' ? 'Admin Mode ON' : 'Switch Admin'}</span>
+          </button>
+        )}
       </div>
 
       {/* Tools: Language & Theme Controls */}
-      <div className="flex items-center gap-3 bg-slate-100/80 dark:bg-[#122a1d] p-1.5 rounded-2xl border border-slate-200 dark:border-[#1a3d2b] backdrop-blur-sm shadow-inner">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 bg-slate-100/90 dark:bg-[#122a1d] p-1.5 rounded-2xl border border-slate-200 dark:border-[#1a3d2b] backdrop-blur-sm shadow-inner">
         {/* Languages */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white/90 dark:bg-[#0a1c13]">
+        <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-white/90 dark:bg-[#0a1c13] shrink-0">
           <button
             onClick={() => setLanguage('si')}
             className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
@@ -127,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Theme Switcher */}
         <button
           onClick={toggleTheme}
-          className="w-8 h-8 rounded-xl bg-white dark:bg-[#0a1c13] border border-slate-200 dark:border-[#1e4230] flex items-center justify-center text-amber-500 hover:scale-105 active:scale-95 transition-all shadow-sm"
+          className="w-8 h-8 rounded-xl bg-white dark:bg-[#0a1c13] border border-slate-200 dark:border-[#1e4230] flex items-center justify-center text-amber-500 hover:scale-105 active:scale-95 transition-all shadow-sm shrink-0"
           title="Toggle Light / Dark Mode"
         >
           {theme === 'dark' ? (
@@ -139,17 +146,28 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Logged in User Indicator & Logout */}
         {currentUser && (
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[100px] hidden md:inline">
+          <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[90px] sm:max-w-[120px] hidden md:inline">
               {currentUser.name}
             </span>
             <button
               onClick={onLogout}
-              className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-900/50 transition-all"
+              className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-900/50 transition-all cursor-pointer shrink-0"
               title={t.logoutBtn}
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
+            {/* Font Size Adjustment - To the right of Log out */}
+            <div className="pl-1 border-l border-slate-200/80 dark:border-slate-700/80 shrink-0">
+              <FontSizeController language={language} />
+            </div>
+          </div>
+        )}
+
+        {/* Fallback Font Size Resizer if not logged in */}
+        {!currentUser && (
+          <div className="pl-1 border-l border-slate-200 dark:border-slate-700 shrink-0">
+            <FontSizeController language={language} />
           </div>
         )}
       </div>

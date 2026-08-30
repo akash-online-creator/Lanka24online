@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AlertTriangle, 
   Wrench, 
@@ -14,8 +14,10 @@ import {
   MapPin,
   Sparkles
 } from 'lucide-react';
-import { HelpPost, Language, LocationOption } from '../types';
+import { HelpPost, Language, LocationOption, TagItem } from '../types';
 import { translations } from '../data/translations';
+import { TagSelector } from './TagSelector';
+import { getStoredTags } from '../utils/tagUtils';
 
 interface HelpPostModalProps {
   isOpen: boolean;
@@ -37,12 +39,17 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   // Form State
   const [step, setStep] = useState<1 | 2>(1); // 1 = Details, 2 = OTP Verification
   const [userName, setUserName] = useState('');
-  const [userPhone, setUserPhone] = useState('0771234567');
+  const [userPhone, setUserPhone] = useState('');
   const [whatHappened, setWhatHappened] = useState('');
   const [whatIsNeeded, setWhatIsNeeded] = useState('');
   const [conditions, setConditions] = useState('');
-  const [transport, setTransport] = useState('මම පැමිණිය හැක / සහායකගේ වාහනය සුදුසුයි');
-  const [payment, setPayment] = useState('රු. 2,000/= (මුදලින්)');
+  const [transport, setTransport] = useState('');
+  const [payment, setPayment] = useState('');
+
+  // Tag State
+  const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
+  const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
+  const [tagError, setTagError] = useState('');
 
   // OTP State
   const [otpSent, setOtpSent] = useState(false);
@@ -50,10 +57,35 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   const [otpError, setOtpError] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1);
+      setUserName('');
+      setUserPhone('');
+      setWhatHappened('');
+      setWhatIsNeeded('');
+      setConditions('');
+      setTransport('');
+      setPayment('');
+      setSelectedTag(null);
+      setTagError('');
+      setOtpSent(false);
+      setEnteredOtp('');
+      setOtpError(false);
+      setIsSuccess(false);
+      setAllTags(getStoredTags());
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleNextToOtp = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedTag) {
+      setTagError('කරුණාකර දැන්වීම සඳහා Tag එකක් තෝරන්න (අනිවාර්යයි *).');
+      return;
+    }
+    setTagError('');
     if (!userName.trim() || !userPhone.trim() || !whatHappened.trim() || !whatIsNeeded.trim()) {
       alert('කරුණාකර සියලු අත්‍යවශ්‍ය තොරතුරු පූරණය කරන්න.');
       return;
@@ -84,6 +116,9 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       lat: currentLocation.lat,
       lng: currentLocation.lng,
       verifiedOtp: true,
+      tagName: selectedTag?.tagName,
+      tagCategory: selectedTag?.category,
+      tagId: selectedTag?.id,
     });
 
     setIsSuccess(true);
@@ -219,6 +254,18 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
                   className="w-full bg-slate-950 border border-cyan-500/30 rounded-xl py-2.5 px-3.5 text-slate-100 text-sm focus:border-cyan-500 focus:outline-none"
                 />
               </div>
+
+              {/* Tag Selector Component */}
+              <TagSelector
+                selectedTag={selectedTag}
+                onSelectTag={(tag) => {
+                  setSelectedTag(tag);
+                  if (tag) setTagError('');
+                }}
+                allTags={allTags}
+                onTagCreated={(newTag) => setAllTags((prev) => [newTag, ...prev])}
+                errorMsg={tagError}
+              />
 
               {/* 📜 කොන්දේසි (Conditions) */}
               <div>

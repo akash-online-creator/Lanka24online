@@ -12,6 +12,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
+import { FontSizeController } from './FontSizeController';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => void;
@@ -111,6 +112,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             <span>{getLanguageDisplayName(language)}</span>
           </button>
         )}
+
+        <FontSizeController language={language} className="ml-auto" />
       </div>
 
       {/* App Branding Header */}
@@ -120,12 +123,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
 
         <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-1 flex items-center justify-center gap-2">
-          <span className="text-[#007a4b] dark:text-[#00c880]">සහන</span>
+          <span className="text-[#007a4b] dark:text-[#00c880]">සහය</span>
           <span className="text-amber-600 dark:text-amber-400">සේවා</span>
         </h1>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black mb-2">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>සැමට පිහිට • SAHANA SEWA</span>
+          <span>සැමට පිහිට • SAHAYA SEWA</span>
         </div>
         <p className="text-slate-500 dark:text-[#8ba294] text-xs sm:text-sm font-medium max-w-xs leading-relaxed">
           {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}

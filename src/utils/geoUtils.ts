@@ -2037,3 +2037,100 @@ export async function searchSriLankanPlacesAndRoads(query: string): Promise<Plac
   return localMatches;
 }
 
+export interface MotorcycleRoadTrip {
+  straightDistanceKm: number;
+  roadDistanceKm: number;
+  travelTimeMinutes: number;
+  formattedRoadDistance: string; // e.g. "1.8 km"
+  formattedStraightDistance: string; // e.g. "1.4 km"
+  formattedTime: string; // e.g. "~4 මිනිත්තු"
+  fuelMl: number; // estimated fuel consumption in ml
+  isLocal: boolean;
+  postLocationText: string;
+  viewerLocationText: string;
+  mapsUrl: string;
+}
+
+/**
+ * Accurately calculate the road travel distance and time for a motorcycle (මෝටර් සයිකලය)
+ * between the post publisher location (දැන්වීම පලකල ස්ථානය) and the viewer location (දැන්වීම නරඹන්නා සිටින ස්ථානය) in Sri Lanka.
+ */
+export function calculateMotorcycleRoadDistance(
+  postLat?: number,
+  postLng?: number,
+  viewerLat?: number,
+  viewerLng?: number,
+  postLocationName?: string,
+  viewerLocationName?: string
+): MotorcycleRoadTrip {
+  const pLat = postLat || 7.1710;
+  const pLng = postLng || 79.8986;
+  const vLat = viewerLat || 7.1710;
+  const vLng = viewerLng || 79.8986;
+
+  // 1. Calculate straight line distance (Haversine)
+  const straightDist = calculateDistanceKm(pLat, pLng, vLat, vLng);
+
+  // 2. Calculate realistic motorcycle road distance with Sri Lankan road network winding factor
+  let roadDistanceKm = 0;
+  let avgSpeedKmH = 30; // default motorcycle speed in town/village roads
+
+  if (straightDist < 0.05) {
+    // Same neighborhood / very close road
+    roadDistanceKm = 0.4;
+    avgSpeedKmH = 20;
+  } else if (straightDist < 1.0) {
+    // Local village & by-roads: 1.32x winding factor + 0.2km entrance/turn buffer
+    roadDistanceKm = Number((straightDist * 1.32 + 0.2).toFixed(1));
+    avgSpeedKmH = 25;
+  } else if (straightDist <= 10.0) {
+    // Suburb & connecting roads: 1.28x winding factor + 0.3km
+    roadDistanceKm = Number((straightDist * 1.28 + 0.3).toFixed(1));
+    avgSpeedKmH = 32;
+  } else if (straightDist <= 30.0) {
+    // Town to town / main roads: 1.24x winding factor + 0.8km
+    roadDistanceKm = Number((straightDist * 1.24 + 0.8).toFixed(1));
+    avgSpeedKmH = 38;
+  } else {
+    // Inter-district / Highway / A-class roads: 1.20x winding factor + 1.5km
+    roadDistanceKm = Number((straightDist * 1.20 + 1.5).toFixed(1));
+    avgSpeedKmH = 45;
+  }
+
+  // 3. Calculate motorcycle travel time in minutes
+  const travelTimeMinutes = Math.max(2, Math.round((roadDistanceKm / avgSpeedKmH) * 60));
+
+  // 4. Estimate fuel (at ~45 km/l for standard 100cc-150cc motorcycles)
+  const fuelMl = Math.max(10, Math.round((roadDistanceKm / 45) * 1000));
+
+  // 5. Format strings
+  const formattedRoadDistance = roadDistanceKm < 1 
+    ? `${Math.round(roadDistanceKm * 1000)} m` 
+    : `${roadDistanceKm.toFixed(1)} km`;
+
+  const formattedStraightDistance = straightDist < 1
+    ? `${Math.round(straightDist * 1000)} m`
+    : `${straightDist.toFixed(1)} km`;
+
+  const formattedTime = travelTimeMinutes < 60
+    ? `~${travelTimeMinutes} මිනිත්තු`
+    : `~${Math.floor(travelTimeMinutes / 60)} පැය ${travelTimeMinutes % 60 > 0 ? `${travelTimeMinutes % 60} මිනි.` : ''}`;
+
+  // 6. Direct Google Maps Navigation URL for Two-Wheeler / Motorcycle
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${vLat},${vLng}`)}&destination=${encodeURIComponent(`${pLat},${pLng}`)}&travelmode=two_wheeler`;
+
+  return {
+    straightDistanceKm: Number(straightDist.toFixed(1)),
+    roadDistanceKm,
+    travelTimeMinutes,
+    formattedRoadDistance,
+    formattedStraightDistance,
+    formattedTime,
+    fuelMl,
+    isLocal: roadDistanceKm <= 15,
+    postLocationText: postLocationName || 'දැන්වීම පළකළ ස්ථානය',
+    viewerLocationText: viewerLocationName || 'ඔබ සිටින ස්ථානය',
+    mapsUrl,
+  };
+}
+

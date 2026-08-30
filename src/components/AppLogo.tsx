@@ -16,7 +16,7 @@ export const AppLogo: React.FC<AppLogoProps> = ({
   showGlow = false,
   withBorder = true,
   animated = false,
-  altText = 'සහන සේවා - සැමට පිහිට (Sahana Sewa Logo)',
+  altText = 'සහය සේවා - සැමට පිහිට (Sahaya Sewa Logo)',
 }) => {
   // Determine pixel / dimension classes
   let sizeClasses = 'w-10 h-10'; // default md

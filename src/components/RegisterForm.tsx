@@ -161,17 +161,65 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
   }, []);
 
-  const handlePhotoUpload = (
+  const processImageFile = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawData = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          // High resolution max limit (1600px) retains crystal clear NIC text, numbers, and facial features
+          const maxDimension = 1600;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            // Export with 0.90 high quality for maximum sharpness and clarity
+            const highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.90);
+            resolve(highQualityDataUrl);
+          } else {
+            resolve(rawData);
+          }
+        };
+        img.onerror = () => resolve(rawData);
+        img.src = rawData;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: React.Dispatch<React.SetStateAction<string>>
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setter(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const processed = await processImageFile(file);
+        if (processed) {
+          setter(processed);
+        }
+      } catch (err) {
+        console.error('Error processing photo:', err);
+      }
     }
   };
 
@@ -260,7 +308,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             {mainTitle}
           </h2>
           <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-800 border border-amber-500/30 text-xs font-bold mb-2">
-            <span>සහන සේවා • සැමට පිහිට</span>
+            <span>සහය සේවා • සැමට පිහිට</span>
           </div>
           <p className="text-slate-600 text-xs sm:text-sm font-semibold max-w-md mx-auto">
             {subtitle}

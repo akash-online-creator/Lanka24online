@@ -20,7 +20,10 @@ export interface PostReply {
   responderPhone: string;
   message: string;
   createdAt: string;
+  createdAtMs?: number;
   whatsappSent?: boolean;
+  isAccepted?: boolean;
+  isConfirmed?: boolean;
 }
 
 export interface MultilingualText {
@@ -59,6 +62,25 @@ export interface CategoryItem {
   customFields: CustomFormField[];
 }
 
+export interface BillItem {
+  id: string;
+  title: string;
+  amount: number;
+  isTravelFee?: boolean;
+}
+
+export interface ServiceBill {
+  items: BillItem[];
+  travelDistanceKm: number;
+  travelRatePerKm: number;
+  travelOption?: 'came' | 'brought' | 'sent' | 'none';
+  travelFee: number;
+  totalAmount: number;
+  actionsSummary?: string;
+  createdAt?: string;
+  createdBy?: string;
+}
+
 export interface HelpPost {
   id: string;
   postCode: string; // e.g., #POST-7891
@@ -67,6 +89,7 @@ export interface HelpPost {
   whatHappened: string; // සිදුවී ඇති දේ
   whatIsNeeded: string; // වියයුතු දේ
   conditions?: string; // කොන්දේසි
+  specialNotice?: string; // විශේෂ දැනුවත් කිරීම
   transport: string; // ගමනාගමනය
   payment: string; // ගෙවීම් (e.g., Rs. 2,500 / නොමිලේ)
   helpersNeeded?: number; // උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (e.g. 2, 3)
@@ -77,12 +100,74 @@ export interface HelpPost {
   lat?: number;
   lng?: number;
   createdAt: string;
+  createdAtMs?: number;
   repliesCount: number;
   helpersCount: number;
   replies: PostReply[];
   verifiedOtp?: boolean;
   category?: string;
   customFieldValues?: Record<string, string | boolean>;
+  tagName?: string;
+  tagCategory?: string;
+  tagId?: string;
+  userId?: string;
+  isConfirmed?: boolean;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  confirmedHelperName?: string;
+  confirmedHelperPhone?: string;
+  isCompleted?: boolean;
+  completedAt?: string;
+  completedBy?: string;
+  completedHelperName?: string;
+  completedHelperPhone?: string;
+  requesterResolved?: boolean;
+  requesterResolvedAt?: string;
+  serviceBill?: ServiceBill;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  status?: 'active' | 'confirmed' | 'completed' | 'deleted';
+  findForMeType?: 'lost' | 'stolen' | 'find';
+  itemLostStolenOrSearched?: string;
+  incidentLocation?: string;
+  incidentDate?: string;
+  incidentTime?: string;
+  contactPhone?: string;
+  contactWhatsapp?: string;
+  contactAddress?: string;
+  hasReward?: boolean;
+  rewardDetails?: string;
+  identifyingInfo?: string; // නැති වූ දේ ඇති දුරකථන අංකයක්, හැඳුනුම්පත් අංකයක් හෝ එහි ඇති අංකයක් හෝ නමක්
+  targetPrice?: string;
+  quantityNeeded?: string;
+  hasDeadline?: boolean;
+  deadlineDate?: string;
+  deadlineTime?: string;
+  deliveryOption?: string;
+  otherDeliveryDetails?: string;
+  otherDetails?: string;
+  fromMeToYouType?: 'donation' | 'giveaway' | 'exchange';
+  donationItem?: string;
+  donationRecipient?: string;
+  donationDeliveryMethod?: string;
+  donationDateType?: 'today' | 'custom';
+  donationDate?: string;
+  donationQuantity?: string;
+  saveLocationConsent?: boolean;
+  exchangeHaveItem?: string;
+  exchangeHaveQuantity?: string;
+  exchangeWantItem?: string;
+  exchangeWantQuantity?: string;
+  exchangeMethod?: string;
+}
+
+export interface TagItem {
+  id: string;
+  tagName: string; // e.g., "Food", "Vehicle Repair"
+  category: string; // e.g., "කෑම", "වාහන අලුත්වැඩියාව"
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface ChatMessage {
@@ -91,6 +176,8 @@ export interface ChatMessage {
   senderRole: 'seeker' | 'helper';
   text: string;
   timestamp: string;
+  createdAtMs?: number;
+  senderPhone?: string;
 }
 
 export interface User {
@@ -129,6 +216,10 @@ export interface User {
   deviceInfo?: string;
   blockedReason?: string;
   blockedAt?: string;
+  pdfDownloadCount?: number;
+  lastPdfDownloadedAt?: string;
+  personalDetailsPurged?: boolean;
+  personalDetailsPurgedAt?: string;
 }
 
 export interface BlockedCredential {
@@ -173,3 +264,58 @@ export interface ServiceItem {
   category: string;
   available: boolean;
 }
+
+export interface ServiceReview {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUrl?: string;
+  rating: number; // 1 to 5
+  comment: string;
+  createdAt: string;
+  createdAtMs?: number;
+}
+
+export type ServiceDeliveryMethod = 'location' | 'anywhere' | 'online' | 'customer_must_come' | 'other';
+
+export interface ProfessionalServiceSubCategory {
+  name: string;
+  icon: string;
+}
+
+export interface ProfessionalServiceCategory {
+  category_id: string;
+  category_name: string;
+  category_icon: string;
+  sub_categories: ProfessionalServiceSubCategory[];
+}
+
+export interface ProfessionalService {
+  id: string;
+  userId: string;
+  providerName: string;
+  providerPhotoUrl?: string;
+  providerPhone: string;
+  providerWhatsapp?: string;
+  altPhone?: string; // 5. ගිණුමට ලබාදුන් අංකය හැර වෙනත් දුරකථන අංක
+  serviceTitle: string; // 1. ඔබට ලබාදිය හැකි සේවය කුමක්ද?
+  deliveryMethod: ServiceDeliveryMethod; // 2. සේවය ලබාදෙන්නේ කෙසේද
+  deliveryMethodDetails?: string; // ස්ථානය / වෙනත් විස්තර
+  locationName?: string;
+  lat?: number;
+  lng?: number;
+  qualifications: string; // 3. ඔබට ඒ සදහා ඇති සුදුසුකම්
+  qualificationsList?: string[]; // Dynamic multi-item qualifications
+  experienceDuration: string; // 4. පලපුරුද්දේ කාලසීමාව
+  categoryId: string; // 6. Main Category
+  categoryName: string;
+  categoryIcon: string;
+  subCategoryName: string;
+  subCategoryIcon: string;
+  createdAt: string;
+  createdAtMs: number;
+  reviews: ServiceReview[];
+  avgRating?: number;
+  isVerified?: boolean;
+}
+

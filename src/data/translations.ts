@@ -2,7 +2,7 @@ import { Language } from '../types';
 
 export const translations = {
   si: {
-    appName: 'සහන සේවා',
+    appName: 'සහය සේවා',
     appNameSub: 'සැමට පිහිට',
     securityLayer: 'ආරක්ෂිත පද්ධතිය: Encrypted AES-256',
     adminStatus: 'පරිපාලක තත්ත්වය',
@@ -10,7 +10,7 @@ export const translations = {
     serverTime: 'පද්ධති වේලාව',
     
     // Auth & Login
-    loginTitle: 'සහන සේවා',
+    loginTitle: 'සහය සේවා',
     loginSubtitle: 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය',
     userIdLabel: 'පරිශීලක හැඳුනුම්පත (ID / Email)',
     nicLabel: 'හැඳුනුම්පත් අංකය',
@@ -51,7 +51,7 @@ export const translations = {
     issuesFormTitle: 'ඔබගේ ගැටලුව කුමක්ද?',
     issuesSubtitle: 'ලොගින් වීම, ගිණුම අනුමත වීම හෝ තාක්ෂණික ගැටලු පරිපාලක වෙත යොමු කරන්න',
     yourName: 'ඔබගේ නම',
-    contactNo: 'දුරකථන අංකය',
+    contactNo: 'වට්සැප් (WhatsApp) අංකය',
     emailOptional: 'විද්‍යුත් තැපෑල',
     issueCategory: 'ගැටලු වර්ගය',
     selectCategory: 'වර්ගය තෝරන්න...',
@@ -59,6 +59,7 @@ export const translations = {
     catPending: 'අනුමැතිය ප්‍රමාද වීම (Pending Approval Issue)',
     catTechnical: 'තාක්ෂණික දෝෂයක් (Technical Bug)',
     catAccount: 'ගිණුම් තොරතුරු සංශෝධනය (Account Verification)',
+    catBlocked: 'ගිණුම අවහිර කිරීම (Account Blocked / Restriction)',
     catOther: 'වෙනත් ගැටලුවක් (Other Inquiry)',
     issueTitleLabel: 'ගැටලුවේ මාතෘකාව',
     issueDescLabel: 'ගැටලුවේ විස්තරය',
@@ -135,7 +136,7 @@ export const translations = {
     switchRoleBtn: 'Admin Switch',
   },
   en: {
-    appName: 'Sahana Sewa',
+    appName: 'Sahaya Sewa',
     appNameSub: 'Samata Pihita • Support Services',
     securityLayer: 'Security Layer: Encrypted AES-256',
     adminStatus: 'Admin Status',
@@ -143,7 +144,7 @@ export const translations = {
     serverTime: 'Server Time',
     
     // Auth & Login
-    loginTitle: 'Sahana Sewa',
+    loginTitle: 'Sahaya Sewa',
     loginSubtitle: 'Secured access for registered members',
     userIdLabel: 'User ID (ID / Email)',
     nicLabel: 'Identity Card Number',
@@ -184,7 +185,7 @@ export const translations = {
     issuesFormTitle: 'What is your issue?',
     issuesSubtitle: 'Report login difficulties, delayed approvals, or technical bugs to the Admin',
     yourName: 'Your Name',
-    contactNo: 'Contact Number',
+    contactNo: 'WhatsApp Number',
     emailOptional: 'Email Address',
     issueCategory: 'Issue Category',
     selectCategory: 'Select category...',
@@ -192,6 +193,7 @@ export const translations = {
     catPending: 'Pending Approval Issue',
     catTechnical: 'Technical Bug',
     catAccount: 'Account Verification',
+    catBlocked: 'Account Blocked / Restriction',
     catOther: 'Other Inquiry',
     issueTitleLabel: 'Issue Title',
     issueDescLabel: 'Detailed Description',
@@ -317,7 +319,7 @@ export const translations = {
     issuesFormTitle: 'உங்கள் பிரச்சனை என்ன?',
     issuesSubtitle: 'உள்நுழைவு சிக்கல்கள் அல்லது தாமதங்களை நிர்வாகியிடம் தெரிவிக்கவும்',
     yourName: 'உங்கள் பெயர்',
-    contactNo: 'தொடர்பு எண்',
+    contactNo: 'வாட்ஸ்அப் எண் (WhatsApp No)',
     emailOptional: 'மின்னஞ்சல்',
     issueCategory: 'பிரச்சனை வகை',
     selectCategory: 'வகையைத் தேர்ந்தெடுக்கவும்...',
@@ -325,6 +327,7 @@ export const translations = {
     catPending: 'ஒப்புதல் தாமதம்',
     catTechnical: 'தொழில்நுட்ப கோளாறு',
     catAccount: 'கணக்கு சரிபார்ப்பு',
+    catBlocked: 'கணக்கு முடக்கப்பட்டது (Account Blocked)',
     catOther: 'மற்றவை',
     issueTitleLabel: 'தலைப்பு',
     issueDescLabel: 'விரிவான விவரம்',

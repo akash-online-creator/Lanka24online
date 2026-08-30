@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, ShieldAlert, MessageCircle, User as UserIcon } from 'lucide-react';
+import { 
+  Send, 
+  ShieldAlert, 
+  MessageCircle, 
+  User as UserIcon, 
+  Phone, 
+  Lock,
+  CheckCircle
+} from 'lucide-react';
 import { HelpPost, ChatMessage, User as UserType } from '../types';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
+import { parseTimeToMs, formatMessageClockTime } from '../utils/dateUtils';
+import { 
+  inspectAndSanitizeMessage, 
+  getUserStrikes, 
+  recordPolicyViolation, 
+  isUserPolicyBlocked 
+} from '../utils/policyGuard';
+import { PolicyViolationModal } from './PolicyViolationModal';
 
 interface QuickServiceChatModalProps {
   post: HelpPost | null;
   isOpen: boolean;
   onClose: () => void;
   currentUser: UserType;
+  onNavigateToIssues?: () => void;
+  onOpenConfirm?: (post: HelpPost) => void;
 }
 
 export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
@@ -15,34 +33,100 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   isOpen,
   onClose,
   currentUser,
+  onNavigateToIssues,
+  onOpenConfirm,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Policy Guard Modal State
+  const userKey = currentUser.userId || currentUser.phone || currentUser.nicNumber || currentUser.name;
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policyStrikes, setPolicyStrikes] = useState<number>(() => getUserStrikes(userKey));
+  const [isBlocked, setIsBlocked] = useState<boolean>(() => isUserPolicyBlocked(userKey));
+  const [detectedViolationTypes, setDetectedViolationTypes] = useState<('phone' | 'link' | 'address')[]>([]);
+
+  // Update strikes from storage whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPolicyStrikes(getUserStrikes(userKey));
+      setIsBlocked(isUserPolicyBlocked(userKey));
+    }
+  }, [isOpen, userKey]);
 
   // Subscribe to real-time chat messages from Firestore
   useEffect(() => {
     if (!isOpen || !post?.id) return;
 
     const unsubscribe = subscribeToChatMessages(post.id, (firestoreMsgs) => {
-      if (firestoreMsgs && firestoreMsgs.length > 0) {
-        setMessages(firestoreMsgs);
+      // Build a unified message history list
+      const combined: ChatMessage[] = [];
+
+      // If post replies exist, convert any legacy/form replies not already in subcollection
+      if (post.replies && post.replies.length > 0) {
+        post.replies.forEach((rep) => {
+          const isAlreadyInMsgs = firestoreMsgs.some(
+            (m) => m.text.trim() === rep.message.trim() && m.senderName.trim() === rep.responderName.trim()
+          );
+          if (!isAlreadyInMsgs) {
+            const isAuthorRep = 
+              Boolean(post.userName && rep.responderName && rep.responderName.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
+              Boolean(postAuthorPhone && rep.responderPhone && normalizePhone(rep.responderPhone) === postAuthorPhone);
+
+            const repMs = rep.createdAtMs || parseTimeToMs(rep.createdAt);
+            combined.push({
+              id: rep.id || `reply_${Math.random()}`,
+              senderName: rep.responderName || (isAuthorRep ? post.userName : 'සහායක'),
+              senderRole: isAuthorRep ? 'seeker' : 'helper',
+              text: rep.message || '',
+              timestamp: formatMessageClockTime(rep.createdAt, repMs),
+              createdAtMs: repMs,
+              senderPhone: rep.responderPhone || '',
+            });
+          }
+        });
+      }
+
+      // Add all Firestore subcollection chat messages
+      firestoreMsgs.forEach((fMsg) => {
+        const fMs = fMsg.createdAtMs || parseTimeToMs(fMsg.timestamp);
+        combined.push({
+          ...fMsg,
+          createdAtMs: fMs,
+          timestamp: formatMessageClockTime(fMsg.timestamp, fMs),
+        });
+      });
+
+      // Strict chronological sorting by time ascending (earliest top, newest bottom)
+      combined.sort((a, b) => {
+        const timeA = a.createdAtMs || parseTimeToMs(a.timestamp);
+        const timeB = b.createdAtMs || parseTimeToMs(b.timestamp);
+        return timeA - timeB;
+      });
+
+      if (combined.length > 0) {
+        setMessages(combined);
       } else {
-        // Default initial message from post author if no messages exist yet
+        // Default initial greeting if no messages exist yet
+        const nowMs = Date.now();
         setMessages([
           {
             id: 'init_1',
             senderName: post.userName,
             senderRole: 'seeker',
-            text: `හලෝ, මගේ "${post.whatHappened || 'ඉල්ලීම'}" සඳහා සහය ලබා ගැනීමට සංවාදය ආරම්භ කළ හැක.`,
-            timestamp: 'දැන්',
+            text: `හලෝ, මගේ #${post.postCode} ("${post.whatHappened || 'ඉල්ලීම'}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
+            timestamp: formatMessageClockTime(undefined, nowMs),
+            createdAtMs: nowMs,
+            senderPhone: post.userPhone || '',
           },
         ]);
       }
     });
 
     return () => unsubscribe();
-  }, [isOpen, post?.id, post?.userName, post?.whatHappened]);
+  }, [isOpen, post?.id, post?.userName, post?.whatHappened, post?.userPhone, post?.postCode, post?.replies]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -53,20 +137,57 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
   if (!isOpen || !post) return null;
 
-  const isPostAuthor = currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase();
+  const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
+  const currentUserPhone = normalizePhone(currentUser.phone || currentUser.whatsappNumber);
+  const postAuthorPhone = normalizePhone(post.userPhone);
+
+  const isPostAuthor = Boolean(
+    (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
+    (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
+    (currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
+  );
+
+  const isConfirmed = Boolean(post.isConfirmed);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isSending) return;
 
-    const textToSend = inputText.trim();
+    // 1. Check if user is already blocked due to >3 strikes
+    if (isUserPolicyBlocked(userKey)) {
+      setIsBlocked(true);
+      setShowPolicyModal(true);
+      return;
+    }
+
+    const rawText = inputText.trim();
     setInputText('');
 
+    // 2. AI & Smart Policy Inspection before confirmation
+    const policyResult = inspectAndSanitizeMessage(rawText, isConfirmed);
+
+    let messageTextToSave = rawText;
+
+    if (policyResult.hasViolation) {
+      // Redact private info so the other person CANNOT see it
+      messageTextToSave = policyResult.sanitizedText;
+
+      // Increment policy violation strike
+      const record = recordPolicyViolation(userKey);
+      setPolicyStrikes(record.newStrikes);
+      setIsBlocked(record.isBlocked);
+      setDetectedViolationTypes(policyResult.detectedTypes);
+      setShowPolicyModal(true);
+    }
+
+    const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
       senderName: currentUser.name || 'පරිශීලක',
       senderRole: isPostAuthor ? 'seeker' : 'helper',
-      text: textToSend,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: messageTextToSave,
+      timestamp: formatMessageClockTime(undefined, nowMs),
+      createdAtMs: nowMs,
+      senderPhone: currentUser.phone || currentUser.whatsappNumber || '',
     };
 
     // Optimistically update local state
@@ -74,111 +195,217 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
       ...prev,
       {
         ...newMsg,
-        id: `local_${Date.now()}`,
+        id: `local_msg_${nowMs}`,
       },
     ]);
 
-    // Send to Firestore database
-    await sendChatMessageToFirestore(post.id, newMsg);
+    setIsSending(true);
+    try {
+      await sendChatMessageToFirestore(post.id, newMsg);
+    } catch (err) {
+      console.error('Failed to send chat message to Firestore:', err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div className="w-full max-w-xl bg-white dark:bg-[#07130c] border border-slate-200 dark:border-[#132a1d] rounded-3xl shadow-2xl overflow-hidden relative flex flex-col h-[85vh]">
-        
-        {/* Header */}
-        <div className="bg-[#007a4b] text-white px-5 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white">
-              <MessageCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                <span>{post.userName} සමඟ සංවාදය (Direct Chat)</span>
-                <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded font-mono">
-                  {post.postCode}
-                </span>
-              </h3>
-              <p className="text-[11px] text-emerald-100">
-                {isPostAuthor ? 'ඔබගේ දැන්වීමට ප්‍රතිචාර දක්වන්නන් සමඟ සාකච්ඡා කරන්න' : 'දැන්වීම පළකළ තැනැත්තා සමඟ සෘජු සංවාදය'}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center font-bold text-sm transition-all cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* TOP NOTICE BANNER */}
-        <div className="bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-900/50 p-3 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200 shrink-0">
-          <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <p className="leading-snug text-[11px]">
-            <strong>ආරක්ෂිත උපදෙස්:</strong> ඔබගේ අදහස් හා යෝජනා ප්‍රකාශ කළ හැක. නමුත් කිසිම වෙලාවක මූල්‍ය නොවන තොරතුරු, බැංකු ගිණුම් තොරතුරු, දුරකථන අංක, ඔබ සිටින ස්ථාන වෙනත් සදහා තොරතුරු ලබා ගැනීමටද මූල්‍යමය ලබාදීමටද වැළකී සිටින්න.
-          </p>
-        </div>
-
-        {/* Chat Messages Feed */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#f8faf9] dark:bg-[#05110a]">
-          {messages.map((msg) => {
-            const isMe = msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase();
-            const isSeeker = msg.senderName.trim().toLowerCase() === post.userName.trim().toLowerCase();
-
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-              >
-                <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-500 dark:text-slate-400">
-                  <UserIcon className="w-3 h-3 text-[#007a4b] dark:text-[#00c880]" />
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {isMe ? 'ඔබ (You)' : msg.senderName}
-                  </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                    {isSeeker ? 'දැන්වීම්කරු' : 'උදව්කරු'}
-                  </span>
-                  <span>•</span>
-                  <span>{msg.timestamp}</span>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+        <div className="w-full max-w-2xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col h-[90vh] max-h-[750px] relative">
+          
+          {/* Top Chat Header */}
+          <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 p-3 sm:p-4 text-white border-b border-emerald-600/50 shrink-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-emerald-300 shadow-inner shrink-0">
+                  <UserIcon className="w-5 h-5" />
                 </div>
-
-                <div
-                  className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed shadow-sm ${
-                    isMe
-                      ? 'bg-[#007a4b] text-white rounded-tr-none'
-                      : 'bg-white dark:bg-[#112d1f] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#1e4832] rounded-tl-none'
-                  }`}
-                >
-                  {msg.text}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-sm sm:text-base font-black text-white truncate">
+                      {isPostAuthor ? 'සහායකයා සමඟ සංවාදය' : post.userName}
+                    </h3>
+                    <span className="text-[9px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.2 rounded font-bold shrink-0">
+                      {isPostAuthor ? 'සහායක' : 'දැන්වීම්කරු'}
+                    </span>
+                  </div>
+                  {/* ගැටලුව (කෙටියෙන්, කුඩාවට) */}
+                  <p className="text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md">
+                    📌 {post.whatHappened}
+                  </p>
                 </div>
               </div>
-            );
-          })}
-          <div ref={chatBottomRef} />
+
+              {/* Confirm Button + Help ID එක (Swapped positions) */}
+              <div className="flex items-center gap-2 shrink-0">
+                {isConfirmed ? (
+                  <span className="text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black font-mono flex items-center gap-1 shadow-sm">
+                    <CheckCircle className="w-3 h-3" />
+                    <span>CONFIRMED</span>
+                  </span>
+                ) : isPostAuthor ? (
+                  <span className="text-[10px] bg-emerald-900/70 text-emerald-200 border border-emerald-500/40 px-2 py-1 rounded-lg font-bold">
+                    ඔබගේ දැන්වීමකි
+                  </span>
+                ) : (
+                  onOpenConfirm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenConfirm(post);
+                      }}
+                      className="px-3 py-1 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <span>Confirm</span>
+                    </button>
+                  )
+                )}
+
+                <span className="bg-white/20 text-white font-mono text-[11px] px-2 py-1 rounded-lg border border-white/20 font-black">
+                  {post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs transition-all cursor-pointer shadow-sm"
+                  title="වසන්න"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* PRIVACY & SECURITY POLICY BANNER */}
+            {!isConfirmed && (
+              <div className="bg-amber-400/20 border border-amber-400/30 rounded-xl px-2.5 py-1 text-[10px] text-amber-100 flex items-center gap-1.5">
+                <ShieldAlert className="w-3 h-3 text-amber-300 shrink-0" />
+                <span>සහය තහවුරු (Confirm) කරන තුරු පෞද්ගලික දුරකථන අංක හා ලිපින හුවමාරුව තහනම්ය.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Messages Feed */}
+          <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#f6faf8] dark:bg-[#040e08]">
+            {(messages || []).map((msg) => {
+              const isMe = 
+                (currentUser.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+                (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone);
+
+              const isSeeker = 
+                msg.senderRole === 'seeker' || 
+                (post.userName && msg.senderName && msg.senderName.trim().toLowerCase() === post.userName.trim().toLowerCase());
+
+              const formattedPhone = msg.senderPhone
+                ? msg.senderPhone.replace(/^0/, '94').replace(/\D/g, '')
+                : '';
+
+              const isRedacted = msg.text.includes('[🔒');
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                >
+                  {/* Meta header */}
+                  <div className={`flex items-center gap-1.5 mb-1 text-[10px] ${isMe ? 'flex-row-reverse text-emerald-800 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                    <UserIcon className="w-3 h-3 text-[#007a4b] dark:text-[#00c880]" />
+                    <span className="font-bold">
+                      {isMe ? 'ඔබ (You)' : msg.senderName}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                      isSeeker 
+                        ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800' 
+                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                    }`}>
+                      {isSeeker ? 'දැන්වීම්කරු' : 'සහායකයා'}
+                    </span>
+                    <span>•</span>
+                    <span className="font-mono text-[10px]">{msg.timestamp}</span>
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`max-w-[85%] sm:max-w-[80%] px-4 py-2.5 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm transition-all ${
+                      isMe
+                        ? 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-tr-none shadow-emerald-950/20'
+                        : isRedacted
+                        ? 'bg-amber-50 dark:bg-amber-950/40 text-slate-800 dark:text-slate-100 border border-amber-300 dark:border-amber-800/80 rounded-tl-none'
+                        : 'bg-white dark:bg-[#0c2217] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#19422d] rounded-tl-none shadow-slate-900/5'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words font-medium">{msg.text}</p>
+
+                    {/* Contact Button: ONLY show if post is confirmed or it's myself */}
+                    {isConfirmed && !isMe && msg.senderPhone && (
+                      <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          <span>{msg.senderPhone}</span>
+                        </span>
+                        <a
+                          href={`https://wa.me/${formattedPhone}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-0.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-lg font-black flex items-center gap-1 shadow-sm"
+                        >
+                          <span>WhatsApp</span>
+                        </a>
+                      </div>
+                    )}
+
+                    {!isConfirmed && !isMe && (
+                      <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 italic">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>තහවුරු කිරීමෙන් පසු සබඳතා අංක දිස්වේ</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Chat Message Input Bar */}
+          <div className="p-3 sm:p-4 bg-white dark:bg-[#06180f] border-t border-emerald-200 dark:border-[#0e3a24] shrink-0">
+            <form onSubmit={handleSend} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={
+                  isConfirmed 
+                    ? "ඔබගේ පණිවිඩය මෙහි සටහන් කරන්න..." 
+                    : "පණිවිඩය ලියන්න (දුරකථන/ලින්ක්/ලිපින තහවුරු කළ පසු ලබාදෙන්න)..."
+                }
+                className="flex-1 px-4 py-3 bg-slate-50 dark:bg-[#040e08] border-2 border-emerald-300 dark:border-emerald-800/80 rounded-2xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium"
+              />
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isSending}
+                className="px-4 sm:px-6 py-3 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <span>යවන්න</span>
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+
         </div>
-
-        {/* Input Bar */}
-        <form onSubmit={handleSend} className="p-3 bg-white dark:bg-[#07130c] border-t border-slate-200 dark:border-[#132a1d] flex items-center gap-2 shrink-0">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="ඔබගේ පණිවිඩය ඇතුළත් කරන්න..."
-            className="flex-1 bg-slate-100 dark:bg-[#0c2217] border border-slate-200 dark:border-[#163625] rounded-2xl px-4 py-2.5 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#007a4b]"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2.5 rounded-2xl bg-[#007a4b] hover:bg-[#006e43] text-white font-bold text-xs shadow-md flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>යවන්න</span>
-          </button>
-        </form>
-
       </div>
-    </div>
+
+      {/* Policy Violation Warning / Blocked Modal */}
+      <PolicyViolationModal
+        isOpen={showPolicyModal}
+        onClose={() => setShowPolicyModal(false)}
+        strikes={policyStrikes}
+        isBlocked={isBlocked}
+        onNavigateToIssues={onNavigateToIssues}
+        detectedTypes={detectedViolationTypes}
+      />
+    </>
   );
 };
-

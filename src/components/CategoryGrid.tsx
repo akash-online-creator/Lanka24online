@@ -2,8 +2,7 @@ import React from 'react';
 import { Language } from '../types';
 import { 
   Zap, 
-  Ruler, 
-  Globe, 
+  Briefcase, 
   Search, 
   Gift, 
   Store, 
@@ -26,8 +25,10 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
     switch (key) {
       case 'quick_services':
         return language === 'en' ? 'Quick Services' : language === 'ta' ? 'விரைவான சேவைகள்' : 'ඉක්මන් සේවා';
-      case 'by_distance':
-        return language === 'en' ? 'By Distance' : language === 'ta' ? 'தூரம் வாரியாக' : 'දුර අනුව';
+      case 'normal_services':
+        return language === 'en' ? 'General Services' : language === 'ta' ? 'பொதுவான சேவைகள்' : 'සාමාන්‍ය සේවා';
+      case 'professional_services':
+        return language === 'en' ? 'Professional Services' : language === 'ta' ? 'தொழில்முறை சேவைகள்' : 'වෘත්තීය සේවා';
       case 'islandwide':
         return language === 'en' ? 'Islandwide' : language === 'ta' ? 'தீவு முழுவதிலும்' : 'දිවයිනපුරා';
       case 'find_for_me':
@@ -47,9 +48,9 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
 
   const topCategories = [
     { key: 'quick_services', icon: Zap },
-    { key: 'by_distance', icon: Ruler },
-    { key: 'islandwide', icon: Globe },
+    { key: 'normal_services', icon: Wrench },
     { key: 'find_for_me', icon: Search },
+    { key: 'professional_services', icon: Briefcase },
   ];
 
   const bottomCategories = [

@@ -1,19 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Phone, 
   MapPin, 
   MessageCircle, 
   AlertTriangle, 
   CheckCircle, 
-  User, 
   Heart, 
   Sparkles,
   Award,
-  XCircle,
   ExternalLink
 } from 'lucide-react';
 import { HelpPost, User as UserType } from '../types';
-import { Card3D } from './Card3D';
 
 interface QuickServiceConfirmWorkflowProps {
   post: HelpPost | null;
@@ -21,16 +18,14 @@ interface QuickServiceConfirmWorkflowProps {
   onClose: () => void;
   onOpenChat: (post: HelpPost) => void;
   currentUser: UserType;
+  onConfirmPost?: (post: HelpPost) => void;
 }
 
 type Stage = 
-  | 'question_yes_no'      // 1. "ගැටලුව මම සකසා දුන්නාම තැබීම." [YES] [NO]
-  | 'waiting_seeker'        // 2. "සහය ඉල්ලූ මිතුරා ඔබට පිළිතුරක් ලබාදෙනතෙක්..."
-  | 'seeker_choice'         // 3. [Profile View] [කැමතියි] [කැමති නැත]
-  | 'profile_view'          // 3b. Shows Helper Profile Modal
-  | 'action_bar'            // 4. [0771234567] [Map Navigation] [Chat] [Emagency] [ක්‍රියාව අවසන්]
-  | 'confirm_solved'        // 5. "ඔබගේ ගැටලුව විසඳුනාද?" [ඔව්] [නැත නැත]
-  | 'feedback_and_thanks';  // 6. Rating Emojis + Rs. 10 credited + Thank You Statement Card
+  | 'question_yes_no'      // 1. "ඔබ මෙම සේවාව ලබාදීමට / ස්ථිරවම භාරගැනීමට සූදානම්ද?" [YES] [NO]
+  | 'action_bar'            // 2. [Phone] [Map Navigation] [Chat] [Emagency] [ක්‍රියාව අවසන්]
+  | 'confirm_solved'        // 3. "ඔබගේ ගැටලුව විසඳුනාද?" [ඔව්] [නැත නැත]
+  | 'feedback_and_thanks';  // 4. Rating Emojis + Rs. 10 credited + Thank You Statement Card
 
 export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowProps> = ({
   post,
@@ -38,12 +33,44 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   onClose,
   onOpenChat,
   currentUser,
+  onConfirmPost,
 }) => {
   const [stage, setStage] = useState<Stage>('question_yes_no');
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [emagencyNotice, setEmagencyNotice] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number>(8);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (stage === 'action_bar' && isOpen) {
+      setCountdown(8);
+      timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            onClose();
+            setStage('question_yes_no');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [stage, isOpen, onClose]);
 
   if (!isOpen || !post) return null;
+
+  const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
+  const isOwner = Boolean(
+    currentUser && (
+      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
+      (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
+      (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
+    )
+  );
 
   const helperPhone = post.userPhone || '0771234567';
 
@@ -51,6 +78,19 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   const handleEmagency = () => {
     setEmagencyNotice(`🚨 Emergency Alert sent with location (${post.locationName}) to ${post.userName} & Emergency contacts!`);
     setTimeout(() => setEmagencyNotice(null), 4000);
+  };
+
+  const handleAcceptSupport = () => {
+    if (isOwner) return;
+    if (onConfirmPost && post) {
+      onConfirmPost({
+        ...post,
+        isConfirmed: true,
+        confirmedBy: currentUser.name,
+        status: 'confirmed',
+      });
+    }
+    setStage('action_bar');
   };
 
   const ratings = [
@@ -62,23 +102,23 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div className="w-full max-w-xl bg-slate-900 border border-emerald-500/50 rounded-3xl shadow-[0_0_50px_rgba(16,185,129,0.25)] overflow-hidden relative p-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn">
+      <div className="w-full max-w-xl bg-gradient-to-b from-white via-emerald-50/40 to-white dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-500/50 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.25)] overflow-hidden relative p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
         
         {/* Top Header */}
-        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-emerald-200/80 dark:border-emerald-900/60">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold bg-slate-800 text-emerald-400 px-3 py-1 rounded-xl border border-slate-700">
+            <span className="font-mono text-xs font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-3 py-1 rounded-xl border border-emerald-300 dark:border-emerald-700/60 shadow-sm">
               {post.postCode}
             </span>
-            <span className="text-xs text-slate-300 font-semibold">සහය තහවුරු කිරීමේ ක්‍රියාවලිය</span>
+            <span className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-extrabold">සහය තහවුරු කිරීමේ ක්‍රියාවලිය</span>
           </div>
           <button
             onClick={() => {
               setStage('question_yes_no');
               onClose();
             }}
-            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold"
+            className="w-8 h-8 rounded-full bg-emerald-100/80 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 hover:text-emerald-900 dark:hover:text-emerald-100 border border-emerald-200 dark:border-emerald-800/70 flex items-center justify-center font-bold transition-all cursor-pointer"
           >
             ✕
           </button>
@@ -86,208 +126,109 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
 
         {/* Emergency Alert Toast */}
         {emagencyNotice && (
-          <div className="mb-4 p-3 bg-rose-950 border border-rose-500/50 text-rose-200 text-xs rounded-xl flex items-center gap-2 animate-bounce">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+          <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950 border border-rose-400 text-rose-800 dark:text-rose-200 text-xs rounded-xl flex items-center gap-2 animate-bounce font-bold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
             <span>{emagencyNotice}</span>
           </div>
         )}
 
-        {/* STAGE 1: "ගැටලුව මම සකසා දුන්නාම තැබීම." [YES] [NO] */}
+        {/* STAGE 1: Confirmation Question [YES] [NO] or Ownership / Already Confirmed Notice */}
         {stage === 'question_yes_no' && (
-          <div className="py-6 space-y-6 text-center animate-fadeIn">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 mx-auto shadow-lg">
-              <CheckCircle className="w-10 h-10 animate-pulse" />
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-xl font-extrabold text-white">
-                ගැටලුව මම සකසා දුන්නාම තැබීම.
+          isOwner ? (
+            <div className="py-6 space-y-4 text-center animate-fadeIn bg-white dark:bg-[#071710] p-6 rounded-2xl border border-amber-300 dark:border-amber-900/60 shadow-sm">
+              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 mx-auto">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                තමන්ගේ දැන්වීම් තමන්ටම Confirm කළ නොහැක
               </h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                ඔබ මෙම සේවාව ලබාදීමට / ස්ථිරවම භාරගැනීමට සූදානම්ද?
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+                මෙම දැන්වීම ඔබ විසින් පළකරන ලද්දකි. සහය දැක්වීමට ඉදිරිපත් වූ අය අතුරින් සහායකයෙකු තෝරාගැනීමට "කැමැත්ත දැක්වූවන්" බොත්තම භාවිතා කරන්න.
               </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
               <button
-                onClick={() => setStage('seeker_choice')}
-                className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-950 active:scale-95 transition-all"
+                onClick={onClose}
+                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
               >
-                YES (ඔව්)
-              </button>
-
-              <button
-                onClick={() => {
-                  setStage('question_yes_no');
-                  onClose();
-                }}
-                className="py-3 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-sm border border-slate-700 active:scale-95 transition-all"
-              >
-                NO (නැත)
+                වසන්න
               </button>
             </div>
-          </div>
-        )}
-
-        {/* STAGE 2: SEEKER CHOICE: [Profile View] [කැමතියි] [කැමති නැත] */}
-        {(stage === 'seeker_choice' || stage === 'waiting_seeker') && (
-          <div className="space-y-5 animate-fadeIn">
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-300 space-y-2">
-              <p className="text-emerald-400 font-bold text-sm">
-                සහය ඉල්ලූ මිතුරා ඔබට පිළිතුරක් ලබාදෙනතෙක් රැඳී සිටින්න.
-              </p>
-              <p className="text-slate-400 leading-relaxed">
-                "සහය ඉල්ලූ මිතුරා ඔබව කැමැත්තෙන් සිටින පුද්ගලයෙක් නම් පහත අංකයට ඇමතීමට හැකියි. ඔබ ඔහුගෙන් සහය ගැනීමට කැමතිද?"
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={() => setStage('profile_view')}
-                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-1 active:scale-95"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Profile View</span>
-              </button>
-
-              <button
-                onClick={() => setStage('action_bar')}
-                className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-extrabold flex items-center justify-center gap-1 active:scale-95 shadow-md"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>කැමතියි</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setStage('question_yes_no');
-                  onClose();
-                }}
-                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center justify-center gap-1 active:scale-95"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span>කැමති නැත</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STAGE 3b: PROFILE VIEW MODAL */}
-        {stage === 'profile_view' && (
-          <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 animate-fadeIn">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-extrabold text-xl">
-                {currentUser.name.charAt(0)}
+          ) : post.isConfirmed ? (
+            <div className="py-6 space-y-4 text-center animate-fadeIn bg-white dark:bg-[#071710] p-6 rounded-2xl border border-emerald-300 dark:border-emerald-900/60 shadow-sm">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 mx-auto">
+                <CheckCircle className="w-8 h-8" />
               </div>
-              <div>
-                <h4 className="text-base font-bold text-white">{currentUser.name}</h4>
-                <p className="text-xs text-emerald-400 font-mono">සහායක ශ්‍රේණිය: ★ 4.9/5 (සහාය වාර 14)</p>
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                මෙම සේවාව දැනටමත් සනාථ කර ඇත
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+                මෙම දැන්වීම සඳහා සහය ස්ථිර කර අවසන් බැවින් නැවත confirm කිරීමේ අවශ්‍යතාවයක් නොමැත.
+              </p>
+              <button
+                onClick={onClose}
+                className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+              >
+                වසන්න
+              </button>
+            </div>
+          ) : (
+            <div className="py-6 space-y-6 text-center animate-fadeIn bg-white dark:bg-[#071710] p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 shadow-sm">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/60 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 dark:text-emerald-300 mx-auto shadow-md">
+                <CheckCircle className="w-10 h-10 animate-pulse" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 max-w-md mx-auto">
+                  ඔබ මෙම සේවාව ලබාදීමට / ස්ථිරවම භාරගැනීමට සූදානම්ද?
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
+                <button
+                  onClick={handleAcceptSupport}
+                  className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md active:scale-95 transition-all cursor-pointer"
+                >
+                  YES (ඔව්)
+                </button>
+
+                <button
+                  onClick={() => {
+                    setStage('question_yes_no');
+                    onClose();
+                  }}
+                  className="py-3 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold text-sm border border-slate-300 dark:border-slate-700 active:scale-95 transition-all cursor-pointer"
+                >
+                  NO (නැත)
+                </button>
               </div>
             </div>
-
-            <div className="text-xs text-slate-300 space-y-1 bg-slate-900 p-3 rounded-xl border border-slate-800">
-              <p><strong>දුරකථනය:</strong> {currentUser.phone}</p>
-              <p><strong>විශේෂ හැකියාවන්:</strong> වාහන කාර්මික, තාක්ෂණික සහ සහන සේවා</p>
-              <p><strong>ප්‍රතිචාර:</strong> "ඉතාමත් ඉක්මන් සහ විශ්වාසවන්ත සහායක් ලබා දුන්නා!"</p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setStage('seeker_choice')}
-                className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl font-bold"
-              >
-                ආපසු
-              </button>
-              <button
-                onClick={() => setStage('action_bar')}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl"
-              >
-                සහාය පිළිගන්න (කැමතියි)
-              </button>
-            </div>
-          </div>
+          )
         )}
 
         {/* STAGE 4: ACTION BAR */}
         {stage === 'action_bar' && (
-          <div className="space-y-4 animate-fadeIn">
-            <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-[11px] text-emerald-200 leading-relaxed">
-              ඔබ සහය දීමට බලාපොරොත්තුවෙන් සිටින පුද්ගලයාගේ අතැති තොරතුරක් පහත දැක්වීමට කැමැත්තෙන්ම වන්න. සහය දැක්වීමට කැමති පලවන පරිශීලකයන්. එසේ නොවේ නම් සියලුම ඔවුන්ගේ අංකයන්ට රු 50 ක ගාස්තුව ඔබගෙන් අයකරගනිමින් සිදුවන බව කරුණාවෙන් සලකන්න.
-            </div>
-
-            {/* Exact Action Bar layout specified in PDF */}
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-              <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                සහය ඉල්ලන්නාගේ තොරතුරු &amp; ක්‍රියාකාරකම්
-              </span>
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {/* 1. Phone dialer */}
-                <a
-                  href={`tel:${helperPhone}`}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/50 text-emerald-300 font-mono text-xs rounded-xl font-bold transition-all"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{helperPhone}</span>
-                </a>
-
-                {/* 2. Map Navigation */}
-                <a
-                  href={`https://maps.google.com/?q=${post.lat || 7.0016},${post.lng || 79.9500}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/50 text-cyan-300 text-xs rounded-xl font-bold transition-all"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Map Navigation</span>
-                  <ExternalLink className="w-3 h-3 text-cyan-400" />
-                </a>
-
-                {/* 3. Chat */}
-                <button
-                  onClick={() => onOpenChat(post)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-300 text-xs rounded-xl font-bold transition-all"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Chat</span>
-                </button>
-
-                {/* 4. Emagency */}
-                <button
-                  onClick={handleEmagency}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-300 text-xs rounded-xl font-bold transition-all"
-                >
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Emagency</span>
-                </button>
-              </div>
-
-              {/* 5. ක්‍රියාව අවසන් Button */}
-              <button
-                onClick={() => setStage('confirm_solved')}
-                className="w-full mt-3 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                <Award className="w-4 h-4" />
-                <span>ක්‍රියාව අවසන් (End Action)</span>
-              </button>
+          <div className="space-y-4 py-4 text-center animate-fadeIn">
+            <div className="p-6 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 rounded-2xl">
+              <p className="text-sm sm:text-base text-emerald-900 dark:text-emerald-200 font-extrabold leading-relaxed">
+                සහය අවශ්‍ය පුද්ගලයා ඔබ තෝරාගන්නාතෙක් රැඳීසිටින්න.
+              </p>
             </div>
           </div>
         )}
 
         {/* STAGE 5: "ඔබගේ ගැටලුව විසඳුනාද?" [ඔව්] [නැත නැත] */}
         {stage === 'confirm_solved' && (
-          <div className="py-6 space-y-6 text-center animate-fadeIn">
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-around text-xs font-mono text-slate-300">
-              <span className="text-emerald-400 font-bold">{helperPhone}</span>
-              <button onClick={() => onOpenChat(post)} className="text-cyan-400 hover:underline">Chat</button>
-              <button onClick={handleEmagency} className="text-rose-400 hover:underline">Emagency</button>
+          <div className="py-6 space-y-6 text-center animate-fadeIn bg-white dark:bg-[#071710] p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 shadow-sm">
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl flex items-center justify-around text-xs font-mono">
+              <span className="text-emerald-800 dark:text-emerald-300 font-black">{helperPhone}</span>
+              <button onClick={() => onOpenChat(post)} className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline">Chat</button>
+              <button onClick={handleEmagency} className="text-rose-600 dark:text-rose-400 font-bold hover:underline">Emagency</button>
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-xl font-extrabold text-white">
+              <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-slate-100">
                 ඔබගේ ගැටලුව විසඳුනාද?
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">
                 සහායකයා විසින් ඔබගේ ප්‍රශ්නය සාර්ථකව විසඳා දුන්නේද?
               </p>
             </div>
@@ -295,14 +236,14 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
             <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
               <button
                 onClick={() => setStage('feedback_and_thanks')}
-                className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-950 active:scale-95 transition-all"
+                className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md active:scale-95 transition-all cursor-pointer"
               >
                 ඔව් (Yes)
               </button>
 
               <button
                 onClick={() => setStage('action_bar')}
-                className="py-3 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-sm border border-slate-700 active:scale-95 transition-all"
+                className="py-3 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-extrabold text-sm border border-slate-300 dark:border-slate-700 active:scale-95 transition-all cursor-pointer"
               >
                 නැත නැත (No)
               </button>
@@ -315,45 +256,45 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
           <div className="space-y-6 animate-fadeIn text-center">
             
             {/* Rating Emojis */}
-            <div className="space-y-3">
-              <h4 className="text-base font-bold text-white">
+            <div className="space-y-3 bg-white dark:bg-[#071710] p-5 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 shadow-sm">
+              <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 ඔහුගේ සේවය ගැන ඔබට දැනෙන්නේ කෙසේද?
               </h4>
 
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-2.5 flex-wrap">
                 {ratings.map((r, idx) => (
                   <button
                     key={idx}
                     onClick={() => setSelectedRating(idx)}
-                    className={`p-3 rounded-2xl border transition-all flex flex-col items-center gap-1 ${
+                    className={`p-3 rounded-2xl border transition-all flex flex-col items-center gap-1 cursor-pointer ${
                       selectedRating === idx
-                        ? 'bg-emerald-500/20 border-emerald-500 scale-110 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
-                        : 'bg-slate-950 border-slate-800 hover:bg-slate-800'
+                        ? 'bg-emerald-100 dark:bg-emerald-900/60 border-emerald-500 scale-105 shadow-md'
+                        : 'bg-emerald-50/50 dark:bg-[#081e14] border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100/60'
                     }`}
                   >
                     <span className="text-2xl">{r.emoji}</span>
-                    <span className="text-[10px] text-slate-300 font-semibold">{r.label}</span>
+                    <span className="text-[10px] text-slate-800 dark:text-slate-200 font-bold">{r.label}</span>
                   </button>
                 ))}
               </div>
 
-              <p className="text-[11px] text-emerald-300 bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/30">
-                පහත අංකවලට ප්‍රසාදය වෙනුවෙන් සහය ඉල්ලූ පුද්ගලයා ඉහත පරිදි feedback එකක් ලබාදිය හැකි අතර සේවය අවසන් වූ පසු සේවය දුන් පුද්ගලයාගේ ගිණුමට <strong>රු. 10 ක්</strong> බැරවේ.
+              <p className="text-[11px] text-emerald-900 dark:text-emerald-200 bg-emerald-100/70 dark:bg-emerald-950/60 p-2.5 rounded-xl border border-emerald-300 dark:border-emerald-700/60 font-medium">
+                සේවය අවසන් වූ පසු සහායකයාගේ ගිණුමට <strong>රු. 10 ක්</strong> ප්‍රසාද මුදලක් බැරවේ.
               </p>
             </div>
 
-            {/* THANK YOU STATEMENT CARD - Exact requirement from PDF */}
-            <Card3D className="bg-gradient-to-tr from-emerald-950 via-slate-900 to-teal-950 border-2 border-emerald-500/60 rounded-3xl p-6 shadow-2xl relative overflow-hidden text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-400 to-rose-400 flex items-center justify-center text-slate-950 mx-auto shadow-lg">
+            {/* THANK YOU STATEMENT CARD */}
+            <div className="bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white dark:from-[#092217] dark:via-[#05180f] dark:to-[#092217] border-2 border-emerald-500/60 rounded-3xl p-6 shadow-xl relative overflow-hidden text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-400 to-rose-400 flex items-center justify-center text-slate-950 mx-auto shadow-md">
                 <Heart className="w-6 h-6 fill-slate-950" />
               </div>
 
-              <h3 className="text-lg font-extrabold text-white flex items-center justify-center gap-2">
+              <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center justify-center gap-2">
                 <span>හෘදයාංගම ස්තූතිය!</span>
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Sparkles className="w-4 h-4 text-amber-500" />
               </h3>
 
-              <p className="text-xs text-emerald-200 leading-relaxed font-medium">
+              <p className="text-xs text-slate-700 dark:text-emerald-200 leading-relaxed font-medium">
                 "ඔබ ලබාදුන් අසමසම සහයෝගයට සහ මනුෂ්‍යත්වයට සහය සේවා පවුලෙන් හෘදයාංගම ස්තූතිය! ඔබගේ කැපවීම නිසා තවත් කෙනෙකුගේ හදිසි ගැටලුවක් සාර්ථකව විසඳුණි. ඔබ ලබාදුන් විශිෂ්ට සේවාව වෙනුවෙන් ඔබගේ ගිණුමට <strong>රු. 10.00</strong> ක ප්‍රසාද මුදලක් සාර්ථකව බැර විය."
               </p>
 
@@ -363,12 +304,12 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                     setStage('question_yes_no');
                     onClose();
                   }}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg active:scale-95"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs shadow-md active:scale-95 transition-all cursor-pointer"
                 >
                   ක්‍රියාවලිය අවසන් කරන්න (Done)
                 </button>
               </div>
-            </Card3D>
+            </div>
 
           </div>
         )}

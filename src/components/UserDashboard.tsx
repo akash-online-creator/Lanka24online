@@ -1,22 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { User, Language, LocationOption, HelpPost, Theme, CategoryItem } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview } from '../types';
 import { translations } from '../data/translations';
-import { initialLocations, initialHelpPosts } from '../data/initialData';
+import { initialLocations } from '../data/initialData';
+import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
 import { LocationBar } from './LocationBar';
 import { GlowingNeedHelpBtn } from './GlowingNeedHelpBtn';
 import { PostCard } from './PostCard';
 import { HelpPostModal } from './HelpPostModal';
 import { OfferSupportModal } from './OfferSupportModal';
 import { QuickServiceModal } from './QuickServiceModal';
+import { FindForMeModal } from './FindForMeModal';
+import { FromMeToYouModal } from './FromMeToYouModal';
 import { QuickServiceDetailModal } from './QuickServiceDetailModal';
 import { QuickServiceChatModal } from './QuickServiceChatModal';
 import { QuickServiceConfirmWorkflow } from './QuickServiceConfirmWorkflow';
 import { CategorySelectionModal } from './CategorySelectionModal';
 import { CategoryGrid } from './CategoryGrid';
+import { TagSearchBar } from './TagSearchBar';
+import { EditHelpPostModal } from './EditHelpPostModal';
+import { ViewHelpPostModal } from './ViewHelpPostModal';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { MessageInboxBubble } from './MessageInboxBubble';
+import { MessageInboxModal } from './MessageInboxModal';
+import { SupportOffersModal } from './SupportOffersModal';
+import { VolunteerSupportModal } from './VolunteerSupportModal';
+import { ResolutionPromptModal } from './ResolutionPromptModal';
+import { HelpRequestsPage } from './HelpRequestsPage';
+import { getStoredTags } from '../utils/tagUtils';
 import { 
   subscribeToHelpPosts, 
   addHelpPostToFirestore, 
-  addReplyToFirestore 
+  addReplyToFirestore,
+  updateHelpPostInFirestore,
+  sendChatMessageToFirestore
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { 
@@ -31,11 +47,17 @@ import {
   Wrench, 
   FileCheck2, 
   MessageCircle,
+  MessageSquare,
+  Gift,
   Plus,
   Zap,
   CheckCircle2,
+  CheckCircle,
   Navigation,
-  Loader2
+  Loader2,
+  Megaphone,
+  ChevronRight,
+  Briefcase
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -46,6 +68,10 @@ interface UserDashboardProps {
   theme?: Theme;
   toggleTheme?: () => void;
   categories?: CategoryItem[];
+  helpPosts?: HelpPost[];
+  onDeletePost?: (postId: string) => void;
+  onPermanentDeletePost?: (postId: string) => void;
+  onUpdatePost?: (updatedPost: HelpPost) => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -56,6 +82,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   theme,
   toggleTheme,
   categories,
+  helpPosts: propHelpPosts,
+  onDeletePost: propOnDeletePost,
+  onPermanentDeletePost: propOnPermanentDeletePost,
+  onUpdatePost: propOnUpdatePost,
 }) => {
   const t = translations[language];
 
@@ -71,9 +101,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isAutoLoadingLocation, setIsAutoLoadingLocation] = useState(false);
   const [autoLocationMsg, setAutoLocationMsg] = useState<string | null>(null);
 
-  // Auto Load Live Location Immediately on Login / Dashboard Mount
+  // Auto Load Live Location on Login / Dashboard Mount (Only if not manually locked)
   useEffect(() => {
     let isMounted = true;
+
+    const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
+    if (isManualLocked) {
+      // User has manually searched and saved a location: respect user choice and do not auto-overwrite
+      return;
+    }
 
     const autoFetchLiveLocation = () => {
       if (!navigator.geolocation) return;
@@ -121,46 +157,166 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     };
   }, []);
 
-  // Help Posts Feed State (Synced with Firestore Database)
-  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
+  // Help Posts Feed State (Synced with Firestore Database & Parent App)
+  const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(() => {
     const saved = localStorage.getItem('sahaya_help_posts');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { /* ignore */ }
     }
-    return initialHelpPosts;
+    return [];
   });
 
-  // Real-time Firestore subscription
+  // Effective help posts list
+  const helpPosts = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
+
+  // Real-time Firestore subscription if not provided by parent
   useEffect(() => {
+    if (propHelpPosts !== undefined) return;
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
-      if (remotePosts && remotePosts.length > 0) {
-        setHelpPosts(remotePosts);
-      }
+      setLocalHelpPosts(remotePosts || []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [propHelpPosts]);
 
   // Active Feed Tab: 'local' (<15km) vs 'all_sl' (>15km or all)
+  const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('home');
   const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('local');
-  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('services');
+  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('quick_services');
+  const [maxDistanceRadius, setMaxDistanceRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Professional Services State (Synced with localStorage and initial data)
+  const [professionalServices, setProfessionalServices] = useState<ProfessionalService[]>(() => {
+    return getStoredProfessionalServices();
+  });
+
+  const handleAddProfessionalService = (newService: ProfessionalService) => {
+    const updated = [newService, ...professionalServices];
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+  };
+
+  const handleAddProfessionalReview = (serviceId: string, review: ServiceReview) => {
+    const updated = professionalServices.map((srv) => {
+      if (srv.id === serviceId) {
+        const currentReviews = srv.reviews || [];
+        const newReviews = [review, ...currentReviews];
+        const newAvg = Number((newReviews.reduce((sum, r) => sum + r.rating, 0) / newReviews.length).toFixed(1));
+        return {
+          ...srv,
+          reviews: newReviews,
+          avgRating: newAvg,
+        };
+      }
+      return srv;
+    });
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+  };
 
   // Modals
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isInboxModalOpen, setIsInboxModalOpen] = useState(false);
+  const [isSupportOffersModalOpen, setIsSupportOffersModalOpen] = useState(false);
+  const [isVolunteerSupportModalOpen, setIsVolunteerSupportModalOpen] = useState(false);
+  const [targetPostForOffers, setTargetPostForOffers] = useState<HelpPost | null>(null);
   const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('ඉක්මන් සේවා');
   const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
+  const [isFindForMeModalOpen, setIsFindForMeModalOpen] = useState(false);
+  const [isFromMeToYouModalOpen, setIsFromMeToYouModalOpen] = useState(false);
   
   // Detail, Chat and Confirm Modals from PDF plan:
   const [selectedPostForDetail, setSelectedPostForDetail] = useState<HelpPost | null>(null);
   const [selectedPostForChat, setSelectedPostForChat] = useState<HelpPost | null>(null);
   const [selectedPostForConfirm, setSelectedPostForConfirm] = useState<HelpPost | null>(null);
   const [selectedPostToReply, setSelectedPostToReply] = useState<HelpPost | null>(null);
+  const [postponedResolutionPostIds, setPostponedResolutionPostIds] = useState<string[]>([]);
+
+  // Owner Action Modals (Edit, View, Delete)
+  const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
+  const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
+  const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
+  const [editingFromMeToYouPost, setEditingFromMeToYouPost] = useState<HelpPost | null>(null);
+  const [viewingPost, setViewingPost] = useState<HelpPost | null>(null);
+  const [deletingPost, setDeletingPost] = useState<HelpPost | null>(null);
+
+  const handleEditPost = (post: HelpPost) => {
+    if (post.category === 'find_for_me' || post.findForMeType) {
+      setEditingFindForMePost(post);
+      setIsFindForMeModalOpen(true);
+    } else if (post.category === 'from_me_to_you' || post.fromMeToYouType) {
+      setEditingFromMeToYouPost(post);
+      setIsFromMeToYouModalOpen(true);
+    } else {
+      setEditingQuickServicePost(post);
+      setSelectedCategoryTitle(
+        post.category === 'normal_services'
+          ? 'සාමාන්‍ය සේවා'
+          : (post.tagCategory || 'ඉක්මන් සේවා')
+      );
+      setIsQuickServiceModalOpen(true);
+    }
+  };
+
+  const handleSaveEditedPost = async (updatedPost: HelpPost) => {
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updatedPost);
+    } else {
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+    }
+    if (selectedPostForDetail?.id === updatedPost.id) {
+      setSelectedPostForDetail(updatedPost);
+    }
+    if (selectedPostForChat?.id === updatedPost.id) {
+      setSelectedPostForChat(updatedPost);
+    }
+    try {
+      await updateHelpPostInFirestore(updatedPost.id, updatedPost);
+    } catch (err) {
+      console.warn('Updated locally, cloud notice:', err);
+    }
+    setEditingQuickServicePost(null);
+    setEditingFindForMePost(null);
+    setEditingFromMeToYouPost(null);
+    setEditingPost(null);
+  };
+
+  const handleConfirmDeletePost = async (postId: string) => {
+    const postToDelete = (helpPosts || []).find((p) => p.id === postId);
+    if (!postToDelete) return;
+
+    if (propOnDeletePost) {
+      propOnDeletePost(postId);
+    } else {
+      const deletedPayload: Partial<HelpPost> = {
+        isDeleted: true,
+        deletedAt: new Date().toISOString(),
+        deletedBy: user.role === 'admin' ? `Admin (${user.name})` : (user.name || postToDelete.userName),
+        status: 'deleted',
+      };
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === postId ? { ...p, ...deletedPayload } : p)));
+      try {
+        await updateHelpPostInFirestore(postId, deletedPayload);
+      } catch (err) {
+        console.warn('Deleted locally, cloud notice:', err);
+      }
+    }
+  };
 
   // Service Request Modal State
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+
+  // Tag Filtering State
+  const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
+  const [selectedTagFilter, setSelectedTagFilter] = useState<TagItem | null>(null);
+
+  // Sync tags on mount or post updates
+  useEffect(() => {
+    setAllTags(getStoredTags());
+  }, [helpPosts]);
 
   // Persist storage
   useEffect(() => {
@@ -188,42 +344,202 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return d === 0 ? 0.8 : d;
   };
 
-  // Category & Distance Filtering Logic
-  const filteredPosts = helpPosts.filter((post) => {
+  // Check if a help post has fulfilled its required number of helpers or is completed/confirmed
+  const isHelpPostComplete = (post: HelpPost): boolean => {
+    if (!post) return false;
+    if (post.isDeleted || post.status === 'deleted') return true;
+    if (post.isCompleted || post.status === 'completed') return true;
+    if (post.isConfirmed || post.status === 'confirmed') return true;
+
+    const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
+    const acceptedRepliesCount = (post.replies || []).filter(
+      (r) => r.isAccepted || r.isConfirmed
+    ).length;
+    const acceptedCount = Math.max(post.helpersAccepted || 0, acceptedRepliesCount);
+
+    return acceptedCount >= neededHelpers;
+  };
+
+  // Category & Distance & Tag Filtering Logic
+  const filteredPosts = (helpPosts || []).filter((post) => {
+    if (!post || post.isDeleted || post.status === 'deleted') return false;
+
+    // Remove / hide advertisement when required helpers are complete
+    if (isHelpPostComplete(post)) return false;
+
     const dist = getPostDistance(post);
-    const matchesDistance = feedDistanceTab === 'local' ? dist <= 15 : true;
+    let matchesDistance = true;
 
     let matchesCategory = true;
     if (boardCategoryFilter) {
       if (boardCategoryFilter === 'by_distance') {
-        matchesCategory = dist <= 15;
-      } else if (boardCategoryFilter === 'islandwide') {
-        matchesCategory = true;
+        matchesCategory = dist <= maxDistanceRadius;
+      } else if (boardCategoryFilter === 'quick_services' || boardCategoryFilter === 'normal_services') {
+        matchesCategory = post.category === 'quick_services' || post.category === 'normal_services' || !post.category;
       } else {
         matchesCategory = post.category === boardCategoryFilter;
       }
     }
 
-    const query = searchQuery.toLowerCase();
+    if (boardCategoryFilter !== 'by_distance' && feedDistanceTab === 'local') {
+      matchesDistance = dist <= 15;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+
+    // Tag Filter Check
+    let matchesTagFilter = true;
+    if (selectedTagFilter) {
+      const tagN = selectedTagFilter.tagName.toLowerCase();
+      const tagC = selectedTagFilter.category.toLowerCase();
+      matchesTagFilter =
+        (post.tagName && post.tagName.toLowerCase() === tagN) ||
+        (post.tagCategory && post.tagCategory.toLowerCase() === tagC) ||
+        post.whatHappened.toLowerCase().includes(tagN) ||
+        post.whatHappened.toLowerCase().includes(tagC) ||
+        post.whatIsNeeded.toLowerCase().includes(tagN) ||
+        post.whatIsNeeded.toLowerCase().includes(tagC);
+    }
+
+    // Query Keyword Check
     const matchesQuery = !query || 
+      (post.tagName && post.tagName.toLowerCase().includes(query)) ||
+      (post.tagCategory && post.tagCategory.toLowerCase().includes(query)) ||
       post.whatHappened.toLowerCase().includes(query) ||
       post.whatIsNeeded.toLowerCase().includes(query) ||
       post.userName.toLowerCase().includes(query) ||
       post.locationName.toLowerCase().includes(query) ||
       post.postCode.toLowerCase().includes(query);
 
-    return matchesDistance && matchesCategory && matchesQuery;
+    return matchesDistance && matchesCategory && matchesTagFilter && matchesQuery;
+  }).sort((a, b) => {
+    if (boardCategoryFilter === 'by_distance' || feedDistanceTab === 'local') {
+      return getPostDistance(a) - getPostDistance(b);
+    }
+    return 0;
   });
+
+  // User's total received replies across all their posts
+  const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
+  const userPhoneClean = normalizePhone(user?.phone || user?.whatsappNumber);
+  const myPosts = (helpPosts || []).filter((post) => {
+    if (!post || post.isDeleted) return false;
+    const postPhoneClean = normalizePhone(post.userPhone);
+    const isPhoneMatch = Boolean(
+      userPhoneClean &&
+        postPhoneClean &&
+        (userPhoneClean === postPhoneClean ||
+          userPhoneClean.endsWith(postPhoneClean.slice(-7)) ||
+          postPhoneClean.endsWith(userPhoneClean.slice(-7)))
+    );
+    const isIdMatch = Boolean(
+      (user?.userId && (post.userId === user.userId || post.userId === user.id)) ||
+      (user?.id && (post.userId === user.id || post.userId === user.userId))
+    );
+    const isNameMatch = Boolean(
+      user?.name &&
+      post.userName &&
+      post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()
+    );
+    return isPhoneMatch || isIdMatch || isNameMatch;
+  });
+
+  // Helper matching function to find posts where current user was selected as a helper
+  const currentUserName = (user?.name || '').trim().toLowerCase();
+  const currentUserPhone = (user?.phone || '').trim().replace(/^0/, '');
+  const currentUserId = (user?.userId || user?.id || '').trim();
+
+  const isHelperMatchingUser = (responderName?: string, responderPhone?: string) => {
+    if (!responderName && !responderPhone) return false;
+    const rName = (responderName || '').trim().toLowerCase();
+    const rPhone = (responderPhone || '').trim().replace(/^0/, '');
+
+    const nameMatch = currentUserName && rName && (rName === currentUserName || rName.includes(currentUserName) || currentUserName.includes(rName));
+    const phoneMatch = currentUserPhone && rPhone && (rPhone.includes(currentUserPhone) || currentUserPhone.includes(rPhone));
+
+    return Boolean(nameMatch || phoneMatch);
+  };
+
+  // Find posts where the post owner confirmed/selected the current user as helper
+  const postsWhereIWasSelected = (helpPosts || []).filter((post) => {
+    if (!post || post.status === 'deleted' || post.isDeleted) return false;
+    const isMyOwnPost = post.userId === currentUserId || (post.userName && post.userName.trim().toLowerCase() === currentUserName);
+    if (isMyOwnPost) return false;
+
+    const isConfirmedHelperDirect = post.isConfirmed && (
+      (post.confirmedHelperName && isHelperMatchingUser(post.confirmedHelperName, post.confirmedHelperPhone)) ||
+      (post.confirmedBy && isHelperMatchingUser(post.confirmedBy))
+    );
+
+    const matchingConfirmedReply = (post.replies || []).some((rep) =>
+      rep && isHelperMatchingUser(rep.responderName, rep.responderPhone) && (rep.isAccepted || rep.isConfirmed || isConfirmedHelperDirect)
+    );
+
+    return isConfirmedHelperDirect || matchingConfirmedReply;
+  });
+
+  const selectedAsHelperCount = postsWhereIWasSelected.length;
+
+  // Calculate pending unconfirmed offers count (reduces when helper is selected/confirmed)
+  const totalUserReplies = myPosts.reduce((acc, p) => {
+    if (p.isConfirmed || p.status === 'confirmed') return acc;
+    const pendingReplies = p.replies ? p.replies.filter((r) => !r.isAccepted && !r.isConfirmed) : [];
+    return acc + pendingReplies.length;
+  }, 0);
+
+  // Play a pleasant notification tone when support offers arrive or upon login when offers exist
+  const prevRepliesCountRef = useRef<number>(0);
+  useEffect(() => {
+    if (totalUserReplies > 0) {
+      if (prevRepliesCountRef.current === 0 || totalUserReplies > prevRepliesCountRef.current) {
+        try {
+          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            const now = ctx.currentTime;
+            
+            // Pleasant chime: D5 then A5
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, now); // D5
+            osc.frequency.setValueAtTime(880, now + 0.12); // A5
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.4);
+          }
+        } catch (e) {
+          // Audio context policy restriction handled silently
+        }
+      }
+    }
+    prevRepliesCountRef.current = totalUserReplies;
+  }, [totalUserReplies]);
 
   // Handler for adding new help request post (Step 3.1 & Quick Services)
   const handleCreatePost = async (
     newPostData: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>
   ) => {
-    const categoryToSave = newPostData.category || boardCategoryFilter || 'quick_services';
+    const categoryToSave = newPostData.category || 'quick_services';
     const postToSave = {
       ...newPostData,
+      userId: user.userId || user.id || '',
       category: categoryToSave,
     };
+
+    // If quick service or normal service, ensure category filter shows it
+    if (categoryToSave === 'quick_services' || categoryToSave === 'normal_services') {
+      setBoardCategoryFilter(categoryToSave);
+      setSelectedCategoryTitle(
+        categoryToSave === 'normal_services' 
+          ? 'සාමාන්‍ය සේවා (General Services)' 
+          : 'ඉක්මන් සේවා (Quick Services)'
+      );
+      setFeedDistanceTab('local');
+    }
 
     try {
       await addHelpPostToFirestore(postToSave);
@@ -232,13 +548,255 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const newPost: HelpPost = {
         ...postToSave,
         id: `post_${Date.now()}`,
-        postCode: `#HELP-${Math.floor(1000 + Math.random() * 9000)}`,
+        postCode: `#QS-${Math.floor(1000 + Math.random() * 9000)}`,
         createdAt: 'මීට සුළු මොහොතකට පෙර',
         repliesCount: 0,
         helpersCount: 1,
         replies: [],
       };
-      setHelpPosts((prev) => [newPost, ...prev]);
+      setLocalHelpPosts((prev) => [newPost, ...prev]);
+    }
+  };
+
+  // Helper function to accept a specific helper offer and reduce count immediately
+  const handleAcceptHelperOffer = async (post: HelpPost, reply: PostReply) => {
+    const updatedReplies = (post.replies || []).map((r) =>
+      r.id === reply.id ? { ...r, isAccepted: true, isConfirmed: true } : r
+    );
+
+    const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
+    const acceptedCount = updatedReplies.filter((r) => r.isAccepted || r.isConfirmed).length;
+    const isComplete = acceptedCount >= neededHelpers;
+
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      helpersAccepted: acceptedCount,
+      isConfirmed: isComplete ? true : post.isConfirmed,
+      confirmedBy: reply.responderName || user.name,
+      confirmedHelperName: reply.responderName || post.confirmedHelperName || '',
+      confirmedHelperPhone: reply.responderPhone || post.confirmedHelperPhone || '',
+      confirmedAt: new Date().toISOString(),
+      status: isComplete ? 'confirmed' : (post.status || 'active'),
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updatedPost);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === post.id ? updatedPost : p))
+      );
+    }
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        helpersAccepted: acceptedCount,
+        isConfirmed: updatedPost.isConfirmed,
+        confirmedBy: updatedPost.confirmedBy,
+        confirmedHelperName: updatedPost.confirmedHelperName,
+        confirmedHelperPhone: updatedPost.confirmedHelperPhone,
+        confirmedAt: updatedPost.confirmedAt,
+        status: updatedPost.status,
+      });
+    } catch (err) {
+      console.error('Failed to update helper acceptance in Firestore:', err);
+    }
+  };
+
+  const handleCompleteHelpPost = async (completedPost: HelpPost) => {
+    const helperName = user?.name || completedPost.confirmedHelperName || 'සහායකයා';
+    const helperPhone = user?.phone || completedPost.confirmedHelperPhone || '';
+    const nowIso = new Date().toISOString();
+
+    const updated: HelpPost = {
+      ...completedPost,
+      isCompleted: true,
+      status: 'completed',
+      completedAt: nowIso,
+      completedBy: helperName,
+      completedHelperName: helperName,
+      completedHelperPhone: helperPhone,
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === completedPost.id ? updated : p))
+      );
+    }
+
+    try {
+      await updateHelpPostInFirestore(completedPost.id, {
+        isCompleted: true,
+        status: 'completed',
+        completedAt: nowIso,
+        completedBy: helperName,
+        completedHelperName: helperName,
+        completedHelperPhone: helperPhone,
+      });
+
+      await sendChatMessageToFirestore(completedPost.id, {
+        senderName: helperName,
+        senderRole: 'helper',
+        text: `"${helperName}" විසින් සහය සාර්ථකව ලබාදී අවසන් බව තහවුරු කරන ලදී. ඔබට ස්තුතියි!`,
+        timestamp: 'දැන්',
+        senderPhone: helperPhone,
+      });
+    } catch (err) {
+      console.error('Failed to update completed status in Firestore:', err);
+    }
+  };
+
+  const handleRequesterConfirmResolved = async (resolvedPost: HelpPost) => {
+    const nowIso = new Date().toISOString();
+    const updated: HelpPost = {
+      ...resolvedPost,
+      requesterResolved: true,
+      requesterResolvedAt: nowIso,
+      isConfirmed: true,
+      status: 'confirmed',
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === resolvedPost.id ? updated : p))
+      );
+    }
+
+    try {
+      await updateHelpPostInFirestore(resolvedPost.id, {
+        requesterResolved: true,
+        requesterResolvedAt: nowIso,
+        isConfirmed: true,
+        status: 'confirmed',
+      });
+
+      await sendChatMessageToFirestore(resolvedPost.id, {
+        senderName: user.name || resolvedPost.userName || 'ඉල්ලුම්කරු',
+        senderRole: 'seeker',
+        text: `"${user.name || resolvedPost.userName}" විසින් ගැටලුව සාර්ථකව විසඳුණු බව තහවුරු කරන ලදී. ස්තුතියි!`,
+        timestamp: 'දැන්',
+        senderPhone: user.phone || resolvedPost.userPhone || '',
+      });
+    } catch (err) {
+      console.error('Failed to update requester resolution status in Firestore:', err);
+    }
+  };
+
+  const handleRequesterRejectCompletion = async (post: HelpPost) => {
+    const updated: HelpPost = {
+      ...post,
+      isCompleted: false,
+      status: post.isConfirmed ? 'confirmed' : 'active',
+      completedAt: '',
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === post.id ? updated : p))
+      );
+    }
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        isCompleted: false,
+        status: post.isConfirmed ? 'confirmed' : 'active',
+        completedAt: '',
+      });
+
+      await sendChatMessageToFirestore(post.id, {
+        senderName: user.name || post.userName || 'ඉල්ලුම්කරු',
+        senderRole: 'seeker',
+        text: `"${user.name || post.userName}" විසින් සහය තවම ලබාදී අවසන් වී නැති බව සටහන් කර ඇත. සහය ලබාදී අවසන් වූ පසු සහායකයාට නැවත තහවුරු කළ හැක.`,
+        timestamp: 'දැන්',
+        senderPhone: user.phone || post.userPhone || '',
+      });
+    } catch (err) {
+      console.error('Failed to revoke completion status in Firestore:', err);
+    }
+  };
+
+  // Check if there is a post created by current user that helper completed, but requester hasn't resolved yet
+  const pendingResolutionPost = useMemo(() => {
+    return helpPosts.find((post) => {
+      if (post.isDeleted || post.status === 'deleted') return false;
+      if (post.requesterResolved) return false;
+      if (!post.isCompleted && post.status !== 'completed') return false;
+      if (postponedResolutionPostIds.includes(post.id)) return false;
+
+      const isMyPost =
+        post.userId === user.id ||
+        (post.userName && user.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase());
+
+      return isMyPost;
+    });
+  }, [helpPosts, user, postponedResolutionPostIds]);
+
+  const handleConfirmPost = async (confirmedPost: HelpPost, confirmedReplyId?: string) => {
+    const matchedReply = (confirmedPost.replies || []).find((r) =>
+      confirmedReplyId ? r.id === confirmedReplyId : r.isAccepted || r.isConfirmed
+    );
+
+    const updatedReplies = (confirmedPost.replies || []).map((rep) => {
+      if (confirmedReplyId) {
+        if (rep.id === confirmedReplyId) {
+          return { ...rep, isAccepted: true, isConfirmed: true };
+        }
+        return rep;
+      }
+      return { ...rep, isAccepted: true, isConfirmed: true };
+    });
+
+    const helperName = matchedReply?.responderName || confirmedPost.confirmedHelperName || confirmedPost.confirmedBy || user.name;
+    const helperPhone = matchedReply?.responderPhone || confirmedPost.confirmedHelperPhone || '';
+
+    const updated: HelpPost = {
+      ...confirmedPost,
+      replies: updatedReplies,
+      isConfirmed: true,
+      confirmedBy: helperName,
+      confirmedHelperName: helperName,
+      confirmedHelperPhone: helperPhone,
+      confirmedAt: new Date().toISOString(),
+      status: 'confirmed' as const,
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === confirmedPost.id ? updated : p))
+      );
+    }
+
+    if (selectedPostForConfirm?.id === confirmedPost.id) {
+      setSelectedPostForConfirm(updated);
+    }
+    if (selectedPostForChat?.id === confirmedPost.id) {
+      setSelectedPostForChat(updated);
+    }
+    if (selectedPostForDetail?.id === confirmedPost.id) {
+      setSelectedPostForDetail(updated);
+    }
+
+    try {
+      await updateHelpPostInFirestore(confirmedPost.id, {
+        replies: updatedReplies,
+        isConfirmed: true,
+        confirmedBy: updated.confirmedBy,
+        confirmedHelperName: updated.confirmedHelperName,
+        confirmedHelperPhone: updated.confirmedHelperPhone,
+        confirmedAt: updated.confirmedAt,
+        status: 'confirmed',
+      });
+    } catch (err) {
+      console.error('Failed to update confirmed post in Firestore:', err);
     }
   };
 
@@ -265,24 +823,49 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       } catch (e) {
         console.error('Failed to save reply to Firestore, updating local state', e);
       }
-    }
 
-    setHelpPosts((prev) =>
-      prev.map((post) => {
-        if (post.id === postId) {
-          return {
-            ...post,
-            repliesCount: (post.repliesCount || 0) + 1,
-            helpersCount: (post.helpersCount || 0) + 1,
-            replies: [newReply, ...(post.replies || [])],
-          };
-        }
-        return post;
-      })
-    );
+      const updatedTarget: HelpPost = {
+        ...targetPost,
+        repliesCount: (targetPost.repliesCount || 0) + 1,
+        helpersCount: (targetPost.helpersCount || 0) + 1,
+        replies: [newReply, ...(targetPost.replies || [])],
+      };
+
+      if (propOnUpdatePost) {
+        propOnUpdatePost(updatedTarget);
+      } else {
+        setLocalHelpPosts((prev) =>
+          (prev || []).map((p) => (p.id === postId ? updatedTarget : p))
+        );
+      }
+    }
   };
 
   const services = [
+    {
+      id: 'professional_services',
+      title: language === 'en' ? 'Professional Services' : language === 'ta' ? 'தொழில்முறை சேவைகள்' : 'වෘත්තීය සේවා',
+      desc: language === 'en' ? 'Qualified professionals & technical service providers.' : language === 'ta' ? 'தகுதிவாய்ந்த வல்லுநர்கள் மற்றும் சேவை வழங்குநர்கள்.' : 'සුදුසුකම් ලත් වෘත්තිකයන් සහ තාක්ෂණික සේවා සැපයුම්කරුවන්.',
+      icon: Briefcase,
+      color: 'from-emerald-600 via-teal-600 to-[#007a4b]',
+      badge: '💼 PRO',
+    },
+    {
+      id: 'from_me_to_you',
+      title: language === 'en' ? 'From Me to You' : language === 'ta' ? 'என்னிடமிருந்து உங்களுக்கு' : 'මගෙන් ඔබට (From Me to You)',
+      desc: language === 'en' ? 'Donations, clearance giveaways & item exchanges.' : language === 'ta' ? 'நன்கொடைகள், அகற்றல்கள் மற்றும் பரிமாற்றங்கள்.' : 'පරිත්‍යාග, ඉවත්කරන ද්‍රව්‍ය හෝ හුවමාරු භාණ්ඩ ලබාදීම.',
+      icon: Gift,
+      color: 'from-purple-500 to-pink-600',
+      badge: '🎁 NEW',
+    },
+    {
+      id: 'find_for_me',
+      title: language === 'en' ? 'Find for Me' : language === 'ta' ? 'தேடித் தாருங்கள்' : 'සොයාදෙන්න (Find for Me)',
+      desc: language === 'en' ? 'Lost, stolen or procurement search requests.' : language === 'ta' ? 'இழந்த அல்லது திருடப்பட்டவை தேடல் சேவை.' : 'නැතිවූ, සොරාගත් හෝ අවශ්‍ය දේ සොයාගැනීමේ සේවාව.',
+      icon: Search,
+      color: 'from-emerald-500 to-teal-600',
+      badge: '🔍 NEW',
+    },
     {
       id: 'emergency',
       title: t.emergencyService,
@@ -294,7 +877,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     {
       id: 'financial',
       title: t.financialService,
-      desc: 'සුභසාධන දීමනා, ආධාර සහ සහන සේවා සඳහා ඉල්ලුම් කිරීම.',
+      desc: 'සුභසාධන දීමනා, ආධාර සහ සහය සේවා සඳහා ඉල්ලුම් කිරීම.',
       icon: HeartHandshake,
       color: 'from-amber-500 to-orange-600',
       badge: 'Welfare',
@@ -329,7 +912,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     <div className="w-full max-w-5xl mx-auto py-4 space-y-8 animate-fadeIn">
       {/* 1. Welcome User Banner */}
       <div className="bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] rounded-3xl p-5 sm:p-6 shadow-sm backdrop-blur-xl flex flex-wrap justify-between items-center gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4 min-w-0">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#007a4b]/40 shadow-sm bg-slate-100 dark:bg-slate-800 flex-shrink-0">
             {user.photoUrl && user.photoUrl.trim() !== '' ? (
               <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
@@ -340,28 +923,90 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             )}
           </div>
 
-          <div>
-            <div className="flex items-center gap-2 mb-1">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="text-[11px] bg-[#007a4b]/15 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
                 <span>VERIFIED USER</span>
               </span>
               <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 font-bold">ID: {user.userId}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white break-words">
               {t.welcomeUser}, {user.name}!
             </h2>
           </div>
         </div>
 
-        <button
-          onClick={onNavigateToIssues}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all font-bold text-xs cursor-pointer shadow-sm"
-        >
-          <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
-          <span>{t.issuesHelpBtn}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setTargetPostForOffers(null);
+              setIsSupportOffersModalOpen(true);
+            }}
+            className="relative flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs cursor-pointer shadow-md hover:shadow-lg transition-all active:scale-95 border border-orange-400/40"
+            title="කැමැත්ත දැක්වූවන් (සහය වීමට කැමැත්ත පළකළ පුද්ගලයින්)"
+          >
+            <div className="relative">
+              <HeartHandshake className="w-4 h-4 text-white" />
+              {totalUserReplies > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
+              )}
+            </div>
+            <span>කැමැත්ත දැක්වූවන්</span>
+            {totalUserReplies > 0 && (
+              <span className="bg-white text-orange-700 text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm font-mono animate-bounce">
+                {totalUserReplies}
+              </span>
+            )}
+          </button>
+
+          <button
+            id="volunteer-support-btn"
+            onClick={() => setIsVolunteerSupportModalOpen(true)}
+            className="relative flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs cursor-pointer shadow-md hover:shadow-lg transition-all active:scale-95 border border-emerald-400/40"
+            title="සහය වන්න (අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්)"
+          >
+            <div className="relative">
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              {selectedAsHelperCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />
+              )}
+            </div>
+            <span>සහය වන්න</span>
+            {selectedAsHelperCount > 0 && (
+              <span className="bg-amber-400 text-slate-950 text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm font-mono animate-bounce">
+                {selectedAsHelperCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Confirmed Helper Notice Banner (Requirement 04) */}
+      {postsWhereIWasSelected.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] text-white shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn border-2 border-emerald-400/50">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30">
+              <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+            </div>
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs font-black text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>ඔබව සහය සඳහා තෝරාගෙන ඇත!</span>
+              </div>
+              <p className="text-xs sm:text-sm font-bold text-white leading-relaxed">
+                "{postsWhereIWasSelected[0].userName || 'ගැටලුව සිදුවූ පුද්ගලයා'}" සහය සදහා ඔබ තොරාගෙන ඇත. ඔබ දෙදෙනා අතර ගැටලුවක් ඇති නොවන පරිදි සුහදශිලිව සහයවිමට වගබලාගන්න. ස්තුතියි ...!!!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsVolunteerSupportModalOpen(true)}
+            className="px-4 py-2.5 bg-white text-emerald-950 font-black text-xs rounded-xl hover:bg-emerald-50 transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
+          >
+            තොරතුරු බලන්න
+          </button>
+        </div>
+      )}
 
       {/* 2. Step 2.1: Location Button Component with Auto-load GPS */}
       <LocationBar
@@ -374,151 +1019,104 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         autoLoadedNotice={autoLocationMsg}
       />
 
-      {/* 3. Step 2.2: Central Glowing "I Need Help" Button */}
-      <GlowingNeedHelpBtn
-        onClick={() => setIsCategoryModalOpen(true)}
-        lang={language}
-      />
-
-      {/* 4. Bulletin Board Section (උපකාරක දැන්වීම්) with Category Grid */}
-      <div className="bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] rounded-[2.2rem] p-5 sm:p-7 shadow-xl space-y-5 backdrop-blur-md">
-        
-        {/* Board Header: Title & LIVE Badge */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            {language === 'en' ? 'Help Notices' : language === 'ta' ? 'உதவி அறிவிப்புகள்' : 'උපකාරක දැන්වීම්'}
-          </h2>
-
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#dff7eb] dark:bg-[#123120] border border-[#a1ebd0] dark:border-[#1c402b] text-[#00a86b] dark:text-[#00c880] text-xs font-extrabold tracking-wider uppercase">
-            <span className="w-2 h-2 rounded-full bg-[#00a86b] animate-ping" />
-            <span>LIVE</span>
-          </div>
-        </div>
-
-        {/* Top Notice Card Box */}
-        <div className="w-full min-h-[50px] rounded-2xl bg-[#faf5ef] dark:bg-[#121c16] border border-[#f5e6d3] dark:border-[#223629] p-3.5 flex items-center justify-between text-xs sm:text-sm text-slate-700 dark:text-[#8ba294]">
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
-            <span className="font-medium">
-              {language === 'en' 
-                ? 'Select a category below to explore or post requests.' 
-                : language === 'ta' 
-                ? 'வேண்டுகோள்களைக் காண அல்லது இடுகையிட வகையைத் தேர்ந்தெடுக்கவும்.' 
-                : 'පහතින් සේවා වර්ගයක් තෝරා දැන්වීම් බලන්න හෝ අලුතින් එක් කරන්න.'}
-            </span>
-          </div>
-        </div>
-
-        {/* Category Grid Component */}
-        <CategoryGrid
-          selectedCategory={boardCategoryFilter}
-          onSelectCategory={(catKey, catTitle) => {
-            setBoardCategoryFilter(catKey);
-            setSelectedCategoryTitle(catTitle);
-            if (catKey === 'by_distance') {
-              setFeedDistanceTab('local');
-            } else if (catKey === 'islandwide') {
-              setFeedDistanceTab('all_sl');
-            }
-          }}
+      {dashboardView === 'requests' ? (
+        <HelpRequestsPage
+          user={user}
           language={language}
+          helpPosts={helpPosts}
+          filteredPosts={filteredPosts}
+          currentLocation={currentLocation}
+          feedDistanceTab={feedDistanceTab}
+          setFeedDistanceTab={setFeedDistanceTab}
+          boardCategoryFilter={boardCategoryFilter}
+          setBoardCategoryFilter={setBoardCategoryFilter}
+          setSelectedCategoryTitle={setSelectedCategoryTitle}
+          maxDistanceRadius={maxDistanceRadius}
+          setMaxDistanceRadius={setMaxDistanceRadius}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          allTags={allTags}
+          selectedTagFilter={selectedTagFilter}
+          setSelectedTagFilter={setSelectedTagFilter}
+          getPostDistance={getPostDistance}
+          onOfferSupport={(p) => setSelectedPostForDetail(p)}
+          onEditPost={(p) => handleEditPost(p)}
+          onViewPost={(p) => setViewingPost(p)}
+          onDeletePost={(p) => setDeletingPost(p)}
+          onOpenChat={(p) => setSelectedPostForChat(p)}
+          onOpenSupportOffers={(p) => {
+            setTargetPostForOffers(p);
+            setIsSupportOffersModalOpen(true);
+          }}
+          onOpenCreateModal={() => setIsCategoryModalOpen(true)}
+          onBackToHome={() => setDashboardView('home')}
+          professionalServices={professionalServices}
+          onAddProfessionalService={handleAddProfessionalService}
+          onAddProfessionalReview={handleAddProfessionalReview}
         />
-      </div>
-
-      {/* 5. Step 2.3 & 3.2: Home Feed & Distance Filtering */}
-      <div className="space-y-6 pt-2">
-        
-        {/* Feed Header and Tabs */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] p-5 rounded-3xl shadow-sm backdrop-blur-md">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-500" />
-              <h3 className="text-xl font-bold text-slate-800 dark:text-white">{t.feedTitle}</h3>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t.feedSub}</p>
-          </div>
-
-          {/* Distance Tabs: <15 km vs >15 km (All Sri Lanka) */}
-          <div className="flex items-center p-1.5 bg-slate-100 dark:bg-[#0a1c13] border border-slate-200 dark:border-[#132a1d] rounded-2xl w-full sm:w-auto">
-            <button
-              onClick={() => setFeedDistanceTab('local')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                feedDistanceTab === 'local'
-                  ? 'bg-[#007a4b] text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              <span>{t.tabMyArea}</span>
-            </button>
-
-            <button
-              onClick={() => setFeedDistanceTab('all_sl')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                feedDistanceTab === 'all_sl'
-                  ? 'bg-[#007a4b] text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>{t.tabAllSriLanka}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-4 top-3.5" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="දැන්වීම් සෙවීම (උදා: බයික්, බල්ලා, බෙහෙත්, කඩවත...)"
-            className="w-full bg-white dark:bg-[#07130c] border border-slate-200 dark:border-[#132a1d] rounded-2xl py-3 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[#007a4b] transition-all shadow-sm"
+      ) : (
+        <>
+          {/* 3. Step 2.2: Central Glowing "I Need Help" Button with Message Inbox Bubble at top right corner */}
+          <GlowingNeedHelpBtn
+            onClick={() => setIsCategoryModalOpen(true)}
+            lang={language}
+            topRightElement={
+              <MessageInboxBubble
+                user={user}
+                helpPosts={helpPosts}
+                onClick={() => setIsInboxModalOpen(true)}
+              />
+            }
           />
-        </div>
 
-        {/* Feed Posts List */}
-        {filteredPosts.length === 0 ? (
-          <div className="w-full bg-white/80 dark:bg-[#07130c]/80 border border-slate-200/80 dark:border-[#132a1d] rounded-[1.8rem] p-8 text-center space-y-3 shadow-sm">
-            <p className="text-sm sm:text-base font-bold text-slate-600 dark:text-[#8ba294]">
-              {language === 'en' ? 'No posts published yet' : language === 'ta' ? 'இன்னும் இடுகைகள் எதுவும் வெளியிடப்படவில்லை' : 'තවම පල කළ දැන්වීම් නොමැත'}
-            </p>
+          {/* 3.1 Wide Button: "උපකාර ඉල්ලීම් සඳහා" (Navigate to Help Requests Page) */}
+          <div className="w-full pt-1 pb-2">
             <button
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 bg-[#00a86b] hover:bg-[#008f5a] text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
+              type="button"
+              onClick={() => setDashboardView('requests')}
+              className="w-full group relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#00603a] via-[#007a4b] to-[#009b5f] hover:from-[#007a4b] hover:to-[#00a86b] text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-emerald-400/40 flex items-center justify-between cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>{language === 'en' ? 'Publish Request' : language === 'ta' ? 'கோரிக்கையை வெளியிடு' : 'දැන්වීමක් පල කරන්න'}</span>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                  <Megaphone className="w-6 h-6 text-amber-300 animate-pulse" />
+                </div>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-300/40">
+                      {language === 'en' ? 'Help Feed' : language === 'ta' ? 'அறிவிப்புகள்' : 'දැන්වීම් පුවරුව'}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-emerald-200">
+                      ({filteredPosts.length} {language === 'en' ? 'Active' : language === 'ta' ? 'செயலில்' : 'සක්‍රියයි'})
+                    </span>
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-200 transition-colors">
+                    {language === 'en' ? 'View Help Requests!' : language === 'ta' ? 'உதவி கோரிக்கைகளைப் பாருங்கள்!' : 'උපකාර ඉල්ලීම් බලන්න!'}
+                  </h3>
+                  <p className="text-xs text-emerald-100/90 font-medium truncate">
+                    {language === 'en' 
+                      ? 'View all published help notices and offer support' 
+                      : language === 'ta' 
+                      ? 'அனைத்து உதவி அறிவிப்புகளையும் கண்டு உதவி செய்யுங்கள்' 
+                      : 'පළ කර ඇති සියලුම උපකාර ඉල්ලීම් සහ දැන්වීම් බැලීමට මෙතනින් පිවිසෙන්න 👉'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#007a4b] font-black flex items-center justify-center shadow-md group-hover:bg-amber-300 group-hover:text-slate-950 transition-colors">
+                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
             </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {filteredPosts.map((post) => (
-              <div 
-                key={post.id}
-                onClick={() => setSelectedPostForDetail(post)}
-                className="cursor-pointer"
-              >
-                <PostCard
-                  post={{
-                    ...post,
-                    distanceKm: getPostDistance(post),
-                  }}
-                  lang={language}
-                  onOfferSupport={(p) => setSelectedPostForDetail(p)}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* 5. Services Grid Section */}
-      <div className="space-y-4 pt-6 border-t border-slate-800">
-        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-          <span>{t.servicesTitle}</span>
-        </h3>
+          {/* 5. Services Grid Section */}
+          <div className="space-y-4 pt-6 border-t border-slate-800">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <span>{t.servicesTitle}</span>
+            </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {services.map((srv) => {
@@ -526,7 +1124,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             return (
               <div
                 key={srv.id}
-                onClick={() => setSelectedService(srv.title)}
+                onClick={() => {
+                  if (srv.id === 'professional_services') {
+                    setBoardCategoryFilter('professional_services');
+                    setSelectedCategoryTitle('වෘත්තීය සේවා');
+                    setDashboardView('requests');
+                  } else if (srv.id === 'from_me_to_you') {
+                    setIsFromMeToYouModalOpen(true);
+                  } else if (srv.id === 'find_for_me') {
+                    setIsFindForMeModalOpen(true);
+                  } else {
+                    setSelectedService(srv.title);
+                  }
+                }}
                 className="bg-slate-900/80 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-5 shadow-xl transition-all hover:-translate-y-1 cursor-pointer group flex flex-col justify-between"
               >
                 <div>
@@ -555,6 +1165,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           })}
         </div>
       </div>
+    </>
+  )}
 
       {/* MODALS implementation matching PDF flow */}
       
@@ -566,7 +1178,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedCategoryTitle(catTitle);
           setSelectedCategoryObj(selectedCat || null);
           setIsCategoryModalOpen(false);
-          setIsQuickServiceModalOpen(true);
+          if (catKey === 'find_for_me') {
+            setIsFindForMeModalOpen(true);
+          } else if (catKey === 'from_me_to_you') {
+            setIsFromMeToYouModalOpen(true);
+          } else {
+            setIsQuickServiceModalOpen(true);
+          }
         }}
         language={language}
         setLanguage={setLanguage}
@@ -578,13 +1196,50 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 1. Quick Services Request Form Modal (Node 2) */}
       <QuickServiceModal
         isOpen={isQuickServiceModalOpen}
-        onClose={() => setIsQuickServiceModalOpen(false)}
+        onClose={() => {
+          setIsQuickServiceModalOpen(false);
+          setEditingQuickServicePost(null);
+        }}
         onSubmitPost={handleCreatePost}
         currentLocation={currentLocation}
         currentUser={user}
         lang={language}
         categoryTitle={selectedCategoryTitle}
         selectedCategoryObj={selectedCategoryObj}
+        editPost={editingQuickServicePost}
+        onUpdatePost={handleSaveEditedPost}
+      />
+
+      {/* 1.5. Find For Me Request Form Modal */}
+      <FindForMeModal
+        isOpen={isFindForMeModalOpen}
+        onClose={() => {
+          setIsFindForMeModalOpen(false);
+          setEditingFindForMePost(null);
+        }}
+        onSubmitPost={handleCreatePost}
+        currentLocation={currentLocation}
+        availableLocations={initialLocations}
+        currentUser={user}
+        lang={language}
+        editPost={editingFindForMePost}
+        onUpdatePost={handleSaveEditedPost}
+      />
+
+      {/* 1.6. From Me To You Request Form Modal (🎁 පරිත්‍යාග / ♻️ ඉවත්කරන / 🔄 හුවමාරු) */}
+      <FromMeToYouModal
+        isOpen={isFromMeToYouModalOpen}
+        onClose={() => {
+          setIsFromMeToYouModalOpen(false);
+          setEditingFromMeToYouPost(null);
+        }}
+        onSubmitPost={handleCreatePost}
+        currentLocation={currentLocation}
+        availableLocations={initialLocations}
+        currentUser={user}
+        lang={language}
+        editPost={editingFromMeToYouPost}
+        onUpdatePost={handleSaveEditedPost}
       />
 
       {/* 2. Quick Services Detail Modal (Node 4) */}
@@ -600,7 +1255,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedPostForDetail(null);
           setSelectedPostForConfirm(p);
         }}
+        onDeletePost={(p) => {
+          setSelectedPostForDetail(null);
+          setDeletingPost(p);
+        }}
+        onEditPost={(p) => {
+          setSelectedPostForDetail(null);
+          handleEditPost(p);
+        }}
         lang={language}
+        currentLocation={currentLocation}
+        currentUser={user}
       />
 
       {/* 3. Quick Services Chat Modal (Node 5) */}
@@ -609,6 +1274,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={!!selectedPostForChat}
         onClose={() => setSelectedPostForChat(null)}
         currentUser={user}
+        onNavigateToIssues={() => {
+          setSelectedPostForChat(null);
+          if (onNavigateToIssues) onNavigateToIssues();
+        }}
+        onOpenConfirm={(p) => {
+          setSelectedPostForChat(null);
+          setSelectedPostForConfirm(p);
+        }}
       />
 
       {/* 4. Quick Services Confirm Workflow (Node 5) */}
@@ -621,6 +1294,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedPostForChat(p);
         }}
         currentUser={user}
+        onConfirmPost={handleConfirmPost}
       />
 
       {/* Legacy Fallback Support Modal */}
@@ -630,6 +1304,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setSelectedPostToReply(null)}
         onSendReply={handleSendReply}
         lang={language}
+        currentLocation={currentLocation}
       />
 
       {/* Service Request Dialog Modal */}
@@ -676,6 +1351,117 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Owner Action Modals (Requirement 01) */}
+      <EditHelpPostModal
+        post={editingPost}
+        isOpen={!!editingPost}
+        onClose={() => setEditingPost(null)}
+        onSave={handleSaveEditedPost}
+      />
+
+      <ViewHelpPostModal
+        post={viewingPost}
+        isOpen={!!viewingPost}
+        onClose={() => setViewingPost(null)}
+        lang={language}
+        viewerLocation={currentLocation}
+        onOpenChat={(post) => {
+          setViewingPost(null);
+          setSelectedPostForChat(post);
+        }}
+      />
+
+      <DeleteConfirmModal
+        post={deletingPost}
+        isOpen={!!deletingPost}
+        onClose={() => setDeletingPost(null)}
+        onConfirmDelete={handleConfirmDeletePost}
+      />
+
+      {/* Support Offers Modal */}
+      <SupportOffersModal
+        isOpen={isSupportOffersModalOpen}
+        onClose={() => {
+          setIsSupportOffersModalOpen(false);
+          setTargetPostForOffers(null);
+        }}
+        userPosts={myPosts}
+        lang={language}
+        viewerLocation={currentLocation}
+        targetPost={targetPostForOffers}
+        onOpenChat={(post) => {
+          setSelectedPostForChat(post);
+        }}
+        onOpenConfirm={(post, reply) => {
+          if (reply) {
+            handleAcceptHelperOffer(post, reply);
+          }
+          setSelectedPostForConfirm(post);
+        }}
+        onSelectHelper={(post, reply) => {
+          handleAcceptHelperOffer(post, reply);
+        }}
+      />
+
+      {/* Volunteer Support Modal (සහය වන්න & ඔබව තෝරාගත් ඉල්ලීම්) */}
+      <VolunteerSupportModal
+        isOpen={isVolunteerSupportModalOpen}
+        onClose={() => setIsVolunteerSupportModalOpen(false)}
+        user={user}
+        currentUser={user}
+        helpPosts={helpPosts}
+        lang={language}
+        viewerLocation={currentLocation}
+        onOpenOfferModal={(post) => {
+          setSelectedPostToReply(post);
+        }}
+        onOpenChat={(post) => {
+          setSelectedPostForChat(post);
+        }}
+        onOpenPostDetail={(post) => {
+          setSelectedPostForDetail(post);
+        }}
+        onCompleteHelpPost={handleCompleteHelpPost}
+      />
+
+      {/* Message Inbox Modal */}
+      <MessageInboxModal
+        isOpen={isInboxModalOpen}
+        onClose={() => setIsInboxModalOpen(false)}
+        user={user}
+        helpPosts={helpPosts}
+        lang={language}
+        onViewPost={(post) => {
+          setSelectedPostForDetail(post);
+        }}
+        onOpenChat={(post) => {
+          setSelectedPostForChat(post);
+        }}
+        onOpenConfirm={(post) => {
+          setSelectedPostForConfirm(post);
+        }}
+        onNavigateToIssues={() => {
+          if (onNavigateToIssues) onNavigateToIssues();
+        }}
+      />
+
+      {/* Requester Screen-Lock Resolution Prompt Modal */}
+      {pendingResolutionPost && (
+        <ResolutionPromptModal
+          post={pendingResolutionPost}
+          lang={language}
+          onPostpone={() => {
+            setPostponedResolutionPostIds((prev) => [...prev, pendingResolutionPost.id]);
+          }}
+          onRejectCompletion={handleRequesterRejectCompletion}
+          onOpenChat={(post) => {
+            setPostponedResolutionPostIds((prev) => [...prev, post.id]);
+            setSelectedPostForChat(post);
+          }}
+          onConfirmResolved={handleRequesterConfirmResolved}
+        />
       )}
 
     </div>

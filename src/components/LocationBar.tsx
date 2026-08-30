@@ -1,5 +1,18 @@
-import React, { useState } from 'react';
-import { MapPin, Check, Radio, Globe, Crosshair, Loader2, Sparkles, Map, ShieldCheck, Home, Milestone, Building2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  MapPin, 
+  Check, 
+  Radio, 
+  Search, 
+  Crosshair, 
+  Loader2, 
+  Sparkles, 
+  Map, 
+  ShieldCheck, 
+  Milestone,
+  Lock,
+  Globe
+} from 'lucide-react';
 import { LocationOption, Language, Theme } from '../types';
 import { translations } from '../data/translations';
 import { Card3D } from './Card3D';
@@ -30,20 +43,29 @@ export const LocationBar: React.FC<LocationBarProps> = ({
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Check if current location was manually saved or auto-detected
+  const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
+
   const getLocationName = (loc: LocationOption) => {
     if (lang === 'si') return loc.nameSi;
     if (lang === 'ta') return loc.nameTa;
     return loc.nameEn;
   };
 
+  const handleOpenManualPicker = () => {
+    // When "ස්ථානය තෝරන්න" is clicked, stop any auto tracking and open manual picker
+    setIsAutoTracking(false);
+    setIsMapModalOpen(true);
+  };
+
   const handleSaveLocationFromMap = (loc: LocationOption) => {
     onSelectLocation(loc);
-    setToastMsg(`📍 ස්ථානය සාර්ථකව සුරකින ලදී: ${loc.nameSi}`);
+    setToastMsg(`📍 ඔබ තෝරාගත් ස්ථානය සුරැකිණි: ${loc.nameSi}`);
     setTimeout(() => setToastMsg(null), 4500);
   };
 
-  // 1-Click Direct Auto GPS Track & Save (Exact: Village, Road, Town)
-  const handleDirectOneClickSave = () => {
+  // 1-Click Direct Auto GPS Track & Save (When user explicitly wants to reactivate Auto GPS)
+  const handleDirectAutoGps = () => {
     if (!navigator.geolocation) {
       setIsMapModalOpen(true);
       return;
@@ -57,8 +79,13 @@ export const LocationBar: React.FC<LocationBarProps> = ({
         try {
           const geo = await resolveExactLocation(latitude, longitude);
           const locOpt = toLocationOption(geo);
+          
+          localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+          localStorage.setItem('sahaya_manual_location_locked', 'false');
+          localStorage.setItem('sahaya_location_mode', 'auto');
+          
           onSelectLocation(locOpt);
-          setToastMsg(`✅ සජීවී ලිපිනය සුරැකිණි: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+          setToastMsg(`⚡ Auto GPS සක්‍රීයයි - සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
         } catch (e) {
           const fallback: LocationOption = {
             id: `loc_gps_${Date.now()}`,
@@ -68,8 +95,10 @@ export const LocationBar: React.FC<LocationBarProps> = ({
             lat: latitude,
             lng: longitude,
           };
+          localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
+          localStorage.setItem('sahaya_manual_location_locked', 'false');
           onSelectLocation(fallback);
-          setToastMsg(`📍 ස්ථානය සුරැකිණි: ${fallback.nameSi}`);
+          setToastMsg(`⚡ Auto GPS ස්ථානය: ${fallback.nameSi}`);
         } finally {
           setIsAutoTracking(false);
           setTimeout(() => setToastMsg(null), 4500);
@@ -77,7 +106,6 @@ export const LocationBar: React.FC<LocationBarProps> = ({
       },
       (err) => {
         setIsAutoTracking(false);
-        // If error, open modal to guide user
         setIsMapModalOpen(true);
       },
       {
@@ -96,12 +124,20 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           {/* Active Location Info */}
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <div className="relative shrink-0">
-              <div className="w-11 h-11 rounded-2xl bg-[#007a4b]/15 border border-[#007a4b]/40 flex items-center justify-center text-[#007a4b] dark:text-[#00c880] shadow-sm">
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm border ${
+                isManualLocked 
+                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400' 
+                  : 'bg-[#007a4b]/15 border-[#007a4b]/40 text-[#007a4b] dark:text-[#00c880]'
+              }`}>
                 <MapPin className="w-6 h-6 animate-bounce" />
               </div>
               <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a86b] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#007a4b]"></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  isManualLocked ? 'bg-purple-500' : 'bg-[#00a86b]'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${
+                  isManualLocked ? 'bg-purple-600' : 'bg-[#007a4b]'
+                }`}></span>
               </span>
             </div>
 
@@ -111,14 +147,23 @@ export const LocationBar: React.FC<LocationBarProps> = ({
                   <Radio className="w-3 h-3 text-[#007a4b] dark:text-[#00c880] animate-pulse" />
                   {t.currentLocationLabel}
                 </span>
-                <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold flex items-center gap-1">
-                  <ShieldCheck className="w-2.5 h-2.5" />
-                  ගම, පාර, නගරය
-                </span>
+                
+                {isManualLocked ? (
+                  <span className="bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    Manual (Auto GPS Off)
+                  </span>
+                ) : (
+                  <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold flex items-center gap-1">
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                    ⚡ Auto GPS සක්‍රීයයි
+                  </span>
+                )}
+
                 {isAutoLoading && (
                   <span className="bg-amber-500/20 border border-amber-500/40 text-amber-800 dark:text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                    Auto Loading...
+                    Auto GPS Loading...
                   </span>
                 )}
               </div>
@@ -130,36 +175,41 @@ export const LocationBar: React.FC<LocationBarProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: 1-Click Auto Save & Map View */}
+          {/* Action Buttons: "ස්ථානය තෝරන්න" & "Auto GPS" */}
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
             
-            {/* Primary 1-Click GPS Auto Track & Save Button */}
+            {/* Primary: "ස්ථානය තෝරන්න" - Disables Auto GPS and lets user select/save custom location */}
             <button
-              onClick={handleDirectOneClickSave}
+              onClick={handleOpenManualPicker}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-900/30 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer group"
+              title="Auto GPS අක්‍රිය කර ඔබ කැමති ස්ථානයක් තෝරා සුරකින්න"
+            >
+              <Search className="w-4 h-4 text-emerald-200 group-hover:scale-110 transition-transform" />
+              <span>📍 ස්ථානය තෝරන්න (Select Location)</span>
+            </button>
+
+            {/* Secondary: Auto GPS reactivation button */}
+            <button
+              onClick={handleDirectAutoGps}
               disabled={isAutoTracking}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#007a4b] hover:bg-[#006e43] text-white font-black text-sm shadow-lg shadow-emerald-900/30 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer group disabled:opacity-75"
+              className={`px-3.5 py-3 rounded-2xl font-bold text-xs sm:text-sm border transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-60 ${
+                !isManualLocked
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+              }`}
+              title="සජීවී GPS හරහා ස්වයංක්‍රීයව ස්ථානය ලබාගන්න (Re-enable Auto GPS)"
             >
               {isAutoTracking ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>ස්ථානය Auto Track කරමින්...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">GPS...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>{t.saveLocationBtn}</span>
+                  <Crosshair className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>⚡ Auto GPS</span>
                 </>
               )}
-            </button>
-
-            {/* Map Preview & Details Button */}
-            <button
-              onClick={() => setIsMapModalOpen(true)}
-              className="px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm border border-slate-200 dark:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="සිතියම බලන්න (View Map)"
-            >
-              <Map className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>සිතියම (Map)</span>
             </button>
           </div>
         </div>
@@ -175,7 +225,7 @@ export const LocationBar: React.FC<LocationBarProps> = ({
         )}
       </Card3D>
 
-      {/* Google Maps Real-time GPS Location Tracker Modal */}
+      {/* Manual Location Search & Google Maps Real-time Modal */}
       <MapLocationTracker
         isOpen={isMapModalOpen}
         onClose={() => setIsMapModalOpen(false)}

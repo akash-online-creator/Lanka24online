@@ -74,8 +74,7 @@ export const RegistrationSuccessModal: React.FC<RegistrationSuccessModalProps> =
           onClick={onConfirm}
           className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white font-black py-3.5 px-6 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-sm sm:text-base flex items-center justify-center gap-2"
         >
-          <span>හරි, ස්තුතියි (OK)</span>
-          <ArrowRight className="w-5 h-5 text-emerald-200" />
+          <span>හරි (Ok) ✔️</span>
         </button>
       </div>
     </div>

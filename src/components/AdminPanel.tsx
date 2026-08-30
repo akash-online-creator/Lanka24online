@@ -1,8 +1,19 @@
 import React, { useState } from 'react';
-import { User, Issue, Language, HelpPost, BlockedCredential, UserStatus, RegistrationConfig, CategoryItem, CustomFormField } from '../types';
+import { User, Issue, Language, HelpPost, BlockedCredential, UserStatus, RegistrationConfig, CategoryItem, CustomFormField, TagItem } from '../types';
 import { translations } from '../data/translations';
 import { initialRegistrationConfig, initialCategories } from '../data/initialData';
 import { AppLogo } from './AppLogo';
+import { MemoryStorageBar } from './MemoryStorageBar';
+import { generateAndDownloadUserPdf } from '../utils/pdfGenerator';
+import { fetchAllPostsBackupData, restorePostsBackupData } from '../lib/firebase';
+import { 
+  getStoredTags, 
+  saveTagsToStorage, 
+  addTagToStorage, 
+  updateTagInStorage, 
+  deleteTagFromStorage, 
+  purgeUnusedTagsFromStorage 
+} from '../utils/tagUtils';
 import { 
   Shield, 
   CheckCircle2, 
@@ -35,7 +46,22 @@ import {
   Compass,
   Smartphone,
   KeyRound,
-  Copy
+  Copy,
+  Tag,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RotateCcw,
+  Maximize2,
+  Download,
+  FileDown,
+  Loader2,
+  Image as ImageIcon,
+  RefreshCw,
+  CreditCard,
+  UserCheck2,
+  Database,
+  X
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -47,43 +73,96 @@ interface AdminPanelProps {
   onUpdateRegistrationConfig?: (config: RegistrationConfig) => void;
   categories?: CategoryItem[];
   onUpdateCategories?: (categories: CategoryItem[]) => void;
+  tags?: TagItem[];
+  onUpdateTags?: (tags: TagItem[]) => void;
   onApproveUser: (userId: string) => void;
   onRejectUser: (userId: string, reason?: string) => void;
   onUpdateUser?: (updatedUser: User) => void;
   onBlockUser?: (userId: string, reason: string) => void;
   onUnblockCredential?: (id: string) => void;
   onDeletePost?: (postId: string) => void;
+  onPermanentDeletePost?: (postId: string) => void;
+  onRestorePost?: (postId: string) => void;
   onUpdatePost?: (updatedPost: HelpPost) => void;
+  onRestoreAllPosts?: (posts: HelpPost[]) => void;
   onReplyIssue: (issueId: string, reply: string, resolve: boolean) => void;
   onSeedDemoData: () => void;
   language: Language;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  users,
-  issues,
+  users = [],
+  issues = [],
   helpPosts = [],
   blockedCredentials = [],
   registrationConfig,
   onUpdateRegistrationConfig,
   categories = initialCategories,
   onUpdateCategories,
+  tags,
+  onUpdateTags,
   onApproveUser,
   onRejectUser,
   onUpdateUser,
   onBlockUser,
   onUnblockCredential,
   onDeletePost,
+  onPermanentDeletePost,
+  onRestorePost,
   onUpdatePost,
+  onRestoreAllPosts,
   onReplyIssue,
   onSeedDemoData,
   language,
 }) => {
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
-    'pending' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit'
+    'pending' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit'
   >('pending');
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<string | null>(null);
+  
+  // High-Clarity Photo Inspector State for Admin Document Verification
+  interface PhotoInspectorState {
+    userName: string;
+    userId?: string;
+    nicNumber?: string;
+    facePhotoUrl?: string;
+    nicFrontPhotoUrl?: string;
+    nicBackPhotoUrl?: string;
+    activeType: 'face' | 'nicFront' | 'nicBack';
+    zoom: number; // 1, 1.25, 1.5, 2, 2.5, 3
+    rotation: number; // 0, 90, 180, 270
+  }
+  const [photoInspector, setPhotoInspector] = useState<PhotoInspectorState | null>(null);
+
+  const openInspectorForUser = (
+    user: User,
+    activeType: 'face' | 'nicFront' | 'nicBack' = 'nicFront'
+  ) => {
+    setPhotoInspector({
+      userName: user.name,
+      userId: user.userId,
+      nicNumber: user.nicNumber,
+      facePhotoUrl: (user.facePhotoUrl && user.facePhotoUrl.trim() !== '') ? user.facePhotoUrl : user.photoUrl,
+      nicFrontPhotoUrl: (user.nicFrontPhotoUrl && user.nicFrontPhotoUrl.trim() !== '') ? user.nicFrontPhotoUrl : user.idCardPhotoUrl,
+      nicBackPhotoUrl: user.nicBackPhotoUrl,
+      activeType,
+      zoom: 1,
+      rotation: 0,
+    });
+  };
+
+  const openInspectorSingleUrl = (url: string, title?: string) => {
+    if (!url || url.trim() === '') return;
+    setPhotoInspector({
+      userName: title || 'ඡායාරූපය (Photo Preview)',
+      facePhotoUrl: url,
+      activeType: 'face',
+      zoom: 1,
+      rotation: 0,
+    });
+  };
+
   const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState<string>('all');
@@ -134,7 +213,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // 03. Posts Management State
   const [postSearchQuery, setPostSearchQuery] = useState('');
+  const [adminPostFilter, setAdminPostFilter] = useState<'all' | 'active' | 'deleted'>('all');
   const [selectedPostForAdminEdit, setSelectedPostForAdminEdit] = useState<HelpPost | null>(null);
+  const [postToDelete, setPostToDelete] = useState<HelpPost | null>(null);
+  const [isPermanentDeleteRequested, setIsPermanentDeleteRequested] = useState(false);
+  const [adminActionNotification, setAdminActionNotification] = useState<string | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [editPostFormState, setEditPostFormState] = useState({
     whatHappened: '',
     whatIsNeeded: '',
@@ -145,9 +230,188 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     category: '',
   });
 
+  const handleBackupPosts = async () => {
+    try {
+      setIsBackingUp(true);
+      const backupObj = await fetchAllPostsBackupData(helpPosts);
+      const jsonString = JSON.stringify(backupObj, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.href = url;
+      link.download = `sahaya_seva_posts_backup_${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setAdminActionNotification(
+        `✅ පලකරන ලද සියලුම දැන්වීම්, ස්ථාන විස්තර, Chat history සහ ගණුදෙනු විස්තර (${backupObj.totalPostsCount} posts) සාර්ථකව Backup ලෙස Download කරන ලදී!`
+      );
+      setTimeout(() => setAdminActionNotification(null), 6000);
+    } catch (err) {
+      console.error('Backup error:', err);
+      alert('Backup සැකසීමේදී දෝෂයක් ඇතිවිය.');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestorePosts = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsRestoring(true);
+      const fileText = await file.text();
+      const parsedData = JSON.parse(fileText);
+
+      const res = await restorePostsBackupData(parsedData);
+
+      if (res.restoredPostsList.length > 0 && onRestoreAllPosts) {
+        onRestoreAllPosts(res.restoredPostsList);
+      } else if (res.restoredPostsList.length > 0 && onUpdatePost) {
+        res.restoredPostsList.forEach((p) => onUpdatePost(p));
+      }
+
+      setAdminActionNotification(
+        `✅ සාර්ථකයි! දැන්වීම් ${res.restoredPostsCount} ක් සහ Chat පණිවුඩ ${res.restoredMessagesCount} ක් සාර්ථකව Restore කරන ලදී!`
+      );
+      setTimeout(() => setAdminActionNotification(null), 7000);
+
+      alert(
+        `✅ Restore සාර්ථකයි!\n\n• Restore කළ දැන්වීම් ගණන: ${res.restoredPostsCount}\n• Restore කළ Chat පණිවුඩ ගණන: ${res.restoredMessagesCount}\n\nදැන්වීම් සහ Chat History පද්ධතියට සාර්ථකව ඇතුළත් විය!`
+      );
+    } catch (err) {
+      console.error('Restore error:', err);
+      alert('Restore කිරීමේදී දෝෂයක් ඇතිවිය. කරුණාකර වලංගු Backup JSON ගොනුවක් තෝරන්න.');
+    } finally {
+      setIsRestoring(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleExecuteDelete = (post: HelpPost, permanent: boolean = false) => {
+    if (permanent || post.isDeleted) {
+      if (onPermanentDeletePost) {
+        onPermanentDeletePost(post.id);
+      } else if (onDeletePost) {
+        onDeletePost(post.id);
+      }
+      setAdminActionNotification(`දැන්වීම #${post.postCode} පද්ධතියෙන් සම්පූර්ණයෙන්ම ඉවත් කරන ලදී (Permanently Deleted).`);
+    } else {
+      if (onDeletePost) {
+        onDeletePost(post.id);
+      }
+      setAdminActionNotification(`දැන්වීම #${post.postCode} සාර්ථකව Delete කර "🚨 Delete කළ දැන්වීම්" වෙත යවන ලදී.`);
+    }
+    setPostToDelete(null);
+    setIsPermanentDeleteRequested(false);
+    setTimeout(() => {
+      setAdminActionNotification(null);
+    }, 4500);
+  };
+
+  const handleExecuteRestore = (post: HelpPost) => {
+    if (onRestorePost) {
+      onRestorePost(post.id);
+    } else if (onUpdatePost) {
+      onUpdatePost({
+        ...post,
+        isDeleted: false,
+        deletedAt: undefined,
+        deletedBy: undefined,
+        status: 'active',
+      });
+    }
+    setAdminActionNotification(`දැන්වීම #${post.postCode} සාර්ථකව නැවත සක්‍රීය (Restore) කරන ලදී.`);
+    setTimeout(() => {
+      setAdminActionNotification(null);
+    }, 4500);
+  };
+
+  // 04. Tag Management State
+  const [tagItems, setTagItems] = useState<TagItem[]>(() => tags || getStoredTags());
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [showAddTagModal, setShowAddTagModal] = useState(false);
+  const [editingTagModal, setEditingTagModal] = useState<TagItem | null>(null);
+  const [tagFormState, setTagFormState] = useState({ tagName: '', category: '' });
+
+  const handlePurgeUnusedTags = () => {
+    const activePosts = helpPosts.filter((p) => !p.isDeleted);
+    const purgedTags = purgeUnusedTagsFromStorage(activePosts);
+    setTagItems(purgedTags);
+    if (onUpdateTags) onUpdateTags(purgedTags);
+    alert(`දැන්වීම් සඳහා ඇතුළත් නොකළ Tag සියල්ල සාර්ථකව ඉවත් කෙරිණි! (ඉතිරි Tag ගණන: ${purgedTags.length})`);
+  };
+
+  const handleCreateNewTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tagFormState.tagName.trim() || !tagFormState.category.trim()) {
+      alert('කරුණාකර Tag Name සහ Category දෙකම ඇතුළත් කරන්න.');
+      return;
+    }
+    const result = addTagToStorage(tagFormState.tagName, tagFormState.category);
+    setTagItems(result.allTags);
+    if (onUpdateTags) onUpdateTags(result.allTags);
+    setTagFormState({ tagName: '', category: '' });
+    setShowAddTagModal(false);
+    alert('නව Tag එක සාර්ථකව ඇතුළත් කරන ලදී!');
+  };
+
+  const handleSaveEditTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTagModal || !tagFormState.tagName.trim() || !tagFormState.category.trim()) return;
+
+    const oldTagName = editingTagModal.tagName;
+    const newName = tagFormState.tagName.trim();
+    const newCat = tagFormState.category.trim();
+
+    const updated = updateTagInStorage(editingTagModal.id, newName, newCat);
+    setTagItems(updated);
+    if (onUpdateTags) onUpdateTags(updated);
+
+    // Update existing posts that use this tag
+    helpPosts.forEach((post) => {
+      if (post.tagId === editingTagModal.id || post.tagName === oldTagName) {
+        if (onUpdatePost) {
+          onUpdatePost({
+            ...post,
+            tagName: newName,
+            tagCategory: newCat,
+          });
+        }
+      }
+    });
+
+    setEditingTagModal(null);
+    setTagFormState({ tagName: '', category: '' });
+    alert('Tag එක සහ අදාළ දැන්වීම් සියල්ල සාර්ථකව යාවත්කාලීන කරන ලදී!');
+  };
+
+  const handleDeleteTag = (tag: TagItem) => {
+    if (window.confirm(`"${tag.tagName} (${tag.category})" Tag එක ඉවත් කිරීමට තහවුරු කරන්නද?`)) {
+      const updated = deleteTagFromStorage(tag.id);
+      setTagItems(updated);
+      if (onUpdateTags) onUpdateTags(updated);
+      alert('Tag එක සාර්ථකව ඉවත් කරන ලදී!');
+    }
+  };
+
   const selectedCatObj = categoryItems.find((c) => c.id === selectedCatForFields) || categoryItems[0];
 
   const filteredHelpPosts = helpPosts.filter((post) => {
+    // 3 Days retention rule for deleted posts
+    if (post.isDeleted) {
+      const deletedTime = post.deletedAt ? new Date(post.deletedAt).getTime() : Date.now();
+      const isWithin3Days = Date.now() - deletedTime <= 3 * 24 * 60 * 60 * 1000;
+      if (!isWithin3Days) return false;
+      if (adminPostFilter === 'active') return false;
+    } else {
+      if (adminPostFilter === 'deleted') return false;
+    }
+
     const q = postSearchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -212,6 +476,109 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSelectedUserForModal(null);
   };
 
+  const [pdfGeneratingUserId, setPdfGeneratingUserId] = useState<string | null>(null);
+
+  const handleDownloadUserPdf = async (user: User) => {
+    try {
+      setPdfGeneratingUserId(user.id);
+      const success = await generateAndDownloadUserPdf(user);
+      if (success) {
+        const newCount = (user.pdfDownloadCount || 0) + 1;
+        const nowIso = new Date().toISOString();
+        const updatedUser: User = {
+          ...user,
+          pdfDownloadCount: newCount,
+          lastPdfDownloadedAt: nowIso,
+        };
+
+        if (onUpdateUser) {
+          onUpdateUser(updatedUser);
+        }
+
+        if (selectedUserForModal && selectedUserForModal.id === user.id) {
+          setSelectedUserForModal(updatedUser);
+          setEditingUserForm((prev) => ({
+            ...prev,
+            pdfDownloadCount: newCount,
+            lastPdfDownloadedAt: nowIso,
+          }));
+        }
+
+        alert(`✅ ${user.nicNumber || user.userId}.pdf ගොණුව සාර්ථකව බාගත කරන ලදී!\n(මෙම ගොණුව බාගත කළ මුළු වාර ගණන: ${newCount})`);
+      } else {
+        alert('PDF ගොනුව නිර්මාණය කිරීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      }
+    } catch (err) {
+      console.error('Error in handleDownloadUserPdf:', err);
+      alert('PDF ගොනුව බාගත කිරීමේදී දෝෂයක් ඇතිවිය.');
+    } finally {
+      setPdfGeneratingUserId(null);
+    }
+  };
+
+  const handlePurgePersonalDetails = (user: User) => {
+    const downloadCount = user.pdfDownloadCount || 0;
+    const confirmMessage = downloadCount > 0
+      ? `⚠️ අවධානයයි: ඔබ "${user.name}" (NIC: ${user.nicNumber}) ගේ ලියාපදිංචි පෞද්ගලික තොරතුරු (ඡායාරූප 3, ලිපිනය, උපන්දිනය, GPS ස්ථානය ආදිය) Delete කිරීමට නියමිතයි.\n\nමෙම තොරතුරු ඉවත් කළ පසු ඉතිරිවන්නේ Login වීමට අවශ්‍ය තොරතුරු (NIC, Phone, Key) පමණි.\n\n(PDF බාගත කළ වාර ගණන: ${downloadCount})\n\nමෙම ක්‍රියාව ස්ථිරවම සිදු කිරීමට අවශ්‍යද?`
+      : `⚠️ අවවාදයයි: ඔබ මෙම පරිශීලකයාගේ PDF එක තවම Download කර නොමැත (බාගත වාර ගණන: 0).\n\nපෞද්ගලික තොරතුරු Delete කිරීමට පෙර PDF ගොනුව බාගත කර තබා ගැනීම නිර්දේශ කෙරේ.\n\nඑසේ වුවද පෞද්ගලික තොරතුරු Delete කර Login තොරතුරු (NIC, Phone, Key) පමණක් ඉතිරි කිරීමට අවශ්‍යද?`;
+
+    if (!window.confirm(confirmMessage)) return;
+
+    const nowPurgedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const purgedUser: User = {
+      ...user,
+      // Retain login essentials only
+      id: user.id,
+      userId: user.userId,
+      nicNumber: user.nicNumber,
+      phone: user.phone,
+      whatsappNumber: user.whatsappNumber,
+      key: user.key,
+      securityCode: user.securityCode,
+      tempCode: user.tempCode,
+      isPasswordChanged: user.isPasswordChanged,
+      role: user.role,
+      status: user.status,
+      registeredAt: user.registeredAt,
+      name: user.name,
+      email: user.email,
+      pdfDownloadCount: user.pdfDownloadCount,
+      lastPdfDownloadedAt: user.lastPdfDownloadedAt,
+
+      // Purge personal info & photo data from memory storage
+      facePhotoUrl: '',
+      photoUrl: '',
+      nicFrontPhotoUrl: '',
+      nicBackPhotoUrl: '',
+      idCardPhotoUrl: '',
+      address: '',
+      birthDate: '',
+      surname: '',
+      lastName: '',
+      nearestTown: '',
+      registrationLat: undefined,
+      registrationLng: undefined,
+      registrationLocationName: '',
+      registrationAccuracy: undefined,
+      deviceInfo: '',
+
+      // Mark as purged
+      personalDetailsPurged: true,
+      personalDetailsPurgedAt: nowPurgedAt,
+    };
+
+    if (onUpdateUser) {
+      onUpdateUser(purgedUser);
+    }
+
+    if (selectedUserForModal && selectedUserForModal.id === user.id) {
+      setSelectedUserForModal(purgedUser);
+      setEditingUserForm({ ...purgedUser });
+    }
+
+    alert(`🛡️ පරිශීලක (${user.nicNumber}) ගේ පෞද්ගලික තොරතුරු සහ ඡායාරූප සාර්ථකව Delete කරන ලදී!\nදැන් පද්ධතියේ ඉතිරිව ඇත්තේ Login වීමට අවශ්‍ය තොරතුරු (NIC, Phone, Key) පමණි.`);
+  };
+
   // Get user's help posts
   const userPosts = helpPosts.filter(
     (post) =>
@@ -235,18 +602,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-emerald-100 font-medium">
-                සහන සේවා (Sahana Sewa) • පරිශීලක කළමනාකරණය, දැන්වීම් පරීක්ෂාව සහ ආරක්ෂක මධ්‍යස්ථානය
+                සහය සේවා (Sahaya Seva) • පරිශීලක කළමනාකරණය, දැන්වීම් පරීක්ෂාව සහ ආරක්ෂක මධ්‍යස්ථානය
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onSeedDemoData}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 transition-all text-xs font-extrabold cursor-pointer shadow-md active:scale-95"
-          >
-            <Sparkles className="w-4 h-4 text-emerald-600" />
-            <span>{t.quickSeedData}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleBackupPosts}
+              disabled={isBackingUp}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all text-xs font-black cursor-pointer shadow-md active:scale-95 disabled:opacity-50"
+              title="පලකරන ලද සියලුම දැන්වීම්, ස්ථාන, Chat history සහ ගණුදෙනු විස්තර Backup කරන්න"
+            >
+              {isBackingUp ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-900" />
+              ) : (
+                <Download className="w-4 h-4 text-slate-950" />
+              )}
+              <span>{isBackingUp ? 'Backup වෙමින්...' : '📦 Backup (දැන්වීම් + Chat)'}</span>
+            </button>
+
+            <label className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-300 hover:bg-emerald-200 text-slate-950 transition-all text-xs font-black cursor-pointer shadow-md active:scale-95">
+              {isRestoring ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-900" />
+              ) : (
+                <FileDown className="w-4 h-4 text-slate-950" />
+              )}
+              <span>{isRestoring ? 'Restore වෙමින්...' : '📥 Restore Backup'}</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleRestorePosts}
+                disabled={isRestoring}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              onClick={onSeedDemoData}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 transition-all text-xs font-extrabold cursor-pointer shadow-md active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span>{t.quickSeedData}</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Numbers Cards */}
@@ -302,6 +702,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Real-time Long-term Storage & Memory Bar */}
+      <MemoryStorageBar
+        helpPosts={helpPosts}
+        users={users}
+        categoryItems={categoryItems}
+        tagItems={tagItems}
+        issues={issues}
+        blockedCredentials={blockedCredentials}
+      />
 
       {/* Tabs Control */}
       <div className="flex flex-wrap border-b-2 border-emerald-200 gap-2">
@@ -396,6 +806,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('tags_edit')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'tags_edit'
+              ? 'bg-white border-emerald-500 text-emerald-900 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-slate-700 hover:bg-emerald-100 hover:text-emerald-900'
+          }`}
+        >
+          <Tag className="w-4 h-4 text-emerald-600" />
+          <span>Tag කළමනාකරණය (Tags)</span>
+          <span className="bg-emerald-800 text-white font-black text-[10px] px-2 py-0.5 rounded-full">
+            {tagItems.length}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('issues')}
           className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
             activeTab === 'issues'
@@ -440,11 +865,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   className="bg-white border-2 border-amber-300 rounded-3xl p-5 shadow-xl space-y-4 relative overflow-hidden"
                 >
                   <div className="flex justify-between items-start gap-3">
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 items-center">
                       <div
-                        onClick={() => setSelectedPhotoModal((user.photoUrl && user.photoUrl.trim() !== '') ? user.photoUrl : null)}
+                        onClick={() => openInspectorForUser(user, 'face')}
                         className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-md bg-slate-100 flex-shrink-0 cursor-pointer relative group"
-                        title="Click to expand photo"
+                        title="Click to inspect face photo in Full HD"
                       >
                         {user.photoUrl && user.photoUrl.trim() !== '' ? (
                           <img
@@ -457,8 +882,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {user.name.charAt(0)}
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-emerald-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <Eye className="w-5 h-5 text-white" />
+                        <div className="absolute inset-0 bg-emerald-950/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white">
+                          <Eye className="w-5 h-5 mb-0.5" />
+                          <span className="text-[9px] font-bold">HD</span>
                         </div>
                       </div>
 
@@ -478,6 +904,101 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span className="bg-amber-100 text-amber-900 border-2 border-amber-300 text-[10px] font-black px-2.5 py-1 rounded-full uppercase">
                       PENDING
                     </span>
+                  </div>
+
+                  {/* High-Clarity Registration Documents & Photos Inspection Bar */}
+                  <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950 p-3 rounded-2xl border-2 border-emerald-500/40 text-white space-y-2 shadow-inner">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold text-emerald-300 flex items-center gap-1.5 uppercase tracking-wider">
+                        <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>ලියාපදිංචි ලේඛන / ඡායාරූප (3 Documents)</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openInspectorForUser(user, 'nicFront')}
+                        className="text-[10px] font-bold text-emerald-200 bg-emerald-800/80 hover:bg-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-400/50 flex items-center gap-1 transition-all"
+                      >
+                        <Maximize2 className="w-3 h-3" />
+                        <span>පැහැදිලිව පරීක්ෂා කරන්න</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* 1. මුහුණේ ඡායාරූපය */}
+                      <div
+                        onClick={() => openInspectorForUser(user, 'face')}
+                        className="bg-slate-800/90 hover:bg-slate-700/90 border border-emerald-400/40 rounded-xl p-1.5 cursor-pointer group transition-all text-center flex flex-col items-center justify-between"
+                        title="Click to view Face Photo in HD"
+                      >
+                        <div className="w-full h-16 rounded-lg overflow-hidden bg-slate-900 mb-1 relative">
+                          {(user.facePhotoUrl || user.photoUrl) ? (
+                            <img
+                              src={user.facePhotoUrl || user.photoUrl}
+                              alt="Face"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">නැත</div>
+                          )}
+                          <div className="absolute inset-0 bg-emerald-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-emerald-300" />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-200 group-hover:text-emerald-300 line-clamp-1">
+                          👤 මුහුණ
+                        </span>
+                      </div>
+
+                      {/* 2. NIC ඉදිරිපස */}
+                      <div
+                        onClick={() => openInspectorForUser(user, 'nicFront')}
+                        className="bg-slate-800/90 hover:bg-slate-700/90 border border-emerald-400/40 rounded-xl p-1.5 cursor-pointer group transition-all text-center flex flex-col items-center justify-between"
+                        title="Click to view NIC Front Photo in HD"
+                      >
+                        <div className="w-full h-16 rounded-lg overflow-hidden bg-slate-900 mb-1 relative">
+                          {(user.nicFrontPhotoUrl || user.idCardPhotoUrl) ? (
+                            <img
+                              src={user.nicFrontPhotoUrl || user.idCardPhotoUrl}
+                              alt="NIC Front"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">නැත</div>
+                          )}
+                          <div className="absolute inset-0 bg-emerald-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-emerald-300" />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-200 group-hover:text-emerald-300 line-clamp-1">
+                          🪪 NIC ඉදිරිපස
+                        </span>
+                      </div>
+
+                      {/* 3. NIC පසුපස */}
+                      <div
+                        onClick={() => openInspectorForUser(user, 'nicBack')}
+                        className="bg-slate-800/90 hover:bg-slate-700/90 border border-emerald-400/40 rounded-xl p-1.5 cursor-pointer group transition-all text-center flex flex-col items-center justify-between"
+                        title="Click to view NIC Back Photo in HD"
+                      >
+                        <div className="w-full h-16 rounded-lg overflow-hidden bg-slate-900 mb-1 relative">
+                          {user.nicBackPhotoUrl ? (
+                            <img
+                              src={user.nicBackPhotoUrl}
+                              alt="NIC Back"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">නැත</div>
+                          )}
+                          <div className="absolute inset-0 bg-emerald-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-emerald-300" />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-200 group-hover:text-emerald-300 line-clamp-1">
+                          🪪 NIC පසුපස
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="bg-emerald-50/70 p-3 rounded-2xl text-xs space-y-1.5 border border-emerald-200 font-mono text-slate-800">
@@ -573,6 +1094,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <p className="text-[11px] text-amber-950 font-bold leading-relaxed bg-amber-200/40 p-2 rounded-xl border border-amber-300/60">
                       💡 පරිපාලක අවසරය (Accept) දුන් පසු, පරිශීලකයාට හැඳුනුම්පත් අංකය (NIC: <strong className="font-mono text-emerald-950">{user.nicNumber}</strong>) සහ මෙම <strong className="text-amber-900">අංක 6ක කේතය ({user.securityCode || user.tempCode || user.key || '123456'})</strong> ලබාදී Login විය හැක.
                     </p>
+                  </div>
+
+                  {/* PDF Download & Data Purge Bar for Pending User */}
+                  <div className="flex items-center justify-between gap-2 p-2 bg-emerald-950/80 rounded-xl border border-emerald-500/40 text-white">
+                    <button
+                      onClick={() => handleDownloadUserPdf(user)}
+                      disabled={pdfGeneratingUserId === user.id}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow transition-all disabled:opacity-50"
+                      title={`PDF බාගත කරන්න (${user.nicNumber}.pdf)`}
+                    >
+                      {pdfGeneratingUserId === user.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>Download PDF ({user.pdfDownloadCount || 0})</span>
+                    </button>
+
+                    {user.personalDetailsPurged ? (
+                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Data Purged</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handlePurgePersonalDetails(user)}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all"
+                        title="පෞද්ගලික තොරතුරු Delete කරන්න"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-400" />
+                        <span>Delete Data</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 pt-1">
@@ -673,8 +1227,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <img
                               src={(u.photoUrl && u.photoUrl.trim() !== '') ? u.photoUrl : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
                               alt={u.name}
-                              className="w-10 h-10 rounded-xl object-cover border-2 border-emerald-300 shadow-md cursor-pointer"
-                              onClick={() => setSelectedPhotoModal((u.photoUrl && u.photoUrl.trim() !== '') ? u.photoUrl : null)}
+                              className="w-10 h-10 rounded-xl object-cover border-2 border-emerald-300 shadow-md cursor-pointer hover:scale-105 transition-transform"
+                              onClick={() => openInspectorForUser(u, 'face')}
+                              title="Click to inspect user photos in HD"
                             />
                             <div>
                               <div className="flex items-center gap-1.5">
@@ -710,30 +1265,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </td>
 
                           <td className="p-4">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                                u.status === 'approved'
-                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                  : u.status === 'blocked'
-                                  ? 'bg-rose-100 text-rose-900 border border-rose-300 font-black animate-pulse'
-                                  : u.status === 'rejected'
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
-                              }`}
-                            >
-                              {u.status}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase text-center ${
+                                  u.status === 'approved'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : u.status === 'blocked'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300 font-black animate-pulse'
+                                    : u.status === 'rejected'
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                }`}
+                              >
+                                {u.status}
+                              </span>
+
+                              {u.personalDetailsPurged && (
+                                <span className="inline-flex items-center justify-center gap-1 text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded-md">
+                                  <Shield className="w-2.5 h-2.5 text-emerald-600" />
+                                  <span>Data Purged</span>
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              {/* PDF Download Button */}
+                              <button
+                                onClick={() => handleDownloadUserPdf(u)}
+                                disabled={pdfGeneratingUserId === u.id}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-[11px] shadow-sm transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title={`PDF බාගත කරන්න (${u.nicNumber}.pdf)`}
+                              >
+                                {pdfGeneratingUserId === u.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Download className="w-3.5 h-3.5" />
+                                )}
+                                <span>PDF ({u.pdfDownloadCount || 0})</span>
+                              </button>
+
                               {/* View & Edit Profile Button */}
                               <button
                                 onClick={() => handleOpenUserModal(u)}
                                 className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-[11px] border border-slate-300 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
                               >
                                 <Edit className="w-3.5 h-3.5 text-emerald-700" />
-                                <span>විස්තර / වෙනස් කරන්න</span>
+                                <span>විස්තර</span>
                               </button>
 
                               {/* Block / Unblock Button */}
@@ -907,8 +1486,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     "{issue.description}"
                   </p>
 
+                  {/* Issue Image Attachment if present */}
+                  {issue.attachmentUrl && (
+                    <div className="flex items-center gap-3 p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl">
+                      <div
+                        onClick={() => openInspectorSingleUrl(issue.attachmentUrl!, `Issue #${issue.issueCode} Attachment`)}
+                        className="w-16 h-16 rounded-xl overflow-hidden bg-black/80 border-2 border-emerald-400 cursor-pointer relative group shrink-0"
+                        title="Click to view HD Image"
+                      >
+                        <img
+                          src={issue.attachmentUrl}
+                          alt="Issue Attachment"
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-bold">
+                          HD
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-emerald-300 block">අමුණන ලද ඡායාරූපය / Screenshot</span>
+                        <button
+                          type="button"
+                          onClick={() => openInspectorSingleUrl(issue.attachmentUrl!, `Issue #${issue.issueCode} Attachment`)}
+                          className="text-[11px] text-cyan-400 font-bold hover:underline cursor-pointer flex items-center gap-1 mt-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>විශාල කර බලන්න (Inspect Image)</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap justify-between items-center text-xs text-slate-400 bg-slate-800/50 p-3 rounded-xl border border-white/5 font-mono">
-                    <span>පරිශීලක: <strong>{issue.userName}</strong> ({issue.userPhone})</span>
+                    <span>පරිශීලක: <strong>{issue.userName}</strong> • WhatsApp: <strong>{issue.userPhone}</strong></span>
                     <span>දිනය: {issue.createdAt}</span>
                   </div>
 
@@ -1278,13 +1888,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
               </div>
 
-              {selectedCatObj.customFields?.length === 0 ? (
+              {(!selectedCatObj.customFields || selectedCatObj.customFields.length === 0) ? (
                 <div className="p-8 text-center text-slate-600 font-bold bg-emerald-50/50 rounded-2xl border border-emerald-200">
                   මෙම Category එක සඳහා විශේෂිත Form Fields තවම සකසා නැත. "+ අලුත් Field එකක් එකතු කරන්න" ඔබන්න.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {selectedCatObj.customFields.map((f) => (
+                  {(selectedCatObj.customFields || []).map((f) => (
                     <div
                       key={f.id}
                       className="bg-emerald-50/60 border-2 border-emerald-200 rounded-2xl p-4 space-y-2 relative"
@@ -1319,7 +1929,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </button>
                           <button
                             onClick={() => {
-                              const updatedFields = selectedCatObj.customFields.filter((cf) => cf.id !== f.id);
+                              const updatedFields = (selectedCatObj.customFields || []).filter((cf) => cf.id !== f.id);
                               const updatedCatList = categoryItems.map((c) =>
                                 c.id === selectedCatObj.id ? { ...c, customFields: updatedFields } : c
                               );
@@ -1352,6 +1962,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Tab 7: Posts Management */}
       {activeTab === 'posts_edit' && (
         <div className="space-y-4">
+          {/* Admin Action Notification Alert */}
+          {adminActionNotification && (
+            <div className="bg-emerald-800 text-white p-3.5 rounded-2xl font-black text-xs flex items-center justify-between gap-2 shadow-lg border border-emerald-500 animate-fadeIn">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
+                <span>{adminActionNotification}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setAdminActionNotification(null)}
+                className="px-2 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-950 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <div className="bg-emerald-50 border-2 border-emerald-300 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-sm">
             <div>
               <h3 className="font-extrabold text-sm flex items-center gap-2">
@@ -1364,9 +1991,89 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* Dedicated Backup & Restore Card */}
+          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 border-2 border-amber-400/80 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 text-white shadow-2xl">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-300/50 flex items-center justify-center shrink-0 shadow-inner">
+                <Database className="w-6 h-6 text-amber-300" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-sm sm:text-base text-amber-200 flex items-center gap-2">
+                  <span>දැන්වීම් & Chat History Backup / Restore</span>
+                  <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    Full Data Backup
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-300 font-medium leading-relaxed">
+                  පලකරන ලද සියලුම දැන්වීම්, එම දැන්වීමට අදාළ සියලු විස්තර (දැන්වීම ලැයිස්තුගත ස්ථාන, Chat history, ගණුදෙනු) Backup කිරීමට හා Restore කිරීමට පහත බොත්තම් භාවිතා කරන්න.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={handleBackupPosts}
+                disabled={isBackingUp}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                {isBackingUp ? <Loader2 className="w-4 h-4 animate-spin text-slate-900" /> : <Download className="w-4 h-4 text-slate-900" />}
+                <span>{isBackingUp ? 'Backup වෙනවා...' : '📦 Backup කරන්න'}</span>
+              </button>
+
+              <label className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 cursor-pointer">
+                {isRestoring ? <Loader2 className="w-4 h-4 animate-spin text-slate-900" /> : <FileDown className="w-4 h-4 text-slate-900" />}
+                <span>{isRestoring ? 'Restore වෙනවා...' : '📥 Restore කරන්න'}</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleRestorePosts}
+                  disabled={isRestoring}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
           {/* Search & Filter */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border-2 border-emerald-200 shadow-md">
-            <div className="flex items-center gap-3 bg-emerald-50/80 px-4 py-2.5 rounded-xl border-2 border-emerald-200 w-full sm:w-80">
+            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setAdminPostFilter('all')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  adminPostFilter === 'all'
+                    ? 'bg-emerald-700 text-white shadow'
+                    : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                සියල්ල ({helpPosts.filter((p) => !p.isDeleted || (p.deletedAt && Date.now() - new Date(p.deletedAt).getTime() <= 3 * 86400000)).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminPostFilter('active')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  adminPostFilter === 'active'
+                    ? 'bg-emerald-700 text-white shadow'
+                    : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                සක්‍රීය ({helpPosts.filter((p) => !p.isDeleted).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminPostFilter('deleted')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  adminPostFilter === 'deleted'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'bg-rose-50 text-rose-900 border border-rose-200 hover:bg-rose-100'
+                }`}
+              >
+                🚨 Delete කළ දැන්වීම් ({helpPosts.filter((p) => p.isDeleted && p.deletedAt && Date.now() - new Date(p.deletedAt).getTime() <= 3 * 86400000).length})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 bg-emerald-50/80 px-4 py-2 rounded-xl border-2 border-emerald-200 w-full sm:w-72">
               <Search className="w-4 h-4 text-emerald-700" />
               <input
                 type="text"
@@ -1376,10 +2083,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="w-full bg-transparent text-slate-900 text-xs focus:outline-none placeholder-slate-500 font-bold"
               />
             </div>
-
-            <span className="text-xs font-mono font-bold text-slate-600">
-              එකතුව: {filteredHelpPosts.length} posts
-            </span>
           </div>
 
           {/* Posts Grid / Cards */}
@@ -1390,14 +2093,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <p className="text-sm font-bold">දැන්වීම් කිසිවක් හමු නොවීය.</p>
               </div>
             ) : (
-              filteredHelpPosts.map((post) => (
+              (filteredHelpPosts || []).map((post) => (
                 <div
                   key={post.id}
-                  className="bg-white border-2 border-emerald-200 rounded-3xl p-5 shadow-lg space-y-3 relative overflow-hidden"
+                  className={`bg-white border-2 ${
+                    post.isDeleted ? 'border-rose-400 bg-rose-50/20' : 'border-emerald-200'
+                  } rounded-3xl p-5 shadow-lg space-y-3 relative overflow-hidden`}
                 >
-                  <div className="flex justify-between items-start gap-2">
+                  {/* Deleted Banner Notice for Admin (Requirement 01) */}
+                  {post.isDeleted && (
+                    <div className="bg-rose-100 border-2 border-rose-500 text-rose-950 px-3.5 py-2 rounded-xl font-black text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+                      <span className="flex items-center gap-1.5 text-rose-900">
+                        <Trash2 className="w-4 h-4 text-rose-700" />
+                        <span>🚨 Delete කරන ලදි. ({post.deletedBy || 'පරිශීලකයා විසින් මකා දමන ලදි'} • දින 3ක් පාලක මණ්ඩලයේ පෙන්වයි)</span>
+                      </span>
+                      <span className="bg-rose-200 text-rose-900 font-mono text-[11px] px-2.5 py-0.5 rounded-lg border border-rose-300">
+                        {post.deletedAt ? new Date(post.deletedAt).toLocaleString('si-LK') : 'දැන්'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-2">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 font-mono text-[10px] font-black px-2.5 py-0.5 rounded-full">
                           {post.postCode}
                         </span>
@@ -1415,37 +2132,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </h4>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedPostForAdminEdit(post);
-                          setEditPostFormState({
-                            whatHappened: post.whatHappened,
-                            whatIsNeeded: post.whatIsNeeded,
-                            conditions: post.conditions || '',
-                            transport: post.transport,
-                            payment: post.payment,
-                            locationName: post.locationName,
-                            category: post.category || 'quick_services',
-                          });
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs flex items-center gap-1 shadow-md cursor-pointer transition-all"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>විස්තර Edit කරන්න</span>
-                      </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!post.isDeleted && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPostForAdminEdit(post);
+                            setEditPostFormState({
+                              whatHappened: post.whatHappened,
+                              whatIsNeeded: post.whatIsNeeded,
+                              conditions: post.conditions || '',
+                              transport: post.transport,
+                              payment: post.payment,
+                              locationName: post.locationName,
+                              category: post.category || 'quick_services',
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs flex items-center gap-1 shadow-md cursor-pointer transition-all active:scale-95"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>විස්තර Edit කරන්න</span>
+                        </button>
+                      )}
 
-                      <button
-                        onClick={() => {
-                          if (confirm(`ඔබට #${post.postCode} දැන්වීම පද්ධතියෙන් ඉවත් කිරීමට අවශ්‍යද?`)) {
-                            if (onDeletePost) onDeletePost(post.id);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs flex items-center gap-1 shadow-md cursor-pointer transition-all"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>ඉවත් කරන්න</span>
-                      </button>
+                      {post.isDeleted ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleExecuteRestore(post)}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+                            title="Restore Post to Active Feed"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>නැවත සක්‍රීය කරන්න</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPermanentDeleteRequested(true);
+                              setPostToDelete(post);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+                            title="Permanently Delete Post"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>සම්පූර්ණයෙන්ම ඉවත් කරන්න</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsPermanentDeleteRequested(false);
+                            setPostToDelete(post);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+                          title="Delete Post"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>ඉවත් කරන්න</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1540,31 +2288,161 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {modalSubTab === 'profile' ? (
                 <div className="space-y-5">
                   
-                  {/* Photo & Identity Document Previews */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/80 p-4 rounded-2xl border border-white/10">
-                    <div>
-                      <label className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1.5">
-                        ඡායාරූපය (User Profile Image)
-                      </label>
-                      <div className="w-full h-36 rounded-xl overflow-hidden bg-slate-800 border border-white/10 relative">
-                        <img
-                          src={(editingUserForm.photoUrl && editingUserForm.photoUrl.trim() !== '') ? editingUserForm.photoUrl : (selectedUserForModal.photoUrl && selectedUserForModal.photoUrl.trim() !== '') ? selectedUserForModal.photoUrl : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
-                          alt="Profile"
-                          className="w-full h-full object-cover"
-                        />
+                  {/* ADMIN PDF & DATA RETENTION / PURGE TOOLBAR */}
+                  <div className="bg-gradient-to-r from-slate-900 via-emerald-950/70 to-slate-900 border-2 border-emerald-500/50 p-4 rounded-2xl shadow-lg space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-500/40 shrink-0">
+                          <FileDown className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-white flex items-center gap-2">
+                            <span>පෞද්ගලික තොරතුරු PDF බාගත කිරීම සහ මතක ගබඩාව පාලනය</span>
+                            <span className="text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">
+                              File: {selectedUserForModal.nicNumber || selectedUserForModal.userId}.pdf
+                            </span>
+                          </h4>
+                          <p className="text-[11px] text-slate-300 mt-0.5">
+                            ලියාපදිංචි පෞද්ගලික විස්තර හා ඡායාරූප PDF එකක් ලෙස බාගත කර පෞද්ගලික තොරතුරු Delete කළ හැක.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Download Stats Badge */}
+                      <div className="flex items-center gap-2">
+                        <div className="bg-slate-950/90 px-3.5 py-1.5 rounded-xl border border-emerald-500/40 text-right">
+                          <span className="text-[10px] text-slate-400 block font-bold">බාගත කළ වාර ගණන:</span>
+                          <span className="text-xs font-black text-emerald-400 font-mono">
+                            {selectedUserForModal.pdfDownloadCount || 0} වතාවක්
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1.5">
-                        හැඳුනුම්පත් ඡායාරූපය (ID Document)
-                      </label>
-                      <div className="w-full h-36 rounded-xl overflow-hidden bg-slate-800 border border-white/10 relative">
-                        <img
-                          src={(selectedUserForModal.idCardPhotoUrl && selectedUserForModal.idCardPhotoUrl.trim() !== '') ? selectedUserForModal.idCardPhotoUrl : 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=400&q=80'}
-                          alt="ID Card"
-                          className="w-full h-full object-cover"
-                        />
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-emerald-500/20">
+                      {/* PDF Download Button */}
+                      <button
+                        onClick={() => handleDownloadUserPdf(selectedUserForModal)}
+                        disabled={pdfGeneratingUserId === selectedUserForModal.id}
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md border border-emerald-400/50 flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        {pdfGeneratingUserId === selectedUserForModal.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>PDF සකසමින් පවතී...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4 text-emerald-200" />
+                            <span>PDF බාගත කරන්න ({selectedUserForModal.nicNumber || selectedUserForModal.userId}.pdf)</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Delete / Purge Personal Info Button */}
+                      {selectedUserForModal.personalDetailsPurged ? (
+                        <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs px-3.5 py-2 rounded-xl font-bold">
+                          <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>
+                            පෞද්ගලික තොරතුරු ඉවත් කර ඇත ({selectedUserForModal.personalDetailsPurgedAt || 'දැනට'}) • Login තොරතුරු (NIC, Phone, Key) සුරක්ෂිතව පවතී
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handlePurgePersonalDetails(selectedUserForModal)}
+                          className="px-4 py-2.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-200 hover:text-white font-black text-xs border border-rose-600/50 flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title="ඡායාරූප, ලිපිනය හා GPS ස්ථානය ඉවත් කර Login තොරතුරු පමණක් ඉතිරි කරයි"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-400" />
+                          <span>පෞද්ගලික තොරතුරු Delete කරන්න (Purge Personal Data)</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Photo & Identity Document Previews - All 3 Documents */}
+                  <div className="space-y-2 bg-slate-900/90 p-4 rounded-2xl border border-emerald-500/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wider text-emerald-400 font-extrabold flex items-center gap-1.5">
+                        <ImageIcon className="w-4 h-4" />
+                        <span>ලියාපදිංචි ලේඛන සහ ඡායාරූප (3 Registration Documents)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        ක්ලික් කර HD විශාල කර බලන්න
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. මුහුණේ ඡායාරූපය */}
+                      <div
+                        onClick={() => openInspectorForUser(selectedUserForModal, 'face')}
+                        className="bg-slate-800/90 border border-white/10 hover:border-emerald-400 rounded-xl p-2 cursor-pointer group transition-all flex flex-col justify-between"
+                      >
+                        <label className="text-[11px] uppercase tracking-wider text-slate-300 font-bold block mb-1 text-center">
+                          👤 මුහුණේ ඡායාරූපය
+                        </label>
+                        <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-950 relative">
+                          <img
+                            src={(editingUserForm.photoUrl && editingUserForm.photoUrl.trim() !== '') ? editingUserForm.photoUrl : (selectedUserForModal.photoUrl && selectedUserForModal.photoUrl.trim() !== '') ? selectedUserForModal.photoUrl : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
+                            alt="Profile"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-emerald-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-emerald-200 text-xs font-bold gap-1">
+                            <ZoomIn className="w-4 h-4" />
+                            <span>HD Inspect</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. NIC ඉදිරිපස */}
+                      <div
+                        onClick={() => openInspectorForUser(selectedUserForModal, 'nicFront')}
+                        className="bg-slate-800/90 border border-white/10 hover:border-emerald-400 rounded-xl p-2 cursor-pointer group transition-all flex flex-col justify-between"
+                      >
+                        <label className="text-[11px] uppercase tracking-wider text-slate-300 font-bold block mb-1 text-center">
+                          🪪 NIC ඉදිරිපස (Front)
+                        </label>
+                        <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-950 relative">
+                          {(selectedUserForModal.nicFrontPhotoUrl || selectedUserForModal.idCardPhotoUrl) ? (
+                            <img
+                              src={(selectedUserForModal.nicFrontPhotoUrl && selectedUserForModal.nicFrontPhotoUrl.trim() !== '') ? selectedUserForModal.nicFrontPhotoUrl : (selectedUserForModal.idCardPhotoUrl && selectedUserForModal.idCardPhotoUrl.trim() !== '') ? selectedUserForModal.idCardPhotoUrl : 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=400&q=80'}
+                              alt="NIC Front"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">නැත</div>
+                          )}
+                          <div className="absolute inset-0 bg-emerald-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-emerald-200 text-xs font-bold gap-1">
+                            <ZoomIn className="w-4 h-4" />
+                            <span>HD Inspect</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3. NIC පසුපස */}
+                      <div
+                        onClick={() => openInspectorForUser(selectedUserForModal, 'nicBack')}
+                        className="bg-slate-800/90 border border-white/10 hover:border-emerald-400 rounded-xl p-2 cursor-pointer group transition-all flex flex-col justify-between"
+                      >
+                        <label className="text-[11px] uppercase tracking-wider text-slate-300 font-bold block mb-1 text-center">
+                          🪪 NIC පසුපස (Back)
+                        </label>
+                        <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-950 relative">
+                          {selectedUserForModal.nicBackPhotoUrl ? (
+                            <img
+                              src={selectedUserForModal.nicBackPhotoUrl}
+                              alt="NIC Back"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">පසුපස ඡායාරූපයක් නැත</div>
+                          )}
+                          <div className="absolute inset-0 bg-emerald-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-emerald-200 text-xs font-bold gap-1">
+                            <ZoomIn className="w-4 h-4" />
+                            <span>HD Inspect</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1765,7 +2643,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {userPosts.map((post) => (
+                      {(userPosts || []).map((post) => (
                         <div
                           key={post.id}
                           className="bg-slate-900/90 border border-white/10 rounded-2xl p-4 shadow-md space-y-3 relative"
@@ -1786,15 +2664,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
 
                             <button
+                              type="button"
                               onClick={() => {
-                                if (confirm(`ඔබට #${post.postCode} දැන්වීම පද්ධතියෙන් ඉවත් කිරීමට අවශ්‍යද?`)) {
-                                  if (onDeletePost) onDeletePost(post.id);
-                                }
+                                setIsPermanentDeleteRequested(false);
+                                setPostToDelete(post);
                               }}
-                              className="p-2 rounded-xl bg-red-600/20 text-red-400 hover:bg-red-600/40 border border-red-500/30 transition-all cursor-pointer"
+                              className="p-2 rounded-xl bg-red-600/20 text-red-400 hover:bg-red-600/40 border border-red-500/30 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
                               title="Delete Post"
                             >
                               <Trash2 className="w-4 h-4" />
+                              <span className="hidden sm:inline">ඉවත් කරන්න</span>
                             </button>
                           </div>
 
@@ -1850,21 +2729,369 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Image Modal Preview */}
-      {selectedPhotoModal && selectedPhotoModal.trim() !== '' && (
-        <div
-          onClick={() => setSelectedPhotoModal(null)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
-        >
-          <div className="max-w-md w-full bg-slate-900 border border-white/20 rounded-3xl p-4 shadow-2xl space-y-3">
-            <img
-              src={selectedPhotoModal}
-              alt="Enlarged User ID Photo"
-              className="w-full h-80 object-cover rounded-2xl"
-            />
-            <p className="text-center text-xs text-slate-400 font-mono">
-              Click anywhere to close preview
-            </p>
+      {/* Tab: Tag Management */}
+      {activeTab === 'tags_edit' && (
+        <div className="space-y-6">
+          {/* Top Info Banner & Action Controls */}
+          <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 border-2 border-emerald-500/40 p-6 rounded-3xl text-white shadow-xl space-y-4">
+            <div className="flex flex-wrap justify-between items-start gap-4">
+              <div className="space-y-1">
+                <h3 className="text-xl font-black flex items-center gap-2">
+                  <Tag className="w-6 h-6 text-emerald-400" />
+                  <span>Tag කළමනාකරණය (Tag Management)</span>
+                </h3>
+                <p className="text-xs text-slate-300">
+                  දැන්වීම් සදහා ඇතුලත් නොකල Tag සියල්ල ඉවත් කිරීම, වෙනස් කිරීම සහ නව Tag එකතු කිරීම මෙතැනින් සිදුකළ හැක.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handlePurgeUnusedTags}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                  title="Remove all tags not assigned to any post"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>දැන්වීම් සඳහා ඇතුළත් නොකළ Tag සියල්ල ඉවත් කරන්න</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setTagFormState({ tagName: '', category: '' });
+                    setShowAddTagModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>නව Tag එකක් එකතු කරන්න</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Stats Badges */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 p-3 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-300 uppercase font-bold block">මුළු Tag ගණන</span>
+                  <span className="text-xl font-black font-mono text-emerald-300">{tagItems.length}</span>
+                </div>
+                <Tag className="w-6 h-6 text-emerald-400 opacity-60" />
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 p-3 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-300 uppercase font-bold block">භාවිත කර ඇති Tags</span>
+                  <span className="text-xl font-black font-mono text-teal-300">
+                    {tagItems.filter((t) => helpPosts.some((p) => p.tagId === t.id || p.tagName?.toLowerCase() === t.tagName.toLowerCase())).length}
+                  </span>
+                </div>
+                <CheckCircle2 className="w-6 h-6 text-teal-400 opacity-60" />
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 p-3 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-300 uppercase font-bold block">භාවිත නොකළ Tags</span>
+                  <span className="text-xl font-black font-mono text-rose-300">
+                    {tagItems.filter((t) => !helpPosts.some((p) => p.tagId === t.id || p.tagName?.toLowerCase() === t.tagName.toLowerCase())).length}
+                  </span>
+                </div>
+                <AlertTriangle className="w-6 h-6 text-rose-400 opacity-60" />
+              </div>
+            </div>
+          </div>
+
+          {/* Tag Search Bar */}
+          <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={tagSearchQuery}
+                onChange={(e) => setTagSearchQuery(e.target.value)}
+                placeholder="Tag Name හෝ Category මඟින් සොයන්න..."
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600"
+              />
+            </div>
+
+            <div className="text-xs font-bold text-slate-500">
+              පෙන්වන්නේ Tags {tagItems.filter(t => 
+                !tagSearchQuery.trim() || 
+                t.tagName.toLowerCase().includes(tagSearchQuery.toLowerCase()) || 
+                t.category.toLowerCase().includes(tagSearchQuery.toLowerCase())
+              ).length} ක්
+            </div>
+          </div>
+
+          {/* Tags List Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {tagItems
+              .filter((t) => {
+                const q = tagSearchQuery.toLowerCase().trim();
+                if (!q) return true;
+                return t.tagName.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
+              })
+              .map((tag) => {
+                const usedInPostsCount = helpPosts.filter(
+                  (p) => p.tagId === tag.id || p.tagName?.toLowerCase() === tag.tagName.toLowerCase()
+                ).length;
+
+                return (
+                  <div
+                    key={tag.id}
+                    className="bg-white border-2 border-slate-200 hover:border-emerald-500 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-900 font-black text-xs rounded-xl border border-emerald-300">
+                          <Tag className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>{tag.tagName}</span>
+                        </span>
+
+                        <span
+                          className={`text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono ${
+                            usedInPostsCount > 0
+                              ? 'bg-teal-100 text-teal-800 border border-teal-300'
+                              : 'bg-slate-100 text-slate-500 border border-slate-200'
+                          }`}
+                        >
+                          {usedInPostsCount > 0 ? `දැන්වීම් ${usedInPostsCount} ක` : 'නොපවතී (0)'}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-slate-600 font-bold bg-slate-50 p-2 rounded-xl border border-slate-200">
+                        Category: <span className="text-slate-900 font-extrabold">{tag.category}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setEditingTagModal(tag);
+                          setTagFormState({ tagName: tag.tagName, category: tag.category });
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-900 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>වෙනස් කරන්න</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteTag(tag)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                        title="Delete Tag"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Ultra-Clear High-Resolution Photo & Document Inspector Modal */}
+      {photoInspector && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-between p-3 sm:p-5 animate-fadeIn select-none">
+          {/* Top Control Bar */}
+          <div className="w-full max-w-5xl bg-slate-900/95 border border-emerald-500/40 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xl shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-400 flex items-center justify-center text-emerald-300">
+                <ImageIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-white text-sm sm:text-base flex items-center gap-2">
+                  <span>{photoInspector.userName}</span>
+                  {photoInspector.userId && (
+                    <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded">
+                      ID: {photoInspector.userId}
+                    </span>
+                  )}
+                  {photoInspector.nicNumber && (
+                    <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded hidden sm:inline-block">
+                      NIC: {photoInspector.nicNumber}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-emerald-400 font-bold">
+                  {photoInspector.activeType === 'face' && '👤 මුහුණේ ඡායාරූපය (Face Photo)'}
+                  {photoInspector.activeType === 'nicFront' && '🪪 ජාතික හැඳුනුම්පත ඉදිරිපස (NIC Front)'}
+                  {photoInspector.activeType === 'nicBack' && '🪪 ජාතික හැඳුනුම්පත පසුපස (NIC Back)'}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Switcher Tabs between the user's 3 documents */}
+            {(photoInspector.facePhotoUrl || photoInspector.nicFrontPhotoUrl || photoInspector.nicBackPhotoUrl) && (
+              <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector((prev) => prev ? { ...prev, activeType: 'face', zoom: 1, rotation: 0 } : null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    photoInspector.activeType === 'face'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>1. මුහුණ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector((prev) => prev ? { ...prev, activeType: 'nicFront', zoom: 1, rotation: 0 } : null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    photoInspector.activeType === 'nicFront'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>2. NIC ඉදිරිපස</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector((prev) => prev ? { ...prev, activeType: 'nicBack', zoom: 1, rotation: 0 } : null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    photoInspector.activeType === 'nicBack'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>3. NIC පසුපස</span>
+                </button>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setPhotoInspector(null)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white flex items-center justify-center font-black transition-all cursor-pointer border border-white/10"
+              title="Close (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Central Ultra-HD Image Viewport */}
+          {(() => {
+            let activeUrl = photoInspector.facePhotoUrl;
+            if (photoInspector.activeType === 'nicFront') activeUrl = photoInspector.nicFrontPhotoUrl || photoInspector.facePhotoUrl;
+            if (photoInspector.activeType === 'nicBack') activeUrl = photoInspector.nicBackPhotoUrl || photoInspector.nicFrontPhotoUrl || photoInspector.facePhotoUrl;
+
+            return (
+              <div className="relative w-full max-w-5xl flex-1 flex items-center justify-center my-3 overflow-hidden rounded-3xl bg-slate-950/80 border border-white/10 shadow-2xl p-2 sm:p-4">
+                {activeUrl && activeUrl.trim() !== '' ? (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto">
+                    <img
+                      src={activeUrl}
+                      alt={photoInspector.userName}
+                      style={{
+                        transform: `scale(${photoInspector.zoom}) rotate(${photoInspector.rotation}deg)`,
+                        transition: 'transform 0.2s cubic-bezier(0.2, 0, 0.2, 1)',
+                        maxWidth: '100%',
+                        maxHeight: '72vh',
+                        objectFit: 'contain',
+                        imageRendering: 'auto',
+                      }}
+                      className="rounded-xl shadow-2xl select-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center text-slate-400 space-y-2 p-8">
+                    <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto" />
+                    <p className="font-bold text-sm">මෙම ලේඛනය සඳහා ඡායාරූපයක් උඩුගත කර නොමැත.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Bottom Zoom & Inspection Controls Toolbar */}
+          <div className="w-full max-w-5xl bg-slate-900/95 border border-emerald-500/40 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-2xl shrink-0">
+            <div className="flex items-center gap-2">
+              {/* Zoom Out */}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector((prev) => prev ? { ...prev, zoom: Math.max(0.5, prev.zoom - 0.25) } : null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/10 cursor-pointer"
+                title="Zoom Out (-)"
+              >
+                <ZoomOut className="w-4 h-4" />
+                <span>Zoom -</span>
+              </button>
+
+              {/* Zoom Level Indicator */}
+              <span className="font-mono text-xs font-extrabold text-emerald-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-emerald-500/40 min-w-[65px] text-center">
+                {Math.round(photoInspector.zoom * 100)}%
+              </span>
+
+              {/* Zoom In */}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector((prev) => prev ? { ...prev, zoom: Math.min(3.5, prev.zoom + 0.25) } : null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/10 cursor-pointer"
+                title="Zoom In (+)"
+              >
+                <ZoomIn className="w-4 h-4" />
+                <span>Zoom +</span>
+              </button>
+
+              {/* Reset View */}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector((prev) => prev ? { ...prev, zoom: 1, rotation: 0 } : null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/10 cursor-pointer"
+                title="Reset View"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reset</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Rotate Left */}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector((prev) => prev ? { ...prev, rotation: (prev.rotation - 90 + 360) % 360 } : null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/10 cursor-pointer"
+                title="Rotate -90°"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>-90°</span>
+              </button>
+
+              {/* Rotate Right */}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector((prev) => prev ? { ...prev, rotation: (prev.rotation + 90) % 360 } : null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1 transition-all border border-white/10 cursor-pointer"
+                title="Rotate +90°"
+              >
+                <RotateCw className="w-4 h-4" />
+                <span>+90°</span>
+              </button>
+
+              {/* Open in New Window */}
+              {(() => {
+                let currentUrl = photoInspector.facePhotoUrl;
+                if (photoInspector.activeType === 'nicFront') currentUrl = photoInspector.nicFrontPhotoUrl || photoInspector.facePhotoUrl;
+                if (photoInspector.activeType === 'nicBack') currentUrl = photoInspector.nicBackPhotoUrl || photoInspector.nicFrontPhotoUrl || photoInspector.facePhotoUrl;
+
+                if (!currentUrl) return null;
+
+                return (
+                  <a
+                    href={currentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black flex items-center gap-1 transition-all border border-emerald-500 shadow-md"
+                    title="Open Full Image in New Tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>New Tab</span>
+                  </a>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}
@@ -2142,7 +3369,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   let updatedFields: CustomFormField[];
 
                   if (editingFieldModal) {
-                    updatedFields = selectedCatObj.customFields.map((f) =>
+                    updatedFields = (selectedCatObj.customFields || []).map((f) =>
                       f.id === editingFieldModal.id
                         ? {
                             ...f,
@@ -2296,6 +3523,175 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs shadow-md"
               >
                 වෙනස්කම් සුරකින්න
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Tag Modal */}
+      {(showAddTagModal || editingTagModal) && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border-2 border-emerald-500 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Tag className="w-5 h-5 text-emerald-700" />
+                <span>{editingTagModal ? 'Tag එක වෙනස් කරන්න (Edit Tag)' : 'නව Tag එකක් එකතු කරන්න (Add Tag)'}</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddTagModal(false);
+                  setEditingTagModal(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={editingTagModal ? handleSaveEditTag : handleCreateNewTag} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-extrabold text-slate-800 mb-1">
+                  01. Tag Name (English / Singlish)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tagFormState.tagName}
+                  onChange={(e) => setTagFormState({ ...tagFormState, tagName: e.target.value })}
+                  placeholder="e.g. Vehicle Repair, Food, Plumbing"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div>
+                <label className="block font-extrabold text-slate-800 mb-1">
+                  02. Category (සිංහල)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tagFormState.category}
+                  onChange={(e) => setTagFormState({ ...tagFormState, category: e.target.value })}
+                  placeholder="e.g. වාහන අලුත්වැඩියාව, කෑම, ජලනල සේවා"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div className="pt-3 border-t flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddTagModal(false);
+                    setEditingTagModal(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs shadow-md cursor-pointer"
+                >
+                  {editingTagModal ? 'සුරකින්න (Save Changes)' : 'ඇතුළත් කරන්න (Create Tag)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN POST DELETE CONFIRMATION MODAL */}
+      {postToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white dark:bg-[#071a10] border-2 border-rose-500/80 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <div className="flex justify-between items-center border-b border-rose-200 dark:border-rose-900 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800">
+                  <Trash2 className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    {isPermanentDeleteRequested || postToDelete.isDeleted
+                      ? 'දැන්වීම සම්පූර්ණයෙන්ම ඉවත් කිරීම'
+                      : 'දැන්වීම මකා දැමීම (Admin Delete)'}
+                  </h3>
+                  <span className="font-mono text-xs font-bold text-rose-600 dark:text-rose-400">
+                    #{postToDelete.postCode}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPostToDelete(null);
+                  setIsPermanentDeleteRequested(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold cursor-pointer transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-2xl space-y-1.5">
+                <div className="flex items-center gap-2 text-rose-900 dark:text-rose-200 font-extrabold text-sm">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>
+                    {isPermanentDeleteRequested || postToDelete.isDeleted
+                      ? 'මෙම දැන්වීම පද්ධතියෙන් සම්පූර්ණයෙන්ම මැකීමට අවශ්‍යද?'
+                      : 'ඔබට මෙම දැන්වීම පද්ධතියෙන් ඉවත් කිරීමට අවශ්‍යද?'}
+                  </span>
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                  {isPermanentDeleteRequested || postToDelete.isDeleted
+                    ? 'මෙමගින් දැන්වීම සහ අදාළ තොරතුරු සියල්ල සදහටම මැකී යනු ඇත.'
+                    : 'දැන්වීම සජීවී පුවරුවෙන් (Feed) ඉවත් වන අතර, පරිපාලක (Admin) සඳහා "🚨 Delete කළ දැන්වීම්" යටතේ දින 3ක් පවතිනු ඇත.'}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/90 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">පරිශීලක:</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">{postToDelete.userName} ({postToDelete.userPhone})</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">ස්ථානය:</span>
+                  <span className="font-extrabold text-emerald-600">{postToDelete.locationName}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-700 dark:text-slate-300 block mb-0.5">විස්තරය:</span>
+                  <p className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2 bg-white dark:bg-slate-950 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    {postToDelete.whatHappened}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setPostToDelete(null);
+                  setIsPermanentDeleteRequested(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 cursor-pointer"
+              >
+                අවලංගු කරන්න
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExecuteDelete(postToDelete, isPermanentDeleteRequested || postToDelete.isDeleted)}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-lg flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>
+                  {isPermanentDeleteRequested || postToDelete.isDeleted
+                    ? 'ඔව්, සම්පූර්ණයෙන්ම Delete කරන්න'
+                    : 'ඔව්, ඉවත් කරන්න'}
+                </span>
               </button>
             </div>
           </div>
