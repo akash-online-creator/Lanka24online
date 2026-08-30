@@ -550,8 +550,8 @@ export default function App() {
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Navigation Header */}
-      {viewMode !== 'login' && (
+      {/* Navigation Header (For non-dashboard views like Register, Pending, Admin, Issues) */}
+      {viewMode !== 'login' && viewMode !== 'dashboard' && (
         <Header
           language={language}
           setLanguage={setLanguage}
@@ -673,6 +673,10 @@ export default function App() {
             onDeletePost={handleDeletePost}
             onPermanentDeletePost={handlePermanentDeletePost}
             onUpdatePost={handleUpdatePost}
+            onLogout={handleLogout}
+            activeRoleView={activeRoleView}
+            setActiveRoleView={setActiveRoleView}
+            onNavigate={handleNavigate}
           />
         )}
       </main>

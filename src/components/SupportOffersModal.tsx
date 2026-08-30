@@ -8,7 +8,11 @@ import {
   UserCheck,
   Check,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  UserX,
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { HelpPost, PostReply, Language, LocationOption } from '../types';
 import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
@@ -23,6 +27,7 @@ interface SupportOffersModalProps {
   onOpenChat?: (post: HelpPost) => void;
   onOpenConfirm?: (post: HelpPost, reply?: PostReply) => void;
   onSelectHelper?: (post: HelpPost, reply: PostReply) => void;
+  onCancelOffer?: (post: HelpPost, reply: PostReply) => void;
   targetPost?: HelpPost | null;
 }
 
@@ -41,10 +46,12 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   onOpenChat,
   onOpenConfirm,
   onSelectHelper,
+  onCancelOffer,
   targetPost,
 }) => {
   const [selectedPostIdFilter, setSelectedPostIdFilter] = useState<string>('all');
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [confirmingCancelOffer, setConfirmingCancelOffer] = useState<{ post: HelpPost; reply: PostReply } | null>(null);
 
   useEffect(() => {
     if (targetPost) {
@@ -53,6 +60,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
       setSelectedPostIdFilter('all');
     }
     setSuccessToast(null);
+    setConfirmingCancelOffer(null);
   }, [isOpen, targetPost]);
 
   if (!isOpen) return null;
@@ -145,6 +153,18 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     }, 5000);
   };
 
+  const handleConfirmCancel = (post: HelpPost, reply: PostReply) => {
+    const helperName = reply.responderName || 'සහායකයා';
+    if (onCancelOffer) {
+      onCancelOffer(post, reply);
+    }
+    setConfirmingCancelOffer(null);
+    setSuccessToast(`"${helperName}" ගේ කැමැත්ත දැක්වීම සාර්ථකව ඉවත් කරන ලදී.`);
+    setTimeout(() => {
+      setSuccessToast(null);
+    }, 4000);
+  };
+
   const vLat = viewerLocation?.lat || 7.1710;
   const vLng = viewerLocation?.lng || 79.8986;
   const vName = viewerLocation?.nameSi || 'ඔබ සිටින ස්ථානය';
@@ -153,8 +173,50 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
       <div 
         id="support-offers-modal"
-        className="w-full max-w-xl bg-white dark:bg-[#071710] border-2 border-orange-500/40 dark:border-orange-500/30 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-all"
+        className="w-full max-w-xl bg-white dark:bg-[#071710] border-2 border-orange-500/40 dark:border-orange-500/30 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-all relative"
       >
+        {/* Cancel Confirmation Dialog Overlay inside Modal */}
+        {confirmingCancelOffer && (
+          <div className="absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-sm p-4 sm:p-6 flex items-center justify-center animate-fadeIn">
+            <div className="w-full max-w-md bg-white dark:bg-[#0c1f15] border-2 border-rose-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-center animate-scaleUp">
+              <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center shadow-inner">
+                <Trash2 className="w-7 h-7 animate-bounce" />
+              </div>
+              
+              <div className="space-y-1.5">
+                <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  {lang === 'en' ? 'Cancel Support Offer?' : lang === 'ta' ? 'உதவி விருப்பத்தை ரத்து செய்யவா?' : 'කැමැත්ත දැක්වීම ඉවත් කරන්නද?'}
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  <span className="font-bold text-rose-600 dark:text-rose-400">"{confirmingCancelOffer.reply.responderName || 'සහායකයා'}"</span>
+                  {lang === 'en' 
+                    ? ' will be removed from your received support offers for this request.' 
+                    : lang === 'ta'
+                    ? ' இந்த கோரிக்கையிலிருந்து நீக்கப்படுவார்.'
+                    : ' විසින් ඉදිරිපත් කළ සහය වීමේ කැමැත්ත ඔබගේ දැන්වීමේ ලැයිස්තුවෙන් ඉවත් කරනු ඇත.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingCancelOffer(null)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-all active:scale-95"
+                >
+                  {lang === 'en' ? 'Back' : lang === 'ta' ? 'பின்செல்' : 'අවලංගුයි'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmCancel(confirmingCancelOffer.post, confirmingCancelOffer.reply)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs cursor-pointer shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{lang === 'en' ? 'Yes, Cancel' : lang === 'ta' ? 'ஆம், நீக்கு' : 'ඔව්, ඉවත් කරන්න'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Modal Header */}
         <div className="px-5 py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white flex items-center justify-between shadow-md shrink-0">
           <div className="flex items-center gap-3">
@@ -331,29 +393,42 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                     )}
                   </div>
 
-                  {/* 4. "තෝරාගන්න" ලෙස ඇති බොත්තම පමණි */}
-                  <div className="pt-1">
+                  {/* 4. Action Buttons: 'තෝරාගන්න' (Select) and 'ඉවත් කරන්න' (Cancel) */}
+                  <div className="pt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Select / Accepted Button */}
                     <button
                       type="button"
                       onClick={() => handleSelectAction(off.post, off.reply)}
                       disabled={off.isSelected}
-                      className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] shadow-md ${
+                      className={`w-full py-2.5 sm:py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98] shadow-sm ${
                         off.isSelected
                           ? 'bg-emerald-600 text-white cursor-default opacity-95'
                           : 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/20 hover:shadow-emerald-600/40 border border-emerald-400/40'
                       }`}
+                      title={off.isSelected ? 'මෙම සහායකයා තෝරාගෙන ඇත' : 'මෙම සහායකයාව තෝරාගන්න'}
                     >
                       {off.isSelected ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                          <span>තෝරාගන්න</span>
+                          <span>{lang === 'en' ? 'Selected' : lang === 'ta' ? 'தேர்வு' : 'තෝරාගෙන ඇත'}</span>
                         </>
                       ) : (
                         <>
                           <UserCheck className="w-4 h-4 text-white" />
-                          <span>තෝරාගන්න</span>
+                          <span>{lang === 'en' ? 'Select Helper' : lang === 'ta' ? 'தேர்வு செய்க' : 'තෝරාගන්න'}</span>
                         </>
                       )}
+                    </button>
+
+                    {/* Cancel / Remove Offer Button */}
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingCancelOffer({ post: off.post, reply: off.reply })}
+                      className="w-full py-2.5 sm:py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-[0.98] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-300 border border-rose-300/80 dark:border-rose-800/80 shadow-xs hover:shadow-sm group"
+                      title="මෙම පුද්ගලයාගේ සහය වීමේ ඉල්ලීම ඉවත් කරන්න"
+                    >
+                      <UserX className="w-4 h-4 text-rose-500 group-hover:scale-110 transition-transform" />
+                      <span>{lang === 'en' ? 'Cancel' : lang === 'ta' ? 'ரத்து செய்' : 'ඉවත් කරන්න'}</span>
                     </button>
                   </div>
                 </div>

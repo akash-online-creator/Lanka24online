@@ -3,7 +3,7 @@ import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryIte
 import { translations } from '../data/translations';
 import { initialLocations } from '../data/initialData';
 import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
-import { LocationBar } from './LocationBar';
+import { UnifiedDashboardHeader } from './UnifiedDashboardHeader';
 import { GlowingNeedHelpBtn } from './GlowingNeedHelpBtn';
 import { PostCard } from './PostCard';
 import { HelpPostModal } from './HelpPostModal';
@@ -72,6 +72,10 @@ interface UserDashboardProps {
   onDeletePost?: (postId: string) => void;
   onPermanentDeletePost?: (postId: string) => void;
   onUpdatePost?: (updatedPost: HelpPost) => void;
+  onLogout?: () => void;
+  activeRoleView?: any;
+  setActiveRoleView?: (role: any) => void;
+  onNavigate?: (view: any) => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -86,6 +90,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onDeletePost: propOnDeletePost,
   onPermanentDeletePost: propOnPermanentDeletePost,
   onUpdatePost: propOnUpdatePost,
+  onLogout,
+  activeRoleView,
+  setActiveRoleView,
+  onNavigate,
 }) => {
   const t = translations[language];
 
@@ -604,6 +612,60 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     }
   };
 
+  // Helper function to cancel / remove an unwanted helper offer / response
+  const handleCancelHelperOffer = async (post: HelpPost, reply: PostReply) => {
+    const updatedReplies = (post.replies || []).filter((r) => 
+      r.id !== reply.id && (reply.id !== 'confirmed_helper' || r.responderName !== reply.responderName)
+    );
+    const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
+    const acceptedCount = updatedReplies.filter((r) => r.isAccepted || r.isConfirmed).length;
+    const isComplete = acceptedCount >= neededHelpers;
+
+    const wasThisReplyConfirmed = Boolean(
+      reply.isAccepted || 
+      reply.isConfirmed || 
+      post.confirmedHelperName === reply.responderName || 
+      post.confirmedBy === reply.responderName
+    );
+
+    const updatedPost: HelpPost = {
+      ...post,
+      replies: updatedReplies,
+      repliesCount: updatedReplies.length,
+      helpersCount: Math.max(1, updatedReplies.length + 1),
+      helpersAccepted: acceptedCount,
+      isConfirmed: isComplete ? true : (wasThisReplyConfirmed ? false : (post.isConfirmed ?? false)),
+      confirmedBy: wasThisReplyConfirmed && !isComplete ? '' : (post.confirmedBy || ''),
+      confirmedHelperName: wasThisReplyConfirmed && !isComplete ? '' : (post.confirmedHelperName || ''),
+      confirmedHelperPhone: wasThisReplyConfirmed && !isComplete ? '' : (post.confirmedHelperPhone || ''),
+      status: isComplete ? 'confirmed' : (post.status === 'confirmed' && wasThisReplyConfirmed ? 'active' : (post.status || 'active')),
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updatedPost);
+    } else {
+      setLocalHelpPosts((prev) =>
+        (prev || []).map((p) => (p.id === post.id ? updatedPost : p))
+      );
+    }
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+        helpersCount: Math.max(1, updatedReplies.length + 1),
+        helpersAccepted: acceptedCount,
+        isConfirmed: updatedPost.isConfirmed,
+        confirmedBy: updatedPost.confirmedBy,
+        confirmedHelperName: updatedPost.confirmedHelperName,
+        confirmedHelperPhone: updatedPost.confirmedHelperPhone,
+        status: updatedPost.status,
+      });
+    } catch (err) {
+      console.error('Failed to remove helper offer from Firestore:', err);
+    }
+  };
+
   const handleCompleteHelpPost = async (completedPost: HelpPost) => {
     const helperName = user?.name || completedPost.confirmedHelperName || 'සහායකයා';
     const helperPhone = user?.phone || completedPost.confirmedHelperPhone || '';
@@ -909,78 +971,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   ];
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-4 space-y-8 animate-fadeIn">
-      {/* 1. Welcome User Banner */}
-      <div className="bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] rounded-3xl p-5 sm:p-6 shadow-sm backdrop-blur-xl flex flex-wrap justify-between items-center gap-4">
-        <div className="flex flex-wrap items-center gap-4 min-w-0">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#007a4b]/40 shadow-sm bg-slate-100 dark:bg-slate-800 flex-shrink-0">
-            {user.photoUrl && user.photoUrl.trim() !== '' ? (
-              <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-2xl">
-                {user.name.charAt(0)}
-              </div>
-            )}
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <span className="text-[11px] bg-[#007a4b]/15 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
-                <span>VERIFIED USER</span>
-              </span>
-              <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 font-bold">ID: {user.userId}</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white break-words">
-              {t.welcomeUser}, {user.name}!
-            </h2>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => {
-              setTargetPostForOffers(null);
-              setIsSupportOffersModalOpen(true);
-            }}
-            className="relative flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs cursor-pointer shadow-md hover:shadow-lg transition-all active:scale-95 border border-orange-400/40"
-            title="කැමැත්ත දැක්වූවන් (සහය වීමට කැමැත්ත පළකළ පුද්ගලයින්)"
-          >
-            <div className="relative">
-              <HeartHandshake className="w-4 h-4 text-white" />
-              {totalUserReplies > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
-              )}
-            </div>
-            <span>කැමැත්ත දැක්වූවන්</span>
-            {totalUserReplies > 0 && (
-              <span className="bg-white text-orange-700 text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm font-mono animate-bounce">
-                {totalUserReplies}
-              </span>
-            )}
-          </button>
-
-          <button
-            id="volunteer-support-btn"
-            onClick={() => setIsVolunteerSupportModalOpen(true)}
-            className="relative flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs cursor-pointer shadow-md hover:shadow-lg transition-all active:scale-95 border border-emerald-400/40"
-            title="සහය වන්න (අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්)"
-          >
-            <div className="relative">
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              {selectedAsHelperCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />
-              )}
-            </div>
-            <span>සහය වන්න</span>
-            {selectedAsHelperCount > 0 && (
-              <span className="bg-amber-400 text-slate-950 text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm font-mono animate-bounce">
-                {selectedAsHelperCount}
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
+    <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
+      {/* 1. Integrated Unified Top Header Card (Combines Logo, User Info, Location/Address, App Help, and Controls) */}
+      <UnifiedDashboardHeader
+        user={user}
+        currentLocation={currentLocation}
+        availableLocations={initialLocations}
+        onSelectLocation={setCurrentLocation}
+        language={language}
+        setLanguage={setLanguage || (() => {})}
+        theme={theme || 'light'}
+        toggleTheme={toggleTheme || (() => {})}
+        onNavigateToIssues={onNavigateToIssues}
+        onLogout={onLogout}
+        activeRoleView={activeRoleView}
+        setActiveRoleView={setActiveRoleView}
+        onNavigate={onNavigate}
+        isAutoLoadingLocation={isAutoLoadingLocation}
+        autoLoadedNotice={autoLocationMsg}
+      />
 
       {/* Confirmed Helper Notice Banner (Requirement 04) */}
       {postsWhereIWasSelected.length > 0 && (
@@ -1007,17 +1016,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           </button>
         </div>
       )}
-
-      {/* 2. Step 2.1: Location Button Component with Auto-load GPS */}
-      <LocationBar
-        currentLocation={currentLocation}
-        availableLocations={initialLocations}
-        onSelectLocation={setCurrentLocation}
-        lang={language}
-        theme={theme}
-        isAutoLoading={isAutoLoadingLocation}
-        autoLoadedNotice={autoLocationMsg}
-      />
 
       {dashboardView === 'requests' ? (
         <HelpRequestsPage
@@ -1068,6 +1066,95 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               />
             }
           />
+
+          {/* 3.1 Two Prominent Main Buttons: 'කැමැත්ත දැක්වූවන්' & 'සහය වන්න' */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-1">
+            {/* Button 1: කැමැත්ත දැක්වූවන් (Support Offers) */}
+            <button
+              type="button"
+              onClick={() => {
+                setTargetPostForOffers(null);
+                setIsSupportOffersModalOpen(true);
+              }}
+              className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-orange-400/50 flex items-center justify-between cursor-pointer"
+              title="සහය වීමට කැමැත්ත පළකළ අය"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                  <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-100 transition-colors">
+                      {language === 'en' ? 'Support Offers' : language === 'ta' ? 'விருப்பம் தெரிவித்தோர்' : 'කැමැත්ත දැක්වූවන්'}
+                    </h3>
+                    {totalUserReplies > 0 && (
+                      <span className="bg-white text-orange-700 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
+                        {totalUserReplies} {language === 'en' ? 'New' : language === 'ta' ? 'புதிய' : 'නව'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-orange-100/90 font-medium truncate">
+                    {language === 'en' 
+                      ? 'People willing to help your requests' 
+                      : language === 'ta' 
+                      ? 'உங்கள் கோரிக்கைகளுக்கு உதவ முன்வந்தோர்' 
+                      : 'ඔබේ ඉල්ලීම් සඳහා සහය වීමට ඉදිරිපත් වූ අය'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-orange-600 font-black flex items-center justify-center shadow-md group-hover:bg-amber-100 transition-colors">
+                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+            </button>
+
+            {/* Button 2: සහය වන්න (Volunteer / Help Others) */}
+            <button
+              id="volunteer-support-btn"
+              type="button"
+              onClick={() => setIsVolunteerSupportModalOpen(true)}
+              className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-emerald-400/50 flex items-center justify-between cursor-pointer"
+              title="අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-200 transition-colors">
+                      {language === 'en' ? 'Lend Support / Help' : language === 'ta' ? 'உதவி செய்யுங்கள்' : 'සහය වන්න'}
+                    </h3>
+                    {selectedAsHelperCount > 0 && (
+                      <span className="bg-amber-300 text-slate-950 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
+                        {selectedAsHelperCount} {language === 'en' ? 'Selected' : language === 'ta' ? 'தேர்வு' : 'තේරී ඇත'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-emerald-100/90 font-medium truncate">
+                    {language === 'en' 
+                      ? 'Help others & view requests where you are selected' 
+                      : language === 'ta' 
+                      ? 'மற்றவர்களுக்கு உதவுங்கள் மற்றும் தேர்ந்தெடுக்கப்பட்ட கோரிக்கைகள்' 
+                      : 'අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#007a4b] font-black flex items-center justify-center shadow-md group-hover:bg-amber-300 group-hover:text-slate-950 transition-colors">
+                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+            </button>
+          </div>
 
           {/* 3.1 Wide Button: "උපකාර ඉල්ලීම් සඳහා" (Navigate to Help Requests Page) */}
           <div className="w-full pt-1 pb-2">
@@ -1402,6 +1489,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
         onSelectHelper={(post, reply) => {
           handleAcceptHelperOffer(post, reply);
+        }}
+        onCancelOffer={(post, reply) => {
+          handleCancelHelperOffer(post, reply);
         }}
       />
 
