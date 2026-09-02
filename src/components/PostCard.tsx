@@ -23,7 +23,10 @@ import {
   Truck,
   ArrowLeftRight,
   PackageOpen,
-  RefreshCw
+  RefreshCw,
+  Bookmark,
+  BookmarkCheck,
+  Zap
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User } from '../types';
 import { Card3D } from './Card3D';
@@ -39,6 +42,8 @@ interface PostCardProps {
   viewerLocation?: LocationOption;
   currentUser?: User;
   isOwner?: boolean;
+  isSaved?: boolean;
+  onToggleSave?: (post: HelpPost) => void;
   onEditPost?: (post: HelpPost) => void;
   onViewPost?: (post: HelpPost) => void;
   onDeletePost?: (post: HelpPost) => void;
@@ -53,6 +58,8 @@ export const PostCard: React.FC<PostCardProps> = ({
   viewerLocation, 
   currentUser,
   isOwner,
+  isSaved = false,
+  onToggleSave,
   onEditPost,
   onViewPost,
   onDeletePost,
@@ -137,14 +144,51 @@ export const PostCard: React.FC<PostCardProps> = ({
   const safeConditions = shouldMask ? inspectAndSanitizeMessage(displayConditions, false).sanitizedText : displayConditions;
   const safeSpecialNotice = shouldMask ? inspectAndSanitizeMessage(displaySpecialNotice, false).sanitizedText : displaySpecialNotice;
 
+  // Quick Service Check
+  const isQuickService =
+    post.category === 'quick_services' ||
+    post.category === 'quick' ||
+    post.tagCategory === 'ඉක්මන් සේවා' ||
+    Boolean(post.tagName?.toLowerCase().includes('quick')) ||
+    Boolean(post.tagName?.includes('හදිසි')) ||
+    Boolean(post.customFieldValues?.f_urgency?.toString().includes('Immediate')) ||
+    Boolean(post.customFieldValues?.f_urgency?.toString().includes('හදිසි'));
+
   return (
-    <Card3D className={`bg-white dark:bg-[#07130c] border-2 ${isConfirmed ? 'border-emerald-500/80 shadow-[0_12px_30px_rgba(0,122,75,0.18)]' : 'border-emerald-500/30 hover:border-emerald-500/70 shadow-[0_12px_30px_rgba(0,122,75,0.08),0_2px_8px_rgba(0,0,0,0.04)]'} rounded-3xl p-5 sm:p-6 transition-all duration-300 relative group overflow-hidden text-slate-900 dark:text-slate-100`}>
+    <Card3D className={`bg-white dark:bg-[#07130c] border-2 ${
+      isQuickService
+        ? 'border-amber-400 dark:border-amber-500/80 shadow-[0_12px_30px_rgba(245,158,11,0.18)] ring-1 ring-amber-400/40'
+        : isConfirmed 
+        ? 'border-emerald-500/80 shadow-[0_12px_30px_rgba(0,122,75,0.18)]' 
+        : 'border-emerald-500/30 hover:border-emerald-500/70 shadow-[0_12px_30px_rgba(0,122,75,0.08),0_2px_8px_rgba(0,0,0,0.04)]'
+    } rounded-3xl p-5 sm:p-6 transition-all duration-300 relative group overflow-hidden text-slate-900 dark:text-slate-100`}>
       
       {/* Top Banner Accent */}
-      <div className={`absolute top-0 left-0 right-0 h-1.5 ${isConfirmed ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600' : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400'}`}></div>
+      <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+        isQuickService
+          ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600'
+          : isConfirmed 
+          ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600' 
+          : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400'
+      }`}></div>
 
       <div className="space-y-3.5 pt-1 text-slate-900 dark:text-slate-100 font-sans">
         
+        {/* Quick Service Urgent Priority Banner */}
+        {isQuickService && (
+          <div className="flex items-center justify-between gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-black shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-yellow-200 fill-yellow-200 animate-bounce" />
+              <span className="tracking-wide">
+                ⚡ ඉක්මන් සේවා (Quick Service Priority)
+              </span>
+            </div>
+            <span className="text-[10px] uppercase font-mono tracking-wider bg-black/20 px-2 py-0.5 rounded-md">
+              TOP PRIORITY
+            </span>
+          </div>
+        )}
+
         {/* Prominent Elapsed Time Banner at the Top */}
         <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-amber-500/20 dark:to-emerald-500/20 border border-amber-500/30 dark:border-amber-400/30 px-3 py-1.5 rounded-2xl shadow-2xs">
           <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200">
@@ -208,6 +252,30 @@ export const PostCard: React.FC<PostCardProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Save (Bookmark) Button */}
+                {onToggleSave && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSave(post);
+                    }}
+                    className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold border ${
+                      isSaved
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                        : 'bg-emerald-50 hover:bg-amber-50 dark:bg-emerald-950/60 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 border-emerald-200 dark:border-emerald-800'
+                    }`}
+                    title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න (Save Post)'}
+                  >
+                    {isSaved ? (
+                      <BookmarkCheck className="w-3.5 h-3.5 text-white fill-white" />
+                    ) : (
+                      <Bookmark className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    )}
+                    <span className="text-[11px] hidden sm:inline">{isSaved ? 'Saved' : 'Save'}</span>
+                  </button>
+                )}
+
                 {isConfirmed && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black text-xs rounded-xl border border-emerald-300 dark:border-emerald-700">
                     <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />

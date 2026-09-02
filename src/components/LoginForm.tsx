@@ -215,6 +215,29 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             <span>{t.registerBtn || 'රෙජිස්ටර්වීමට'}</span>
           </button>
         </form>
+
+        {/* Quick Demo Access Bar */}
+        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-[#173222] space-y-2.5">
+          <div className="text-[11px] font-black text-slate-400 dark:text-emerald-400/80 uppercase tracking-wider text-center">
+            ⚡ ක්ෂණික ප්‍රවේශය (1-Click Demo Access)
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onLogin('981234567V', 'user123')}
+              className="px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 cursor-pointer text-center"
+            >
+              👤 පරිශීලක (User Demo)
+            </button>
+            <button
+              type="button"
+              onClick={() => onLogin('970181547V', '1691@@Devhas')}
+              className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-bold transition-all border border-slate-300 dark:border-zinc-700 cursor-pointer text-center"
+            >
+              🛡️ පරිපාලක (Admin Demo)
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Footer link for Issues/Help */}

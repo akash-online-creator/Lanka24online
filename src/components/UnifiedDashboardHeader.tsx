@@ -39,6 +39,7 @@ interface UnifiedDashboardHeaderProps {
   theme: Theme;
   toggleTheme: () => void;
   onNavigateToIssues?: () => void;
+  onOpenSettings?: () => void;
   onLogout?: () => void;
   activeRoleView?: Role;
   setActiveRoleView?: (role: Role) => void;
@@ -57,6 +58,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   theme,
   toggleTheme,
   onNavigateToIssues,
+  onOpenSettings,
   onLogout,
   activeRoleView,
   setActiveRoleView,
@@ -180,8 +182,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             {/* Vertical Divider */}
             <div className="h-8 w-px bg-slate-200 dark:bg-[#1a3d29] shrink-0" />
 
-            {/* 2. User Info (Photo + Name + Verified Badge + ID) */}
-            <div className="flex items-center gap-2.5 min-w-0">
+            {/* 2. User Info (Photo + Name + Verified Badge + ID) - Clickable to Open Settings */}
+            <div 
+              onClick={onOpenSettings}
+              className={`flex items-center gap-2.5 min-w-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-85 transition-opacity p-1 -m-1 rounded-2xl hover:bg-emerald-500/10' : ''}`}
+              title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
+            >
               <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-2xl overflow-hidden border-2 border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-sm">
                   {user.photoUrl && user.photoUrl.trim() !== '' ? (

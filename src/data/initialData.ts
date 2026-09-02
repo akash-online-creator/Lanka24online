@@ -523,6 +523,21 @@ export const initialUsers: User[] = [
     registeredAt: '2026-08-01 09:00',
     key: '1691@@Devhas',
   },
+  {
+    id: 'usr_citizen_1',
+    userId: '981234567V',
+    name: 'සම්පත් පෙරේරා (Sampath Perera)',
+    email: 'sampath@sahaya.lk',
+    nicNumber: '981234567V',
+    phone: '0712345678',
+    address: 'කඩවත, ගම්පහ',
+    role: 'user',
+    status: 'approved',
+    photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80',
+    registeredAt: '2026-08-10 10:30',
+    key: 'user123',
+    isPasswordChanged: true,
+  },
 ];
 
 export const initialIssues: Issue[] = [];

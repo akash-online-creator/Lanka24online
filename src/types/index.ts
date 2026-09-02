@@ -319,3 +319,221 @@ export interface ProfessionalService {
   isVerified?: boolean;
 }
 
+export type GroupWorkSubCategory = 'social_service' | 'religious_activity' | 'friendly_meetup';
+
+export interface GroupPermissions {
+  editGroupSettings: boolean; // name, icon, description, disappearing message timer, pin/keep/unkeep
+  sendNewMessages: boolean; // whether non-admins can send messages
+  addOtherMembers: boolean; // whether non-admins can add other members
+  inviteViaLinkOrQr: boolean; // whether members can invite via link or QR
+  adminApproveNewMembers: boolean; // when turned on, admin must approve anyone who wants to join
+  disappearingTimer?: 'off' | '24h' | '7d' | '90d';
+}
+
+export type GroupMemberRole = 'admin' | 'moderator' | 'member';
+export type GroupMemberStatus = 'active' | 'pending_invite' | 'pending_approval' | 'removed';
+
+export interface GroupMember {
+  userId: string;
+  name: string;
+  phone: string;
+  photoUrl?: string;
+  role: GroupMemberRole;
+  status: GroupMemberStatus;
+  joinedAt: string;
+  customPermissions?: Partial<GroupPermissions>;
+}
+
+export interface GroupMessageLocation {
+  name: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  note?: string;
+}
+
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  senderId: string;
+  senderName: string;
+  senderPhone: string;
+  senderPhotoUrl?: string;
+  senderRole?: GroupMemberRole;
+  text: string;
+  timestamp: string;
+  createdAtMs: number;
+  isPinned?: boolean;
+  isKept?: boolean;
+  location?: GroupMessageLocation;
+  reactions?: Record<string, string[]>; // emoji -> array of userIds
+  replyTo?: {
+    id: string;
+    senderName: string;
+    text: string;
+  };
+}
+
+export type GroupPrivacy = 'public' | 'private';
+
+export interface GroupJoinRequest {
+  id: string;
+  groupId: string;
+  groupName: string;
+  groupUsername: string;
+  groupPhotoUrl?: string;
+  groupSubCategory?: GroupWorkSubCategory;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  userPhotoUrl?: string;
+  requestedAt: string;
+  requestedAtMs: number;
+  status: 'pending' | 'accepted' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface GroupItem {
+  id: string;
+  name: string; // unique, e.g. "කැලණිය ප්‍රජා සත්කාර බලකාය"
+  username: string; // unique, e.g. "@kelaniya_volunteers"
+  subCategory: GroupWorkSubCategory; // 'social_service' | 'religious_activity' | 'friendly_meetup'
+  privacy: GroupPrivacy; // 'public' (visible & open to everyone) | 'private' (admin approval required)
+  photoUrl?: string;
+  description: string;
+  locationName?: string;
+  lat?: number;
+  lng?: number;
+  creatorId: string;
+  creatorName: string;
+  creatorPhone: string;
+  createdAt: string;
+  createdAtMs: number;
+  permissions: GroupPermissions;
+  members: GroupMember[];
+  joinRequests?: GroupJoinRequest[];
+  inviteCode: string; // for link or QR code join
+  isPinned?: boolean;
+}
+
+export interface GroupInviteNotification {
+  id: string;
+  groupId: string;
+  groupName: string;
+  groupUsername: string;
+  groupPhotoUrl?: string;
+  subCategory: GroupWorkSubCategory;
+  inviterName: string;
+  inviterPhone: string;
+  targetPhone: string;
+  targetUserId?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+  createdAtMs: number;
+}
+
+// ---------------- Marketplace (වෙළඳපොළ) Types ----------------
+export type MarketItemSaleType = 'wholesale' | 'retail' | 'exchange';
+export type MarketDeliveryOption = 'pickup' | 'seller_deliver' | 'free_shipping' | 'paid_shipping';
+export type MarketSection = 'sellers' | 'buyers' | 'shops' | 'businesses';
+export type MarketSellerSubTab = 'all' | 'wholesale' | 'retail' | 'exchange';
+
+export interface MarketLocation {
+  name: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  note?: string;
+}
+
+export interface MarketItem {
+  id: string;
+  type: 'seller_item' | 'buyer_request';
+  title: string; // භාණ්ඩයේ නම / සොයන්නේ කුමක්ද
+  tagName: string;
+  tagCategory?: string;
+  price?: number; // විකුණුම් මිල
+  quantity: string; // ප්‍රමාණය
+  availableDateType: 'today' | 'custom';
+  availableDate?: string;
+  saleTypes: MarketItemSaleType[]; // තොග, සිල්ලර, හුවමාරු
+  // Barter / Exchange details
+  barterNeeds?: string; // අවශ්‍ය මොනවාද
+  barterQuantity?: string; // කොපමණ ප්‍රමාණයක්ද
+  // Warranty
+  hasWarranty?: boolean;
+  warrantyPeriod?: string;
+  // Expiry
+  expiryDate?: string;
+  expiryNote?: string;
+  // Delivery
+  deliveryOption?: MarketDeliveryOption;
+  pickupLocation?: MarketLocation;
+  // Notes / details
+  notes?: string;
+  // Contact
+  userId: string;
+  userName: string;
+  userPhone: string;
+  showWhatsapp: boolean;
+  whatsappNumber?: string;
+  // Metadata
+  locationName?: string;
+  distanceKm?: number;
+  lat?: number;
+  lng?: number;
+  createdAt: string;
+  createdAtMs: number;
+  images?: string[];
+}
+
+export interface DaySchedule {
+  isOpen: boolean;
+  openTime: string; // e.g. "08:30"
+  closeTime: string; // e.g. "19:00"
+}
+
+export interface WeekSchedule {
+  monday: DaySchedule;
+  tuesday: DaySchedule;
+  wednesday: DaySchedule;
+  thursday: DaySchedule;
+  friday: DaySchedule;
+  saturday: DaySchedule;
+  sunday: DaySchedule;
+}
+
+export interface ShopInventoryItem {
+  id: string;
+  name: string;
+  quantity: string;
+  price: number;
+  saleType: 'wholesale' | 'retail' | 'both';
+}
+
+export interface MarketShop {
+  id: string;
+  type: 'shop' | 'business'; // Shop (අලෙවිසැල) or Business Place (ව්‍යාපාරික ස්ථානය)
+  mode?: 'shop' | 'online'; // for shops: Shop / Online
+  name: string;
+  location?: MarketLocation;
+  schedulePreset?: 'everyday' | 'weekdays_only' | 'no_poya' | 'no_holidays' | 'custom';
+  schedule: WeekSchedule;
+  inventory: ShopInventoryItem[];
+  categoryTag: string;
+  email?: string;
+  websiteUrl?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
+  youtubeUrl?: string;
+  showWhatsapp: boolean;
+  whatsappNumber?: string;
+  chatEnabled: boolean;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  createdAt: string;
+  createdAtMs: number;
+}
+

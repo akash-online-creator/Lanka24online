@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview } from '../types';
 import { translations } from '../data/translations';
-import { initialLocations } from '../data/initialData';
+import { initialLocations, initialUsers } from '../data/initialData';
 import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
 import { UnifiedDashboardHeader } from './UnifiedDashboardHeader';
 import { GlowingNeedHelpBtn } from './GlowingNeedHelpBtn';
@@ -26,6 +26,7 @@ import { SupportOffersModal } from './SupportOffersModal';
 import { VolunteerSupportModal } from './VolunteerSupportModal';
 import { ResolutionPromptModal } from './ResolutionPromptModal';
 import { HelpRequestsPage } from './HelpRequestsPage';
+import { UserSettingsModal } from './UserSettingsModal';
 import { getStoredTags } from '../utils/tagUtils';
 import { 
   subscribeToHelpPosts, 
@@ -57,7 +58,11 @@ import {
   Loader2,
   Megaphone,
   ChevronRight,
-  Briefcase
+  Briefcase,
+  Store,
+  Settings,
+  Sliders,
+  Type
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -72,6 +77,7 @@ interface UserDashboardProps {
   onDeletePost?: (postId: string) => void;
   onPermanentDeletePost?: (postId: string) => void;
   onUpdatePost?: (updatedPost: HelpPost) => void;
+  onUpdateUser?: (updatedUser: User) => void;
   onLogout?: () => void;
   activeRoleView?: any;
   setActiveRoleView?: (role: any) => void;
@@ -90,6 +96,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onDeletePost: propOnDeletePost,
   onPermanentDeletePost: propOnPermanentDeletePost,
   onUpdatePost: propOnUpdatePost,
+  onUpdateUser,
   onLogout,
   activeRoleView,
   setActiveRoleView,
@@ -187,9 +194,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   }, [propHelpPosts]);
 
   // Active Feed Tab: 'local' (<15km) vs 'all_sl' (>15km or all)
-  const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('home');
-  const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('local');
-  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('quick_services');
+  const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('requests');
+  const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('all_sl');
+  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('');
   const [maxDistanceRadius, setMaxDistanceRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -228,12 +235,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isSupportOffersModalOpen, setIsSupportOffersModalOpen] = useState(false);
   const [isVolunteerSupportModalOpen, setIsVolunteerSupportModalOpen] = useState(false);
   const [targetPostForOffers, setTargetPostForOffers] = useState<HelpPost | null>(null);
-  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('ඉක්මන් සේවා');
+  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('');
   const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
   const [isFindForMeModalOpen, setIsFindForMeModalOpen] = useState(false);
   const [isFromMeToYouModalOpen, setIsFromMeToYouModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'font_size'>('profile');
   
   // Detail, Chat and Confirm Modals from PDF plan:
   const [selectedPostForDetail, setSelectedPostForDetail] = useState<HelpPost | null>(null);
@@ -382,8 +391,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (boardCategoryFilter) {
       if (boardCategoryFilter === 'by_distance') {
         matchesCategory = dist <= maxDistanceRadius;
-      } else if (boardCategoryFilter === 'quick_services' || boardCategoryFilter === 'normal_services') {
-        matchesCategory = post.category === 'quick_services' || post.category === 'normal_services' || !post.category;
+      } else if (boardCategoryFilter === 'quick_services') {
+        matchesCategory = post.category === 'quick_services' || post.category === 'quick' || post.tagCategory === 'ඉක්මන් සේවා' || Boolean(post.tagName?.toLowerCase().includes('quick')) || Boolean(post.tagName?.includes('හදිසි'));
+      } else if (boardCategoryFilter === 'normal_services') {
+        const isQuick = post.category === 'quick_services' || post.category === 'quick' || post.tagCategory === 'ඉක්මන් සේවා' || Boolean(post.tagName?.toLowerCase().includes('quick')) || Boolean(post.tagName?.includes('හදිසි'));
+        matchesCategory = !isQuick && (post.category === 'normal_services' || post.category === 'services' || post.category === 'general' || !post.category);
       } else {
         matchesCategory = post.category === boardCategoryFilter;
       }
@@ -421,7 +433,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     return matchesDistance && matchesCategory && matchesTagFilter && matchesQuery;
   }).sort((a, b) => {
-    if (boardCategoryFilter === 'by_distance' || feedDistanceTab === 'local') {
+    // Quick Service Priority: Quick services come first
+    const aIsQuick = a.category === 'quick_services' || a.category === 'quick' || a.tagCategory === 'ඉක්මන් සේවා' || Boolean(a.tagName?.toLowerCase().includes('quick')) || Boolean(a.tagName?.includes('හදිසි'));
+    const bIsQuick = b.category === 'quick_services' || b.category === 'quick' || b.tagCategory === 'ඉක්මන් සේවා' || Boolean(b.tagName?.toLowerCase().includes('quick')) || Boolean(b.tagName?.includes('හදිසි'));
+    if (aIsQuick && !bIsQuick) return -1;
+    if (!aIsQuick && bIsQuick) return 1;
+
+    // Chronological sorting (newest first)
+    const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const timeB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    if (timeA && timeB && timeA !== timeB) {
+      return timeB - timeA;
+    }
+
+    if (boardCategoryFilter === 'by_distance') {
       return getPostDistance(a) - getPostDistance(b);
     }
     return 0;
@@ -970,6 +995,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
   ];
 
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (language === 'en') return en;
+    if (language === 'ta') return ta;
+    return si;
+  };
+
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
       {/* 1. Integrated Unified Top Header Card (Combines Logo, User Info, Location/Address, App Help, and Controls) */}
@@ -983,6 +1014,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         theme={theme || 'light'}
         toggleTheme={toggleTheme || (() => {})}
         onNavigateToIssues={onNavigateToIssues}
+        onOpenSettings={() => {
+          setSettingsInitialTab('profile');
+          setIsSettingsModalOpen(true);
+        }}
         onLogout={onLogout}
         activeRoleView={activeRoleView}
         setActiveRoleView={setActiveRoleView}
@@ -990,6 +1025,119 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isAutoLoadingLocation={isAutoLoadingLocation}
         autoLoadedNotice={autoLocationMsg}
       />
+
+      {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "දැන්වීම් පුවරුව", and "සැකසුම් (Settings)" */}
+      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5 backdrop-blur-md">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+          {/* Button 1: සේවා ඉල්ලීම් (මට උදව් අවශ්‍යයි) */}
+          <button
+            type="button"
+            onClick={() => {
+              setDashboardView('home');
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle('');
+            }}
+            className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group ${
+              dashboardView === 'home'
+                ? 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white shadow-lg shadow-blue-600/30 border-2 border-blue-300 dark:border-blue-400 scale-[1.01]'
+                : 'bg-white/95 dark:bg-[#0c2438]/90 text-blue-950 dark:text-blue-100 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 border-2 border-blue-200/80 dark:border-blue-800/60 shadow-xs hover:shadow-md'
+            }`}
+          >
+            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
+              dashboardView === 'home'
+                ? 'bg-white/20 text-white'
+                : 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300'
+            }`}>
+              <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight">
+                {getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}
+              </div>
+              <div className={`text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 ${
+                dashboardView === 'home' ? 'text-blue-100' : 'text-blue-600 dark:text-blue-300'
+              }`}>
+                {getLangText('මට උදව් අවශ්‍යයි', 'I Need Help', 'எனக்கு உதவி தேவை')}
+              </div>
+            </div>
+            {dashboardView === 'home' && (
+              <span className="hidden lg:inline-block ml-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/25 text-white">
+                ACTIVE
+              </span>
+            )}
+          </button>
+
+          {/* Button 2: දැන්වීම් පුවරුව */}
+          <button
+            type="button"
+            onClick={() => {
+              setDashboardView('requests');
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle('');
+              setSelectedTagFilter(null);
+              setSearchQuery('');
+            }}
+            className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group ${
+              dashboardView === 'requests'
+                ? 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white shadow-lg shadow-blue-600/30 border-2 border-blue-300 dark:border-blue-400 scale-[1.01]'
+                : 'bg-white/95 dark:bg-[#0c2438]/90 text-blue-950 dark:text-blue-100 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 border-2 border-blue-200/80 dark:border-blue-800/60 shadow-xs hover:shadow-md'
+            }`}
+          >
+            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
+              dashboardView === 'requests'
+                ? 'bg-white/20 text-white'
+                : 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300'
+            }`}>
+              <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('දැන්වීම් පුවරුව', 'Bulletin Board', 'அறிவிப்பு பலகை')}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold ${
+                  dashboardView === 'requests' ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200'
+                }`}>
+                  {helpPosts.length}
+                </span>
+              </div>
+              <div className={`text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 ${
+                dashboardView === 'requests' ? 'text-blue-100' : 'text-blue-600 dark:text-blue-300'
+              }`}>
+                {getLangText('සියලු උපකාර දැන්වීම්', 'All Help Notices', 'அனைத்து உதவி அறிவிப்புகள்')}
+              </div>
+            </div>
+            {dashboardView === 'requests' && (
+              <span className="hidden lg:inline-block ml-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/25 text-white">
+                ACTIVE
+              </span>
+            )}
+          </button>
+
+          {/* Button 3: Settings (සැකසුම්) - Profile Setting & Font Size */}
+          <button
+            type="button"
+            onClick={() => {
+              setSettingsInitialTab('profile');
+              setIsSettingsModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-[#132a1e] dark:to-[#0f281d] text-emerald-950 dark:text-emerald-100 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 border-2 border-emerald-300/80 dark:border-emerald-700/60 shadow-xs hover:shadow-md hover:scale-[1.01]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-xs">
+              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('⚙️ සැකසුම් (Settings)', '⚙️ Settings', '⚙️ அமைப்புகள்')}</span>
+                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-emerald-600 text-white shadow-xs">
+                  NEW
+                </span>
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-700 dark:text-emerald-300">
+                {getLangText('Profile Setting • Font Size', 'Profile Setting • Font Size', 'சுயவிவரம் • எழுத்துரு அளவு')}
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
 
       {/* Confirmed Helper Notice Banner (Requirement 04) */}
       {postsWhereIWasSelected.length > 0 && (
@@ -1028,6 +1176,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setFeedDistanceTab={setFeedDistanceTab}
           boardCategoryFilter={boardCategoryFilter}
           setBoardCategoryFilter={setBoardCategoryFilter}
+          selectedCategoryTitle={selectedCategoryTitle}
           setSelectedCategoryTitle={setSelectedCategoryTitle}
           maxDistanceRadius={maxDistanceRadius}
           setMaxDistanceRadius={setMaxDistanceRadius}
@@ -1051,6 +1200,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           professionalServices={professionalServices}
           onAddProfessionalService={handleAddProfessionalService}
           onAddProfessionalReview={handleAddProfessionalReview}
+          registeredUsers={(() => {
+            try {
+              const saved = localStorage.getItem('sahaya_users');
+              return saved ? JSON.parse(saved) : initialUsers;
+            } catch {
+              return initialUsers;
+            }
+          })()}
         />
       ) : (
         <>
@@ -1156,48 +1313,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </button>
           </div>
 
-          {/* 3.1 Wide Button: "උපකාර ඉල්ලීම් සඳහා" (Navigate to Help Requests Page) */}
-          <div className="w-full pt-1 pb-2">
-            <button
-              type="button"
-              onClick={() => setDashboardView('requests')}
-              className="w-full group relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#00603a] via-[#007a4b] to-[#009b5f] hover:from-[#007a4b] hover:to-[#00a86b] text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-emerald-400/40 flex items-center justify-between cursor-pointer"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
-
-              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
-                  <Megaphone className="w-6 h-6 text-amber-300 animate-pulse" />
-                </div>
-                <div className="min-w-0 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-300/40">
-                      {language === 'en' ? 'Help Feed' : language === 'ta' ? 'அறிவிப்புகள்' : 'දැන්වීම් පුවරුව'}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-emerald-200">
-                      ({filteredPosts.length} {language === 'en' ? 'Active' : language === 'ta' ? 'செயலில்' : 'සක්‍රියයි'})
-                    </span>
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-200 transition-colors">
-                    {language === 'en' ? 'View Help Requests!' : language === 'ta' ? 'உதவி கோரிக்கைகளைப் பாருங்கள்!' : 'උපකාර ඉල්ලීම් බලන්න!'}
-                  </h3>
-                  <p className="text-xs text-emerald-100/90 font-medium truncate">
-                    {language === 'en' 
-                      ? 'View all published help notices and offer support' 
-                      : language === 'ta' 
-                      ? 'அனைத்து உதவி அறிவிப்புகளையும் கண்டு உதவி செய்யுங்கள்' 
-                      : 'පළ කර ඇති සියලුම උපකාර ඉල්ලීම් සහ දැන්වීම් බැලීමට මෙතනින් පිවිසෙන්න 👉'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#007a4b] font-black flex items-center justify-center shadow-md group-hover:bg-amber-300 group-hover:text-slate-950 transition-colors">
-                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
-                </div>
-              </div>
-            </button>
-          </div>
 
           {/* 5. Services Grid Section */}
           <div className="space-y-4 pt-6 border-t border-slate-800">
@@ -1553,6 +1668,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           onConfirmResolved={handleRequesterConfirmResolved}
         />
       )}
+
+      {/* User Settings Modal (Profile Setting & Font Size) */}
+      <UserSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        user={user}
+        onUpdateUser={onUpdateUser}
+        language={language}
+        initialTab={settingsInitialTab}
+      />
 
     </div>
   );

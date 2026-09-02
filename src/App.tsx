@@ -12,6 +12,7 @@ import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { subscribeToHelpPosts, updateHelpPostInFirestore, deleteHelpPostFromFirestore, seedDemoHelpPostsToFirestore } from './lib/firebase';
 
 export default function App() {
@@ -26,7 +27,34 @@ export default function App() {
     return (saved as Theme) || 'light';
   });
 
-  const [viewMode, setViewMode] = useState<ViewMode>('login');
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('sahaya_current_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return initialUsers[1] || initialUsers[0];
+      }
+    }
+    return initialUsers[1] || initialUsers[0];
+  });
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const savedMode = localStorage.getItem('sahaya_view_mode') as ViewMode | null;
+    const savedUser = localStorage.getItem('sahaya_current_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed?.role === 'admin') return savedMode || 'admin';
+        if (parsed?.status === 'approved') return savedMode || 'dashboard';
+        if (parsed?.status === 'pending') return 'pending';
+      } catch {
+        return 'dashboard';
+      }
+    }
+    return savedMode || 'dashboard';
+  });
+
   const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
     const savedUser = localStorage.getItem('sahaya_current_user');
     if (savedUser) {
@@ -72,60 +100,6 @@ export default function App() {
         let parsed: CategoryItem[] = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           parsed = parsed.filter((c) => c && typeof c === 'object' && Boolean(c.id));
-          
-          // Ensure normal_services exists
-          const hasNormal = parsed.some((c) => c.id === 'normal_services');
-          if (!hasNormal) {
-            const normalCat = initialCategories.find((c) => c.id === 'normal_services');
-            if (normalCat) {
-              const quickIdx = parsed.findIndex((c) => c.id === 'quick_services');
-              if (quickIdx !== -1) {
-                parsed.splice(quickIdx + 1, 0, normalCat);
-              } else {
-                parsed.unshift(normalCat);
-              }
-            }
-          }
-
-          // Ensure find_for_me exists
-          const hasFindForMe = parsed.some((c) => c.id === 'find_for_me');
-          if (!hasFindForMe) {
-            const findCat = initialCategories.find((c) => c.id === 'find_for_me');
-            if (findCat) {
-              const normalIdx = parsed.findIndex((c) => c.id === 'normal_services');
-              if (normalIdx !== -1) {
-                parsed.splice(normalIdx + 1, 0, findCat);
-              } else {
-                const quickIdx = parsed.findIndex((c) => c.id === 'quick_services');
-                if (quickIdx !== -1) {
-                  parsed.splice(quickIdx + 1, 0, findCat);
-                } else {
-                  parsed.unshift(findCat);
-                }
-              }
-            }
-          }
-
-          // Ensure from_me_to_you exists (immediately after find_for_me)
-          const hasFromMeToYou = parsed.some((c) => c.id === 'from_me_to_you');
-          if (!hasFromMeToYou) {
-            const fromMeCat = initialCategories.find((c) => c.id === 'from_me_to_you');
-            if (fromMeCat) {
-              const findIdx = parsed.findIndex((c) => c.id === 'find_for_me');
-              if (findIdx !== -1) {
-                parsed.splice(findIdx + 1, 0, fromMeCat);
-              } else {
-                const normalIdx = parsed.findIndex((c) => c.id === 'normal_services');
-                if (normalIdx !== -1) {
-                  parsed.splice(normalIdx + 1, 0, fromMeCat);
-                } else {
-                  parsed.push(fromMeCat);
-                }
-              }
-            }
-          }
-
-          localStorage.setItem('sahaya_categories', JSON.stringify(parsed));
           return parsed;
         }
       } catch {
@@ -136,11 +110,6 @@ export default function App() {
   });
 
   const [tags, setTags] = useState<TagItem[]>(() => getStoredTags());
-
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('sahaya_current_user');
-    return saved ? JSON.parse(saved) : null;
-  });
 
   const [showWrongLoginModal, setShowWrongLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -158,6 +127,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('sahaya_lang', language);
   }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem('sahaya_view_mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     localStorage.setItem('sahaya_theme', theme);
@@ -208,6 +181,7 @@ export default function App() {
 
   // Live Server clock
   useEffect(() => {
+    applyAppFontSize(getStoredFontSize());
     const updateTime = () => {
       const now = new Date();
       setServerTime(now.toTimeString().split(' ')[0] + ' UTC');
@@ -673,6 +647,7 @@ export default function App() {
             onDeletePost={handleDeletePost}
             onPermanentDeletePost={handlePermanentDeletePost}
             onUpdatePost={handleUpdatePost}
+            onUpdateUser={handleUpdateUser}
             onLogout={handleLogout}
             activeRoleView={activeRoleView}
             setActiveRoleView={setActiveRoleView}

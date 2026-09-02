@@ -1,0 +1,1502 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  User, 
+  TagItem, 
+  Language, 
+  MarketItem, 
+  MarketShop, 
+  MarketSection, 
+  MarketSellerSubTab, 
+  MarketLocation 
+} from '../types';
+import { 
+  getStoredMarketItems, 
+  saveMarketItemsToStorage, 
+  getStoredMarketShops, 
+  saveMarketShopsToStorage 
+} from '../data/marketplaceData';
+import { MarketplaceNewsTicker } from './MarketplaceNewsTicker';
+import { MarketplaceAddSellerItemModal } from './MarketplaceAddSellerItemModal';
+import { MarketplaceAddBuyerRequestModal } from './MarketplaceAddBuyerRequestModal';
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { MarketShopPreviewModal } from './MarketShopPreviewModal';
+import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
+import { MarketplaceGuideModal } from './MarketplaceGuideModal';
+import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
+import { 
+  Search, 
+  Store, 
+  Users, 
+  Building2, 
+  ShoppingCart, 
+  Plus, 
+  Filter, 
+  ArrowLeft, 
+  Tag, 
+  MapPin, 
+  Phone, 
+  MessageSquare, 
+  Calendar, 
+  ShieldCheck, 
+  AlertCircle, 
+  Truck, 
+  Package, 
+  Eye, 
+  Edit3, 
+  Trash2, 
+  Check, 
+  Layers, 
+  SlidersHorizontal, 
+  Sparkles, 
+  Globe, 
+  ArrowUpDown, 
+  Share2, 
+  Clock,
+  HelpCircle,
+  Lightbulb
+} from 'lucide-react';
+
+interface MarketplaceViewProps {
+  currentUser: User;
+  language: Language;
+  allTags: TagItem[];
+  currentLocationName?: string;
+  onBackToBoard: () => void;
+  onAddNewTag?: (tag: TagItem) => void;
+  onStartDirectChat?: (targetUserId: string, targetUserName: string, targetPhone: string) => void;
+}
+
+export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
+  currentUser,
+  language,
+  allTags,
+  currentLocationName = 'කඩවත',
+  onBackToBoard,
+  onAddNewTag,
+  onStartDirectChat
+}) => {
+  // 1. Data States
+  const [items, setItems] = useState<MarketItem[]>(() => getStoredMarketItems());
+  const [shops, setShops] = useState<MarketShop[]>(() => getStoredMarketShops());
+
+  // 2. Navigation State: 4 main sections
+  // 01. Search Bar -> 02. වෙළෙන්දන්, ගැණුම්කරුවන්, අලෙවිසැල්, වියාපාරික ස්ථාන
+  const [activeSection, setActiveSection] = useState<MarketSection>('sellers');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 3. Section 1 (වෙළෙන්දන්) Sub-tabs: තොග | සිල්ලර | හුවමාරු | සියල්ල
+  const [sellerSubTab, setSellerSubTab] = useState<MarketSellerSubTab>('all');
+
+  // 4. Section 3 (අලෙවිසැල්) State: "මගේ අලෙවිසැල" Filter
+  const [myShopsOnly, setMyShopsOnly] = useState(false);
+
+  // 5. Filters
+  const [distanceFilterKm, setDistanceFilterKm] = useState<number>(50); // 5km, 10km, 25km, 50km, 100+ km
+  const [selectedCategoryTag, setSelectedCategoryTag] = useState<string>('all');
+  const [priceSortOrder, setPriceSortOrder] = useState<'default' | 'lowest' | 'highest'>('default');
+  const [showFilterBar, setShowFilterBar] = useState(false);
+
+  // 6. Modals
+  const [isAddSellerModalOpen, setIsAddSellerModalOpen] = useState(false);
+  const [isAddBuyerModalOpen, setIsAddBuyerModalOpen] = useState(false);
+  const [isAddShopModalOpen, setIsAddShopModalOpen] = useState(false);
+  const [shopModalType, setShopModalType] = useState<'shop' | 'business'>('shop');
+  const [editingShop, setEditingShop] = useState<MarketShop | null>(null);
+
+  const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
+  const [selectedLowestPriceItem, setSelectedLowestPriceItem] = useState<MarketItem | null>(null);
+
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [guideModalInitialSection, setGuideModalInitialSection] = useState<MarketSection>('sellers');
+
+  const [previewingShop, setPreviewingShop] = useState<MarketShop | null>(null);
+  const [shopToDelete, setShopToDelete] = useState<MarketShop | null>(null);
+
+  // Map Location Viewer Modal
+  const [viewingLocation, setViewingLocation] = useState<{
+    lat: number;
+    lng: number;
+    name: string;
+    address?: string;
+    note?: string;
+  } | null>(null);
+
+  // Synchronize to localStorage
+  useEffect(() => {
+    saveMarketItemsToStorage(items);
+  }, [items]);
+
+  useEffect(() => {
+    saveMarketShopsToStorage(shops);
+  }, [shops]);
+
+  // Handlers for Items
+  const handleAddSellerItem = (item: MarketItem) => {
+    setItems((prev) => [item, ...prev]);
+  };
+
+  const handleAddBuyerRequest = (req: MarketItem) => {
+    setItems((prev) => [req, ...prev]);
+  };
+
+  // Handlers for Shops / Businesses
+  const handleSaveShop = (savedShop: MarketShop) => {
+    setShops((prev) => {
+      const exists = prev.some((s) => s.id === savedShop.id);
+      if (exists) {
+        return prev.map((s) => (s.id === savedShop.id ? savedShop : s));
+      } else {
+        return [savedShop, ...prev];
+      }
+    });
+  };
+
+  const handleDeleteShop = (shopId: string) => {
+    setShops((prev) => prev.filter((s) => s.id !== shopId));
+    setShopToDelete(null);
+  };
+
+  // WhatsApp click handler
+  const handleOpenWhatsApp = (phone: string, title: string) => {
+    if (!phone) return;
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const internationalPhone = cleanPhone.startsWith('0')
+      ? `94${cleanPhone.substring(1)}`
+      : cleanPhone;
+    const msg = encodeURIComponent(
+      `ආයුබෝවන්, මම සහය (Sahaya) වෙළඳපොළ හරහා "${title}" සම්බන්ධයෙන් විමසමි.`
+    );
+    window.open(`https://wa.me/${internationalPhone}?text=${msg}`, '_blank');
+  };
+
+  // Filtered Seller Items
+  const filteredSellerItems = useMemo(() => {
+    return items
+      .filter((item) => item.type === 'seller_item')
+      .filter((item) => {
+        // Search query
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchesTitle = item.title.toLowerCase().includes(q);
+          const matchesTag = item.tagName.toLowerCase().includes(q);
+          const matchesSeller = item.userName.toLowerCase().includes(q);
+          const matchesBarter = item.barterNeeds?.toLowerCase().includes(q);
+          if (!matchesTitle && !matchesTag && !matchesSeller && !matchesBarter) return false;
+        }
+
+        // Sub tab: wholesale, retail, exchange
+        if (sellerSubTab !== 'all') {
+          if (!item.saleTypes.includes(sellerSubTab)) return false;
+        }
+
+        // Category Tag
+        if (selectedCategoryTag !== 'all') {
+          if (item.tagName !== selectedCategoryTag) return false;
+        }
+
+        // Distance
+        if (item.distanceKm && item.distanceKm > distanceFilterKm) return false;
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (priceSortOrder === 'lowest') {
+          return (a.price || 0) - (b.price || 0);
+        } else if (priceSortOrder === 'highest') {
+          return (b.price || 0) - (a.price || 0);
+        }
+        return b.createdAtMs - a.createdAtMs;
+      });
+  }, [items, searchQuery, sellerSubTab, selectedCategoryTag, distanceFilterKm, priceSortOrder]);
+
+  // Filtered Buyer Requests
+  const filteredBuyerRequests = useMemo(() => {
+    return items
+      .filter((item) => item.type === 'buyer_request')
+      .filter((item) => {
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchesTitle = item.title.toLowerCase().includes(q);
+          const matchesTag = item.tagName.toLowerCase().includes(q);
+          const matchesUser = item.userName.toLowerCase().includes(q);
+          if (!matchesTitle && !matchesTag && !matchesUser) return false;
+        }
+        if (selectedCategoryTag !== 'all' && item.tagName !== selectedCategoryTag) return false;
+        return true;
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [items, searchQuery, selectedCategoryTag]);
+
+  // Filtered Shops
+  const filteredShops = useMemo(() => {
+    return shops
+      .filter((s) => s.type === 'shop')
+      .filter((s) => {
+        if (myShopsOnly && s.userId !== currentUser.id && s.userId !== currentUser.userId) {
+          return false;
+        }
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchesName = s.name.toLowerCase().includes(q);
+          const matchesTag = s.categoryTag.toLowerCase().includes(q);
+          const matchesInv = s.inventory.some((inv) => inv.name.toLowerCase().includes(q));
+          if (!matchesName && !matchesTag && !matchesInv) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [shops, myShopsOnly, searchQuery, currentUser]);
+
+  // Filtered Businesses
+  const filteredBusinesses = useMemo(() => {
+    return shops
+      .filter((s) => s.type === 'business')
+      .filter((s) => {
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchesName = s.name.toLowerCase().includes(q);
+          const matchesTag = s.categoryTag.toLowerCase().includes(q);
+          const matchesInv = s.inventory.some((inv) => inv.name.toLowerCase().includes(q));
+          if (!matchesName && !matchesTag && !matchesInv) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [shops, searchQuery]);
+
+  // Current user's saved shops
+  const mySavedShops = shops.filter(
+    (s) => s.type === 'shop' && (s.userId === currentUser.id || s.userId === currentUser.userId)
+  );
+
+  // Current user's saved businesses
+  const mySavedBusinesses = shops.filter(
+    (s) => s.type === 'business' && (s.userId === currentUser.id || s.userId === currentUser.userId)
+  );
+
+  return (
+    <div className="w-full space-y-4 sm:space-y-5 animate-in fade-in duration-300">
+      {/* 00. Top Bar (Back Button + Marketplace Title) */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBackToBoard}
+            className="p-2 sm:p-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5 text-xs font-bold"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">දැන්වීම් පුවරුවට</span>
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <Store className="w-5 h-5 text-emerald-200" />
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight">
+                සහය වෙළඳපොළ (Marketplace)
+              </h1>
+            </div>
+            <p className="text-xs text-emerald-100 font-medium mt-0.5">
+              තොග, සිල්ලර, හුවමාරු භාණ්ඩ, අලෙවිසැල් හා ව්‍යාපාරික සේවා
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Guide & Examples Button in Top Header */}
+          <button
+            type="button"
+            onClick={() => {
+              setGuideModalInitialSection(activeSection);
+              setIsGuideModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-2 border-2 border-amber-300"
+            title="භාවිතා කරන ආකාරය හා උදාහරණ (Guide & Examples)"
+          >
+            <HelpCircle className="w-4 h-4 text-amber-950 shrink-0 animate-bounce" />
+            <span>💡 පිටුව ක්‍රියාත්මක වන ආකාරය (උදාහරණ)</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-xs font-bold bg-white/10 px-3 py-1.5 rounded-2xl backdrop-blur-xs border border-white/20">
+            <MapPin className="w-3.5 h-3.5 text-emerald-200" />
+            <span>ස්ථානය : {currentLocationName}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 01. Search Bar at the Top (ඉහළින් Search Bar එකක්) */}
+      <div className="relative">
+        <div className="relative flex items-center">
+          <Search className="w-5 h-5 text-emerald-600 dark:text-emerald-400 absolute left-4 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="භාණ්ඩ, වෙළෙන්දන්, අලෙවිසැල් හෝ ව්‍යාපාර සොයන්න (Search Marketplace)..."
+            className="w-full pl-12 pr-12 py-3.5 bg-white dark:bg-zinc-900 border-2 border-emerald-500/40 rounded-2xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-zinc-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-4 p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 02. Search bar එකෙන් පසු ප්‍රධාන බොත්තම් හතර:
+          1. වෙළෙන්දන් (Vendors / Sellers)
+          2. ගැණුම්කරුවන් (Buyers)
+          3. අලෙවිසැල් (Shops)
+          4. වියාපාරික ස්ථාන (Business Places) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {[
+          {
+            id: 'sellers' as MarketSection,
+            labelSi: 'වෙළෙන්දන්',
+            labelEn: 'Sellers',
+            icon: Store,
+            count: items.filter((i) => i.type === 'seller_item').length,
+            color: 'from-emerald-600 to-teal-700'
+          },
+          {
+            id: 'buyers' as MarketSection,
+            labelSi: 'ගැණුම්කරුවන්',
+            labelEn: 'Buyers',
+            icon: ShoppingCart,
+            count: items.filter((i) => i.type === 'buyer_request').length,
+            color: 'from-indigo-600 to-violet-700'
+          },
+          {
+            id: 'shops' as MarketSection,
+            labelSi: 'අලෙවිසැල්',
+            labelEn: 'Shops & Stores',
+            icon: Store,
+            count: shops.filter((s) => s.type === 'shop').length,
+            color: 'from-teal-600 to-cyan-700'
+          },
+          {
+            id: 'businesses' as MarketSection,
+            labelSi: 'ව්‍යාපාරික ස්ථාන',
+            labelEn: 'Business Places',
+            icon: Building2,
+            count: shops.filter((s) => s.type === 'business').length,
+            color: 'from-amber-600 to-orange-700'
+          }
+        ].map((sec) => {
+          const Icon = sec.icon;
+          const isActive = activeSection === sec.id;
+          return (
+            <button
+              key={sec.id}
+              type="button"
+              onClick={() => setActiveSection(sec.id)}
+              className={`p-3.5 sm:p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer border-2 shadow-xs active:scale-95 ${
+                isActive
+                  ? `bg-gradient-to-r ${sec.color} text-white border-white/40 shadow-lg scale-[1.02]`
+                  : 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200/90 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800'
+              }`}
+            >
+              <div
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-1.5 transition-colors ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+              </div>
+              <span className="font-black text-xs sm:text-sm leading-tight">
+                {sec.labelSi}
+              </span>
+              <span className={`text-[10px] font-bold mt-0.5 ${isActive ? 'text-white/80' : 'text-zinc-400'}`}>
+                {sec.count} ක් සක්‍රීයයි
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECTION 1: වෙළෙන්දන් (Vendors / Sellers) */}
+      {/* ========================================================================= */}
+      {activeSection === 'sellers' && (
+        <div className="space-y-4">
+          {/* Section 1 Guide Callout */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/5 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-zinc-900 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 text-xs text-emerald-900 dark:text-emerald-200">
+              <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 font-black shadow-xs">
+                💡
+              </span>
+              <div>
+                <span className="font-extrabold">වෙළෙන්දන් අංශය ක්‍රියාත්මක වන ආකාරය: </span>
+                <span className="text-zinc-600 dark:text-zinc-300">තොග, සිල්ලර හා හුවමාරු භාණ්ඩ පළකරමින් අවම මිලට ගැණුම්කරුවන් සොයාගන්න.</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideModalInitialSection('sellers');
+                setIsGuideModalOpen(true);
+              }}
+              className="text-xs font-black text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 flex items-center gap-1 cursor-pointer underline shrink-0"
+            >
+              <span>උදාහරණ සහිත මාර්ගෝපදේශය බලන්න →</span>
+            </button>
+          </div>
+
+          {/* Sub-menu: තොග | සිල්ලර | හුවමාරු (Wholesale / Retail / Barter Exchange) */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto">
+              {[
+                { id: 'all' as MarketSellerSubTab, label: 'සියල්ල (All)' },
+                { id: 'wholesale' as MarketSellerSubTab, label: 'තොග (Wholesale)' },
+                { id: 'retail' as MarketSellerSubTab, label: 'සිල්ලර (Retail)' },
+                { id: 'exchange' as MarketSellerSubTab, label: 'හුවමාරු (Exchange)' }
+              ].map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setSellerSubTab(st.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                    sellerSubTab === st.id
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Action buttons: Guide Button + Add Item Button */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideModalInitialSection('sellers');
+                  setIsGuideModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 shadow-xs"
+                title="වෙළෙන්දන් අංශය භාවිතා කරන ආකාරය හා උදාහරණ"
+              >
+                <HelpCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>භාවිතා කරන ආකාරය</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddSellerModalOpen(true)}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>භාණ්ඩයක් එකතු කරන්න (Add Item)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Animated News Box (අවම මිල පෙන්වන News Box එකක් - අකුරු ඉහළට animation වේ) */}
+          <MarketplaceNewsTicker
+            items={items}
+            onOpenLowestPrices={(it) => {
+              setSelectedLowestPriceItem(it || null);
+              setIsLowestPricesModalOpen(true);
+            }}
+            onSelectItem={(selectedIt) => {
+              setSearchQuery(selectedIt.title);
+            }}
+          />
+
+          {/* Filter Bar Button & Controls (Distance, Category, Price) */}
+          <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-zinc-300">
+                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
+                <span>පෙරහන් (Filters) :</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Distance Filter */}
+                <div className="flex items-center gap-1 text-xs">
+                  <span className="text-zinc-500 font-bold hidden sm:inline">දුර:</span>
+                  <select
+                    value={distanceFilterKm}
+                    onChange={(e) => setDistanceFilterKm(Number(e.target.value))}
+                    className="px-2.5 py-1 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                  >
+                    <option value={5}>5 km ඇතුළත</option>
+                    <option value={10}>10 km ඇතුළත</option>
+                    <option value={25}>25 km ඇතුළත</option>
+                    <option value={50}>50 km ඇතුළත</option>
+                    <option value={999}>දිවයිනපුරා (All)</option>
+                  </select>
+                </div>
+
+                {/* Price Sort Order */}
+                <div className="flex items-center gap-1 text-xs">
+                  <span className="text-zinc-500 font-bold hidden sm:inline">මිල:</span>
+                  <select
+                    value={priceSortOrder}
+                    onChange={(e) => setPriceSortOrder(e.target.value as any)}
+                    className="px-2.5 py-1 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                  >
+                    <option value="default">නවතම පළමුව (Latest)</option>
+                    <option value="lowest">අඩුම මිල මුලින් (Lowest Price)</option>
+                    <option value="highest">වැඩිම මිල මුලින් (Highest Price)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Tag Quick Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryTag('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                  selectedCategoryTag === 'all'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200'
+                }`}
+              >
+                සියලු Tags
+              </button>
+              {allTags.slice(0, 10).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedCategoryTag(t.tagName)}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                    selectedCategoryTag === t.tagName
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200'
+                  }`}
+                >
+                  #{t.tagName}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Seller Items Feed */}
+          {filteredSellerItems.length === 0 ? (
+            <div className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs">
+              <Package className="w-10 h-10 text-zinc-400 mx-auto" />
+              <h3 className="text-sm font-extrabold text-slate-800 dark:text-zinc-200">
+                ගැලපෙන භාණ්ඩ හමු නොවීය
+              </h3>
+              <p className="text-xs text-zinc-500">
+                පෙරහන් වෙනස් කරන්න හෝ නව භාණ්ඩයක් වෙළඳපොළට එක් කරන්න.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsAddSellerModalOpen(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                භාණ්ඩයක් එකතු කරන්න
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {filteredSellerItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-emerald-500/60 dark:hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-3.5"
+                >
+                  {/* Top Badges & Title */}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
+                          #{item.tagName}
+                        </span>
+                        {item.saleTypes.map((st) => (
+                          <span
+                            key={st}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+                          >
+                            {st === 'wholesale' ? 'තොග' : st === 'retail' ? 'සිල්ලර' : 'හුවමාරු'}
+                          </span>
+                        ))}
+                      </div>
+
+                      <span className="text-[11px] text-zinc-400 font-medium">
+                        {item.createdAt}
+                      </span>
+                    </div>
+
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
+                      {item.title}
+                    </h3>
+
+                    {/* Price & Quantity Banner */}
+                    <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-zinc-800/80 rounded-2xl border border-slate-100 dark:border-zinc-800">
+                      <div>
+                        <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase">
+                          විකුණුම් මිල
+                        </div>
+                        <div className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400">
+                          {item.price ? `රු. ${item.price.toLocaleString()}` : 'හුවමාරුව සඳහා පමණි'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase">
+                          ප්‍රමාණය
+                        </div>
+                        <div className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-zinc-200">
+                          {item.quantity}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Attributes: Barter, Warranty, Expiry, Delivery */}
+                  <div className="space-y-2 text-xs">
+                    {/* Barter Needs */}
+                    {item.barterNeeds && (
+                      <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-amber-900 dark:text-amber-200">
+                        <span className="font-bold">🔄 හුවමාරුවට අවශ්‍ය : </span>
+                        <span>{item.barterNeeds}</span>
+                        {item.barterQuantity && (
+                          <span className="font-bold ml-1">({item.barterQuantity})</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Warranty & Expiry */}
+                    <div className="flex flex-wrap gap-2">
+                      {item.hasWarranty && item.warrantyPeriod && (
+                        <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-xl font-bold">
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                          <span>{item.warrantyPeriod}</span>
+                        </div>
+                      )}
+
+                      {item.expiryDate && (
+                        <div className="flex items-center gap-1 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-xl font-bold">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>කල් ඉකුත්වීම: {item.expiryDate}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Delivery / Pickup method */}
+                    <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400 pt-1">
+                      <div className="flex items-center gap-1 font-semibold">
+                        <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>
+                          {item.deliveryOption === 'pickup'
+                            ? 'පැමිණ රැගෙන යන්න (Self Pickup)'
+                            : item.deliveryOption === 'seller_deliver'
+                            ? 'විකුණුම්කරු ගෙනවිත් දෙනු ඇත'
+                            : item.deliveryOption === 'free_shipping'
+                            ? 'නොමිලේ ප්‍රවාහනය (Free Delivery)'
+                            : 'ඩිලිවරි ගාස්තු අයවේ'}
+                        </span>
+                      </div>
+
+                      {item.pickupLocation && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingLocation(item.pickupLocation!)}
+                          className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          <span>Map බලන්න</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Notes */}
+                    {item.notes && (
+                      <p className="text-zinc-600 dark:text-zinc-400 italic bg-slate-50 dark:bg-zinc-800/40 p-2 rounded-xl">
+                        "{item.notes}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Seller Info & Contact Actions */}
+                  <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 truncate">
+                        {item.userName}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 truncate">
+                        {item.locationName} • දුර ~{item.distanceKm || 1.2} km
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {item.showWhatsapp && item.whatsappNumber && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWhatsApp(item.whatsappNumber!, item.title)}
+                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                          title="WhatsApp පණිවිඩයක් එවන්න"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">WhatsApp</span>
+                        </button>
+                      )}
+
+                      {item.userPhone && (
+                        <a
+                          href={`tel:${item.userPhone}`}
+                          className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                          title="ඇමතුමක් ගන්න"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Call</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 2: ගැණුම්කරුවන් (Buyers) */}
+      {/* ========================================================================= */}
+      {activeSection === 'buyers' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 dark:text-zinc-200">
+                ගැණුම්කරුවන්ගේ ඉල්ලීම් (Buyer Requests)
+              </h2>
+              <p className="text-xs text-zinc-500">
+                පාරිභෝගිකයින් සොයන භාණ්ඩ සපයා අලෙවිය සිදුකරන්න
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideModalInitialSection('buyers');
+                  setIsGuideModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 shadow-xs"
+                title="ගැණුම්කරුවන් අංශය භාවිතා කරන ආකාරය හා උදාහරණ"
+              >
+                <HelpCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>භාවිතා කරන ආකාරය</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddBuyerModalOpen(true)}
+                className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center gap-2 active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>ඉල්ලීමක් එකතු කරන්න</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 2 Guide Callout */}
+          <div className="p-3.5 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-indigo-500/5 dark:from-indigo-950/40 dark:via-violet-950/30 dark:to-zinc-900 border border-indigo-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 text-xs text-indigo-900 dark:text-indigo-200">
+              <span className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 font-black shadow-xs">
+                💡
+              </span>
+              <div>
+                <span className="font-extrabold">ගැණුම්කරුවන් අංශය ක්‍රියාත්මක වන ආකාරය: </span>
+                <span className="text-zinc-600 dark:text-zinc-300">ඔබට අවශ්‍ය ඕනෑම භාණ්ඩයක් ඉල්ලුම් කර අවට වෙළෙන්දන්ගෙන් මිල ගණන් ලබාගන්න.</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideModalInitialSection('buyers');
+                setIsGuideModalOpen(true);
+              }}
+              className="text-xs font-black text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-indigo-100 flex items-center gap-1 cursor-pointer underline shrink-0"
+            >
+              <span>උදාහරණ සහිත මාර්ගෝපදේශය බලන්න →</span>
+            </button>
+          </div>
+
+          {/* Buyer Requests Cards */}
+          {filteredBuyerRequests.length === 0 ? (
+            <div className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs">
+              <ShoppingCart className="w-10 h-10 text-zinc-400 mx-auto" />
+              <h3 className="text-sm font-extrabold text-slate-800 dark:text-zinc-200">
+                ගැණුම්කරු ඉල්ලීම් හමු නොවීය
+              </h3>
+              <p className="text-xs text-zinc-500">
+                ඔබට අවශ්‍ය භාණ්ඩයක් ඇත්නම් ඉල්ලීමක් පළකර සැපයුම්කරුවන් සම්බන්ධ කරගන්න.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsAddBuyerModalOpen(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                ඉල්ලීමක් එකතු කරන්න
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {filteredBuyerRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="bg-white dark:bg-zinc-900 border-2 border-indigo-500/20 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-indigo-500/60 transition-all flex flex-col justify-between space-y-3.5"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/60">
+                        #{req.tagName}
+                      </span>
+                      <span className="text-[11px] text-zinc-400 font-medium">
+                        {req.createdAt}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-wide">
+                      අවශ්‍ය භාණ්ඩය :
+                    </div>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
+                      {req.title}
+                    </h3>
+
+                    <div className="flex items-center gap-3 text-xs bg-slate-50 dark:bg-zinc-800/60 p-2.5 rounded-xl">
+                      <div>
+                        <span className="text-zinc-400 font-bold">අවශ්‍ය ප්‍රමාණය: </span>
+                        <span className="font-extrabold text-slate-800 dark:text-zinc-200">
+                          {req.quantity}
+                        </span>
+                      </div>
+                      <div className="border-l border-slate-200 dark:border-zinc-700 pl-3">
+                        <span className="text-zinc-400 font-bold">දිනය: </span>
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                          {req.availableDateType === 'today' ? 'අදම අවශ්‍යයි' : req.availableDate}
+                        </span>
+                      </div>
+                    </div>
+
+                    {req.notes && (
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 bg-indigo-50/40 dark:bg-indigo-950/20 p-2 rounded-xl italic">
+                        "{req.notes}"
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 truncate">
+                        {req.userName}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 truncate">
+                        {req.locationName}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {req.showWhatsapp && req.whatsappNumber && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWhatsApp(req.whatsappNumber!, req.title)}
+                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">WhatsApp</span>
+                        </button>
+                      )}
+
+                      {req.userPhone && (
+                        <a
+                          href={`tel:${req.userPhone}`}
+                          className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Call</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 3: අලෙවිසැල් (Shops / Stores) */}
+      {/* ========================================================================= */}
+      {activeSection === 'shops' && (
+        <div className="space-y-4">
+          {/* Top Actions: "මගේ අලෙවිසැල" Filter + "අලුත් අලෙවිසැලක් එකතු කරන්න" */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <button
+              type="button"
+              onClick={() => setMyShopsOnly(!myShopsOnly)}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                myShopsOnly
+                  ? 'bg-teal-600 text-white border-teal-600 shadow-md'
+                  : 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-50'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>මගේ අලෙවිසැල ({mySavedShops.length})</span>
+            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideModalInitialSection('shops');
+                  setIsGuideModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 shadow-xs"
+                title="අලෙවිසැල් අංශය භාවිතා කරන ආකාරය හා උදාහරණ"
+              >
+                <HelpCircle className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>භාවිතා කරන ආකාරය</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingShop(null);
+                  setShopModalType('shop');
+                  setIsAddShopModalOpen(true);
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>අලුත් අලෙවිසැලක් එකතු කරන්න</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 3 Guide Callout */}
+          <div className="p-3.5 bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-teal-500/5 dark:from-teal-950/40 dark:via-emerald-950/30 dark:to-zinc-900 border border-teal-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 text-xs text-teal-900 dark:text-teal-200">
+              <span className="w-7 h-7 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 font-black shadow-xs">
+                💡
+              </span>
+              <div>
+                <span className="font-extrabold">අලෙවිසැල් අංශය ක්‍රියාත්මක වන ආකාරය: </span>
+                <span className="text-zinc-600 dark:text-zinc-300">ඔබගේ භෞතික හෝ Online සාප්පුවේ භාණ්ඩ නාමාවලියක් සකසා පාරිභෝගිකයින්ට පෙන්වන්න.</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideModalInitialSection('shops');
+                setIsGuideModalOpen(true);
+              }}
+              className="text-xs font-black text-teal-700 dark:text-teal-300 hover:text-teal-900 dark:hover:text-teal-100 flex items-center gap-1 cursor-pointer underline shrink-0"
+            >
+              <span>උදාහරණ සහිත මාර්ගෝපදේශය බලන්න →</span>
+            </button>
+          </div>
+
+          {/* කලින් ඇතුළත් කළ අලෙවිසැල් (Saved Shops with Preview | Edit | Delete) */}
+          {mySavedShops.length > 0 && (
+            <div className="bg-teal-50/60 dark:bg-teal-950/20 border-2 border-teal-500/30 rounded-3xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-black text-teal-900 dark:text-teal-200">
+                <Store className="w-4 h-4 text-teal-600" />
+                <span>ඔබ ඇතුළත් කළ අලෙවිසැල් (Your Registered Shops) :</span>
+              </div>
+
+              <div className="space-y-2">
+                {mySavedShops.map((shop) => (
+                  <div
+                    key={shop.id}
+                    className="p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-teal-200/80 dark:border-teal-900/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-zinc-100 truncate">
+                          {shop.name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
+                          {shop.mode === 'online' ? 'Online' : 'Shop'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                        #{shop.categoryTag} • භාණ්ඩ {shop.inventory.length} ක්
+                      </div>
+                    </div>
+
+                    {/* 3 Buttons: Preview | Edit | Delete */}
+                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewingShop(shop)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Preview</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingShop(shop);
+                          setShopModalType('shop');
+                          setIsAddShopModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-800"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShopToDelete(shop)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-900"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All Public Shops Directory */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-extrabold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
+              <Store className="w-4 h-4 text-teal-600" />
+              සියලු අලෙවිසැල් නාමාවලිය ({filteredShops.length}) :
+            </h3>
+
+            {filteredShops.length === 0 ? (
+              <div className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 text-center space-y-3 shadow-xs">
+                <Store className="w-10 h-10 text-zinc-400 mx-auto" />
+                <h3 className="text-sm font-extrabold text-slate-800 dark:text-zinc-200">
+                  අලෙවිසැල් හමු නොවීය
+                </h3>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {filteredShops.map((shop) => (
+                  <div
+                    key={shop.id}
+                    className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-teal-500/60 transition-all flex flex-col justify-between space-y-3.5"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-900/60">
+                          {shop.mode === 'online' ? '🌐 Online Shop' : '🏪 Physical Store'}
+                        </span>
+                        <span className="text-[11px] font-bold text-zinc-400">
+                          #{shop.categoryTag}
+                        </span>
+                      </div>
+
+                      <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
+                        {shop.name}
+                      </h3>
+
+                      {shop.location && (
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span className="truncate">{shop.location.name}</span>
+                        </div>
+                      )}
+
+                      {/* Items Preview */}
+                      <div className="p-2.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl space-y-1">
+                        <div className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400">
+                          ප්‍රධාන භාණ්ඩ ({shop.inventory.length}) :
+                        </div>
+                        <div className="space-y-1">
+                          {shop.inventory.slice(0, 2).map((inv) => (
+                            <div
+                              key={inv.id}
+                              className="flex items-center justify-between text-xs font-semibold"
+                            >
+                              <span className="truncate text-slate-800 dark:text-zinc-200">
+                                • {inv.name}
+                              </span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 ml-2">
+                                රු. {inv.price.toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewingShop(shop)}
+                        className="px-3.5 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-900"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>විස්තර බලන්න (Preview)</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        {shop.showWhatsapp && shop.whatsappNumber && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenWhatsApp(shop.whatsappNumber!, shop.name)}
+                            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="WhatsApp"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {shop.userPhone && (
+                          <a
+                            href={`tel:${shop.userPhone}`}
+                            className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="Call"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 4: ව්‍යාපාරික ස්ථාන (Business Places) */}
+      {/* ========================================================================= */}
+      {activeSection === 'businesses' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 dark:text-zinc-200">
+                ව්‍යාපාරික ස්ථාන සහ සේවා මධ්‍යස්ථාන (Business Places)
+              </h2>
+              <p className="text-xs text-zinc-500">
+                ගරාජ්, සේවා මධ්‍යස්ථාන, කර්මාන්තශාලා හා ව්‍යාපාරික ආයතන
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideModalInitialSection('businesses');
+                  setIsGuideModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 shadow-xs"
+                title="ව්‍යාපාරික ස්ථාන අංශය භාවිතා කරන ආකාරය හා උදාහරණ"
+              >
+                <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>භාවිතා කරන ආකාරය</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingShop(null);
+                  setShopModalType('business');
+                  setIsAddShopModalOpen(true);
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-700 hover:to-orange-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center gap-2 active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>නව ව්‍යාපාරයක් එකතු කරන්න</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 4 Guide Callout */}
+          <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-zinc-900 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+              <span className="w-7 h-7 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 font-black shadow-xs">
+                💡
+              </span>
+              <div>
+                <span className="font-extrabold">ව්‍යාපාරික ස්ථාන අංශය ක්‍රියාත්මක වන ආකාරය: </span>
+                <span className="text-zinc-600 dark:text-zinc-300">සේවා මධ්‍යස්ථාන, ගරාජ්, උපකාරක පන්ති හා කර්මාන්තශාලා ලියාපදිංචි කර සේවා ගාස්තු පෙන්වන්න.</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideModalInitialSection('businesses');
+                setIsGuideModalOpen(true);
+              }}
+              className="text-xs font-black text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 flex items-center gap-1 cursor-pointer underline shrink-0"
+            >
+              <span>උදාහරණ සහිත මාර්ගෝපදේශය බලන්න →</span>
+            </button>
+          </div>
+
+          {/* Saved Businesses with Preview | Edit | Delete */}
+          {mySavedBusinesses.length > 0 && (
+            <div className="bg-amber-50/60 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-3xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-black text-amber-900 dark:text-amber-200">
+                <Building2 className="w-4 h-4 text-amber-600" />
+                <span>ඔබ ඇතුළත් කළ ව්‍යාපාරික ස්ථාන (Your Registered Businesses) :</span>
+              </div>
+
+              <div className="space-y-2">
+                {mySavedBusinesses.map((biz) => (
+                  <div
+                    key={biz.id}
+                    className="p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-amber-200/80 dark:border-amber-900/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-extrabold text-sm text-slate-900 dark:text-zinc-100 truncate">
+                        {biz.name}
+                      </div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                        #{biz.categoryTag} • සේවා {biz.inventory.length} ක්
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewingShop(biz)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Preview</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingShop(biz);
+                          setShopModalType('business');
+                          setIsAddShopModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-amber-200 dark:border-amber-800"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShopToDelete(biz)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-900"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All Businesses Directory */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {filteredBusinesses.map((biz) => (
+              <div
+                key={biz.id}
+                className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-amber-500/60 transition-all flex flex-col justify-between space-y-3.5"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                      🏢 Business Place
+                    </span>
+                    <span className="text-[11px] font-bold text-zinc-400">
+                      #{biz.categoryTag}
+                    </span>
+                  </div>
+
+                  <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
+                    {biz.name}
+                  </h3>
+
+                  {biz.location && (
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span className="truncate">{biz.location.name}</span>
+                    </div>
+                  )}
+
+                  <div className="p-2.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl space-y-1">
+                    <div className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400">
+                      සේවාවන් හා නිෂ්පාදන ({biz.inventory.length}) :
+                    </div>
+                    <div className="space-y-1">
+                      {biz.inventory.slice(0, 2).map((inv) => (
+                        <div
+                          key={inv.id}
+                          className="flex items-center justify-between text-xs font-semibold"
+                        >
+                          <span className="truncate text-slate-800 dark:text-zinc-200">
+                            • {inv.name}
+                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 ml-2">
+                            රු. {inv.price.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewingShop(biz)}
+                    className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-amber-200 dark:border-amber-900"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>විස්තර බලන්න (Preview)</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    {biz.showWhatsapp && biz.whatsappNumber && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenWhatsApp(biz.whatsappNumber!, biz.name)}
+                        className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        title="WhatsApp"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {biz.userPhone && (
+                      <a
+                        href={`tel:${biz.userPhone}`}
+                        className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        title="Call"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODALS */}
+      {/* ========================================================================= */}
+
+      {/* 1. Add Seller Item Modal */}
+      <MarketplaceAddSellerItemModal
+        isOpen={isAddSellerModalOpen}
+        onClose={() => setIsAddSellerModalOpen(false)}
+        onAddItem={handleAddSellerItem}
+        currentUser={currentUser}
+        allTags={allTags}
+        onAddNewTag={onAddNewTag}
+      />
+
+      {/* 2. Add Buyer Request Modal */}
+      <MarketplaceAddBuyerRequestModal
+        isOpen={isAddBuyerModalOpen}
+        onClose={() => setIsAddBuyerModalOpen(false)}
+        onAddRequest={handleAddBuyerRequest}
+        currentUser={currentUser}
+        allTags={allTags}
+        existingSellerItems={items}
+        onAddNewTag={onAddNewTag}
+      />
+
+      {/* 3. Add / Edit Shop & Business Modal */}
+      <MarketplaceAddShopModal
+        isOpen={isAddShopModalOpen}
+        onClose={() => {
+          setIsAddShopModalOpen(false);
+          setEditingShop(null);
+        }}
+        onSaveShop={handleSaveShop}
+        currentUser={currentUser}
+        allTags={allTags}
+        editShop={editingShop}
+        defaultType={shopModalType}
+      />
+
+      {/* 4. Shop / Business Preview Modal */}
+      <MarketShopPreviewModal
+        isOpen={!!previewingShop}
+        onClose={() => setPreviewingShop(null)}
+        shop={previewingShop}
+      />
+
+      {/* 5. Delete Shop Confirmation Modal */}
+      {shopToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border-2 border-rose-500/40 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 mx-auto flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-zinc-100">
+              ස්ථිර ලෙසම ඉවත් කරනවාද?
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              "{shopToDelete.name}" {shopToDelete.type === 'shop' ? 'වෙළඳසැල' : 'ව්‍යාපාරය'} වෙළඳපොළ පද්ධතියෙන් ස්ථිරවම ඉවත් කරනු ලැබේ.
+            </p>
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShopToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteShop(shopToDelete.id)}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+              >
+                ඔව්, ඉවත් කරන්න (Delete)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Map Viewer Modal */}
+      {viewingLocation && (
+        <GroupChatMapViewerModal
+          isOpen={!!viewingLocation}
+          onClose={() => setViewingLocation(null)}
+          location={{
+            name: viewingLocation.name,
+            address: viewingLocation.address,
+            lat: viewingLocation.lat,
+            lng: viewingLocation.lng,
+            note: viewingLocation.note
+          }}
+        />
+      )}
+
+      {/* 7. Lowest Prices & Price Comparison Modal */}
+      <MarketplaceLowestPricesModal
+        isOpen={isLowestPricesModalOpen}
+        onClose={() => {
+          setIsLowestPricesModalOpen(false);
+          setSelectedLowestPriceItem(null);
+        }}
+        items={items}
+        initialSelectedItem={selectedLowestPriceItem}
+        onOpenMap={(loc) => setViewingLocation(loc)}
+      />
+
+      {/* 8. Marketplace Section-by-Section User Guide & Examples Modal */}
+      <MarketplaceGuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+        initialSection={guideModalInitialSection}
+        onNavigateSection={(sec) => setActiveSection(sec)}
+      />
+    </div>
+  );
+};
