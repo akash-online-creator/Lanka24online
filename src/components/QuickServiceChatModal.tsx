@@ -111,12 +111,13 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
       } else {
         // Default initial greeting if no messages exist yet
         const nowMs = Date.now();
+        const safeDesc = inspectAndSanitizeMessage(post.whatHappened || 'ඉල්ලීම', isConfirmed).sanitizedText;
         setMessages([
           {
             id: 'init_1',
             senderName: post.userName,
             senderRole: 'seeker',
-            text: `හලෝ, මගේ #${post.postCode} ("${post.whatHappened || 'ඉල්ලීම'}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
+            text: `හලෝ, මගේ #${post.postCode} ("${safeDesc}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
             timestamp: formatMessageClockTime(undefined, nowMs),
             createdAtMs: nowMs,
             senderPhone: post.userPhone || '',
@@ -232,7 +233,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
                   </div>
                   {/* ගැටලුව (කෙටියෙන්, කුඩාවට) */}
                   <p className="text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md">
-                    📌 {post.whatHappened}
+                    📌 {inspectAndSanitizeMessage(post.whatHappened || '', isConfirmed).sanitizedText}
                   </p>
                 </div>
               </div>
@@ -336,10 +337,12 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
                         : 'bg-white dark:bg-[#0c2217] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#19422d] rounded-tl-none shadow-slate-900/5'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words font-medium">{msg.text}</p>
+                    <p className="whitespace-pre-wrap break-words font-medium">
+                      {inspectAndSanitizeMessage(msg.text, isConfirmed).sanitizedText}
+                    </p>
 
-                    {/* Contact Button: ONLY show if post is confirmed or it's myself */}
-                    {isConfirmed && !isMe && msg.senderPhone && (
+                    {/* Contact Button: ONLY show if post is confirmed AND contact consent is granted */}
+                    {isConfirmed && post.revealContactConsent !== false && !isMe && msg.senderPhone && (
                       <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]">
                         <span className="text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
                           <Phone className="w-3 h-3 text-emerald-600" />

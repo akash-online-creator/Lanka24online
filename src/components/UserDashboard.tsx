@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview } from '../types';
 import { translations } from '../data/translations';
-import { initialLocations, initialUsers } from '../data/initialData';
+import { initialLocations, initialUsers, initialHelpPosts } from '../data/initialData';
 import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
 import { UnifiedDashboardHeader } from './UnifiedDashboardHeader';
 import { GlowingNeedHelpBtn } from './GlowingNeedHelpBtn';
@@ -176,19 +176,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(() => {
     const saved = localStorage.getItem('sahaya_help_posts');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) { /* ignore */ }
     }
-    return [];
+    return initialHelpPosts;
   });
 
   // Effective help posts list
-  const helpPosts = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
+  const helpPosts = (propHelpPosts !== undefined && propHelpPosts.length > 0) ? propHelpPosts : (localHelpPosts.length > 0 ? localHelpPosts : initialHelpPosts);
 
   // Real-time Firestore subscription if not provided by parent
   useEffect(() => {
-    if (propHelpPosts !== undefined) return;
+    if (propHelpPosts !== undefined && propHelpPosts.length > 0) return;
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
-      setLocalHelpPosts(remotePosts || []);
+      setLocalHelpPosts(remotePosts && remotePosts.length > 0 ? remotePosts : initialHelpPosts);
     });
     return () => unsubscribe();
   }, [propHelpPosts]);
@@ -378,11 +381,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   // Category & Distance & Tag Filtering Logic
-  const filteredPosts = (helpPosts || []).filter((post) => {
+  const filteredPosts = ((helpPosts && helpPosts.length > 0) ? helpPosts : initialHelpPosts).filter((post) => {
     if (!post || post.isDeleted || post.status === 'deleted') return false;
-
-    // Remove / hide advertisement when required helpers are complete
-    if (isHelpPostComplete(post)) return false;
 
     const dist = getPostDistance(post);
     let matchesDistance = true;
@@ -395,9 +395,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         matchesCategory = post.category === 'quick_services' || post.category === 'quick' || post.tagCategory === 'ඉක්මන් සේවා' || Boolean(post.tagName?.toLowerCase().includes('quick')) || Boolean(post.tagName?.includes('හදිසි'));
       } else if (boardCategoryFilter === 'normal_services') {
         const isQuick = post.category === 'quick_services' || post.category === 'quick' || post.tagCategory === 'ඉක්මන් සේවා' || Boolean(post.tagName?.toLowerCase().includes('quick')) || Boolean(post.tagName?.includes('හදිසි'));
-        matchesCategory = !isQuick && (post.category === 'normal_services' || post.category === 'services' || post.category === 'general' || !post.category);
+        matchesCategory = !isQuick && (post.category === 'normal_services' || post.category === 'services' || post.category === 'general' || !post.category || post.serviceType === 'normal_services');
       } else {
-        matchesCategory = post.category === boardCategoryFilter;
+        matchesCategory = post.category === boardCategoryFilter || post.serviceType === boardCategoryFilter || post.tagCategory === boardCategoryFilter;
       }
     }
 
@@ -1033,38 +1033,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => {
-              setDashboardView('home');
-              setBoardCategoryFilter('');
-              setSelectedCategoryTitle('');
+              // Open the Service Category Request Form directly
+              setIsCategoryModalOpen(true);
             }}
-            className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group ${
-              dashboardView === 'home'
-                ? 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white shadow-lg shadow-blue-600/30 border-2 border-blue-300 dark:border-blue-400 scale-[1.01]'
-                : 'bg-white/95 dark:bg-[#0c2438]/90 text-blue-950 dark:text-blue-100 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 border-2 border-blue-200/80 dark:border-blue-800/60 shadow-xs hover:shadow-md'
-            }`}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
           >
-            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
-              dashboardView === 'home'
-                ? 'bg-white/20 text-white'
-                : 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300'
-            }`}>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
               <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="text-left min-w-0">
-              <div className="text-xs sm:text-sm font-black truncate leading-tight">
-                {getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}</span>
+                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white/20 text-white">
+                  + නව
+                </span>
               </div>
-              <div className={`text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 ${
-                dashboardView === 'home' ? 'text-blue-100' : 'text-blue-600 dark:text-blue-300'
-              }`}>
-                {getLangText('මට උදව් අවශ්‍යයි', 'I Need Help', 'எனக்கு உதவி தேவை')}
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-blue-100">
+                {getLangText('මට උදව් අවශ්‍යයි (කාණ්ඩ ෆෝරමය)', 'I Need Help (Category Form)', 'எனக்கு உதவி தேவை (படிவம்)')}
               </div>
             </div>
-            {dashboardView === 'home' && (
-              <span className="hidden lg:inline-block ml-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/25 text-white">
-                ACTIVE
-              </span>
-            )}
           </button>
 
           {/* Button 2: දැන්වීම් පුවරුව */}
@@ -1076,40 +1063,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setSelectedCategoryTitle('');
               setSelectedTagFilter(null);
               setSearchQuery('');
+              setFeedDistanceTab('all_sl');
+              setIsCategoryModalOpen(false);
+              setIsQuickServiceModalOpen(false);
+              setIsFindForMeModalOpen(false);
+              setIsFromMeToYouModalOpen(false);
             }}
-            className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group ${
-              dashboardView === 'requests'
-                ? 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white shadow-lg shadow-blue-600/30 border-2 border-blue-300 dark:border-blue-400 scale-[1.01]'
-                : 'bg-white/95 dark:bg-[#0c2438]/90 text-blue-950 dark:text-blue-100 hover:bg-blue-100/70 dark:hover:bg-blue-900/40 border-2 border-blue-200/80 dark:border-blue-800/60 shadow-xs hover:shadow-md'
-            }`}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
           >
-            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
-              dashboardView === 'requests'
-                ? 'bg-white/20 text-white'
-                : 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300'
-            }`}>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
               <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
             </div>
             <div className="text-left min-w-0">
               <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
                 <span>{getLangText('දැන්වීම් පුවරුව', 'Bulletin Board', 'அறிவிப்பு பலகை')}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold ${
-                  dashboardView === 'requests' ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200'
-                }`}>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white/20 text-white">
                   {helpPosts.length}
                 </span>
               </div>
-              <div className={`text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 ${
-                dashboardView === 'requests' ? 'text-blue-100' : 'text-blue-600 dark:text-blue-300'
-              }`}>
-                {getLangText('සියලු උපකාර දැන්වීම්', 'All Help Notices', 'அனைத்து உதவி அறிவிப்புகள்')}
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-100">
+                {getLangText('සියලු උපකාර දැන්වීම් (සජීවී)', 'All Help Notices (Live)', 'அனைத்து உதவி அறிவிப்புகள்')}
               </div>
             </div>
-            {dashboardView === 'requests' && (
-              <span className="hidden lg:inline-block ml-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/25 text-white">
-                ACTIVE
-              </span>
-            )}
           </button>
 
           {/* Button 3: Settings (සැකසුම්) - Profile Setting & Font Size */}
@@ -1315,58 +1290,64 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
 
           {/* 5. Services Grid Section */}
-          <div className="space-y-4 pt-6 border-t border-slate-800">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              <span>{t.servicesTitle}</span>
-            </h3>
+          <div className="space-y-4 pt-4 sm:pt-6 border-t border-slate-200 dark:border-[#132a1d]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span>{t.servicesTitle}</span>
+              </h3>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                {language === 'en' ? 'Quick & Direct Services' : language === 'ta' ? 'விரைவு சேவைகள்' : 'ක්ෂණික හා සෘජු සේවා'}
+              </span>
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {services.map((srv) => {
-            const Icon = srv.icon;
-            return (
-              <div
-                key={srv.id}
-                onClick={() => {
-                  if (srv.id === 'professional_services') {
-                    setBoardCategoryFilter('professional_services');
-                    setSelectedCategoryTitle('වෘත්තීය සේවා');
-                    setDashboardView('requests');
-                  } else if (srv.id === 'from_me_to_you') {
-                    setIsFromMeToYouModalOpen(true);
-                  } else if (srv.id === 'find_for_me') {
-                    setIsFindForMeModalOpen(true);
-                  } else {
-                    setSelectedService(srv.title);
-                  }
-                }}
-                className="bg-slate-900/80 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-5 shadow-xl transition-all hover:-translate-y-1 cursor-pointer group flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${srv.color} flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
-                      <Icon className="w-5 h-5" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {services.map((srv) => {
+                const Icon = srv.icon;
+                return (
+                  <div
+                    key={srv.id}
+                    onClick={() => {
+                      if (srv.id === 'professional_services') {
+                        setBoardCategoryFilter('professional_services');
+                        setSelectedCategoryTitle('වෘත්තීය සේවා');
+                        setDashboardView('requests');
+                      } else if (srv.id === 'from_me_to_you') {
+                        setIsFromMeToYouModalOpen(true);
+                      } else if (srv.id === 'find_for_me') {
+                        setIsFindForMeModalOpen(true);
+                      } else {
+                        setSelectedService(srv.title);
+                      }
+                    }}
+                    className="bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] hover:border-emerald-500/50 dark:hover:border-emerald-500/50 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${srv.color} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] uppercase font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-800">
+                          {srv.badge}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                        {srv.title}
+                      </h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                        {srv.desc}
+                      </p>
                     </div>
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-full border border-slate-800">
-                      {srv.badge}
-                    </span>
+
+                    <button className="w-full bg-slate-100 dark:bg-slate-900/80 group-hover:bg-emerald-600 text-slate-700 dark:text-slate-300 group-hover:text-white font-bold py-2 rounded-xl border border-slate-200 dark:border-slate-800 transition-all text-xs flex items-center justify-center gap-2 cursor-pointer">
+                      <span>{t.requestServiceBtn}</span>
+                    </button>
                   </div>
-
-                  <h4 className="text-base font-bold text-white mb-1.5 group-hover:text-emerald-400 transition-colors">
-                    {srv.title}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                    {srv.desc}
-                  </p>
-                </div>
-
-                <button className="w-full bg-slate-950 group-hover:bg-emerald-600 text-slate-300 group-hover:text-white font-bold py-2 rounded-xl border border-slate-800 transition-all text-xs flex items-center justify-center gap-2">
-                  <span>{t.requestServiceBtn}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                );
+              })}
+            </div>
+          </div>
     </>
   )}
 

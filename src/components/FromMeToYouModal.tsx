@@ -30,6 +30,7 @@ import { HelpPost, Language, LocationOption, User, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { MapLocationTracker } from './MapLocationTracker';
+import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 
 export type FromMeToYouType = 'donation' | 'giveaway' | 'exchange';
 
@@ -305,6 +306,17 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
     e.preventDefault();
     if (!validateForm()) return;
 
+    if (!editPost) {
+      const rateStatus = getPostRateLimitStatus(whatsappNumber.trim() || currentUser?.phone || 'user');
+      if (rateStatus.isCoolingDown) {
+        setErrors((prev) => ({
+          ...prev,
+          rateLimit: `⏱️ ${rateStatus.messageSi}`,
+        }));
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const narrative = generateNarrative();
@@ -362,6 +374,7 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
       });
     } else {
       onSubmitPost(postPayload);
+      recordPostSubmission(whatsappNumber.trim() || currentUser?.phone || 'user');
     }
 
     setIsSubmitting(false);
@@ -401,6 +414,12 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+          {errors.rateLimit && (
+            <div className="p-3.5 bg-amber-500/20 border border-amber-500/50 rounded-2xl text-amber-300 text-xs font-bold flex items-center gap-2 animate-pulse">
+              <Info className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{errors.rateLimit}</span>
+            </div>
+          )}
           
           {/* STEP 01: ඔබගේ අරමුණ (Purpose Selector) */}
           <div className="space-y-2.5">

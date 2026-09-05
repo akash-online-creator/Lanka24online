@@ -33,7 +33,7 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User } from '../types';
-import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
+import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { getTagIconComponent } from '../utils/tagUtils';
@@ -236,7 +236,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
             <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs text-emerald-100 font-medium">
               <span className="text-emerald-200 font-bold">{getLangText('තෝරාගත් සහායකයා:', 'Selected Helper:', 'தேர்வு செய்யப்பட்ட உதவியாளர்:')}</span>
               <span className="font-black text-white">{confirmedHelperName}</span>
-              {confirmedHelperPhone && (
+              {confirmedHelperPhone && (ownerCheck || isAdmin) && (
                 <span className="font-mono text-emerald-200">({confirmedHelperPhone})</span>
               )}
             </div>
@@ -332,7 +332,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
             </p>
             {post.identifyingInfo && (
               <p className="text-xs text-slate-600 dark:text-slate-300 bg-white/60 dark:bg-black/30 p-2 rounded-xl border border-amber-200 dark:border-amber-900/50">
-                <strong className="text-amber-800 dark:text-amber-300">හඳුනාගැනීමේ තොරතුරු:</strong> {post.identifyingInfo}
+                <strong className="text-amber-800 dark:text-amber-300">හඳුනාගැනීමේ තොරතුරු:</strong> {shouldMask ? inspectAndSanitizeMessage(post.identifyingInfo, false).sanitizedText : post.identifyingInfo}
               </p>
             )}
           </div>
@@ -421,7 +421,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
           <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-[#0c2217] border border-slate-200/80 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300">
             <div className="flex items-center gap-1.5 truncate">
               <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-              <span className="truncate">{post.locationName || viewerLocationName}</span>
+              <span className="truncate">{getVillageOrTownDisplay(post.locationName) || viewerLocationName}</span>
             </div>
             <div className="flex items-center gap-1 text-[11px] font-mono font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-lg shrink-0">
               <UserCheck className="w-3 h-3 text-emerald-600" />

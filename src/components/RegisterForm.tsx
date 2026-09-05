@@ -4,6 +4,7 @@ import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { RegistrationSuccessModal } from './RegistrationSuccessModal';
+import { compressImageFile } from '../utils/imageCompressor';
 import { 
   UserPlus, 
   Upload, 
@@ -161,49 +162,22 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
   }, []);
 
-  const processImageFile = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rawData = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          // High resolution max limit (1600px) retains crystal clear NIC text, numbers, and facial features
-          const maxDimension = 1600;
-
-          if (width > maxDimension || height > maxDimension) {
-            if (width > height) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            // Export with 0.90 high quality for maximum sharpness and clarity
-            const highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.90);
-            resolve(highQualityDataUrl);
-          } else {
-            resolve(rawData);
-          }
-        };
-        img.onerror = () => resolve(rawData);
-        img.src = rawData;
-      };
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(file);
-    });
+  const processImageFile = async (file: File): Promise<string> => {
+    try {
+      return await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+        maxSizeBytes: 200 * 1024,
+      });
+    } catch {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    }
   };
 
   const handlePhotoUpload = async (

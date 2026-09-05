@@ -201,9 +201,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
           </div>
 
           <div className="flex items-center gap-1.5">
-            {service.providerPhone && (
+            {service.providerPhone && (service.revealContactConsent === true || currentUser?.userId === service.userId || currentUser?.role === 'admin') && (
               <a
-                href={`tel:${service.providerPhone}`}
+                href={`tel:${service.providerPhone.replace(/\D/g, '')}`}
                 title={`Call ${service.providerPhone}`}
                 className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#153021] hover:bg-emerald-100 dark:hover:bg-[#1d432e] text-emerald-700 dark:text-emerald-300 flex items-center justify-center transition-colors cursor-pointer"
               >

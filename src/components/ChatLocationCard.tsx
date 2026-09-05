@@ -9,6 +9,7 @@ import {
   Compass
 } from 'lucide-react';
 import { GroupMessageLocation } from '../types';
+import { getVillageOrTownDisplay } from '../utils/geoUtils';
 
 interface ChatLocationCardProps {
   location: GroupMessageLocation;
@@ -90,12 +91,12 @@ export const ChatLocationCard: React.FC<ChatLocationCardProps> = ({
           <div className="flex items-start gap-1.5">
             <MapPin className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-zinc-100 leading-snug line-clamp-2">
-              {location.name}
+              {getVillageOrTownDisplay(location.name)}
             </h4>
           </div>
           {location.address && (
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 pl-5.5 line-clamp-1 mt-0.5">
-              {location.address}
+              {getVillageOrTownDisplay(location.address)}
             </p>
           )}
           {location.note && (

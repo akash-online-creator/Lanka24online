@@ -42,6 +42,7 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   const [dateType, setDateType] = useState<'today' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [revealContactConsent, setRevealContactConsent] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(true);
   const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
 
@@ -93,6 +94,7 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
       userPhone: currentUser.phone,
       showWhatsapp,
       whatsappNumber: showWhatsapp ? whatsappNumber.trim() : undefined,
+      revealContactConsent,
       locationName: currentUser.nearestTown || 'කඩවත',
       distanceKm: 0.5,
       createdAt: 'මීට සුළු මොහොතකට පෙර',
@@ -293,8 +295,8 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
             />
           </div>
 
-          {/* 5. Chat Box / WhatsApp */}
-          <div className="p-3.5 bg-slate-50 dark:bg-zinc-800/70 border border-slate-200 dark:border-zinc-700 rounded-2xl space-y-2">
+          {/* 5. Chat Box / WhatsApp & Privacy Consent */}
+          <div className="p-3.5 bg-slate-50 dark:bg-zinc-800/70 border border-slate-200 dark:border-zinc-700 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
                 <MessageSquare className="w-4 h-4 text-indigo-600" />
@@ -322,6 +324,26 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
                 />
               </div>
             )}
+
+            {/* Privacy protection: Allow phone number to be shown */}
+            <div className="pt-2.5 border-t border-slate-200 dark:border-zinc-700">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={revealContactConsent}
+                  onChange={(e) => setRevealContactConsent(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 text-indigo-600 rounded-md cursor-pointer shrink-0"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-800 dark:text-zinc-200 block">
+                    දුරකථන අංකය ප්‍රසිද්ධියේ පෙන්වීමට අවසර දෙමි (Reveal Phone Number)
+                  </span>
+                  <span className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight block mt-0.5">
+                    (මෙය සලකුණු නොකළහොත්, දුරකථන අංකය ආරක්ෂිතව තබාගන්නා අතර සැපයුම්කරුවන්ට In-App Chat මඟින් ඔබෙන් අංකය විමසීමට සිදුවේ)
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* 6. තහවුරු කිරීමේ බොත්තම */}

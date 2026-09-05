@@ -155,6 +155,9 @@ export interface HelpPost {
   donationDate?: string;
   donationQuantity?: string;
   saveLocationConsent?: boolean;
+  revealContactConsent?: boolean;
+  confirmedHelperId?: string;
+  authorizedUserIds?: string[];
   exchangeHaveItem?: string;
   exchangeHaveQuantity?: string;
   exchangeWantItem?: string;
@@ -317,6 +320,7 @@ export interface ProfessionalService {
   reviews: ServiceReview[];
   avgRating?: number;
   isVerified?: boolean;
+  revealContactConsent?: boolean;
 }
 
 export type GroupWorkSubCategory = 'social_service' | 'religious_activity' | 'friendly_meetup';
@@ -478,6 +482,7 @@ export interface MarketItem {
   userPhone: string;
   showWhatsapp: boolean;
   whatsappNumber?: string;
+  revealContactConsent?: boolean;
   // Metadata
   locationName?: string;
   distanceKm?: number;
@@ -530,6 +535,7 @@ export interface MarketShop {
   showWhatsapp: boolean;
   whatsappNumber?: string;
   chatEnabled: boolean;
+  revealContactConsent?: boolean;
   userId: string;
   userName: string;
   userPhone: string;

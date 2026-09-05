@@ -21,6 +21,83 @@
         "helpersCount": { "type": "number" }
       },
       "required": ["title", "description", "category"]
+    },
+    "marketplace_items": {
+      "title": "Marketplace Items",
+      "description": "Buy, sell, rent, and community trade product listings",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "location": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "sellerPhone": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "price", "category", "sellerPhone"]
+    },
+    "users": {
+      "title": "User Profiles",
+      "description": "User profile, verified ID and preferences",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "address": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "nicNumber": { "type": "string" }
+      },
+      "required": ["name", "phone"]
+    },
+    "reviews": {
+      "title": "User Reviews & Ratings",
+      "description": "Community ratings and reviews for services and helpers",
+      "type": "object",
+      "properties": {
+        "targetUserId": { "type": "string" },
+        "reviewerName": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["targetUserId", "rating", "comment"]
+    },
+    "saved_posts": {
+      "title": "Saved Posts",
+      "description": "Bookmarked posts per user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "savedAt": { "type": "string" }
+      },
+      "required": ["userId", "postId"]
+    }
+  },
+  "firestore": {
+    "/help_posts/{postId}": {
+      "schema": "help_posts",
+      "description": "Community help requests, notices, and replies"
+    },
+    "/marketplace_items/{itemId}": {
+      "schema": "marketplace_items",
+      "description": "Marketplace trade items"
+    },
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Registered app user profiles"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "reviews",
+      "description": "Helper and service feedback reviews"
+    },
+    "/saved_posts/{saveId}": {
+      "schema": "saved_posts",
+      "description": "User bookmarked posts"
     }
   }
 }

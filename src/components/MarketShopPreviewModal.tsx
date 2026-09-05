@@ -1,5 +1,6 @@
 import React from 'react';
-import { MarketShop, WeekSchedule } from '../types';
+import { MarketShop, WeekSchedule, User } from '../types';
+import { getVillageOrTownDisplay } from '../utils/geoUtils';
 import { 
   X, 
   Store, 
@@ -15,13 +16,15 @@ import {
   Layers, 
   Tag, 
   Navigation,
-  Calendar
+  Calendar,
+  Lock
 } from 'lucide-react';
 
 interface MarketShopPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   shop: MarketShop | null;
+  currentUser?: User;
   onOpenChat?: (shop: MarketShop) => void;
 }
 
@@ -29,11 +32,19 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
   isOpen,
   onClose,
   shop,
+  currentUser,
   onOpenChat
 }) => {
   if (!isOpen || !shop) return null;
 
   const isShop = shop.type === 'shop';
+
+  const isOwner = currentUser && (
+    (currentUser.userId && shop.userId && (currentUser.userId === shop.userId || currentUser.id === shop.userId)) ||
+    (currentUser.phone && shop.userPhone && currentUser.phone.replace(/\D/g, '') === shop.userPhone.replace(/\D/g, ''))
+  );
+  const isAdmin = currentUser?.role === 'admin';
+  const hasContactPermission = isOwner || isAdmin || shop.revealContactConsent !== false;
 
   const dayLabels: { key: keyof WeekSchedule; labelSi: string }[] = [
     { key: 'monday', labelSi: 'සඳුදා (Mon)' },
@@ -104,25 +115,38 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
         <div className="p-5 overflow-y-auto space-y-5 flex-1 text-slate-800 dark:text-zinc-100">
           {/* Quick Action Buttons (Call, WhatsApp, Maps) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {shop.showWhatsapp && shop.whatsappNumber && (
+            {hasContactPermission ? (
+              <>
+                {shop.showWhatsapp && shop.whatsappNumber && (
+                  <button
+                    type="button"
+                    onClick={handleOpenWhatsApp}
+                    className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>WhatsApp කරන්න</span>
+                  </button>
+                )}
+
+                {shop.userPhone && (
+                  <a
+                    href={`tel:${shop.userPhone}`}
+                    className="p-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer text-center"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>අමතන්න (Call)</span>
+                  </a>
+                )}
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={handleOpenWhatsApp}
-                className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                onClick={() => onOpenChat && onOpenChat(shop)}
+                className="col-span-2 p-2.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>WhatsApp කරන්න</span>
+                <Lock className="w-4 h-4 text-amber-600" />
+                <span>🔒 අංකය විමසන්න (In-App Chat)</span>
               </button>
-            )}
-
-            {shop.userPhone && (
-              <a
-                href={`tel:${shop.userPhone}`}
-                className="p-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer text-center"
-              >
-                <Phone className="w-4 h-4" />
-                <span>අමතන්න (Call)</span>
-              </a>
             )}
 
             {shop.location && (
@@ -143,11 +167,11 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
               <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-900 dark:text-zinc-100">
-                  {shop.location.name}
+                  {getVillageOrTownDisplay(shop.location.name)}
                 </div>
                 {shop.location.address && (
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    {shop.location.address}
+                    {getVillageOrTownDisplay(shop.location.address)}
                   </div>
                 )}
                 {shop.location.note && (

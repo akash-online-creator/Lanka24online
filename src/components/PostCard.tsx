@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Phone,
   ShieldCheck,
+  ShieldAlert,
   Search,
   Gift,
   Calendar,
@@ -30,7 +31,7 @@ import {
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User } from '../types';
 import { Card3D } from './Card3D';
-import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
+import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { getTagIconComponent } from '../utils/tagUtils';
@@ -81,12 +82,36 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const ownerCheck = isOwner ?? (
     currentUser && (
+      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
       (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
       (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
     )
   );
 
-  // Accurate Motorcycle Road Route Calculation
+  const isConfirmedHelper = Boolean(
+    currentUser && (
+      (currentUser.userId && post.confirmedHelperId && currentUser.userId === post.confirmedHelperId) ||
+      (currentUser.phone && post.confirmedHelperPhone && normalizePhone(currentUser.phone) === normalizePhone(post.confirmedHelperPhone)) ||
+      (post.authorizedUserIds && currentUser.userId && post.authorizedUserIds.includes(currentUser.userId)) ||
+      (post.replies?.some(r => (r.isConfirmed || r.isAccepted) && (
+        (currentUser.userId && r.responderId && currentUser.userId === r.responderId) ||
+        (currentUser.phone && r.responderPhone && normalizePhone(currentUser.phone) === normalizePhone(r.responderPhone)) ||
+        (currentUser.name && r.responderName && currentUser.name.trim().toLowerCase() === r.responderName.trim().toLowerCase())
+      )))
+    )
+  );
+
+  const isAdmin = currentUser?.role === 'admin';
+  const isConfirmed = Boolean(post.isConfirmed || post.status === 'confirmed' || post.confirmedBy);
+  const shouldMask = !isConfirmed && !ownerCheck && !isAdmin;
+
+  // Contact Permission for Anti-Fraud Safeguard (Only show phone/address with poster's consent, or if owner/confirmed helper/admin)
+  const hasContactPermission = Boolean(
+    ownerCheck || 
+    isAdmin || 
+    isConfirmedHelper || 
+    post.revealContactConsent === true
+  );
   const viewerLat = viewerLocation?.lat || 7.1710;
   const viewerLng = viewerLocation?.lng || 79.8986;
   const viewerLocationName = viewerLocation?.nameSi || 'ඔබ සිටින ස්ථානය (නරඹන්නා)';
@@ -106,10 +131,6 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
   const helpersCount = post.helpersNeeded || post.helpersCount || 1;
-
-  const isAdmin = currentUser?.role === 'admin';
-  const isConfirmed = Boolean(post.isConfirmed || post.status === 'confirmed' || post.confirmedBy);
-  const shouldMask = !isConfirmed && !ownerCheck && !isAdmin;
 
   // Extract confirmed helper info if present
   const confirmedHelperName = post.confirmedHelperName || post.confirmedBy || (post.replies?.find(r => r.isConfirmed || r.isAccepted)?.responderName);
@@ -413,25 +434,25 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <p>
                       {effectiveIncidentDate ? `${effectiveIncidentDate} දින, ` : ''}
                       {effectiveIncidentTime ? `${effectiveIncidentTime} පමණ, ` : ''}
-                      {effectiveIncidentLocation ? `${effectiveIncidentLocation} දී, ` : ''}
+                      {effectiveIncidentLocation ? `${getVillageOrTownDisplay(effectiveIncidentLocation)} දී, ` : ''}
                       <strong className="text-emerald-700 dark:text-emerald-300 font-black">
                         {effectiveItemName}
                       </strong>{' '}
                       {effectiveType === 'lost' ? 'නැතිවී ඇත,' : 'සොරාගෙන ඇත,'} සොයාගත් කෙනෙක් වේනම්{' '}
                       <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
-                        {effectiveContactPhone}
-                        {effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` හෝ ${effectiveContactWhatsapp}` : ''}
+                        {hasContactPermission ? effectiveContactPhone : '07* *** **** (🔒 ආරක්ෂිතයි)'}
+                        {hasContactPermission && effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` හෝ ${effectiveContactWhatsapp}` : ''}
                       </span>{' '}
                       හරහා මා සම්බන්ධකරගන්න.
                     </p>
                     <p className="text-slate-800 dark:text-slate-200">
                       නැතිනම්{' '}
                       <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                        {effectiveContactAddress}
+                        {hasContactPermission ? getVillageOrTownDisplay(effectiveContactAddress) : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)'}
                       </span>{' '}
                       ට එවන්න. නිවැරදි ස්ථානය:{' '}
                       <span className="font-extrabold text-slate-900 dark:text-white">
-                        {effectiveLocationName}
+                        {hasContactPermission ? getVillageOrTownDisplay(effectiveLocationName) : `${getVillageOrTownDisplay(effectiveLocationName).split(',')[0]} (🔒 තහවුරු වූ පසු දිස්වේ)`}
                       </span>
                     </p>
                   </div>
@@ -454,7 +475,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                         <span>නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:</span>
                       </div>
                       <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                        {post.identifyingInfo}
+                        {shouldMask ? inspectAndSanitizeMessage(post.identifyingInfo, false).sanitizedText : post.identifyingInfo}
                       </p>
                     </div>
                   )}
@@ -498,21 +519,27 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 font-semibold">
                       <div>
                         <span className="text-slate-500 dark:text-slate-400">දුරකථන අංකය: </span>
-                        <strong className="text-slate-900 dark:text-white">{effectiveContactPhone}</strong>
+                        <strong className="text-slate-900 dark:text-white">
+                          {hasContactPermission ? effectiveContactPhone : '07* *** **** (🔒 ආරක්ෂිතයි)'}
+                        </strong>
                       </div>
                       <div>
                         <span className="text-slate-500 dark:text-slate-400">වට්සැප් අංකය: </span>
-                        <strong className="text-slate-900 dark:text-white">{effectiveContactWhatsapp}</strong>
+                        <strong className="text-slate-900 dark:text-white">
+                          {hasContactPermission ? effectiveContactWhatsapp : '07* *** **** (🔒 ආරක්ෂිතයි)'}
+                        </strong>
                       </div>
-                      {effectiveContactAddress && (
-                        <div className="sm:col-span-2">
-                          <span className="text-slate-500 dark:text-slate-400">ගෙදර ලිපිනය: </span>
-                          <strong className="text-slate-900 dark:text-white">{effectiveContactAddress}</strong>
-                        </div>
-                      )}
+                      <div className="sm:col-span-2">
+                        <span className="text-slate-500 dark:text-slate-400">ගෙදර ලිපිනය: </span>
+                        <strong className="text-slate-900 dark:text-white">
+                          {hasContactPermission ? getVillageOrTownDisplay(effectiveContactAddress) : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)'}
+                        </strong>
+                      </div>
                       <div className="sm:col-span-2">
                         <span className="text-slate-500 dark:text-slate-400">නිවැරදි ස්ථානය: </span>
-                        <strong className="text-slate-900 dark:text-white">{effectiveLocationName}</strong>
+                        <strong className="text-slate-900 dark:text-white">
+                          {hasContactPermission ? getVillageOrTownDisplay(effectiveLocationName) : `${getVillageOrTownDisplay(effectiveLocationName).split(',')[0]} (🔒 තහවුරු වූ පසු දිස්වේ)`}
+                        </strong>
                       </div>
                     </div>
                   </div>
@@ -542,7 +569,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
               {/* Direct Instant Contact Actions for Viewers */}
               <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800/60 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {effectiveContactPhone && (
+                {hasContactPermission && effectiveContactPhone ? (
                   <a
                     href={`tel:${effectiveContactPhone.replace(/\D/g, '')}`}
                     onClick={(e) => e.stopPropagation()}
@@ -551,9 +578,23 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <Phone className="w-3.5 h-3.5" />
                     <span>ඇමතුමක් ගන්න</span>
                   </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenChat) onOpenChat(post);
+                      else onOfferSupport(post);
+                    }}
+                    className="py-2 px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer border border-slate-300 dark:border-slate-700"
+                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: ඇමතුම් ලබාගැනීමට Chat මඟින් දැන්වීම්කරුගෙන් විමසන්න"
+                  >
+                    <Lock className="w-3 h-3 text-amber-500" />
+                    <span>🔒 අංකය විමසන්න (Chat)</span>
+                  </button>
                 )}
 
-                {effectiveContactWhatsapp && (
+                {hasContactPermission && effectiveContactWhatsapp ? (
                   <a
                     href={`https://wa.me/${effectiveContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
                     target="_blank"
@@ -564,18 +605,40 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <MessageSquare className="w-3.5 h-3.5" />
                     <span>WhatsApp</span>
                   </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenChat) onOpenChat(post);
+                      else onOfferSupport(post);
+                    }}
+                    className="py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>අපගේ Chat</span>
+                  </button>
                 )}
 
-                <a
-                  href={motorcycleRoute.mapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="py-2 px-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer col-span-2 sm:col-span-1"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-rose-300" />
-                  <span>Map මාර්ගය</span>
-                </a>
+                {hasContactPermission ? (
+                  <a
+                    href={motorcycleRoute.mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="py-2 px-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer col-span-2 sm:col-span-1"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-rose-300" />
+                    <span>Map මාර්ගය</span>
+                  </a>
+                ) : (
+                  <div
+                    className="py-2 px-2.5 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1 text-center"
+                  >
+                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                    <span>🔒 ලිපිනය ආරක්ෂිතයි</span>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -671,11 +734,15 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <p className="flex items-start gap-1.5">
                     <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">ස්ථානය :-</span>
                     <span className="font-semibold">
-                      {post.saveLocationConsent === false ? 'පෞද්ගලිකව දැනුම්දෙනු ලැබේ' : locName}
+                      {post.saveLocationConsent === false 
+                        ? 'පෞද්ගලිකව දැනුම්දෙනු ලැබේ' 
+                        : hasContactPermission 
+                        ? getVillageOrTownDisplay(locName) 
+                        : `${getVillageOrTownDisplay(locName).split(',')[0]} (🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි)`}
                     </span>
                   </p>
 
-                  {whatsapp ? (
+                  {hasContactPermission && whatsapp ? (
                     <p className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">මා සම්බන්ධ කරගැනීමට:</span>
                       <a
@@ -700,7 +767,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   ) : (
                     <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                       <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">සම්බන්ධ වීමට:</span>
-                      <span className="font-medium">පහත 'අපගේ Chat' බොත්තම මඟින් පණිවිඩයක් එවන්න</span>
+                      <span className="font-medium">🔒 දුරකථන අංක ආරක්ෂිතයි — පහත 'අපගේ Chat' බොත්තම මඟින් පණිවිඩයක් එවන්න</span>
                     </p>
                   )}
 
@@ -730,8 +797,8 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <span>අපගේ Chat</span>
                 </button>
 
-                {/* 2. WhatsApp බොත්තම (කෙලින්ම WhatsApp විවෘත වේ) */}
-                {whatsapp && (
+                {/* 2. WhatsApp බොත්තම */}
+                {hasContactPermission && whatsapp ? (
                   <a
                     href={`https://wa.me/${whatsappFormatted}?text=${encodeURIComponent(
                       `හලෝ, ඔබ සහය සේවා (Sahaya Sewa) හරහා පළකල #${post.postCode} ${
@@ -747,10 +814,24 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <MessageSquare className="w-4 h-4 text-white shrink-0" />
                     <span>WhatsApp</span>
                   </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenChat) onOpenChat(post);
+                      else onOfferSupport(post);
+                    }}
+                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-700 cursor-pointer"
+                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: අවසරය ඉල්ලීමට Chat කරන්න"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>WhatsApp (🔒)</span>
+                  </button>
                 )}
 
                 {/* 3. ඇමතුමක් ලබාගැනීම */}
-                {post.userPhone && (
+                {hasContactPermission && post.userPhone ? (
                   <a
                     href={`tel:${post.userPhone.replace(/\D/g, '')}`}
                     onClick={(e) => e.stopPropagation()}
@@ -759,10 +840,24 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <Phone className="w-4 h-4 text-white shrink-0" />
                     <span>ඇමතුමක්</span>
                   </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenChat) onOpenChat(post);
+                      else onOfferSupport(post);
+                    }}
+                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-700 cursor-pointer"
+                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: ඇමතුම් ලබාගැනීමට Chat මඟින් අවසර ඉල්ලන්න"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>ඇමතුම් (🔒)</span>
+                  </button>
                 )}
 
-                {/* 4. Map මාර්ගය (ස්ථානය ලබාදී ඇත්නම්) */}
-                {post.saveLocationConsent !== false && (
+                {/* 4. Map මාර්ගය */}
+                {hasContactPermission && post.saveLocationConsent !== false ? (
                   <a
                     href={motorcycleRoute.mapsUrl}
                     target="_blank"
@@ -773,6 +868,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <MapPin className="w-4 h-4 text-rose-300 shrink-0" />
                     <span>Map මාර්ගය</span>
                   </a>
+                ) : (
+                  <div
+                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-800 text-center"
+                  >
+                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                    <span>🔒 ලිපිනය ආරක්ෂිතයි</span>
+                  </div>
                 )}
               </div>
 

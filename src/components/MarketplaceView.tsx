@@ -15,6 +15,11 @@ import {
   getStoredMarketShops, 
   saveMarketShopsToStorage 
 } from '../data/marketplaceData';
+import { 
+  subscribeToMarketplaceItems, 
+  addMarketplaceItemToFirestore, 
+  deleteMarketplaceItemFromFirestore 
+} from '../lib/firebase';
 import { MarketplaceNewsTicker } from './MarketplaceNewsTicker';
 import { MarketplaceAddSellerItemModal } from './MarketplaceAddSellerItemModal';
 import { MarketplaceAddBuyerRequestModal } from './MarketplaceAddBuyerRequestModal';
@@ -23,6 +28,7 @@ import { MarketShopPreviewModal } from './MarketShopPreviewModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { MarketplaceGuideModal } from './MarketplaceGuideModal';
 import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
+import { getVillageOrTownDisplay } from '../utils/geoUtils';
 import { 
   Search, 
   Store, 
@@ -53,7 +59,8 @@ import {
   Share2, 
   Clock,
   HelpCircle,
-  Lightbulb
+  Lightbulb,
+  Lock
 } from 'lucide-react';
 
 interface MarketplaceViewProps {
@@ -121,7 +128,17 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     note?: string;
   } | null>(null);
 
-  // Synchronize to localStorage
+  // Real-time Firestore sync for marketplace items with fallback to local state
+  useEffect(() => {
+    const unsubscribe = subscribeToMarketplaceItems((remoteItems) => {
+      if (remoteItems && remoteItems.length > 0) {
+        setItems(remoteItems);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronize to localStorage backup
   useEffect(() => {
     saveMarketItemsToStorage(items);
   }, [items]);
@@ -130,13 +147,31 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     saveMarketShopsToStorage(shops);
   }, [shops]);
 
+  const checkContactPermission = (userId?: string, phone?: string, consent?: boolean) => {
+    if (currentUser?.role === 'admin') return true;
+    const isOwner = Boolean(
+      currentUser && (
+        (userId && (currentUser.userId === userId || currentUser.id === userId)) ||
+        (phone && currentUser.phone && phone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, ''))
+      )
+    );
+    if (isOwner) return true;
+    return consent !== false;
+  };
+
   // Handlers for Items
   const handleAddSellerItem = (item: MarketItem) => {
     setItems((prev) => [item, ...prev]);
+    addMarketplaceItemToFirestore(item).catch((err) => {
+      console.warn('Sync seller item to cloud notice:', err);
+    });
   };
 
   const handleAddBuyerRequest = (req: MarketItem) => {
     setItems((prev) => [req, ...prev]);
+    addMarketplaceItemToFirestore(req).catch((err) => {
+      console.warn('Sync buyer request to cloud notice:', err);
+    });
   };
 
   // Handlers for Shops / Businesses
@@ -721,32 +756,44 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         {item.userName}
                       </div>
                       <div className="text-[10px] text-zinc-400 truncate">
-                        {item.locationName} • දුර ~{item.distanceKm || 1.2} km
+                        {getVillageOrTownDisplay(item.locationName)} • දුර ~{item.distanceKm || 1.2} km
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {item.showWhatsapp && item.whatsappNumber && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenWhatsApp(item.whatsappNumber!, item.title)}
-                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
-                          title="WhatsApp පණිවිඩයක් එවන්න"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">WhatsApp</span>
-                        </button>
-                      )}
+                      {checkContactPermission(item.userId, item.userPhone, item.revealContactConsent) ? (
+                        <>
+                          {item.showWhatsapp && item.whatsappNumber && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWhatsApp(item.whatsappNumber!, item.title)}
+                              className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                              title="WhatsApp පණිවිඩයක් එවන්න"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">WhatsApp</span>
+                            </button>
+                          )}
 
-                      {item.userPhone && (
-                        <a
-                          href={`tel:${item.userPhone}`}
-                          className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
-                          title="ඇමතුමක් ගන්න"
+                          {item.userPhone && (
+                            <a
+                              href={`tel:${item.userPhone}`}
+                              className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                              title="ඇමතුමක් ගන්න"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Call</span>
+                            </a>
+                          )}
+                        </>
+                      ) : (
+                        <div
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold"
+                          title="දැන්වීම්කරු දුරකථන අංකය ප්‍රදර්ශනය කිරීම අක්‍රිය කර ඇත"
                         >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Call</span>
-                        </a>
+                          <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>🔒 ආරක්ෂිතයි</span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -890,30 +937,44 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         {req.userName}
                       </div>
                       <div className="text-[10px] text-zinc-400 truncate">
-                        {req.locationName}
+                        {getVillageOrTownDisplay(req.locationName)}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {req.showWhatsapp && req.whatsappNumber && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenWhatsApp(req.whatsappNumber!, req.title)}
-                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">WhatsApp</span>
-                        </button>
-                      )}
+                      {checkContactPermission(req.userId, req.userPhone, req.revealContactConsent) ? (
+                        <>
+                          {req.showWhatsapp && req.whatsappNumber && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWhatsApp(req.whatsappNumber!, req.title)}
+                              className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                              title="WhatsApp පණිවිඩයක් එවන්න"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">WhatsApp</span>
+                            </button>
+                          )}
 
-                      {req.userPhone && (
-                        <a
-                          href={`tel:${req.userPhone}`}
-                          className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                          {req.userPhone && (
+                            <a
+                              href={`tel:${req.userPhone}`}
+                              className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                              title="ඇමතුමක් ගන්න"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Call</span>
+                            </a>
+                          )}
+                        </>
+                      ) : (
+                        <div
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold"
+                          title="දැන්වීම්කරු දුරකථන අංකය ප්‍රදර්ශනය කිරීම අක්‍රිය කර ඇත"
                         >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Call</span>
-                        </a>
+                          <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>🔒 ආරක්ෂිතයි</span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1101,7 +1162,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       {shop.location && (
                         <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                          <span className="truncate">{shop.location.name}</span>
+                          <span className="truncate">{getVillageOrTownDisplay(shop.location.name)}</span>
                         </div>
                       )}
 
@@ -1139,24 +1200,36 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       </button>
 
                       <div className="flex items-center gap-1.5">
-                        {shop.showWhatsapp && shop.whatsappNumber && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenWhatsApp(shop.whatsappNumber!, shop.name)}
-                            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                            title="WhatsApp"
+                        {checkContactPermission(shop.userId, shop.userPhone, shop.revealContactConsent) ? (
+                          <>
+                            {shop.showWhatsapp && shop.whatsappNumber && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenWhatsApp(shop.whatsappNumber!, shop.name)}
+                                className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                title="WhatsApp"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {shop.userPhone && (
+                              <a
+                                href={`tel:${shop.userPhone}`}
+                                className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                title="Call"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <div
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold"
+                            title="දුරකථන අංකය ආරක්ෂිතයි"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {shop.userPhone && (
-                          <a
-                            href={`tel:${shop.userPhone}`}
-                            className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                            title="Call"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                          </a>
+                            <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>🔒 ආරක්ෂිතයි</span>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1320,7 +1393,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                   {biz.location && (
                     <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span className="truncate">{biz.location.name}</span>
+                      <span className="truncate">{getVillageOrTownDisplay(biz.location.name)}</span>
                     </div>
                   )}
 
@@ -1357,24 +1430,36 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                   </button>
 
                   <div className="flex items-center gap-1.5">
-                    {biz.showWhatsapp && biz.whatsappNumber && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenWhatsApp(biz.whatsappNumber!, biz.name)}
-                        className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                        title="WhatsApp"
+                    {checkContactPermission(biz.userId, biz.userPhone, biz.revealContactConsent) ? (
+                      <>
+                        {biz.showWhatsapp && biz.whatsappNumber && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenWhatsApp(biz.whatsappNumber!, biz.name)}
+                            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="WhatsApp"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {biz.userPhone && (
+                          <a
+                            href={`tel:${biz.userPhone}`}
+                            className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="Call"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </>
+                    ) : (
+                      <div
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold"
+                        title="දුරකථන අංකය ආරක්ෂිතයි"
                       >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {biz.userPhone && (
-                      <a
-                        href={`tel:${biz.userPhone}`}
-                        className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                        title="Call"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                      </a>
+                        <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>🔒 ආරක්ෂිතයි</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1428,6 +1513,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         isOpen={!!previewingShop}
         onClose={() => setPreviewingShop(null)}
         shop={previewingShop}
+        currentUser={currentUser}
       />
 
       {/* 5. Delete Shop Confirmation Modal */}

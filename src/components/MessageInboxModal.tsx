@@ -145,12 +145,13 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
         setMessages(combined);
       } else {
         const nowMs = Date.now();
+        const safeDesc = inspectAndSanitizeMessage(currentPost.whatHappened || 'ඉල්ලීම', Boolean(currentPost.isConfirmed)).sanitizedText;
         setMessages([
           {
             id: 'init_1',
             senderName: currentPost.userName || 'දැන්වීම්කරු',
             senderRole: 'seeker',
-            text: `හලෝ, මගේ #${currentPost.postCode || ''} ("${currentPost.whatHappened || 'ඉල්ලීම'}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
+            text: `හලෝ, මගේ #${currentPost.postCode || ''} ("${safeDesc}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
             timestamp: formatMessageClockTime(undefined, nowMs),
             createdAtMs: nowMs,
             senderPhone: currentPost.userPhone || '',
@@ -564,7 +565,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                       
                       {/* ගැටලුව (කෙටියෙන්, කුඩාවට) */}
                       <p className="text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md">
-                        📌 {activeThread.post.whatHappened}
+                        📌 {inspectAndSanitizeMessage(activeThread.post.whatHappened || '', Boolean(activeThread.post.isConfirmed)).sanitizedText}
                       </p>
                     </div>
                   </div>
@@ -665,10 +666,12 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                             : 'bg-white dark:bg-[#0c2217] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#19422d] rounded-tl-none'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words font-medium">{msg.text}</p>
+                        <p className="whitespace-pre-wrap break-words font-medium">
+                          {inspectAndSanitizeMessage(msg.text, isConfirmed).sanitizedText}
+                        </p>
 
-                        {/* WhatsApp / Phone if confirmed */}
-                        {isConfirmed && !isMe && msg.senderPhone && (
+                        {/* WhatsApp / Phone if confirmed AND contact consent is granted */}
+                        {isConfirmed && activeThread.post.revealContactConsent !== false && !isMe && msg.senderPhone && (
                           <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]">
                             <span className="text-slate-600 dark:text-slate-300 font-mono">
                               📞 {msg.senderPhone}

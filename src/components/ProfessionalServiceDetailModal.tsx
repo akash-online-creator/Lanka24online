@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, Language, ProfessionalService, ServiceReview } from '../types';
+import { getVillageOrTownDisplay } from '../utils/geoUtils';
 import { 
   X, 
   MapPin, 
@@ -14,7 +15,8 @@ import {
   ShieldCheck, 
   Send,
   Sparkles,
-  Check
+  Check,
+  Lock
 } from 'lucide-react';
 import { ProfessionalServiceChatModal } from './ProfessionalServiceChatModal';
 
@@ -41,6 +43,15 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
   const [commentText, setCommentText] = useState('');
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const isOwner = Boolean(
+    currentUser && (
+      (currentUser.userId && service.userId && (currentUser.userId === service.userId || currentUser.id === service.userId)) ||
+      (currentUser.phone && service.providerPhone && currentUser.phone.replace(/\D/g, '') === service.providerPhone.replace(/\D/g, ''))
+    )
+  );
+  const isAdmin = currentUser?.role === 'admin';
+  const hasContactPermission = isOwner || isAdmin || service.revealContactConsent !== false;
 
   const getDeliveryMethodLabel = (method: string) => {
     switch (method) {
@@ -123,6 +134,9 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                 <img
                   src={service.providerPhotoUrl}
                   alt={service.providerName}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -152,7 +166,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs text-slate-600 dark:text-[#88ad97]">
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>{service.locationName || 'කඩවත'}</span>
+                  <span>{getVillageOrTownDisplay(service.locationName || 'කඩවත')}</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-blue-500" />
@@ -178,35 +192,46 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
               <span>ඇප් එක තුළ Chat කරන්න</span>
             </button>
 
-            {/* 2. WhatsApp Button */}
-            {(service.providerWhatsapp || service.providerPhone) && (
-              <a
-                href={formatWhatsAppUrl(service.providerWhatsapp || service.providerPhone, service.serviceTitle)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="py-3 px-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>WhatsApp පණිවිඩයක්</span>
-              </a>
-            )}
+            {hasContactPermission ? (
+              <>
+                {/* 2. WhatsApp Button */}
+                {(service.providerWhatsapp || service.providerPhone) && (
+                  <a
+                    href={formatWhatsAppUrl(service.providerWhatsapp || service.providerPhone, service.serviceTitle)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>WhatsApp පණිවිඩයක්</span>
+                  </a>
+                )}
 
-            {/* 3. Phone Call Button */}
-            {service.providerPhone && (
-              <a
-                href={`tel:${service.providerPhone}`}
-                className="py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
-              >
-                <Phone className="w-4 h-4 text-emerald-400" />
-                <span>අමතන්න ({service.providerPhone})</span>
-              </a>
+                {/* 3. Phone Call Button */}
+                {service.providerPhone && (
+                  <a
+                    href={`tel:${service.providerPhone}`}
+                    className="py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Phone className="w-4 h-4 text-emerald-400" />
+                    <span>අමතන්න ({service.providerPhone})</span>
+                  </a>
+                )}
+              </>
+            ) : (
+              <div className="sm:col-span-2 py-3 px-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-extrabold text-xs flex items-center justify-center gap-2 text-center">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>🔒 දුරකථන අංකය ආරක්ෂිතයි (Chat මගින් ඉල්ලන්න)</span>
+              </div>
             )}
           </div>
 
           {service.altPhone && (
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#112318] border border-slate-200 dark:border-[#1c3a27] text-xs flex items-center gap-2 text-slate-700 dark:text-slate-300">
               <Phone className="w-3.5 h-3.5 text-emerald-500" />
-              <span>විකල්ප දුරකථන අංකය: <strong>{service.altPhone}</strong></span>
+              <span>
+                විකල්ප දුරකථන අංකය: <strong>{hasContactPermission ? service.altPhone : '🔒 ආරක්ෂිතයි'}</strong>
+              </span>
             </div>
           )}
 

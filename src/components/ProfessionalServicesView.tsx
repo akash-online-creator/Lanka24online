@@ -331,6 +331,9 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                           <img
                             src={service.providerPhotoUrl}
                             alt={service.providerName}
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                           />
                         ) : (

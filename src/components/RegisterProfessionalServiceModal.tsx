@@ -68,6 +68,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
   const [experienceDuration, setExperienceDuration] = useState('');
   const [altPhone, setAltPhone] = useState('');
+  const [revealContactConsent, setRevealContactConsent] = useState(true);
   const [locationName, setLocationName] = useState(currentLocationName || user.nearestTown || 'කඩවත');
   
   // Coordinates for map
@@ -302,6 +303,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       reviews: [],
       avgRating: 5.0,
       isVerified: user.status === 'approved' || true,
+      revealContactConsent,
     };
 
     onRegisterService(newService);
@@ -718,6 +720,26 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     className="w-full p-2.5 bg-slate-50 dark:bg-[#112318] border border-slate-300 dark:border-[#1e3e2b] rounded-2xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
+              </div>
+
+              {/* Privacy Protection Checkbox */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-[#0c2417] border border-emerald-300/80 dark:border-[#1c472d]">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={revealContactConsent}
+                    onChange={(e) => setRevealContactConsent(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 text-emerald-600 rounded-md cursor-pointer shrink-0"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      දුරකථන අංකය ප්‍රසිද්ධියේ පෙන්වීමට අවසර දෙමි (Direct Contact Consent)
+                    </span>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 leading-tight block mt-0.5">
+                      (මෙය සලකුණු නොකළහොත්, දුරකථන අංකය සඟවා තබන අතර සේවාලාභීන් In-App Chat මඟින් ඔබ හා සම්බන්ධ වනු ඇත)
+                    </span>
+                  </div>
+                </label>
               </div>
 
               {/* Submit Button */}

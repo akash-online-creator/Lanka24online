@@ -1185,6 +1185,64 @@ export function formatOrderedLocation(village: string, road: string, town: strin
   return parts.join(', ');
 }
 
+/**
+ * Truncate/extract only the village or town from any address or location name.
+ * Used across ads to only display the village or town (ගම හෝ ටවුන් එක පමණක් සදහන් කරන්න).
+ * Example: "කෝවින්න, ගංගාරාම පාර, කටුනායක" -> "කෝවින්න, කටුනායක"
+ * Example: "නො. 45/A, මල්වත්ත පාර, නුගේගොඩ" -> "නුගේගොඩ"
+ * Example: "ගාලු පාර, පානදුර" -> "පානදුර"
+ */
+export function getVillageOrTownDisplay(locationStr?: string): string {
+  if (!locationStr || locationStr.trim() === '') return 'ස්ථානය තහවුරු කර ඇත';
+  
+  const clean = locationStr.trim();
+  
+  // Helper to check if a segment is a house/building number
+  const isHouseNumber = (s: string) => {
+    const t = s.trim();
+    return /^(no\.?|නො\.?|#)\s*\d+/i.test(t) || 
+           /^\d+[\dA-Za-z\/\-\s]*$/.test(t) || 
+           /^\d+\/\w+/i.test(t);
+  };
+
+  // Helper to check if a segment is a road, street, highway, etc.
+  const isRoadOrStreet = (s: string) => {
+    const t = s.trim();
+    return /(\b|\s|^)(පාර|මාවත|වීදිය|පටුමග|road|rd\.?|street|st\.?|mawatha|mwt\.?|lane|ave|avenue|drive|highway)(\b|\s|$)/i.test(t);
+  };
+  
+  // If it's split by comma or dash: [Village, Road, Town]
+  const rawParts = clean.split(/[,;\n]/).map((p) => p.trim()).filter(Boolean);
+  
+  if (rawParts.length > 1) {
+    // Filter out parts that are house numbers or road names
+    const filteredParts = rawParts.filter((p) => !isHouseNumber(p) && !isRoadOrStreet(p));
+    
+    if (filteredParts.length >= 2) {
+      const village = filteredParts[0];
+      const town = filteredParts[filteredParts.length - 1];
+      if (village === town) return village;
+      return `${village}, ${town}`;
+    } else if (filteredParts.length === 1) {
+      return filteredParts[0];
+    }
+    
+    // If all parts were filtered out (e.g. only road provided), take non-house number parts
+    const nonHouseParts = rawParts.filter((p) => !isHouseNumber(p));
+    if (nonHouseParts.length > 0) {
+      return nonHouseParts[nonHouseParts.length - 1];
+    }
+    return rawParts[0];
+  }
+  
+  // Single string without commas: check if it contains road names or house numbers
+  let singleStr = clean;
+  // Remove leading house numbers like "No 12, " or "නො 15/A "
+  singleStr = singleStr.replace(/^(no\.?|නො\.?|#)?\s*\d+[\dA-Za-z\/\-\s]*,?\s*/i, '').trim();
+  
+  return singleStr || clean;
+}
+
 // Master Reverse Geocoding Function with Exact [Village, Road, Town] Resolution
 export async function resolveExactLocation(lat: number, lng: number): Promise<GeoResolvedLocation> {
   const { locality: closest, distanceKm } = findClosestLocality(lat, lng);

@@ -23,6 +23,7 @@ import { HelpPost, Language, LocationOption, User, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { MapLocationTracker } from './MapLocationTracker';
+import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 
 interface FindForMeModalProps {
   isOpen: boolean;
@@ -280,6 +281,17 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
     e.preventDefault();
     if (!validateForm()) return;
 
+    if (!editPost) {
+      const rateStatus = getPostRateLimitStatus(contactPhone.trim() || currentUser?.phone || 'user');
+      if (rateStatus.isCoolingDown) {
+        setErrors((prev) => ({
+          ...prev,
+          rateLimit: `⏱️ ${rateStatus.messageSi}`,
+        }));
+        return;
+      }
+    }
+
     // Construct narrative texts strictly aligned with user specifications
     let structuredWhatHappened = '';
     let structuredWhatIsNeeded = '';
@@ -393,6 +405,7 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
       feeAgreed: true,
     });
 
+    recordPostSubmission(contactPhone.trim() || currentUser?.phone || 'user');
     onClose();
   };
 
@@ -453,6 +466,13 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
                 <span>සනාථයි</span>
               </span>
             </div>
+
+            {errors.rateLimit && (
+              <div className="p-3.5 bg-amber-500/20 border border-amber-500/50 rounded-2xl text-amber-300 text-xs font-bold flex items-center gap-2 animate-pulse">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{errors.rateLimit}</span>
+              </div>
+            )}
 
             {/* 01. Sub-type selector (3 Choices) */}
             <div className="space-y-2">

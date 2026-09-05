@@ -449,7 +449,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   {group.description}
                 </p>
                 <div className="mt-2 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                  🛡️ Admin: {group.creatorName} ({group.creatorPhone})
+                  🛡️ Admin: {group.creatorName} {isAdmin && group.creatorPhone ? `(${group.creatorPhone})` : ''}
                 </div>
               </div>
 
@@ -470,7 +470,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                       {/* Avatar */}
                       <div className="w-8 h-8 rounded-full overflow-hidden bg-indigo-100 dark:bg-zinc-800 shrink-0 flex items-center justify-center border border-indigo-200 dark:border-zinc-700">
                         {msg.senderPhotoUrl ? (
-                          <img src={msg.senderPhotoUrl} alt={msg.senderName} className="w-full h-full object-cover" />
+                          <img 
+                            src={msg.senderPhotoUrl} 
+                            alt={msg.senderName} 
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover" 
+                          />
                         ) : (
                           <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
                             {msg.senderName.charAt(0)}
@@ -616,6 +623,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   <img
                     src={group.photoUrl}
                     alt={group.name}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
                     className="w-16 h-16 rounded-2xl object-cover mx-auto border-2 border-indigo-200 dark:border-zinc-700 shadow-sm"
                   />
                   <div className="font-black text-sm">{group.name}</div>
@@ -752,7 +762,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-8 h-8 rounded-full overflow-hidden bg-indigo-100 dark:bg-zinc-700 flex items-center justify-center shrink-0">
                               {m.photoUrl ? (
-                                <img src={m.photoUrl} alt={m.name} className="w-full h-full object-cover" />
+                                <img 
+                                  src={m.photoUrl} 
+                                  alt={m.name} 
+                                  loading="lazy"
+                                  decoding="async"
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover" 
+                                />
                               ) : (
                                 <span className="font-bold text-indigo-700 dark:text-indigo-300">
                                   {m.name.charAt(0)}
@@ -768,7 +785,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[10px] text-zinc-400 font-mono truncate">{m.phone}</div>
+                              <div className="text-[10px] text-zinc-400 font-mono truncate">
+                                {isAdmin || m.userId === currentUserId ? m.phone : '07* *** **** (🔒 ආරක්ෂිතයි)'}
+                              </div>
                               {m.status === 'pending_invite' && (
                                 <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded">
                                   Pending Invite (ආරාධනා යවා ඇත)

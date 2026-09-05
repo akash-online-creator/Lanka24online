@@ -21,10 +21,11 @@ import {
   Phone,
   MessageSquare,
   ShieldCheck,
-  Pencil
+  Pencil,
+  Lock
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User as UserType } from '../types';
-import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
+import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 
 interface QuickServiceDetailModalProps {
@@ -61,6 +62,16 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
       (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
       (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
     )
+  );
+
+  const isConfirmedHelper = Boolean(
+    currentUser && (
+      (post.confirmedHelperPhone && normalizePhone(currentUser.phone) === normalizePhone(post.confirmedHelperPhone)) ||
+      (post.confirmedBy && currentUser.name && currentUser.name.trim().toLowerCase() === post.confirmedBy.trim().toLowerCase())
+    )
+  );
+  const hasContactPermission = Boolean(
+    isOwner || isAdmin || isConfirmedHelper || post.revealContactConsent === true
   );
 
   // Calculate accurate Motorcycle Road Distance
@@ -115,8 +126,8 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   const safeConditions = !isConfirmed ? inspectAndSanitizeMessage(displayConditions, false).sanitizedText : displayConditions;
   const safeSpecialNotice = !isConfirmed ? inspectAndSanitizeMessage(displaySpecialNotice, false).sanitizedText : displaySpecialNotice;
   const safeLocationDisplay = isConfirmed 
-    ? postLocName 
-    : (postLocName ? `${postLocName.split(',')[0]} (🔒 නිශ්චිත ලිපිනය තහවුරු කළ පසු)` : 'ප්‍රදේශය (🔒 තහවුරු කළ පසු ලිපිනය දිස්වේ)');
+    ? getVillageOrTownDisplay(postLocName) 
+    : (postLocName ? `${getVillageOrTownDisplay(postLocName).split(',')[0]} (🔒 නිශ්චිත ලිපිනය තහවුරු කළ පසු)` : 'ප්‍රදේශය (🔒 තහවුරු කළ පසු ලිපිනය දිස්වේ)');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn overflow-y-auto">
@@ -195,9 +206,19 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               post.tagName ||
               'අදාළ භාණ්ඩය / සේවාව';
 
-            const effectiveContactPhone = post.contactPhone || post.userPhone || '0771234567';
-            const effectiveContactWhatsapp = post.contactWhatsapp || post.userPhone || '0771234567';
-            const effectiveContactAddress = post.contactAddress || post.locationName || 'ගෙදර ලිපිනය';
+            const rawContactPhone = post.contactPhone || post.userPhone || '';
+            const rawContactWhatsapp = post.contactWhatsapp || post.userPhone || '';
+            const rawContactAddress = post.contactAddress || post.locationName || '';
+
+            const effectiveContactPhone = hasContactPermission 
+              ? (rawContactPhone || '0771234567') 
+              : (rawContactPhone ? `${rawContactPhone.slice(0, 3)} *** **** (🔒 ආරක්ෂිතයි)` : '07* *** **** (🔒 ආරක්ෂිතයි)');
+            const effectiveContactWhatsapp = hasContactPermission 
+              ? (rawContactWhatsapp || '0771234567') 
+              : (rawContactWhatsapp ? `${rawContactWhatsapp.slice(0, 3)} *** **** (🔒 ආරක්ෂිතයි)` : '07* *** **** (🔒 ආරක්ෂිතයි)');
+            const effectiveContactAddress = hasContactPermission
+              ? (rawContactAddress || 'ගෙදර ලිපිනය')
+              : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)';
             const effectiveLocationName = post.locationName || 'ස්ථානය තහවුරු කර ඇත';
             const effectiveIncidentLocation = post.incidentLocation || post.locationName || '';
             const effectiveIncidentDate = post.incidentDate || (post.createdAt?.includes('මීට') ? 'අද' : post.createdAt) || '';
@@ -205,6 +226,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
             const effectiveDelivery = post.deliveryOption || post.transport || 'ගෙනවිත් දෙන්න ඒ සදහා මම ඔබට වෙනම ගෙවන්නම්';
             const effectiveOtherDetails = post.otherDetails || (post.conditions && !post.conditions.startsWith('ගණුදෙනුව') && !post.conditions.startsWith('සම්බන්ධ') ? post.conditions : '');
             const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
+            const safeIdentifyingInfo = hasContactPermission 
+              ? post.identifyingInfo 
+              : (post.identifyingInfo ? inspectAndSanitizeMessage(post.identifyingInfo, false).sanitizedText : '');
 
             return (
               /* DEDICATED FIND FOR ME PRESENTATION IN DETAIL MODAL */
@@ -254,23 +278,23 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     <p className="text-slate-800 dark:text-slate-200">
                       නැතිනම්{' '}
                       <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                        {effectiveContactAddress}
+                        {getVillageOrTownDisplay(effectiveContactAddress)}
                       </span>{' '}
                       ට එවන්න. නිවැරදි ස්ථානය:{' '}
                       <span className="font-extrabold text-slate-900 dark:text-white">
-                        {effectiveLocationName}
+                        {getVillageOrTownDisplay(effectiveLocationName)}
                       </span>
                     </p>
 
                     {/* Identifying info on item (Phone, NIC, Reg/Serial No, or Name) */}
-                    {post.identifyingInfo && post.identifyingInfo.trim() !== '' && (
+                    {safeIdentifyingInfo && safeIdentifyingInfo.trim() !== '' && (
                       <div className="mt-2 p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/70 dark:border-amber-700/70 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
                         <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
                           <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                           <span>නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:</span>
                         </div>
                         <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                          {post.identifyingInfo}
+                          {safeIdentifyingInfo}
                         </p>
                       </div>
                     )}
@@ -311,12 +335,12 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                         {effectiveContactAddress && (
                           <div className="sm:col-span-2">
                             <span className="text-slate-500">ගෙදර ලිපිනය: </span>
-                            <strong className="text-slate-900 dark:text-white">{effectiveContactAddress}</strong>
+                            <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveContactAddress)}</strong>
                           </div>
                         )}
                         <div className="sm:col-span-2">
                           <span className="text-slate-500">නිවැරදි ස්ථානය: </span>
-                          <strong className="text-slate-900 dark:text-white">{effectiveLocationName}</strong>
+                          <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveLocationName)}</strong>
                         </div>
                       </div>
                     </div>
@@ -356,26 +380,52 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
                 {/* Direct Instant Action chips */}
                 <div className="pt-2 grid grid-cols-2 gap-2">
-                  {effectiveContactPhone && (
-                    <a
-                      href={`tel:${effectiveContactPhone.replace(/\D/g, '')}`}
-                      className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>ඇමතුමක් ගන්න</span>
-                    </a>
-                  )}
+                  {hasContactPermission ? (
+                    <>
+                      {rawContactPhone && (
+                        <a
+                          href={`tel:${rawContactPhone.replace(/\D/g, '')}`}
+                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>ඇමතුමක් ගන්න</span>
+                        </a>
+                      )}
 
-                  {effectiveContactWhatsapp && (
-                    <a
-                      href={`https://wa.me/${effectiveContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>WhatsApp</span>
-                    </a>
+                      {rawContactWhatsapp && (
+                        <a
+                          href={`https://wa.me/${rawContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onOpenChat(post)}
+                        title="දුරකථන අංකය ලබා ගැනීමට ඉල්ලුම්කරු සමග Chat කරන්න"
+                        className="py-2.5 px-3 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>අංකය ඉල්ලන්න (Chat)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenChat(post)}
+                        title="ලිපිනය හා WhatsApp තොරතුරු ලබා ගැනීමට Chat කරන්න"
+                        className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-teal-600" />
+                        <span>සංවාදය (Chat)</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

@@ -466,7 +466,14 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                   <div className="flex items-center gap-2.5">
                     <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-amber-800 dark:text-amber-200 text-sm overflow-hidden shrink-0">
                       {req.userPhotoUrl ? (
-                        <img src={req.userPhotoUrl} alt={req.userName} className="w-full h-full object-cover" />
+                        <img 
+                          src={req.userPhotoUrl} 
+                          alt={req.userName} 
+                          loading="lazy"
+                          decoding="async"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover" 
+                        />
                       ) : (
                         <span>{req.userName.charAt(0)}</span>
                       )}
@@ -554,6 +561,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                       <img
                         src={grp.photoUrl || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=150&q=80'}
                         alt={grp.name}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
                         className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-200 dark:border-zinc-700 shadow-sm shrink-0"
                       />
                       <div className="flex-1 min-w-0">
@@ -774,6 +784,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                       <img
                         src={group.photoUrl || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=150&q=80'}
                         alt={group.name}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
                         className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-200 dark:border-zinc-700 shadow-sm shrink-0"
                       />
                       <div className="min-w-0 flex-1">

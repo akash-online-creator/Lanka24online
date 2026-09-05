@@ -18,6 +18,7 @@ import { HelpPost, Language, LocationOption, TagItem } from '../types';
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
+import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 
 interface HelpPostModalProps {
   isOpen: boolean;
@@ -77,10 +78,21 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
     }
   }, [isOpen]);
 
+  const [rateLimitError, setRateLimitError] = useState('');
+
   if (!isOpen) return null;
 
   const handleNextToOtp = (e: React.FormEvent) => {
     e.preventDefault();
+    setRateLimitError('');
+
+    // Check 30s rate limit
+    const rateStatus = getPostRateLimitStatus(userPhone.trim() || 'user');
+    if (rateStatus.isCoolingDown) {
+      setRateLimitError(`⏱️ ${rateStatus.messageSi}`);
+      return;
+    }
+
     if (!selectedTag) {
       setTagError('කරුණාකර දැන්වීම සඳහා Tag එකක් තෝරන්න (අනිවාර්යයි *).');
       return;
@@ -101,6 +113,9 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       return;
     }
     setOtpError(false);
+
+    // Record submission for 30s cooldown
+    recordPostSubmission(userPhone.trim() || 'user');
 
     // Create Post object
     onSubmitPost({
@@ -193,6 +208,12 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
           ) : step === 1 ? (
             /* STEP 1: Details Form */
             <form id="help-post-form" onSubmit={handleNextToOtp} className="space-y-4">
+              {rateLimitError && (
+                <div className="p-3.5 bg-amber-500/20 border border-amber-500/50 rounded-2xl text-amber-200 text-xs font-bold flex items-center gap-2 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{rateLimitError}</span>
+                </div>
+              )}
               
               {/* User Name & Phone */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

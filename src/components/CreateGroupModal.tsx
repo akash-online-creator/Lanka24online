@@ -40,6 +40,7 @@ import {
   isGroupUsernameTaken, 
   normalizeUsername 
 } from '../data/groupWorkData';
+import { compressImageFile } from '../utils/imageCompressor';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 
 interface CreateGroupModalProps {
@@ -162,15 +163,20 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     setUsernameError('');
   };
 
-  // Photo Upload Handler (Same as Registration Form)
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Photo Upload Handler (With client-side compression to under 200KB)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 800, maxHeight: 800, quality: 0.75 });
+        setPhotoUrl(compressed);
+      } catch {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPhotoUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

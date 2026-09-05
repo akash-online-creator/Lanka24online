@@ -80,7 +80,15 @@ export default function App() {
 
   const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
     const saved = localStorage.getItem('sahaya_help_posts');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        return initialHelpPosts;
+      }
+    }
+    return initialHelpPosts;
   });
 
   const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>(() => {

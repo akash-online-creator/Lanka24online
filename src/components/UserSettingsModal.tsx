@@ -17,11 +17,19 @@ import {
   Sliders,
   Settings,
   AlertCircle,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Zap,
+  WifiOff,
+  Gauge,
+  Layers,
+  FileText
 } from 'lucide-react';
 import { User, Language } from '../types';
+import { syncUserProfileToFirestore } from '../lib/firebase';
+import { useDataSaver } from '../utils/dataSaver';
 
 export type FontSizeKey = 'small' | 'normal' | 'medium' | 'large' | 'extra_large';
+export type SettingsTabKey = 'profile' | 'font_size' | 'data_saver';
 
 export interface FontSizeOption {
   key: FontSizeKey;
@@ -107,7 +115,7 @@ interface UserSettingsModalProps {
   user: User;
   onUpdateUser?: (updatedUser: User) => void;
   language?: Language;
-  initialTab?: 'profile' | 'font_size';
+  initialTab?: SettingsTabKey;
 }
 
 const AVATAR_PRESETS = [
@@ -127,7 +135,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   language = 'si',
   initialTab = 'profile'
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'font_size'>(initialTab);
+  const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
+  const [isDataSaver, toggleDataSaver] = useDataSaver();
 
   // Profile Form States
   const [name, setName] = useState(user?.name || '');
@@ -236,8 +245,12 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       onUpdateUser(updatedUser);
     }
 
-    // Update Local Storage
+    // Update Local Storage & Sync to Cloud Firestore
     localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+    syncUserProfileToFirestore(updatedUser).catch((err) => {
+      console.warn('Sync profile to Firestore notice:', err);
+    });
+
     const savedUsers = localStorage.getItem('sahaya_users');
     if (savedUsers) {
       try {
@@ -312,7 +325,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         </div>
 
         {/* Top Tabs Switcher */}
-        <div className="flex items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-2">
+        <div className="flex items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-1.5 sm:gap-2">
           {/* Tab 1: Profile Setting */}
           <button
             type="button"
@@ -320,14 +333,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('profile');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
               activeTab === 'profile'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <UserIcon className="w-4 h-4 shrink-0" />
-            <span>{getLang('👤 Profile Setting (පැතිකඩ)', '👤 Profile Setting', '👤 சுயவிவர அமைப்பு')}</span>
+            <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="truncate">{getLang('👤 Profile', '👤 Profile', '👤 சுயவிவரம்')}</span>
           </button>
 
           {/* Tab 2: Font Size */}
@@ -337,14 +350,31 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('font_size');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
               activeTab === 'font_size'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <Type className="w-4 h-4 shrink-0" />
-            <span>{getLang('🔤 Font Size (අකුරු ප්‍රමාණය)', '🔤 Font Size', '🔤 எழுத்துரு அளவு')}</span>
+            <Type className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="truncate">{getLang('🔤 Font Size', '🔤 Font Size', '🔤 எழுத்துரு')}</span>
+          </button>
+
+          {/* Tab 3: Data Saver */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('data_saver');
+              setErrorMsg(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+              activeTab === 'data_saver'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-[1.01]'
+                : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-300" />
+            <span className="truncate">{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா சேவர்')}</span>
           </button>
         </div>
 
@@ -376,12 +406,27 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <img
-                    src={photoUrl || AVATAR_PRESETS[0]}
-                    alt="Current Avatar"
-                    className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/30"
-                  />
+                  {isDataSaver ? (
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-amber-950 flex items-center justify-center font-black text-xl shadow-md border-2 border-amber-400">
+                      {name ? name.charAt(0).toUpperCase() : '👤'}
+                    </div>
+                  ) : (
+                    <img
+                      src={photoUrl || AVATAR_PRESETS[0]}
+                      alt="Current Avatar"
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/30"
+                    />
+                  )}
                   <div className="flex-1 min-w-[200px] space-y-2">
+                    {isDataSaver && (
+                      <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>{getLang('Data Saver සක්‍රීයයි - Text අකුරු පමණක් පූරණය වේ', 'Data Saver Active - Pure text mode', 'டேட்டா சேவர் செயலில் உள்ளது')}</span>
+                      </div>
+                    )}
                     <div className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">
                       {getLang('පෙරනිමි පින්තූර වලින් තෝරන්න:', 'Pick from presets:', 'முன்னமைக்கப்பட்டவை:')}
                     </div>
@@ -395,7 +440,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                             photoUrl === preset ? 'border-emerald-500 ring-2 ring-emerald-400 scale-105' : 'border-transparent opacity-70 hover:opacity-100'
                           }`}
                         >
-                          <img src={preset} alt={`preset-${idx}`} className="w-full h-full object-cover" />
+                          <img 
+                            src={preset} 
+                            alt={`preset-${idx}`} 
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover" 
+                          />
                         </button>
                       ))}
                     </div>
@@ -693,6 +745,195 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                   type="button"
                   onClick={onClose}
                   className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: DATA SAVER (දත්ත ඉතිරි කිරීමේ මාදිලිය) */}
+          {activeTab === 'data_saver' && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {/* Header Banner */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-transparent border-2 border-amber-400/60 dark:border-amber-500/40 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-amber-950 uppercase tracking-wider">
+                      <Zap className="w-3 h-3 fill-current" />
+                      <span>{getLang('අඩුම Data පරිභෝජනය', 'Ultra Data Saving', 'குறைந்த தரவு')}</span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-amber-200">
+                      {getLang('⚡ Data Saver (දත්ත ඉතිරි කිරීමේ පද්ධතිය)', '⚡ Data Saver Mode', '⚡ டேட்டா சேவர் பயன்முறை')}
+                    </h3>
+                    <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed max-w-xl">
+                      {getLang(
+                        'මෙම සැකසුම ක්‍රියාත්මක කළ පසු පද්ධතියේ කිසිදු පින්තූරයක් භාගත නොකර, Text වලින් පමණක් ක්‍රියාත්මක වන බැවින් ඉතා අඩු දත්ත (Mobile Data) ප්‍රමාණයකින් ඕනෑම දුරකථනයක ඉතා සුමටව (Lag-Free Smoothly) ක්‍රියා කරයි.',
+                        'When turned ON, all images are blocked to save your mobile data. The app runs in ultra-smooth text-only mode.',
+                        'இயக்கப்பட்டதும், மொபைல் டேட்டாவை சேமிக்க அனைத்து படங்களும் மறைக்கப்படும்.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Big Interactive Toggle Switch */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#07170e] border border-amber-300 dark:border-amber-700/60 flex items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${
+                        isDataSaver
+                          ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'
+                      }`}
+                    >
+                      <Zap className={`w-6 h-6 ${isDataSaver ? 'fill-current animate-pulse' : ''}`} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>{getLang('Data Saver තත්ත්වය:', 'Data Saver Status:', 'டேட்டா சேவர் நிலை:')}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-lg text-xs font-black ${
+                            isDataSaver
+                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-400'
+                              : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          {isDataSaver
+                            ? getLang('ක්‍රියාත්මකයි (ON - Text Mode)', 'ACTIVE (ON - Text Mode)', 'செயலில் (ON)')
+                            : getLang('අක්‍රියයි (OFF - Regular Images)', 'OFF (Full Images)', 'முடக்கப்பட்டது (OFF)')}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {isDataSaver
+                          ? getLang('සියලු පින්තූර අක්‍රියයි • Text පමණක් පූරණය වේ', 'All images blocked • Pure text mode', 'படங்கள் மறைக்கப்பட்டுள்ளன')
+                          : getLang('සාමාන්‍ය ආකාරයට සියලු පින්තූර පෙන්වයි', 'All images and avatars are displayed', 'அனைத்து படங்களும் காட்டப்படும்')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVal = !isDataSaver;
+                      toggleDataSaver(nextVal);
+                      setSaveSuccessMsg(
+                        nextVal
+                          ? getLang(
+                              '⚡ Data Saver සක්‍රීය කරන ලදී! සියලු පින්තූර සඟවා Text-only මාදිලිය යෙදිනි.',
+                              '⚡ Data Saver enabled! Running in fast text-only mode.',
+                              '⚡ டேட்டா சேவர் இயக்கப்பட்டது!'
+                            )
+                          : getLang(
+                              '✨ Data Saver අක්‍රිය කරන ලදී. සාමාන්‍ය පරිදි පින්තූර පෙන්වනු ඇත.',
+                              '✨ Data Saver disabled. Standard images enabled.',
+                              '✨ டேட்டா சேவர் முடக்கப்பட்டது.'
+                            )
+                      );
+                      setTimeout(() => setSaveSuccessMsg(null), 3000);
+                    }}
+                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
+                      isDataSaver ? 'bg-amber-500' : 'bg-slate-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
+                        isDataSaver ? 'translate-x-8 text-amber-600' : 'translate-x-0 text-slate-400'
+                      }`}
+                    >
+                      {isDataSaver ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Main Benefits */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold">
+                    <WifiOff className="w-4 h-4" />
+                  </div>
+                  <div className="text-xs font-black text-slate-900 dark:text-zinc-100">
+                    {getLang('දත්ත 90% කින් ඉතිරි කිරීම', '90% Data Savings', '90% தரவு சேமிப்பு')}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-snug">
+                    {getLang('ඡායාරූප භාගත නොවන බැවින් අඩු Data පැකේජ සඳහා උපරිමයි.', 'Zero image downloads means massive MB/GB savings.', 'மெகாபைட் தரவு சேமிக்கப்படும்.')}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold">
+                    <Gauge className="w-4 h-4" />
+                  </div>
+                  <div className="text-xs font-black text-slate-900 dark:text-zinc-100">
+                    {getLang('Smooth & Zero Lag', 'Ultra Smooth & Fast', 'மிக வேகமானது')}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-snug">
+                    {getLang('ඕනෑම සාමාන්‍ය දුරකථනයක කිසිදු හිරවීමක් (Lag) නැතිව ක්‍රියා කරයි.', 'Prevents browser freezing on budget smartphones.', 'பயன்பாடு மிக எளிதாக இயங்கும்.')}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 flex items-center justify-center font-bold">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="text-xs font-black text-slate-900 dark:text-zinc-100">
+                    {getLang('පැහැදිලි Text අවධානය', 'Clean Text Focus', 'உரை மட்டும்')}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-snug">
+                    {getLang('දුරකථන අංක, ලිපින සහ මිල ගණන් පැහැදිලිව ඉක්මනින් කියවන්න.', 'High-contrast text prioritizing immediate phone & contact info.', 'தொடர்பு எண்கள் தெளிவாகத் தெரியும்.')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sample Live Card View */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-2">
+                <div className="text-xs font-black text-slate-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>{getLang('Data Saver ආදර්ශන පෙරදසුන (Card Preview):', 'Live Card Preview:', 'முன்னோட்டம்:')}</span>
+                  <span className="font-mono text-xs text-amber-600 dark:text-amber-400">
+                    {isDataSaver ? '⚡ Text-Only Mode Active' : '🖼️ Regular Image Mode'}
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500 text-amber-950 font-black flex items-center justify-center text-xs">
+                        {isDataSaver ? '⚡' : '👤'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-slate-900 dark:text-zinc-100">නිමල් ප්‍රනාන්දු (කඩවත)</div>
+                        <div className="text-[10px] text-slate-500">විනාඩි 5කට පෙර</div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono text-[10px] font-black">
+                      #POST-4581
+                    </span>
+                  </div>
+
+                  {isDataSaver ? (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-dashed border-amber-300 dark:border-amber-700/60 text-center text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-2">
+                      <WifiOff className="w-3.5 h-3.5" />
+                      <span>[📷 ඡායාරූපය: Data Saver මඟින් දත්ත ඉතිරි කිරීම සඳහා සඟවා ඇත]</span>
+                    </div>
+                  ) : (
+                    <div className="h-20 rounded-xl bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-950/60 dark:to-teal-950/60 border border-slate-200 dark:border-emerald-800/40 flex items-center justify-center text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                      🖼️ [සාමාන්‍ය පින්තූරය / Sample Post Photo]
+                    </div>
+                  )}
+
+                  <div className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                    වියයුතු දේ: විදුලි පංකාවක් අලුත්වැඩියා කරගැනීමට අවශ්‍යයි (රු. 1,500).
+                  </div>
+                </div>
+              </div>
+
+              {/* Close / Done Button */}
+              <div className="pt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
                 >
                   {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
                 </button>
