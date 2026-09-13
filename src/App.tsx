@@ -30,43 +30,14 @@ export default function App() {
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('sahaya_current_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return initialUsers[1] || initialUsers[0];
-      }
-    }
-    return initialUsers[1] || initialUsers[0];
+    return null;
   });
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const savedMode = localStorage.getItem('sahaya_view_mode') as ViewMode | null;
-    const savedUser = localStorage.getItem('sahaya_current_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed?.role === 'admin') return savedMode || 'admin';
-        if (parsed?.status === 'approved') return savedMode || 'dashboard';
-        if (parsed?.status === 'pending') return 'pending';
-      } catch {
-        return 'dashboard';
-      }
-    }
-    return savedMode || 'dashboard';
+    return 'login';
   });
 
   const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
-    const savedUser = localStorage.getItem('sahaya_current_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        return parsed?.role === 'admin' ? 'admin' : 'user';
-      } catch {
-        return 'user';
-      }
-    }
     return 'user';
   });
 
@@ -141,9 +112,11 @@ export default function App() {
     localStorage.setItem('sahaya_lang', language);
   }, [language]);
 
+  // Clean up any legacy persistent session to ensure fresh login
   useEffect(() => {
-    localStorage.setItem('sahaya_view_mode', viewMode);
-  }, [viewMode]);
+    localStorage.removeItem('sahaya_current_user');
+    localStorage.removeItem('sahaya_view_mode');
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('sahaya_theme', theme);
@@ -184,13 +157,7 @@ export default function App() {
     saveTagsToStorage(tags);
   }, [tags]);
 
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('sahaya_current_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('sahaya_current_user');
-    }
-  }, [currentUser]);
+
 
   // Live Server clock
   useEffect(() => {
