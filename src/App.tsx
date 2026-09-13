@@ -629,7 +629,9 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen w-full font-sans flex flex-col justify-between p-4 sm:p-8 relative overflow-x-hidden transition-colors ${
+      className={`min-h-screen w-full font-sans flex flex-col justify-between ${
+        viewMode === 'login' ? 'p-2 sm:p-4' : 'p-4 sm:p-8'
+      } relative overflow-x-hidden transition-colors ${
         theme === 'dark'
           ? 'bg-[#05120a] text-slate-100'
           : 'bg-[#f2f7f4] text-slate-900'
@@ -788,31 +790,37 @@ export default function App() {
         nicNumber={currentUser?.nicNumber}
       />
 
-      {/* Footer Status Bar */}
-      <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
-        <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
-          {t.securityLayer}
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              {t.adminStatus}
-            </span>
-            <span className="text-xs text-green-400 font-mono font-semibold flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span>● {t.online}</span>
-            </span>
+      {/* Footer Status Bar (compact for login) */}
+      {viewMode !== 'login' ? (
+        <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
+          <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
+            {t.securityLayer}
           </div>
 
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              {t.serverTime}
-            </span>
-            <span className="text-xs text-slate-300 font-mono">{serverTime}</span>
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] uppercase font-bold text-slate-400">
+                {t.adminStatus}
+              </span>
+              <span className="text-xs text-green-400 font-mono font-semibold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span>● {t.online}</span>
+              </span>
+            </div>
+
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] uppercase font-bold text-slate-400">
+                {t.serverTime}
+              </span>
+              <span className="text-xs text-slate-300 font-mono">{serverTime}</span>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      ) : (
+        <footer className="z-10 py-1 text-center text-[10px] text-slate-400 dark:text-emerald-500/60 font-mono">
+          🔒 {t.securityLayer} • {serverTime}
+        </footer>
+      )}
     </div>
   );
 }
