@@ -12,6 +12,7 @@ import {
 import { TagSearchBar } from './TagSearchBar';
 import { PostCard } from './PostCard';
 import { CategoryGrid } from './CategoryGrid';
+import { CategoryPills } from './CategoryPills';
 import { ProfessionalServicesView } from './ProfessionalServicesView';
 import { GroupWorkView } from './GroupWorkView';
 import { MarketplaceView } from './MarketplaceView';
@@ -678,7 +679,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               )}
             </div>
 
-            <CategoryGrid
+            <CategoryPills
               selectedCategory={boardCategoryFilter}
               onSelectCategory={(catKey, catTitle) => {
                 setBoardCategoryFilter(catKey);

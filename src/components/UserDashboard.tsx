@@ -16,6 +16,7 @@ import { QuickServiceChatModal } from './QuickServiceChatModal';
 import { QuickServiceConfirmWorkflow } from './QuickServiceConfirmWorkflow';
 import { CategorySelectionModal } from './CategorySelectionModal';
 import { CategoryGrid } from './CategoryGrid';
+import { CategoryPills } from './CategoryPills';
 import { TagSearchBar } from './TagSearchBar';
 import { getExpandedSearchKeywords } from '../data/searchDictionary';
 import { EditHelpPostModal } from './EditHelpPostModal';
@@ -1363,7 +1364,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       </div>
 
       {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "දැන්වීම් පුවරුව", and "සැකසුම්" */}
-      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5 backdrop-blur-md">
+      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5 backdrop-blur-md space-y-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
           {/* Button 1: සේවා ඉල්ලීම් */}
           <button
@@ -1443,6 +1444,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </div>
             </div>
           </button>
+        </div>
+
+        {/* Horizontal Quick Category Access Strip */}
+        <div className="pt-1 border-t border-blue-100 dark:border-blue-900/40">
+          <CategoryPills
+            selectedCategory={boardCategoryFilter}
+            onSelectCategory={(catKey, catTitle) => {
+              setBoardCategoryFilter(catKey);
+              setSelectedCategoryTitle(catTitle);
+              setDashboardView('requests');
+            }}
+            language={language}
+          />
         </div>
       </div>
 
