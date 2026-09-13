@@ -486,8 +486,8 @@ export const PostCard: React.FC<PostCardProps> = ({
                   </button>
                 )}
 
-                {/* Report / Moderation Button for all users */}
-                {onAdminModerate && (
+                {/* Report / Moderation Button only for Admins */}
+                {isAdmin && onAdminModerate && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1566,18 +1566,6 @@ export const PostCard: React.FC<PostCardProps> = ({
               <Trash2 className="w-3.5 h-3.5 shrink-0" />
               <span>{cardLabels.delete}</span>
             </button>
-
-            {onAdminModerate && (
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(() => onAdminModerate(post))}
-                className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-rose-800 hover:bg-rose-900 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-rose-600/50"
-                title="Report Issue"
-              >
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-200 shrink-0" />
-                <span>Report ⚠️</span>
-              </button>
-            )}
           </div>
         ) : isAdmin ? (
           <div className="pt-3 space-y-2">
@@ -1692,23 +1680,6 @@ export const PostCard: React.FC<PostCardProps> = ({
                   : (activeCardLang === 'en' ? '🤝 Reply to Help' : activeCardLang === 'ta' ? '🤝 உதவ பதிலளிக்கவும்' : 'සහාය වීමට පිළිතුරු යවන්න')}
               </span>
             </button>
-
-            {/* Report Button for Citizens / Viewers */}
-            {onAdminModerate && (
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(() => onAdminModerate(post))}
-                className={`py-3 sm:py-3.5 px-3.5 sm:px-4 rounded-2xl ${
-                  post.adminFlagged
-                    ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-500 shadow-sm'
-                    : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 shadow-sm'
-                } active:scale-95 font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer border shrink-0`}
-                title={activeCardLang === 'en' ? 'Report Post to Admin' : 'දැන්වීම පිළිබඳ ගැටලුවක් පරිපාලකට වාර්තා කරන්න (Report)'}
-              >
-                <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                <span className="font-black">{post.adminFlagged ? (post.isHiddenByAdmin ? 'Hidden 🚫' : 'Reported ⚠️') : 'Report ⚠️'}</span>
-              </button>
-            )}
           </div>
         )}
 
