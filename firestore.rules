@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Help posts and community notices
+    match /help_posts/{postId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+
+      // Realtime subcollection for chat messages
+      match /chat_messages/{messageId} {
+        allow read: if true;
+        allow create: if true;
+        allow update, delete: if true;
+      }
+    }
+
+    // Community marketplace items
+    match /marketplace_items/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Registered user profiles
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // User reviews & ratings
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Bookmarked/saved posts per user
+    match /saved_posts/{saveId} {
+      allow read, write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
