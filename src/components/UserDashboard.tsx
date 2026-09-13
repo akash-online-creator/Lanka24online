@@ -1288,75 +1288,51 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onViewPost={(post) => setSelectedPostForDetail(post)}
       />
 
-      {/* 1.2 Community Hubs: Elongated Full-Visibility Action Buttons & Karma Bar */}
-      <div className="space-y-2.5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
-          {/* Button 1: Blood & Disaster Relief Hub (Elongated Full Visibility Banner Button) */}
+      {/* 1.2 Community Hubs: Compact Side-by-Side Square Action Cards (No Descriptions) */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          {/* Button 1: Blood & Disaster Relief Hub (Compact Square Card) */}
           <button
             type="button"
             onClick={() => {
               setBloodModalInitialTab('blood_requests');
               setIsBloodAndDisasterModalOpen(true);
             }}
-            className="w-full p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-lg hover:shadow-xl shadow-red-600/25 border-2 border-red-400/80 active:scale-[0.99] transition-all text-left flex items-center justify-between group cursor-pointer"
+            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/20 border border-red-400/70 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
           >
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-md group-hover:scale-110 transition-transform backdrop-blur-xs">
-                <Droplet className="w-6 h-6 fill-white" />
+            <div className="flex items-center justify-between w-full">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <Droplet className="w-4 h-4 fill-white" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm sm:text-base font-black text-white leading-tight">
-                    {getLangText('හදිසි ලේ සහ ආපදා සහන කේන්ද්‍රය', 'Emergency Blood & Disaster Hub', 'அவசர இரத்ததானம் & பேரிடர் நிவாரண மையம்')}
-                  </h4>
-                  <span className="px-2 py-0.5 rounded-full font-mono text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
-                    LIVE RADAR
-                  </span>
-                </div>
-                <p className="text-[11px] sm:text-xs text-rose-100 font-semibold leading-relaxed mt-1">
-                  {getLangText(
-                    'හදිසි ලේ ඉල්ලීම් • ස්වේච්ඡා දායකයින්ගේ නාමාවලිය • සජීවී ආපදා සහන සිතියම',
-                    'Emergency Blood Requests • Volunteer Donors • Live Disaster Relief Map',
-                    'அவசர இரத்தக் கோரிக்கைகள் • தொண்டர்கள் பட்டியல் • நேரடி வரைபடம்'
-                  )}
-                </p>
-              </div>
+              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
+                LIVE
+              </span>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center shrink-0 ml-2 group-hover:translate-x-1 transition-transform">
-              <ChevronRight className="w-5 h-5 text-white" />
+            <div className="min-w-0 mt-1.5">
+              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                {getLangText('හදිසි ලේ සහ ආපදා සහන', 'Blood & Disaster Hub', 'இரத்ததானம் & பேரிடர்')}
+              </h4>
             </div>
           </button>
 
-          {/* Button 2: Offline Emergency Contacts Directory (Elongated Full Visibility Banner Button) */}
+          {/* Button 2: Offline Emergency Contacts Directory (Compact Square Card) */}
           <button
             type="button"
             onClick={() => setIsEmergencyDirectoryModalOpen(true)}
-            className="w-full p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg hover:shadow-xl shadow-amber-600/25 border-2 border-amber-400/80 active:scale-[0.99] transition-all text-left flex items-center justify-between group cursor-pointer"
+            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-md hover:shadow-lg shadow-amber-600/20 border border-amber-400/70 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
           >
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-md group-hover:scale-110 transition-transform backdrop-blur-xs">
-                <PhoneCall className="w-6 h-6 text-white" />
+            <div className="flex items-center justify-between w-full">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <PhoneCall className="w-4 h-4 text-white" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm sm:text-base font-black text-white leading-tight">
-                    {getLangText('නොබැඳි හදිසි සේවා අංක නාමාවලිය', 'Offline Emergency Directory', 'அவசர உதவி எண்கள் அடைவு')}
-                  </h4>
-                  <span className="px-2 py-0.5 rounded-full font-mono text-[9px] font-black bg-white text-amber-800 shadow-xs">
-                    1990 / 119
-                  </span>
-                </div>
-                <p className="text-[11px] sm:text-xs text-amber-100 font-semibold leading-relaxed mt-1">
-                  {getLangText(
-                    '1990 සුවසැරිය • 119 පොලිසිය • 110 ගිනි නිවන • රෝහල් • නොබැඳිව ක්‍රියාත්මකයි',
-                    '1990 Suwa Seriya • 119 Police • 110 Fire & Rescue • Hospitals • Works Offline',
-                    '1990 சுவசரிய • 119 பொலிஸ் • 110 தீயணைப்பு • மருத்துவமனை • ஆஃப்லைன்'
-                  )}
-                </p>
-              </div>
+              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-amber-800 shadow-xs">
+                1990 / 119
+              </span>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center shrink-0 ml-2 group-hover:translate-x-1 transition-transform">
-              <ChevronRight className="w-5 h-5 text-white" />
+            <div className="min-w-0 mt-1.5">
+              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                {getLangText('නොබැඳි හදිසි සේවා අංක', 'Emergency Directory', 'அவசர உதவி எண்கள்')}
+              </h4>
             </div>
           </button>
         </div>

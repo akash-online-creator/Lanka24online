@@ -155,30 +155,67 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         LAYER 1: Header Bar (App Logo + Central Quick Controls + Profile Summary)
       */}
       <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md backdrop-blur-xl transition-all duration-300">
-        <div className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3">
           
-          {/* 1. App Logo & Brand (LEFT) */}
-          <div 
-            onClick={() => {
-              if (onNavigate) onNavigate('dashboard');
-            }}
-            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
-            title="සහය සේවා - මුල් පිටුව"
-          >
-            <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
-            <div>
-              <div className="flex items-center gap-1 leading-none">
-                <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">සහය</span>
-                <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">සේවා</span>
+          {/* Top Bar on Mobile: Logo on Left, Profile Avatar on Right */}
+          <div className="flex items-center justify-between gap-2">
+            {/* 1. App Logo & Brand (LEFT) */}
+            <div 
+              onClick={() => {
+                if (onNavigate) onNavigate('dashboard');
+              }}
+              className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
+              title="සහය සේවා - මුල් පිටුව"
+            >
+              <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
+              <div>
+                <div className="flex items-center gap-1 leading-none">
+                  <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">සහය</span>
+                  <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">සේවා</span>
+                </div>
+                <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-[#6a9179] tracking-wider uppercase block">
+                  SAHAYA SEWA
+                </span>
               </div>
-              <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-[#6a9179] tracking-wider uppercase block">
-                SAHAYA SEWA
-              </span>
+            </div>
+
+            {/* Mobile-Only Profile Avatar Trigger */}
+            <div 
+              onClick={onOpenSettings}
+              className={`flex sm:hidden items-center gap-2 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
+              title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
+            >
+              <div className="text-right min-w-0">
+                <h2 className="font-extrabold text-[11px] text-slate-900 dark:text-white truncate max-w-[90px]">
+                  {user.name}
+                </h2>
+                <p className="text-[9px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
+                  ID: {numericId || user.userId}
+                </p>
+              </div>
+
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs">
+                  {(user.facePhotoUrl || user.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                    <img 
+                      src={user.facePhotoUrl || user.photoUrl} 
+                      alt={user.name} 
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    user.name.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
+              </div>
             </div>
           </div>
 
-          {/* 2. Controls & Actions (CENTER / MIDDLE) - Language, Theme, Help, Admin, Logout */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+          {/* 2. Controls & Actions (Language, Theme, Help, Admin, Logout) */}
+          <div className="flex items-center justify-between sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 pt-1 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-[#142e20]">
             {/* Language Selector */}
             <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-[#1c402b]">
               {(['si', 'en', 'ta'] as Language[]).map((langKey) => (
@@ -197,82 +234,78 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               ))}
             </div>
 
-            {/* Dark / Light Theme Toggle */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1.5 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="තේමාව මාරු කරන්න (Light / Dark Mode)"
-            >
-              {theme === 'dark' ? (
-                <>
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              {/* Dark / Light Theme Toggle */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="p-1.5 sm:px-2 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="තේමාව මාරු කරන්න (Light / Dark Mode)"
+              >
+                {theme === 'dark' ? (
                   <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 fill-amber-400" />
-                  <span className="hidden md:inline text-xs font-bold text-slate-200">Light</span>
-                </>
-              ) : (
-                <>
+                ) : (
                   <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700" />
-                  <span className="hidden md:inline text-xs font-bold text-slate-700">Dark</span>
-                </>
+                )}
+              </button>
+
+              {/* App Help ("ඇප් සහය") */}
+              {onNavigateToIssues && (
+                <button
+                  type="button"
+                  onClick={onNavigateToIssues}
+                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
+                  <span className="hidden sm:inline font-bold">
+                    {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
+                  </span>
+                </button>
               )}
-            </button>
 
-            {/* App Help ("ඇප් සහය") */}
-            {onNavigateToIssues && (
-              <button
-                type="button"
-                onClick={onNavigateToIssues}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
-                title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
-                <span className="hidden sm:inline font-bold">
-                  {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-                </span>
-              </button>
-            )}
+              {/* Admin Switcher (If Admin user) */}
+              {user.role === 'admin' && setActiveRoleView && onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
+                    setActiveRoleView(nextRole);
+                    onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
+                    activeRoleView === 'admin'
+                      ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50'
+                      : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200'
+                  }`}
+                >
+                  <Shield className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[11px]">{activeRoleView === 'admin' ? 'Admin' : 'Admin'}</span>
+                </button>
+              )}
 
-            {/* Admin Switcher (If Admin user) */}
-            {user.role === 'admin' && setActiveRoleView && onNavigate && (
-              <button
-                type="button"
-                onClick={() => {
-                  const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
-                  setActiveRoleView(nextRole);
-                  onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
-                }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
-                  activeRoleView === 'admin'
-                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50'
-                    : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200'
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">{activeRoleView === 'admin' ? 'Admin Mode' : 'Admin'}</span>
-              </button>
-            )}
-
-            {/* Logout Button */}
-            {onLogout && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
-                title="පද්ධතියෙන් ඉවත් වන්න (Logout)"
-              >
-                <LogOut className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                <span className="hidden sm:inline">ඉවත් වන්න</span>
-              </button>
-            )}
+              {/* Logout Button */}
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+                  title="පද්ධතියෙන් ඉවත් වන්න (Logout)"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span className="hidden sm:inline">ඉවත් වන්න</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* 3. User Profile Photo & Info (RIGHT) */}
+          {/* 3. Desktop User Profile Photo & Info (RIGHT) */}
           <div 
             onClick={onOpenSettings}
-            className={`flex items-center gap-2 sm:gap-2.5 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
+            className={`hidden sm:flex items-center gap-2 sm:gap-2.5 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
             title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
           >
-            <div className="text-right hidden sm:block min-w-0">
+            <div className="text-right min-w-0">
               <div className="flex items-center justify-end gap-1">
                 <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[130px]">
                   {user.name}
