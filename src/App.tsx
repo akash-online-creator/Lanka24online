@@ -13,7 +13,16 @@ import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
-import { subscribeToHelpPosts, updateHelpPostInFirestore, deleteHelpPostFromFirestore, seedDemoHelpPostsToFirestore } from './lib/firebase';
+import { 
+  subscribeToHelpPosts, 
+  updateHelpPostInFirestore, 
+  deleteHelpPostFromFirestore, 
+  seedDemoHelpPostsToFirestore,
+  subscribeToUsers,
+  saveUserToFirestore,
+  updateUserInFirestore,
+  seedInitialUsersToFirestore
+} from './lib/firebase';
 import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
 
@@ -103,6 +112,28 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
       setHelpPosts(remotePosts || []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync real-time Firestore users (Cloud persistent user directory for Vercel & Web)
+  useEffect(() => {
+    // Seed initial users to Firestore if remote DB is empty
+    seedInitialUsersToFirestore(initialUsers);
+
+    const unsubscribe = subscribeToUsers((remoteUsers) => {
+      if (remoteUsers && remoteUsers.length > 0) {
+        setUsers((prev) => {
+          // Merge with initial admin if not present
+          const hasAdmin = remoteUsers.some(
+            (u) => u.userId === '970181547V' || u.role === 'admin'
+          );
+          if (!hasAdmin && initialUsers[0]) {
+            return [initialUsers[0], ...remoteUsers];
+          }
+          return remoteUsers;
+        });
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -313,6 +344,7 @@ export default function App() {
     };
 
     setUsers((prev) => [createdUser, ...prev]);
+    saveUserToFirestore(createdUser).catch((err) => console.warn('Save user to firestore notice:', err));
     setCurrentUser(null);
     setViewMode('login'); // Redirect to login page upon registration completion
   };
@@ -325,6 +357,19 @@ export default function App() {
 
   // Admin User Actions
   const handleApproveUser = (targetUserId: string) => {
+    const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
+    if (targetUser) {
+      const isGift = !targetUser.welcomeGiftCredited;
+      if (isGift) {
+        grantWelcomeGiftCredit(targetUser);
+      }
+      const updatedFields: Partial<User> = {
+        status: 'approved',
+        ...(isGift ? { credits: (targetUser.credits ?? 0) + 100, welcomeGiftCredited: true } : {})
+      };
+      updateUserInFirestore(targetUser.id, updatedFields).catch((err) => console.warn('Approve user firestore notice:', err));
+    }
+
     setUsers((prev) =>
       (prev || []).map((u) => {
         if (u.id === targetUserId || u.userId === targetUserId) {
@@ -357,6 +402,13 @@ export default function App() {
   };
 
   const handleRejectUser = (targetUserId: string, reason?: string) => {
+    const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
+    if (targetUser) {
+      updateUserInFirestore(targetUser.id, { status: 'rejected', rejectionReason: reason }).catch((err) =>
+        console.warn('Reject user firestore notice:', err)
+      );
+    }
+
     setUsers((prev) =>
       (prev || []).map((u) =>
         u.id === targetUserId
@@ -367,6 +419,9 @@ export default function App() {
   };
 
   const handleUpdateUser = (updatedUser: User) => {
+    updateUserInFirestore(updatedUser.id, updatedUser).catch((err) =>
+      console.warn('Update user firestore notice:', err)
+    );
     setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
@@ -381,6 +436,11 @@ export default function App() {
       securityCode: newPassword,
       isPasswordChanged: true,
     };
+    updateUserInFirestore(updatedUser.id, {
+      key: newPassword,
+      securityCode: newPassword,
+      isPasswordChanged: true,
+    }).catch((err) => console.warn('Save password firestore notice:', err));
     setCurrentUser(updatedUser);
     setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     setShowChangePasswordModal(false);
@@ -391,6 +451,12 @@ export default function App() {
     if (!userToBlock) return;
 
     const blockedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    updateUserInFirestore(userToBlock.id, {
+      status: 'blocked',
+      blockedReason: reason,
+      blockedAt,
+    }).catch((err) => console.warn('Block user firestore notice:', err));
 
     // Update user status
     setUsers((prev) =>
@@ -427,6 +493,12 @@ export default function App() {
     setBlockedCredentials((prev) => (prev || []).filter((c) => c.id !== credentialId));
 
     if (cred && cred.userId) {
+      const userToUnblock = (users || []).find((u) => u.userId === cred.userId);
+      if (userToUnblock) {
+        updateUserInFirestore(userToUnblock.id, { status: 'approved' }).catch((err) =>
+          console.warn('Unblock user firestore notice:', err)
+        );
+      }
       setUsers((prev) =>
         (prev || []).map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
       );

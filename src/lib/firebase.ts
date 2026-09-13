@@ -587,7 +587,7 @@ export async function toggleSavePostInFirestore(userId: string, postId: string, 
 }
 
 // ---------------- User Profiles Cloud Sync ----------------
-const USERS_COLLECTION = 'users';
+export const USERS_COLLECTION = 'users';
 
 export async function syncUserProfileToFirestore(user: User) {
   if (!user || (!user.id && !user.userId)) return;
@@ -750,3 +750,92 @@ export async function restorePostsBackupData(backupData: any): Promise<{
     restoredPostsList,
   };
 }
+
+// -------------------------------------------------------------
+// FIRESTORE USERS MANAGEMENT (REAL-TIME SYNC FOR VERCEL & WEB)
+// -------------------------------------------------------------
+
+/**
+ * Real-time listener for users from Firestore
+ */
+export function subscribeToUsers(callback: (users: User[]) => void): () => void {
+  try {
+    const q = collection(db, USERS_COLLECTION);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const usersList: User[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as User;
+          usersList.push({
+            ...data,
+            id: docSnap.id || data.id,
+          });
+        });
+        callback(usersList);
+      },
+      (error) => {
+        console.warn('Firestore users subscription notice:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('subscribeToUsers init error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Save / Create User in Firestore
+ */
+export async function saveUserToFirestore(user: User): Promise<void> {
+  const userId = user.id || `usr_${Date.now()}`;
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  try {
+    await setDoc(userRef, {
+      ...user,
+      id: userId,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${USERS_COLLECTION}/${userId}`);
+  }
+}
+
+/**
+ * Update partial User data in Firestore
+ */
+export async function updateUserInFirestore(userId: string, data: Partial<User>): Promise<void> {
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  try {
+    await setDoc(userRef, {
+      ...data,
+      id: userId,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${USERS_COLLECTION}/${userId}`);
+  }
+}
+
+/**
+ * Seed initial users if Firestore users collection is empty
+ */
+export async function seedInitialUsersToFirestore(seedUsers: User[]): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, USERS_COLLECTION));
+    if (snap.empty && seedUsers && seedUsers.length > 0) {
+      for (const u of seedUsers) {
+        if (!u.id) continue;
+        const userRef = doc(db, USERS_COLLECTION, u.id);
+        await setDoc(userRef, {
+          ...u,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn('Seed initial users notice:', err);
+  }
+}
+
