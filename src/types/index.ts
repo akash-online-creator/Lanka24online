@@ -163,6 +163,7 @@ export interface HelpPost {
   exchangeWantItem?: string;
   exchangeWantQuantity?: string;
   exchangeMethod?: string;
+  groupWorkTitle?: string;
   isBoosted?: boolean;
   boostedAt?: string;
   boostedAtMs?: number;

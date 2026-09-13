@@ -40,6 +40,9 @@ import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { UserWalletModal } from './UserWalletModal';
 import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
+import { LiveNotificationToast } from './LiveNotificationToast';
+import { NotificationCenterModal } from './NotificationCenterModal';
+import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
 import { 
   getUserCreditBalance, 
   deductPostingFee, 
@@ -286,6 +289,38 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
   const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>('blood_requests');
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+
+  // Navigation handler when user clicks a notification toast or modal item
+  const handleOpenFromNotification = (notif: AppNotification) => {
+    if (notif.targetPostId) {
+      const matched = (helpPosts || []).find((p) => p.id === notif.targetPostId);
+      if (matched) {
+        setSelectedPostForDetail(matched);
+        return;
+      }
+    }
+    if (notif.targetModal === 'quick_service') {
+      setBoardCategoryFilter('quick_services');
+      setSelectedCategoryTitle('ඉක්මන් සේවා (Quick Services)');
+      setFeedDistanceTab('local');
+    } else if (notif.targetModal === 'blood') {
+      setBloodModalInitialTab('blood_requests');
+      setIsBloodAndDisasterModalOpen(true);
+    } else if (notif.targetModal === 'find_for_me') {
+      setBoardCategoryFilter('find_for_me');
+      setSelectedCategoryTitle('සොයාදෙන්න (Find For Me)');
+      setFeedDistanceTab('all_sl');
+    } else if (notif.targetModal === 'from_me_to_you') {
+      setBoardCategoryFilter('from_me_to_you');
+      setSelectedCategoryTitle('මගෙන් ඔබට (From Me To You)');
+      setFeedDistanceTab('all_sl');
+    } else if (notif.targetModal === 'group_work') {
+      setBoardCategoryFilter('group_work');
+      setSelectedCategoryTitle('ශ්‍රමදාන / කණ්ඩායම් වැඩ');
+      setFeedDistanceTab('local');
+    }
+  };
 
   // User Trust Profile
   const trustProfile = useMemo(() => {
@@ -843,6 +878,66 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       };
       setLocalHelpPosts((prev) => [newPost, ...prev]);
     }
+
+    // Broadcast live notification across the app with audio chime & push alert
+    try {
+      if (categoryToSave === 'blood_disaster' || postToSave.whatHappened?.includes('ලේ') || postToSave.whatIsNeeded?.includes('ලේ')) {
+        broadcastAppNotification({
+          type: 'emergency_blood',
+          title: '🩸 හදිසි රුධිර / ආපදා ඉල්ලීමක්!',
+          message: `${postTitle} - ${postToSave.locationName || 'දිවයින පුරා'}`,
+          locationName: postToSave.locationName,
+          badgeText: 'URGENT BLOOD',
+          targetModal: 'blood',
+        });
+      } else if (categoryToSave === 'quick_services') {
+        broadcastAppNotification({
+          type: 'quick_service',
+          title: `⚡ නව ඉක්මන් සේවාවක්: ${postToSave.tagName || 'හදිසි සේවා'}`,
+          message: `${postTitle} - ${postToSave.locationName || 'ලඟම ප්‍රදේශය'}`,
+          locationName: postToSave.locationName,
+          badgeText: 'QUICK SERVICE',
+          targetModal: 'quick_service',
+        });
+      } else if (categoryToSave === 'find_for_me') {
+        broadcastAppNotification({
+          type: 'find_for_me',
+          title: `🔍 සොයාදෙන්න ඉල්ලීමක්: ${postToSave.itemLostStolenOrSearched || 'භාණ්ඩයක් / පුද්ගලයෙක්'}`,
+          message: `${postTitle} - ${postToSave.locationName || ''}`,
+          locationName: postToSave.locationName,
+          badgeText: 'FIND FOR ME',
+          targetModal: 'find_for_me',
+        });
+      } else if (categoryToSave === 'from_me_to_you') {
+        broadcastAppNotification({
+          type: 'from_me_to_you',
+          title: `🎁 මගෙන් ඔබට නොමිලේ දීමනාවක්: ${postToSave.donationItem || 'පරිත්‍යාගයක්'}`,
+          message: `${postTitle} - ${postToSave.locationName || ''}`,
+          locationName: postToSave.locationName,
+          badgeText: 'FREE GIFT',
+          targetModal: 'from_me_to_you',
+        });
+      } else if (categoryToSave === 'group_work') {
+        broadcastAppNotification({
+          type: 'group_work',
+          title: `👥 ශ්‍රමදාන / කණ්ඩායම් සහය: ${postToSave.groupWorkTitle || 'ප්‍රජා වැඩක්'}`,
+          message: `${postTitle} - ${postToSave.locationName || ''}`,
+          locationName: postToSave.locationName,
+          badgeText: 'GROUP WORK',
+          targetModal: 'group_work',
+        });
+      } else {
+        broadcastAppNotification({
+          type: 'general',
+          title: `📢 නව සහය ඉල්ලීමක්: ${postToSave.tagName || selectedCategoryTitle || 'සහය'}`,
+          message: `${postTitle} - ${postToSave.locationName || ''}`,
+          locationName: postToSave.locationName,
+          badgeText: 'NEW POST',
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Error broadcasting post notification:', notifErr);
+    }
   };
 
   // Helper function to accept a specific helper offer and reduce count immediately
@@ -1273,6 +1368,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsSettingsModalOpen(true);
         }}
         onOpenWallet={() => setIsWalletModalOpen(true)}
+        onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onLogout={onLogout}
         activeRoleView={activeRoleView}
         setActiveRoleView={setActiveRoleView}
@@ -2151,6 +2247,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onSubmitResponse={handlePosterSubmitCorrection}
         onOpenEditPost={handleEditPost}
         language={language}
+      />
+
+      {/* Live Push & In-App Notification Toast */}
+      <LiveNotificationToast onOpenNotification={handleOpenFromNotification} />
+
+      {/* Centralized Notification Center Modal */}
+      <NotificationCenterModal
+        isOpen={isNotificationModalOpen}
+        onClose={() => setIsNotificationModalOpen(false)}
+        language={language}
+        onSelectNotification={handleOpenFromNotification}
       />
 
     </div>

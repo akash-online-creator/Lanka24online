@@ -197,3 +197,19 @@ export function parseTimeToMs(timestamp?: string | number, createdAtMs?: number)
   return now;
 }
 
+/**
+ * Formats a given timestamp (string or epoch number) into humanized relative time
+ */
+export function formatRelativeTime(
+  timestamp?: number | string,
+  lang: 'si' | 'en' | 'ta' | string = 'si'
+): string {
+  if (!timestamp) {
+    return lang === 'en' ? 'Just now' : lang === 'ta' ? 'சற்று முன்' : 'දැන්ම';
+  }
+  if (typeof timestamp === 'number') {
+    return getAccurateElapsedTime(undefined, timestamp, Date.now(), lang);
+  }
+  return getAccurateElapsedTime(timestamp, undefined, Date.now(), lang);
+}
+
