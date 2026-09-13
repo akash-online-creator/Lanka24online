@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, 
   Language, 
@@ -10,6 +10,7 @@ import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MapLocationTracker } from './MapLocationTracker';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
+import { getStoredNotifications } from '../utils/notificationManager';
 import { 
   ShieldCheck, 
   MapPin, 
@@ -27,7 +28,8 @@ import {
   Lock, 
   Check,
   ChevronDown,
-  Coins
+  Coins,
+  Bell
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 
@@ -43,6 +45,7 @@ interface UnifiedDashboardHeaderProps {
   onNavigateToIssues?: () => void;
   onOpenSettings?: () => void;
   onOpenWallet?: () => void;
+  onOpenNotifications?: () => void;
   onLogout?: () => void;
   activeRoleView?: Role;
   setActiveRoleView?: (role: Role) => void;
@@ -63,6 +66,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onNavigateToIssues,
   onOpenSettings,
   onOpenWallet,
+  onOpenNotifications,
   onLogout,
   activeRoleView,
   setActiveRoleView,
@@ -74,6 +78,22 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+
+  useEffect(() => {
+    const updateUnread = () => {
+      const notifs = getStoredNotifications();
+      setUnreadNotifCount(notifs.filter(n => !n.isRead).length);
+    };
+
+    updateUnread();
+    window.addEventListener('sahaya_notifications_updated', updateUnread);
+    window.addEventListener('sahaya_new_notification', updateUnread);
+    return () => {
+      window.removeEventListener('sahaya_notifications_updated', updateUnread);
+      window.removeEventListener('sahaya_new_notification', updateUnread);
+    };
+  }, []);
 
   const creditBalance = getUserCreditBalance(user);
   const numericId = extractNumericId(user.nicNumber || user.userId);
@@ -235,6 +255,23 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             </div>
 
             <div className="flex items-center gap-1 sm:gap-1.5">
+              {/* Live Notifications Bell */}
+              {onOpenNotifications && (
+                <button
+                  type="button"
+                  onClick={onOpenNotifications}
+                  className="relative p-1.5 sm:px-2 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="සජීවී දැනුම්දීම් (Live Notifications)"
+                >
+                  <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs animate-pulse">
+                      {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
               {/* Dark / Light Theme Toggle */}
               <button
                 type="button"
