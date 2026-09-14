@@ -23,6 +23,7 @@ interface LoginFormProps {
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
   toggleTheme?: () => void;
+  showDemoUserLogin?: boolean;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
@@ -34,6 +35,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   setLanguage,
   theme = 'light',
   toggleTheme,
+  showDemoUserLogin = true,
 }) => {
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
@@ -218,23 +220,31 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </button>
         </form>
 
-        {/* Quick Demo Access Bar - Only User Demo */}
-        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-[#173222]">
-          <button
-            type="button"
-            onClick={() => {
-              if (onUserDemoLogin) {
-                onUserDemoLogin();
-              } else {
-                onLogin('demo_user', 'demo');
-              }
-            }}
-            className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/20 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 text-[11px] sm:text-xs font-black transition-all border border-emerald-300/80 dark:border-emerald-700/80 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
-          >
-            <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-            <span>👤 නරඹන්නා ලෙස පිවිසෙන්න (User Demo)</span>
-          </button>
-        </div>
+        {/* Quick Demo Access Bar - Only User Demo (Admin togglable) */}
+        {showDemoUserLogin && (
+          <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-[#173222]">
+            <button
+              type="button"
+              onClick={() => {
+                if (onUserDemoLogin) {
+                  onUserDemoLogin();
+                } else {
+                  onLogin('demo_user', 'demo');
+                }
+              }}
+              className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/20 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 text-[11px] sm:text-xs font-black transition-all border border-emerald-300/80 dark:border-emerald-700/80 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>
+                {language === 'en'
+                  ? '👤 Sign In as Visitor (User Demo)'
+                  : language === 'ta'
+                  ? '👤 பார்வையாளராக நுழைக (User Demo)'
+                  : '👤 නරඹන්නා ලෙස පිවිසෙන්න (User Demo)'}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Footer link for Issues/Help */}

@@ -55,8 +55,6 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   initialTab = 'blood_requests',
   onRequireRegistration,
 }) => {
-  if (!isOpen) return null;
-
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>(initialTab);
 
@@ -306,6 +304,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       return true;
     });
   }, [disasterItems, selectedDistrict, searchQuery]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn overflow-y-auto">

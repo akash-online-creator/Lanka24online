@@ -59,8 +59,6 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
   editShop,
   defaultType = 'shop'
 }) => {
-  if (!isOpen) return null;
-
   const targetType = editShop ? editShop.type : defaultType;
   const isShop = targetType === 'shop';
 
@@ -224,6 +222,8 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
     { key: 'saturday', labelSi: 'සෙනසුරාදා' },
     { key: 'sunday', labelSi: 'ඉරිදා' }
   ];
+
+  if (!isOpen) return null;
 
   return (
     <>

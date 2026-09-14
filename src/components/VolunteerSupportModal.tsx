@@ -21,6 +21,7 @@ import { calculateMotorcycleRoadDistance } from '../utils/geoUtils';
 import { SlideToConfirmButton } from './SlideToConfirmButton';
 import { HelperBillModal } from './HelperBillModal';
 import { updateHelpPostInFirestore, sendChatMessageToFirestore } from '../lib/firebase';
+import { translateName } from '../utils/postTranslator';
 
 interface VolunteerSupportModalProps {
   isOpen: boolean;
@@ -355,8 +356,8 @@ ${billLines}
                   const pLat = post.lat || 7.1710;
                   const pLng = post.lng || 79.8986;
                   const pName = post.locationName || 'ස්ථානය';
-                  const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName);
-                  const postOwnerName = post.userName || 'ගැටලුව සිදුවූ පුද්ගලයා';
+                  const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName, lang);
+                  const postOwnerName = translateName(post.userName, lang) || (lang === 'en' ? 'Post Author' : lang === 'ta' ? 'விளம்பரதாரர்' : 'ගැටලුව සිදුවූ පුද්ගලයා');
 
                   // The Exact Required Message
                   const requiredMessage = `"${postOwnerName}" සහය සදහා ඔබ තොරාගෙන ඇත. ඔබ දෙදෙනා අතර ගැටලුවක් ඇති නොවන පරිදි සුහදශිලිව සහයවිමට වගබලාගන්න. ස්තුතියි ...!!!`;
@@ -516,7 +517,7 @@ ${billLines}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-slate-900 dark:text-white">
-                      {post.userName} වෙත යැවූ සහය
+                      {translateName(post.userName, lang)} වෙත යැවූ සහය
                     </span>
                     <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full font-bold">
                       තහවුරු කිරීම අපේක්ෂාවෙන්

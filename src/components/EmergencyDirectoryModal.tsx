@@ -57,8 +57,6 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
   onUpdateUser,
   onRequireRegistration,
 }) => {
-  if (!isOpen) return null;
-
   const [contacts, setContacts] = useState<EmergencyServiceContact[]>(() => getStoredEmergencyContacts(false));
   const [selectedCategory, setSelectedCategory] = useState<FilterCategory>('all');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
@@ -366,6 +364,8 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
         return <HelpCircle className="w-5 h-5 text-purple-500" />;
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn overflow-y-auto">

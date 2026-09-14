@@ -212,7 +212,7 @@ export const BoostPostModal: React.FC<BoostPostModalProps> = ({
                 onClick={onClose}
                 className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-lg active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>{getLangText('දැන්වීම් පුවරුවට පිවිසෙන්න', 'View in Bulletin Board', 'அறிவிப்பு பலகையில் பார்க்க')}</span>
+                <span>{getLangText('සහය පුවරුවට පිවිසෙන්න', 'View in Support Board', 'உதவி பலகையில் பார்க்க')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

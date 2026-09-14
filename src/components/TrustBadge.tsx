@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Award, Star, CheckCircle, Info, X } from 'lucide-react';
-import { UserTrustProfile, TrustBadgeType } from '../types';
+import { UserTrustProfile, TrustBadgeType, Language } from '../types';
 
 interface TrustBadgeProps {
   trustProfile?: UserTrustProfile;
@@ -9,6 +9,7 @@ interface TrustBadgeProps {
   size?: 'sm' | 'md' | 'lg';
   showPoints?: boolean;
   showKarmaPoints?: boolean;
+  lang?: Language;
 }
 
 export const TrustBadge: React.FC<TrustBadgeProps> = ({
@@ -18,8 +19,15 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
   size = 'md',
   showPoints,
   showKarmaPoints,
+  lang = 'si',
 }) => {
   const [showDetail, setShowDetail] = useState(false);
+
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (lang === 'en') return en;
+    if (lang === 'ta') return ta;
+    return si;
+  };
 
   // Support both trustProfile and profile props with safe fallback
   const currentProfile: UserTrustProfile = trustProfile || profile || {
@@ -27,11 +35,27 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
     positiveReviewsCount: 1,
     karmaPoints: 10,
     trustBadge: 'bronze',
-    badgeTitleSi: 'නව සාමාජික (Bronze)',
+    badgeTitleSi: 'නව සාමාජික',
     badgeIcon: '🥉',
     verifiedPhone: false,
     verifiedNic: false,
   };
+
+  const getLocalizedBadgeTitle = (badge?: TrustBadgeType, fallbackSi?: string) => {
+    switch (badge) {
+      case 'community_hero':
+        return getLangText('ප්‍රජා වීරයා', 'Community Hero', 'சமூக நாயகன்');
+      case 'gold':
+        return getLangText('ප්‍රජා තරුව', 'Community Star', 'சமூக நட்சத்திரம்');
+      case 'silver':
+        return getLangText('විශ්වාසනීය සහායක', 'Trusted Helper', 'நம்பகமான உதவியாளர்');
+      case 'bronze':
+      default:
+        return getLangText(fallbackSi || 'නව සාමාජික', 'New Member', 'புதிய உறுப்பினர்');
+    }
+  };
+
+  const badgeTitle = getLocalizedBadgeTitle(currentProfile.trustBadge, currentProfile.badgeTitleSi);
 
   const shouldShowPoints = showPoints !== undefined ? showPoints : (showKarmaPoints ?? true);
 
@@ -66,13 +90,13 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
             ? 'px-3.5 py-1.5 text-xs'
             : 'px-2.5 py-1 text-[11px]'
         }`}
-        title="විශ්වාසනීයත්ව ලාංඡනය විස්තර බලන්න"
+        title={getLangText('විශ්වාසනීයත්ව ලාංඡනය විස්තර බලන්න', 'View trust badge details', 'நம்பகத்தன்மை பேட்ஜ் விவரங்களை பார்க்க')}
       >
         <span>{currentProfile.badgeIcon || '🥉'}</span>
-        <span className="font-extrabold">{currentProfile.badgeTitleSi || 'සාමාජික'}</span>
+        <span className="font-extrabold">{badgeTitle}</span>
         {shouldShowPoints && (
           <span className="opacity-90 font-mono text-[9px] bg-black/15 px-1.5 py-0.2 rounded-md">
-            {currentProfile.karmaPoints ?? 0} ලකුණු
+            {currentProfile.karmaPoints ?? 0} {getLangText('ලකුණු', 'pts', 'புள்ளிகள்')}
           </span>
         )}
       </button>
@@ -92,10 +116,10 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
                 <span className="text-2xl">{currentProfile.badgeIcon || '🥉'}</span>
                 <div>
                   <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                    ප්‍රජා සහයෝගිතා ලකුණු (Collaboration Score)
+                    {getLangText('ප්‍රජා සහයෝගිතා ලකුණු', 'Community Karma & Trust', 'சமூக ஒத்துழைப்பு புள்ளிகள்')}
                   </h4>
                   <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                    {userName} ගේ විශ්වාසනීයත්ව සහ සහයෝගිතා තත්ත්වය
+                    {userName} {getLangText('ගේ විශ්වාසනීයත්ව සහ සහයෝගිතා තත්ත්වය', "'s Trust & Karma Status", 'இன் நம்பகத்தன்மை நிலை')}
                   </p>
                 </div>
               </div>
@@ -112,14 +136,14 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
             <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-[#082217] dark:to-[#092b1e] rounded-2xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  මුළු සහයෝගිතා ලකුණු
+                  {getLangText('මුළු සහයෝගිතා ලකුණු', 'Total Karma Points', 'மொத்த ஒத்துழைப்பு புள்ளிகள்')}
                 </span>
                 <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300 font-mono">
-                  {currentProfile.karmaPoints ?? 0} <span className="text-xs font-sans text-slate-500">ලකුණු</span>
+                  {currentProfile.karmaPoints ?? 0} <span className="text-xs font-sans text-slate-500">{getLangText('ලකුණු', 'points', 'புள்ளிகள்')}</span>
                 </div>
               </div>
               <span className={`px-3 py-1 rounded-xl text-xs font-black border ${badgeClass}`}>
-                {currentProfile.badgeTitleSi || 'සාමාජික'}
+                {badgeTitle}
               </span>
             </div>
 
@@ -128,30 +152,30 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
               <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-white/5">
                 <span className="flex items-center gap-2 font-medium">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>තහවුරු කළ දුරකථන අංකය</span>
+                  <span>{getLangText('තහවුරු කළ දුරකථන අංකය', 'Verified Phone Number', 'உறுதிப்படுத்தப்பட்ட தொலைபேசி எண்')}</span>
                 </span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  {currentProfile.verifiedPhone ? '✅ සනාථයි' : '❌ නැත'}
+                  {currentProfile.verifiedPhone ? getLangText('✅ සනාථයි', '✅ Verified', '✅ உறுதிப்படுத்தப்பட்டது') : getLangText('❌ නැත', '❌ Not verified', '❌ இல்லை')}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-white/5">
                 <span className="flex items-center gap-2 font-medium">
                   <Award className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>ජාතික හැඳුනුම්පත් (NIC) සත්‍යාපනය</span>
+                  <span>{getLangText('ජාතික හැඳුනුම්පත් (NIC) සත්‍යාපනය', 'National ID (NIC) Verified', 'தேசிய அடையாள அட்டை (NIC) சரிபார்ப்பு')}</span>
                 </span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  {currentProfile.verifiedNic ? '✅ සනාථයි' : '❌ නැත'}
+                  {currentProfile.verifiedNic ? getLangText('✅ සනාථයි', '✅ Verified', '✅ உறுதிப்படுத்தப்பட்டது') : getLangText('❌ නැත', '❌ Not verified', '❌ இல்லை')}
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-white/5">
                 <span className="flex items-center gap-2 font-medium">
                   <Star className="w-4 h-4 text-amber-500" />
-                  <span>සාර්ථකව සම්පූර්ණ කළ උදව්</span>
+                  <span>{getLangText('සාර්ථකව සම්පූර්ණ කළ උදව්', 'Completed Helps', 'வெற்றிகரமாக முடித்த உதவிகள்')}</span>
                 </span>
                 <span className="font-mono font-bold text-slate-900 dark:text-white">
-                  {currentProfile.completedHelpsCount ?? 0} වාරයක්
+                  {currentProfile.completedHelpsCount ?? 0} {getLangText('වාරයක්', 'times', 'முறை')}
                 </span>
               </div>
             </div>
@@ -161,7 +185,7 @@ export const TrustBadge: React.FC<TrustBadgeProps> = ({
               onClick={() => setShowDetail(false)}
               className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all"
             >
-              තේරුම් ගතිමි (OK)
+              {getLangText('තේරුම් ගතිමි (OK)', 'Understood (OK)', 'புரிந்து கொண்டது (சரி)')}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { HelpPost, Language } from '../types';
-import { translateLocation } from './postTranslator';
+import { translateLocation, translateName } from './postTranslator';
 
 // In-memory translation cache for instant response
 const memoryCache = new Map<string, string>();
@@ -136,13 +136,16 @@ export async function translatePostWithGoogle(
       post.replies.map(async (r) => ({
         ...r,
         message: r.message ? await translateWithGoogle(r.message, langCode) : r.message,
-        responderName: translateLocation(r.responderName, targetLang),
+        responderName: translateName(r.responderName, targetLang),
       }))
     );
   }
 
   return {
     ...post,
+    userName: translateName(post.userName, targetLang),
+    confirmedHelperName: translateName(post.confirmedHelperName, targetLang),
+    completedHelperName: translateName(post.completedHelperName, targetLang),
     whatHappened,
     whatIsNeeded,
     conditions,

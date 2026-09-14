@@ -332,7 +332,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             className="p-2 sm:p-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5 text-xs font-bold"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">දැන්වීම් පුවරුවට</span>
+            <span className="hidden sm:inline">සහය පුවරුවට</span>
           </button>
           <div>
             <div className="flex items-center gap-2">

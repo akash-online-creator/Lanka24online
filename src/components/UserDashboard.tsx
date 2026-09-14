@@ -36,12 +36,14 @@ import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
 import { filterNonDeletedPosts, addDeletedPostId } from '../utils/deletedPostsManager';
+import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { UserWalletModal } from './UserWalletModal';
 import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { NotificationCenterModal } from './NotificationCenterModal';
+import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
 import { 
   getUserCreditBalance, 
@@ -290,6 +292,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>('blood_requests');
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
 
   // Navigation handler when user clicks a notification toast or modal item
   const handleOpenFromNotification = (notif: AppNotification) => {
@@ -325,6 +328,56 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // User Trust Profile
   const trustProfile = useMemo(() => {
     return calculateTrustProfile(user, helpPosts);
+  }, [user, helpPosts]);
+
+  // Total replies / conversations count for user (as poster or responder)
+  const inboxRepliesCount = useMemo(() => {
+    const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
+    const userPhoneClean = normalizePhone(user?.phone || user?.whatsappNumber);
+
+    const isUserPostAuthor = (post: HelpPost) => {
+      if (!post) return false;
+      const postPhoneClean = normalizePhone(post.userPhone);
+      const isPhoneMatch = Boolean(
+        userPhoneClean &&
+          postPhoneClean &&
+          (userPhoneClean === postPhoneClean ||
+            userPhoneClean.endsWith(postPhoneClean.slice(-7)) ||
+            postPhoneClean.endsWith(userPhoneClean.slice(-7)))
+      );
+      const isIdMatch = Boolean(
+        (user?.userId && (post.userId === user.userId || post.userId === user.id)) ||
+        (user?.id && (post.userId === user.id || post.userId === user.userId))
+      );
+      const isNameMatch = Boolean(
+        user?.name &&
+        post.userName &&
+        post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()
+      );
+      return isPhoneMatch || isIdMatch || isNameMatch;
+    };
+
+    const isUserHelperOnPost = (post: HelpPost) => {
+      if (!post || isUserPostAuthor(post)) return false;
+      const replies = post.replies || [];
+      return replies.some((r) => {
+        if (!r) return false;
+        const repPhone = normalizePhone(r.responderPhone);
+        const isPhone = Boolean(userPhoneClean && repPhone && (userPhoneClean === repPhone || userPhoneClean.endsWith(repPhone.slice(-7))));
+        const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user.name.trim().toLowerCase());
+        return isPhone || isName;
+      });
+    };
+
+    let totalReplies = 0;
+    (helpPosts || []).forEach((post) => {
+      if (!post || post.isDeleted) return;
+      if (isUserPostAuthor(post) || isUserHelperOnPost(post)) {
+        const reps = post.replies || [];
+        totalReplies += reps.length;
+      }
+    });
+    return totalReplies;
   }, [user, helpPosts]);
   
   // Detail, Chat and Confirm Modals from PDF plan:
@@ -617,6 +670,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Category & Distance & Tag Filtering Logic
   const filteredPosts = (helpPosts || []).filter((post) => {
     if (!post || post.isDeleted || post.status === 'deleted') return false;
+
+    // Check if post author is blocked or deleted by admin
+    if (isAuthorBlocked(post)) {
+      const isViewerAdmin = user.role === 'admin' || user.isAdmin;
+      if (!isViewerAdmin) {
+        return false;
+      }
+    }
 
     // Check Hidden by Admin:
     // If hidden by admin, only Admin or the Post Owner can see it (to rectify/respond)
@@ -1369,6 +1430,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
         onOpenWallet={() => setIsWalletModalOpen(true)}
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
+        onOpenInbox={() => setIsInboxModalOpen(true)}
+        inboxCount={inboxRepliesCount}
+        onOpenAssistant={() => setIsAssistantChatOpen(true)}
         onLogout={onLogout}
         activeRoleView={activeRoleView}
         setActiveRoleView={setActiveRoleView}
@@ -1434,16 +1498,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </div>
       </div>
 
-      {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "දැන්වීම් පුවරුව", and "සැකසුම්" */}
+      {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "සහය පුවරුව", "පණිවිඩ & සංවාද", and "සැකසුම්" */}
       <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5 backdrop-blur-md">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {/* Button 1: සේවා ඉල්ලීම් */}
           <button
             type="button"
             onClick={() => {
               setIsCategoryModalOpen(true);
             }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
               <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1461,7 +1525,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 2: දැන්වීම් පුවරුව */}
+          {/* Button 2: සහය පුවරුව */}
           <button
             type="button"
             onClick={() => {
@@ -1476,14 +1540,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setIsFindForMeModalOpen(false);
               setIsFromMeToYouModalOpen(false);
             }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
               <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
             </div>
             <div className="text-left min-w-0">
               <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                <span>{getLangText('දැන්වීම් පුවරුව', 'Bulletin Board', 'அறிவிப்பு பலகை')}</span>
+                <span>{getLangText('සහය පුවරුව', 'Support Board', 'உதவி பலகை')}</span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white/20 text-white">
                   {helpPosts.length}
                 </span>
@@ -1494,14 +1558,44 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 3: Settings (සැකසුම්) */}
+          {/* Button 3: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsInboxModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-700 hover:from-cyan-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg shadow-sky-600/20 border-2 border-sky-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-sky-200" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('පණිවිඩ & චැට්', 'Messages & Inbox', 'செய்திகள் & அரட்டை')}</span>
+                {inboxRepliesCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white text-blue-900 shadow-xs">
+                    {inboxRepliesCount}
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-sky-100">
+                {getLangText('සියලු පිළිතුරු / Chats', 'All Replies / Live Chat', 'அனைத்து பதில்கள்')}
+              </div>
+            </div>
+          </button>
+
+          {/* Button 4: Settings (සැකසුම්) */}
           <button
             type="button"
             onClick={() => {
               setSettingsInitialTab('profile');
               setIsSettingsModalOpen(true);
             }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-[#132a1e] dark:to-[#0f281d] text-emerald-950 dark:text-emerald-100 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 border-2 border-emerald-300/80 dark:border-emerald-700/60 shadow-xs hover:shadow-md hover:scale-[1.01]"
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-[#132a1e] dark:to-[#0f281d] text-emerald-950 dark:text-emerald-100 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 border-2 border-emerald-300/80 dark:border-emerald-700/60 shadow-xs hover:shadow-md hover:scale-[1.01]"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-xs">
               <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2258,6 +2352,41 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsNotificationModalOpen(false)}
         language={language}
         onSelectNotification={handleOpenFromNotification}
+      />
+
+      {/* Trilingual Omni-Assistant Chat Box & Universal Auto-Translator */}
+      <OmniAssistantChatBox
+        currentLanguage={language}
+        onLanguageChange={setLanguage}
+        isOpen={isAssistantChatOpen}
+        onOpenChange={setIsAssistantChatOpen}
+        onOpenBloodAndDisaster={() => {
+          setBloodModalInitialTab('blood_requests');
+          setIsBloodAndDisasterModalOpen(true);
+        }}
+        onOpenQuickServices={() => {
+          setIsQuickServiceModalOpen(true);
+        }}
+        onOpenFindForMe={() => {
+          setIsFindForMeModalOpen(true);
+        }}
+        onOpenFromMeToYou={() => {
+          setIsFromMeToYouModalOpen(true);
+        }}
+        onOpenGroupWork={() => {
+          setBoardCategoryFilter('group_work');
+          setSelectedCategoryTitle('ශ්‍රමදාන / කණ්ඩායම් වැඩ');
+          setFeedDistanceTab('local');
+        }}
+        onOpenMarketplace={() => {
+          setIsCategoryModalOpen(true);
+        }}
+        onOpenWallet={() => {
+          setIsWalletModalOpen(true);
+        }}
+        onOpenEmergencyDirectory={() => {
+          setIsEmergencyDirectoryModalOpen(true);
+        }}
       />
 
     </div>

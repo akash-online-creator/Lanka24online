@@ -1636,7 +1636,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   // Kovinna, Katunayake & Kalahapitiya Detailed Roads & Landmarks
   {
     id: 'kovinna_gangarama_rd',
-    titleSi: 'ගංගාරාම පාර (Gangarama Road)',
+    titleSi: 'ගංගාරාම පාර',
     titleEn: 'Gangarama Road, Kovinna',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1654,7 +1654,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_sri_gangarama_mw',
-    titleSi: 'ශ්‍රී ගංගාරාම මාවත (Sri Gangarama Mawatha)',
+    titleSi: 'ශ්‍රී ගංගාරාම මාවත',
     titleEn: 'Sri Gangarama Mawatha, Kovinna',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1672,7 +1672,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_amarakoon_mw',
-    titleSi: 'අමරකෝන් මාවත (Amarakoon Mawatha)',
+    titleSi: 'අමරකෝන් මාවත',
     titleEn: 'Amarakoon Mawatha, Kovinna',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1690,7 +1690,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_sunandarama_mw',
-    titleSi: 'ශ්‍රී සුනන්දාරාම මාවත / විහාරය (Sri Sunandarama Mawatha)',
+    titleSi: 'ශ්‍රී සුනන්දාරාම මාවත / විහාරය',
     titleEn: 'Sri Sunandarama Temple & Mawatha, Kovinna',
     category: 'temple',
     villageSi: 'කෝවින්න',
@@ -1708,7 +1708,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_kalahapitiya_rd',
-    titleSi: 'කෝවින්න - කලහපිටිය පාර (Kovinna - Kalahapitiya Road)',
+    titleSi: 'කෝවින්න - කලහපිටිය පාර',
     titleEn: 'Kovinna - Kalahapitiya Road',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1726,7 +1726,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_dewala_rd',
-    titleSi: 'දෙවොල පාර (Dewala Road)',
+    titleSi: 'දෙවොල පාර',
     titleEn: 'Dewala Road, Kovinna',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1744,7 +1744,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_temple_rd',
-    titleSi: 'කෝවින්න පන්සල පාර (Kovinna Temple Road)',
+    titleSi: 'කෝවින්න පන්සල පාර',
     titleEn: 'Kovinna Temple Road',
     category: 'temple',
     villageSi: 'කෝවින්න',
@@ -1762,7 +1762,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kalahapitiya_rd',
-    titleSi: 'කලහපිටිය පාර (Kalahapitiya Road)',
+    titleSi: 'කලහපිටිය පාර',
     titleEn: 'Kalahapitiya Road, Katunayake',
     category: 'road',
     villageSi: 'කලහපිටිය',
@@ -1780,7 +1780,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kovinna_jayawardena_mw',
-    titleSi: 'ජයවර්ධන මාවත (Jayawardena Mawatha)',
+    titleSi: 'ජයවර්ධන මාවත',
     titleEn: 'Jayawardena Mawatha, Kovinna',
     category: 'road',
     villageSi: 'කෝවින්න',
@@ -1798,7 +1798,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'katunayake_awariwatta_rd',
-    titleSi: 'අවිරිවත්ත පාර (Awariwatta Road)',
+    titleSi: 'අවිරිවත්ත පාර',
     titleEn: 'Awariwatta Road, Katunayake',
     category: 'road',
     villageSi: 'අවිරිවත්ත',
@@ -1816,7 +1816,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'katunayake_airport_rd',
-    titleSi: 'ගුවන්තොටුපල පාර (Airport Road)',
+    titleSi: 'ගුවන්තොටුපල පාර',
     titleEn: 'Airport Road, Katunayake',
     category: 'road',
     villageSi: 'කටුනායක',
@@ -1834,7 +1834,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'katunayake_station_rd',
-    titleSi: 'දුම්රියපොළ පාර (Station Road, Katunayake)',
+    titleSi: 'දුම්රියපොළ පාර',
     titleEn: 'Station Road, Katunayake',
     category: 'junction',
     villageSi: 'කටුනායක',
@@ -1852,7 +1852,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'katunayake_colombo_negombo_rd',
-    titleSi: 'කොළඹ - මීගමුව ප්‍රධාන පාර (Colombo - Negombo Main Road)',
+    titleSi: 'කොළඹ - මීගමුව ප්‍රධාන පාර',
     titleEn: 'Colombo - Negombo Main Road, Katunayake',
     category: 'road',
     villageSi: 'කටුනායක',
@@ -1870,7 +1870,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'katunayake_amandoluwa_rd',
-    titleSi: 'අමන්දොළුව පාර (Amandoluwa Road)',
+    titleSi: 'අමන්දොළුව පාර',
     titleEn: 'Amandoluwa Road, Katunayake',
     category: 'road',
     villageSi: 'අමන්දොළුව',
@@ -1888,7 +1888,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'andiambalama_minuwangoda_rd',
-    titleSi: 'මිනුවන්ගොඩ පාර (Minuwangoda Road, Andiambalama)',
+    titleSi: 'මිනුවන්ගොඩ පාර',
     titleEn: 'Minuwangoda Road, Andiambalama',
     category: 'road',
     villageSi: 'ඇන්ඩියම්බලම',
@@ -1908,7 +1908,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   // Kadawatha & Kiribathgoda Major Locations
   {
     id: 'kadawatha_kandy_rd',
-    titleSi: 'නුවර පාර, කඩවත (Kandy Road, Kadawatha)',
+    titleSi: 'නුවර පාර, කඩවත',
     titleEn: 'Kandy Road, Kadawatha',
     category: 'road',
     villageSi: 'කඩවත',
@@ -1926,7 +1926,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'kiribathgoda_kandy_rd',
-    titleSi: 'නුවර පාර, කිරිබත්ගොඩ (Kandy Road, Kiribathgoda)',
+    titleSi: 'නුවර පාර, කිරිබත්ගොඩ',
     titleEn: 'Kandy Road, Kiribathgoda',
     category: 'road',
     villageSi: 'කිරිබත්ගොඩ',
@@ -1946,7 +1946,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   // Gampaha, Colombo & Other Major Locations
   {
     id: 'gampaha_miriswatta_rd',
-    titleSi: 'මිරිස්වත්ත පාර, ගම්පහ (Miriswatta Road, Gampaha)',
+    titleSi: 'මිරිස්වත්ත පාර, ගම්පහ',
     titleEn: 'Miriswatta Road, Gampaha',
     category: 'road',
     villageSi: 'ගම්පහ',
@@ -1964,7 +1964,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'colombo_galle_rd',
-    titleSi: 'ගාලු පාර, කොළඹ (Galle Road, Colombo)',
+    titleSi: 'ගාලු පාර, කොළඹ',
     titleEn: 'Galle Road, Colombo',
     category: 'road',
     villageSi: 'කොල්ලුපිටිය',
@@ -1982,7 +1982,7 @@ export const SRI_LANKA_CURATED_PLACES: PlaceSearchResult[] = [
   },
   {
     id: 'negombo_sea_street',
-    titleSi: 'මුහුදු වීදිය, මීගමුව (Sea Street, Negombo)',
+    titleSi: 'මුහුදු වීදිය, මීගමුව',
     titleEn: 'Sea Street, Negombo',
     category: 'road',
     villageSi: 'මීගමුව',
@@ -2119,7 +2119,8 @@ export function calculateMotorcycleRoadDistance(
   viewerLat?: number,
   viewerLng?: number,
   postLocationName?: string,
-  viewerLocationName?: string
+  viewerLocationName?: string,
+  lang: 'si' | 'en' | 'ta' | string = 'si'
 ): MotorcycleRoadTrip {
   const pLat = postLat || 7.1710;
   const pLng = postLng || 79.8986;
@@ -2170,9 +2171,20 @@ export function calculateMotorcycleRoadDistance(
     ? `${Math.round(straightDist * 1000)} m`
     : `${straightDist.toFixed(1)} km`;
 
-  const formattedTime = travelTimeMinutes < 60
-    ? `~${travelTimeMinutes} මිනිත්තු`
-    : `~${Math.floor(travelTimeMinutes / 60)} පැය ${travelTimeMinutes % 60 > 0 ? `${travelTimeMinutes % 60} මිනි.` : ''}`;
+  let formattedTime = '';
+  if (lang === 'ta') {
+    formattedTime = travelTimeMinutes < 60
+      ? `~${travelTimeMinutes} நிமிடங்கள்`
+      : `~${Math.floor(travelTimeMinutes / 60)} மணிநேரம் ${travelTimeMinutes % 60 > 0 ? `${travelTimeMinutes % 60} நிமி.` : ''}`;
+  } else if (lang === 'en') {
+    formattedTime = travelTimeMinutes < 60
+      ? `~${travelTimeMinutes} mins`
+      : `~${Math.floor(travelTimeMinutes / 60)} hrs ${travelTimeMinutes % 60 > 0 ? `${travelTimeMinutes % 60} mins` : ''}`;
+  } else {
+    formattedTime = travelTimeMinutes < 60
+      ? `~${travelTimeMinutes} මිනිත්තු`
+      : `~${Math.floor(travelTimeMinutes / 60)} පැය ${travelTimeMinutes % 60 > 0 ? `${travelTimeMinutes % 60} මිනි.` : ''}`;
+  }
 
   // 6. Direct Google Maps Navigation URL for Two-Wheeler / Motorcycle
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${vLat},${vLng}`)}&destination=${encodeURIComponent(`${pLat},${pLng}`)}&travelmode=two_wheeler`;

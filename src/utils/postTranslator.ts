@@ -100,7 +100,7 @@ const POST_DICTIONARY: Record<string, { en: string; ta: string; si?: string }> =
   'Jump start කිරීමට jumper cables සහ සහායකයෙක් අවශ්‍යයි.': {
     en: 'Need jump start cables and an assistant to restart the car.',
     ta: 'ஜம்ப் ஸ்டார்ட் செய்ய கேபிள்கள் மற்றும் உதவியாளர் தேவை.',
-    si: 'Jump start කිරීමට jumper cables සහ සහායකයෙක් අවශ්‍යයි.',
+    si: 'ජම්ප් ස්ටාර්ට් කිරීමට ජම්ප් කේබල් සහ සහායකයෙක් අවශ්‍යයි.',
   },
   'කෝවින්න හන්දිය අසල': {
     en: 'Near Kovinna Junction',
@@ -667,6 +667,232 @@ export const translateText = (text?: string, lang: Language | string = 'si'): st
 };
 
 /**
+ * Translate and transliterate person/poster names and account titles cleanly into English and Tamil
+ */
+export const translateName = (name?: string, lang: Language | string = 'si'): string => {
+  if (!name || lang === 'si') return name || '';
+
+  const clean = name.trim();
+
+  // 1. Role titles and system account names
+  const TITLE_MAP: Record<string, { en: string; ta: string }> = {
+    'ගිණුම් හිමියා': { en: 'Account Holder', ta: 'கணக்கு வைத்திருப்பவர்' },
+    'පරිශීලකයා': { en: 'User', ta: 'பயனர்' },
+    'පරිපාලක': { en: 'Admin', ta: 'நிர்வாகி' },
+    'පරිපාලක (Admin)': { en: 'Admin', ta: 'நிர்வாகி (Admin)' },
+    'සහන සේවක': { en: 'Relief Helper', ta: 'நிவாரண உதவியாளர்' },
+    'සහායකයා': { en: 'Helper', ta: 'உதவியாளர்' },
+    'නරඹන්නා': { en: 'Visitor (Demo)', ta: 'பார்வையாளர்' },
+    'සේවාදායකයා': { en: 'Client', ta: 'வாடிக்கையாளர்' },
+    'පාරිභෝගිකයා': { en: 'Customer', ta: 'வாடிக்கையாளர்' },
+    'දැන්වීම්කරු': { en: 'Post Creator', ta: 'விளம்பரதாரர்' },
+  };
+
+  if (TITLE_MAP[clean]) {
+    return lang === 'ta' ? TITLE_MAP[clean].ta : TITLE_MAP[clean].en;
+  }
+
+  // 2. Common full Sri Lankan names
+  const FULL_NAME_MAP: Record<string, { en: string; ta: string }> = {
+    'ඩ් අ ම්': { en: 'D. A. M.', ta: 'டி. ஏ. எம்.' },
+    'රාජපක්ෂගේ සුමුදු සෙව්වන්දිකා': { en: 'Rajapakshege Sumudu Sewwandika', ta: 'ராஜபக்ஷகே சுமுது செவ்வந்திகா' },
+    'නිරෝෂා දමයන්ති': { en: 'Nirosha Damayanthi', ta: 'நிரோஷா தமயந்தி' },
+    'කසුන් මධුශංක': { en: 'Kasun Madushanka', ta: 'கசுன் மதுஷங்க' },
+    'කමල් පෙරේරා': { en: 'Kamal Perera', ta: 'கமல் பெரேரா' },
+    'නිමල් රත්නායක': { en: 'Nimal Rathnayake', ta: 'நிமல் ரத்நாயக்க' },
+    'කසුන් පෙරේරා': { en: 'Kasun Perera', ta: 'கசுன் பெரேரா' },
+    'චතුර පෙරේරා': { en: 'Chathura Perera', ta: 'சதுர பெரேரா' },
+    'දර්ශන විජේසිංහ': { en: 'Darshana Wijesinghe', ta: 'தர்ஷன விஜேசிங்க' },
+    'නුවන් ප්‍රනාන්දු': { en: 'Nuwan Fernando', ta: 'நுவன் பெர்னாண்டோ' },
+    'සුරංග සිල්වා': { en: 'Suranga Silva', ta: 'சுரங்க சில்வா' },
+    'මධුෂාන් ප්‍රසාද්': { en: 'Madhushan Prasad', ta: 'மதுஷன் பிரசாத்' },
+    'දිනේෂ් ගුණසේකර': { en: 'Dinesh Gunasekara', ta: 'தினேஷ் குணசேகர' },
+    'ඉසුරු සම්පත්': { en: 'Isuru Sampath', ta: 'இசுரு சம்பத்' },
+    'ප්‍රියන්ත සේනාරත්න': { en: 'Priyantha Senaratne', ta: 'பிரியந்த சேனாரத்ன' },
+    'අනුර කුමාර': { en: 'Anura Kumara', ta: 'அனுர குமார' },
+    'කමල් ගුණරත්න': { en: 'Kamal Gunaratne', ta: 'கமல் குணරத்ன' },
+    'නිමල් සිරිපාල': { en: 'Nimal Siripala', ta: 'நிமல் சிறிபால' },
+    'සුනිල් ශාන්ත': { en: 'Sunil Shantha', ta: 'சுனில் சாந்த' },
+    'සමන් කුමාර': { en: 'Saman Kumara', ta: 'சமன் குமார' },
+    'රුවන් පෙරේරා': { en: 'Ruwan Perera', ta: 'ருவன் பெரேரா' },
+    'මහේෂ් ප්‍රනාන්දු': { en: 'Mahesh Fernando', ta: 'மகேஷ் பெர்னாண்டோ' },
+    'තරිඳු ජයවර්ධන': { en: 'Tharindu Jayawardena', ta: 'தரிந்து ஜயவர்தன' },
+    'නදීෂා කෞෂල්‍යනී': { en: 'Nadeesha Kaushalyani', ta: 'நதீஷா கௌசல்யனி' },
+    'සඳුනි විජේරත්න': { en: 'Sanduni Wijeratne', ta: 'சந்துனி விஜேரத்ன' },
+    'දිල්ෂාන් මදුසංක': { en: 'Dilshan Madusanka', ta: 'தில்ஷான் மதுசங்க' },
+    'ඉනෝකා ප්‍රියදර්ශනී': { en: 'Inoka Priyadarshani', ta: 'இனோகா பிரியதர்ஷினி' },
+  };
+
+  if (FULL_NAME_MAP[clean]) {
+    return lang === 'ta' ? FULL_NAME_MAP[clean].ta : FULL_NAME_MAP[clean].en;
+  }
+
+  // 3. Name token substitutions for first/last names
+  const NAME_TOKENS: Record<string, { en: string; ta: string }> = {
+    // Surnames and clan names
+    'රාජපක්ෂගේ': { en: 'Rajapakshege', ta: 'ராஜபக்ஷகே' },
+    'රාජපක්ෂ': { en: 'Rajapaksha', ta: 'ராஜபக்ஷ' },
+    'රත්නායක': { en: 'Rathnayake', ta: 'ரத்நாயக்க' },
+    'පෙරේරා': { en: 'Perera', ta: 'பெரேரா' },
+    'ප්‍රනාන්දු': { en: 'Fernando', ta: 'பெர்னாண்டோ' },
+    'සිල්වා': { en: 'Silva', ta: 'சில்வா' },
+    'විජේසිංහ': { en: 'Wijesinghe', ta: 'விஜேசிங்க' },
+    'ගුණසේකර': { en: 'Gunasekara', ta: 'குணசேகர' },
+    'සේනාරත්න': { en: 'Senaratne', ta: 'சேனாரத்ன' },
+    'ජයවර්ධන': { en: 'Jayawardena', ta: 'ஜயவர்தன' },
+    'බණ්ඩාර': { en: 'Bandara', ta: 'பண்டார' },
+    'දිසානායක': { en: 'Dissanayake', ta: 'திசாநாயக்க' },
+    'විජේරත්න': { en: 'Wijeratne', ta: 'விஜேரத்ன' },
+    'රණතුංග': { en: 'Ranatunga', ta: 'ரணதுங்க' },
+    'ගුණරත්න': { en: 'Gunaratne', ta: 'குணரத்ன' },
+    'සිරිපාල': { en: 'Siripala', ta: 'சிறிபால' },
+    'ශාන්ත': { en: 'Shantha', ta: 'சாந்த' },
+    'සම්පත්': { en: 'Sampath', ta: 'சம்பத்' },
+    'ප්‍රසාද්': { en: 'Prasad', ta: 'பிரசாத்' },
+    'කුමාර': { en: 'Kumara', ta: 'குமார' },
+    'මධුශංක': { en: 'Madushanka', ta: 'மதுஷங்க' },
+    'මදුසංක': { en: 'Madusanka', ta: 'மதுசங்க' },
+    'කෞෂල්‍යනී': { en: 'Kaushalyani', ta: 'கௌசல்யனி' },
+    'ප්‍රියදර්ශනී': { en: 'Priyadarshani', ta: 'பிரியதர்ஷினி' },
+    'මෙන්ඩිස්': { en: 'Mendis', ta: 'மெண்டிஸ்' },
+    'ෆොන්සේකා': { en: 'Fonseka', ta: 'பொன்சேகா' },
+    'රොද්‍රිගු': { en: 'Rodrigo', ta: 'ரொட்ரிகோ' },
+    'පීරිස්': { en: 'Peiris', ta: 'பீரிஸ்' },
+    'අල්විස්': { en: 'Alwis', ta: 'அல்விஸ்' },
+    'වික්‍රමසිංහ': { en: 'Wickramasinghe', ta: 'விக்ரமசிங்க' },
+    'අබේසේකර': { en: 'Abeysekara', ta: 'அபேசேகர' },
+
+    // First names
+    'සුමුදු': { en: 'Sumudu', ta: 'சுமுது' },
+    'සෙව්වන්දිකා': { en: 'Sewwandika', ta: 'செவ்வந்திகா' },
+    'නිරෝෂා': { en: 'Nirosha', ta: 'நிரோஷா' },
+    'දමයන්ති': { en: 'Damayanthi', ta: 'தமயந்தி' },
+    'කසුන්': { en: 'Kasun', ta: 'கசுன்' },
+    'නුවන්': { en: 'Nuwan', ta: 'நுவன்' },
+    'චතුර': { en: 'Chathura', ta: 'சதுர' },
+    'දර්ශන': { en: 'Darshana', ta: 'தர்ஷன' },
+    'සුරංග': { en: 'Suranga', ta: 'சுரங்க' },
+    'මධුෂාන්': { en: 'Madhushan', ta: 'மதுஷன்' },
+    'දිනේෂ්': { en: 'Dinesh', ta: 'தினேஷ்' },
+    'ඉසුරු': { en: 'Isuru', ta: 'இசுரு' },
+    'ප්‍රියන්ත': { en: 'Priyantha', ta: 'பிரியந்த' },
+    'අනුර': { en: 'Anura', ta: 'அனுர' },
+    'කමල්': { en: 'Kamal', ta: 'கமல்' },
+    'නිමල්': { en: 'Nimal', ta: 'நிமல்' },
+    'සුනිල්': { en: 'Sunil', ta: 'சுனில்' },
+    'සමන්': { en: 'Saman', ta: 'சமன்' },
+    'රුවන්': { en: 'Ruwan', ta: 'ருவன்' },
+    'මහේෂ්': { en: 'Mahesh', ta: 'மகேஷ்' },
+    'තරිඳු': { en: 'Tharindu', ta: 'தரிந்து' },
+    'දිල්ෂාන්': { en: 'Dilshan', ta: 'தில்ஷான்' },
+    'නදීෂා': { en: 'Nadeesha', ta: 'நதீஷா' },
+    'සඳුනි': { en: 'Sanduni', ta: 'சந்துனி' },
+    'ඉනෝකා': { en: 'Inoka', ta: 'இனோகா' },
+    'අමිල': { en: 'Amila', ta: 'அமில' },
+    'ලහිරු': { en: 'Lahiru', ta: 'லஹிரு' },
+    'සචිත්': { en: 'Sachith', ta: 'சசித்' },
+    'කවීන්': { en: 'Kaveen', ta: 'கவீன்' },
+    'තාරක': { en: 'Tharaka', ta: 'தாரக' },
+    'රොෂාන්': { en: 'Roshan', ta: 'ரொஷான்' },
+    'ප්‍රසන්න': { en: 'Prasanna', ta: 'பிரசன்ன' },
+    'අසංක': { en: 'Asanka', ta: 'அசங்க' },
+    'චමින්ද': { en: 'Chaminda', ta: 'சமிந்த' },
+    'ලසන්ත': { en: 'Lasantha', ta: 'லசந்த' },
+    'ජනක': { en: 'Janaka', ta: 'ஜனக' },
+    'මාලිංග': { en: 'Malinga', ta: 'மலிங்க' },
+    'සංජීව': { en: 'Sanjeewa', ta: 'சஞ்சீவ' },
+    'ප්‍රදීප්': { en: 'Pradeep', ta: 'பிரதீப்' },
+    'රවීන්ද්‍ර': { en: 'Ravindra', ta: 'ரவீந்திர' },
+    'හේමන්ත': { en: 'Hemantha', ta: 'ஹேமந்த' },
+    'චන්දන': { en: 'Chandana', ta: 'சந்தன' },
+    'ජගත්': { en: 'Jagath', ta: 'ஜகத்' },
+    'රංජිත්': { en: 'Ranjith', ta: 'ரஞ்சித்' },
+  };
+
+  let translated = clean;
+  let hasReplaced = false;
+
+  for (const [siToken, transObj] of Object.entries(NAME_TOKENS)) {
+    if (translated.includes(siToken)) {
+      const rep = lang === 'ta' ? transObj.ta : transObj.en;
+      translated = translated.replaceAll(siToken, rep);
+      hasReplaced = true;
+    }
+  }
+
+  if (hasReplaced && !/[\u0D80-\u0DFF]/.test(translated)) {
+    return translated.trim();
+  }
+
+  // 4. Phonetic Sinhala-to-Latin Transliteration for any unmapped Sinhala names
+  if (/[\u0D80-\u0DFF]/.test(translated)) {
+    const SINHALA_CHAR_MAP: Record<string, string> = {
+      'ක': 'ka', 'ඛ': 'kha', 'ග': 'ga', 'ඝ': 'gha', 'ඞ': 'nga', 'ඟ': 'nga',
+      'ච': 'cha', 'ඡ': 'chha', 'ජ': 'ja', 'ඣ': 'jha', 'ඤ': 'nya', 'ඥ': 'gna', 'ඦ': 'nja',
+      'ට': 'ta', 'ඨ': 'tha', 'ඩ': 'da', 'ඪ': 'dha', 'ණ': 'na', 'ඬ': 'nda',
+      'ත': 'tha', 'ථ': 'tha', 'ද': 'da', 'ධ': 'dha', 'න': 'na', 'ඳ': 'nda',
+      'ප': 'pa', 'ඵ': 'pha', 'බ': 'ba', 'භ': 'bha', 'ම': 'ma', 'ඹ': 'mba',
+      'ය': 'ya', 'ර': 'ra', 'ල': 'la', 'ව': 'va', 'ශ': 'sha', 'ෂ': 'sha',
+      'ස': 'sa', 'හ': 'ha', 'ළ': 'la', 'ෆ': 'fa',
+      'අ': 'A', 'ආ': 'Aa', 'ඇ': 'Ae', 'ඈ': 'Aae', 'ඉ': 'I', 'ඊ': 'Ee',
+      'උ': 'U', 'ඌ': 'Oo', 'ඍ': 'Ru', 'එ': 'E', 'ඒ': 'Ee', 'ඓ': 'Ai',
+      'ඔ': 'O', 'ඕ': 'Oo', 'ඖ': 'Au',
+    };
+
+    const VOWEL_SIGNS: Record<string, string> = {
+      '්': '',
+      'ා': 'aa',
+      'ැ': 'ae',
+      'ෑ': 'aae',
+      'ි': 'i',
+      'ී': 'ee',
+      'ු': 'u',
+      'ූ': 'oo',
+      'ෘ': 'ru',
+      'ෲ': 'roo',
+      'ෙ': 'e',
+      'ේ': 'ee',
+      'ෛ': 'ai',
+      'ො': 'o',
+      'ෝ': 'oo',
+      'ෞ': 'au',
+      'ං': 'ng',
+      'ඃ': 'h',
+    };
+
+    let romanized = '';
+    const chars = Array.from(translated);
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const next = chars[i + 1];
+
+      if (SINHALA_CHAR_MAP[ch]) {
+        if (next && VOWEL_SIGNS[next] !== undefined) {
+          const base = SINHALA_CHAR_MAP[ch].replace(/a$/, '');
+          romanized += base + VOWEL_SIGNS[next];
+          i++; // skip next sign
+        } else {
+          romanized += SINHALA_CHAR_MAP[ch];
+        }
+      } else if (VOWEL_SIGNS[ch] !== undefined) {
+        romanized += VOWEL_SIGNS[ch];
+      } else {
+        romanized += ch;
+      }
+    }
+
+    // Capitalize words nicely
+    const words = romanized.split(/\s+/).map((w) => {
+      if (!w) return '';
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+    return words.join(' ').trim();
+  }
+
+  return clean;
+};
+
+/**
  * Returns a localized HelpPost where all displayable fields match the selected language (si, en, ta)
  */
 export const getLocalizedPost = (post: HelpPost, lang: Language | string = 'si'): HelpPost => {
@@ -674,6 +900,9 @@ export const getLocalizedPost = (post: HelpPost, lang: Language | string = 'si')
 
   return {
     ...post,
+    userName: translateName(post.userName, lang),
+    confirmedHelperName: translateName(post.confirmedHelperName, lang),
+    completedHelperName: translateName(post.completedHelperName, lang),
     tagName: translateText(post.tagName, lang),
     tagCategory: translateText(post.tagCategory, lang),
     whatHappened: translateText(post.whatHappened, lang),
@@ -697,7 +926,7 @@ export const getLocalizedPost = (post: HelpPost, lang: Language | string = 'si')
     replies: post.replies ? post.replies.map(r => ({
       ...r,
       message: translateText(r.message, lang),
-      responderName: translateLocation(r.responderName, lang),
+      responderName: translateName(r.responderName, lang),
     })) : post.replies,
   };
 };

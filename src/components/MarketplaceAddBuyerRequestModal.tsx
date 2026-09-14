@@ -34,8 +34,6 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   existingSellerItems = [],
   onAddNewTag
 }) => {
-  if (!isOpen) return null;
-
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -104,6 +102,8 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
     onAddRequest(newRequest);
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">

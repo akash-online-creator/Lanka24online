@@ -37,6 +37,7 @@ export interface RegistrationConfig {
   subtitle: MultilingualText;
   noticeBanner: MultilingualText;
   termsAndConditions: MultilingualText;
+  showDemoUserLogin?: boolean; // Controls visibility of "👤 නරඹන්නා ලෙස පිවිසෙන්න (User Demo)" on Login page
 }
 
 export interface CustomFormField {
@@ -128,7 +129,7 @@ export interface HelpPost {
   deletedAt?: string;
   deletedBy?: string;
   status?: 'active' | 'confirmed' | 'completed' | 'deleted';
-  findForMeType?: 'lost' | 'stolen' | 'find';
+  findForMeType?: 'lost' | 'stolen' | 'find' | 'found';
   itemLostStolenOrSearched?: string;
   incidentLocation?: string;
   incidentDate?: string;

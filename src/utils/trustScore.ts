@@ -32,24 +32,24 @@ export function calculateTrustProfile(user: User, helpPosts: HelpPost[] = []): U
   karmaPoints += completedHelps * 50;
 
   let trustBadge: TrustBadgeType = 'bronze';
-  let badgeTitleSi = 'නව සාමාජික (Bronze)';
+  let badgeTitleSi = 'නව සාමාජික';
   let badgeIcon = '🥉';
 
   if (completedHelps >= 5 || karmaPoints >= 300) {
     trustBadge = 'community_hero';
-    badgeTitleSi = 'ප්‍රජා වීරයා (Community Hero)';
+    badgeTitleSi = 'ප්‍රජා වීරයා';
     badgeIcon = '🌟';
   } else if (completedHelps >= 3 || karmaPoints >= 200) {
     trustBadge = 'gold';
-    badgeTitleSi = 'රන් සහායක (Gold Volunteer)';
+    badgeTitleSi = 'රන් සහායක';
     badgeIcon = '🥇';
   } else if (completedHelps >= 1 || karmaPoints >= 100) {
     trustBadge = 'silver';
-    badgeTitleSi = 'විශ්වාසවන්ත මිතුරා (Silver Helper)';
+    badgeTitleSi = 'විශ්වාසවන්ත මිතුරා';
     badgeIcon = '🥈';
   } else if (user.status === 'approved') {
     trustBadge = 'bronze';
-    badgeTitleSi = 'තහවුරු කළ සාමාජික (Verified)';
+    badgeTitleSi = 'තහවුරු කළ සාමාජික';
     badgeIcon = '🛡️';
   }
 

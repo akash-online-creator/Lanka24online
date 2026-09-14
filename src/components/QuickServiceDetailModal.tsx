@@ -31,7 +31,7 @@ import { HelpPost, Language, LocationOption, User as UserType } from '../types';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
-import { getLocalizedPost, getCardLabels } from '../utils/postTranslator';
+import { getLocalizedPost, getCardLabels, translateText, translateName } from '../utils/postTranslator';
 import { translatePostWithGoogle } from '../utils/googleTranslator';
 
 interface QuickServiceDetailModalProps {
@@ -61,11 +61,15 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   currentLocation,
   currentUser,
 }) => {
-  if (!isOpen || !post) return null;
-
   const isDemo = Boolean(currentUser?.isDemo);
-  const displayPost = React.useMemo(() => getLocalizedPost(post, lang), [post, lang]);
+  const displayPost = React.useMemo(() => (post ? getLocalizedPost(post, lang) : null), [post, lang]);
   const cardLabels = React.useMemo(() => getCardLabels(lang), [lang]);
+
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (lang === 'en') return en;
+    if (lang === 'ta') return ta;
+    return si;
+  };
 
   // Google Translate Dynamic Integration
   const [googlePost, setGooglePost] = React.useState<HelpPost | null>(null);
@@ -79,7 +83,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
   React.useEffect(() => {
     let isMounted = true;
-    if (translationMode === 'original') {
+    if (!post || translationMode === 'original') {
       setGooglePost(null);
       setIsTranslating(false);
       return;
@@ -108,10 +112,13 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   }, [post, targetGoogleLang, translationMode]);
 
   const effectivePost = React.useMemo(() => {
+    if (!post) return null;
     if (translationMode === 'original') return post;
     if (googlePost) return googlePost;
     return displayPost;
   }, [translationMode, googlePost, displayPost, post]);
+
+  if (!isOpen || !post || !effectivePost) return null;
 
   const isAdmin = currentUser?.role === 'admin' && !isDemo;
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
@@ -150,7 +157,8 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     viewerLat,
     viewerLng,
     postLocName,
-    viewerLocName
+    viewerLocName,
+    lang
   );
 
   const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
@@ -202,7 +210,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               {displayPostCode}
             </span>
             <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
-              {post.category === 'find_for_me' ? 'සොයාදෙන්න දැන්වීම් විස්තරය' : 'ක්ෂණික සේවා විස්තරය'}
+              {post.category === 'find_for_me' 
+                ? getLangText('සොයාදෙන්න දැන්වීම් විස්තරය', 'Find For Me Details', 'தேடித்தருக விளம்பர விவரம்') 
+                : getLangText('ක්ෂණික සේවා විස්තරය', 'Quick Service Details', 'உடனடி சேவை விவரம்')}
             </span>
           </div>
 
@@ -215,7 +225,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   onClose();
                 }}
                 className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer border border-rose-400/40"
-                title="පරිපාලක මඟින් ඉවත් කරන්න (Admin Delete)"
+                title={getLangText('පරිපාලක මඟින් ඉවත් කරන්න (Admin Delete)', 'Admin Delete', 'நிர்வாக நீக்கம்')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Admin Delete</span>
@@ -225,7 +235,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-emerald-100/80 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 hover:text-emerald-900 dark:hover:text-emerald-100 border border-emerald-200 dark:border-emerald-800/70 flex items-center justify-center font-bold transition-all cursor-pointer"
-              title="වසන්න"
+              title={getLangText('වසන්න', 'Close', 'மூடு')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -242,11 +252,20 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 <User className="w-5 h-5" />
               </div>
               <div className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
-                <span>Hi, මම</span>
-                <span className="text-emerald-700 dark:text-emerald-400 font-black">{maskName(post.userName, isDemo)}</span>
+                <span>{getLangText('Hi, මම', 'Hi, I am', 'வணக்கம், நான்')}</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                  {maskName(
+                    translateName(
+                      effectivePost?.userName || post.userName,
+                      translationMode === 'original' ? 'si' : targetGoogleLang
+                    ),
+                    isDemo,
+                    translationMode === 'original' ? 'si' : targetGoogleLang
+                  )}
+                </span>
                 <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>ගිණුම් හිමියා</span>
+                  <span>{cardLabels.accountHolder}</span>
                 </span>
               </div>
             </div>
@@ -263,12 +282,12 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 {isTranslating ? (
                   <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold animate-pulse text-[10px]">
                     <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                    <span>පරිවර්තනය වෙමින්...</span>
+                    <span>{getLangText('පරිවර්තනය වෙමින්...', 'Translating...', 'மொழிபெயர்க்கிறது...')}</span>
                   </span>
                 ) : googlePost && translationMode !== 'original' ? (
                   <span className="text-emerald-700 dark:text-emerald-300 font-black text-[10px] bg-emerald-100 dark:bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-700 flex items-center gap-0.5">
                     <Check className="w-2.5 h-2.5" />
-                    <span>පරිවර්තනය විය</span>
+                    <span>{getLangText('පරිවර්තනය විය', 'Translated', 'மொழிபெயர்க்கப்பட்டது')}</span>
                   </span>
                 ) : null}
               </span>
@@ -285,9 +304,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     ? 'bg-emerald-700 text-white shadow-2xs ring-1 ring-emerald-500'
                     : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
                 }`}
-                title="දැන්වීම පළකළ මුල් භාෂාවෙන් බැලීම"
+                title={getLangText('දැන්වීම පළකළ මුල් භාෂාවෙන් බැලීම', 'View original post language', 'அசல் மொழியில் பார்க்க')}
               >
-                මුල් පිටපත
+                {getLangText('මුල් පිටපත', 'Original', 'அசல்')}
               </button>
               <button
                 type="button"
@@ -390,17 +409,17 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     <Search className="w-3.5 h-3.5" />
                     <span>
                       {effectiveType === 'lost'
-                        ? '🔴 නැතිවූ දෙයක් (Lost Item)'
+                        ? getLangText('🔴 නැතිවූ දෙයක් (Lost Item)', '🔴 Lost Item', '🔴 தொலைந்த பொருள்')
                         : effectiveType === 'stolen'
-                        ? '⚠️ සොරාගත් දෙයක් (Stolen Item)'
-                        : '🔍 සොයාදෙන්න (Search / Procurement)'}
+                        ? getLangText('⚠️ සොරාගත් දෙයක් (Stolen Item)', '⚠️ Stolen Item', '⚠️ திருடப்பட்ட பொருள்')
+                        : getLangText('🔍 සොයාදෙන්න (Search / Procurement)', '🔍 Find For Me', '🔍 தேடித்தருக')}
                     </span>
                   </span>
 
                   {showReward && (
                     <span className="inline-flex items-center gap-1 text-xs font-black text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/90 px-3 py-1 rounded-xl border border-amber-300 dark:border-amber-600">
                       <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      <span>තෑග්ගක් සහිතයි</span>
+                      <span>{getLangText('තෑග්ගක් සහිතයි', 'Reward Offered', 'பரிசு உண்டு')}</span>
                     </span>
                   )}
                 </div>
@@ -408,25 +427,26 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 {(effectiveType === 'lost' || effectiveType === 'stolen') && (
                   <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-2">
                     <p>
-                      {effectiveIncidentDate ? `${effectiveIncidentDate} දින, ` : ''}
-                      {effectiveIncidentTime ? `${effectiveIncidentTime} පමණ, ` : ''}
-                      {effectiveIncidentLocation ? `${effectiveIncidentLocation} දී, ` : ''}
+                      {effectiveIncidentDate ? `${effectiveIncidentDate} ${getLangText('දින, ', 'on, ', 'அன்று, ')}` : ''}
+                      {effectiveIncidentTime ? `${effectiveIncidentTime} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
+                      {effectiveIncidentLocation ? `${effectiveIncidentLocation} ${getLangText('දී, ', 'at, ', 'இடத்தில், ')}` : ''}
                       <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                        {effectiveItemName}
+                        {translateText(effectiveItemName, lang)}
                       </strong>{' '}
-                      {effectiveType === 'lost' ? 'නැතිවී ඇත,' : 'සොරාගෙන ඇත,'} සොයාගත් කෙනෙක් වේනම්{' '}
+                      {effectiveType === 'lost' ? getLangText('නැතිවී ඇත,', 'is lost,', 'தொலைந்துவிட்டது,') : getLangText('සොරාගෙන ඇත,', 'is stolen,', 'திருடப்பட்டுவிட்டது,')}{' '}
+                      {getLangText('සොයාගත් කෙනෙක් වේනම්', 'if found please contact me via', 'கண்டெடுத்தால் என்னை தொடர்பு கொள்ளவும்:')}{' '}
                       <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
                         {effectiveContactPhone}
-                        {effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` හෝ ${effectiveContactWhatsapp}` : ''}
+                        {effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` ${getLangText('හෝ', 'or', 'அல்லது')} ${effectiveContactWhatsapp}` : ''}
                       </span>{' '}
-                      හරහා මා සම්බන්ධකරගන්න.
+                      {getLangText('හරහා මා සම්බන්ධකරගන්න.', '.', '.')}
                     </p>
                     <p className="text-slate-800 dark:text-slate-200">
-                      නැතිනම්{' '}
+                      {getLangText('නැතිනම්', 'Or send to', 'அல்லது பின்வரும் முகவரிக்கு அனுப்பவும்:')}{' '}
                       <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
                         {getVillageOrTownDisplay(effectiveContactAddress)}
                       </span>{' '}
-                      ට එවන්න. නිවැරදි ස්ථානය:{' '}
+                      {getLangText('ට එවන්න. නිවැරදි ස්ථානය:', '. Verified location:', '. உறுதிப்படுத்தப்பட்ட இடம்:')}{' '}
                       <span className="font-extrabold text-slate-900 dark:text-white">
                         {getVillageOrTownDisplay(effectiveLocationName)}
                       </span>
@@ -437,7 +457,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                       <div className="mt-2 p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/70 dark:border-amber-700/70 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
                         <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
                           <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                          <span>නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:</span>
+                          <span>{getLangText('නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:', 'Phone / NIC / Serial / Markings on item:', 'பொருளிலுள்ள தொலைபேசி / அடையாள அட்டை / அடையாளங்கள்:')}</span>
                         </div>
                         <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
                           {safeIdentifyingInfo}
@@ -451,15 +471,15 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   <div className="space-y-2.5">
                     <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-1.5">
                       <p>
-                        {post.targetPrice ? `${post.targetPrice} පමණ, ` : ''}
+                        {post.targetPrice ? `${post.targetPrice} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
                         <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                          {effectiveItemName}
+                          {translateText(effectiveItemName, lang)}
                         </strong>{' '}
-                        {post.quantityNeeded ? `${post.quantityNeeded} ` : ''}අවශ්‍යයි,
+                        {post.quantityNeeded ? `${post.quantityNeeded} ` : ''}{getLangText('අවශ්‍යයි,', 'is needed,', 'தேவைப்படுகிறது,')}
                       </p>
                       {post.hasDeadline && post.deadlineDate && (
                         <p className="text-rose-600 dark:text-rose-400 font-extrabold">
-                          {post.deadlineDate} {post.deadlineTime ? `(${post.deadlineTime}) ` : ''}පෙර සොයාදෙන්න.
+                          {getLangText('පෙර සොයාදෙන්න:', 'Please find before:', 'இதற்கு முன்னர் கண்டறியவும்:')} {post.deadlineDate} {post.deadlineTime ? `(${post.deadlineTime}) ` : ''}
                         </p>
                       )}
                     </div>
@@ -467,11 +487,11 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     {/* Contact & Location Info */}
                     <div className="p-3 bg-white dark:bg-[#082014] rounded-2xl border border-emerald-200 dark:border-emerald-900 text-xs space-y-1.5">
                       <strong className="text-emerald-900 dark:text-emerald-300 font-black block pb-1 border-b border-emerald-200/80 dark:border-emerald-900/50">
-                        ස්ථානය හා සම්බන්ධකරගතහැකි තොරතුරු:
+                        {getLangText('ස්ථානය හා සම්බන්ධකරගතහැකි තොරතුරු:', 'Location & Contact Information:', 'இடம் மற்றும் தொடர்பு விவரங்கள்:')}
                       </strong>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 font-semibold">
                         <div>
-                          <span className="text-slate-500">දුරකථන: </span>
+                          <span className="text-slate-500">{getLangText('දුරකථන: ', 'Phone: ', 'தொலைபேசி: ')}</span>
                           <strong className="text-slate-900 dark:text-white">{effectiveContactPhone}</strong>
                         </div>
                         <div>
@@ -480,12 +500,12 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                         </div>
                         {effectiveContactAddress && (
                           <div className="sm:col-span-2">
-                            <span className="text-slate-500">ගෙදර ලිපිනය: </span>
+                            <span className="text-slate-500">{getLangText('ගෙදර ලිපිනය: ', 'Address: ', 'முகவரி: ')}</span>
                             <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveContactAddress)}</strong>
                           </div>
                         )}
                         <div className="sm:col-span-2">
-                          <span className="text-slate-500">නිවැරදි ස්ථානය: </span>
+                          <span className="text-slate-500">{getLangText('නිවැරදි ස්ථානය: ', 'Verified Location: ', 'உறுதிப்படுத்தப்பட்ட இடம்: ')}</span>
                           <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveLocationName)}</strong>
                         </div>
                       </div>
@@ -495,10 +515,10 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     <div className="p-3 bg-emerald-100/60 dark:bg-[#0a2719] rounded-2xl border border-emerald-300 text-xs space-y-1">
                       <strong className="text-emerald-900 dark:text-emerald-300 font-black flex items-center gap-1.5">
                         <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>ගණුදෙනුව සිදුවියයුතු ආකාරය:</span>
+                        <span>{getLangText('ගණුදෙනුව සිදුවියයුතු ආකාරය:', 'Transaction / Delivery Method:', 'பரிவர்த்தனை / விநியோக முறை:')}</span>
                       </strong>
                       <p className="font-bold text-slate-900 dark:text-white pl-5">
-                        {effectiveDelivery}
+                        {translateText(effectiveDelivery, lang)}
                       </p>
                     </div>
                   </div>
@@ -508,9 +528,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
                   <div className="p-3 bg-slate-50 dark:bg-[#081e14] rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
                     <strong className="text-emerald-900 dark:text-emerald-300 font-black block mb-0.5">
-                      වැඩි විස්තර:
+                      {getLangText('වැඩි විස්තර:', 'Additional Details:', 'கூடுதல் விவரங்கள்:')}
                     </strong>
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">{effectiveOtherDetails}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{translateText(effectiveOtherDetails, lang)}</p>
                   </div>
                 )}
 
@@ -519,7 +539,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   <div className="p-3 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-amber-900 dark:text-amber-200 font-extrabold text-xs flex items-center gap-2">
                     <Gift className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                     <span>
-                      <strong>සොයාදෙන්නාහට මගෙන්:</strong> {post.rewardDetails}
+                      <strong>{getLangText('සොයාදෙන්නාහට මගෙන්:', 'Reward for finder:', 'கண்டெடுப்பவருக்கு பரிசு:')}</strong> {post.rewardDetails}
                     </span>
                   </div>
                 )}
@@ -534,7 +554,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                           className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
                         >
                           <Phone className="w-3.5 h-3.5" />
-                          <span>ඇමතුමක් ගන්න</span>
+                          <span>{getLangText('ඇමතුමක් ගන්න', 'Call', 'அழைக்கவும்')}</span>
                         </a>
                       )}
 
@@ -555,21 +575,21 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                       <button
                         type="button"
                         onClick={() => onOpenChat(post)}
-                        title="දුරකථන අංකය ලබා ගැනීමට ඉල්ලුම්කරු සමග Chat කරන්න"
+                        title={getLangText('දුරකථන අංකය ලබා ගැනීමට ඉල්ලුම්කරු සමග Chat කරන්න', 'Chat to request phone number', 'தொலைபேசி எண்ணை பெற உரையாடவும்')}
                         className="py-2.5 px-3 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
                       >
                         <Lock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>අංකය ඉල්ලන්න (Chat)</span>
+                        <span>{getLangText('අංකය ඉල්ලන්න (Chat)', 'Request Number', 'எண்ணை கேளுங்கள்')}</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => onOpenChat(post)}
-                        title="ලිපිනය හා WhatsApp තොරතුරු ලබා ගැනීමට Chat කරන්න"
+                        title={getLangText('ලිපිනය හා WhatsApp තොරතුරු ලබා ගැනීමට Chat කරන්න', 'Chat for address and WhatsApp', 'முகவரி மற்றும் WhatsApp விவரங்களுக்கு உரையாடவும்')}
                         className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
                       >
                         <MessageCircle className="w-3.5 h-3.5 text-teal-600" />
-                        <span>සංවාදය (Chat)</span>
+                        <span>{getLangText('සංවාදය (Chat)', 'Chat', 'உரையாடு')}</span>
                       </button>
                     </>
                   )}
@@ -582,7 +602,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               {/* 1. සිදුවී ඇති දේ (What Happened) */}
               <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-900/60 rounded-xl space-y-0.5">
                 <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-300 block">
-                  සිදුවී ඇති දේ:
+                  {getLangText('සිදුවී ඇති දේ:', 'What happened:', 'நடந்தது என்ன:')}
                 </span>
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
                   {safeWhatHappened}
@@ -593,7 +613,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <div className="p-3 bg-white dark:bg-[#0b2419]/70 border border-emerald-300/80 dark:border-emerald-700/60 rounded-xl space-y-0.5 shadow-sm">
                 <span className="font-extrabold text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                   <HelpCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  වියයුතු දේ:
+                  {getLangText('වියයුතු දේ:', 'What is needed:', 'செய்ய வேண்டியது:')}
                 </span>
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
                   {safeWhatIsNeeded}
@@ -608,7 +628,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 font-black text-xs text-emerald-800 dark:text-emerald-300">
                 <span className="text-sm">🏍️</span>
-                <span>මෝටර් සයිකලයෙන් මාර්ග දුර (Motorcycle Road Distance)</span>
+                <span>{getLangText('මෝටර් සයිකලයෙන් මාර්ග දුර (Motorcycle Road Distance)', 'Motorcycle Road Distance', 'மோட்டார் சைக்கிள் வீதி தூரம்')}</span>
               </div>
               <span className="text-[10px] font-mono font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-sm">
                 ~{motorcycleRoute.formattedTime}
@@ -620,7 +640,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <div className="p-2.5 bg-white dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex items-center gap-2.5 shadow-sm">
                 <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
                 <div className="min-w-0">
-                  <span className="text-[9px] text-rose-600 dark:text-rose-400 font-extrabold block">දැන්වීම පළකළ ස්ථානය:</span>
+                  <span className="text-[9px] text-rose-600 dark:text-rose-400 font-extrabold block">{getLangText('දැන්වීම පළකළ ස්ථානය:', 'Posted Location:', 'விளம்பரம் இடப்பட்ட இடம்:')}</span>
                   <span className="text-slate-900 dark:text-slate-100 font-bold truncate block">{safeLocationDisplay}</span>
                 </div>
               </div>
@@ -628,7 +648,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <div className="p-2.5 bg-white dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex items-center gap-2.5 shadow-sm">
                 <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <div className="min-w-0">
-                  <span className="text-[9px] text-emerald-700 dark:text-emerald-300 font-extrabold block">ඔබ සිටින ස්ථානය (නරඹන්නා):</span>
+                  <span className="text-[9px] text-emerald-700 dark:text-emerald-300 font-extrabold block">{getLangText('ඔබ සිටින ස්ථානය (නරඹන්නා):', 'Your Location (Viewer):', 'உங்கள் இடம் (பார்வையாளர்):')}</span>
                   <span className="text-slate-900 dark:text-slate-100 font-bold truncate block">{viewerLocName}</span>
                 </div>
               </div>
@@ -640,12 +660,12 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 <span className="font-mono text-base font-black text-emerald-700 dark:text-emerald-300">
                   {motorcycleRoute.formattedRoadDistance}
                 </span>
-                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-bold">(මෝටර් සයිකල් මාර්ගය)</span>
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-bold">{getLangText('(මෝටර් සයිකල් මාර්ගය)', '(Motorcycle Route)', '(மோட்டார் சைக்கிள் பாதை)')}</span>
               </div>
 
               <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 text-[11px] font-bold">
                 <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>ගමන් කාලය: <strong className="text-emerald-700 dark:text-emerald-300 font-black">~{motorcycleRoute.formattedTime}</strong></span>
+                <span>{getLangText('ගමන් කාලය:', 'Travel Time:', 'பயண நேரம்:')} <strong className="text-emerald-700 dark:text-emerald-300 font-black">~{motorcycleRoute.formattedTime}</strong></span>
               </div>
             </div>
 
@@ -657,12 +677,12 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 rel="noopener noreferrer"
                 className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] cursor-pointer"
               >
-                <span>🏍️ Google Maps මෝටර් සයිකල් මාර්ගය (Directions) විවෘත කරන්න</span>
+                <span>{getLangText('🏍️ Google Maps මෝටර් සයිකල් මාර්ගය (Directions) විවෘත කරන්න', '🏍️ Open Motorcycle Route in Google Maps', '🏍️ Google Maps இல் மோட்டார் சைக்கிள் பாதையை திறக்கவும்')}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             ) : (
               <div className="w-full py-2 px-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-2 shadow-xs">
-                <span>🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා නිශ්චිත ලිපිනය විවෘත වේ</span>
+                <span>{getLangText('🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා නිශ්චිත ලිපිනය විවෘත වේ', '🔒 Full address and Google Maps route unlocked after support confirmation', '🔒 உதவி உறுதிப்படுத்திய பின் வரைபடம் மற்றும் முகவரி திறக்கப்படும்')}</span>
               </div>
             )}
 
@@ -674,10 +694,10 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
                 <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                   <Wrench className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  කොන්දේසි:
+                  {getLangText('කොන්දේසි:', 'Conditions:', 'நிபந்தனைகள்:')}
                 </span>
                 <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-                  {safeConditions}
+                  {translateText(safeConditions, lang)}
                 </p>
               </div>
 
@@ -685,38 +705,38 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
                 <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  විශේෂ දැනුවත් කිරීම:
+                  {getLangText('විශේෂ දැනුවත් කිරීම:', 'Special Notice:', 'விசேட அறிவிப்பு:')}
                 </span>
                 <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-                  {safeSpecialNotice}
+                  {translateText(safeSpecialNotice, lang)}
                 </p>
               </div>
 
               {/* 5. අවශ්‍ය සහායකයින් ගණන (Helpers Count - No underscores!) */}
               <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 pt-0.5">
                 <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>අවශ්‍ය සහායකයින් ගණන: </span>
+                <span>{getLangText('අවශ්‍ය සහායකයින් ගණන: ', 'Helpers needed: ', 'தேவையான உதவியாளர்கள்: ')}</span>
                 <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm sm:text-base">
                   {helpersCount}
                 </span>
-                <span> කි.</span>
+                <span>{getLangText(' කි.', ' person(s)', ' நபர்(கள்)')}</span>
               </div>
 
               {/* 6. ගමනාගමනය (Transport) */}
               <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
                 <Car className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>ගමනාගමනය: <span className="font-extrabold text-slate-900 dark:text-slate-100">{post.transport || 'ඔබ පැමිණිය යුතුයි'}</span></span>
+                <span>{getLangText('ගමනාගමනය: ', 'Transport: ', 'போக்குவரத்து: ')}<span className="font-extrabold text-slate-900 dark:text-slate-100">{translateText(post.transport || (lang === 'en' ? 'You should arrive' : lang === 'ta' ? 'நீங்கள் வர வேண்டும்' : 'ඔබ පැමිණිය යුතුයි'), lang)}</span></span>
               </div>
 
               {/* 7. ගෙවීම් (Payment) */}
               <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/60 p-3 rounded-xl border border-emerald-300/80 dark:border-emerald-700/60 shadow-sm">
                 <Banknote className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>ගෙවීම් : <span className="font-black text-slate-900 dark:text-white">{post.payment || 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee),'}</span></span>
+                <span>{getLangText('ගෙවීම් : ', 'Payment / Fee: ', 'கட்டணம்: ')}<span className="font-black text-slate-900 dark:text-white">{translateText(post.payment || (lang === 'en' ? 'I agree to your fee' : lang === 'ta' ? 'உங்கள் கட்டணத்திற்கு சம்மதிக்கிறேன்' : 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'), lang)}</span></span>
               </div>
 
               {/* 8. උදව් කරන්න Prompt */}
               <p className="text-center text-emerald-700 dark:text-emerald-400 font-black pt-1 text-base sm:text-lg tracking-wide">
-                උදව් කරන්න.
+                {getLangText('උදව් කරන්න.', 'Please help.', 'உதவி செய்யுங்கள்.')}
               </p>
             </>
           )}
@@ -742,7 +762,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           {isConfirmed ? (
             <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-400 text-emerald-800 dark:text-emerald-300 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm text-center">
               <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>දැනටමත් සනාථ කර ඇත</span>
+              <span>{getLangText('දැනටමත් සනාථ කර ඇත', 'Already Confirmed', 'ஏற்கனவே உறுதிப்படுத்தப்பட்டது')}</span>
             </div>
           ) : isOwner ? (
             onEditPost ? (
@@ -754,11 +774,11 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#006e43] text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
               >
                 <Pencil className="w-4 h-4" />
-                <span>සංස්කරණය (EDIT)</span>
+                <span>{getLangText('සංස්කරණය (EDIT)', 'EDIT POST', 'திருத்து (EDIT)')}</span>
               </button>
             ) : (
               <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 font-bold text-xs flex items-center justify-center text-center">
-                <span>ඔබගේ දැන්වීමකි (Confirm කළ නොහැක)</span>
+                <span>{getLangText('ඔබගේ දැන්වීමකි (Confirm කළ නොහැක)', 'Your post (Cannot confirm)', 'உங்கள் பதிவு (உறுதிப்படுத்த முடியாது)')}</span>
               </div>
             )
           ) : (

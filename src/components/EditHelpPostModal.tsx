@@ -17,21 +17,17 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
   onClose,
   onSave,
 }) => {
-  if (!isOpen || !post) return null;
-
-  const isConfirmed = post.isConfirmed || post.status === 'confirmed' || (post.helpersAccepted && post.helpersAccepted > 0);
-
-  const [whatHappened, setWhatHappened] = useState(post.whatHappened || '');
-  const [whatIsNeeded, setWhatIsNeeded] = useState(post.whatIsNeeded || '');
-  const [conditions, setConditions] = useState(post.conditions || '');
-  const [specialNotice, setSpecialNotice] = useState(post.specialNotice || '');
-  const [transport, setTransport] = useState(post.transport || '');
-  const [payment, setPayment] = useState(post.payment || '');
-  const [helpersNeeded, setHelpersNeeded] = useState<number>(post.helpersNeeded || post.helpersCount || 1);
+  const [whatHappened, setWhatHappened] = useState(post?.whatHappened || '');
+  const [whatIsNeeded, setWhatIsNeeded] = useState(post?.whatIsNeeded || '');
+  const [conditions, setConditions] = useState(post?.conditions || '');
+  const [specialNotice, setSpecialNotice] = useState(post?.specialNotice || '');
+  const [transport, setTransport] = useState(post?.transport || '');
+  const [payment, setPayment] = useState(post?.payment || '');
+  const [helpersNeeded, setHelpersNeeded] = useState<number>(post?.helpersNeeded || post?.helpersCount || 1);
 
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(() => {
-    if (post.tagName) {
+    if (post?.tagName) {
       return {
         id: post.tagId || 'tag_curr',
         tagName: post.tagName,
@@ -42,6 +38,10 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
   });
 
   const [errorMsg, setErrorMsg] = useState('');
+
+  if (!isOpen || !post) return null;
+
+  const isConfirmed = post.isConfirmed || post.status === 'confirmed' || (post.helpersAccepted && post.helpersAccepted > 0);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();

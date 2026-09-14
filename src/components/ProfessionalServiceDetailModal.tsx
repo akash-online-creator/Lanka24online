@@ -37,12 +37,12 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
   language,
   onAddReview,
 }) => {
-  if (!isOpen || !service) return null;
-
   const [rating, setRating] = useState<number>(5);
   const [commentText, setCommentText] = useState('');
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  if (!isOpen || !service) return null;
 
   const isOwner = Boolean(
     currentUser && (

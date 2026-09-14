@@ -45,8 +45,6 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
   allTags,
   onAddNewTag
 }) => {
-  if (!isOpen) return null;
-
   // Form State
   const [title, setTitle] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -173,6 +171,8 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
     onAddItem(newItem);
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <>

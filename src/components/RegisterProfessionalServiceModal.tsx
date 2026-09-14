@@ -48,8 +48,6 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   currentLocationName = 'කඩවත',
   onRegisterService,
 }) => {
-  if (!isOpen) return null;
-
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(professionalServiceCategories[0].category_id);
   const [selectedSubCategoryName, setSelectedSubCategoryName] = useState<string>(
     professionalServiceCategories[0].sub_categories[0].name
@@ -106,7 +104,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
   // Initialize and synchronize inline map when 'location' delivery method is chosen
   useEffect(() => {
-    if (deliveryMethod !== 'location' || !mapContainerRef.current) return;
+    if (!isOpen || deliveryMethod !== 'location' || !mapContainerRef.current) return;
 
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
@@ -313,6 +311,8 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       onClose();
     }, 1800);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">

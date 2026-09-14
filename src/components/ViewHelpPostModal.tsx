@@ -31,6 +31,12 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
 
   const isDemo = Boolean(currentUser?.isDemo);
 
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (lang === 'en') return en;
+    if (lang === 'ta') return ta;
+    return si;
+  };
+
   const handleChatClick = () => {
     if (isDemo) {
       if (onRequireRegistration) {
@@ -56,13 +62,23 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
             </span>
             <div>
               <h3 className="text-base sm:text-lg font-black flex items-center gap-2">
-                <span>දැන්වීම සහ සංවාද ඉතිහාසය (Ad & Chat)</span>
+                <span>
+                  {getLangText(
+                    'දැන්වීම සහ සංවාද ඉතිහාසය (Ad & Chat)',
+                    'Ad & Conversation History',
+                    'விளம்பரம் மற்றும் உரையாடல் வரலாறு'
+                  )}
+                </span>
                 <span className="text-xs font-mono bg-sky-900/80 border border-sky-400/40 px-2 py-0.5 rounded-lg text-sky-300 font-bold">
                   #{post.postCode}
                 </span>
               </h3>
               <p className="text-xs text-sky-200 font-medium">
-                දැන්වීම සහ ඒ සඳහා ලැබුණු සියලුම පණිවිඩ/Chat පහතින් පරීක්ෂා කළ හැක.
+                {getLangText(
+                  'දැන්වීම සහ ඒ සඳහා ලැබුණු සියලුම පණිවිඩ/Chat පහතින් පරීක්ෂා කළ හැක.',
+                  'Review the ad and all received chat messages below.',
+                  'விளம்பரம் மற்றும் பெறப்பட்ட அனைத்து செய்திகளையும் கீழே காணலாம்.'
+                )}
               </p>
             </div>
           </div>
@@ -70,6 +86,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            title={getLangText('වසන්න', 'Close', 'மூடு')}
             className="w-8 h-8 rounded-full bg-sky-900/60 hover:bg-rose-600 text-white flex items-center justify-center font-bold transition-all cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -82,7 +99,13 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
           <div className="p-3 bg-emerald-100/80 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700/60 rounded-2xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>දෙපාර්ශ්වයටම මෙම දැන්වීම සඳහා Chat සංවාද සිදුකළ හැක.</span>
+              <span>
+                {getLangText(
+                  'දෙපාර්ශ්වයටම මෙම දැන්වීම සඳහා Chat සංවාද සිදුකළ හැක.',
+                  'Both parties can engage in chat for this post.',
+                  'இரு தரப்பினரும் இந்த விளம்பரத்திற்கு Chat செய்யலாம்.'
+                )}
+              </span>
             </div>
             {onOpenChat && (
               <button
@@ -91,7 +114,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
-                <span>Chat සංවාදය</span>
+                <span>{getLangText('Chat සංවාදය', 'Chat', 'Chat உரையாடல்')}</span>
               </button>
             )}
           </div>
@@ -114,7 +137,13 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                   <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>ලැබී ඇති පිළිතුරු සහ පණිවිඩ ({post.replies.length}):</span>
+                  <span>
+                    {getLangText(
+                      `ලැබී ඇති පිළිතුරු සහ පණිවිඩ (${post.replies.length}):`,
+                      `Received Replies & Messages (${post.replies.length}):`,
+                      `பெறப்பட்ட பதில்கள் மற்றும் செய்திகள் (${post.replies.length}):`
+                    )}
+                  </span>
                 </h4>
                 {onOpenChat && (
                   <button
@@ -122,7 +151,13 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                     onClick={handleChatClick}
                     className="text-xs font-black text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span>සම්පූර්ණ Chat විවෘත කරන්න</span> →
+                    <span>
+                      {getLangText(
+                        'සම්පූර්ණ Chat විවෘත කරන්න',
+                        'Open Full Chat',
+                        'முழுமையான Chat திறக்க'
+                      )}
+                    </span> →
                   </button>
                 )}
               </div>
@@ -138,7 +173,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                     >
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-black text-slate-800 dark:text-white">
-                          👤 {maskName(reply.responderName, isDemo) || 'නොදන්නා පරිශීලකයා'}
+                          👤 {maskName(reply.responderName, isDemo) || getLangText('නොදන්නා පරිශීලකයා', 'Unknown User', 'தெரியாத பயனர்')}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono">{reply.createdAt}</span>
                       </div>
@@ -148,8 +183,8 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                       <div className="flex items-center justify-between pt-1 text-[11px]">
                         <span className="text-slate-500 dark:text-slate-400 font-mono">
                           {!isDemo && post.isConfirmed 
-                            ? (reply.responderPhone ? `📞 ${reply.responderPhone}` : 'දුරකථන අංකය නොමැත')
-                            : '🔒 සහය තහවුරු කළ පසු අංකය දිස්වේ'}
+                            ? (reply.responderPhone ? `📞 ${reply.responderPhone}` : getLangText('දුරකථන අංකය නොමැත', 'No phone number', 'தொலைபேசி எண் இல்லை'))
+                            : getLangText('🔒 සහය තහවුරු කළ පසු අංකය දිස්වේ', '🔒 Phone visible after support confirmation', '🔒 உதவி உறுதிப்படுத்திய பின் எண் தெரியும்')}
                         </span>
                         <div className="flex items-center gap-1.5">
                           {onOpenChat && (
@@ -165,7 +200,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                           {!isDemo && post.isConfirmed && whatsappFormatted && (
                             <a
                               href={`https://wa.me/${whatsappFormatted}?text=${encodeURIComponent(
-                                `හලෝ ${reply.responderName}, ඔබ සහය සේවා (Sahaya Sewa) හරහා මගේ #${post.postCode} දැන්වීමට එවූ පණිවිඩය සම්බන්ධවයි:`
+                                `Hello ${reply.responderName}, regarding #${post.postCode} on Sahaya Sewa:`
                               )}`}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -189,7 +224,9 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
         <div className="p-4 bg-slate-100 dark:bg-[#05170f] border-t border-emerald-200 dark:border-emerald-800/80 flex items-center justify-between shrink-0">
           <span className="text-xs text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1">
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span>සක්‍රීය දැන්වීමකි (Active Ad)</span>
+            <span>
+              {getLangText('සක්‍රීය දැන්වීමකි (Active Ad)', 'Active Ad', 'செயலில் உள்ள விளம்பரம்')}
+            </span>
           </span>
           <div className="flex items-center gap-2">
             {onOpenChat && (
@@ -202,7 +239,9 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Chat සංවාදය අරඹන්න</span>
+                <span>
+                  {getLangText('Chat සංවාදය අරඹන්න', 'Start Chat', 'Chat உரையாடலைத் தொடங்குங்கள்')}
+                </span>
               </button>
             )}
             <button
@@ -210,7 +249,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl cursor-pointer"
             >
-              වසා දමන්න
+              {getLangText('වසා දමන්න', 'Close', 'மூடு')}
             </button>
           </div>
         </div>

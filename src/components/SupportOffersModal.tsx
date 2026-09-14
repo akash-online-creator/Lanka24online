@@ -318,7 +318,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const pLng = off.post.lng || 79.8986;
               const pName = off.post.locationName || 'දැන්වීම පළකළ ස්ථානය';
 
-              const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName);
+              const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName, lang);
               const helperName = off.reply.responderName || 'නොදන්නා සහායක';
               const problemDesc = off.post.whatHappened || off.post.whatIsNeeded || 'ගැටලුවේ විස්තරය සටහන් කර නොමැත';
 

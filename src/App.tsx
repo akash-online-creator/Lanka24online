@@ -11,6 +11,7 @@ import { WrongLoginModal } from './components/WrongLoginModal';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
+import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { 
@@ -668,6 +669,7 @@ export default function App() {
             setLanguage={setLanguage}
             theme={theme}
             toggleTheme={toggleTheme}
+            showDemoUserLogin={registrationConfig?.showDemoUserLogin !== false}
           />
         )}
 
@@ -820,6 +822,20 @@ export default function App() {
         <footer className="z-10 py-1 text-center text-[10px] text-slate-400 dark:text-emerald-500/60 font-mono">
           🔒 {t.securityLayer} • {serverTime}
         </footer>
+      )}
+
+      {/* Global AI Assistant & Translator for non-dashboard views */}
+      {viewMode !== 'dashboard' && (
+        <OmniAssistantChatBox
+          currentLanguage={language}
+          onLanguageChange={setLanguage}
+          mode={viewMode === 'login' || viewMode === 'register' ? 'auth' : 'full'}
+          onSwitchToRegister={() => setViewMode('register')}
+          onSwitchToLogin={() => setViewMode('login')}
+          onOpenIssuesHelp={() => setViewMode('issues_help')}
+          onDemoLogin={handleUserDemoLogin}
+          onOpenEmergencyDirectory={() => setViewMode('issues_help')}
+        />
       )}
     </div>
   );

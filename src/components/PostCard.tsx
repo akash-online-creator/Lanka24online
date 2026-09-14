@@ -41,7 +41,7 @@ import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { getTagIconComponent } from '../utils/tagUtils';
 import { maskName, maskPhone, maskAddress, maskGeneralDetail } from '../utils/demoDataMasker';
-import { getLocalizedPost, getCardLabels, translateText } from '../utils/postTranslator';
+import { getLocalizedPost, getCardLabels, translateText, translateName } from '../utils/postTranslator';
 import { translatePostWithGoogle } from '../utils/googleTranslator';
 
 interface PostCardProps {
@@ -220,7 +220,8 @@ export const PostCard: React.FC<PostCardProps> = ({
     viewerLat,
     viewerLng,
     postLocationName,
-    viewerLocationName
+    viewerLocationName,
+    activeCardLang
   );
 
   const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
@@ -449,12 +450,12 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {TagIconComp && (
                   <span 
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 shadow-2xs font-bold text-xs" 
-                    title={post.tagName ? `${post.tagName} (${post.tagCategory || ''})` : 'Tag Icon'}
+                    title={post.tagName ? `${translateText(post.tagName, activeCardLang)} (${translateText(post.tagCategory, activeCardLang) || ''})` : 'Tag Icon'}
                   >
                     <TagIconComp className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     {post.tagName && (
                       <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-200">
-                        {post.tagName}
+                        {translateText(post.tagName, activeCardLang)}
                       </span>
                     )}
                   </span>
@@ -470,19 +471,23 @@ export const PostCard: React.FC<PostCardProps> = ({
                       e.stopPropagation();
                       onToggleSave(post);
                     }}
-                    className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold border ${
+                    className={`p-1.5 px-2 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold border ${
                       isSaved
                         ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
                         : 'bg-emerald-50 hover:bg-amber-50 dark:bg-emerald-950/60 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 border-emerald-200 dark:border-emerald-800'
                     }`}
-                    title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න (Save Post)'}
+                    title={isSaved ? (activeCardLang === 'en' ? 'Remove from saved' : activeCardLang === 'ta' ? 'சேமிப்பிலிருந்து நீக்கு' : 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න') : (activeCardLang === 'en' ? 'Save post' : activeCardLang === 'ta' ? 'பதிவை சேமிக்கவும்' : 'පසුව බැලීමට සුරකින්න')}
                   >
                     {isSaved ? (
                       <BookmarkCheck className="w-3.5 h-3.5 text-white fill-white" />
                     ) : (
                       <Bookmark className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                     )}
-                    <span className="text-[11px] hidden sm:inline">{isSaved ? 'Saved' : 'Save'}</span>
+                    <span className="text-[11px] hidden sm:inline">
+                      {isSaved 
+                        ? (activeCardLang === 'en' ? 'Saved' : activeCardLang === 'ta' ? 'சேமிக்கப்பட்டது' : 'සුරකින ලදි') 
+                        : (activeCardLang === 'en' ? 'Save' : activeCardLang === 'ta' ? 'சேமி' : 'සුරකින්න')}
+                    </span>
                   </button>
                 )}
 
@@ -499,27 +504,33 @@ export const PostCard: React.FC<PostCardProps> = ({
                         ? 'bg-rose-600 text-white border-rose-700 shadow-xs animate-pulse'
                         : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                     }`}
-                    title={activeCardLang === 'en' ? 'Report Issue / Moderate' : 'දැන්වීම පිළිබඳ ගැටලුවක් වාර්තා කරන්න (Report)'}
+                    title={activeCardLang === 'en' ? 'Report Issue / Moderate' : activeCardLang === 'ta' ? 'சிக்கலை புகாரளிக்கவும் / நிர்வகிக்கவும்' : 'දැන්වීම පිළිබඳ ගැටලුවක් වාර්තා කරන්න'}
                   >
                     <ShieldAlert className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
-                    <span className="text-[11px] font-extrabold">{post.adminFlagged ? (post.isHiddenByAdmin ? 'Hidden 🚫' : 'Reported ⚠️') : 'Report ⚠️'}</span>
+                    <span className="text-[11px] font-extrabold">
+                      {post.adminFlagged 
+                        ? (post.isHiddenByAdmin 
+                            ? (activeCardLang === 'en' ? 'Hidden 🚫' : activeCardLang === 'ta' ? 'மறைக்கப்பட்டது 🚫' : 'සඟවා ඇත 🚫') 
+                            : (activeCardLang === 'en' ? 'Reported ⚠️' : activeCardLang === 'ta' ? 'அறிவிக்கப்பட்டது ⚠️' : 'වාර්තා විය ⚠️')) 
+                        : (activeCardLang === 'en' ? 'Report ⚠️' : activeCardLang === 'ta' ? 'புகாரளி ⚠️' : 'වාර්තා කරන්න ⚠️')}
+                    </span>
                   </button>
                 )}
 
                 {isConfirmed && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black text-xs rounded-xl border border-emerald-300 dark:border-emerald-700">
                     <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>සනාථයි</span>
+                    <span>{cardLabels.confirmed}</span>
                   </span>
                 )}
 
                 {(post.tagName || post.tagCategory) && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs rounded-xl shadow-xs">
                     <span>🏷️</span>
-                    <span>{post.tagName}</span>
+                    <span>{translateText(post.tagName, activeCardLang)}</span>
                     {post.tagCategory && (
                       <span className="text-[10px] bg-emerald-900/50 px-1.5 py-0.2 rounded-md font-medium">
-                        {post.tagCategory}
+                        {translateText(post.tagCategory, activeCardLang)}
                       </span>
                     )}
                   </span>
@@ -555,7 +566,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           ) : (
             <span
               onClick={(e) => e.stopPropagation()}
-              title="🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා ලිපිනය විවෘත වේ"
+              title={activeCardLang === 'en' ? '🔒 Full address and Google Maps route unlocked after support confirmation' : activeCardLang === 'ta' ? '🔒 உதவி உறுதிப்படுத்திய பின் வரைபடம் மற்றும் முகவரி திறக்கப்படும்' : '🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා ලිපිනය විවෘත වේ'}
               className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs border border-amber-300 dark:border-amber-700/60 flex items-center gap-1 cursor-not-allowed"
             >
               <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
@@ -566,10 +577,10 @@ export const PostCard: React.FC<PostCardProps> = ({
         {/* 4 & 5. Publisher Name & Posted Time */}
         <div className="flex items-center justify-between gap-2 pt-1 border-b border-emerald-100 dark:border-[#132a1d] pb-2.5">
           <div className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-            <span>{maskName(post.userName, isDemo)}</span>
+            <span>{maskName(translateName(effectivePost.userName || post.userName, activeCardLang), isDemo, activeCardLang)}</span>
             <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-              <span>ගිණුම් හිමියා</span>
+              <span>{cardLabels.accountHolder}</span>
             </span>
           </div>
           <div className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 font-extrabold text-right flex items-center gap-1">
@@ -578,109 +589,24 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         </div>
 
-        {/* Google Translate Interactive Bar */}
-        <div className="flex items-center justify-between gap-2 p-2 bg-slate-50/90 dark:bg-[#082216] rounded-2xl border border-slate-200/90 dark:border-emerald-800/70 flex-wrap shadow-2xs">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
-              <Languages className="w-3.5 h-3.5" />
-            </span>
-            <span className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
-              <span>Google Translate:</span>
-              {isTranslating ? (
-                <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold animate-pulse text-[10px]">
-                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                  <span>පරිවර්තනය වෙමින්...</span>
-                </span>
-              ) : googlePost && translationMode !== 'original' ? (
-                <span className="text-emerald-700 dark:text-emerald-300 font-black text-[10px] bg-emerald-100 dark:bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-700 flex items-center gap-0.5">
-                  <Check className="w-2.5 h-2.5" />
-                  <span>පරිවර්තනය විය</span>
-                </span>
-              ) : null}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 flex-wrap">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTranslationMode('original');
-              }}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                translationMode === 'original'
-                  ? 'bg-emerald-700 text-white shadow-2xs ring-1 ring-emerald-500'
-                  : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
-              }`}
-              title="දැන්වීම පළකළ මුල් භාෂාවෙන් බැලීම"
-            >
-              මුල් පිටපත
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTranslationMode('google');
-                setTargetGoogleLang('en');
-              }}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                translationMode !== 'original' && targetGoogleLang === 'en'
-                  ? 'bg-sky-600 text-white shadow-2xs ring-1 ring-sky-400'
-                  : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-sky-600 border border-slate-200 dark:border-slate-800'
-              }`}
-              title="Translate to English using Google Translate"
-            >
-              English
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTranslationMode('google');
-                setTargetGoogleLang('ta');
-              }}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                translationMode !== 'original' && targetGoogleLang === 'ta'
-                  ? 'bg-amber-600 text-white shadow-2xs ring-1 ring-amber-400'
-                  : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-amber-600 border border-slate-200 dark:border-slate-800'
-              }`}
-              title="Google Translate மூலம் தமிழில் படிக்க"
-            >
-              தமிழ்
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTranslationMode('google');
-                setTargetGoogleLang('si');
-              }}
-              className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                translationMode !== 'original' && targetGoogleLang === 'si'
-                  ? 'bg-emerald-600 text-white shadow-2xs ring-1 ring-emerald-400'
-                  : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
-              }`}
-              title="Google Translate මඟින් සිංහලට පරිවර්තනය"
-            >
-              සිංහල
-            </button>
-          </div>
-        </div>
-
         {/* Dedicated Find For Me Card Rendering (User's Exact Specification) */}
         {post.category === 'find_for_me' ? (() => {
-          const effectiveType = post.findForMeType || (
-            post.whatHappened?.includes('නැතිවූ') || post.whatIsNeeded?.includes('නැතිවූ') || post.tagName?.toLowerCase().includes('lost')
-              ? 'lost'
-              : post.whatHappened?.includes('සොරාගත්') || post.whatIsNeeded?.includes('සොරාගත්') || post.tagName?.toLowerCase().includes('stolen')
-              ? 'stolen'
-              : 'find'
+          const effectiveType: 'lost' | 'stolen' | 'find' | 'found' = (
+            post.findForMeType || (
+              post.whatHappened?.includes('හමුවී ඇත') || post.whatIsNeeded?.includes('හමුවූ') || post.tagName?.toLowerCase().includes('found')
+                ? 'found'
+                : post.whatHappened?.includes('නැතිවී') || post.whatIsNeeded?.includes('නැතිවූ') || post.tagName?.toLowerCase().includes('lost')
+                ? 'lost'
+                : post.whatHappened?.includes('සොරාගත්') || post.whatIsNeeded?.includes('සොරාගත්') || post.tagName?.toLowerCase().includes('stolen')
+                ? 'stolen'
+                : 'find'
+            )
           );
 
           const effectiveItemName = translateText(
             effectivePost.itemLostStolenOrSearched ||
-            effectivePost.whatHappened?.replace(/^(නැතිවූ|සොරාගත්|සොයන|අවශ්‍ය)\s*(දෙයක්|භාණ්ඩයක්)?:\s*/i, '')?.split('.')[0] ||
-            effectivePost.whatIsNeeded?.replace(/^නැතිවූ\s*|^සොරාගත්\s*|^සොයන\s*|සොයාදෙන්න\.?$/g, '')?.trim() ||
+            effectivePost.whatHappened?.replace(/^(නැතිවූ|සොරාගත්|සොයන|අවශ්‍ය|හමුවූ)\s*(දෙයක්|භාණ්ඩයක්)?:\s*/i, '')?.split('.')[0] ||
+            effectivePost.whatIsNeeded?.replace(/^නැතිවූ\s*|^සොරාගත්\s*|^සොයන\s*|^හමුවූ\s*|සොයාදෙන්න\.?|අයිතිකරුට භාරදීම\.?$/g, '')?.trim() ||
             effectivePost.tagName ||
             (activeCardLang === 'en' ? 'Item / Service' : activeCardLang === 'ta' ? 'பொருள் / சேவை' : 'අදාළ භාණ්ඩය / සේවාව'),
             activeCardLang
@@ -698,7 +624,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             activeCardLang
           );
           const effectiveOtherDetails = translateText(
-            effectivePost.otherDetails || (effectivePost.conditions && !effectivePost.conditions.startsWith('ගණුදෙනුව') && !effectivePost.conditions.startsWith('සම්බන්ධ') ? effectivePost.conditions : ''),
+            effectivePost.otherDetails || (effectivePost.conditions && !effectivePost.conditions.startsWith('ගණුදෙනුව') && !effectivePost.conditions.startsWith('සම්බන්ධ') && !effectivePost.conditions.startsWith('අයිතිකරු') ? effectivePost.conditions : ''),
             activeCardLang
           );
           const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
@@ -713,6 +639,8 @@ export const PostCard: React.FC<PostCardProps> = ({
                     ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800'
                     : effectiveType === 'stolen'
                     ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
+                    : effectiveType === 'found'
+                    ? 'bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-200 border-teal-300 dark:border-teal-800'
                     : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
                 }`}>
                   <Search className="w-3.5 h-3.5" />
@@ -721,6 +649,8 @@ export const PostCard: React.FC<PostCardProps> = ({
                       ? (activeCardLang === 'en' ? '🔴 Lost Item' : activeCardLang === 'ta' ? '🔴 தொலைந்துபோன பொருள்' : '🔴 නැතිවූ දෙයක් (Lost Item)')
                       : effectiveType === 'stolen'
                       ? (activeCardLang === 'en' ? '⚠️ Stolen Item' : activeCardLang === 'ta' ? '⚠️ திருடப்பட்ட பொருள்' : '⚠️ සොරාගත් දෙයක් (Stolen Item)')
+                      : effectiveType === 'found'
+                      ? (activeCardLang === 'en' ? '🎁 Found Item' : activeCardLang === 'ta' ? '🎁 கண்டெடுக்கப்பட்ட பொருள்' : '🎁 හමුවනලද (Found Item)')
                       : (activeCardLang === 'en' ? '🔍 Search / Procurement' : activeCardLang === 'ta' ? '🔍 தேடப்படும் பொருள்' : '🔍 සොයාදෙන්න (Search / Procurement)')}
                   </span>
                 </span>
@@ -912,6 +842,59 @@ export const PostCard: React.FC<PostCardProps> = ({
                       {effectiveDelivery}
                     </p>
                   </div>
+                </div>
+              )}
+
+              {/* 3. FOUND ITEM SPECIFIC PRESENTATION */}
+              {effectiveType === 'found' && (
+                <div className="space-y-3">
+                  {/* Main Advertisement Narrative Text */}
+                  <div className="p-3 bg-white/90 dark:bg-[#082014] rounded-xl border border-teal-300/80 dark:border-teal-800/80 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed shadow-xs space-y-2">
+                    <p>
+                      {effectiveIncidentDate ? `${effectiveIncidentDate} ${activeCardLang === 'en' ? 'on' : activeCardLang === 'ta' ? 'அன்று' : 'දින'}, ` : ''}
+                      {effectiveIncidentTime ? `${effectiveIncidentTime} ${activeCardLang === 'en' ? 'approx, ' : activeCardLang === 'ta' ? 'அளவில், ' : 'පමණ, '}` : ''}
+                      {effectiveIncidentLocation ? `${getVillageOrTownDisplay(effectiveIncidentLocation)} ${activeCardLang === 'en' ? 'near, ' : activeCardLang === 'ta' ? 'அருகில், ' : 'ආසන්නයේ දී, '}` : ''}
+                      <strong className="text-teal-700 dark:text-teal-300 font-black">
+                        {effectiveItemName}
+                      </strong>{' '}
+                      {activeCardLang === 'en'
+                        ? 'was found. If this belongs to you, please click the Chat button below to verify proof of ownership and claim it.'
+                        : activeCardLang === 'ta'
+                        ? 'கண்டெடுக்கப்பட்டுள்ளது. இது உங்களுடையதாக இருந்தால், உரிமையை உறுதிப்படுத்த கீழேயுள்ள Chat பொத்தானை அழுத்தவும்.'
+                        : 'හමුවී ඇත. මෙහි නිවැරදි අයිතිකරු ඔබ නම්, පහත ඇති Chat බොත්තම ඔස්සේ සම්බන්ධ වී විස්තර තහවුරු කර භාරගන්න.'}
+                    </p>
+                  </div>
+
+                  {/* Safety & Owner Verification Notice */}
+                  <div className="p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/80 dark:border-amber-700/80 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
+                      <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>
+                        {activeCardLang === 'en'
+                          ? 'Owner Verification & Privacy Protection:'
+                          : activeCardLang === 'ta'
+                          ? 'உரிமையாளர் சரிபார்ப்பு & பாதுகாப்பு:'
+                          : 'අයිතිකරු තහවුරු කිරීම සහ ආරක්ෂාව:'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed font-semibold text-slate-800 dark:text-slate-200">
+                      {activeCardLang === 'en'
+                        ? 'To prevent false claims, complete item details are withheld. The true owner must provide identifying details (serial, markings, contents) in Chat to verify.'
+                        : activeCardLang === 'ta'
+                        ? 'தவறான கோரிக்கைகளைத் தவிர்க்க முழு விவரங்களும் மறைக்கப்பட்டுள்ளன. உரிமையாளர் Chat மூலம் விவரங்களை வழங்கி உறுதிப்படுத்த வேண்டும்.'
+                        : 'අනවශ්‍ය හිමිකම් කීම් වැළැක්වීම සඳහා හමුවූ දේ පිළිබඳ සම්පූර්ණ තොරතුරු ප්‍රසිද්ධ කර නැත. අයිතිකරු Chat හරහා විස්තර සනාථ කර භාරගත යුතුය.'}
+                    </p>
+                  </div>
+
+                  {/* Other details (if provided) */}
+                  {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
+                    <div className="p-2.5 bg-teal-50/70 dark:bg-[#071d12] rounded-xl border border-teal-200 dark:border-teal-900/60 text-xs text-slate-800 dark:text-slate-200">
+                      <strong className="text-teal-900 dark:text-teal-300 font-black block mb-0.5">
+                        {cardLabels.details}
+                      </strong>
+                      <p className="font-semibold">{effectiveOtherDetails}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1419,177 +1402,45 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         )}
 
-        {/* Owner Interested Responders ("කැමැත්ත දැක්වූවන්") Indicator */}
-        {ownerCheck && !isConfirmed && (
-          <div className="space-y-2 pt-1">
-            {post.replies && post.replies.length > 0 ? (
-              <div 
-                onClick={() => {
-                  if (onOpenSupportOffers) {
-                    onOpenSupportOffers(post);
-                  } else if (onOpenChat) {
-                    onOpenChat(post);
-                  }
-                }}
-                className="w-full p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-emerald-500/15 dark:from-amber-500/25 dark:via-orange-500/25 dark:to-emerald-500/25 border-2 border-orange-500/60 dark:border-orange-400/60 rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer group active:scale-[0.99] relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center shadow">
-                        <HeartHandshake className="w-4 h-4" />
-                      </div>
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full animate-ping" />
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border border-white" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-black text-slate-900 dark:text-white">
-                          {cardLabels.interestedCount}
-                        </span>
-                        <span className="bg-orange-600 text-white text-[11px] font-black px-2 py-0.2 rounded-full font-mono shadow-xs">
-                          {post.replies?.length || 0} {cardLabels.peopleSuffix}
-                        </span>
-                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-md border border-emerald-300 dark:border-emerald-700">
-                          {cardLabels.newBadge}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium truncate max-w-[260px] sm:max-w-xs mt-0.5">
-                        <span className="text-orange-600 dark:text-orange-400 font-bold">{cardLabels.personLabel} </span>
-                        {(post.replies || []).map((r) => r?.responderName || (activeCardLang === 'en' ? 'Helper' : activeCardLang === 'ta' ? 'உதவியாளர்' : 'සහායක')).slice(0, 3).join(', ')}
-                        {(post.replies?.length || 0) > 3 ? ` +${(post.replies?.length || 0) - 3}...` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="px-2.5 py-1.5 rounded-xl bg-orange-600 group-hover:bg-orange-500 text-white font-black text-[11px] flex items-center gap-1 shadow-xs transition-colors shrink-0"
-                  >
-                    <span>{cardLabels.view}</span>
-                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div 
-                onClick={() => onOpenSupportOffers && onOpenSupportOffers(post)}
-                className="w-full p-2.5 bg-slate-50 dark:bg-[#0b1b12] border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-100 dark:hover:bg-[#0f2419] transition-all"
-              >
-                <span className="flex items-center gap-1.5 font-bold">
-                  <HeartHandshake className="w-4 h-4 text-slate-400" />
-                  <span>{cardLabels.interestedCount} (0)</span>
-                </span>
-                <span className="text-[11px] font-medium">
-                  {activeCardLang === 'en' ? 'No responses yet' : activeCardLang === 'ta' ? 'இன்னும் பதில்கள் இல்லை' : 'තවම කිසිවෙකු කැමැත්ත දක්වා නැත'}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Action Buttons: Owner vs Admin vs Non-Owner */}
+        {/* Action Buttons: Standardized across Owner, Admin, and Public */}
         {ownerCheck ? (
-          <div className="pt-2 flex flex-wrap items-center gap-1.5">
-            {/* Boost Ad Button (Rs. 250) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onBoostPost) {
-                  handleInterceptAction(onBoostPost);
-                }
-              }}
-              className={`flex-1 min-w-[90px] py-2.5 px-2 rounded-2xl ${
-                post.isBoosted
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white border-2 border-yellow-300/80 shadow-md ring-1 ring-yellow-400/40'
-                  : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-white border-2 border-amber-300/80 shadow-lg shadow-orange-500/20 animate-pulse'
-              } active:scale-95 font-black text-[11px] transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer`}
-              title={post.isBoosted ? 'Boosted Top Ad' : cardLabels.boostTopAd}
-            >
-              <Rocket className="w-3.5 h-3.5 text-yellow-200 fill-yellow-200 shrink-0 animate-bounce" />
-              <span>{post.isBoosted ? 'Boosted ✓' : 'Boost (Rs. 250)'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenSupportOffers) {
-                  handleInterceptAction(onOpenSupportOffers);
-                } else if (onOpenChat) {
-                  handleInterceptAction(onOpenChat);
-                }
-              }}
-              className="flex-1 min-w-[75px] py-2.5 px-2 rounded-2xl bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-orange-400/40"
-              title="Offers / Responders"
-            >
-              <HeartHandshake className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-center">{isConfirmed ? (activeCardLang === 'en' ? 'Helper' : activeCardLang === 'ta' ? 'உதவியாளர்' : 'සහායකයා') : `${cardLabels.interestedCount.replace(':', '')} (${post.replies?.length || 0})`}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleInterceptAction(onOpenChat)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
-              title="Chat"
-            >
-              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>Chat</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleInterceptAction(onEditPost)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-              title={cardLabels.edit}
-            >
-              <Pencil className="w-3.5 h-3.5 shrink-0" />
-              <span>{cardLabels.edit}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleInterceptAction(onViewPost)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-              title={cardLabels.view}
-            >
-              <Eye className="w-3.5 h-3.5 shrink-0" />
-              <span>{cardLabels.view}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleInterceptAction(onDeletePost)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
-              title={cardLabels.delete}
-            >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span>{cardLabels.delete}</span>
-            </button>
-          </div>
-        ) : isAdmin ? (
-          <div className="pt-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* Admin Moderate / Report Button */}
+          <div className="pt-2 space-y-2">
+            {/* Interested Responders Action (If any replies exist) */}
+            {!isConfirmed && (
               <button
                 type="button"
                 onClick={() => {
-                  if (onAdminModerate) {
-                    handleInterceptAction(() => onAdminModerate(post));
+                  if (onOpenSupportOffers) {
+                    handleInterceptAction(onOpenSupportOffers);
+                  } else if (onOpenChat) {
+                    handleInterceptAction(onOpenChat);
                   }
                 }}
-                className={`flex-1 min-w-[95px] py-2 px-2.5 rounded-2xl ${
-                  post.adminFlagged
-                    ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-400/80 animate-pulse'
-                    : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400/40'
-                } active:scale-95 font-black text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border`}
-                title={activeCardLang === 'en' ? 'Report Issue / Hide' : 'ගැටලුව දැනුම්දීම / Hide'}
+                className={`w-full p-2.5 px-3.5 rounded-2xl ${
+                  post.replies && post.replies.length > 0
+                    ? 'bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-emerald-500/20 border-2 border-orange-500/70 shadow-xs'
+                    : 'bg-slate-50 dark:bg-[#0b1b12] border border-slate-200 dark:border-slate-800'
+                } flex items-center justify-between transition-all cursor-pointer group active:scale-[0.99]`}
               >
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-200 shrink-0" />
-                <span>{post.adminFlagged ? (post.isHiddenByAdmin ? 'Hidden 🚫' : 'Flagged ⚠️') : 'Report ⚠️'}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <HeartHandshake className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                  <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                    {activeCardLang === 'en' ? 'Interested Responders' : activeCardLang === 'ta' ? 'விருப்பம் தெரிவித்தவர்கள்' : 'කැමැත්ත දැක්වූවන්'}
+                  </span>
+                  <span className="bg-orange-600 text-white text-[11px] font-black px-2 py-0.2 rounded-full font-mono shadow-xs shrink-0">
+                    {post.replies?.length || 0}
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold text-orange-700 dark:text-orange-300 flex items-center gap-0.5 shrink-0">
+                  <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'பார்' : 'බලන්න'}</span>
+                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </span>
               </button>
+            )}
 
-              {/* Admin Boost Option */}
+            {/* Owner Management Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Boost Ad Button */}
               <button
                 type="button"
                 onClick={() => {
@@ -1597,51 +1448,97 @@ export const PostCard: React.FC<PostCardProps> = ({
                     handleInterceptAction(onBoostPost);
                   }
                 }}
-                className="flex-1 min-w-[85px] py-2 px-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white font-black text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-amber-300/60"
-                title="Admin Boost"
+                className={`flex-1 min-w-[90px] py-2 px-2 rounded-2xl ${
+                  post.isBoosted
+                    ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white border border-yellow-300/80 shadow-xs'
+                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white border border-amber-300/80 shadow-sm'
+                } active:scale-95 font-black text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer`}
+                title={post.isBoosted ? (activeCardLang === 'en' ? 'Boosted Top Ad' : activeCardLang === 'ta' ? 'விசேடமானது' : 'ප්‍රවර්ධිතයි') : (activeCardLang === 'en' ? 'Boost (Rs. 250)' : activeCardLang === 'ta' ? 'விசேட விளம்பரம் (ரூ. 250)' : 'ප්‍රවර්ධනය (රු. 250)')}
               >
                 <Rocket className="w-3.5 h-3.5 text-yellow-200 fill-yellow-200 shrink-0" />
-                <span>{post.isBoosted ? 'Boosted ✓' : 'Boost (Rs. 250)'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onOpenChat)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
-                title="Chat History"
-              >
-                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                <span>Chat</span>
+                <span>{post.isBoosted ? (activeCardLang === 'en' ? 'Boosted ✓' : activeCardLang === 'ta' ? 'විශේෂිතයි ✓' : 'ප්‍රවර්ධිතයි ✓') : (activeCardLang === 'en' ? 'Boost (Rs. 250)' : activeCardLang === 'ta' ? 'விசேட விளம்பரம் (ரூ. 250)' : 'ප්‍රවර්ධනය (රු. 250)')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleInterceptAction(onEditPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-                title="Admin Edit"
+                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
+                title={activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}
               >
                 <Pencil className="w-3.5 h-3.5 shrink-0" />
-                <span>{cardLabels.edit}</span>
+                <span>{activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleInterceptAction(onViewPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-                title="View"
+                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
+                title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}
               >
                 <Eye className="w-3.5 h-3.5 shrink-0" />
-                <span>{cardLabels.view}</span>
+                <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleInterceptAction(onDeletePost)}
-                className="flex-1 min-w-[80px] py-2 px-2 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-black text-[11px] shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer border border-slate-500/40"
-                title="Admin Delete"
+                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
+                title={activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}</span>
+              </button>
+            </div>
+          </div>
+        ) : isAdmin ? (
+          <div className="pt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onAdminModerate) {
+                    handleInterceptAction(() => onAdminModerate(post));
+                  }
+                }}
+                className={`flex-1 min-w-[90px] py-2 px-2 rounded-2xl ${
+                  post.adminFlagged
+                    ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-400/80 animate-pulse'
+                    : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400/40'
+                } active:scale-95 font-black text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border`}
+                title={activeCardLang === 'en' ? 'Moderate' : activeCardLang === 'ta' ? 'நிர்வகி' : 'පාලනය'}
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-200 shrink-0" />
+                <span>{activeCardLang === 'en' ? 'Moderate' : activeCardLang === 'ta' ? 'நிர்வகி' : 'පාලනය'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleInterceptAction(onEditPost)}
+                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
+                title={activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}
+              >
+                <Pencil className="w-3.5 h-3.5 shrink-0" />
+                <span>{activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleInterceptAction(onViewPost)}
+                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
+                title={activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}
+              >
+                <Eye className="w-3.5 h-3.5 shrink-0" />
+                <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleInterceptAction(onDeletePost)}
+                className="flex-1 min-w-[70px] py-2 px-2 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-black text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-slate-500/40"
+                title={activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}
               >
                 <Trash2 className="w-3.5 h-3.5 text-white shrink-0" />
-                <span>{cardLabels.delete}</span>
+                <span>{activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}</span>
               </button>
             </div>
 
@@ -1650,36 +1547,40 @@ export const PostCard: React.FC<PostCardProps> = ({
               className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
             >
               <MessageSquare className="w-4 h-4 shrink-0" />
-              <span>{activeCardLang === 'en' ? 'Reply / Inspect to Support' : activeCardLang === 'ta' ? 'பதிலளிக்க / பரிசோதிக்க' : 'සහාය වීමට පිළිතුරු යවන්න / පරීක්ෂා කරන්න'}</span>
+              <span>{activeCardLang === 'en' ? 'Reply / Inspect to Support' : activeCardLang === 'ta' ? 'பதிலளிக்க / பரிசோதிக்க' : 'සහාය වීමට පිළිතුරු යවන්න'}</span>
             </button>
           </div>
         ) : (
-          <div className="pt-3 flex flex-wrap items-center gap-3">
+          <div className="pt-2 flex flex-wrap items-center gap-2">
             {isConfirmed && (
-              <div className="relative flex items-center gap-2.5 shrink-0">
-                {/* Inbox-style dark green bubble */}
-                <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-tr from-[#006e43] via-[#008753] to-emerald-400 text-white shadow-[0_6px_20px_rgba(0,122,75,0.4)] border-2 border-white dark:border-emerald-300 shrink-0 animate-bounce" title={cardLabels.supportConfirmed}>
-                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 text-white drop-shadow-sm" />
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-300 text-emerald-950 font-black text-[10px] rounded-full flex items-center justify-center border-2 border-white shadow">✓</span>
-                </div>
-                {/* Confirmation message bubble */}
-                <div className="px-3.5 py-2 bg-[#005a37] dark:bg-emerald-950 text-white text-xs sm:text-sm font-extrabold rounded-2xl shadow-md border border-emerald-400/60 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                  <span>{cardLabels.supportConfirmed}</span>
+              <div className="relative flex items-center gap-2 shrink-0">
+                <div className="relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-tr from-[#006e43] via-[#008753] to-emerald-400 text-white shadow-md border-2 border-white dark:border-emerald-300 shrink-0" title={cardLabels.supportConfirmed}>
+                  <CheckCircle className="w-5 h-5 text-white drop-shadow-sm" />
                 </div>
               </div>
             )}
             <button
               onClick={() => handleInterceptAction(onOfferSupport)}
-              className="flex-1 min-w-[170px] py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base shadow-lg shadow-emerald-950/20 hover:shadow-emerald-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
+              className="flex-1 min-w-[170px] py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
             >
               <MessageSquare className="w-4 h-4 shrink-0" />
               <span className="font-extrabold">
                 {isConfirmed 
-                  ? (activeCardLang === 'en' ? 'Inquiries / Additional Support' : activeCardLang === 'ta' ? 'மேலதிக உதவி / விசாரணைகள்' : 'අමතර සහය හෝ විමසීම්')
+                  ? (activeCardLang === 'en' ? 'Inquiries / Additional Support' : activeCardLang === 'ta' ? 'மேலதிக உதவி / விசாரණைகள்' : 'අමතර සහය හෝ විමසීම්')
                   : (activeCardLang === 'en' ? '🤝 Reply to Help' : activeCardLang === 'ta' ? '🤝 உதவ பதிலளிக்கவும்' : 'සහාය වීමට පිළිතුරු යවන්න')}
               </span>
             </button>
+            {onViewPost && (
+              <button
+                type="button"
+                onClick={() => handleInterceptAction(onViewPost)}
+                className="py-3 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
+              >
+                <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
+              </button>
+            )}
           </div>
         )}
 

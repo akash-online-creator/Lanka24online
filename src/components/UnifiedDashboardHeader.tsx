@@ -29,7 +29,8 @@ import {
   Check,
   ChevronDown,
   Coins,
-  Bell
+  Bell,
+  MessageSquare
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 
@@ -46,6 +47,9 @@ interface UnifiedDashboardHeaderProps {
   onOpenSettings?: () => void;
   onOpenWallet?: () => void;
   onOpenNotifications?: () => void;
+  onOpenInbox?: () => void;
+  inboxCount?: number;
+  onOpenAssistant?: () => void;
   onLogout?: () => void;
   activeRoleView?: Role;
   setActiveRoleView?: (role: Role) => void;
@@ -67,6 +71,9 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenSettings,
   onOpenWallet,
   onOpenNotifications,
+  onOpenInbox,
+  inboxCount,
+  onOpenAssistant,
   onLogout,
   activeRoleView,
   setActiveRoleView,
@@ -75,6 +82,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   autoLoadedNotice = null,
 }) => {
   const t = translations[language];
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (language === 'en') return en;
+    if (language === 'ta') return ta;
+    return si;
+  };
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -272,6 +284,41 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 </button>
               )}
 
+              {/* Message Inbox Button (පණිවිඩ පෙට්ටිය & සංවාද) */}
+              {onOpenInbox && (
+                <button
+                  type="button"
+                  onClick={onOpenInbox}
+                  className="relative p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 flex items-center gap-1 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                  title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ සහ සංවාද (Messages)'}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="hidden sm:inline text-[11px]">
+                    {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
+                  </span>
+                  {typeof inboxCount === 'number' && inboxCount > 0 && (
+                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs">
+                      {inboxCount > 9 ? '9+' : inboxCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* AI Assistant & Auto-Translator Trigger */}
+              {onOpenAssistant && (
+                <button
+                  type="button"
+                  onClick={onOpenAssistant}
+                  className="relative p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                  title="සහය මිතුරා & පරිවර්තකය (AI Assistant & Auto-Translator)"
+                >
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 fill-amber-500 animate-spin-slow" />
+                  <span className="hidden lg:inline text-[11px]">
+                    {language === 'en' ? 'AI Assistant' : language === 'ta' ? 'AI உதவியாளர்' : 'සහය මිතුරා'}
+                  </span>
+                </button>
+              )}
+
               {/* Dark / Light Theme Toggle */}
               <button
                 type="button"
@@ -327,10 +374,10 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   type="button"
                   onClick={onLogout}
                   className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
-                  title="පද්ධතියෙන් ඉවත් වන්න (Logout)"
+                  title={getLangText('පද්ධතියෙන් ඉවත් වන්න (Logout)', 'Log out of system', 'கணக்கிலிருந்து வெளியேறு')}
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  <span className="hidden sm:inline">ඉවත් වන්න</span>
+                  <span className="hidden sm:inline">{getLangText('ඉවත් වන්න', 'Log Out', 'வெளியேறு')}</span>
                 </button>
               )}
             </div>
@@ -340,7 +387,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
           <div 
             onClick={onOpenSettings}
             className={`hidden sm:flex items-center gap-2 sm:gap-2.5 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
-            title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
+            title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
           >
             <div className="text-right min-w-0">
               <div className="flex items-center justify-end gap-1">
@@ -433,10 +480,10 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             type="button"
             onClick={handleOpenManualPicker}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer border border-emerald-400/30"
-            title="සිතියමෙන් ස්ථානය තෝරන්න"
+            title={getLangText('සිතියමෙන් ස්ථානය තෝරන්න', 'Select Location on Map', 'வரைபடத்தில் இடத்தைத் தேர்ந்தெடு')}
           >
             <Search className="w-3.5 h-3.5 text-emerald-200" />
-            <span>ස්ථානය තෝරන්න</span>
+            <span>{getLangText('ස්ථානය තෝරන්න', 'Select Location', 'இடத்தைத் தேர்ந்தெடு')}</span>
           </button>
 
           {/* Auto GPS Trigger */}
@@ -449,7 +496,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                 : 'bg-slate-100 dark:bg-[#12281b] hover:bg-slate-200 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1b3a27]'
             }`}
-            title="සජීවී GPS මගින් ස්ථානය සොයාගන්න"
+            title={getLangText('සජීවී GPS මගින් ස්ථානය සොයාගන්න', 'Find Location via Live GPS', 'நேரலை GPS மூலம் இடத்தைக் கண்டறி')}
           >
             {isAutoTracking ? (
               <>
@@ -470,17 +517,17 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               type="button"
               onClick={onOpenWallet}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border border-amber-400/60 dark:border-amber-500/50 shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 group"
-              title="ක්‍රෙඩිට් ගිණුම සහ ශේෂය (Click to Open Wallet)"
+              title={getLangText('ක්‍රෙඩිට් ගිණුම සහ ශේෂය (Click to Open Wallet)', 'Credit Wallet & Balance', 'கிரெடிட் கணக்கு & மீதி')}
             >
               <div className="w-5 h-5 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center font-black text-[10px] shadow-2xs group-hover:rotate-12 transition-transform shrink-0">
                 <Coins className="w-3 h-3 text-amber-950" />
               </div>
               <div className="text-left">
                 <div className="text-[8px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 leading-none">
-                  ශේෂය
+                  {getLangText('ශේෂය', 'Balance', 'மீதி')}
                 </div>
                 <div className="text-xs font-black font-mono text-emerald-800 dark:text-emerald-300 leading-tight">
-                  රු. {creditBalance.toFixed(2)}
+                  {getLangText('රු.', 'Rs.', 'ரூ.')} {creditBalance.toFixed(2)}
                 </div>
               </div>
             </button>

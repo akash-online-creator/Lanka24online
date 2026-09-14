@@ -10,6 +10,7 @@ import {
   isUserPolicyBlocked 
 } from '../utils/policyGuard';
 import { PolicyViolationModal } from './PolicyViolationModal';
+import { translateName } from '../utils/postTranslator';
 
 interface OfferSupportModalProps {
   post: HelpPost | null;
@@ -72,7 +73,8 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
     viewerLat,
     viewerLng,
     postLocName,
-    viewerLocName
+    viewerLocName,
+    lang
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -136,7 +138,7 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
                 {t.replyModalTitle}
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                ඉල්ලීම් අංකය: <strong className="text-emerald-700 dark:text-emerald-300 font-mono">{post.postCode}</strong> ({post.userName})
+                ඉල්ලීම් අංකය: <strong className="text-emerald-700 dark:text-emerald-300 font-mono">{post.postCode}</strong> ({translateName(post.userName, lang)})
               </p>
             </div>
             <button

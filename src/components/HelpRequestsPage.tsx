@@ -375,7 +375,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                 </span>
               </div>
               <h1 className="text-base sm:text-xl font-black text-slate-900 dark:text-white leading-tight">
-                {getLangText('දැන්වීම් පුවරුව', 'Bulletin Board', 'அறிவிப்பு பலகை')}
+                {getLangText('සහය පුවරුව', 'Support Board', 'உதவி பலகை')}
               </h1>
             </div>
           </div>
@@ -745,6 +745,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           totalPostsCount={helpPosts.length}
           filteredPostsCount={newsFeedSortedPosts.length}
           posts={helpPosts}
+          language={language}
         />
       ) : null}
 
