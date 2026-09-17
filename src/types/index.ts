@@ -3,7 +3,7 @@ export type UserStatus = 'pending' | 'approved' | 'rejected' | 'blocked';
 export type IssueStatus = 'pending' | 'in_progress' | 'resolved';
 export type Language = 'si' | 'en' | 'ta';
 export type Theme = 'dark' | 'light';
-export type ViewMode = 'login' | 'register' | 'issues_help' | 'dashboard' | 'admin' | 'pending' | 'create_help_post';
+export type ViewMode = 'gps_gate' | 'login' | 'register' | 'issues_help' | 'dashboard' | 'admin' | 'pending' | 'create_help_post';
 
 export interface LocationOption {
   id: string;

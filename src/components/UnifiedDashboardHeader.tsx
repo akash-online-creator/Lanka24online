@@ -9,6 +9,7 @@ import {
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MapLocationTracker } from './MapLocationTracker';
+import { GpsPermissionModal } from './GpsPermissionModal';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { getStoredNotifications } from '../utils/notificationManager';
 import { 
@@ -118,6 +119,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const [isManualLocked, setIsManualLocked] = useState<boolean>(
     () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
   );
+  const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
 
   // Synchronize manual lock state on changes
   useEffect(() => {
@@ -224,10 +226,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
           },
           (finalErr) => {
             setIsAutoTracking(false);
+            setIsGpsPermissionModalOpen(true);
             if (finalErr.code === finalErr.PERMISSION_DENIED) {
-              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. කරුණාකර Browser / Device Settings වලින් Location Allow කරන්න.');
+              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Setting වලින් Location Allow කරන්න.');
             } else if (finalErr.code === finalErr.POSITION_UNAVAILABLE) {
-              setToastMsg('⚠️ GPS සංඥා දුර්වලයි. කරුණාකර උපාංගයේ Location සක්‍රීය කර නැවත උත්සාහ කරන්න.');
+              setToastMsg('⚠️ GPS සංඥා දුර්වලයි. උපාංගයේ Location සක්‍රීය කරන්න.');
             } else {
               setToastMsg('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාදයි. නැවත උත්සාහ කරන්න.');
             }
@@ -639,6 +642,15 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         onSaveLocation={handleSaveLocationFromMap}
         lang={language}
         theme={theme}
+      />
+
+      {/* GPS Permission & Direct Activation Guide Modal */}
+      <GpsPermissionModal
+        isOpen={isGpsPermissionModalOpen}
+        onClose={() => setIsGpsPermissionModalOpen(false)}
+        onLocationSuccess={handleSaveLocationFromMap}
+        onOpenMapPicker={() => setIsMapModalOpen(true)}
+        language={language}
       />
     </div>
   );

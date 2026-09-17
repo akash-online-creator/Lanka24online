@@ -654,15 +654,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Recalculate distance from current active location
   const getPostDistance = (post: HelpPost) => {
-    if (!post.lat || !post.lng || !currentLocation.lat || !currentLocation.lng) {
-      return post.distanceKm || 20;
+    const curLat = currentLocation?.lat;
+    const curLng = currentLocation?.lng;
+    if (!post?.lat || !post?.lng || typeof curLat !== 'number' || typeof curLng !== 'number') {
+      return post?.distanceKm || 20;
     }
     const R = 6371; // km
-    const dLat = (post.lat - currentLocation.lat) * Math.PI / 180;
-    const dLng = (post.lng - currentLocation.lng) * Math.PI / 180;
+    const dLat = (post.lat - curLat) * Math.PI / 180;
+    const dLng = (post.lng - curLng) * Math.PI / 180;
     const a = 
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(currentLocation.lat * Math.PI / 180) * Math.cos(post.lat * Math.PI / 180) *
+      Math.cos(curLat * Math.PI / 180) * Math.cos(post.lat * Math.PI / 180) *
       Math.sin(dLng / 2) * Math.sin(dLng / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const d = R * c;

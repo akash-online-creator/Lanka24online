@@ -56,10 +56,16 @@ import {
 interface MapLocationTrackerProps {
   isOpen: boolean;
   onClose: () => void;
-  currentLocation: LocationOption;
-  availableLocations: LocationOption[];
-  onSaveLocation: (loc: LocationOption) => void;
-  lang: Language;
+  currentLocation?: LocationOption;
+  initialLocation?: LocationOption;
+  initialLat?: number;
+  initialLng?: number;
+  availableLocations?: LocationOption[];
+  onSaveLocation?: (loc: LocationOption) => void;
+  onSelectLocation?: (loc: LocationOption) => void;
+  onLocationSelected?: (lat: number, lng: number, locName?: string) => void;
+  lang?: Language;
+  language?: Language;
   theme?: Theme;
   initialMode?: 'manual_search' | 'auto_gps';
 }
@@ -84,19 +90,30 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
   isOpen,
   onClose,
   currentLocation,
-  availableLocations,
+  initialLocation,
+  initialLat,
+  initialLng,
+  availableLocations = [],
   onSaveLocation,
+  onSelectLocation,
+  onLocationSelected,
   lang,
+  language,
   theme = 'light',
   initialMode = 'manual_search',
 }) => {
+  const activeLang = lang || language || 'si';
+  const effectiveLocation = currentLocation || initialLocation;
+  const initialCenterLat = initialLat || effectiveLocation?.lat || 7.1712;
+  const initialCenterLng = initialLng || effectiveLocation?.lng || 79.8978;
+
   // Pin Coordinates (Exact center of map)
-  const [pinLat, setPinLat] = useState<number>(currentLocation.lat || 7.1712);
-  const [pinLng, setPinLng] = useState<number>(currentLocation.lng || 79.8978);
+  const [pinLat, setPinLat] = useState<number>(initialCenterLat);
+  const [pinLng, setPinLng] = useState<number>(initialCenterLng);
   
   // Real-time live coordinates while actively dragging
-  const [livePinLat, setLivePinLat] = useState<number>(currentLocation.lat || 7.1712);
-  const [livePinLng, setLivePinLng] = useState<number>(currentLocation.lng || 79.8978);
+  const [livePinLat, setLivePinLat] = useState<number>(initialCenterLat);
+  const [livePinLng, setLivePinLng] = useState<number>(initialCenterLng);
   const [isDraggingMap, setIsDraggingMap] = useState<boolean>(false);
 
   // Active Alternative Mode Tab (Defaults to map_pan for direct drag-nudge experience)
@@ -121,8 +138,8 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     tracking: false,
     locked: false,
     error: null,
-    lat: currentLocation.lat || 7.1712,
-    lng: currentLocation.lng || 79.8978,
+    lat: initialCenterLat,
+    lng: initialCenterLng,
     accuracy: null,
     altitude: null,
     speed: null,
@@ -234,8 +251,8 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       mapInstanceRef.current = null;
     }
 
-    const startLat = pinLat || currentLocation.lat || 7.1712;
-    const startLng = pinLng || currentLocation.lng || 79.8978;
+    const startLat = pinLat || effectiveLocation?.lat || 7.1712;
+    const startLng = pinLng || effectiveLocation?.lng || 79.8978;
 
     const map = L.map(mapContainerRef.current, {
       center: [startLat, startLng],
@@ -394,12 +411,12 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     if (isOpen) {
       stopLiveGpsTracking();
       // Initialize with current location coordinates
-      if (currentLocation.lat && currentLocation.lng) {
-        setPinLat(currentLocation.lat);
-        setPinLng(currentLocation.lng);
-        setLivePinLat(currentLocation.lat);
-        setLivePinLng(currentLocation.lng);
-        lookupAddress(currentLocation.lat, currentLocation.lng);
+      if (effectiveLocation?.lat && effectiveLocation?.lng) {
+        setPinLat(effectiveLocation.lat);
+        setPinLng(effectiveLocation.lng);
+        setLivePinLat(effectiveLocation.lat);
+        setLivePinLng(effectiveLocation.lng);
+        lookupAddress(effectiveLocation.lat, effectiveLocation.lng);
       }
     } else {
       if (watchIdRef.current !== null) {
@@ -413,7 +430,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
         watchIdRef.current = null;
       }
     };
-  }, [isOpen, stopLiveGpsTracking, lookupAddress, currentLocation.lat, currentLocation.lng]);
+  }, [isOpen, stopLiveGpsTracking, lookupAddress, effectiveLocation?.lat, effectiveLocation?.lng]);
 
   // Search input handler with debounce
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -529,7 +546,15 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       return updated;
     });
 
-    onSaveLocation(finalLoc);
+    if (typeof onSaveLocation === 'function') {
+      onSaveLocation(finalLoc);
+    }
+    if (typeof onSelectLocation === 'function') {
+      onSelectLocation(finalLoc);
+    }
+    if (typeof onLocationSelected === 'function') {
+      onLocationSelected(finalLoc.lat, finalLoc.lng, finalLoc.nameSi);
+    }
     onClose();
   };
 

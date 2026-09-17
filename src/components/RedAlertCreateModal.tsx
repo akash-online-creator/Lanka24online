@@ -109,8 +109,8 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         setGpsError('GPS ස්ථානය ලබාගත නොහැකි විය. ස්ථාන නාමය අතින් ඇතුළත් කරන්න.');
         if (currentLocation?.nameSi) {
           setLocationName(currentLocation.nameSi);
-          setLatitude(currentLocation.lat);
-          setLongitude(currentLocation.lng);
+          setLatitude(currentLocation?.lat || 6.9271);
+          setLongitude(currentLocation?.lng || 79.8612);
         }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }

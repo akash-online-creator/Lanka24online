@@ -24,6 +24,10 @@ export const ChatLocationCard: React.FC<ChatLocationCardProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+    return null;
+  }
+
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(`${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`);

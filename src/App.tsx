@@ -25,6 +25,7 @@ import {
   seedInitialUsersToFirestore,
   subscribeToRedAlerts
 } from './lib/firebase';
+import { GpsActivationGate } from './components/GpsActivationGate';
 import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
@@ -52,7 +53,12 @@ export default function App() {
   });
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    return 'login';
+    const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
+    const hasSavedLocation = Boolean(localStorage.getItem('sahaya_current_location'));
+    if (isGpsVerified && hasSavedLocation) {
+      return 'login';
+    }
+    return 'gps_gate';
   });
 
   const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
@@ -210,6 +216,8 @@ export default function App() {
     const nearAlert = redAlerts.find((alert) => {
       if (alert.status !== 'active') return false;
       if (alert.isFlaggedFake) return false;
+      if (typeof alert.latitude !== 'number' || typeof alert.longitude !== 'number') return false;
+      if (typeof userCoords?.lat !== 'number' || typeof userCoords?.lng !== 'number') return false;
       if (dismissedProximityAlertIds.includes(alert.id)) return false;
 
       // DO NOT trigger proximity siren modal for the user who created/submitted the alert
@@ -748,7 +756,7 @@ export default function App() {
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Navigation Header (For non-dashboard views like Register, Pending, Admin, Issues) */}
-      {viewMode !== 'login' && viewMode !== 'dashboard' && (
+      {viewMode !== 'login' && viewMode !== 'gps_gate' && viewMode !== 'dashboard' && (
         <Header
           language={language}
           setLanguage={setLanguage}
@@ -763,7 +771,7 @@ export default function App() {
       )}
 
       {/* 🚨 Red Alert Emergency Headline Banner (Visible across views when active alerts exist) */}
-      {viewMode !== 'login' && (
+      {viewMode !== 'login' && viewMode !== 'gps_gate' && (
         <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
           <RedAlertBanner
             alerts={redAlerts}
@@ -775,6 +783,16 @@ export default function App() {
 
       {/* Main Container Views */}
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
+        {viewMode === 'gps_gate' && (
+          <GpsActivationGate
+            onProceedToLogin={() => setViewMode('login')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+          />
+        )}
+
         {viewMode === 'login' && (
           <LoginForm
             onLogin={handleLogin}
@@ -973,8 +991,8 @@ export default function App() {
         nicNumber={currentUser?.nicNumber}
       />
 
-      {/* Footer Status Bar (compact for login) */}
-      {viewMode !== 'login' ? (
+      {/* Footer Status Bar (compact for login and gps gate) */}
+      {viewMode !== 'login' && viewMode !== 'gps_gate' ? (
         <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
           <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
             {t.securityLayer}
@@ -1010,7 +1028,7 @@ export default function App() {
         <OmniAssistantChatBox
           currentLanguage={language}
           onLanguageChange={setLanguage}
-          mode={viewMode === 'login' || viewMode === 'register' ? 'auth' : 'full'}
+          mode={viewMode === 'login' || viewMode === 'register' || viewMode === 'gps_gate' ? 'auth' : 'full'}
           onSwitchToRegister={() => setViewMode('register')}
           onSwitchToLogin={() => setViewMode('login')}
           onOpenIssuesHelp={() => setViewMode('issues_help')}

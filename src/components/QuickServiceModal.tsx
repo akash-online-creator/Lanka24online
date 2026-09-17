@@ -259,10 +259,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       helpersNeeded: helpersNeeded,
       helpersAccepted: 0,
       feeAgreed: true,
-      locationName: `${currentLocation.nameSi} (${currentLocation.nameEn})`,
+      locationName: currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක',
       distanceKm: 0.8, // Immediate local radius
-      lat: currentLocation.lat,
-      lng: currentLocation.lng,
+      lat: currentLocation?.lat || 7.1712,
+      lng: currentLocation?.lng || 79.8978,
       verifiedOtp: true,
       category: selectedCategoryObj?.id || 'quick_services',
       tagName: selectedTag?.tagName,

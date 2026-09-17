@@ -111,14 +111,17 @@ export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = (
   };
 
   const handleOpenGoogleMaps = () => {
+    if (!location) return;
     window.open(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`, '_blank');
   };
 
   const handleRecenter = () => {
-    if (mapInstanceRef.current) {
+    if (mapInstanceRef.current && location) {
       mapInstanceRef.current.setView([location.lat, location.lng], 16, { animate: true });
     }
   };
+
+  if (!isOpen || !location) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">

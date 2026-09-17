@@ -17,6 +17,7 @@ import { LocationOption, Language, Theme } from '../types';
 import { translations } from '../data/translations';
 import { Card3D } from './Card3D';
 import { MapLocationTracker } from './MapLocationTracker';
+import { GpsPermissionModal } from './GpsPermissionModal';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 
 interface LocationBarProps {
@@ -47,6 +48,7 @@ export const LocationBar: React.FC<LocationBarProps> = ({
   const [isManualLocked, setIsManualLocked] = useState<boolean>(
     () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
   );
+  const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
 
   useEffect(() => {
     const handleModeChange = (e: any) => {
@@ -148,8 +150,9 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           },
           (finalErr) => {
             setIsAutoTracking(false);
+            setIsGpsPermissionModalOpen(true);
             if (finalErr.code === finalErr.PERMISSION_DENIED) {
-              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Device Settings වලින් Location Allow කරන්න.');
+              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Settings වලින් Location Allow කරන්න.');
             } else {
               setToastMsg('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාදයි. නැවත උත්සාහ කරන්න.');
             }
@@ -284,6 +287,15 @@ export const LocationBar: React.FC<LocationBarProps> = ({
         onSaveLocation={handleSaveLocationFromMap}
         lang={lang}
         theme={theme}
+      />
+
+      {/* GPS Permission & Activation Modal */}
+      <GpsPermissionModal
+        isOpen={isGpsPermissionModalOpen}
+        onClose={() => setIsGpsPermissionModalOpen(false)}
+        onLocationSuccess={handleSaveLocationFromMap}
+        onOpenMapPicker={() => setIsMapModalOpen(true)}
+        language={lang}
       />
     </div>
   );

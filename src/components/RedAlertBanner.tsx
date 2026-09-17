@@ -33,7 +33,13 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   const config = getDisasterConfig(currentAlert.disasterType);
 
   let distanceKm = 0;
-  if (currentLocation && currentAlert.latitude && currentAlert.longitude) {
+  if (
+    currentLocation &&
+    typeof currentLocation.lat === 'number' &&
+    typeof currentLocation.lng === 'number' &&
+    typeof currentAlert?.latitude === 'number' &&
+    typeof currentAlert?.longitude === 'number'
+  ) {
     distanceKm = calculateDistanceKm(
       currentLocation.lat,
       currentLocation.lng,

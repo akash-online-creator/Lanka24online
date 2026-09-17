@@ -365,7 +365,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   }, [redAlerts]);
 
   const getAlertDistanceDisplay = useCallback((alert: RedAlertItem) => {
-    if (!currentLocation || !alert.latitude || !alert.longitude) return null;
+    if (
+      !currentLocation ||
+      typeof currentLocation.lat !== 'number' ||
+      typeof currentLocation.lng !== 'number' ||
+      typeof alert?.latitude !== 'number' ||
+      typeof alert?.longitude !== 'number'
+    ) return null;
     const distanceKm = calculateDistanceKm(
       currentLocation.lat,
       currentLocation.lng,
