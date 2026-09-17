@@ -48,7 +48,7 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
     }
   }, [initialSelectedItem, isOpen]);
 
-  // Group all priced seller items by product name / tag and calculate lowest price for each group
+  // Group all priced seller items by product name / tag and calculate lowest price, highest price, price gap, and percentage savings
   const groupedLowestPriceItems = useMemo(() => {
     const sellerItems = items.filter(
       (it) => it.type === 'seller_item' && typeof it.price === 'number' && it.price > 0
@@ -62,7 +62,11 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
         tagName: string;
         tagCategory: string;
         lowestPrice: number;
+        highestPrice: number;
+        priceGap: number;
+        savingsPercent: number;
         lowestPriceItem: MarketItem;
+        highestPriceItem: MarketItem;
         allSellersCount: number;
         sellers: MarketItem[];
       };
@@ -78,7 +82,11 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
           tagName: item.tagName,
           tagCategory: item.tagCategory,
           lowestPrice: item.price!,
+          highestPrice: item.price!,
+          priceGap: 0,
+          savingsPercent: 0,
           lowestPriceItem: item,
+          highestPriceItem: item,
           allSellersCount: 1,
           sellers: [item]
         };
@@ -89,10 +97,19 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
           groups[key].lowestPrice = item.price!;
           groups[key].lowestPriceItem = item;
         }
+        if (item.price! > groups[key].highestPrice) {
+          groups[key].highestPrice = item.price!;
+          groups[key].highestPriceItem = item;
+        }
       }
     });
 
-    // Also group by tag for any items that might have unique titles but same category tag
+    // Calculate priceGap and savingsPercent for all groups
+    Object.values(groups).forEach((g) => {
+      g.priceGap = Math.max(0, g.highestPrice - g.lowestPrice);
+      g.savingsPercent = g.highestPrice > 0 ? Math.round((g.priceGap / g.highestPrice) * 100) : 0;
+    });
+
     return Object.values(groups).sort((a, b) => a.lowestPrice - b.lowestPrice);
   }, [items]);
 
@@ -113,11 +130,19 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
       const sortedSellers = [...match.sellers].sort(
         (a, b) => (a.price || 0) - (b.price || 0)
       );
+      const lowestP = sortedSellers[0]?.price || match.lowestPrice;
+      const highestP = sortedSellers[sortedSellers.length - 1]?.price || match.highestPrice;
+      const gap = Math.max(0, highestP - lowestP);
+      const savingsPct = highestP > 0 ? Math.round((gap / highestP) * 100) : 0;
+
       return {
         title: match.title,
         tagName: match.tagName,
         sellers: sortedSellers,
-        lowestPrice: match.lowestPrice
+        lowestPrice: lowestP,
+        highestPrice: highestP,
+        priceGap: gap,
+        savingsPercent: savingsPct,
       };
     }
 
@@ -133,11 +158,19 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
       .sort((a, b) => (a.price || 0) - (b.price || 0));
 
     if (matchingItems.length > 0) {
+      const lowestP = matchingItems[0].price || 0;
+      const highestP = matchingItems[matchingItems.length - 1]?.price || lowestP;
+      const gap = Math.max(0, highestP - lowestP);
+      const savingsPct = highestP > 0 ? Math.round((gap / highestP) * 100) : 0;
+
       return {
         title: matchingItems[0].title,
         tagName: matchingItems[0].tagName,
         sellers: matchingItems,
-        lowestPrice: matchingItems[0].price || 0
+        lowestPrice: lowestP,
+        highestPrice: highestP,
+        priceGap: gap,
+        savingsPercent: savingsPct,
       };
     }
 
@@ -221,21 +254,38 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
                       key={group.groupKey}
                       className="p-3.5 sm:p-4 bg-slate-50 dark:bg-zinc-800/70 hover:bg-white dark:hover:bg-zinc-800 rounded-2xl border-2 border-slate-200/80 dark:border-zinc-700/80 hover:border-emerald-500/50 transition-all shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                     >
-                      {/* Left: Product Name & Category */}
+                      {/* Left: Product Name, Category & Price Gap Badge */}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
                             #{group.tagName}
                           </span>
                           <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
                             වෙළෙන්දන් {group.allSellersCount} ක්
                           </span>
+                          {group.priceGap > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                              <span>මිල පරතරය: රු. {group.priceGap.toLocaleString()}</span>
+                              <span className="bg-amber-500 text-white text-[9px] px-1 rounded-sm font-bold">-{group.savingsPercent}% ලාභයක්</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300">
+                              තනි මිල ගණනක්
+                            </span>
+                          )}
                         </div>
                         <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-zinc-100">
                           {group.title}
                         </h3>
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                          ලබාගත හැකි ප්‍රමාණය: <span className="font-bold text-slate-700 dark:text-zinc-300">{group.lowestPriceItem.quantity}</span>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span>
+                            ලබාගත හැකි ප්‍රමාණය: <span className="font-bold text-slate-700 dark:text-zinc-300">{group.lowestPriceItem.quantity}</span>
+                          </span>
+                          {group.highestPrice > group.lowestPrice && (
+                            <span className="text-slate-600 dark:text-zinc-400">
+                              මිල පරාසය: <span className="line-through text-zinc-400">රු. {group.highestPrice.toLocaleString()}</span> සිට <span className="font-black text-emerald-600 dark:text-emerald-400">රු. {group.lowestPrice.toLocaleString()}</span> දක්වා
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -288,7 +338,7 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
               </div>
 
               {/* Product Title Banner */}
-              <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 flex flex-wrap items-center justify-between gap-2">
+              <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase">
                     තෝරාගත් භාණ්ඩ වර්ගය
@@ -296,12 +346,17 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
                   <h3 className="text-base font-black text-slate-900 dark:text-zinc-100">
                     {selectedGroupDetails.title}
                   </h3>
+                  {selectedGroupDetails.priceGap > 0 && (
+                    <div className="text-xs text-amber-700 dark:text-amber-400 font-bold mt-0.5">
+                      උපරිම සහ අවම අතර මිල පරතරය: රු. {selectedGroupDetails.priceGap.toLocaleString()} (-{selectedGroupDetails.savingsPercent}% ඉතිරියක්)
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase">
                     ආරම්භක අවම මිල
                   </div>
-                  <div className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400">
                     රු. {selectedGroupDetails.lowestPrice.toLocaleString()}
                   </div>
                 </div>
@@ -359,6 +414,11 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
                           <div className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400">
                             රු. {seller.price?.toLocaleString()}
                           </div>
+                          {!isLowestPrice && typeof seller.price === 'number' && (
+                            <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                              +රු. {(seller.price - selectedGroupDetails.lowestPrice).toLocaleString()} වැඩිපුර
+                            </div>
+                          )}
                           <div className="text-xs text-zinc-600 dark:text-zinc-400 font-bold">
                             ප්‍රමාණය: {seller.quantity}
                           </div>

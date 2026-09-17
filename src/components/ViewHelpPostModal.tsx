@@ -3,6 +3,7 @@ import { HelpPost, Language, LocationOption, User } from '../types';
 import { PostCard } from './PostCard';
 import { Eye, Sparkles, X, CheckCircle2, MessageCircle, MessageSquare } from 'lucide-react';
 import { maskName, maskPhone } from '../utils/demoDataMasker';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 
 interface ViewHelpPostModalProps {
   post: HelpPost | null;
@@ -12,6 +13,10 @@ interface ViewHelpPostModalProps {
   viewerLocation?: LocationOption;
   currentUser?: User;
   onOpenChat?: (post: HelpPost) => void;
+  onOpenConfirm?: (post: HelpPost) => void;
+  onEditPost?: (post: HelpPost) => void;
+  onDeletePost?: (post: HelpPost) => void;
+  onBoostPost?: (post: HelpPost) => void;
   onRequireRegistration?: () => void;
   onAdminModerate?: (post: HelpPost) => void;
 }
@@ -24,12 +29,18 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
   viewerLocation,
   currentUser,
   onOpenChat,
+  onOpenConfirm,
+  onEditPost,
+  onDeletePost,
+  onBoostPost,
   onRequireRegistration,
   onAdminModerate,
 }) => {
   if (!isOpen || !post) return null;
 
   const isDemo = Boolean(currentUser?.isDemo);
+  const isAdmin = currentUser?.role === 'admin';
+  const isPostOwner = checkIsPostOwner(currentUser, post);
 
   const getLangText = (si: string, en: string, ta: string) => {
     if (lang === 'en') return en;
@@ -123,16 +134,24 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
           <PostCard
             post={post}
             lang={lang}
-            onOfferSupport={() => {}}
+            onOfferSupport={(p) => {
+              if (onOpenConfirm) onOpenConfirm(p);
+              else if (onOpenChat) onOpenChat(p);
+            }}
             viewerLocation={viewerLocation}
             currentUser={currentUser}
             onRequireRegistration={onRequireRegistration}
             onAdminModerate={onAdminModerate}
-            isOwner={false}
+            isOwner={isPostOwner}
+            onOpenChat={onOpenChat ? (p) => { onClose(); onOpenChat(p); } : undefined}
+            onOpenConfirm={onOpenConfirm ? (p) => { onClose(); onOpenConfirm(p); } : undefined}
+            onEditPost={onEditPost ? (p) => { onClose(); onEditPost(p); } : undefined}
+            onDeletePost={onDeletePost ? (p) => { onClose(); onDeletePost(p); } : undefined}
+            onBoostPost={onBoostPost ? (p) => { onClose(); onBoostPost(p); } : undefined}
           />
 
-          {/* If there are received replies, show them here clearly */}
-          {post.replies && (post.replies?.length || 0) > 0 && (
+          {/* If there are received replies, show them here clearly - ONLY for Post Owner or Admin */}
+          {Boolean((isPostOwner || isAdmin) && post.replies && (post.replies?.length || 0) > 0) && (
             <div className="mt-4 bg-white dark:bg-[#071d12] border-2 border-emerald-500/50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">

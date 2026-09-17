@@ -46,6 +46,7 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   const [conditions, setConditions] = useState('');
   const [transport, setTransport] = useState('');
   const [payment, setPayment] = useState('');
+  const [externalLink, setExternalLink] = useState('');
 
   // Tag State
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
@@ -68,6 +69,7 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       setConditions('');
       setTransport('');
       setPayment('');
+      setExternalLink('');
       setSelectedTag(null);
       setTagError('');
       setOtpSent(false);
@@ -126,6 +128,7 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
       transport: transport.trim(),
       payment: payment.trim(),
+      externalLink: externalLink.trim(),
       locationName: `${currentLocation.nameSi} (${currentLocation.nameEn})`,
       distanceKm: 0.5, // Posted from current location
       lat: currentLocation.lat,
@@ -331,6 +334,23 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-sm focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* 🔗 වීඩියෝ / සමාජ මාධ්‍ය / වෙබ් ලින්ක් (External Link / Video) */}
+              <div>
+                <label className="block text-xs font-bold text-sky-400 mb-1 flex items-center gap-1">
+                  <span>🔗 වීඩියෝ හෝ වෙබ් ලින්ක් (Facebook / Telegram / YouTube / Link - Optional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={externalLink}
+                  onChange={(e) => setExternalLink(e.target.value)}
+                  placeholder="https://facebook.com/... හෝ https://t.me/... හෝ https://youtube.com/..."
+                  className="w-full bg-slate-950 border border-sky-500/30 rounded-xl py-2 px-3 text-slate-100 text-sm focus:border-sky-500 focus:outline-none placeholder-slate-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Facebook, Telegram, හෝ YouTube වීඩියෝ ලින්ක් ඇතුළත් කළහොත් ඇප් එක තුළදීම ප්ලේ කර බැලිය හැක.
+                </p>
               </div>
 
             </form>

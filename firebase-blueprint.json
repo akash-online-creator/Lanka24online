@@ -76,12 +76,38 @@
         "savedAt": { "type": "string" }
       },
       "required": ["userId", "postId"]
+    },
+    "red_alerts": {
+      "title": "Red Alerts (රතු එළිය)",
+      "description": "Critical emergency disaster alerts with 2km proximity siren and island-wide notifications",
+      "type": "object",
+      "properties": {
+        "alertCode": { "type": "string" },
+        "disasterType": { "type": "string" },
+        "customDisasterTitle": { "type": "string" },
+        "disasterTitleSi": { "type": "string" },
+        "description": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "locationName": { "type": "string" },
+        "incidentDate": { "type": "string" },
+        "incidentTime": { "type": "string" },
+        "reportedByName": { "type": "string" },
+        "reportedByPhone": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["disasterType", "latitude", "longitude", "locationName", "incidentDate", "incidentTime"]
     }
   },
   "firestore": {
     "/help_posts/{postId}": {
       "schema": "help_posts",
       "description": "Community help requests, notices, and replies"
+    },
+    "/red_alerts/{alertId}": {
+      "schema": "red_alerts",
+      "description": "Emergency disaster alerts broadcast"
     },
     "/marketplace_items/{itemId}": {
       "schema": "marketplace_items",

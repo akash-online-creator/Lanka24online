@@ -33,6 +33,7 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User } from '../types';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
@@ -84,11 +85,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
 
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
 
-  const ownerCheck =
-    isOwner ??
-    (currentUser &&
-      ((currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-        (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())));
+  const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
 
   const isAdmin = currentUser?.role === 'admin';
   const isConfirmed = Boolean(post.isConfirmed || post.status === 'confirmed' || post.confirmedBy);
@@ -487,10 +484,12 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
         {/* Interaction Summary Counts */}
         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
-              <HeartHandshake className="w-3.5 h-3.5" />
-              <span>{repliesCount} {getLangText('කැමැත්ත දැක්වූවන්', 'Offers', 'விருப்பங்கள்')}</span>
-            </span>
+            {(ownerCheck || isAdmin) && (
+              <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
+                <HeartHandshake className="w-3.5 h-3.5" />
+                <span>{repliesCount} {getLangText('කැමැත්ත දැක්වූවන්', 'Offers', 'விருப்பங்கள்')}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -555,6 +554,16 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
           </div>
         ) : isAdmin ? (
           <div className="space-y-2 pt-1">
+            {post.replies && post.replies.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenSupportOffers && onOpenSupportOffers(post)}
+                className="w-full py-2 px-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-400/40"
+              >
+                <HeartHandshake className="w-4 h-4 text-white" />
+                <span>{getLangText('කැමැත්ත දැක්වූවන් බලන්න', 'View Offers', 'விருப்பங்களைப் பார்')} ({post.replies.length})</span>
+              </button>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"

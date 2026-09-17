@@ -56,6 +56,8 @@ interface UnifiedDashboardHeaderProps {
   onNavigate?: (view: any) => void;
   isAutoLoadingLocation?: boolean;
   autoLoadedNotice?: string | null;
+  onOpenRedAlert?: () => void;
+  activeRedAlertsCount?: number;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -80,6 +82,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onNavigate,
   isAutoLoadingLocation = false,
   autoLoadedNotice = null,
+  onOpenRedAlert,
+  activeRedAlertsCount = 0,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -267,6 +271,24 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             </div>
 
             <div className="flex items-center gap-1 sm:gap-1.5">
+              {/* 🚨 රතු එළිය (Red Alert) Fast-Access Button */}
+              {onOpenRedAlert && (
+                <button
+                  type="button"
+                  onClick={onOpenRedAlert}
+                  className="relative flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-xs shadow-[0_0_15px_rgba(239,68,68,0.5)] hover:shadow-[0_0_20px_rgba(239,68,68,0.8)] hover:scale-105 active:scale-95 transition-all cursor-pointer border border-red-400 shrink-0"
+                  title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
+                >
+                  <span className="text-sm animate-pulse">🚨</span>
+                  <span className="font-extrabold tracking-wide">රතු එළිය</span>
+                  {activeRedAlertsCount > 0 && (
+                    <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black font-mono shadow-xs">
+                      {activeRedAlertsCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
               {/* Live Notifications Bell */}
               {onOpenNotifications && (
                 <button

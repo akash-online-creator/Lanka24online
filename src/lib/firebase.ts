@@ -21,11 +21,12 @@ import {
   deleteDoc, 
   getDocs,
   setDoc,
+  arrayUnion,
   QueryDocumentSnapshot,
   DocumentData
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { HelpPost, PostReply, ChatMessage, MarketItem, MarketShop, ServiceReview, User } from '../types';
+import { HelpPost, PostReply, ChatMessage, MarketItem, MarketShop, ServiceReview, User, RedAlertItem, RedAlertComment, RedAlertFakeReport } from '../types';
 import { initialHelpPosts } from '../data/initialData';
 import { filterNonDeletedPosts, addDeletedPostId } from '../utils/deletedPostsManager';
 
@@ -838,4 +839,161 @@ export async function seedInitialUsersToFirestore(seedUsers: User[]): Promise<vo
     console.warn('Seed initial users notice:', err);
   }
 }
+
+// ==============================================================
+// 🚨 RED ALERTS (රතු එළිය) FIRESTORE OPERATIONS
+// ==============================================================
+const RED_ALERTS_COLLECTION = 'red_alerts';
+
+function mapDocToRedAlert(docSnap: DocumentData | QueryDocumentSnapshot<DocumentData>): RedAlertItem {
+  const data = docSnap.data ? docSnap.data() : docSnap;
+  const id = docSnap.id || data.id || `alert_${Date.now()}`;
+  return {
+    id,
+    alertCode: data.alertCode || `#RED-${id.substring(0, 4)}`,
+    disasterType: data.disasterType || 'other',
+    customDisasterTitle: data.customDisasterTitle || '',
+    disasterTitleSi: data.disasterTitleSi || 'හදිසි ආපදාව',
+    disasterTitleEn: data.disasterTitleEn || 'Emergency Disaster',
+    disasterTitleTa: data.disasterTitleTa || 'அவசர பேரழிவு',
+    description: data.description || '',
+    latitude: typeof data.latitude === 'number' ? data.latitude : 6.9271,
+    longitude: typeof data.longitude === 'number' ? data.longitude : 79.8612,
+    locationName: data.locationName || 'නොදන්නා ස්ථානය',
+    locationAccuracyMeters: data.locationAccuracyMeters || 10,
+    incidentDate: data.incidentDate || new Date().toISOString().split('T')[0],
+    incidentTime: data.incidentTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    createdAt: data.createdAt || new Date().toISOString(),
+    createdAtMs: typeof data.createdAtMs === 'number' ? data.createdAtMs : Date.now(),
+    reportedByUserId: data.reportedByUserId || '',
+    reportedByName: data.reportedByName || 'හදිසි දැනුම්දෙන්නා',
+    reportedByPhone: data.reportedByPhone || '',
+    status: data.status || 'active',
+    severity: data.severity || 'critical',
+    comments: Array.isArray(data.comments) ? data.comments : [],
+    fakeReports: Array.isArray(data.fakeReports) ? data.fakeReports : [],
+    isFlaggedFake: Boolean(data.isFlaggedFake),
+    adminActionNote: data.adminActionNote || '',
+  };
+}
+
+/**
+ * Real-time listener for Red Alerts
+ */
+export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void): () => void {
+  const colRef = collection(db, RED_ALERTS_COLLECTION);
+  const q = query(colRef, orderBy('createdAtMs', 'desc'), limit(50));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const alerts = snapshot.docs.map((docSnap) => mapDocToRedAlert(docSnap));
+      callback(alerts);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, RED_ALERTS_COLLECTION);
+      // Return cached/local storage fallback if available
+      try {
+        const cached = localStorage.getItem('sahaya_red_alerts');
+        if (cached) {
+          callback(JSON.parse(cached));
+        }
+      } catch {}
+    }
+  );
+}
+
+/**
+ * Creates a new Red Alert in Firestore
+ */
+export async function createRedAlertInFirestore(
+  alertData: Omit<RedAlertItem, 'id'>
+): Promise<string> {
+  try {
+    const colRef = collection(db, RED_ALERTS_COLLECTION);
+    const docRef = await addDoc(colRef, {
+      ...alertData,
+      createdAtServer: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
+    // Fallback: save to local storage
+    const tempId = `local_alert_${Date.now()}`;
+    try {
+      const existing = JSON.parse(localStorage.getItem('sahaya_red_alerts') || '[]');
+      existing.unshift({ ...alertData, id: tempId });
+      localStorage.setItem('sahaya_red_alerts', JSON.stringify(existing));
+    } catch {}
+    return tempId;
+  }
+}
+
+/**
+ * Adds a comment/situation update to a Red Alert
+ */
+export async function addCommentToRedAlert(
+  alertId: string,
+  comment: RedAlertComment
+): Promise<void> {
+  const alertRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+  try {
+    await updateDoc(alertRef, {
+      comments: arrayUnion(comment),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Submits a fake/hoax alert report to Admin
+ */
+export async function reportRedAlertAsFake(
+  alertId: string,
+  report: RedAlertFakeReport
+): Promise<void> {
+  const alertRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+  try {
+    await updateDoc(alertRef, {
+      fakeReports: arrayUnion(report),
+      isFlaggedFake: true,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Admin action: Update alert status (active, resolved, false_alarm)
+ */
+export async function updateRedAlertStatus(
+  alertId: string,
+  status: 'active' | 'resolved' | 'false_alarm',
+  adminActionNote?: string
+): Promise<void> {
+  const alertRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+  try {
+    await updateDoc(alertRef, {
+      status,
+      ...(adminActionNote ? { adminActionNote } : {}),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Admin action: Permanently delete a Red Alert
+ */
+export async function deleteRedAlertInFirestore(alertId: string): Promise<void> {
+  const alertRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+  try {
+    await deleteDoc(alertRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
 

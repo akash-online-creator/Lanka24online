@@ -23,6 +23,7 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
   const [specialNotice, setSpecialNotice] = useState(post?.specialNotice || '');
   const [transport, setTransport] = useState(post?.transport || '');
   const [payment, setPayment] = useState(post?.payment || '');
+  const [externalLink, setExternalLink] = useState(post?.externalLink || post?.videoUrl || '');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(post?.helpersNeeded || post?.helpersCount || 1);
 
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
@@ -64,6 +65,8 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
       specialNotice: specialNotice.trim(),
       transport: transport.trim(),
       payment: payment.trim(),
+      externalLink: externalLink.trim(),
+      videoUrl: externalLink.trim(),
       helpersNeeded: helpersNeeded,
       helpersCount: helpersNeeded,
       tagName: selectedTag?.tagName || post.tagName,
@@ -234,6 +237,23 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
                   onChange={(e) => setHelpersNeeded(Number(e.target.value) || 1)}
                   className="w-full sm:w-1/2 bg-emerald-50/50 dark:bg-[#04140d] border border-emerald-300 dark:border-emerald-800 rounded-xl p-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
                 />
+              </div>
+
+              {/* 8. වීඩියෝ / සමාජ මාධ්‍ය / වෙබ් ලින්ක් */}
+              <div className="space-y-1">
+                <label className="block text-xs font-black text-sky-700 dark:text-sky-300">
+                  8. වීඩියෝ හෝ වෙබ් ලින්ක් (Facebook / Telegram / YouTube / Link - Optional)
+                </label>
+                <input
+                  type="url"
+                  value={externalLink}
+                  onChange={(e) => setExternalLink(e.target.value)}
+                  placeholder="https://facebook.com/... හෝ https://t.me/... හෝ https://youtube.com/..."
+                  className="w-full bg-emerald-50/50 dark:bg-[#04140d] border border-sky-300 dark:border-sky-800 rounded-xl p-2.5 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-500"
+                />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Facebook, Telegram, හෝ YouTube වීඩියෝ ලින්ක් ඇතුළත් කළහොත් ඇප් එක තුළදීම ප්ලේ කර බැලිය හැක.
+                </p>
               </div>
 
             </form>

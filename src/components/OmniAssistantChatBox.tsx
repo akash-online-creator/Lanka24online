@@ -146,13 +146,22 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         timestamp: 'දැන්',
         actions: [
           {
-            type: 'open_blood',
+            type: 'open_find',
             label:
               chatLanguage === 'en'
-                ? '🩸 Blood & Disaster'
+                ? '🔍 Find For Me'
                 : chatLanguage === 'ta'
-                ? '🩸 இரத்த தானம்'
-                : '🩸 හදිසි ලේ කේන්ද්‍රය',
+                ? '🔍 தேடுங்கள் (Find)'
+                : '🔍 සොයාදෙන්න',
+          },
+          {
+            type: 'open_market',
+            label:
+              chatLanguage === 'en'
+                ? '🛒 Lowest Prices'
+                : chatLanguage === 'ta'
+                ? '🛒 சந்தை விலைகள்'
+                : '🛒 අඩුම මිල ගණන්',
           },
           {
             type: 'open_quick',
@@ -164,21 +173,21 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
                 : '⚡ ඉක්මන් සේවා',
           },
           {
-            type: 'open_market',
+            type: 'open_blood',
             label:
               chatLanguage === 'en'
-                ? '🛒 Lowest Prices'
+                ? '🩸 Blood & Disaster'
                 : chatLanguage === 'ta'
-                ? '🛒 சந்தை விலைகள்'
-                : '🛒 අඩුම මිල ගණන්',
+                ? '🩸 இரத்த தானம்'
+                : '🩸 හදිසි ලේ කේන්ද්‍රය',
           },
         ],
         quickChips:
           chatLanguage === 'en'
-            ? ['Find Electrician', 'Emergency Blood', 'Check Commodity Prices', 'Translate Text']
+            ? ['Find For Me', 'Check Commodity Prices', 'Find Electrician', 'Emergency Blood']
             : chatLanguage === 'ta'
-            ? ['மின்சார வல்லுநர்', 'இரத்தம் தேவை', 'விலை விபரம்', 'மொழிபெயர்ப்பு']
-            : ['විදුලි කාර්මිකයෙක් සොයන්න', 'හදිසි ලේ අවශ්‍යයි', 'අඩුම මිල ගණන් බලන්න', 'පරිවර්තනය කරන්න'],
+            ? ['தேடுங்கள் (Find)', 'விலை விபரம்', 'மின்சார வல்லுநர்', 'இரத்தம் தேவை']
+            : ['සොයාදෙන්න', 'අඩුම මිල ගණන් බලන්න', 'විදුලි කාර්මිකයෙක් සොයන්න', 'හදිසි ලේ අවශ්‍යයි'],
       },
     ];
   });

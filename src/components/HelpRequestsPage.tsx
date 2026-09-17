@@ -18,6 +18,7 @@ import { MarketplaceView } from './MarketplaceView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { 
   ArrowLeft, 
   Sparkles, 
@@ -76,6 +77,7 @@ interface HelpRequestsPageProps {
   onViewPost: (post: HelpPost) => void;
   onDeletePost: (post: HelpPost) => void;
   onOpenChat: (post: HelpPost) => void;
+  onOpenConfirm?: (post: HelpPost) => void;
   onOpenSupportOffers: (post: HelpPost) => void;
   onOpenCreateModal: () => void;
   onBackToHome: () => void;
@@ -115,6 +117,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   onViewPost,
   onDeletePost,
   onOpenChat,
+  onOpenConfirm,
   onOpenSupportOffers,
   onOpenCreateModal,
   onBackToHome,
@@ -876,6 +879,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                 // Attach the observer trigger ref to the 2nd-to-last item in the current batch
                 const isTrigger = idx === Math.max(0, arr.length - 2);
 
+                const isPostOwner = checkIsPostOwner(user, post);
+
                 return (
                   <div
                     key={post.id}
@@ -890,6 +895,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       lang={language}
                       viewerLocation={currentLocation}
                       currentUser={user}
+                      isOwner={isPostOwner}
                       isSaved={savedPostIds.includes(post.id)}
                       onToggleSave={(p) => handleToggleSavePost(p)}
                       onOfferSupport={(p) => onOfferSupport(p)}
@@ -897,6 +903,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       onViewPost={(p) => onViewPost(p)}
                       onDeletePost={(p) => onDeletePost(p)}
                       onOpenChat={(p) => onOpenChat(p)}
+                      onOpenConfirm={(p) => onOpenConfirm ? onOpenConfirm(p) : onOfferSupport(p)}
                       onOpenSupportOffers={(p) => onOpenSupportOffers(p)}
                       onRequireRegistration={onRequireRegistration}
                       onBoostPost={(p) => {

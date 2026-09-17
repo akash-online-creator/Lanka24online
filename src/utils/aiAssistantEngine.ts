@@ -520,45 +520,74 @@ function resolveLocalKnowledge(
   }
 
   // Marketplace & Lowest Prices
-  if (lower.includes('මිල') || lower.includes('price') || lower.includes('market') || lower.includes('හාල්') || lower.includes('සීනි') || lower.includes('වෙළඳපල')) {
+  if (lower.includes('මිල') || lower.includes('price') || lower.includes('market') || lower.includes('හාල්') || lower.includes('සීනි') || lower.includes('වෙළඳපල') || lower.includes('අඩුම') || lower.includes('පරතර')) {
     if (lang === 'en') {
       return {
-        text: '🛒 **Marketplace & Daily Lowest Commodity Prices**:\nCompare prices for Rice, Sugar, Dhal, Cement, Milk Powder, Vegetables, and Gas from verified shops across Sri Lanka. Find who sells at the lowest prices near you!',
-        actions: [{ type: 'open_market', label: '🛒 Check Today\'s Lowest Prices' }],
-        quickChips: ['Keeri Samba Rice Price', 'Cement Bag Price', 'Sugar & Dhal Rates'],
+        text: '🛒 **Marketplace & Lowest Prices Comparison**:\nView live price gaps across suppliers for Rice, Roofing Sheets, Solar Inverters, Coconut Oil, Cement, and Groceries. The system automatically highlights the lowest price and the savings difference between sellers.',
+        actions: [{ type: 'open_market', label: '🛒 View Lowest Prices & Price Gaps' }],
+        quickChips: ['Keeri Samba Rice (රු. 240 vs 285)', 'Solar Inverter (රු. 185k vs 198k)', 'Virgin Coconut Oil (රු. 750 vs 820)'],
       };
     } else if (lang === 'ta') {
       return {
-        text: '🛒 **சந்தை மற்றும் குறைந்தபட்ச விலைகள்**:\nஅரிசி, பருப்பு, சர்க்கரை, சிமெண்ட் போன்றவற்றின் இன்றைய குறைந்தபட்ச விலைகளை சரிபார்க்கவும்.',
-        actions: [{ type: 'open_market', label: '🛒 குறைந்த விலையை சரிபார்க்கவும்' }],
-        quickChips: ['அரிசி விலை', 'சிமெண்ட் விலை'],
+        text: '🛒 **சந்தை மற்றும் குறைந்தபட்ச விலைகள் ஒப்பீடு**:\nஅரிசி, கூரை தகடுகள், சோலார் இன்வெர்ட்டர், தேங்காய் எண்ணெய் போன்றவற்றின் குறைந்தபட்ச விலை மற்றும் விலை வேறுபாட்டைப் பார்க்கவும்.',
+        actions: [{ type: 'open_market', label: '🛒 குறைந்த விலைகள் & விலை வேறுபாடு' }],
+        quickChips: ['அரிசி விலை ஒப்பீடு', 'தேங்காய் எண்ணெய் விலை'],
       };
     } else {
       return {
-        text: '🛒 **වෙළඳපල සහ දවසේ අඩුම මිල ගණන්**:\nකීරි සම්බා, නාඩු සහල්, පරිප්පු, සීනි, සිමෙන්ති, ගෑස් සහ එළවළු සඳහා දිවයින පුරා වෙළඳසැල්වල අඩුම මිල ගණන් පරීක්ෂා කර බලා අඩුම මිලට භාණ්ඩ ලබාගන්න.',
-        actions: [{ type: 'open_market', label: '🛒 අද දවසේ අඩුම මිල ගණන් බලන්න' }],
-        quickChips: ['කීරි සම්බා සහල් මිල', 'සිමෙන්ති කොට්ටයක මිල', 'සීනි සහ පරිප්පු මිල'],
+        text: '🛒 **වෙළඳපල අඩුම මිල ගණන් සහ මිල පරතරය සංසන්දනය**:\nදැනට වෙළඳපොළේ ඇති සෑම භාණ්ඩයකම අවම මිල, උපරිම මිල, වෙළෙන්දන් අතර මිල පරතරය (Price Gap) සහ ඉතිරි කරගත හැකි ලාභ ප්‍රතිශතය මෙහිදී සසඳා බලා අඩුම මිලට භාණ්ඩ ලබාගන්න.',
+        actions: [{ type: 'open_market', label: '🛒 අඩුම මිල ගණන් සහ මිල පරතරය බලන්න' }],
+        quickChips: ['කීරි සම්බා (රු. 240 සිට 285 දක්වා)', 'සූර්ය බලශක්ති ඉන්වර්ටර් (රු. 185,000)', 'පොල්තෙල් (රු. 750 සිට 820 දක්වා)'],
       };
     }
   }
 
-  // Wallet & Credits
-  if (lower.includes('credit') || lower.includes('wallet') || lower.includes('ණය') || lower.includes('මුදල්') || lower.includes('ශේෂ')) {
+  // Privacy & Data Security Inquiries
+  if (lower.includes('පෞද්ගලික') || lower.includes('දත්ත') || lower.includes('privacy') || lower.includes('security') || lower.includes('රහස්‍යතා') || lower.includes('දත්ත ආරක්ෂණ') || lower.includes('පිටට')) {
     if (lang === 'en') {
       return {
-        text: '💳 **User Credit Wallet**:\nYou receive 100 free Welcome Credits on registration! Each help post or quick service post utilizes credits based on category. You can easily top up your wallet via bank deposit slips or online cards.',
-        actions: [{ type: 'open_wallet', label: '💳 View Wallet & Add Credits' }],
-        quickChips: ['How to deposit?', 'What are the posting fees?'],
+        text: '🛡️ **Strict Privacy & Data Protection**:\nNo personal data (such as your phone number, exact address, or personal notes) leaves your device or the secure app system. The AI Assistant only processes your current question to provide immediate guidance and does not share or leak any user data externally.',
+        actions: [
+          { type: 'open_find', label: '🔍 Find For Me' },
+          { type: 'open_market', label: '🛒 Check Market Prices' },
+        ],
+        quickChips: ['What data is saved?', 'How does Find For Me work?'],
       };
     } else if (lang === 'ta') {
       return {
-        text: '💳 **பயனர் பணப்பை (Wallet & Credits)**:\nபதிவு செய்தவுடன் 100 இலவச வரவுகள் வழங்கப்படும். விளம்பரங்களை இட வரவுகள் தேவைப்படும். வங்கி ரசீது மூலம் வரவுகளைச் சேர்க்கலாம்.',
-        actions: [{ type: 'open_wallet', label: '💳 பணப்பையைத் திறக்கவும்' }],
-        quickChips: ['வரவுகளைச் சேர்ப்பது எப்படி?'],
+        text: '🛡️ **முழுமையான தரவு பாதுகாப்பு மற்றும் தனியுரிமை**:\nஉங்கள் தொலைபேசி எண், முகவரி அல்லது தனிப்பட்ட தரவு எதுவும் வெளிப்புறமாகப் பகிரப்படாது. சகாய AI உதவியாளர் பாதுகாப்பாக இயங்குகிறது.',
+        actions: [{ type: 'open_find', label: '🔍 எனக்காகத் தேடுங்கள்' }],
+        quickChips: ['தனியுரிமை பாதுகாப்பு'],
       };
     } else {
       return {
-        text: '💳 **පරිශීලක Credit Wallet සහ ගිණුම් ශේෂය**:\nලියාපදිංචි වූ වහාම ඔබට නොමිලේ Credits 100 ක පිළිගැනීමේ තෑග්ගක් ලැබේ! දැන්වීම් පළකිරීමේදී කාණ්ඩය අනුව කුඩා Credit මුදලක් අඩු වේ. බැංකු තැන්පතු රිසිට්පතක් upload කර පහසුවෙන්ම Wallet එක Reload කරගත හැක.',
+        text: '🛡️ **පූර්ණ දත්ත රහස්‍යතාව සහ ආරක්ෂාව**:\nසහය මිතුරා (AI Assistant) භාවිතා කිරීමේදී ඔබගේ දුරකථන අංකය, නිවැරදි නිවාස ලිපිනය හෝ කිසිදු පෞද්ගලික දත්තයක් බාහිර කිසිදු පාර්ශවයකට හෝ පිටතට කාන්දු නොවේ. සියලුම දත්ත ආරක්ෂිතව පද්ධතිය තුළ පමණක් ගබඩා වේ.',
+        actions: [
+          { type: 'open_find', label: '🔍 සොයාදෙන්න විවෘත කරන්න' },
+          { type: 'open_market', label: '🛒 අඩුම මිල ගණන් බලන්න' },
+        ],
+        quickChips: ['සොයාදෙන්න', 'අඩුම මිල ගණන්', 'Wallet ශේෂය'],
+      };
+    }
+  }
+
+  // Wallet & Credits / Assistant limits
+  if (lower.includes('credit') || lower.includes('limit') || lower.includes('wallet') || lower.includes('ණය') || lower.includes('මුදල්') || lower.includes('ශේෂ') || lower.includes('සීමා')) {
+    if (lang === 'en') {
+      return {
+        text: '💳 **Assistant Limits & Credits**:\nUsing the **Sahaya AI Assistant** is completely **100% FREE with NO limits or credit deductions**! You can ask questions, compare lowest prices, search for items, and translate languages unlimited times. App credits in your Wallet are only used for publishing paid advertisement posts.',
+        actions: [{ type: 'open_wallet', label: '💳 View Wallet & Add Credits' }],
+        quickChips: ['Free Welcome Credits', 'How to deposit credits?'],
+      };
+    } else if (lang === 'ta') {
+      return {
+        text: '💳 **பயன்பாட்டு வரம்புகள் மற்றும் வரவுகள்**:\nசகாய AI உதவியாளரைப் பயன்படுத்துவது முற்றிலும் **இலவசமானது (No limit / No credits deducted)**! கட்டண விளம்பரங்களை இட மட்டுமே Wallet வரவுகள் பயன்படுத்தப்படும்.',
+        actions: [{ type: 'open_wallet', label: '💳 பணப்பையைத் திறக்கவும்' }],
+        quickChips: ['Wallet வரவுகள்'],
+      };
+    } else {
+      return {
+        text: '💳 **සහය මිතුරාගේ සීමාවන් (Limits) සහ Credits**:\n**සහය මිතුරා (AI Assistant) භාවිතා කිරීමට කිසිදු සීමාවක් (No Limit) හෝ කිසිදු Credit මුදලක් අය නොවේ (සම්පූර්ණයෙන්ම නොමිලේ)**! ඔබට අවශ්‍ය ඕනෑම වේලාවක ඕනෑම ප්‍රශ්නයක් විමසීමට, අඩුම මිල ගණන් පරීක්ෂා කිරීමට හෝ පරිවර්තනය කිරීමට හැකිය. Credit Wallet එක වැය වන්නේ ඔබ ඇප් එක තුළ දැන්වීම් පළකරන විට පමණි.',
         actions: [{ type: 'open_wallet', label: '💳 Wallet එක විවෘත කර ශේෂය බලන්න' }],
         quickChips: ['ණය මුදල් තැන්පත් කරන්නේ කෙසේද?', 'දැන්වීම් ගාස්තු විස්තර'],
       };
@@ -568,32 +597,36 @@ function resolveLocalKnowledge(
   // General Welcome & Assistance
   if (lang === 'en') {
     return {
-      text: '👋 Hello! I am **Sahaya AI Assistant**.\nI support all features across **Sinhala, English, and Tamil**:\n• 🩸 Emergency Blood & Disaster Relief\n• ⚡ 24/7 Quick Services (Electricians, Plumbers, Mechanics)\n• 🔍 Find For Me (Lost & Found)\n• 🎁 From Me To You (Free Donations)\n• 🛒 Daily Lowest Market Prices\n• 🌐 Instant Auto-Translator\n\nHow can I help you today?',
+      text: '👋 Hello! I am **Sahaya AI Assistant**.\nI support all features across **Sinhala, English, and Tamil**:\n• 🩸 Emergency Blood & Disaster Relief\n• ⚡ 24/7 Quick Services (Electricians, Plumbers, Mechanics)\n• 🔍 Find For Me (Lost & Found, Product Search)\n• 🎁 From Me To You (Free Donations)\n• 🛒 Daily Lowest Market Prices & Price Gap Comparison\n• 🌐 Instant Auto-Translator\n\nHow can I help you today?',
       actions: [
-        { type: 'open_blood', label: '🩸 Blood & Disaster' },
+        { type: 'open_find', label: '🔍 Find For Me' },
+        { type: 'open_market', label: '🛒 Lowest Prices' },
         { type: 'open_quick', label: '⚡ Quick Services' },
-        { type: 'open_market', label: '🛒 Market Prices' },
+        { type: 'open_blood', label: '🩸 Blood & Disaster' },
       ],
-      quickChips: ['Find an Electrician', 'Need Urgent Blood', 'Translate a Message', 'Check Wallet Balance'],
+      quickChips: ['Find For Me', 'Lowest Market Prices', 'Find an Electrician', 'Need Urgent Blood'],
     };
   } else if (lang === 'ta') {
     return {
-      text: '👋 வணக்கம்! நான் **சகாய AI உதவியாளர்**.\nசிங்களம், ஆங்கிலம் மற்றும் தமிழ் ஆகிய மூன்று மொழிகளிலும் அனைத்து சேவைகளுக்கும் நான் உங்களுக்கு உதவுகிறேன்:\n• 🩸 அவசர இரத்தம் மற்றும் பேரழிவு நிவாரணம்\n• ⚡ 24/7 விரைவு சேவைகள்\n• 🔍 தொலைந்த பொருட்களைக் கண்டறிதல்\n• 🎁 இலவச தானங்கள்\n• 🛒 அன்றாட குறைந்தபட்ச விலைகள்\n• 🌐 உடனடி மொழிபெயர்ப்பாளர்\n\nஇன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?',
+      text: '👋 வணக்கம்! நான் **சகாய AI உதவியாளர்**.\nசிங்களம், ஆங்கிலம் மற்றும் தமிழ் ஆகிய மூன்று மொழிகளிலும் அனைத்து சேவைகளுக்கும் நான் உங்களுக்கு உதவுகிறேன்:\n• 🩸 அவசர இரத்தம் மற்றும் பேரழிவு நிவாரணம்\n• ⚡ 24/7 விரைவு சேவைகள்\n• 🔍 தொலைந்த பொருட்கள் மற்றும் தேடல்கள்\n• 🎁 இலவச தானங்கள்\n• 🛒 அன்றாட குறைந்தபட்ச விலைகள்\n• 🌐 உடனடி மொழிபெயர்ப்பாளர்\n\nஇன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?',
       actions: [
-        { type: 'open_blood', label: '🩸 இரத்த தானம்' },
+        { type: 'open_find', label: '🔍 தேடுங்கள் (Find For Me)' },
+        { type: 'open_market', label: '🛒 சந்தை விலைகள்' },
         { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
+        { type: 'open_blood', label: '🩸 இரத்த தானம்' },
       ],
-      quickChips: ['இரத்தம் தேவை', 'மின்சார வல்லுநர் தேவை', 'விலை விபரம்'],
+      quickChips: ['தேடுங்கள்', 'குறைந்த விலைகள்', 'இரத்தம் தேவை', 'மின்சார வல்லுநர் தேவை'],
     };
   } else {
     return {
-      text: '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Assistant)**.\nසිංහල, ඉංග්‍රීසි සහ දෙමළ භාෂා ත්‍රිත්වයෙන්ම පද්ධතියේ සියලුම අංශයන් සඳහා මට ඔබට මඟපෙන්විය හැක:\n• 🩸 හදිසි ලේ සහ ආපදා සහන\n• ⚡ 24/7 ඉක්මන් සේවා (විදුලි, නල, වාහන කාර්මිකයන්)\n• 🔍 නැතිවූ දේ සොයාගැනීම (Find For Me)\n• 🎁 නොමිලේ දීමනා සහ පරිත්‍යාග (From Me To You)\n• 🛒 දවසේ වෙළඳපල අඩුම මිල ගණන්\n• 🌐 ක්ෂණික භාෂා ත්‍රිත්ව පරිවර්තනය\n\nඔබට අවශ්‍ය සහය කුමක්ද?',
+      text: '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Assistant)**.\nසිංහල, ඉංග්‍රීසි සහ දෙමළ භාෂා ත්‍රිත්වයෙන්ම පද්ධතියේ සියලුම අංශයන් සඳහා මට ඔබට මඟපෙන්විය හැක:\n• 🩸 හදිසි ලේ සහ ආපදා සහන\n• ⚡ 24/7 ඉක්මන් සේවා (විදුලි, නල, වාහන කාර්මිකයන්)\n• 🔍 සොයාදෙන්න (නැතිවූ හෝ අවශ්‍ය දේ සොයාගැනීම)\n• 🎁 නොමිලේ දීමනා සහ පරිත්‍යාග (From Me To You)\n• 🛒 වෙළඳපල අඩුම මිල ගණන් සහ මිල පරතරය\n• 🌐 ක්ෂණික භාෂා ත්‍රිත්ව පරිවර්තනය\n\nඔබට අවශ්‍ය සහය කුමක්ද?',
       actions: [
-        { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය' },
+        { type: 'open_find', label: '🔍 සොයාදෙන්න (Find)' },
+        { type: 'open_market', label: '🛒 අඩුම මිල ගණන්' },
         { type: 'open_quick', label: '⚡ ඉක්මන් සේවා' },
-        { type: 'open_market', label: '🛒 වෙළඳපල මිල ගණන්' },
+        { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය' },
       ],
-      quickChips: ['විදුලි කාර්මිකයෙක් සොයන්න', 'හදිසි ලේ අවශ්‍යයි', 'පණිවිඩයක් පරිවර්තනය කරන්න', 'Wallet ශේෂය බලන්න'],
+      quickChips: ['සොයාදෙන්න', 'අඩුම මිල ගණන් බලන්න', 'විදුලි කාර්මිකයෙක් සොයන්න', 'හදිසි ලේ අවශ්‍යයි'],
     };
   }
 }

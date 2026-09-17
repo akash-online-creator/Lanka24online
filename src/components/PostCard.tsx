@@ -37,12 +37,15 @@ import {
 import { HelpPost, Language, LocationOption, User } from '../types';
 import { Card3D } from './Card3D';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { getTagIconComponent } from '../utils/tagUtils';
 import { maskName, maskPhone, maskAddress, maskGeneralDetail } from '../utils/demoDataMasker';
 import { getLocalizedPost, getCardLabels, translateText, translateName } from '../utils/postTranslator';
 import { translatePostWithGoogle } from '../utils/googleTranslator';
+import { renderTextWithLinks } from '../utils/textUtils';
+import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 
 interface PostCardProps {
   post: HelpPost;
@@ -57,6 +60,7 @@ interface PostCardProps {
   onViewPost?: (post: HelpPost) => void;
   onDeletePost?: (post: HelpPost) => void;
   onOpenChat?: (post: HelpPost) => void;
+  onOpenConfirm?: (post: HelpPost) => void;
   onOpenSupportOffers?: (post: HelpPost) => void;
   onRequireRegistration?: () => void;
   onBoostPost?: (post: HelpPost) => void;
@@ -77,6 +81,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onViewPost,
   onDeletePost,
   onOpenChat,
+  onOpenConfirm,
   onOpenSupportOffers,
   onRequireRegistration,
   onBoostPost,
@@ -174,13 +179,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const normalizePhone = (phone?: string) => phone ? phone.replace(/[^0-9]/g, '') : '';
 
-  const ownerCheck = isOwner ?? (
-    !isDemo && currentUser && (
-      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
-      (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-      (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
-    )
-  );
+  const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
 
   const isConfirmedHelper = Boolean(
     !isDemo && currentUser && (
@@ -515,6 +514,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                         : (activeCardLang === 'en' ? 'Report ⚠️' : activeCardLang === 'ta' ? 'புகாரளி ⚠️' : 'වාර්තා කරන්න ⚠️')}
                     </span>
                   </button>
+                )}
+
+                {/* Owner Badge if currentUser is the author - purely informative, no modify buttons */}
+                {ownerCheck && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-black text-xs rounded-xl border border-emerald-300 dark:border-emerald-700">
+                    <span>{activeCardLang === 'en' ? 'My Ad' : activeCardLang === 'ta' ? 'எனது விளம்பரம்' : 'මගේ දැන්වීම'}</span>
+                  </span>
                 )}
 
                 {isConfirmed && (
@@ -1160,7 +1166,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   {details && details.trim() !== '' && (
                     <p className="flex items-start gap-1.5">
                       <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">{cardLabels.details}</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">{details}</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">{renderTextWithLinks(details)}</span>
                     </p>
                   )}
                 </div>
@@ -1273,7 +1279,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {cardLabels.whatHappened}
               </div>
               <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {safeWhatHappened}
+                {renderTextWithLinks(safeWhatHappened)}
               </p>
             </div>
 
@@ -1283,7 +1289,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {cardLabels.whatIsNeeded}
               </div>
               <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {safeWhatIsNeeded}
+                {renderTextWithLinks(safeWhatIsNeeded)}
               </p>
             </div>
 
@@ -1293,7 +1299,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {cardLabels.conditions}
               </div>
               <p className="text-sm sm:text-[15px] font-medium text-slate-800 dark:text-slate-200 leading-snug">
-                {safeConditions}
+                {renderTextWithLinks(safeConditions)}
               </p>
             </div>
 
@@ -1303,7 +1309,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {cardLabels.specialNotice}
               </div>
               <p className="text-sm sm:text-[15px] font-medium text-slate-800 dark:text-slate-200 leading-snug">
-                {safeSpecialNotice}
+                {renderTextWithLinks(safeSpecialNotice)}
               </p>
             </div>
 
@@ -1335,6 +1341,16 @@ export const PostCard: React.FC<PostCardProps> = ({
               </span>
               <span className="font-extrabold text-slate-900 dark:text-slate-100"> {cardLabels.personSuffix}</span>
             </div>
+
+            {/* Embedded Media / Video Link Player (Facebook / Telegram / YouTube / Web) */}
+            {(post.externalLink || post.videoUrl) && (
+              <div className="pt-2">
+                <EmbeddedMediaViewer
+                  url={post.externalLink || post.videoUrl}
+                  compact={true}
+                />
+              </div>
+            )}
           </>
         )}
 
@@ -1402,187 +1418,174 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         )}
 
-        {/* Action Buttons: Standardized across Owner, Admin, and Public */}
-        {ownerCheck ? (
-          <div className="pt-2 space-y-2">
-            {/* Interested Responders Action (If any replies exist) */}
-            {!isConfirmed && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenSupportOffers) {
-                    handleInterceptAction(onOpenSupportOffers);
-                  } else if (onOpenChat) {
-                    handleInterceptAction(onOpenChat);
-                  }
-                }}
-                className={`w-full p-2.5 px-3.5 rounded-2xl ${
-                  post.replies && post.replies.length > 0
-                    ? 'bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-emerald-500/20 border-2 border-orange-500/70 shadow-xs'
-                    : 'bg-slate-50 dark:bg-[#0b1b12] border border-slate-200 dark:border-slate-800'
-                } flex items-center justify-between transition-all cursor-pointer group active:scale-[0.99]`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <HeartHandshake className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
-                  <span className="text-xs font-black text-slate-900 dark:text-white truncate">
-                    {activeCardLang === 'en' ? 'Interested Responders' : activeCardLang === 'ta' ? 'விருப்பம் தெரிவித்தவர்கள்' : 'කැමැත්ත දැක්වූවන්'}
+        {/* Action Buttons: Strictly separated between Post Owner, Admin, and Viewers */}
+        <div className="pt-2 space-y-2">
+          {/* A. POST OWNER VIEW: Strictly shows Interested Responders and Details (No Chat/Confirm for own ad) */}
+          {ownerCheck && !isAdmin ? (
+            <div className="space-y-2">
+              {/* Interested Responders Bar for Post Owner */}
+              {post.replies && post.replies.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenSupportOffers) {
+                      handleInterceptAction(onOpenSupportOffers);
+                    } else if (onOpenChat) {
+                      handleInterceptAction(onOpenChat);
+                    }
+                  }}
+                  className="w-full p-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-emerald-500/20 border-2 border-orange-500/70 shadow-xs flex items-center justify-between transition-all cursor-pointer group active:scale-[0.99]"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <HeartHandshake className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                    <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                      {activeCardLang === 'en' ? 'Interested Responders' : activeCardLang === 'ta' ? 'விருப்பம் தெரிவித்தவர்கள்' : 'කැමැත්ත දැක්වූවන්'}
+                    </span>
+                    <span className="bg-orange-600 text-white text-[11px] font-black px-2 py-0.2 rounded-full font-mono shadow-xs shrink-0">
+                      {post.replies.length}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-orange-700 dark:text-orange-300 flex items-center gap-0.5 shrink-0">
+                    <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'பார்' : 'බලන්න'}</span>
+                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </span>
-                  <span className="bg-orange-600 text-white text-[11px] font-black px-2 py-0.2 rounded-full font-mono shadow-xs shrink-0">
-                    {post.replies?.length || 0}
+                </button>
+              ) : (
+                <div className="w-full p-2.5 px-3.5 rounded-2xl bg-slate-100 dark:bg-emerald-950/40 border border-slate-200 dark:border-emerald-800/40 text-slate-600 dark:text-emerald-300 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{activeCardLang === 'en' ? 'Awaiting Responders (0)' : activeCardLang === 'ta' ? 'பதில்கள் காத்திருக்கின்றன (0)' : 'සහය ඉදිරිපත් කිරීම් පොරොත්තුවෙන් (0)'}</span>
                   </span>
+                  <span className="text-[10px] text-slate-500 font-mono">මගේ දැන්වීම</span>
                 </div>
-                <span className="text-[11px] font-bold text-orange-700 dark:text-orange-300 flex items-center gap-0.5 shrink-0">
-                  <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'பார்' : 'බලන්න'}</span>
-                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                </span>
-              </button>
-            )}
+              )}
 
-            {/* Owner Management Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* Boost Ad Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (onBoostPost) {
-                    handleInterceptAction(onBoostPost);
-                  }
-                }}
-                className={`flex-1 min-w-[90px] py-2 px-2 rounded-2xl ${
-                  post.isBoosted
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white border border-yellow-300/80 shadow-xs'
-                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white border border-amber-300/80 shadow-sm'
-                } active:scale-95 font-black text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer`}
-                title={post.isBoosted ? (activeCardLang === 'en' ? 'Boosted Top Ad' : activeCardLang === 'ta' ? 'விசேடமானது' : 'ප්‍රවර්ධිතයි') : (activeCardLang === 'en' ? 'Boost (Rs. 250)' : activeCardLang === 'ta' ? 'விசேட விளம்பரம் (ரூ. 250)' : 'ප්‍රවර්ධනය (රු. 250)')}
-              >
-                <Rocket className="w-3.5 h-3.5 text-yellow-200 fill-yellow-200 shrink-0" />
-                <span>{post.isBoosted ? (activeCardLang === 'en' ? 'Boosted ✓' : activeCardLang === 'ta' ? 'විශේෂිතයි ✓' : 'ප්‍රවර්ධිතයි ✓') : (activeCardLang === 'en' ? 'Boost (Rs. 250)' : activeCardLang === 'ta' ? 'விசேட விளம்பரம் (ரூ. 250)' : 'ප්‍රවර්ධනය (රු. 250)')}</span>
-              </button>
+              {/* Owner Action Row */}
+              <div className="flex items-center gap-2">
+                {post.replies && post.replies.length > 0 && onOpenSupportOffers && (
+                  <button
+                    type="button"
+                    onClick={() => handleInterceptAction(onOpenSupportOffers)}
+                    className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-orange-400/40"
+                  >
+                    <HeartHandshake className="w-4 h-4 text-white" />
+                    <span>{activeCardLang === 'en' ? 'Support Offers' : activeCardLang === 'ta' ? 'விருப்பங்கள்' : 'කැමැත්ත දැක්වූවන් බලන්න'}</span>
+                  </button>
+                )}
 
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onEditPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-                title={activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}
-              >
-                <Pencil className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onViewPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-                title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}
-              >
-                <Eye className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onDeletePost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
-                title={activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}
-              >
-                <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}</span>
-              </button>
-            </div>
-          </div>
-        ) : isAdmin ? (
-          <div className="pt-2 space-y-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onAdminModerate) {
-                    handleInterceptAction(() => onAdminModerate(post));
-                  }
-                }}
-                className={`flex-1 min-w-[90px] py-2 px-2 rounded-2xl ${
-                  post.adminFlagged
-                    ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-400/80 animate-pulse'
-                    : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400/40'
-                } active:scale-95 font-black text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border`}
-                title={activeCardLang === 'en' ? 'Moderate' : activeCardLang === 'ta' ? 'நிர்வகி' : 'පාලනය'}
-              >
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-200 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'Moderate' : activeCardLang === 'ta' ? 'நிர்வகி' : 'පාලනය'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onEditPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-                title={activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}
-              >
-                <Pencil className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onViewPost)}
-                className="flex-1 min-w-[65px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-                title={activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}
-              >
-                <Eye className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeCardLang === 'en' ? 'View' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onDeletePost)}
-                className="flex-1 min-w-[70px] py-2 px-2 rounded-2xl bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-black text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-slate-500/40"
-                title={activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}
-              >
-                <Trash2 className="w-3.5 h-3.5 text-white shrink-0" />
-                <span>{activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකන්න'}</span>
-              </button>
-            </div>
-
-            <button
-              onClick={() => handleInterceptAction(onOfferSupport)}
-              className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span>{activeCardLang === 'en' ? 'Reply / Inspect to Support' : activeCardLang === 'ta' ? 'பதிலளிக்க / பரிசோதிக்க' : 'සහාය වීමට පිළිතුරු යවන්න'}</span>
-            </button>
-          </div>
-        ) : (
-          <div className="pt-2 flex flex-wrap items-center gap-2">
-            {isConfirmed && (
-              <div className="relative flex items-center gap-2 shrink-0">
-                <div className="relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-tr from-[#006e43] via-[#008753] to-emerald-400 text-white shadow-md border-2 border-white dark:border-emerald-300 shrink-0" title={cardLabels.supportConfirmed}>
-                  <CheckCircle className="w-5 h-5 text-white drop-shadow-sm" />
-                </div>
+                {onViewPost && (
+                  <button
+                    type="button"
+                    onClick={() => handleInterceptAction(onViewPost)}
+                    className="flex-1 py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
+                  >
+                    <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    <span>{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර බලන්න'}</span>
+                  </button>
+                )}
               </div>
-            )}
-            <button
-              onClick={() => handleInterceptAction(onOfferSupport)}
-              className="flex-1 min-w-[170px] py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="font-extrabold">
-                {isConfirmed 
-                  ? (activeCardLang === 'en' ? 'Inquiries / Additional Support' : activeCardLang === 'ta' ? 'மேலதிக உதவி / விசாரණைகள்' : 'අමතර සහය හෝ විමසීම්')
-                  : (activeCardLang === 'en' ? '🤝 Reply to Help' : activeCardLang === 'ta' ? '🤝 உதவ பதிலளிக்கவும்' : 'සහාය වීමට පිළිතුරු යවන්න')}
-              </span>
-            </button>
-            {onViewPost && (
-              <button
-                type="button"
-                onClick={() => handleInterceptAction(onViewPost)}
-                className="py-3 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
-              >
-                <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
-              </button>
-            )}
-          </div>
-        )}
+            </div>
+          ) : (
+            /* B. OTHER PEOPLE / VIEWERS & ADMIN VIEW: Strictly CHAT, CONFIRM, and DETAILS */
+            <div className="space-y-2">
+              {/* Admin Moderation and Interested Responders (ONLY for Admin) */}
+              {isAdmin && (
+                <div className="space-y-1.5 pb-1">
+                  {post.replies && post.replies.length > 0 && !isConfirmed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenSupportOffers) {
+                          handleInterceptAction(onOpenSupportOffers);
+                        } else if (onOpenChat) {
+                          handleInterceptAction(onOpenChat);
+                        }
+                      }}
+                      className="w-full p-2 px-3 rounded-xl bg-amber-500/20 border border-orange-500/60 flex items-center justify-between text-xs font-bold text-orange-800 dark:text-orange-300 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <HeartHandshake className="w-3.5 h-3.5 text-orange-600" />
+                        <span>කැමැත්ත දැක්වූවන් ({post.replies.length})</span>
+                      </span>
+                      <span className="text-[11px] font-mono">Admin View &gt;</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onAdminModerate) {
+                        handleInterceptAction(() => onAdminModerate(post));
+                      }
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-[11px] shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-rose-400/40"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-200 shrink-0" />
+                    <span>{activeCardLang === 'en' ? 'Admin Moderation' : activeCardLang === 'ta' ? 'நிர்வாகி கட்டுப்பாடு' : 'පරිපාලක පාලනය (Moderate)'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Viewers Primary Action Buttons: CHAT, CONFIRM, and DETAILS */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* 1. Chat Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenChat) {
+                      handleInterceptAction(onOpenChat);
+                    } else {
+                      handleInterceptAction(onOfferSupport);
+                    }
+                  }}
+                  className="flex-1 min-w-[130px] py-3 px-4 rounded-2xl bg-white dark:bg-[#071a12] hover:bg-emerald-50 dark:hover:bg-[#0d2a1b] text-emerald-700 dark:text-emerald-300 font-black text-xs sm:text-sm border-2 border-emerald-500/70 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  title={activeCardLang === 'en' ? 'Open Chat' : activeCardLang === 'ta' ? 'அரட்டை திற' : 'සංවාදය විවෘත කරන්න'}
+                >
+                  <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>{activeCardLang === 'en' ? 'CHAT' : activeCardLang === 'ta' ? 'CHAT (அரட்டை)' : 'CHAT (සංවාදය)'}</span>
+                </button>
+
+                {/* 2. Confirm Button / Confirmed Badge */}
+                {isConfirmed ? (
+                  <div className="flex-1 min-w-[140px] py-3 px-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-400 text-emerald-800 dark:text-emerald-300 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm text-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>{activeCardLang === 'en' ? 'CONFIRMED' : activeCardLang === 'ta' ? 'உறுதியானது' : 'තහවුරු කර ඇත'}</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenConfirm) {
+                        handleInterceptAction(onOpenConfirm);
+                      } else {
+                        handleInterceptAction(onOfferSupport);
+                      }
+                    }}
+                    className="flex-1 min-w-[140px] py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
+                    title={activeCardLang === 'en' ? 'Confirm Service' : activeCardLang === 'ta' ? 'சேவை உறுதிப்படுத்தல்' : 'සේවාව තහවුරු කරන්න'}
+                  >
+                    <CheckCircle className="w-4 h-4 text-white" />
+                    <span>{activeCardLang === 'en' ? 'CONFIRM' : activeCardLang === 'ta' ? 'CONFIRM (உறுதி)' : 'CONFIRM (තහවුරු)'}</span>
+                  </button>
+                )}
+
+                {/* 3. Quick Details View button */}
+                {onViewPost && (
+                  <button
+                    type="button"
+                    onClick={() => handleInterceptAction(onViewPost)}
+                    className="py-3 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
+                  >
+                    <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
       </div>
 

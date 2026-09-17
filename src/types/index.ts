@@ -173,6 +173,21 @@ export interface HelpPost {
   boostPaymentMethod?: 'wallet' | 'card_qr' | 'bank_slip' | string;
   boostPaymentReference?: string;
   boostCategory?: string;
+  // External links & Embedded media (Facebook video, Telegram, YouTube, Website)
+  externalLink?: string;
+  videoUrl?: string;
+  // Master Plan Anti-Fraud & Two-Party Completion Verification
+  completionPin?: string;
+  settlementBreakdown?: {
+    serviceFee: number;
+    bonusDiscount: number;
+    netPayable: number;
+    platformFee: number;
+    helperEarned: number;
+    isSettled: boolean;
+    settledAt?: string;
+    settledBy?: string;
+  };
   // Admin Moderation & Flagging fields
   adminFlagged?: boolean;
   adminFlagReason?: string;
@@ -785,5 +800,77 @@ export interface SearchSuggestionPrompt {
   canonicalTerm: string;
   matchingCount: number;
   allSynonyms: string[];
+}
+
+// ==========================================
+// 🚨 රතු එළිය (Red Alert) Emergency System
+// ==========================================
+export type RedAlertDisasterType =
+  | 'fire' // ගින්නක්
+  | 'flood' // ජල ගැල්මක්
+  | 'mountain_collapse' // කඳු / පස් කඩා වැටීමක්
+  | 'landslide' // නායයාමක්
+  | 'sinkhole' // ගිලාබැසීමක්
+  | 'gale_wind' // තද සුළං
+  | 'tsunami' // සුනාමි
+  | 'earthquake' // භූමි කම්පාවක්
+  | 'other'; // වෙනත් ආපදාවක්
+
+export interface RedAlertComment {
+  id: string;
+  userId?: string;
+  userName: string;
+  userPhone?: string;
+  comment: string;
+  createdAt: string;
+  createdAtDisplay: string;
+}
+
+export interface RedAlertFakeReport {
+  id: string;
+  userId?: string;
+  userName: string;
+  userPhone?: string;
+  reason: string; // e.g. "බොරුවක් / අසත්‍ය පුවතක්", "නොමඟ යවන සුළුයි", "පැරණි සිදුවීමක්", "වෙනත්"
+  additionalNotes?: string;
+  reportedAt: string;
+}
+
+export interface RedAlertItem {
+  id: string;
+  alertCode: string; // e.g., #RED-1042
+  disasterType: RedAlertDisasterType;
+  customDisasterTitle?: string;
+  disasterTitleSi: string;
+  disasterTitleEn: string;
+  disasterTitleTa: string;
+  description?: string; // වැඩි විස්තර
+
+  // Location & Coordinates
+  latitude: number;
+  longitude: number;
+  locationName: string; // e.g. "කඩවත", "රත්නපුර", "මහනුවර"
+  locationAccuracyMeters?: number;
+
+  // Timestamps
+  incidentDate: string; // YYYY-MM-DD
+  incidentTime: string; // HH:MM AM/PM
+  createdAt: string;
+  createdAtMs: number;
+
+  // Reporter
+  reportedByUserId?: string;
+  reportedByName: string;
+  reportedByPhone: string;
+
+  // Status & Severity
+  status: 'active' | 'resolved' | 'false_alarm';
+  severity: 'critical' | 'high' | 'moderate';
+
+  // Interactive Elements
+  comments: RedAlertComment[];
+  fakeReports: RedAlertFakeReport[];
+  isFlaggedFake?: boolean;
+  adminActionNote?: string;
 }
 

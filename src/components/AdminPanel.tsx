@@ -120,7 +120,9 @@ import {
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
+import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { getEmergencyAdminAlerts, getStoredEmergencyContacts } from '../data/emergencyDirectory';
+import { RedAlertItem } from '../types';
 
 interface AdminPanelProps {
   users: User[];
@@ -133,6 +135,9 @@ interface AdminPanelProps {
   onUpdateCategories?: (categories: CategoryItem[]) => void;
   tags?: TagItem[];
   onUpdateTags?: (tags: TagItem[]) => void;
+  redAlerts?: RedAlertItem[];
+  onRefreshRedAlerts?: () => void;
+  onViewRedAlertDetail?: (alert: RedAlertItem) => void;
   onApproveUser: (userId: string) => void;
   onRejectUser: (userId: string, reason?: string) => void;
   onUpdateUser?: (updatedUser: User) => void;
@@ -172,10 +177,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onReplyIssue,
   onSeedDemoData,
   language,
+  redAlerts = [],
+  onRefreshRedAlerts,
+  onViewRedAlertDetail,
 }) => {
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
-    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'emergency_directory' | 'search_dictionary'
+    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'emergency_directory' | 'search_dictionary' | 'red_alerts'
   >('pending');
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<string | null>(null);
   
@@ -1564,7 +1572,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             AI Tool
           </span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('red_alerts')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'red_alerts'
+              ? 'bg-white border-red-500 text-red-950 shadow-md font-black'
+              : 'bg-red-50/80 border-slate-200 text-slate-700 hover:bg-red-100 hover:text-red-900'
+          }`}
+        >
+          <span className="text-base animate-pulse">🚨</span>
+          <span>
+            {language === 'en' ? 'Red Alerts' : language === 'ta' ? 'சிவப்பு எச்சரிக்கை' : 'රතු එළිය'}
+          </span>
+          {redAlerts && redAlerts.filter((a) => a.status === 'active').length > 0 ? (
+            <span className="bg-red-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full animate-ping">
+              {redAlerts.filter((a) => a.status === 'active').length}
+            </span>
+          ) : (
+            <span className="bg-red-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full">
+              {redAlerts.length}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Tab: Red Alerts Management */}
+      {activeTab === 'red_alerts' && (
+        <AdminRedAlertManagement
+          alerts={redAlerts}
+          language={language}
+          onRefreshAlerts={onRefreshRedAlerts}
+          onViewAlertDetail={onViewRedAlertDetail}
+        />
+      )}
 
       {/* Tab: Search Dictionary Admin Management */}
       {activeTab === 'search_dictionary' && (

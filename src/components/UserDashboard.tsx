@@ -37,12 +37,15 @@ import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
 import { filterNonDeletedPosts, addDeletedPostId } from '../utils/deletedPostsManager';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { UserWalletModal } from './UserWalletModal';
 import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { NotificationCenterModal } from './NotificationCenterModal';
+import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
+import { initialMarketItems } from '../data/marketplaceData';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
 import { 
@@ -112,6 +115,8 @@ interface UserDashboardProps {
   activeRoleView?: any;
   setActiveRoleView?: (role: any) => void;
   onNavigate?: (view: any) => void;
+  onOpenRedAlert?: () => void;
+  activeRedAlertsCount?: number;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -131,6 +136,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   activeRoleView,
   setActiveRoleView,
   onNavigate,
+  onOpenRedAlert,
+  activeRedAlertsCount = 0,
 }) => {
   const t = translations[language];
 
@@ -287,10 +294,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     categoryName?: string;
   } | null>(null);
 
-  // New Community Features: Blood & Disaster Hub, Offline Directory
+  // New Community Features: Blood & Disaster Hub, Offline Directory, Lowest Market Prices
   const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
   const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>('blood_requests');
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
+  const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
 
@@ -768,28 +776,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   });
 
   // User's total received replies across all their posts
-  const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
-  const userPhoneClean = normalizePhone(user?.phone || user?.whatsappNumber);
   const myPosts = (helpPosts || []).filter((post) => {
     if (!post || post.isDeleted) return false;
-    const postPhoneClean = normalizePhone(post.userPhone);
-    const isPhoneMatch = Boolean(
-      userPhoneClean &&
-        postPhoneClean &&
-        (userPhoneClean === postPhoneClean ||
-          userPhoneClean.endsWith(postPhoneClean.slice(-7)) ||
-          postPhoneClean.endsWith(userPhoneClean.slice(-7)))
-    );
-    const isIdMatch = Boolean(
-      (user?.userId && (post.userId === user.userId || post.userId === user.id)) ||
-      (user?.id && (post.userId === user.id || post.userId === user.userId))
-    );
-    const isNameMatch = Boolean(
-      user?.name &&
-      post.userName &&
-      post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()
-    );
-    return isPhoneMatch || isIdMatch || isNameMatch;
+    return checkIsPostOwner(user, post);
   });
 
   // Flagged posts by Admin for current logged-in user
@@ -1439,6 +1428,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onNavigate={onNavigate}
         isAutoLoadingLocation={isAutoLoadingLocation}
         autoLoadedNotice={autoLocationMsg}
+        onOpenRedAlert={onOpenRedAlert}
+        activeRedAlertsCount={activeRedAlertsCount}
       />
 
       {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
@@ -1448,9 +1439,35 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onViewPost={(post) => setSelectedPostForDetail(post)}
       />
 
-      {/* 1.2 Community Hubs: Compact Side-by-Side Square Action Cards (No Descriptions) */}
+      {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+          {/* Button 0: 🚨 රතු එළිය (Red Alert Instant Emergency) */}
+          {onOpenRedAlert && (
+            <button
+              type="button"
+              onClick={onOpenRedAlert}
+              className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-md hover:shadow-xl shadow-red-600/30 border-2 border-red-400 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px] relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-8 h-8 rounded-xl bg-white text-red-600 font-black text-base flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform">
+                  🚨
+                </div>
+                <span className="px-2 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-red-700 shadow-xs animate-ping">
+                  SIREN 2KM
+                </span>
+              </div>
+              <div className="min-w-0 mt-1.5">
+                <h4 className="text-xs sm:text-sm font-black text-white leading-tight flex items-center gap-1">
+                  <span>{getLangText('රතු එළිය (හදිසි ආපදා)', 'Red Alert (Disaster)', 'சிவப்பு எச்சரிக்கை')}</span>
+                </h4>
+                <p className="text-[10px] text-red-100 font-medium">
+                  {getLangText('කි.මී. 2 තුළ Siren ශබ්දය සමග දැනුම්දෙන්න', '2km Instant Siren Warning', '2km அவசர எச்சரிக்கை')}
+                </p>
+              </div>
+            </button>
+          )}
+
           {/* Button 1: Blood & Disaster Relief Hub (Compact Square Card) */}
           <button
             type="button"
@@ -1720,6 +1737,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           onViewPost={(p) => setViewingPost(p)}
           onDeletePost={(p) => setDeletingPost(p)}
           onOpenChat={(p) => setSelectedPostForChat(p)}
+          onOpenConfirm={(p) => setSelectedPostForConfirm(p)}
           onOpenSupportOffers={(p) => {
             setTargetPostForOffers(p);
             setIsSupportOffersModalOpen(true);
@@ -1769,51 +1787,53 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           />
 
-          {/* 3.1 Two Prominent Main Buttons: 'කැමැත්ත දැක්වූවන්' & 'සහය වන්න' */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-1">
-            {/* Button 1: කැමැත්ත දැක්වූවන් (Support Offers) */}
-            <button
-              type="button"
-              onClick={() => {
-                setTargetPostForOffers(null);
-                setIsSupportOffersModalOpen(true);
-              }}
-              className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-orange-400/50 flex items-center justify-between cursor-pointer"
-              title="සහය වීමට කැමැත්ත පළකළ අය"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+          {/* 3.1 Prominent Action Buttons: 'කැමැත්ත දැක්වූවන්' (Only if Post Author with ads or Admin) & 'සහය වන්න' */}
+          <div className={`grid ${user?.role === 'admin' || myPosts.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-4 pt-1`}>
+            {/* Button 1: කැමැත්ත දැක්වූවන් (Support Offers) - Only shown to Post Author with ads or Admin */}
+            {Boolean(user?.role === 'admin' || myPosts.length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTargetPostForOffers(null);
+                  setIsSupportOffersModalOpen(true);
+                }}
+                className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-orange-400/50 flex items-center justify-between cursor-pointer"
+                title="සහය වීමට කැමැත්ත පළකළ අය"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
 
-              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
-                  <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-100 transition-colors">
-                      {language === 'en' ? 'Support Offers' : language === 'ta' ? 'விருப்பம் தெரிவித்தோர்' : 'කැමැත්ත දැක්වූවන්'}
-                    </h3>
-                    {totalUserReplies > 0 && (
-                      <span className="bg-white text-orange-700 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
-                        {totalUserReplies} {language === 'en' ? 'New' : language === 'ta' ? 'புதிய' : 'නව'}
-                      </span>
-                    )}
+                <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                    <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
                   </div>
-                  <p className="text-xs text-orange-100/90 font-medium truncate">
-                    {language === 'en' 
-                      ? 'People willing to help your requests' 
-                      : language === 'ta' 
-                      ? 'உங்கள் கோரிக்கைகளுக்கு உதவ முன்வந்தோர்' 
-                      : 'ඔබේ ඉල්ලීම් සඳහා සහය වීමට ඉදිරිපත් වූ අය'}
-                  </p>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-100 transition-colors">
+                        {language === 'en' ? 'Support Offers' : language === 'ta' ? 'விருப்பம் தெரிவித்தோர்' : 'කැමැත්ත දැක්වූවන්'}
+                      </h3>
+                      {totalUserReplies > 0 && (
+                        <span className="bg-white text-orange-700 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
+                          {totalUserReplies} {language === 'en' ? 'New' : language === 'ta' ? 'புதிய' : 'නව'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-orange-100/90 font-medium truncate">
+                      {language === 'en' 
+                        ? 'People willing to help your requests' 
+                        : language === 'ta' 
+                        ? 'உங்கள் கோரிக்கைகளுக்கு உதவ முன்வந்தோர்' 
+                        : 'ඔබේ ඉල්ලීම් සඳහා සහය වීමට ඉදිරිපත් වූ අය'}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-orange-600 font-black flex items-center justify-center shadow-md group-hover:bg-amber-100 transition-colors">
-                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+                <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-orange-600 font-black flex items-center justify-center shadow-md group-hover:bg-amber-100 transition-colors">
+                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
 
             {/* Button 2: සහය වන්න (Volunteer / Help Others) */}
             <button
@@ -2139,6 +2159,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setViewingPost(null);
           setSelectedPostForChat(post);
         }}
+        onOpenConfirm={(post) => {
+          setViewingPost(null);
+          setSelectedPostForConfirm(post);
+        }}
+        onEditPost={(post) => {
+          setViewingPost(null);
+          handleEditPost(post);
+        }}
+        onDeletePost={(post) => {
+          setViewingPost(null);
+          setDeletingPost(post);
+        }}
         onAdminModerate={(post) => {
           setViewingPost(null);
           setModeratingPost(post);
@@ -2160,7 +2192,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsSupportOffersModalOpen(false);
           setTargetPostForOffers(null);
         }}
-        userPosts={myPosts}
+        userPosts={
+          user?.role === 'admin'
+            ? (targetPostForOffers ? [targetPostForOffers] : helpPosts)
+            : (targetPostForOffers ? (myPosts.some(p => p.id === targetPostForOffers.id) ? myPosts : [targetPostForOffers, ...myPosts]) : myPosts)
+        }
         lang={language}
         viewerLocation={currentLocation}
         targetPost={targetPostForOffers}
@@ -2379,7 +2415,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setFeedDistanceTab('local');
         }}
         onOpenMarketplace={() => {
-          setIsCategoryModalOpen(true);
+          setIsLowestPricesModalOpen(true);
         }}
         onOpenWallet={() => {
           setIsWalletModalOpen(true);
@@ -2387,6 +2423,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onOpenEmergencyDirectory={() => {
           setIsEmergencyDirectoryModalOpen(true);
         }}
+      />
+
+      {/* Marketplace Lowest Prices & Price Gap Modal */}
+      <MarketplaceLowestPricesModal
+        isOpen={isLowestPricesModalOpen}
+        onClose={() => setIsLowestPricesModalOpen(false)}
+        items={initialMarketItems}
       />
 
     </div>

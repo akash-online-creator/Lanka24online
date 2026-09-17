@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem } from './types';
+import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem, RedAlertItem } from './types';
 import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
 import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
 import { translations } from './data/translations';
@@ -22,10 +22,17 @@ import {
   subscribeToUsers,
   saveUserToFirestore,
   updateUserInFirestore,
-  seedInitialUsersToFirestore
+  seedInitialUsersToFirestore,
+  subscribeToRedAlerts
 } from './lib/firebase';
 import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
+import { RedAlertCreateModal } from './components/RedAlertCreateModal';
+import { RedAlertProximityModal } from './components/RedAlertProximityModal';
+import { RedAlertDetailModal } from './components/RedAlertDetailModal';
+import { RedAlertFloatingTrigger } from './components/RedAlertFloatingTrigger';
+import { RedAlertBanner } from './components/RedAlertBanner';
+import { calculateDistanceKm } from './data/redAlertData';
 
 export default function App() {
   // Persistence state setup
@@ -138,6 +145,78 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Red Alert Emergency System States
+  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
+  const [isCreateRedAlertOpen, setIsCreateRedAlertOpen] = useState(false);
+  const [selectedDetailAlert, setSelectedDetailAlert] = useState<RedAlertItem | null>(null);
+  const [proximityAlertInfo, setProximityAlertInfo] = useState<{ alert: RedAlertItem; distanceKm: number } | null>(null);
+  const [dismissedProximityAlertIds, setDismissedProximityAlertIds] = useState<string[]>([]);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Sync real-time Firestore Red Alerts
+  useEffect(() => {
+    const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
+      setRedAlerts(remoteAlerts || []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Monitor user's real-time GPS location for proximity alerts
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      const geoWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          setUserCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        (err) => {
+          console.warn('Geolocation access fallback:', err.message);
+          setUserCoords((prev) => prev || { lat: 6.9972, lng: 79.9535 });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
+      );
+
+      return () => {
+        navigator.geolocation.clearWatch(geoWatchId);
+      };
+    } else {
+      setUserCoords({ lat: 6.9972, lng: 79.9535 });
+    }
+  }, []);
+
+  // Proximity alert calculation: if an active alert is within 2.0 km, trigger siren modal
+  useEffect(() => {
+    if (!userCoords || redAlerts.length === 0) return;
+
+    const nearAlert = redAlerts.find((alert) => {
+      if (alert.status !== 'active') return false;
+      if (alert.isFlaggedFake) return false;
+      if (dismissedProximityAlertIds.includes(alert.id)) return false;
+
+      const dist = calculateDistanceKm(
+        userCoords.lat,
+        userCoords.lng,
+        alert.latitude,
+        alert.longitude
+      );
+      return dist <= 2.0;
+    });
+
+    if (nearAlert) {
+      const dist = calculateDistanceKm(
+        userCoords.lat,
+        userCoords.lng,
+        nearAlert.latitude,
+        nearAlert.longitude
+      );
+      setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
+    } else {
+      setProximityAlertInfo(null);
+    }
+  }, [redAlerts, userCoords, dismissedProximityAlertIds]);
 
   // Persist storage updates
   useEffect(() => {
@@ -657,6 +736,15 @@ export default function App() {
         />
       )}
 
+      {/* 🚨 Red Alert Emergency Headline Banner (Visible across views when active alerts exist) */}
+      <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
+        <RedAlertBanner
+          alerts={redAlerts}
+          onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
+          onOpenCreate={() => setIsCreateRedAlertOpen(true)}
+        />
+      </div>
+
       {/* Main Container Views */}
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
         {viewMode === 'login' && (
@@ -751,6 +839,8 @@ export default function App() {
             onReplyIssue={handleReplyIssue}
             onSeedDemoData={handleSeedDemoData}
             language={language}
+            redAlerts={redAlerts}
+            onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
           />
         )}
 
@@ -772,9 +862,54 @@ export default function App() {
             activeRoleView={activeRoleView}
             setActiveRoleView={setActiveRoleView}
             onNavigate={handleNavigate}
+            onOpenRedAlert={() => setIsCreateRedAlertOpen(true)}
+            activeRedAlertsCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
           />
         )}
       </main>
+
+      {/* 🚨 Red Alert Floating Emergency Action Button (Available across entire app) */}
+      <RedAlertFloatingTrigger
+        onOpenCreate={() => setIsCreateRedAlertOpen(true)}
+        activeCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
+        onOpenActiveList={() => {
+          const first = redAlerts.find((a) => a.status === 'active');
+          if (first) setSelectedDetailAlert(first);
+          else setIsCreateRedAlertOpen(true);
+        }}
+      />
+
+      {/* 🚨 Red Alert Creation Modal with GPS Auto-Scanning */}
+      <RedAlertCreateModal
+        isOpen={isCreateRedAlertOpen}
+        onClose={() => setIsCreateRedAlertOpen(false)}
+        currentUser={currentUser}
+        onAlertCreated={(newAlert) => {
+          setSelectedDetailAlert(newAlert);
+        }}
+      />
+
+      {/* 🚨 Red Alert 2km Proximity Siren & Emergency Broadcast Modal */}
+      <RedAlertProximityModal
+        isOpen={Boolean(proximityAlertInfo)}
+        alert={proximityAlertInfo?.alert || null}
+        distanceKm={proximityAlertInfo?.distanceKm || 0}
+        onClose={() => {
+          if (proximityAlertInfo) {
+            setDismissedProximityAlertIds((prev) => [...prev, proximityAlertInfo.alert.id]);
+          }
+          setProximityAlertInfo(null);
+        }}
+        currentUser={currentUser}
+      />
+
+      {/* 🚨 Red Alert Full Detail, Community Comments & Admin Fake Report Modal */}
+      <RedAlertDetailModal
+        isOpen={Boolean(selectedDetailAlert)}
+        alert={selectedDetailAlert}
+        onClose={() => setSelectedDetailAlert(null)}
+        currentUser={currentUser}
+      />
 
       {/* Wrong Login Modal */}
       <WrongLoginModal

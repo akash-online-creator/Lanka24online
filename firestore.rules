@@ -44,6 +44,17 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Red Alerts (රතු එළිය) - Real-time disaster broadcasts & community emergency updates
+    match /red_alerts/{alertId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+
+      // Subcollections if any
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
     // Default fallback
     match /{document=**} {
       allow read, write: if true;

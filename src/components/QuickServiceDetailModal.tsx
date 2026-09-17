@@ -33,6 +33,9 @@ import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
 import { getLocalizedPost, getCardLabels, translateText, translateName } from '../utils/postTranslator';
 import { translatePostWithGoogle } from '../utils/googleTranslator';
+import { renderTextWithLinks } from '../utils/textUtils';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
+import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 
 interface QuickServiceDetailModalProps {
   post: HelpPost | null;
@@ -121,15 +124,8 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   if (!isOpen || !post || !effectivePost) return null;
 
   const isAdmin = currentUser?.role === 'admin' && !isDemo;
+  const isOwner = checkIsPostOwner(currentUser, post);
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
-  const isOwner = Boolean(
-    !isDemo &&
-    currentUser && (
-      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
-      (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-      (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
-    )
-  );
 
   const isConfirmedHelper = Boolean(
     !isDemo &&
@@ -217,6 +213,21 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           </div>
 
           <div className="flex items-center gap-2">
+            {isOwner && onEditPost && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditPost(post);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer border border-emerald-400/40"
+                title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்து')}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{getLangText('සංස්කරණය', 'Edit', 'திருத்து')}</span>
+              </button>
+            )}
+
             {isAdmin && onDeletePost && (
               <button
                 type="button"
@@ -605,7 +616,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   {getLangText('සිදුවී ඇති දේ:', 'What happened:', 'நடந்தது என்ன:')}
                 </span>
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                  {safeWhatHappened}
+                  {renderTextWithLinks(safeWhatHappened)}
                 </p>
               </div>
 
@@ -616,7 +627,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   {getLangText('වියයුතු දේ:', 'What is needed:', 'செய்ய வேண்டியது:')}
                 </span>
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                  {safeWhatIsNeeded}
+                  {renderTextWithLinks(safeWhatIsNeeded)}
                 </p>
               </div>
             </>
@@ -734,6 +745,16 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 <span>{getLangText('ගෙවීම් : ', 'Payment / Fee: ', 'கட்டணம்: ')}<span className="font-black text-slate-900 dark:text-white">{translateText(post.payment || (lang === 'en' ? 'I agree to your fee' : lang === 'ta' ? 'உங்கள் கட்டணத்திற்கு சம்மதிக்கிறேன்' : 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'), lang)}</span></span>
               </div>
 
+              {/* Embedded Media / Video Link Player */}
+              {(post.externalLink || post.videoUrl) && (
+                <div className="pt-2">
+                  <EmbeddedMediaViewer
+                    url={post.externalLink || post.videoUrl}
+                    compact={false}
+                  />
+                </div>
+              )}
+
               {/* 8. උදව් කරන්න Prompt */}
               <p className="text-center text-emerald-700 dark:text-emerald-400 font-black pt-1 text-base sm:text-lg tracking-wide">
                 {getLangText('උදව් කරන්න.', 'Please help.', 'உதவி செய்யுங்கள்.')}
@@ -764,23 +785,6 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>{getLangText('දැනටමත් සනාථ කර ඇත', 'Already Confirmed', 'ஏற்கனவே உறுதிப்படுத்தப்பட்டது')}</span>
             </div>
-          ) : isOwner ? (
-            onEditPost ? (
-              <button
-                onClick={() => {
-                  onClose();
-                  onEditPost(post);
-                }}
-                className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#006e43] text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
-              >
-                <Pencil className="w-4 h-4" />
-                <span>{getLangText('සංස්කරණය (EDIT)', 'EDIT POST', 'திருத்து (EDIT)')}</span>
-              </button>
-            ) : (
-              <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 font-bold text-xs flex items-center justify-center text-center">
-                <span>{getLangText('ඔබගේ දැන්වීමකි (Confirm කළ නොහැක)', 'Your post (Cannot confirm)', 'உங்கள் பதிவு (உறுதிப்படுத்த முடியாது)')}</span>
-              </div>
-            )
           ) : (
             <button
               onClick={() => {
