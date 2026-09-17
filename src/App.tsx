@@ -806,16 +806,14 @@ export default function App() {
         />
       )}
 
-      {/* 🚨 Red Alert Emergency Headline Banner (Visible across views when active alerts exist) */}
-      {viewMode !== 'login' && viewMode !== 'gps_gate' && (
-        <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
-          <RedAlertBanner
-            alerts={redAlerts}
-            onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
-            onOpenCreate={() => setIsCreateRedAlertOpen(true)}
-          />
-        </div>
-      )}
+      {/* 🚨 Red Alert Emergency Headline Banner (Visible across all views including login and gps gate) */}
+      <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
+        <RedAlertBanner
+          alerts={redAlerts}
+          onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
+          onOpenCreate={() => setIsCreateRedAlertOpen(true)}
+        />
+      </div>
 
       {/* Main Container Views */}
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
