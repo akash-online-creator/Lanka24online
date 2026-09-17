@@ -199,6 +199,12 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 
   if (!isOpen || !alert) return null;
 
+  const isAuthorOfAlert = Boolean(currentUser && (
+    (alert.reportedByUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+    (alert.reportedByPhone && alert.reportedByPhone === currentUser.phone) ||
+    (alert.reportedByName && alert.reportedByName === currentUser.name)
+  ));
+
   const config = getDisasterConfig(alert.disasterType);
   const distanceDisplay = distanceKm < 1 
     ? `මීටර් ${Math.round(distanceKm * 1000)}` 
@@ -207,38 +213,55 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   return (
     <div 
       onClick={handleModalClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fadeIn"
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-4 border-red-600 rounded-3xl shadow-[0_0_80px_rgba(239,68,68,0.7)] overflow-hidden my-auto animate-pulse-glow">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-4 border-red-600 rounded-3xl shadow-[0_0_80px_rgba(239,68,68,0.7)] overflow-hidden my-auto animate-pulse-glow max-h-[92vh] flex flex-col">
         
         {/* Animated Emergency Beacon Banner */}
-        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-4 text-white flex items-center justify-between shadow-lg relative overflow-hidden">
+        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white flex items-center justify-between shadow-lg relative overflow-hidden shrink-0">
           {/* Beacon light sweep effect */}
           <div className="absolute inset-0 bg-white/15 translate-x-[-100%] animate-[shimmer_2s_infinite]" />
 
-          <div className="flex items-center gap-3 relative z-10">
-            <div className="relative flex items-center justify-center">
+          <div className="flex items-center gap-2.5 relative z-10 min-w-0">
+            <div className="relative flex items-center justify-center shrink-0">
               <span className="w-10 h-10 rounded-full bg-white/40 animate-ping absolute" />
               <div className="w-10 h-10 rounded-full bg-white text-red-600 font-black flex items-center justify-center text-xl shadow-lg relative z-10">
                 🚨
               </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="bg-black/30 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-yellow-300 border border-yellow-300/40">
-                  ⚠️ හදිසි අනතුරු ඇඟවීම (රතු එළිය)
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-yellow-300 border border-yellow-300/40 shrink-0">
+                  ⚠️ හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)
                 </span>
-                <span className="font-mono text-xs text-white/90">
+                <span className="font-mono text-xs text-white/90 shrink-0">
                   {alert.alertCode}
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-black tracking-wide text-white drop-shadow-sm pt-0.5">
-                ඔබ සිටින්නේ ආපදා ස්ථානයේ සිට {distanceDisplay} ක් ඇතුළතයි!
+              <h2 className="text-sm sm:text-base font-black tracking-wide text-white drop-shadow-sm pt-0.5 truncate">
+                ඔබ ආපදා ස්ථානයේ සිට {distanceDisplay} ක් ඇතුළතයි!
               </h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 relative z-10">
+          <div className="flex items-center gap-1.5 relative z-10 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClose();
+              }}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
+              title="Close"
+            >
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Responsive Siren Audio & Mute Controls Bar */}
+        <div className="bg-slate-900 border-b border-slate-800 p-2 sm:p-2.5 px-3 sm:px-4 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-200 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Quick Silent on this device Button */}
             <button
               type="button"
@@ -252,94 +275,44 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                   setIsPlayingSiren(false);
                 }
               }}
-              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1 text-[11px] font-black transition-all cursor-pointer shadow-md ${
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shadow-sm ${
                 deviceMuted
-                  ? 'bg-rose-950/80 text-rose-200 border-rose-400 hover:bg-rose-900'
-                  : 'bg-black/40 hover:bg-black/60 text-white border-white/30'
+                  ? 'bg-rose-900/90 text-rose-200 border-rose-500'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
               title={deviceMuted ? 'මගේ දුරකථනයේ Silent ඉවත් කරන්න' : 'මගේ දුරකථනයේ පමණක් Silent කරන්න'}
             >
-              {deviceMuted ? (
-                <>
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-                  <span>🔕 Muted</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>🔊 {Math.round(currentVolume * 100)}%</span>
-                </>
-              )}
+              {deviceMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{deviceMuted ? '🔕 Muted' : '🔊 Sound On'}</span>
             </button>
 
-            {/* Audio Play/Stop Button with immediate click unlock */}
+            {/* Siren Play/Stop Button */}
             <button
               type="button"
               onClick={handleToggleSiren}
-              className={`px-3 py-2 rounded-xl border-2 flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shadow-md ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
                 isPlayingSiren
-                  ? 'bg-amber-300 hover:bg-amber-400 text-slate-950 border-amber-500 animate-pulse'
-                  : 'bg-black/40 hover:bg-black/60 text-white border-white/30'
+                  ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border border-amber-600 animate-pulse'
+                  : 'bg-red-600 hover:bg-red-700 text-white border border-red-500'
               }`}
-              title={isPlayingSiren ? 'Siren හඬ නවත්වන්න' : 'Siren හඬ ක්‍රියාත්මක කරන්න'}
             >
               {isPlayingSiren ? (
                 <>
-                  <Volume2 className="w-4 h-4 text-red-600 animate-bounce" />
-                  <span className="hidden sm:inline">Siren නවත්වන්න</span>
+                  <Volume2 className="w-3.5 h-3.5 text-red-700 animate-bounce" />
+                  <span>නවත්වන්න (Stop)</span>
                 </>
               ) : (
                 <>
-                  <VolumeX className="w-4 h-4 text-yellow-300" />
-                  <span className="hidden sm:inline">Siren වාදනය</span>
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                  <span>Siren අසන්න</span>
                 </>
               )}
             </button>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClose();
-              }}
-              className="w-9 h-9 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all cursor-pointer"
-              title="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Device Volume & Mute Bar in Proximity Modal */}
-        <div className="bg-slate-900 border-b border-slate-800 p-2.5 px-4 flex items-center justify-between gap-3 text-xs text-slate-200">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const nextMute = !deviceMuted;
-                setLocalDeviceMuted(nextMute);
-                setDeviceSirenMuted(nextMute);
-                if (nextMute && isPlayingSiren) {
-                  stopEmergencySiren();
-                  setIsPlayingSiren(false);
-                }
-              }}
-              className={`px-2.5 py-1 rounded-lg font-black text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
-                deviceMuted
-                  ? 'bg-rose-600 text-white shadow-sm'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-              }`}
-            >
-              {deviceMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-              <span>{deviceMuted ? '🔕 මගේ දුරකථනයේ Silent කර ඇත' : '🔊 මගේ දුරකථනයේ Silent කරන්න'}</span>
-            </button>
-            <span className="text-[10px] text-slate-400 hidden sm:inline">
-              (මෙය ඔබගේ දුරකථනයට පමණක් බලපායි)
-            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-400">Volume:</span>
+          {/* Volume Slider */}
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">Volume:</span>
             <input
               type="range"
               min="0"
@@ -352,9 +325,9 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 setCurrentVolume(val);
                 setSirenVolume(val);
               }}
-              className="w-20 sm:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
+              className="w-18 sm:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
             />
-            <span className="font-mono text-xs font-black text-red-400 w-9 text-right">
+            <span className="font-mono text-xs font-black text-red-400 w-8 text-right">
               {Math.round(currentVolume * 100)}%
             </span>
           </div>
@@ -364,7 +337,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         {!isPlayingSiren && !deviceMuted && (
           <div 
             onClick={handleToggleSiren}
-            className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2 px-4 flex items-center justify-between cursor-pointer border-b-2 border-amber-500 shadow-inner transition-colors"
+            className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2 px-4 flex items-center justify-between cursor-pointer border-b-2 border-amber-500 shadow-inner transition-colors shrink-0"
           >
             <div className="flex items-center gap-2">
               <span className="text-base animate-bounce">🔊</span>
@@ -377,7 +350,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         )}
 
         {/* Modal Main Content */}
-        <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
           {/* Custom User Audio Uploader Box */}
           <div className="p-3.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-between gap-3 text-xs">
@@ -547,25 +520,36 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 )}
               </div>
 
-              {/* Add Comment Input */}
-              <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
-                <input
-                  type="text"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="වත්මන් තත්ත්වය ගැන සටහන් කරන්න (උදා: ගිනි නිවන රථ පැමිණියා)..."
-                  className="flex-1 p-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmittingComment}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>යවන්න</span>
-                </button>
-              </form>
+              {/* Add Comment Input: Only for other users, not the creator */}
+              {isAuthorOfAlert ? (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <span>🛡️ ඔබ මෙම ආපදාව වාර්තා කළ සාමාජිකයායි</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-300">
+                    මෙම සිදුවීම දුටු අනෙකුත් සාමාජිකයින්ගේ යාවත්කාලීන අදහස් සහ තොරතුරු ඉහතින් සජීවීව බලාගත හැක.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="වත්මන් තත්ත්වය ගැන සටහන් කරන්න (උදා: ගිනි නිවන රථ පැමිණියා)..."
+                    className="flex-1 p-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSubmittingComment}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>යවන්න</span>
+                  </button>
+                </form>
+              )}
             </div>
           )}
 

@@ -103,12 +103,13 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
   if (!isOpen || !alert) return null;
 
-  const isReporter = currentUser && alert && (
-    alert.reportedByUserId === currentUser.id ||
-    alert.reportedByPhone === currentUser.phone ||
-    alert.reportedByName === currentUser.name ||
-    currentUser.role === 'admin'
-  );
+  const isAuthorOfAlert = Boolean(currentUser && (
+    (alert.reportedByUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+    (alert.reportedByPhone && alert.reportedByPhone === currentUser.phone) ||
+    (alert.reportedByName && alert.reportedByName === currentUser.name)
+  ));
+
+  const isReporter = Boolean(isAuthorOfAlert || (currentUser && currentUser.role === 'admin'));
 
   const handleResolveAlert = async () => {
     if (!alert) return;
@@ -154,7 +155,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     const newComment: RedAlertComment = {
       id: `comm_${Date.now()}`,
       userId: currentUser?.userId || currentUser?.id || '',
-      userName: commenterName.trim() || 'ප්‍රදේශවාසියෙක්',
+      userName: commenterName.trim() || currentUser?.name || 'ප්‍රදේශවාසියෙක්',
       userPhone: currentUser?.phone || '',
       comment: commentText.trim(),
       createdAt: new Date().toISOString(),
@@ -212,42 +213,67 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.35)] overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.35)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
-        {/* Header Ribbon */}
-        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-4 sm:p-5 text-white flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white text-red-600 font-black flex items-center justify-center text-xl shadow-md">
-              {config.icon}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider font-mono">
-                  {alert.alertCode}
-                </span>
-                {alert.status === 'false_alarm' ? (
-                  <span className="bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
-                    අසත්‍ය පුවතකි (Hoax)
-                  </span>
-                ) : alert.status === 'resolved' ? (
-                  <span className="bg-emerald-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
-                    නිරාකරණය විය
-                  </span>
-                ) : (
-                  <span className="bg-red-500/80 text-white px-2 py-0.5 rounded-full text-[10px] font-black uppercase animate-pulse">
-                    ක්‍රියාකාරී ආපදාවකි
-                  </span>
-                )}
+        {/* Top Header Ribbon - Clean, Non-overflowing Layout */}
+        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white shadow-md shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-white text-red-600 font-black flex items-center justify-center text-xl shadow-md shrink-0">
+                {config.icon}
               </div>
-              <h2 className="text-base sm:text-lg font-black tracking-wide text-white pt-0.5">
-                {alert.disasterTitleSi}
-              </h2>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider font-mono shrink-0">
+                    {alert.alertCode}
+                  </span>
+                  {alert.status === 'false_alarm' ? (
+                    <span className="bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
+                      අසත්‍ය පුවතකි (Hoax)
+                    </span>
+                  ) : alert.status === 'resolved' ? (
+                    <span className="bg-emerald-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
+                      නිරාකරණය විය
+                    </span>
+                  ) : (
+                    <span className="bg-red-500/90 text-white px-2 py-0.5 rounded-full text-[10px] font-black uppercase animate-pulse shrink-0">
+                      ක්‍රියාකාරී ආපදාවකි
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-sm sm:text-base font-black tracking-wide text-white pt-0.5 truncate">
+                  {alert.disasterTitleSi}
+                </h2>
+              </div>
+            </div>
+
+            {/* Top Right Action Buttons: Share & Close X */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleShare}
+                className="p-2 rounded-xl bg-black/25 hover:bg-black/40 text-white transition-all cursor-pointer"
+                title="Share alert text"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
           </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            {/* Quick Silent on this device Button */}
+        {/* Sub-Header Siren & Device Sound Controls Bar - Fully Responsive */}
+        <div className="bg-slate-900 border-b border-slate-800 p-2 sm:p-2.5 px-3 sm:px-4 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-200 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Device Mute toggle button */}
             <button
               type="button"
               onClick={() => {
@@ -259,76 +285,44 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   setIsPlayingSiren(false);
                 }
               }}
-              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1 text-xs font-black transition-all cursor-pointer shadow-md ${
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shadow-sm ${
                 deviceMuted
-                  ? 'bg-rose-950/80 text-rose-200 border-rose-400'
-                  : 'bg-black/30 hover:bg-black/50 text-white border-white/20'
+                  ? 'bg-rose-900/90 text-rose-200 border-rose-500'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
               title={deviceMuted ? 'මගේ දුරකථනයේ Silent ඉවත් කරන්න' : 'මගේ දුරකථනයේ පමණක් Silent කරන්න'}
             >
-              {deviceMuted ? (
-                <>
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-                  <span>🔕 Muted</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>🔊 {Math.round(currentVolume * 100)}%</span>
-                </>
-              )}
+              {deviceMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{deviceMuted ? '🔕 Muted' : '🔊 Sound On'}</span>
             </button>
 
+            {/* Siren Play/Stop Button */}
             <button
               type="button"
               onClick={handleToggleSiren}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
                 isPlayingSiren
-                  ? 'bg-amber-300 text-slate-950 border-2 border-amber-500 animate-pulse'
-                  : 'bg-black/30 hover:bg-black/50 text-white border border-white/20'
+                  ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border border-amber-600 animate-pulse'
+                  : 'bg-red-600 hover:bg-red-700 text-white border border-red-500'
               }`}
-              title={isPlayingSiren ? 'Siren හඬ නවත්වන්න' : 'Siren හඬ වාදනය කරන්න'}
             >
               {isPlayingSiren ? (
                 <>
-                  <Volume2 className="w-4 h-4 text-red-600 animate-bounce" />
-                  <span>Siren නවත්වන්න</span>
+                  <Volume2 className="w-3.5 h-3.5 text-red-700 animate-bounce" />
+                  <span>නවත්වන්න (Stop)</span>
                 </>
               ) : (
                 <>
-                  <Volume2 className="w-4 h-4 text-yellow-300" />
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
                   <span>Siren අසන්න</span>
                 </>
               )}
             </button>
-
-            <button
-              type="button"
-              onClick={handleShare}
-              className="p-2 rounded-xl bg-black/20 hover:bg-black/30 text-white transition-all cursor-pointer"
-              title="Share alert text"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="w-9 h-9 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all cursor-pointer"
-              title="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
-        </div>
 
-        {/* Quick Device Volume Bar in Detail Modal */}
-        <div className="bg-slate-900 border-b border-slate-800 p-2 px-4 flex items-center justify-between gap-3 text-xs text-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-300 font-bold">
-              {deviceMuted ? '🔕 දුරකථනයේ සයිරන් Silent කර ඇත' : '🔊 සයිරන් ශබ්ද පරිමාව:'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
+          {/* Volume Slider */}
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">Volume:</span>
             <input
               type="range"
               min="0"
@@ -341,22 +335,22 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 setCurrentVolume(val);
                 setSirenVolume(val);
               }}
-              className="w-24 sm:w-32 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
+              className="w-18 sm:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
             />
-            <span className="font-mono text-xs font-black text-red-400 w-9 text-right">
+            <span className="font-mono text-xs font-black text-red-400 w-8 text-right">
               {Math.round(currentVolume * 100)}%
             </span>
           </div>
         </div>
 
         {copiedShare && (
-          <div className="bg-emerald-500 text-white text-xs font-bold py-1 px-4 text-center">
+          <div className="bg-emerald-500 text-white text-xs font-bold py-1 px-4 text-center shrink-0">
             ✅ ආපදා තොරතුරු Clipboard එකට පිටපත් විය!
           </div>
         )}
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 space-y-4 max-h-[78vh] overflow-y-auto">
+        <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
           {/* Interactive Siren Alarm Audio Card */}
           <div className="p-3 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 flex items-center justify-between flex-wrap gap-2">
@@ -377,7 +371,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             <button
               type="button"
               onClick={handleToggleSiren}
-              className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 ${
                 isPlayingSiren
                   ? 'bg-red-600 text-white animate-pulse border-2 border-red-400'
                   : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-2 border-amber-600'
@@ -391,7 +385,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               ) : (
                 <>
                   <Volume2 className="w-4 h-4 text-slate-950" />
-                  <span>Siren නාදය වාදනය කරන්න (Play Siren)</span>
+                  <span>Siren නාදය වාදනය කරන්න (Play)</span>
                 </>
               )}
             </button>
@@ -576,7 +570,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {localComments.length === 0 ? (
                 <p className="text-xs text-slate-400 italic py-3 text-center">
-                  තවම අදහස් පළවී නොමැත. සිදුවීම පිළිබඳ තොරතුරක් ඇත්නම් පහතින් සටහන් කරන්න.
+                  තවම අදහස් පළවී නොමැත. සිදුවීම දුටු අනෙකුත් සාමාජිකයින්ට පහතින් තොරතුරු සටහන් කළ හැක.
                 </p>
               ) : (
                 localComments.map((c) => (
@@ -594,25 +588,36 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               )}
             </div>
 
-            {/* Add Comment Input Form */}
-            <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
-              <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="වත්මන් තත්ත්වය පිළිබඳ අදහසක් හෝ තොරතුරක් සටහන් කරන්න..."
-                className="flex-1 p-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-              <button
-                type="submit"
-                disabled={isSubmittingComment}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>යවන්න</span>
-              </button>
-            </form>
+            {/* Add Comment Input Form: Only for OTHER users (witnesses/community), NOT for the alert author */}
+            {isAuthorOfAlert ? (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>🛡️ ඔබ මෙම ආපදාව වාර්තා කළ සාමාජිකයායි</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-zinc-300">
+                  මෙම සිදුවීම දුටු අනෙකුත් සාමාජිකයින්ගේ යාවත්කාලීන අදහස් සහ තොරතුරු ඉහතින් සජීවීව බලාගත හැක.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="වත්මන් තත්ත්වය පිළිබඳ අදහසක් හෝ තොරතුරක් සටහන් කරන්න..."
+                  className="flex-1 p-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmittingComment}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>යවන්න</span>
+                </button>
+              </form>
+            )}
           </div>
 
         </div>

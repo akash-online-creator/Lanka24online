@@ -193,26 +193,26 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.4)] overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.4)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
         {/* Header Ribbon with Flashing Warning Light */}
-        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-4 sm:p-5 text-white flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center">
+        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-5 text-white flex items-center justify-between shadow-md shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="relative flex items-center justify-center shrink-0">
               <span className="w-8 h-8 rounded-full bg-white/40 animate-ping absolute" />
               <div className="w-8 h-8 rounded-full bg-white text-red-600 font-black flex items-center justify-center text-lg shadow-md relative z-10">
                 🚨
               </div>
             </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-black tracking-wide flex items-center gap-2">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-xl font-black tracking-wide flex items-center gap-2 truncate">
                 <span>රතු එළිය (Red Alert)</span>
-                <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-mono shrink-0">
                   හදිසි ආපදා
                 </span>
               </h2>
-              <p className="text-xs text-red-100 font-medium">
+              <p className="text-[11px] sm:text-xs text-red-100 font-medium truncate">
                 ස්ථානයේ සිට කි.මී. 2 ක් ඇතුළත සියලු දෙනාට Siren ශබ්දය සමග ෂණිකව අනතුරු අඟවයි
               </p>
             </div>
@@ -221,16 +221,16 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all cursor-pointer shrink-0 ml-2"
             title="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
         {submitSuccess ? (
-          <div className="p-8 text-center space-y-4">
+          <div className="p-8 text-center space-y-4 overflow-y-auto flex-1 flex flex-col justify-center">
             <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center shadow-lg animate-bounce">
               <CheckCircle2 className="w-10 h-10" />
             </div>
@@ -247,7 +247,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+          <form onSubmit={handleSubmit} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             
             {/* Step 1: Select Disaster Type */}
             <div className="space-y-2">

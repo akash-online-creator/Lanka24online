@@ -152,7 +152,22 @@ export default function App() {
   const [isCreateRedAlertOpen, setIsCreateRedAlertOpen] = useState(false);
   const [selectedDetailAlert, setSelectedDetailAlert] = useState<RedAlertItem | null>(null);
   const [proximityAlertInfo, setProximityAlertInfo] = useState<{ alert: RedAlertItem; distanceKm: number } | null>(null);
-  const [dismissedProximityAlertIds, setDismissedProximityAlertIds] = useState<string[]>([]);
+  const [dismissedProximityAlertIds, setDismissedProximityAlertIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_dismissed_alerts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [myCreatedAlertIds, setMyCreatedAlertIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_my_created_alerts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Sync real-time Firestore Red Alerts
@@ -188,7 +203,7 @@ export default function App() {
     }
   }, []);
 
-  // Proximity alert calculation: if an active alert is within 2.0 km, trigger siren modal
+  // Proximity alert calculation: Siren auto-triggers for OTHER users within 2.0 km
   useEffect(() => {
     if (!userCoords || redAlerts.length === 0) return;
 
@@ -196,6 +211,12 @@ export default function App() {
       if (alert.status !== 'active') return false;
       if (alert.isFlaggedFake) return false;
       if (dismissedProximityAlertIds.includes(alert.id)) return false;
+
+      // DO NOT trigger proximity siren modal for the user who created/submitted the alert
+      const isCreatedByMe = 
+        (currentUser && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+        myCreatedAlertIds.includes(alert.id);
+      if (isCreatedByMe) return false;
 
       const dist = calculateDistanceKm(
         userCoords.lat,
@@ -217,7 +238,7 @@ export default function App() {
     } else {
       setProximityAlertInfo(null);
     }
-  }, [redAlerts, userCoords, dismissedProximityAlertIds]);
+  }, [redAlerts, userCoords, dismissedProximityAlertIds, myCreatedAlertIds, currentUser]);
 
   // Persist storage updates
   useEffect(() => {
@@ -883,7 +904,26 @@ export default function App() {
         onClose={() => setIsCreateRedAlertOpen(false)}
         currentUser={currentUser}
         onAlertCreated={(newAlert) => {
-          setSelectedDetailAlert(newAlert);
+          // Do NOT open detail modal for the author who submitted it.
+          // Save alert ID to myCreatedAlertIds and dismissed list so their own siren doesn't blast for their own alert
+          setMyCreatedAlertIds((prev) => {
+            const next = Array.from(new Set([...prev, newAlert.id]));
+            try {
+              localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(next));
+            } catch (e) {
+              console.warn(e);
+            }
+            return next;
+          });
+          setDismissedProximityAlertIds((prev) => {
+            const next = Array.from(new Set([...prev, newAlert.id]));
+            try {
+              localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
+            } catch (e) {
+              console.warn(e);
+            }
+            return next;
+          });
         }}
       />
 
@@ -894,7 +934,15 @@ export default function App() {
         distanceKm={proximityAlertInfo?.distanceKm || 0}
         onClose={() => {
           if (proximityAlertInfo) {
-            setDismissedProximityAlertIds((prev) => [...prev, proximityAlertInfo.alert.id]);
+            setDismissedProximityAlertIds((prev) => {
+              const next = Array.from(new Set([...prev, proximityAlertInfo.alert.id]));
+              try {
+                localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
+              } catch (e) {
+                console.warn(e);
+              }
+              return next;
+            });
           }
           setProximityAlertInfo(null);
         }}
