@@ -1782,6 +1782,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               return initialUsers;
             }
           })()}
+          redAlerts={redAlerts}
+          onViewRedAlertDetail={onViewRedAlertDetail}
+          onOpenRedAlert={onOpenRedAlert}
         />
       ) : (
         <>

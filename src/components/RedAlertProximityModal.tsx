@@ -24,7 +24,12 @@ import {
   stopEmergencySiren, 
   unlockAudio, 
   isEmergencySirenPlaying,
-  setCustomSirenAudio
+  setCustomSirenAudio,
+  getSirenVolume,
+  setSirenVolume,
+  isDeviceSirenMuted,
+  setDeviceSirenMuted,
+  subscribeToLocalSirenChanges
 } from '../utils/sirenAudio';
 import { addCommentToRedAlert, reportRedAlertAsFake } from '../lib/firebase';
 
@@ -45,6 +50,17 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 }) => {
   const [isPlayingSiren, setIsPlayingSiren] = useState(false);
   const [userInteracted, setUserInteracted] = useState(false);
+  const [deviceMuted, setLocalDeviceMuted] = useState<boolean>(() => isDeviceSirenMuted());
+  const [currentVolume, setCurrentVolume] = useState<number>(() => getSirenVolume());
+  const [showVolumeControl, setShowVolumeControl] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeToLocalSirenChanges(() => {
+      setLocalDeviceMuted(isDeviceSirenMuted());
+      setCurrentVolume(getSirenVolume());
+    });
+    return () => unsub();
+  }, []);
   const [showCommentSection, setShowCommentSection] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [commenterName, setCommenterName] = useState(currentUser?.name || '');
@@ -223,7 +239,40 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 relative z-10">
-            {/* Audio Toggle Button with immediate click unlock */}
+            {/* Quick Silent on this device Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const nextMute = !deviceMuted;
+                setLocalDeviceMuted(nextMute);
+                setDeviceSirenMuted(nextMute);
+                if (nextMute && isPlayingSiren) {
+                  stopEmergencySiren();
+                  setIsPlayingSiren(false);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1 text-[11px] font-black transition-all cursor-pointer shadow-md ${
+                deviceMuted
+                  ? 'bg-rose-950/80 text-rose-200 border-rose-400 hover:bg-rose-900'
+                  : 'bg-black/40 hover:bg-black/60 text-white border-white/30'
+              }`}
+              title={deviceMuted ? 'මගේ දුරකථනයේ Silent ඉවත් කරන්න' : 'මගේ දුරකථනයේ පමණක් Silent කරන්න'}
+            >
+              {deviceMuted ? (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  <span>🔕 Muted</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>🔊 {Math.round(currentVolume * 100)}%</span>
+                </>
+              )}
+            </button>
+
+            {/* Audio Play/Stop Button with immediate click unlock */}
             <button
               type="button"
               onClick={handleToggleSiren}
@@ -261,8 +310,58 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
         </div>
 
+        {/* Quick Device Volume & Mute Bar in Proximity Modal */}
+        <div className="bg-slate-900 border-b border-slate-800 p-2.5 px-4 flex items-center justify-between gap-3 text-xs text-slate-200">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const nextMute = !deviceMuted;
+                setLocalDeviceMuted(nextMute);
+                setDeviceSirenMuted(nextMute);
+                if (nextMute && isPlayingSiren) {
+                  stopEmergencySiren();
+                  setIsPlayingSiren(false);
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg font-black text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                deviceMuted
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+              }`}
+            >
+              {deviceMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              <span>{deviceMuted ? '🔕 මගේ දුරකථනයේ Silent කර ඇත' : '🔊 මගේ දුරකථනයේ Silent කරන්න'}</span>
+            </button>
+            <span className="text-[10px] text-slate-400 hidden sm:inline">
+              (මෙය ඔබගේ දුරකථනයට පමණක් බලපායි)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400">Volume:</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={currentVolume}
+              disabled={deviceMuted}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setCurrentVolume(val);
+                setSirenVolume(val);
+              }}
+              className="w-20 sm:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
+            />
+            <span className="font-mono text-xs font-black text-red-400 w-9 text-right">
+              {Math.round(currentVolume * 100)}%
+            </span>
+          </div>
+        </div>
+
         {/* Autoplay Unlock Interactive Bar if Siren is not playing yet */}
-        {!isPlayingSiren && (
+        {!isPlayingSiren && !deviceMuted && (
           <div 
             onClick={handleToggleSiren}
             className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2 px-4 flex items-center justify-between cursor-pointer border-b-2 border-amber-500 shadow-inner transition-colors"

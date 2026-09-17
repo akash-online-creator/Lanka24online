@@ -55,6 +55,12 @@ service cloud.firestore {
       }
     }
 
+    // System Settings - Global siren and emergency alert configurations
+    match /system_settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Default fallback
     match /{document=**} {
       allow read, write: if true;

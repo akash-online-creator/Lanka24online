@@ -988,4 +988,107 @@ export async function deleteRedAlertInFirestore(alertId: string): Promise<void> 
   }
 }
 
+// ==============================================================
+// 🔊 SYSTEM SETTINGS & SIREN TONE FIRESTORE SYNC
+// ==============================================================
+export const SYSTEM_SETTINGS_COLLECTION = 'system_settings';
+export const SIREN_CONFIG_DOC = 'siren_config';
+
+export interface SirenSettingsData {
+  audioUrl?: string | null;
+  fileName: string;
+  presetType?: string;
+  updatedAt?: string;
+  updatedAtMs?: number;
+  updatedBy?: string;
+}
+
+/**
+ * Saves siren configuration permanently in Firestore cloud database
+ */
+export async function saveSirenSettingsToFirestore(
+  settings: {
+    audioUrl?: string | null;
+    fileName: string;
+    presetType?: string;
+    updatedBy?: string;
+  }
+): Promise<void> {
+  try {
+    const settingRef = doc(db, SYSTEM_SETTINGS_COLLECTION, SIREN_CONFIG_DOC);
+    await setDoc(
+      settingRef,
+      {
+        audioUrl: settings.audioUrl || null,
+        fileName: settings.fileName || 'Air Raid Siren (Preset)',
+        presetType: settings.presetType || '',
+        updatedBy: settings.updatedBy || 'Admin',
+        updatedAt: new Date().toISOString(),
+        updatedAtMs: Date.now(),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn('Failed to save siren settings to Firestore:', error);
+    handleFirestoreError(error, OperationType.WRITE, `${SYSTEM_SETTINGS_COLLECTION}/${SIREN_CONFIG_DOC}`);
+  }
+}
+
+/**
+ * Real-time listener for global siren configuration across all devices and sessions
+ */
+export function subscribeToSirenSettings(
+  callback: (settings: { audioUrl: string | null; fileName: string; presetType: string }) => void
+): () => void {
+  try {
+    const settingRef = doc(db, SYSTEM_SETTINGS_COLLECTION, SIREN_CONFIG_DOC);
+    return onSnapshot(
+      settingRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          callback({
+            audioUrl: data.audioUrl || null,
+            fileName: data.fileName || 'Air Raid Siren (Preset)',
+            presetType: data.presetType || '',
+          });
+        }
+      },
+      (error) => {
+        console.warn('Siren settings listener warning:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToSirenSettings error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * One-time fetch for siren configuration
+ */
+export async function fetchSirenSettingsFromFirestore(): Promise<{
+  audioUrl: string | null;
+  fileName: string;
+  presetType: string;
+} | null> {
+  try {
+    const settingRef = doc(db, SYSTEM_SETTINGS_COLLECTION, SIREN_CONFIG_DOC);
+    const snap = await getDoc(settingRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        audioUrl: data.audioUrl || null,
+        fileName: data.fileName || 'Air Raid Siren (Preset)',
+        presetType: data.presetType || '',
+      };
+    }
+  } catch (err) {
+    console.warn('fetchSirenSettings error:', err);
+  }
+  return null;
+}
+
+
 

@@ -7,7 +7,8 @@ import {
   TagItem, 
   CategoryItem, 
   ProfessionalService, 
-  ServiceReview 
+  ServiceReview,
+  RedAlertItem
 } from '../types';
 import { TagSearchBar } from './TagSearchBar';
 import { PostCard } from './PostCard';
@@ -19,6 +20,8 @@ import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
+import { getDisasterConfig } from '../data/redAlertData';
+import { calculateDistanceKm } from '../utils/geoUtils';
 import { 
   ArrowLeft, 
   Sparkles, 
@@ -49,7 +52,13 @@ import {
   HelpCircle,
   Lightbulb,
   Loader2,
-  Rocket
+  Rocket,
+  AlertTriangle,
+  Radio,
+  ArrowRight,
+  ShieldAlert,
+  Volume2,
+  Navigation
 } from 'lucide-react';
 
 interface HelpRequestsPageProps {
@@ -90,6 +99,9 @@ interface HelpRequestsPageProps {
   onAddProfessionalService?: (service: ProfessionalService) => void;
   onAddProfessionalReview?: (serviceId: string, review: ServiceReview) => void;
   registeredUsers?: User[];
+  redAlerts?: RedAlertItem[];
+  onViewRedAlertDetail?: (alert: RedAlertItem) => void;
+  onOpenRedAlert?: () => void;
 }
 
 export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
@@ -130,6 +142,9 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   onAddProfessionalService,
   onAddProfessionalReview,
   registeredUsers = [],
+  redAlerts = [],
+  onViewRedAlertDetail,
+  onOpenRedAlert,
 }) => {
   // Boost Modal State
   const [boostingPost, setBoostingPost] = useState<HelpPost | null>(null);
@@ -345,6 +360,24 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     };
   }, [helpPosts, savedPostIds]);
 
+  const activeRedAlerts = useMemo(() => {
+    return (redAlerts || []).filter((a) => a.status === 'active' && !a.isFlaggedFake);
+  }, [redAlerts]);
+
+  const getAlertDistanceDisplay = useCallback((alert: RedAlertItem) => {
+    if (!currentLocation || !alert.latitude || !alert.longitude) return null;
+    const distanceKm = calculateDistanceKm(
+      currentLocation.lat,
+      currentLocation.lng,
+      alert.latitude,
+      alert.longitude
+    );
+    if (distanceKm < 1) {
+      return `මීටර් ${Math.round(distanceKm * 1000)}`;
+    }
+    return `කි.මී. ${distanceKm.toFixed(1)}`;
+  }, [currentLocation]);
+
   return (
     <div className="w-full max-w-3xl mx-auto py-3 sm:py-5 space-y-4 sm:space-y-6 animate-fadeIn pb-16">
       {/* Toast Notification Alert */}
@@ -352,6 +385,88 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-950/95 dark:bg-emerald-950 text-white font-extrabold text-xs sm:text-sm shadow-2xl border border-emerald-500/60 backdrop-blur-md flex items-center gap-2.5 animate-bounce">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* 🚨 Emergency Disaster Red Alert Banner at the Very Top of Notice Board */}
+      {activeRedAlerts.length > 0 && (
+        <div className="space-y-3">
+          {activeRedAlerts.map((alert) => {
+            const config = getDisasterConfig(alert.disasterType);
+            const distStr = getAlertDistanceDisplay(alert);
+            return (
+              <div
+                key={`top-red-alert-${alert.id}`}
+                className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/90 relative overflow-hidden animate-fadeIn"
+              >
+                {/* Visual Ambient Light Effect */}
+                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center shrink-0 shadow-lg font-black text-2xl animate-pulse">
+                      {config.icon || '🚨'}
+                    </div>
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white text-red-700 uppercase tracking-wide flex items-center gap-1 shadow-xs">
+                          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                          <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-black/30 text-yellow-300 font-mono border border-yellow-300/30">
+                          SIREN 2KM ACTIVE
+                        </span>
+                        {alert.alertCode && (
+                          <span className="text-[10px] font-mono text-red-100 font-bold bg-black/20 px-2 py-0.5 rounded-md">
+                            {alert.alertCode}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-base sm:text-lg font-black text-white leading-tight flex items-center gap-1.5 flex-wrap">
+                        <span>{alert.disasterTitleSi || config.titleSi}</span>
+                      </h3>
+
+                      <div className="flex items-center gap-2.5 text-xs text-red-100 flex-wrap font-medium pt-0.5">
+                        <span className="flex items-center gap-1 font-bold text-white bg-black/20 px-2.5 py-1 rounded-lg">
+                          <MapPin className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+                          <span>{alert.locationName}</span>
+                        </span>
+                        {distStr && (
+                          <span className="bg-white/20 px-2.5 py-1 rounded-lg font-mono font-bold text-white flex items-center gap-1">
+                            <Navigation className="w-3 h-3 text-amber-200" />
+                            <span>{getLangText(`ඔබේ දුර: ${distStr}`, `Distance: ${distStr}`, `தூரம்: ${distStr}`)}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {alert.description && (
+                        <p className="text-xs text-red-50 line-clamp-2 mt-1 leading-relaxed bg-black/20 p-2 rounded-xl border border-white/10">
+                          {alert.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* View Details Button */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onViewRedAlertDetail) {
+                          onViewRedAlertDetail(alert);
+                        }
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>{getLangText('විස්තර සහ ආරක්ෂිත උපදෙස්', 'View Safety Details', 'பாதுகாப்பு விவரங்கள்')}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -865,6 +980,84 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
           ) : (
             <div className="space-y-4 sm:space-y-5">
+              {/* Active Red Alert Emergency Cards Pinned at Top of Feed */}
+              {activeRedAlerts.length > 0 && (
+                <div className="space-y-3 pb-1">
+                  {activeRedAlerts.map((alert) => {
+                    const config = getDisasterConfig(alert.disasterType);
+                    const distStr = getAlertDistanceDisplay(alert);
+                    return (
+                      <div
+                        key={`feed-top-alert-${alert.id}`}
+                        className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400 relative overflow-hidden animate-fadeIn"
+                      >
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center shrink-0 shadow-lg font-black text-2xl animate-pulse">
+                              {config.icon || '🚨'}
+                            </div>
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white text-red-700 uppercase tracking-wide flex items-center gap-1 shadow-xs">
+                                  <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                                  <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-black/30 text-yellow-300 font-mono border border-yellow-300/30">
+                                  SIREN 2KM ACTIVE
+                                </span>
+                                {alert.alertCode && (
+                                  <span className="text-[10px] font-mono text-red-100 font-bold bg-black/20 px-2 py-0.5 rounded-md">
+                                    {alert.alertCode}
+                                  </span>
+                                )}
+                              </div>
+
+                              <h3 className="text-base sm:text-lg font-black text-white leading-tight">
+                                {alert.disasterTitleSi || config.titleSi}
+                              </h3>
+
+                              <div className="flex items-center gap-2.5 text-xs text-red-100 flex-wrap font-medium pt-0.5">
+                                <span className="flex items-center gap-1 font-bold text-white bg-black/20 px-2.5 py-1 rounded-lg">
+                                  <MapPin className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+                                  <span>{alert.locationName}</span>
+                                </span>
+                                {distStr && (
+                                  <span className="bg-white/20 px-2.5 py-1 rounded-lg font-mono font-bold text-white flex items-center gap-1">
+                                    <Navigation className="w-3 h-3 text-amber-200" />
+                                    <span>{getLangText(`ඔබේ දුර: ${distStr}`, `Distance: ${distStr}`, `தூரம்: ${distStr}`)}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {alert.description && (
+                                <p className="text-xs text-red-50 line-clamp-2 mt-1 leading-relaxed bg-black/20 p-2 rounded-xl border border-white/10">
+                                  {alert.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onViewRedAlertDetail) {
+                                  onViewRedAlertDetail(alert);
+                                }
+                              }}
+                              className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <span>{getLangText('විස්තර සහ ආරක්ෂිත උපදෙස්', 'View Safety Details', 'பாதுகாப்பு விவரங்கள்')}</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Pagination Info Badge */}
               <div className="flex items-center justify-between px-2 py-1 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 <span>

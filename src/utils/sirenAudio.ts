@@ -1,24 +1,238 @@
 // Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
-// Uses Web Audio API oscillator frequency modulation for 100% reliable loud emergency siren, with custom audio support
+// Uses Web Audio API oscillator frequency modulation for 100% reliable loud emergency siren, with custom audio support and Firestore cloud sync
+
+import { 
+  saveSirenSettingsToFirestore, 
+  subscribeToSirenSettings, 
+  fetchSirenSettingsFromFirestore 
+} from '../lib/firebase';
 
 let isSirenActive = false;
 let htmlAudioElement: HTMLAudioElement | null = null;
 let cachedCustomAudio: string | null = null;
+let cachedSirenFileName: string = 'Air Raid Siren (Preset)';
 let audioCtx: AudioContext | null = null;
 let oscillator: OscillatorNode | null = null;
 let gainNode: GainNode | null = null;
 let sirenInterval: any = null;
+let isInitialized = false;
 
-export function setCustomSirenAudio(dataUri: string): void {
-  cachedCustomAudio = dataUri;
+// Device-level local volume & mute states
+let cachedVolume: number = 0.9;
+let cachedIsMuted: boolean = false;
+
+// Event listeners for siren state changes across the UI
+type SirenChangeListener = () => void;
+const listeners = new Set<SirenChangeListener>();
+
+export function subscribeToLocalSirenChanges(cb: SirenChangeListener): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function notifyLocalChanges() {
+  listeners.forEach((cb) => {
+    try {
+      cb();
+    } catch {}
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed'));
+  }
+}
+
+/**
+ * Gets the current device-level siren volume (0.0 to 1.0)
+ */
+export function getSirenVolume(): number {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('sahaya_siren_volume');
+    if (saved !== null) {
+      const parsed = parseFloat(saved);
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+        cachedVolume = parsed;
+        return parsed;
+      }
+    }
+  }
+  return cachedVolume;
+}
+
+/**
+ * Sets the device-level siren volume (0.0 to 1.0) and adjusts playing sound in real-time
+ */
+export function setSirenVolume(vol: number): void {
+  const clamped = Math.max(0, Math.min(1, vol));
+  cachedVolume = clamped;
   try {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('sahaya_custom_siren_audio', dataUri);
-      localStorage.setItem('sahaya_default_siren_audio', dataUri);
+      localStorage.setItem('sahaya_siren_volume', clamped.toString());
+    }
+  } catch {}
+
+  // Apply real-time volume change to actively playing siren
+  applyLiveVolume();
+  notifyLocalChanges();
+}
+
+/**
+ * Checks if the siren is muted on this specific device
+ */
+export function isDeviceSirenMuted(): boolean {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('sahaya_siren_device_muted');
+    if (saved !== null) {
+      cachedIsMuted = saved === 'true';
+      return cachedIsMuted;
+    }
+  }
+  return cachedIsMuted;
+}
+
+/**
+ * Mutes or unmutes the siren on this specific device only
+ */
+export function setDeviceSirenMuted(muted: boolean): void {
+  cachedIsMuted = muted;
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sahaya_siren_device_muted', muted ? 'true' : 'false');
+    }
+  } catch {}
+
+  // Apply real-time mute change to actively playing siren
+  applyLiveVolume();
+  notifyLocalChanges();
+}
+
+/**
+ * Applies current volume and mute states to active AudioContext GainNode and HTMLAudioElement
+ */
+function applyLiveVolume(): void {
+  const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
+
+  if (gainNode && audioCtx) {
+    try {
+      gainNode.gain.setValueAtTime(effectiveVolume, audioCtx.currentTime);
+    } catch {}
+  }
+
+  if (htmlAudioElement) {
+    try {
+      htmlAudioElement.volume = effectiveVolume;
+    } catch {}
+  }
+}
+
+// Initialize and sync with Firestore in real-time
+export function initSirenSettings(): () => void {
+  if (isInitialized) return () => {};
+  isInitialized = true;
+
+  // 1. Initial hydration from local storage
+  try {
+    if (typeof window !== 'undefined') {
+      const storedAudio = localStorage.getItem('sahaya_custom_siren_audio') || localStorage.getItem('sahaya_default_siren_audio');
+      if (storedAudio) cachedCustomAudio = storedAudio;
+      const storedName = localStorage.getItem('sahaya_siren_filename');
+      if (storedName) cachedSirenFileName = storedName;
+      
+      const storedVol = localStorage.getItem('sahaya_siren_volume');
+      if (storedVol) cachedVolume = parseFloat(storedVol);
+      
+      const storedMute = localStorage.getItem('sahaya_siren_device_muted');
+      if (storedMute !== null) cachedIsMuted = storedMute === 'true';
+    }
+  } catch {}
+
+  // 2. Fetch from Firestore initially
+  fetchSirenSettingsFromFirestore().then((remoteSettings) => {
+    if (remoteSettings) {
+      cachedCustomAudio = remoteSettings.audioUrl || null;
+      cachedSirenFileName = remoteSettings.fileName || 'Air Raid Siren (Preset)';
+      try {
+        if (typeof window !== 'undefined') {
+          if (remoteSettings.audioUrl) {
+            localStorage.setItem('sahaya_custom_siren_audio', remoteSettings.audioUrl);
+            localStorage.setItem('sahaya_default_siren_audio', remoteSettings.audioUrl);
+          } else {
+            localStorage.removeItem('sahaya_custom_siren_audio');
+            localStorage.removeItem('sahaya_default_siren_audio');
+          }
+          localStorage.setItem('sahaya_siren_filename', cachedSirenFileName);
+        }
+      } catch {}
+    }
+  }).catch(() => {});
+
+  // 3. Subscribe to real-time changes
+  return subscribeToSirenSettings((settings) => {
+    cachedCustomAudio = settings.audioUrl || null;
+    cachedSirenFileName = settings.fileName || 'Air Raid Siren (Preset)';
+    try {
+      if (typeof window !== 'undefined') {
+        if (settings.audioUrl) {
+          localStorage.setItem('sahaya_custom_siren_audio', settings.audioUrl);
+          localStorage.setItem('sahaya_default_siren_audio', settings.audioUrl);
+        } else {
+          localStorage.removeItem('sahaya_custom_siren_audio');
+          localStorage.removeItem('sahaya_default_siren_audio');
+        }
+        localStorage.setItem('sahaya_siren_filename', cachedSirenFileName);
+      }
+    } catch {}
+  });
+}
+
+// Auto-boot listener when running in browser
+if (typeof window !== 'undefined') {
+  try {
+    initSirenSettings();
+  } catch {}
+}
+
+/**
+ * Persists siren settings to both Firestore Cloud Database and Local Storage
+ */
+export async function persistSirenSettings(
+  audioUrl: string | null,
+  fileName: string,
+  presetType?: string
+): Promise<void> {
+  cachedCustomAudio = audioUrl;
+  cachedSirenFileName = fileName;
+
+  try {
+    if (typeof window !== 'undefined') {
+      if (audioUrl) {
+        localStorage.setItem('sahaya_custom_siren_audio', audioUrl);
+        localStorage.setItem('sahaya_default_siren_audio', audioUrl);
+      } else {
+        localStorage.removeItem('sahaya_custom_siren_audio');
+        localStorage.removeItem('sahaya_default_siren_audio');
+      }
+      localStorage.setItem('sahaya_siren_filename', fileName);
     }
   } catch (err) {
-    console.warn('Failed to save custom siren audio to localStorage:', err);
+    console.warn('LocalStorage save notice:', err);
   }
+
+  // Save to Firestore
+  try {
+    await saveSirenSettingsToFirestore({
+      audioUrl,
+      fileName,
+      presetType,
+    });
+  } catch (err) {
+    console.warn('Failed to sync siren settings to Firestore:', err);
+  }
+}
+
+export function setCustomSirenAudio(dataUri: string): void {
+  persistSirenSettings(dataUri, 'Uploaded Custom Audio Tone');
 }
 
 export function getCustomSirenAudio(): string | null {
@@ -33,6 +247,20 @@ export function getCustomSirenAudio(): string | null {
     }
   } catch {}
   return null;
+}
+
+export function getSirenFileName(): string {
+  if (cachedSirenFileName) return cachedSirenFileName;
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('sahaya_siren_filename');
+      if (stored) {
+        cachedSirenFileName = stored;
+        return stored;
+      }
+    }
+  } catch {}
+  return 'Air Raid Siren (Preset)';
 }
 
 export function unlockAudio(): boolean {
@@ -77,13 +305,9 @@ export function startEmergencySiren(): () => void {
     isSirenActive = true;
 
     const customAudioUrl = getCustomSirenAudio();
-    const sirenName = (() => {
-      try {
-        return localStorage.getItem('sahaya_siren_filename') || '';
-      } catch {
-        return '';
-      }
-    })();
+    const sirenName = getSirenFileName();
+
+    const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
 
     // If a real custom audio URL (http or actual custom data uri) is provided, try playing it first
     if (customAudioUrl && !sirenName.includes('Preset') && (customAudioUrl.startsWith('http://') || customAudioUrl.startsWith('https://') || (customAudioUrl.startsWith('data:audio') && customAudioUrl.length > 200))) {
@@ -92,7 +316,7 @@ export function startEmergencySiren(): () => void {
         htmlAudioElement.crossOrigin = 'anonymous';
         htmlAudioElement.src = customAudioUrl;
         htmlAudioElement.loop = true;
-        htmlAudioElement.volume = 1.0;
+        htmlAudioElement.volume = effectiveVolume;
         
         const playPromise = htmlAudioElement.play();
         if (playPromise !== undefined) {
@@ -130,16 +354,12 @@ function playWebAudioSiren() {
       audioCtx.resume();
     }
 
-    let sirenName = '';
-    try {
-      if (typeof window !== 'undefined') {
-        sirenName = localStorage.getItem('sahaya_siren_filename') || '';
-      }
-    } catch {}
+    let sirenName = getSirenFileName();
+    const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
 
     oscillator = audioCtx.createOscillator();
     gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+    gainNode.gain.setValueAtTime(effectiveVolume, audioCtx.currentTime);
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
 
@@ -171,6 +391,20 @@ function playWebAudioSiren() {
           oscillator.frequency.setValueAtTime(toggle ? 650 : 350, audioCtx.currentTime);
         } catch {}
       }, 400);
+    } else if (sirenName.includes('Fire') || sirenName.includes('Horn')) {
+      // Fire & Disaster Horn: Urgent pulsing strobe alarm
+      oscillator.type = 'sawtooth';
+      let toggle = false;
+      oscillator.frequency.setValueAtTime(520, audioCtx.currentTime);
+      oscillator.start();
+
+      sirenInterval = setInterval(() => {
+        if (!audioCtx || !oscillator) return;
+        toggle = !toggle;
+        try {
+          oscillator.frequency.setValueAtTime(toggle ? 980 : 520, audioCtx.currentTime);
+        } catch {}
+      }, 150);
     } else {
       // Air Raid Siren (Default): Slow rising and falling wail
       oscillator.type = 'sine';

@@ -30,16 +30,37 @@ import {
   CheckCircle2,
   HeartHandshake,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  Volume1,
+  Radio,
+  Play,
+  Square,
+  Bell,
+  BellOff,
+  SlidersHorizontal
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore } from '../lib/firebase';
 import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
+import {
+  getSirenVolume,
+  setSirenVolume,
+  isDeviceSirenMuted,
+  setDeviceSirenMuted,
+  startEmergencySiren,
+  stopEmergencySiren,
+  unlockAudio,
+  getSirenFileName,
+  persistSirenSettings,
+  subscribeToLocalSirenChanges
+} from '../utils/sirenAudio';
 
 export type FontSizeKey = 'small' | 'normal' | 'medium' | 'large' | 'extra_large';
-export type SettingsTabKey = 'profile' | 'font_size' | 'data_saver';
+export type SettingsTabKey = 'profile' | 'font_size' | 'data_saver' | 'siren_settings';
 
 export interface FontSizeOption {
   key: FontSizeKey;
@@ -162,6 +183,30 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
 
   // Font Size State
   const [currentFontSize, setCurrentFontSize] = useState<FontSizeKey>(() => getStoredFontSize());
+
+  // Siren & Emergency Volume Settings
+  const [sirenVolume, setLocalSirenVolume] = useState<number>(() => getSirenVolume());
+  const [isSirenMuted, setIsSirenMuted] = useState<boolean>(() => isDeviceSirenMuted());
+  const [sirenTone, setSirenTone] = useState<string>(() => getSirenFileName());
+  const [isTestingSiren, setIsTestingSiren] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = subscribeToLocalSirenChanges(() => {
+      setLocalSirenVolume(getSirenVolume());
+      setIsSirenMuted(isDeviceSirenMuted());
+      setSirenTone(getSirenFileName());
+    });
+    return () => unsub();
+  }, []);
+
+  // Stop testing siren if modal unmounts or closes
+  useEffect(() => {
+    return () => {
+      if (isTestingSiren) {
+        stopEmergencySiren();
+      }
+    };
+  }, [isTestingSiren]);
   
   // Feedback
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -182,6 +227,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       setErrorMsg(null);
       setActiveTab(initialTab);
       setCurrentFontSize(getStoredFontSize());
+      setLocalSirenVolume(getSirenVolume());
+      setIsSirenMuted(isDeviceSirenMuted());
+      setSirenTone(getSirenFileName());
+      setIsTestingSiren(false);
     }
   }, [isOpen, user, initialTab]);
 
@@ -459,6 +508,23 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
           >
             <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-300" />
             <span className="truncate">{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா சேவர்')}</span>
+          </button>
+
+          {/* Tab 4: Siren & Emergency Volume Settings */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('siren_settings');
+              setErrorMsg(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+              activeTab === 'siren_settings'
+                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-md scale-[1.01]'
+                : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
+            }`}
+          >
+            <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-red-400" />
+            <span className="truncate">{getLang('🚨 සයිරන් / Volume', '🚨 Siren / Volume', '🚨 சைரன் ஒலி')}</span>
           </button>
         </div>
 
@@ -1210,6 +1276,325 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                   type="button"
                   onClick={onClose}
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: SIREN & EMERGENCY VOLUME SETTINGS (සයිරන් ශබ්ද සහ දුරකථන සැකසුම්) */}
+          {activeTab === 'siren_settings' && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {/* Header Banner */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-red-600/15 via-rose-600/10 to-transparent border-2 border-red-500/60 dark:border-red-500/40 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white uppercase tracking-wider shadow-sm">
+                      <Volume2 className="w-3 h-3 fill-current" />
+                      <span>{getLang('හදිසි ආපදා සයිරන් ශබ්ද පාලනය', 'Emergency Siren Sound Control', 'அவசர சைரன் கட்டுப்பாடு')}</span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-red-300">
+                      {getLang('🚨 සයිරන් ශබ්දය සහ Silent කිරීමේ සැකසුම්', '🚨 Siren Volume & Silent Settings', '🚨 சைரன் ஒலி மற்றும் அமைதி அமைப்புகள்')}
+                    </h3>
+                    <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed max-w-xl">
+                      {getLang(
+                        'ආපදාවක් හෝ රතු එළියක් (Red Alert) ඇති විට ඇසෙන සයිරන් නාදයේ ශබ්දය (Volume) අඩු වැඩි කිරීමට හෝ ඔබගේ දුරකථනයේ පමණක් Silent කර තබා ගැනීමට මෙම සැකසුම් භාවිතා කරන්න. මෙය ඔබගේ උපාංගයට (This Device) පමණක් බලපායි.',
+                        'Adjust the emergency alert siren volume or mute it exclusively on your device. Other community members will continue to receive their standard alerts.',
+                        'உங்கள் சாதனத்தில் மட்டும் அவசர சைரன் ஒலியைக் கட்டுப்படுத்த அல்லது மௌனமாக்க இந்த அமைப்புகளைப் பயன்படுத்தவும்.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Device-Level Silent Toggle Box */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#07170e] border-2 border-red-300 dark:border-red-800/60 flex items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${
+                        isSirenMuted
+                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-600 border border-rose-300 dark:border-rose-800'
+                          : 'bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-md'
+                      }`}
+                    >
+                      {isSirenMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6 animate-pulse" />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>{getLang('මගේ දුරකථනයේ Silent කිරීම:', 'Mute on My Device:', 'என் சாதனத்தில் மௌனம்:')}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-lg text-xs font-black ${
+                            isSirenMuted
+                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border border-rose-400'
+                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-400'
+                          }`}
+                        >
+                          {isSirenMuted
+                            ? getLang('🔕 Silent කර ඇත (Muted)', '🔕 Muted (Silent)', '🔕 மௌனமானது')
+                            : getLang('🔔 ශබ්දය සක්‍රීයයි (Active)', '🔔 Sound Active', '🔔 ஒலி செயலில்')}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {isSirenMuted
+                          ? getLang('අනතුරු ඇඟවීමේදී තිරය පෙන්වයි • සයිරන් නාදය නිහඬයි', 'Visual warnings pop up • Audio siren stays completely quiet', 'திரை எச்சரிக்கை வரும் • சைரன் ஒலிக்காது')
+                          : getLang('අනතුරු ඇඟවීම් වලදී සයිරන් නාදය ශබ්ද නගා ඇසේ', 'Siren tone sounds at configured volume during emergencies', 'எச்சரிக்கைகளின் போது சைரன் ஒலிக்கும்')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMute = !isSirenMuted;
+                      setIsSirenMuted(nextMute);
+                      setDeviceSirenMuted(nextMute);
+                      if (nextMute && isTestingSiren) {
+                        stopEmergencySiren();
+                        setIsTestingSiren(false);
+                      }
+                      setSaveSuccessMsg(
+                        nextMute
+                          ? getLang(
+                              '🔕 ඔබගේ දුරකථනයේ සයිරන් නාදය Silent කරන ලදී. අනතුරු ඇඟවීම් තිරයේ පමණක් දිස්වේ.',
+                              '🔕 Siren muted on this device. Visual alerts will still display.',
+                              '🔕 உங்கள் சாதனத்தில் சைரன் மௌனமாக்கப்பட்டது.'
+                            )
+                          : getLang(
+                              '🔔 ඔබගේ දුරකථනයේ සයිරන් ශබ්දය සක්‍රීය කරන ලදී!',
+                              '🔔 Siren sound activated on this device!',
+                              '🔔 சைரன் ஒலி செயல்படுத்தப்பட்டது!'
+                            )
+                      );
+                      setTimeout(() => setSaveSuccessMsg(null), 3000);
+                    }}
+                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                      isSirenMuted ? 'bg-rose-500' : 'bg-emerald-600'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
+                        isSirenMuted ? 'translate-x-8 text-rose-600' : 'translate-x-0 text-emerald-700'
+                      }`}
+                    >
+                      {isSirenMuted ? 'MUTE' : 'ON'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Volume Slider Section */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100">
+                        {getLang('සයිරන් ශබ්ද පරිමාව (Siren Volume)', 'Siren Volume Level', 'சைரன் ஒலி அளவு')}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                        {getLang('අවශ්‍ය ප්‍රමාණයට Volume එක අඩු වැඩි කරන්න', 'Drag slider to set preferred alarm loudness', 'ஒலியளவை மாற்றவும்')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Big Percentage Badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg sm:text-xl font-black font-mono text-red-600 dark:text-red-400 px-3 py-1 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900">
+                      {Math.round(sirenVolume * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Range Input Slider */}
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={sirenVolume}
+                    disabled={isSirenMuted}
+                    onChange={(e) => {
+                      const newVol = parseFloat(e.target.value);
+                      setLocalSirenVolume(newVol);
+                      setSirenVolume(newVol);
+                    }}
+                    className="w-full h-3 bg-slate-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-red-600 disabled:opacity-40"
+                  />
+                  
+                  {/* Quick Preset Volume Buttons */}
+                  <div className="grid grid-cols-5 gap-1.5 pt-1">
+                    {[
+                      { label: '0% (Mute)', val: 0.0, icon: '🔇' },
+                      { label: '25% (Low)', val: 0.25, icon: '🔉' },
+                      { label: '50% (Med)', val: 0.5, icon: '🔉' },
+                      { label: '75% (High)', val: 0.75, icon: '🔊' },
+                      { label: '100% (Max)', val: 1.0, icon: '📢' }
+                    ].map((preset) => {
+                      const isSelected = Math.abs(sirenVolume - preset.val) < 0.05;
+                      return (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          disabled={isSirenMuted}
+                          onClick={() => {
+                            setLocalSirenVolume(preset.val);
+                            setSirenVolume(preset.val);
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[10px] sm:text-xs font-black transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-1 border ${
+                            isSelected
+                              ? 'bg-red-600 text-white border-red-700 shadow-sm scale-[1.02]'
+                              : 'bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-700'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          <span>{preset.icon}</span>
+                          <span>{preset.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Siren Test Button */}
+                <div className="pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-xs text-slate-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                    <span>💡</span>
+                    <span>{getLang('වර්තමාන ශබ්දය පරීක්ෂා කර බැලීමට බොත්තම ඔබන්න:', 'Test your selected loudness right now:', 'ஒலியை சோதிக்கவும்:')}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      unlockAudio();
+                      if (isTestingSiren) {
+                        stopEmergencySiren();
+                        setIsTestingSiren(false);
+                      } else {
+                        if (isSirenMuted) {
+                          setIsSirenMuted(false);
+                          setDeviceSirenMuted(false);
+                        }
+                        startEmergencySiren();
+                        setIsTestingSiren(true);
+                        // Auto stop test after 6 seconds
+                        setTimeout(() => {
+                          stopEmergencySiren();
+                          setIsTestingSiren(false);
+                        }, 6000);
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-md transition-all cursor-pointer active:scale-95 ${
+                      isTestingSiren
+                        ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-2 border-amber-600 animate-pulse'
+                        : 'bg-red-600 hover:bg-red-700 text-white border border-red-500'
+                    }`}
+                  >
+                    {isTestingSiren ? (
+                      <>
+                        <Square className="w-4 h-4 fill-current text-slate-950" />
+                        <span>{getLang('⏹️ ශබ්දය නවත්වන්න (Stop)', '⏹️ Stop Siren', '⏹️ நிறுத்து')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>{getLang('🔊 සයිරන් ශබ්දය පරීක්ෂා කරන්න (Test Siren)', '🔊 Test Siren Alarm', '🔊 சைரனை சோதிக்கவும்')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Siren Tone Presets Selection */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100">
+                      {getLang('සයිරන් නාද රටාව තෝරන්න (Siren Tone Preset)', 'Emergency Tone Preset', 'சைரன் தொனி')}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      {getLang('ඔබ කැමති සයිරන් ශබ්ද රටාව තෝරාගන්න', 'Select which emergency alarm wail tone to use', 'தொனியைத் தேர்ந்தெடுக்கவும்')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    {
+                      name: 'Air Raid Siren (Preset)',
+                      titleSi: '🚨 ගුවන් ප්‍රහාරක සයිරන් (Air Raid)',
+                      descSi: 'ක්‍රමයෙන් වැඩිවන හා අඩුවන සාම්ප්‍රදායික ගුවන් අනතුරු ඇඟවීම',
+                      icon: '🚨'
+                    },
+                    {
+                      name: 'Police Siren (Preset)',
+                      titleSi: '🚓 පොලිස් / හදිසි රථ නාදය (Police Hi-Lo)',
+                      descSi: 'වේගයෙන් මාරුවන තියුණු හදිසි ප්‍රතිචාර සයිරන් නාදය',
+                      icon: '🚓'
+                    },
+                    {
+                      name: 'Tsunami Alarm (Preset)',
+                      titleSi: '🌊 සුනාමි හා ගැඹුරු ආපදා නාදය (Tsunami Horn)',
+                      descSi: 'ගැඹුරු ස්පන්දන ඉලෙක්ට්‍රොනික හදිසි අනතුරු ඇඟවීම',
+                      icon: '🌊'
+                    },
+                    {
+                      name: 'Fire & Disaster Horn (Preset)',
+                      titleSi: '🚒 ගිනි නිවන හා ආපදා හෝන් (Disaster Horn)',
+                      descSi: 'ඉක්මන් තියුණු හදිසි අනතුරු ඇඟවීමේ ශබ්දය',
+                      icon: '🚒'
+                    }
+                  ].map((preset) => {
+                    const isSelected = sirenTone.includes(preset.name.split(' ')[0]);
+                    return (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          setSirenTone(preset.name);
+                          persistSirenSettings(null, preset.name, preset.name);
+                          if (isTestingSiren) {
+                            stopEmergencySiren();
+                            startEmergencySiren();
+                          }
+                          setSaveSuccessMsg(
+                            getLang(
+                              `✅ ${preset.titleSi} නාද රටාව යොදන ලදී!`,
+                              `✅ Applied ${preset.name}!`,
+                              `✅ ${preset.name} அமைக்கப்பட்டது!`
+                            )
+                          );
+                          setTimeout(() => setSaveSuccessMsg(null), 2500);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-red-50 dark:bg-red-950/60 border-2 border-red-600 text-red-950 dark:text-red-200 shadow-sm'
+                            : 'bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700 hover:border-red-400 text-slate-800 dark:text-zinc-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black flex items-center gap-1.5">
+                            <span>{preset.icon}</span>
+                            <span>{preset.titleSi}</span>
+                          </span>
+                          {isSelected && <Check className="w-4 h-4 text-red-600" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">
+                          {preset.descSi}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Close / Done Button */}
+              <div className="pt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
                 >
                   {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
                 </button>

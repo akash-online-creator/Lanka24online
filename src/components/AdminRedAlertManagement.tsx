@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 import { RedAlertItem, Language } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
-import { updateRedAlertStatus, deleteRedAlertInFirestore } from '../lib/firebase';
-import { startEmergencySiren, stopEmergencySiren, unlockAudio, setCustomSirenAudio } from '../utils/sirenAudio';
+import { updateRedAlertStatus, deleteRedAlertInFirestore, subscribeToSirenSettings } from '../lib/firebase';
+import { startEmergencySiren, stopEmergencySiren, unlockAudio, persistSirenSettings, getSirenFileName } from '../utils/sirenAudio';
 
 interface AdminRedAlertManagementProps {
   alerts: RedAlertItem[];
@@ -38,16 +38,16 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [isPlayingSiren, setIsPlayingSiren] = useState(false);
-  const [uploadedSirenFileName, setUploadedSirenFileName] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('sahaya_siren_filename') || (localStorage.getItem('sahaya_custom_siren_audio') ? 'Uploaded Custom Audio Tone' : null);
-    } catch {
-      return null;
-    }
-  });
+  const [uploadedSirenFileName, setUploadedSirenFileName] = useState<string | null>(() => getSirenFileName());
 
   useEffect(() => {
+    // Subscribe to cloud siren settings so it stays synced across sessions and devices
+    const unsubscribe = subscribeToSirenSettings((settings) => {
+      setUploadedSirenFileName(settings.fileName || 'Air Raid Siren (Preset)');
+    });
+
     return () => {
+      unsubscribe();
       stopEmergencySiren();
     };
   }, []);
@@ -171,15 +171,12 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                   const file = e.target.files?.[0];
                   if (file) {
                     const reader = new FileReader();
-                    reader.onload = (uploadEvent) => {
+                    reader.onload = async (uploadEvent) => {
                       const dataUri = uploadEvent.target?.result as string;
                       if (dataUri) {
-                        setCustomSirenAudio(dataUri);
+                        await persistSirenSettings(dataUri, file.name);
                         setUploadedSirenFileName(file.name);
-                        try {
-                          localStorage.setItem('sahaya_siren_filename', file.name);
-                        } catch {}
-                        alert(`✅ සාර්ථකයි! "${file.name}" Siren Tone එක පද්ධතියේ පෙරනිමි නාදය ලෙස ගබඩා කරන ලදී.`);
+                        alert(`✅ සාර්ථකයි! "${file.name}" Siren Tone එක Cloud Database හි ස්ථිරවම ගබඩා කරන ලදී. නැවත Log වූ විටද මෙය සුරැකී ඇත.`);
                         startEmergencySiren();
                         setIsPlayingSiren(true);
                       }
@@ -203,7 +200,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
           </div>
         </div>
 
-        {/* 🔗 Telegram / Audio URL Direct Input Row */}
+        {/* 🔗 Direct Audio URL Input Row */}
         <div className="pt-3 border-t border-red-500/50 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -214,16 +211,13 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
             />
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 const inputEl = document.getElementById('telegram-audio-url-input') as HTMLInputElement;
                 if (inputEl && inputEl.value.trim().length > 5) {
                   const url = inputEl.value.trim();
-                  setCustomSirenAudio(url);
+                  await persistSirenSettings(url, url);
                   setUploadedSirenFileName(url);
-                  try {
-                    localStorage.setItem('sahaya_siren_filename', url);
-                  } catch {}
-                  alert('✅ සාර්ථකයි! Audio URL එක ස්ථිරවම සම්බන්ධ කරන ලදී.');
+                  alert('✅ සාර්ථකයි! Audio URL එක Cloud Database හි ස්ථිරවම සුරකින ලදී.');
                   startEmergencySiren();
                   setIsPlayingSiren(true);
                   inputEl.value = '';
@@ -245,14 +239,10 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
             <span className="text-[11px] text-amber-200 font-bold">⚡ වෘත්තීය Siren නාද තෝරන්න:</span>
             <button
               type="button"
-              onClick={() => {
-                try {
-                  localStorage.removeItem('sahaya_custom_siren_audio');
-                  localStorage.removeItem('sahaya_default_siren_audio');
-                  localStorage.setItem('sahaya_siren_filename', 'Air Raid Siren (Preset)');
-                } catch {}
+              onClick={async () => {
+                await persistSirenSettings(null, 'Air Raid Siren (Preset)', 'air_raid');
                 setUploadedSirenFileName('Air Raid Siren (Preset)');
-                alert('✅ Air Raid Siren නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                alert('✅ Air Raid Siren නාදය Cloud Database හි සාර්ථකව සක්‍රීය කරන ලදී!');
                 startEmergencySiren();
                 setIsPlayingSiren(true);
               }}
@@ -262,14 +252,10 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
             </button>
             <button
               type="button"
-              onClick={() => {
-                try {
-                  localStorage.removeItem('sahaya_custom_siren_audio');
-                  localStorage.removeItem('sahaya_default_siren_audio');
-                  localStorage.setItem('sahaya_siren_filename', 'Police High-Pitch Siren (Preset)');
-                } catch {}
+              onClick={async () => {
+                await persistSirenSettings(null, 'Police High-Pitch Siren (Preset)', 'police');
                 setUploadedSirenFileName('Police High-Pitch Siren (Preset)');
-                alert('✅ Police Siren නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                alert('✅ Police Siren නාදය Cloud Database හි සාර්ථකව සක්‍රීය කරන ලදී!');
                 startEmergencySiren();
                 setIsPlayingSiren(true);
               }}
@@ -279,14 +265,10 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
             </button>
             <button
               type="button"
-              onClick={() => {
-                try {
-                  localStorage.removeItem('sahaya_custom_siren_audio');
-                  localStorage.removeItem('sahaya_default_siren_audio');
-                  localStorage.setItem('sahaya_siren_filename', 'Tsunami Disaster Warning (Preset)');
-                } catch {}
+              onClick={async () => {
+                await persistSirenSettings(null, 'Tsunami Disaster Warning (Preset)', 'tsunami');
                 setUploadedSirenFileName('Tsunami Disaster Warning (Preset)');
-                alert('✅ Tsunami Warning නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                alert('✅ Tsunami Warning නාදය Cloud Database හි සාර්ථකව සක්‍රීය කරන ලදී!');
                 startEmergencySiren();
                 setIsPlayingSiren(true);
               }}

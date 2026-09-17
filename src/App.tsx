@@ -33,6 +33,7 @@ import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertFloatingTrigger } from './components/RedAlertFloatingTrigger';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
+import { initSirenSettings } from './utils/sirenAudio';
 
 export default function App() {
   // Persistence state setup
@@ -223,10 +224,14 @@ export default function App() {
     localStorage.setItem('sahaya_lang', language);
   }, [language]);
 
-  // Clean up any legacy persistent session to ensure fresh login
+  // Clean up any legacy persistent session to ensure fresh login & sync Siren Settings
   useEffect(() => {
     localStorage.removeItem('sahaya_current_user');
     localStorage.removeItem('sahaya_view_mode');
+    const unsubSiren = initSirenSettings();
+    return () => {
+      if (typeof unsubSiren === 'function') unsubSiren();
+    };
   }, []);
 
   useEffect(() => {

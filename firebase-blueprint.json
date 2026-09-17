@@ -77,6 +77,20 @@
       },
       "required": ["userId", "postId"]
     },
+    "system_settings": {
+      "title": "System Settings",
+      "description": "Global application and emergency siren configurations",
+      "type": "object",
+      "properties": {
+        "audioUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "presetType": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedAtMs": { "type": "number" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["fileName"]
+    },
     "red_alerts": {
       "title": "Red Alerts (රතු එළිය)",
       "description": "Critical emergency disaster alerts with 2km proximity siren and island-wide notifications",
@@ -124,6 +138,10 @@
     "/saved_posts/{saveId}": {
       "schema": "saved_posts",
       "description": "User bookmarked posts"
+    },
+    "/system_settings/{settingId}": {
+      "schema": "system_settings",
+      "description": "Global system configurations including siren audio settings"
     }
   }
 }
