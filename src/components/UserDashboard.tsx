@@ -158,15 +158,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isAutoLoadingLocation, setIsAutoLoadingLocation] = useState(false);
   const [autoLocationMsg, setAutoLocationMsg] = useState<string | null>(null);
 
-  // Auto Load Live Location on Login / Dashboard Mount (Only if not manually locked)
+  // Auto Load Live Location on Login / Dashboard Mount and on Mode Change
   useEffect(() => {
     let isMounted = true;
-
-    const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
-    if (isManualLocked) {
-      // User has manually searched and saved a location: respect user choice and do not auto-overwrite
-      return;
-    }
 
     const autoFetchLiveLocation = () => {
       if (!navigator.geolocation) return;
@@ -196,21 +190,32 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           }
         },
         (error) => {
-          // If denied or timed out, silently keep the saved / default location
           if (isMounted) setIsAutoLoadingLocation(false);
         },
         {
           enableHighAccuracy: true,
           timeout: 12000,
-          maximumAge: 30000, // Accept cached position within 30s for lightning speed
+          maximumAge: 30000,
         }
       );
     };
 
-    autoFetchLiveLocation();
+    const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
+    if (!isManualLocked) {
+      autoFetchLiveLocation();
+    }
+
+    const handleModeChange = (e: any) => {
+      if (e.detail?.mode === 'auto') {
+        autoFetchLiveLocation();
+      }
+    };
+
+    window.addEventListener('sahaya_location_mode_changed', handleModeChange);
 
     return () => {
       isMounted = false;
+      window.removeEventListener('sahaya_location_mode_changed', handleModeChange);
     };
   }, []);
 

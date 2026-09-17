@@ -115,7 +115,32 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const numericId = extractNumericId(user.nicNumber || user.userId);
   const isVisitor = Boolean(!user || user.isDemo || user.userId === 'user_demo' || user.id === 'demo_user' || user.role === 'guest');
 
-  const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
+  const [isManualLocked, setIsManualLocked] = useState<boolean>(
+    () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
+  );
+
+  // Synchronize manual lock state on changes
+  useEffect(() => {
+    const handleModeChange = (e: any) => {
+      if (e.detail?.mode === 'auto') {
+        setIsManualLocked(false);
+      } else if (e.detail?.mode === 'manual') {
+        setIsManualLocked(true);
+      } else {
+        setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
+      }
+    };
+
+    window.addEventListener('sahaya_location_mode_changed', handleModeChange);
+    return () => {
+      window.removeEventListener('sahaya_location_mode_changed', handleModeChange);
+    };
+  }, []);
+
+  // Also check whenever currentLocation prop changes
+  useEffect(() => {
+    setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
+  }, [currentLocation]);
 
   const getLocationName = (loc: LocationOption) => {
     if (language === 'si') return loc.nameSi;
@@ -130,56 +155,94 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
 
   const handleSaveLocationFromMap = (loc: LocationOption) => {
     onSelectLocation(loc);
+    setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
     setToastMsg(`📍 ස්ථානය සුරැකිණි: ${loc.nameSi}`);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
   const handleDirectAutoGps = () => {
     if (!navigator.geolocation) {
-      setIsMapModalOpen(true);
+      setToastMsg('⚠️ ඔබගේ උපාංගයේ GPS සහාය නොදක්වයි.');
+      setTimeout(() => setToastMsg(null), 4000);
       return;
     }
 
     setIsAutoTracking(true);
+    // Instantly unlock manual mode in UI & Storage
+    localStorage.setItem('sahaya_manual_location_locked', 'false');
+    localStorage.setItem('sahaya_location_mode', 'auto');
+    setIsManualLocked(false);
+    window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        try {
-          const geo = await resolveExactLocation(latitude, longitude);
-          const locOpt = toLocationOption(geo);
-          
-          localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-          localStorage.setItem('sahaya_manual_location_locked', 'false');
-          localStorage.setItem('sahaya_location_mode', 'auto');
-          
-          onSelectLocation(locOpt);
-          setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${geo.shortDisplaySi}`);
-        } catch {
-          const fallback: LocationOption = {
-            id: `loc_gps_${Date.now()}`,
-            nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
-            nameEn: `Kovinna, Gangarama Road, Katunayake`,
-            nameTa: `Kovinna, Gangarama Road, Katunayake`,
-            lat: latitude,
-            lng: longitude,
-          };
-          localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
-          localStorage.setItem('sahaya_manual_location_locked', 'false');
-          onSelectLocation(fallback);
-          setToastMsg(`⚡ Auto GPS ස්ථානය: ${fallback.nameSi}`);
-        } finally {
-          setIsAutoTracking(false);
-          setTimeout(() => setToastMsg(null), 4000);
-        }
-      },
-      () => {
+    setToastMsg('⚡ සජීවී GPS සංඥාව ලබාගනිමින් පවතී...');
+
+    const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
+      try {
+        const geo = await resolveExactLocation(latitude, longitude);
+        const locOpt = toLocationOption(geo);
+        
+        localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+        localStorage.setItem('sahaya_manual_location_locked', 'false');
+        localStorage.setItem('sahaya_location_mode', 'auto');
+        setIsManualLocked(false);
+        
+        onSelectLocation(locOpt);
+        setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+      } catch (err) {
+        console.warn('Reverse geocode error, using coordinates fallback:', err);
+        const fallback: LocationOption = {
+          id: `loc_gps_${Date.now()}`,
+          nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
+          nameEn: `Kovinna, Gangarama Road, Katunayake`,
+          nameTa: `Kovinna, Gangarama Road, Katunayake`,
+          lat: latitude,
+          lng: longitude,
+        };
+        localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
+        localStorage.setItem('sahaya_manual_location_locked', 'false');
+        setIsManualLocked(false);
+        onSelectLocation(fallback);
+        setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${fallback.nameSi}`);
+      } finally {
         setIsAutoTracking(false);
-        setIsMapModalOpen(true);
+        setTimeout(() => setToastMsg(null), 4500);
+      }
+    };
+
+    // Primary High Accuracy Attempt
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        processCoords(latitude, longitude, accuracy);
+      },
+      (err) => {
+        // If high accuracy fails or times out, try standard accuracy fallback
+        navigator.geolocation.getCurrentPosition(
+          (fallbackPos) => {
+            const { latitude, longitude, accuracy } = fallbackPos.coords;
+            processCoords(latitude, longitude, accuracy);
+          },
+          (finalErr) => {
+            setIsAutoTracking(false);
+            if (finalErr.code === finalErr.PERMISSION_DENIED) {
+              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. කරුණාකර Browser / Device Settings වලින් Location Allow කරන්න.');
+            } else if (finalErr.code === finalErr.POSITION_UNAVAILABLE) {
+              setToastMsg('⚠️ GPS සංඥා දුර්වලයි. කරුණාකර උපාංගයේ Location සක්‍රීය කර නැවත උත්සාහ කරන්න.');
+            } else {
+              setToastMsg('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාදයි. නැවත උත්සාහ කරන්න.');
+            }
+            setTimeout(() => setToastMsg(null), 5000);
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 60000,
+          }
+        );
       },
       {
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: 12000,
         maximumAge: 0,
       }
     );

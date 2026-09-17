@@ -499,10 +499,11 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     nameEn: string,
     nameTa: string,
     lat: number,
-    lng: number
+    lng: number,
+    isAutoGps: boolean = false
   ) => {
     const finalLoc: LocationOption = {
-      id: `loc_manual_${Date.now()}`,
+      id: isAutoGps ? `loc_gps_${Date.now()}` : `loc_manual_${Date.now()}`,
       nameSi,
       nameEn,
       nameTa,
@@ -512,8 +513,13 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
 
     // Save to localStorage
     localStorage.setItem('sahaya_current_location', JSON.stringify(finalLoc));
-    localStorage.setItem('sahaya_manual_location_locked', 'true');
-    localStorage.setItem('sahaya_location_mode', 'manual');
+    localStorage.setItem('sahaya_manual_location_locked', isAutoGps ? 'false' : 'true');
+    localStorage.setItem('sahaya_location_mode', isAutoGps ? 'auto' : 'manual');
+    window.dispatchEvent(
+      new CustomEvent('sahaya_location_mode_changed', { 
+        detail: { mode: isAutoGps ? 'auto' : 'manual' } 
+      })
+    );
 
     // Add to saved locations history
     setSavedLocationsList((prev) => {
@@ -529,6 +535,8 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
 
   // 1-Click Instant Save Location in exact [Village, Road, Town] order
   const handleSaveLocation = () => {
+    const isGpsMode = activeTab === 'gps' || (!isAutoGpsStopped && gps.locked);
+    
     const formattedRoad = customRoadSi
       ? customRoadSi.includes('පාර') || customRoadSi.includes('මාවත') || customRoadSi.includes('වීදිය')
         ? customRoadSi
@@ -545,7 +553,34 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       resolvedGeo?.townEn || 'Katunayake'
     );
 
-    saveLocationDirectly(shortSi, shortEn, shortEn, pinLat, pinLng);
+    saveLocationDirectly(shortSi, shortEn, shortEn, pinLat, pinLng, isGpsMode);
+  };
+
+  // Explicit 1-Click Apply Live Auto GPS from GPS Tab
+  const handleApplyLiveGps = async () => {
+    const targetLat = gps.lat || pinLat;
+    const targetLng = gps.lng || pinLng;
+
+    setIsGeocoding(true);
+    try {
+      const geo = await resolveExactLocation(targetLat, targetLng);
+      saveLocationDirectly(
+        geo.shortDisplaySi,
+        geo.shortDisplayEn,
+        geo.shortDisplayEn,
+        targetLat,
+        targetLng,
+        true
+      );
+    } catch {
+      const formattedRoad = customRoadSi || 'ගංගාරාම පාර';
+      const finalVillage = customVillageSi || 'කෝවින්න';
+      const finalTown = customTownSi || 'කටුනායක';
+      const shortSi = formatOrderedLocation(finalVillage, formattedRoad, finalTown);
+      saveLocationDirectly(shortSi, shortSi, shortSi, targetLat, targetLng, true);
+    } finally {
+      setIsGeocoding(false);
+    }
   };
 
   // Delete saved location from history
@@ -1454,6 +1489,18 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Instant Apply Auto GPS Button */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleApplyLiveGps}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 via-emerald-600 to-teal-700 hover:from-red-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 border border-emerald-300/40 animate-pulse"
+                >
+                  <Crosshair className="w-4 h-4" />
+                  <span>⚡ Auto GPS සක්‍රීය කර සජීවී ස්ථානය යොදන්න (Use Live Auto GPS)</span>
+                </button>
+              </div>
             </div>
           )}
 
