@@ -79,6 +79,20 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     };
   }, [isOpen, alert]);
 
+  // 10-second auto-silent timer for device siren
+  useEffect(() => {
+    let timer: any = null;
+    if (isOpen && isPlayingSiren) {
+      timer = setTimeout(() => {
+        stopEmergencySiren();
+        setIsPlayingSiren(false);
+      }, 10000); // 10 seconds auto-silent
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, isPlayingSiren]);
+
   // Handle explicit play/stop toggle with gesture unlock
   const handleToggleSiren = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();

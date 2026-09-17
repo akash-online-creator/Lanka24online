@@ -737,13 +737,15 @@ export default function App() {
       )}
 
       {/* 🚨 Red Alert Emergency Headline Banner (Visible across views when active alerts exist) */}
-      <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
-        <RedAlertBanner
-          alerts={redAlerts}
-          onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
-          onOpenCreate={() => setIsCreateRedAlertOpen(true)}
-        />
-      </div>
+      {viewMode !== 'login' && (
+        <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
+          <RedAlertBanner
+            alerts={redAlerts}
+            onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
+            onOpenCreate={() => setIsCreateRedAlertOpen(true)}
+          />
+        </div>
+      )}
 
       {/* Main Container Views */}
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
@@ -869,15 +871,17 @@ export default function App() {
       </main>
 
       {/* 🚨 Red Alert Floating Emergency Action Button (Available across entire app) */}
-      <RedAlertFloatingTrigger
-        onOpenCreate={() => setIsCreateRedAlertOpen(true)}
-        activeCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
-        onOpenActiveList={() => {
-          const first = redAlerts.find((a) => a.status === 'active');
-          if (first) setSelectedDetailAlert(first);
-          else setIsCreateRedAlertOpen(true);
-        }}
-      />
+      {viewMode !== 'login' && (
+        <RedAlertFloatingTrigger
+          onOpenCreate={() => setIsCreateRedAlertOpen(true)}
+          activeCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
+          onOpenActiveList={() => {
+            const first = redAlerts.find((a) => a.status === 'active');
+            if (first) setSelectedDetailAlert(first);
+            else setIsCreateRedAlertOpen(true);
+          }}
+        />
+      )}
 
       {/* 🚨 Red Alert Creation Modal with GPS Auto-Scanning */}
       <RedAlertCreateModal

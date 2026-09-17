@@ -17,7 +17,7 @@ import {
 import { RedAlertItem, RedAlertComment, RedAlertFakeReport, User, LocationOption } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
-import { addCommentToRedAlert, reportRedAlertAsFake } from '../lib/firebase';
+import { addCommentToRedAlert, reportRedAlertAsFake, updateRedAlertStatus, deleteRedAlertInFirestore } from '../lib/firebase';
 import { startEmergencySiren, stopEmergencySiren, unlockAudio } from '../utils/sirenAudio';
 import { Volume2, VolumeX } from 'lucide-react';
 
@@ -83,6 +83,38 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   }, [alert]);
 
   if (!isOpen || !alert) return null;
+
+  const isReporter = currentUser && alert && (
+    alert.reportedByUserId === currentUser.id ||
+    alert.reportedByPhone === currentUser.phone ||
+    alert.reportedByName === currentUser.name ||
+    currentUser.role === 'admin'
+  );
+
+  const handleResolveAlert = async () => {
+    if (!alert) return;
+    if (window.confirm('මෙම හදිසි ආපදා තත්ත්වය විසඳී ඇති බැවින් එය ඉවත් කිරීමට හෝ විසඳුණි (Resolved) ලෙස සලකුණු කිරීමට අවශ්‍ය බව ස්ථිරද?')) {
+      try {
+        await updateRedAlertStatus(alert.id, 'resolved');
+        alert.status = 'resolved';
+        onClose();
+      } catch (err) {
+        console.error('Error resolving alert:', err);
+      }
+    }
+  };
+
+  const handleDeleteAlert = async () => {
+    if (!alert) return;
+    if (window.confirm('මෙම හදිසි අනතුරු ඇඟවීම සම්පූර්ණයෙන්ම මකා දැමීමට අවශ්‍ය බව ස්ථිරද?')) {
+      try {
+        await deleteRedAlertInFirestore(alert.id);
+        onClose();
+      } catch (err) {
+        console.error('Error deleting alert:', err);
+      }
+    }
+  };
 
   const config = getDisasterConfig(alert.disasterType);
 
@@ -339,6 +371,39 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               )}
             </div>
           </div>
+
+          {/* Reporter Controls (If current user is the reporter or admin) */}
+          {isReporter && (
+            <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/50 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <span className="text-xs font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                  🛡️ ඔබ මෙම ආපදාව වාර්තා කළ පුද්ගලයායි (Reporter Management)
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">පැයෙන් පැයට තවමත් පවතීදැයි පරීක්ෂා කෙරේ</span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                මෙම ආපදා තත්ත්වය දැන් අවසන් වී ඇත්නම් හෝ ඉවත් කිරීමට අවශ්‍ය නම් පහත බොත්තම් භාවිතා කරන්න.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={handleResolveAlert}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>අනතුර විසඳුණි (Resolve Alert)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAlert}
+                  className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>අනතුර ඉවත් කරන්න (Delete Alert)</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Fake Alert Warning / Action */}
           <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs">
