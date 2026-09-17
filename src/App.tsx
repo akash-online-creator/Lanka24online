@@ -154,7 +154,43 @@ export default function App() {
   }, []);
 
   // Red Alert Emergency System States
-  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
+  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_red_alerts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'default_emergency_alert_1',
+        alertCode: '#RED-1024',
+        disasterType: 'flood',
+        disasterTitleSi: 'අධික වැසි සහ ගංවතුර අවදානම',
+        disasterTitleEn: 'Heavy Rains & Flood Warning',
+        disasterTitleTa: 'கனமழை மற்றும் வெள்ள எச்சரிக்கை',
+        description: 'කැලණි ගං ද්‍රෝණියේ ජල මට්ටම ඉහළ යමින් පවතී. පහත් බිම්වල වෙසෙන ජනතාව ආරක්ෂිත ස්ථාන වෙත යොමු වන්න.',
+        latitude: 6.9271,
+        longitude: 79.8612,
+        locationName: 'කොළඹ / කැලණි ගං ඉඩකඩ',
+        locationAccuracyMeters: 10,
+        incidentDate: new Date().toISOString().split('T')[0],
+        incidentTime: '08:30 AM',
+        createdAt: new Date().toISOString(),
+        createdAtMs: Date.now(),
+        reportedByUserId: 'admin_sys',
+        reportedByName: 'ආපදා කළමනාකරණ මධ්‍යස්ථානය (DMC)',
+        reportedByPhone: '117',
+        status: 'active',
+        severity: 'critical',
+        comments: [],
+        fakeReports: [],
+        isFlaggedFake: false,
+        adminActionNote: 'පද්ධති ස්වයංක්‍රීය හදිසි අනතුරු ඇඟවීමයි.'
+      }
+    ];
+  });
   const [isCreateRedAlertOpen, setIsCreateRedAlertOpen] = useState(false);
   const [selectedDetailAlert, setSelectedDetailAlert] = useState<RedAlertItem | null>(null);
   const [proximityAlertInfo, setProximityAlertInfo] = useState<{ alert: RedAlertItem; distanceKm: number } | null>(null);
