@@ -289,6 +289,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 </button>
               )}
 
+
+
               {/* Live Notifications Bell */}
               {onOpenNotifications && (
                 <button

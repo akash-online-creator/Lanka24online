@@ -23,7 +23,8 @@ import {
   startEmergencySiren, 
   stopEmergencySiren, 
   unlockAudio, 
-  isEmergencySirenPlaying 
+  isEmergencySirenPlaying,
+  setCustomSirenAudio
 } from '../utils/sirenAudio';
 import { addCommentToRedAlert, reportRedAlertAsFake } from '../lib/firebase';
 
@@ -79,14 +80,14 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     };
   }, [isOpen, alert]);
 
-  // 10-second auto-silent timer for device siren
+  // 37-second auto-silent timer for device siren
   useEffect(() => {
     let timer: any = null;
     if (isOpen && isPlayingSiren) {
       timer = setTimeout(() => {
         stopEmergencySiren();
         setIsPlayingSiren(false);
-      }, 10000); // 10 seconds auto-silent
+      }, 37000); // 37 seconds auto-silent
     }
     return () => {
       if (timer) clearTimeout(timer);
@@ -279,6 +280,41 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         {/* Modal Main Content */}
         <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           
+          {/* Custom User Audio Uploader Box */}
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">🎵</span>
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-200">ඔබේම Siren ශබ්ද ගොනුවක් (MP3/WAV) ගබඩා කර භාවිතා කරන්න</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">ඔබ උඩුගත කරන ශබ්දය බ්‍රවුසරයේ සුරැකී ඉදිරියට නාදය ලෙස වාදනය වේ.</p>
+              </div>
+            </div>
+            <label className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl cursor-pointer transition-all shadow-sm text-xs flex items-center gap-1.5 whitespace-nowrap">
+              <span>📁 Audio File තෝරන්න</span>
+              <input 
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (uploadEvent) => {
+                      const dataUri = uploadEvent.target?.result as string;
+                      if (dataUri) {
+                        setCustomSirenAudio(dataUri);
+                        alert('ඔබේ Siren ශබ්ද ගොනුව සාර්ථකව ගබඩා කරන ලදී! දැන් Siren නාදය වාදනය වේ.');
+                        startEmergencySiren();
+                        setIsPlayingSiren(true);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+          </div>
+
           {/* Proximity Warning Alert Callout */}
           <div className="p-3.5 rounded-2xl bg-red-500/15 border-2 border-red-500/40 flex items-start gap-3">
             <span className="text-2xl mt-0.5">⚠️</span>

@@ -866,6 +866,8 @@ export default function App() {
             onNavigate={handleNavigate}
             onOpenRedAlert={() => setIsCreateRedAlertOpen(true)}
             activeRedAlertsCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
+            redAlerts={redAlerts}
+            onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
           />
         )}
       </main>

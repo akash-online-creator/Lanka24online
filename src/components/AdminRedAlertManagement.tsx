@@ -19,7 +19,7 @@ import {
 import { RedAlertItem, Language } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { updateRedAlertStatus, deleteRedAlertInFirestore } from '../lib/firebase';
-import { startEmergencySiren, stopEmergencySiren, unlockAudio } from '../utils/sirenAudio';
+import { startEmergencySiren, stopEmergencySiren, unlockAudio, setCustomSirenAudio } from '../utils/sirenAudio';
 
 interface AdminRedAlertManagementProps {
   alerts: RedAlertItem[];
@@ -148,6 +148,35 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
               </>
             )}
           </button>
+
+          {/* 🎵 Admin Custom Siren Audio Upload Button */}
+          <label 
+            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-300"
+            title="Admin: Upload custom siren audio tone for all users"
+          >
+            <span>📁 Siren Tone Upload</span>
+            <input 
+              type="file" 
+              accept="audio/*" 
+              className="hidden" 
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (uploadEvent) => {
+                    const dataUri = uploadEvent.target?.result as string;
+                    if (dataUri) {
+                      setCustomSirenAudio(dataUri);
+                      alert('✅ Admin: Custom Siren audio successfully uploaded and stored for the system!');
+                      startEmergencySiren();
+                      setIsPlayingSiren(true);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+            />
+          </label>
 
           {onRefreshAlerts && (
             <button

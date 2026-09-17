@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview } from '../types';
+import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem } from '../types';
 import { translations } from '../data/translations';
 import { initialLocations, initialUsers, initialHelpPosts } from '../data/initialData';
 import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
@@ -32,6 +32,7 @@ import { BloodAndDisasterModal } from './BloodAndDisasterModal';
 import { EmergencyDirectoryModal } from './EmergencyDirectoryModal';
 import { DemoRegistrationPromptModal } from './DemoRegistrationPromptModal';
 import { ProximityAlertBanner } from './ProximityAlertBanner';
+import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
@@ -117,6 +118,8 @@ interface UserDashboardProps {
   onNavigate?: (view: any) => void;
   onOpenRedAlert?: () => void;
   activeRedAlertsCount?: number;
+  redAlerts?: RedAlertItem[];
+  onViewRedAlertDetail?: (alert: RedAlertItem) => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -137,6 +140,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   setActiveRoleView,
   onNavigate,
   onOpenRedAlert,
+  redAlerts = [],
+  onViewRedAlertDetail,
   activeRedAlertsCount = 0,
 }) => {
   const t = translations[language];
@@ -1402,6 +1407,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
+      {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}
+      {redAlerts && redAlerts.length > 0 && (
+        <RedAlertBanner
+          alerts={redAlerts}
+          currentLocation={currentLocation}
+          onOpenAlertDetail={(a) => {
+            if (onViewRedAlertDetail) onViewRedAlertDetail(a);
+          }}
+          onOpenCreate={onOpenRedAlert || (() => {})}
+        />
+      )}
+
       {/* 1. Integrated Unified Top Header Card (Combines Logo, User Info, Location/Address, App Help, and Controls) */}
       <UnifiedDashboardHeader
         user={user}
