@@ -870,19 +870,6 @@ export default function App() {
         )}
       </main>
 
-      {/* 🚨 Red Alert Floating Emergency Action Button (Available across entire app) */}
-      {viewMode !== 'login' && (
-        <RedAlertFloatingTrigger
-          onOpenCreate={() => setIsCreateRedAlertOpen(true)}
-          activeCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
-          onOpenActiveList={() => {
-            const first = redAlerts.find((a) => a.status === 'active');
-            if (first) setSelectedDetailAlert(first);
-            else setIsCreateRedAlertOpen(true);
-          }}
-        />
-      )}
-
       {/* 🚨 Red Alert Creation Modal with GPS Auto-Scanning */}
       <RedAlertCreateModal
         isOpen={isCreateRedAlertOpen}
