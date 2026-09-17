@@ -38,6 +38,13 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [isPlayingSiren, setIsPlayingSiren] = useState(false);
+  const [uploadedSirenFileName, setUploadedSirenFileName] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('sahaya_siren_filename') || (localStorage.getItem('sahaya_custom_siren_audio') ? 'Uploaded Custom Audio Tone' : null);
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     return () => {
@@ -110,85 +117,201 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     <div className="space-y-6 animate-fadeIn">
       
       {/* Top Banner / Summary Cards */}
-      <div className="p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-white text-red-600 font-black text-2xl flex items-center justify-center shadow-md">
-            🚨
+      <div className="p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-white text-red-600 font-black text-2xl flex items-center justify-center shadow-md">
+              🚨
+            </div>
+            <div>
+              <h3 className="text-lg sm:text-xl font-black tracking-wide">
+                රතු එළිය (Red Alerts) - හදිසි ආපදා පරිපාලනය
+              </h3>
+              <p className="text-xs text-red-100 font-medium">
+                දිවයින පුරා සහ ප්‍රාදේශීය හදිසි ආපදා විකාශන සහ අසත්‍ය තොරතුරු වාර්තා (Fake Alerts) කළමනාකරණය
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg sm:text-xl font-black tracking-wide">
-              රතු එළිය (Red Alerts) - හදිසි ආපදා පරිපාලනය
-            </h3>
-            <p className="text-xs text-red-100 font-medium">
-              දිවයින පුරා සහ ප්‍රාදේශීය හදිසි ආපදා විකාශන සහ අසත්‍ය තොරතුරු වාර්තා (Fake Alerts) කළමනාකරණය
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleToggleSiren}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
-              isPlayingSiren
-                ? 'bg-amber-300 text-slate-950 border-2 border-amber-500 animate-pulse'
-                : 'bg-white text-red-700 hover:bg-red-50'
-            }`}
-            title="Test Emergency Siren Alarm"
-          >
-            {isPlayingSiren ? (
-              <>
-                <Volume2 className="w-4 h-4 text-red-600 animate-bounce" />
-                <span>Siren නවත්වන්න</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-4 h-4 text-red-600" />
-                <span>🔊 Siren පරීක්ෂා කරන්න</span>
-              </>
-            )}
-          </button>
-
-          {/* 🎵 Admin Custom Siren Audio Upload Button */}
-          <label 
-            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-300"
-            title="Admin: Upload custom siren audio tone for all users"
-          >
-            <span>📁 Siren Tone Upload</span>
-            <input 
-              type="file" 
-              accept="audio/*" 
-              className="hidden" 
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = (uploadEvent) => {
-                    const dataUri = uploadEvent.target?.result as string;
-                    if (dataUri) {
-                      setCustomSirenAudio(dataUri);
-                      alert('✅ සාර්ථකයි! ඔබ ලබාදුන් Siren Tone එක පද්ධතියේ පෙරනිමි (Default) නාදය ලෙස ස්ථිරවම ගබඩා කරන ලදී.');
-                      startEmergencySiren();
-                      setIsPlayingSiren(true);
-                    }
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }}
-            />
-          </label>
-
-          {onRefreshAlerts && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onRefreshAlerts}
-              className="px-3.5 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              onClick={handleToggleSiren}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
+                isPlayingSiren
+                  ? 'bg-amber-300 text-slate-950 border-2 border-amber-500 animate-pulse'
+                  : 'bg-white text-red-700 hover:bg-red-50'
+              }`}
+              title="Test Emergency Siren Alarm"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>යාවත්කාලීන කරන්න</span>
+              {isPlayingSiren ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-red-600 animate-bounce" />
+                  <span>Siren නවත්වන්න</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-4 h-4 text-red-600" />
+                  <span>🔊 Siren පරීක්ෂා කරන්න</span>
+                </>
+              )}
             </button>
-          )}
+
+            {/* 🎵 Admin Custom Siren Audio Upload Button */}
+            <label 
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-300"
+              title="Admin: Upload custom siren audio tone for all users"
+            >
+              <span>📁 Siren Tone Upload</span>
+              <input 
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (uploadEvent) => {
+                      const dataUri = uploadEvent.target?.result as string;
+                      if (dataUri) {
+                        setCustomSirenAudio(dataUri);
+                        setUploadedSirenFileName(file.name);
+                        try {
+                          localStorage.setItem('sahaya_siren_filename', file.name);
+                        } catch {}
+                        alert(`✅ සාර්ථකයි! "${file.name}" Siren Tone එක පද්ධතියේ පෙරනිමි නාදය ලෙස ගබඩා කරන ලදී.`);
+                        startEmergencySiren();
+                        setIsPlayingSiren(true);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+
+            {onRefreshAlerts && (
+              <button
+                type="button"
+                onClick={onRefreshAlerts}
+                className="px-3.5 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>යාවත්කාලීන කරන්න</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* 🔗 Telegram / Audio URL Direct Input Row */}
+        <div className="pt-3 border-t border-red-500/50 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="url"
+              placeholder="🔗 Direct MP3 / Audio Stream URL මෙහි අලවන්න (Direct Link)..."
+              id="telegram-audio-url-input"
+              className="flex-1 min-w-[240px] px-3.5 py-2 rounded-xl bg-red-950/90 border border-amber-400/60 text-white placeholder-red-300 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-inner"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const inputEl = document.getElementById('telegram-audio-url-input') as HTMLInputElement;
+                if (inputEl && inputEl.value.trim().length > 5) {
+                  const url = inputEl.value.trim();
+                  setCustomSirenAudio(url);
+                  setUploadedSirenFileName(url);
+                  try {
+                    localStorage.setItem('sahaya_siren_filename', url);
+                  } catch {}
+                  alert('✅ සාර්ථකයි! Audio URL එක ස්ථිරවම සම්බන්ධ කරන ලදී.');
+                  startEmergencySiren();
+                  setIsPlayingSiren(true);
+                  inputEl.value = '';
+                } else {
+                  alert('⚠️ කරුණාකර නිවැරදි Direct Audio / MP3 සබැඳියක් ඇතුළත් කරන්න.');
+                }
+              }}
+              className="px-4 py-2 bg-cyan-400 hover:bg-cyan-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap"
+            >
+              🔗 Direct Link Save කරන්න
+            </button>
+          </div>
+          <p className="text-[11px] text-red-200">
+            * සටහන: <code className="bg-red-900 px-1 rounded">t.me/c/...</code> යනු වෙබ් පිටුවක් (Web page) මිස සෘජු ශබ්ද ගොනුවක් නොවන බැවින් බ්‍රව්සරයට එය වාදනය කළ නොහැක. කරුණාකර Direct MP3 ගොනු සබැඳියක් ලබා දෙන්න හෝ පහත වෘත්තීය නාද වලින් එකක් තෝරාගන්න:
+          </p>
+
+          {/* Preset Professional Siren Tones */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-[11px] text-amber-200 font-bold">⚡ වෘත්තීය Siren නාද තෝරන්න:</span>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.removeItem('sahaya_custom_siren_audio');
+                  localStorage.removeItem('sahaya_default_siren_audio');
+                  localStorage.setItem('sahaya_siren_filename', 'Air Raid Siren (Preset)');
+                } catch {}
+                setUploadedSirenFileName('Air Raid Siren (Preset)');
+                alert('✅ Air Raid Siren නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                startEmergencySiren();
+                setIsPlayingSiren(true);
+              }}
+              className="px-2.5 py-1 bg-amber-300 hover:bg-amber-400 text-slate-950 font-bold text-[11px] rounded-lg shadow transition-all cursor-pointer"
+            >
+              🚨 Air Raid Siren
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.removeItem('sahaya_custom_siren_audio');
+                  localStorage.removeItem('sahaya_default_siren_audio');
+                  localStorage.setItem('sahaya_siren_filename', 'Police High-Pitch Siren (Preset)');
+                } catch {}
+                setUploadedSirenFileName('Police High-Pitch Siren (Preset)');
+                alert('✅ Police Siren නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                startEmergencySiren();
+                setIsPlayingSiren(true);
+              }}
+              className="px-2.5 py-1 bg-rose-400 hover:bg-rose-500 text-slate-950 font-bold text-[11px] rounded-lg shadow transition-all cursor-pointer"
+            >
+              🚓 Police Siren
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.removeItem('sahaya_custom_siren_audio');
+                  localStorage.removeItem('sahaya_default_siren_audio');
+                  localStorage.setItem('sahaya_siren_filename', 'Tsunami Disaster Warning (Preset)');
+                } catch {}
+                setUploadedSirenFileName('Tsunami Disaster Warning (Preset)');
+                alert('✅ Tsunami Warning නාදය පෙරනිමිය ලෙස සාර්ථකව සක්‍රීය කරන ලදී!');
+                startEmergencySiren();
+                setIsPlayingSiren(true);
+              }}
+              className="px-2.5 py-1 bg-orange-400 hover:bg-orange-500 text-slate-950 font-bold text-[11px] rounded-lg shadow transition-all cursor-pointer"
+            >
+              🌊 Tsunami Alarm
+            </button>
+          </div>
+        </div>
+
+        {/* Display Uploaded File Name */}
+        {uploadedSirenFileName && (
+          <div className="pt-2 border-t border-red-500/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-amber-200">
+              <span className="p-1 rounded-lg bg-amber-400/20 text-amber-300">🎵</span>
+              <span className="font-bold">දැනට උඩුගත කර ඇති Siren නාදය:</span>
+              <span className="font-mono font-black text-white bg-red-950/80 px-2.5 py-1 rounded-xl border border-red-400/50 shadow-inner">
+                {uploadedSirenFileName}
+              </span>
+            </div>
+            <span className="text-[11px] text-emerald-200 font-semibold flex items-center gap-1">
+              ✓ ක්‍රියාත්මකයි (Active)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Metric Counters */}

@@ -1,9 +1,13 @@
 // Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
-// Plays exact user-uploaded custom audio file stored in localStorage, with robust HTML5 audio playback
+// Uses Web Audio API oscillator frequency modulation for 100% reliable loud emergency siren, with custom audio support
 
 let isSirenActive = false;
 let htmlAudioElement: HTMLAudioElement | null = null;
 let cachedCustomAudio: string | null = null;
+let audioCtx: AudioContext | null = null;
+let oscillator: OscillatorNode | null = null;
+let gainNode: GainNode | null = null;
+let sirenInterval: any = null;
 
 export function setCustomSirenAudio(dataUri: string): void {
   cachedCustomAudio = dataUri;
@@ -33,9 +37,20 @@ export function getCustomSirenAudio(): string | null {
 
 export function unlockAudio(): boolean {
   try {
-    const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
-    audio.volume = 0.01;
-    audio.play().catch(() => {});
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.05);
+    }
     return true;
   } catch {
     return false;
@@ -62,28 +77,36 @@ export function startEmergencySiren(): () => void {
     isSirenActive = true;
 
     const customAudioUrl = getCustomSirenAudio();
-    if (customAudioUrl && customAudioUrl.startsWith('data:audio')) {
+    const sirenName = (() => {
+      try {
+        return localStorage.getItem('sahaya_siren_filename') || '';
+      } catch {
+        return '';
+      }
+    })();
+
+    // If a real custom audio URL (http or actual custom data uri) is provided, try playing it first
+    if (customAudioUrl && !sirenName.includes('Preset') && (customAudioUrl.startsWith('http://') || customAudioUrl.startsWith('https://') || (customAudioUrl.startsWith('data:audio') && customAudioUrl.length > 200))) {
       try {
         htmlAudioElement = new Audio();
+        htmlAudioElement.crossOrigin = 'anonymous';
         htmlAudioElement.src = customAudioUrl;
         htmlAudioElement.loop = true;
         htmlAudioElement.volume = 1.0;
-        htmlAudioElement.preload = 'auto';
-        htmlAudioElement.load();
         
         const playPromise = htmlAudioElement.play();
         if (playPromise !== undefined) {
           playPromise.catch((err) => {
-            console.warn('Custom audio playback blocked or error, trying fallback tone:', err);
-            playFallbackSiren();
+            console.warn('Custom audio playback blocked or failed, falling back to Web Audio Siren:', err);
+            playWebAudioSiren();
           });
         }
       } catch (audioErr) {
         console.warn('Error initializing custom audio element:', audioErr);
-        playFallbackSiren();
+        playWebAudioSiren();
       }
     } else {
-      playFallbackSiren();
+      playWebAudioSiren();
     }
 
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -98,24 +121,103 @@ export function startEmergencySiren(): () => void {
   return stopEmergencySiren;
 }
 
-function playFallbackSiren() {
+function playWebAudioSiren() {
   try {
-    const defaultSirenDataUri = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1d';
-    htmlAudioElement = new Audio(defaultSirenDataUri);
-    htmlAudioElement.loop = true;
-    htmlAudioElement.volume = 1.0;
-    htmlAudioElement.preload = 'auto';
-    htmlAudioElement.play().catch((err) => {
-      console.warn('Fallback audio play deferred or blocked:', err);
-    });
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioCtx = new AudioContextClass();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    let sirenName = '';
+    try {
+      if (typeof window !== 'undefined') {
+        sirenName = localStorage.getItem('sahaya_siren_filename') || '';
+      }
+    } catch {}
+
+    oscillator = audioCtx.createOscillator();
+    gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    if (sirenName.includes('Police')) {
+      // Police Siren: Fast alternating high-pitch wail (European/US Hi-Lo)
+      oscillator.type = 'sawtooth';
+      let high = false;
+      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+      oscillator.start();
+
+      sirenInterval = setInterval(() => {
+        if (!audioCtx || !oscillator) return;
+        high = !high;
+        try {
+          oscillator.frequency.setValueAtTime(high ? 1100 : 700, audioCtx.currentTime);
+        } catch {}
+      }, 220);
+    } else if (sirenName.includes('Tsunami')) {
+      // Tsunami Alarm: Deep pulsing electronic foghorn alarm
+      oscillator.type = 'square';
+      let toggle = false;
+      oscillator.frequency.setValueAtTime(350, audioCtx.currentTime);
+      oscillator.start();
+
+      sirenInterval = setInterval(() => {
+        if (!audioCtx || !oscillator) return;
+        toggle = !toggle;
+        try {
+          oscillator.frequency.setValueAtTime(toggle ? 650 : 350, audioCtx.currentTime);
+        } catch {}
+      }, 400);
+    } else {
+      // Air Raid Siren (Default): Slow rising and falling wail
+      oscillator.type = 'sine';
+      let goingUp = true;
+      let freq = 350;
+      oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      oscillator.start();
+
+      sirenInterval = setInterval(() => {
+        if (!audioCtx || !oscillator) return;
+        if (goingUp) {
+          freq += 25;
+          if (freq >= 900) goingUp = false;
+        } else {
+          freq -= 25;
+          if (freq <= 350) goingUp = true;
+        }
+        try {
+          oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        } catch {}
+      }, 50);
+    }
   } catch (e) {
-    console.warn('Fallback siren error:', e);
+    console.warn('Web Audio siren generation error:', e);
   }
 }
 
 export function stopEmergencySiren(): void {
   try {
     isSirenActive = false;
+    if (sirenInterval) {
+      clearInterval(sirenInterval);
+      sirenInterval = null;
+    }
+    if (oscillator) {
+      try {
+        oscillator.stop();
+        oscillator.disconnect();
+      } catch {}
+      oscillator = null;
+    }
+    if (audioCtx) {
+      try {
+        audioCtx.close();
+      } catch {}
+      audioCtx = null;
+    }
     if (htmlAudioElement) {
       try {
         htmlAudioElement.pause();

@@ -44,18 +44,10 @@ const databaseId = firebaseConfig.firestoreDatabaseId;
 let firestoreInstance;
 try {
   firestoreInstance = initializeFirestore(app, {
-    localCache: typeof window !== 'undefined'
-      ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-      : memoryLocalCache(),
+    localCache: memoryLocalCache(),
   }, databaseId);
 } catch {
-  try {
-    firestoreInstance = initializeFirestore(app, {
-      localCache: memoryLocalCache(),
-    }, databaseId);
-  } catch {
-    firestoreInstance = getFirestore(app, databaseId);
-  }
+  firestoreInstance = getFirestore(app, databaseId);
 }
 
 export const db = firestoreInstance;
