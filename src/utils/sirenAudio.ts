@@ -1,5 +1,5 @@
 // Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
-// Plays exact user-uploaded custom audio file stored in localStorage / memory, with robust HTML5 audio playback
+// Plays exact user-uploaded custom audio file stored in localStorage, with robust HTML5 audio playback
 
 let isSirenActive = false;
 let htmlAudioElement: HTMLAudioElement | null = null;
@@ -10,6 +10,7 @@ export function setCustomSirenAudio(dataUri: string): void {
   try {
     if (typeof window !== 'undefined') {
       localStorage.setItem('sahaya_custom_siren_audio', dataUri);
+      localStorage.setItem('sahaya_default_siren_audio', dataUri);
     }
   } catch (err) {
     console.warn('Failed to save custom siren audio to localStorage:', err);
@@ -20,7 +21,7 @@ export function getCustomSirenAudio(): string | null {
   if (cachedCustomAudio) return cachedCustomAudio;
   try {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('sahaya_custom_siren_audio');
+      const stored = localStorage.getItem('sahaya_custom_siren_audio') || localStorage.getItem('sahaya_default_siren_audio');
       if (stored) {
         cachedCustomAudio = stored;
         return stored;

@@ -167,7 +167,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                     const dataUri = uploadEvent.target?.result as string;
                     if (dataUri) {
                       setCustomSirenAudio(dataUri);
-                      alert('✅ Admin: Custom Siren audio successfully uploaded and stored for the system!');
+                      alert('✅ සාර්ථකයි! ඔබ ලබාදුන් Siren Tone එක පද්ධතියේ පෙරනිමි (Default) නාදය ලෙස ස්ථිරවම ගබඩා කරන ලදී.');
                       startEmergencySiren();
                       setIsPlayingSiren(true);
                     }
