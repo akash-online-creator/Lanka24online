@@ -1,4 +1,6 @@
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
+  getFirestore,
   doc,
   collection,
   query,
@@ -17,6 +19,62 @@ import {
   DocumentData,
   QueryDocumentSnapshot,
 } from 'firebase/firestore';
+
+// ==============================================================
+// 🔥 FIREBASE INITIALIZATION & HELPER TYPES
+// ==============================================================
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+};
+
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+
+export enum OperationType {
+  CREATE = 'CREATE',
+  READ = 'READ',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+  LIST = 'LIST',
+  WRITE = 'WRITE',
+}
+
+export function handleFirestoreError(error: any, operation: string, path: string) {
+  console.error(`Firestore Error [${operation}] on ${path}:`, error);
+}
+
+export interface RedAlertItem {
+  id: string;
+  alertCode?: string;
+  disasterType?: string;
+  customDisasterTitle?: string;
+  disasterTitleSi?: string;
+  disasterTitleEn?: string;
+  disasterTitleTa?: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+  locationAccuracyMeters?: number;
+  incidentDate?: string;
+  incidentTime?: string;
+  createdAt?: string;
+  createdAtMs?: number;
+  reportedByUserId?: string;
+  reportedByName?: string;
+  reportedByPhone?: string;
+  status?: 'active' | 'resolved' | 'cancelled';
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+  comments?: any[];
+  fakeReports?: any[];
+  isFlaggedFake?: boolean;
+  adminActionNote?: string;
+}
 
 // ==============================================================
 // 🚨 RED ALERTS (රතු එළිය) FIRESTORE OPERATIONS
@@ -425,7 +483,7 @@ export function subscribeToHelpPosts(
     const q = query(postsColRef, orderBy('createdAt', 'desc'));
 
     return onSnapshot(
-      q,
+      postsColRef,
       (snapshot) => {
         const posts = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -526,7 +584,7 @@ export function subscribeToChatMessages(
     const q = query(chatColRef, orderBy('createdAt', 'asc'));
 
     return onSnapshot(
-      q,
+      chatColRef,
       (snapshot) => {
         const messages = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -555,10 +613,9 @@ export function subscribeToMarketplaceItems(
 ): () => void {
   try {
     const colRef = collection(db, MARKETPLACE_COLLECTION);
-    const q = query(colRef, orderBy('createdAt', 'desc'));
 
     return onSnapshot(
-      q,
+      colRef,
       (snapshot) => {
         const items = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -667,13 +724,11 @@ export async function toggleSavePostInFirestore(
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
 }
+
 // ==============================================================
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
-/**
- * Saves or creates a user document in Firestore
- */
 export async function saveUserToFirestore(userId: string, userData: any): Promise<void> {
   try {
     if (!userId) return;
@@ -692,13 +747,10 @@ export async function saveUserToFirestore(userId: string, userData: any): Promis
   }
 }
 
-/**
- * Updates an existing user document in Firestore
- */
 export async function updateUserInFirestore(userId: string, updateData: any): Promise<void> {
   try {
     if (!userId) return;
-    const docRef = doc(db, 'users', updateData);
+    const docRef = doc(db, 'users', userId);
     await updateDoc(docRef, {
       ...updateData,
       updatedAtServer: serverTimestamp(),
@@ -708,9 +760,6 @@ export async function updateUserInFirestore(userId: string, updateData: any): Pr
   }
 }
 
-/**
- * Seeds initial system users into Firestore if needed
- */
 export async function seedInitialUsersToFirestore(): Promise<void> {
   try {
     console.log('Initial users seed executed successfully.');
@@ -718,13 +767,7 @@ export async function seedInitialUsersToFirestore(): Promise<void> {
     console.warn('seedInitialUsersToFirestore error:', err);
   }
 }
-// ==============================================================
-// 👥 USERS REALTIME LISTENER
-// ==============================================================
 
-/**
- * Subscribes to real-time users collection
- */
 export function subscribeToUsers(
   callback: (users: any[]) => void
 ): () => void {
@@ -754,9 +797,6 @@ export function subscribeToUsers(
 // 🆘 HELP POST DELETION & SEED OPERATIONS
 // ==============================================================
 
-/**
- * Deletes a help post permanently from Firestore
- */
 export async function deleteHelpPostFromFirestore(postId: string): Promise<void> {
   try {
     if (!postId) return;
@@ -768,9 +808,6 @@ export async function deleteHelpPostFromFirestore(postId: string): Promise<void>
   }
 }
 
-/**
- * Seeds initial completed help posts into Firestore if needed
- */
 export async function seedDoneHelpPostsToFirestore(): Promise<void> {
   try {
     console.log('Done help posts seeded successfully.');
@@ -778,13 +815,7 @@ export async function seedDoneHelpPostsToFirestore(): Promise<void> {
     console.warn('seedDoneHelpPostsToFirestore error:', err);
   }
 }
-// ==============================================================
-// 🆘 DEMO HELP POSTS SEED OPERATIONS
-// ==============================================================
 
-/**
- * Seeds initial demo help posts into Firestore
- */
 export async function seedDemoHelpPostsToFirestore(): Promise<void> {
   try {
     console.log('Demo help posts seeded successfully.');
