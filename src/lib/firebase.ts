@@ -1,3 +1,23 @@
+import {
+  doc,
+  collection,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  arrayUnion,
+  arrayRemove,
+  serverTimestamp,
+  DocumentData,
+  QueryDocumentSnapshot,
+} from 'firebase/firestore';
+
 // ==============================================================
 // 🚨 RED ALERTS (රතු එළිය) FIRESTORE OPERATIONS
 // ==============================================================
@@ -35,7 +55,6 @@ function mapDocToRedAlert(docSnap: DocumentData | QueryDocumentSnapshot<Document
   };
 }
 
-// Local Storage වෙතින් දැනට පවතින සියලුම Red Alerts ලබා ගැනීමේ ශ්‍රිතය
 function getLocalRedAlerts(): RedAlertItem[] {
   try {
     if (typeof window !== 'undefined') {
@@ -49,9 +68,6 @@ function getLocalRedAlerts(): RedAlertItem[] {
   return [];
 }
 
-/**
- * Real-time listener for Red Alerts (With Local Cache Fallback & Instant Sync)
- */
 export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void): () => void {
   const colRef = collection(db, RED_ALERTS_COLLECTION);
   const q = query(colRef, orderBy('createdAtMs', 'desc'), limit(50));
@@ -136,9 +152,6 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
   };
 }
 
-/**
- * Creates a new Red Alert in Firestore and instantly updates Local State
- */
 export async function createRedAlertInFirestore(
   alertData: Omit<RedAlertItem, 'id'>
 ): Promise<string> {
@@ -180,9 +193,6 @@ export async function createRedAlertInFirestore(
   }
 }
 
-/**
- * Updates status (active / resolved / cancelled) of a Red Alert
- */
 export async function updateRedAlertStatus(
   alertId: string,
   status: 'active' | 'resolved' | 'cancelled',
@@ -210,9 +220,6 @@ export async function updateRedAlertStatus(
   }
 }
 
-/**
- * Deletes a Red Alert permanently from Firestore and Local Storage
- */
 export async function deleteRedAlertInFirestore(alertId: string): Promise<void> {
   try {
     const existing = getLocalRedAlerts();
@@ -230,9 +237,6 @@ export async function deleteRedAlertInFirestore(alertId: string): Promise<void> 
   }
 }
 
-/**
- * Adds comment to Red Alert
- */
 export async function addCommentToRedAlert(
   alertId: string,
   comment: { authorName: string; text: string; createdAt?: string }
@@ -251,19 +255,16 @@ export async function addCommentToRedAlert(
   }
 }
 
-/**
- * Flags a Red Alert as fake
- */
 export async function flagRedAlertAsFake(
   alertId: string,
-  reporterInfo: { userId?: string; name?: string; reason?: string }
+  reporterInfo?: { userId?: string; name?: string; reason?: string }
 ): Promise<void> {
   try {
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     await updateDoc(docRef, {
       isFlaggedFake: true,
       fakeReports: arrayUnion({
-        ...reporterInfo,
+        ...(reporterInfo || {}),
         reportedAt: new Date().toISOString(),
       }),
     });
@@ -272,6 +273,8 @@ export async function flagRedAlertAsFake(
     handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
+
+export const reportRedAlertAsFake = flagRedAlertAsFake;
 
 // ==============================================================
 // 🔊 SYSTEM SETTINGS & SIREN TONE FIRESTORE SYNC
@@ -288,9 +291,6 @@ export interface SirenSettingsData {
   updatedBy?: string;
 }
 
-/**
- * Saves siren configuration permanently in Firestore cloud database
- */
 export async function saveSirenSettingsToFirestore(
   settings: {
     audioUrl?: string | null;
@@ -320,9 +320,6 @@ export async function saveSirenSettingsToFirestore(
   }
 }
 
-/**
- * Real-time listener for global siren configuration across all devices and sessions
- */
 export function subscribeToSirenSettings(
   callback: (settings: { audioUrl: string | null; fileName: string; presetType: string }) => void
 ): () => void {
@@ -350,9 +347,6 @@ export function subscribeToSirenSettings(
   }
 }
 
-/**
- * One-time fetch for siren configuration
- */
 export async function fetchSirenSettingsFromFirestore(): Promise<{
   audioUrl: string | null;
   fileName: string;
@@ -374,13 +368,11 @@ export async function fetchSirenSettingsFromFirestore(): Promise<{
   }
   return null;
 }
+
 // ==============================================================
 // 📦 BACKUP & USER PROFILE FIRESTORE OPERATIONS
 // ==============================================================
 
-/**
- * Fetches all posts/data from Firestore for PDF & Backup generation
- */
 export async function fetchAllPostsBackupData(): Promise<any[]> {
   try {
     const colRef = collection(db, 'posts');
@@ -392,9 +384,6 @@ export async function fetchAllPostsBackupData(): Promise<any[]> {
   }
 }
 
-/**
- * Restores posts backup data back into Firestore
- */
 export async function restorePostsBackupData(postsData: any[]): Promise<void> {
   try {
     if (!Array.isArray(postsData)) return;
@@ -410,9 +399,6 @@ export async function restorePostsBackupData(postsData: any[]): Promise<void> {
   }
 }
 
-/**
- * Syncs user profile data to Firestore database
- */
 export async function syncUserProfileToFirestore(userId: string, profileData: any): Promise<void> {
   try {
     if (!userId) return;
@@ -426,13 +412,73 @@ export async function syncUserProfileToFirestore(userId: string, profileData: an
     console.warn('syncUserProfileToFirestore error:', err);
   }
 }
+
 // ==============================================================
 // 🆘 HELP POSTS & CHAT FIRESTORE OPERATIONS
 // ==============================================================
 
-/**
- * Updates a help request/post status or details in Firestore
- */
+export function subscribeToHelpPosts(
+  callback: (posts: any[]) => void
+): () => void {
+  try {
+    const postsColRef = collection(db, 'posts');
+    const q = query(postsColRef, orderBy('createdAt', 'desc'));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const posts = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(posts);
+      },
+      (error) => {
+        console.warn('Help posts listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToHelpPosts setup error:', err);
+    return () => {};
+  }
+}
+
+export async function addHelpPostToFirestore(
+  postData: Record<string, any>
+): Promise<string> {
+  try {
+    const postsColRef = collection(db, 'posts');
+    const docRef = await addDoc(postsColRef, {
+      ...postData,
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.warn('Failed to add help post:', error);
+    handleFirestoreError(error, OperationType.CREATE, 'posts');
+    return '';
+  }
+}
+
+export async function addReplyToFirestore(
+  postId: string,
+  replyData: Record<string, any>
+): Promise<void> {
+  try {
+    const repliesColRef = collection(db, 'posts', postId, 'replies');
+    await addDoc(repliesColRef, {
+      ...replyData,
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to add reply:', error);
+    handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
+  }
+}
+
 export async function updateHelpPostInFirestore(
   postId: string,
   updateData: Record<string, any>
@@ -449,9 +495,6 @@ export async function updateHelpPostInFirestore(
   }
 }
 
-/**
- * Sends a chat message for a post in Firestore
- */
 export async function sendChatMessageToFirestore(
   postId: string,
   messageData: {
@@ -473,13 +516,7 @@ export async function sendChatMessageToFirestore(
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/messages`);
   }
 }
-// ==============================================================
-// 💬 REAL-TIME CHAT MESSAGES LISTENER
-// ==============================================================
 
-/**
- * Subscribes to real-time chat messages for a specific post
- */
 export function subscribeToChatMessages(
   postId: string,
   callback: (messages: any[]) => void
@@ -507,14 +544,12 @@ export function subscribeToChatMessages(
     return () => {};
   }
 }
+
 // ==============================================================
 // 🛒 MARKETPLACE FIRESTORE OPERATIONS
 // ==============================================================
 const MARKETPLACE_COLLECTION = 'marketplace_items';
 
-/**
- * Subscribes to real-time marketplace items
- */
 export function subscribeToMarketplaceItems(
   callback: (items: any[]) => void
 ): () => void {
@@ -542,9 +577,6 @@ export function subscribeToMarketplaceItems(
   }
 }
 
-/**
- * Adds a new marketplace item to Firestore
- */
 export async function addMarketplaceItemToFirestore(
   itemData: Record<string, any>
 ): Promise<string> {
@@ -563,9 +595,6 @@ export async function addMarketplaceItemToFirestore(
   }
 }
 
-/**
- * Deletes a marketplace item from Firestore
- */
 export async function deleteMarketplaceItemFromFirestore(
   itemId: string
 ): Promise<void> {
@@ -577,13 +606,11 @@ export async function deleteMarketplaceItemFromFirestore(
     handleFirestoreError(error, OperationType.DELETE, `${MARKETPLACE_COLLECTION}/${itemId}`);
   }
 }
+
 // ==============================================================
 // 🔖 SAVED POSTS FIRESTORE OPERATIONS
 // ==============================================================
 
-/**
- * Subscribes to real-time saved posts list for a specific user
- */
 export function subscribeToUserSavedPosts(
   userId: string,
   callback: (savedPostIds: string[]) => void
@@ -616,9 +643,6 @@ export function subscribeToUserSavedPosts(
   }
 }
 
-/**
- * Toggles (adds or removes) a saved post ID in user's saved list
- */
 export async function toggleSavePostInFirestore(
   userId: string,
   postId: string,
@@ -643,101 +667,3 @@ export async function toggleSavePostInFirestore(
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
 }
-// ==============================================================
-// 🆘 HELP POSTS LISTENER & CREATION OPERATIONS
-// ==============================================================
-
-/**
- * Subscribes to real-time help posts
- */
-export function subscribeToHelpPosts(
-  callback: (posts: any[]) => void
-): () => void {
-  try {
-    const postsColRef = collection(db, 'posts');
-    const q = query(postsColRef, orderBy('createdAt', 'desc'));
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const posts = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
-        callback(posts);
-      },
-      (error) => {
-        console.warn('Help posts listener error:', error);
-        callback([]);
-      }
-    );
-  } catch (err) {
-    console.warn('subscribeToHelpPosts setup error:', err);
-    return () => {};
-  }
-}
-
-/**
- * Adds a new help post to Firestore
- */
-export async function addHelpPostToFirestore(
-  postData: Record<string, any>
-): Promise<string> {
-  try {
-    const postsColRef = collection(db, 'posts');
-    const docRef = await addDoc(postsColRef, {
-      ...postData,
-      createdAt: new Date().toISOString(),
-      createdAtServer: serverTimestamp(),
-    });
-    return docRef.id;
-  } catch (error) {
-    console.warn('Failed to add help post:', error);
-    handleFirestoreError(error, OperationType.CREATE, 'posts');
-    return '';
-  }
-}
-
-/**
- * Adds a reply to a specific help post
- */
-export async function addReplyToFirestore(
-  postId: string,
-  replyData: Record<string, any>
-): Promise<void> {
-  try {
-    const repliesColRef = collection(db, 'posts', postId, 'replies');
-    await addDoc(repliesColRef, {
-      ...replyData,
-      createdAt: new Date().toISOString(),
-      createdAtServer: serverTimestamp(),
-    });
-  } catch (error) {
-    console.warn('Failed to add reply:', error);
-    handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
-  }
-}
-/**
- * Reports / Flags a Red Alert as fake
- */
-export async function reportRedAlertAsFake(
-  alertId: string,
-  reporterInfo?: { userId?: string; name?: string; reason?: string }
-): Promise<void> {
-  try {
-    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
-    await updateDoc(docRef, {
-      isFlaggedFake: true,
-      fakeReports: arrayUnion({
-        ...(reporterInfo || {}),
-        reportedAt: new Date().toISOString(),
-      }),
-    });
-  } catch (error) {
-    console.warn('Failed to report fake alert:', error);
-    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
-  }
-}
-
-// වෙනත් ස්ථානවල flagRedAlertAsFake භාවිත වේ නම් එයට Alias එකක් ලෙසද තබන්න:
-export const flagRedAlertAsFake = reportRedAlertAsFake;
