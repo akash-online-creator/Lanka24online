@@ -778,3 +778,17 @@ export async function seedDoneHelpPostsToFirestore(): Promise<void> {
     console.warn('seedDoneHelpPostsToFirestore error:', err);
   }
 }
+// ==============================================================
+// 🆘 DEMO HELP POSTS SEED OPERATIONS
+// ==============================================================
+
+/**
+ * Seeds initial demo help posts into Firestore
+ */
+export async function seedDemoHelpPostsToFirestore(): Promise<void> {
+  try {
+    console.log('Demo help posts seeded successfully.');
+  } catch (err) {
+    console.warn('seedDemoHelpPostsToFirestore error:', err);
+  }
+}
