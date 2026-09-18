@@ -577,3 +577,69 @@ export async function deleteMarketplaceItemFromFirestore(
     handleFirestoreError(error, OperationType.DELETE, `${MARKETPLACE_COLLECTION}/${itemId}`);
   }
 }
+// ==============================================================
+// 🔖 SAVED POSTS FIRESTORE OPERATIONS
+// ==============================================================
+
+/**
+ * Subscribes to real-time saved posts list for a specific user
+ */
+export function subscribeToUserSavedPosts(
+  userId: string,
+  callback: (savedPostIds: string[]) => void
+): () => void {
+  try {
+    if (!userId) {
+      callback([]);
+      return () => {};
+    }
+    const userDocRef = doc(db, 'users', userId);
+
+    return onSnapshot(
+      userDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          callback(Array.isArray(data.savedPosts) ? data.savedPosts : []);
+        } else {
+          callback([]);
+        }
+      },
+      (error) => {
+        console.warn('Saved posts listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToUserSavedPosts error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Toggles (adds or removes) a saved post ID in user's saved list
+ */
+export async function toggleSavePostInFirestore(
+  userId: string,
+  postId: string,
+  isCurrentlySaved: boolean
+): Promise<void> {
+  try {
+    if (!userId || !postId) return;
+    const userDocRef = doc(db, 'users', userId);
+
+    await setDoc(
+      userDocRef,
+      {
+        savedPosts: isCurrentlySaved
+          ? arrayRemove(postId)
+          : arrayUnion(postId),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.warn('Failed to toggle save post:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  }
+}
