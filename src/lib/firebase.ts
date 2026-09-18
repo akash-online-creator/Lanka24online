@@ -426,3 +426,50 @@ export async function syncUserProfileToFirestore(userId: string, profileData: an
     console.warn('syncUserProfileToFirestore error:', err);
   }
 }
+// ==============================================================
+// 🆘 HELP POSTS & CHAT FIRESTORE OPERATIONS
+// ==============================================================
+
+/**
+ * Updates a help request/post status or details in Firestore
+ */
+export async function updateHelpPostInFirestore(
+  postId: string,
+  updateData: Record<string, any>
+): Promise<void> {
+  try {
+    const docRef = doc(db, 'posts', postId);
+    await updateDoc(docRef, {
+      ...updateData,
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to update help post:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
+  }
+}
+
+/**
+ * Sends a chat message for a post in Firestore
+ */
+export async function sendChatMessageToFirestore(
+  postId: string,
+  messageData: {
+    senderId: string;
+    senderName: string;
+    text: string;
+    createdAt?: string;
+  }
+): Promise<void> {
+  try {
+    const chatColRef = collection(db, 'posts', postId, 'messages');
+    await addDoc(chatColRef, {
+      ...messageData,
+      createdAt: messageData.createdAt || new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to send chat message:', error);
+    handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/messages`);
+  }
+}
