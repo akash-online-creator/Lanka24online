@@ -37,7 +37,7 @@ import { calculateDistanceKm } from './data/redAlertData';
 import { initSirenSettings } from './utils/sirenAudio';
 
 // Audio file import
-import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
+import sirenSoundFile from './assets/your-uploaded-tone.mp3'; // හෝ .wav
 
 export default function App() {
   // Persistence state setup
