@@ -249,7 +249,7 @@ export default function App() {
     }
   }, []);
 
-  // Proximity alert calculation: Direct Single Siren Execution
+  // Proximity alert calculation: Direct Single Default Siren Execution
   useEffect(() => {
     if (!userCoords || redAlerts.length === 0) {
       if ((window as any).emergencySiren) {
@@ -301,7 +301,11 @@ export default function App() {
         }
         if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
 
-        // Directly play uploaded audio file
+        // පැරණි වෙනත් Tone Cache ඇත්නම් ඉවත් කිරීම
+        localStorage.removeItem('sahaya_custom_siren_url');
+        localStorage.removeItem('sahaya_siren_tone');
+
+        // Directly play uploaded default audio file
         const siren = new Audio(sirenSoundFile);
         siren.loop = true;
         siren.play().catch((e) => console.log('Audio Play Blocked by browser:', e));
