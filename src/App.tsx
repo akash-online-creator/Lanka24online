@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem, RedAlertItem } from './types';
 import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
 import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
@@ -36,7 +36,7 @@ import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
 import { initSirenSettings } from './utils/sirenAudio';
 
-// 🔇 මෙතැනට ඔබගේ Silent Tone එකෙහි Path එක යොදන්න (උදා: ./assets/silent-tone.mp3 හෝ ./assets/silent.mp3)
+// Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 export default function App() {
@@ -213,6 +213,10 @@ export default function App() {
   });
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
+  // Siren References for 1 Minute Timeout Control
+  const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastPlayedAlertIdRef = useRef<string | null>(null);
+
   // Sync real-time Firestore Red Alerts
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
@@ -246,15 +250,28 @@ export default function App() {
     }
   }, []);
 
-  // Proximity alert calculation: Siren auto-triggers for OTHER users within 2.0 km
+  // Proximity alert calculation: 1 MINUTE TIMEOUT & INSTANCE CONTROL
   useEffect(() => {
-    if (!userCoords || redAlerts.length === 0) return;
+    // 1. පද්ධතියේ කිසිදු Alert එකක් නැත්නම් හෝ User Coords නැත්නම් Siren එක නවත්වන්න
+    if (!userCoords || redAlerts.length === 0) {
+      if ((window as any).emergencySiren) {
+        (window as any).emergencySiren.pause();
+        (window as any).emergencySiren.currentTime = 0;
+        (window as any).emergencySiren = null;
+      }
+      if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
+      setProximityAlertInfo(null);
+      return;
+    }
 
+    // 2. පරිශීලකයා ලඟ තියෙන, මීට පෙර Close කර නොමැති සක්‍රීය Alert එක සෙවීම
     const nearAlert = redAlerts.find((alert) => {
       if (alert.status !== 'active') return false;
       if (alert.isFlaggedFake) return false;
       if (typeof alert.latitude !== 'number' || typeof alert.longitude !== 'number') return false;
       if (typeof userCoords?.lat !== 'number' || typeof userCoords?.lng !== 'number') return false;
+
+      // පරිශීලකයා මීට පෙර Close කළ/Dismiss කළ Alert එකක් නම් සයිරන් වදින්නේ නැත
       if (dismissedProximityAlertIds.includes(alert.id)) return false;
 
       const isCreatedByMe = 
@@ -278,17 +295,41 @@ export default function App() {
         nearAlert.latitude,
         nearAlert.longitude
       );
-      
-      if (!proximityAlertInfo || proximityAlertInfo.alert.id !== nearAlert.id) {
-        setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
-        
-        // 🔇 Audio Play (Uses Silent Tone Path)
+
+      setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
+
+      // 🔊 නව Alert එකක් ආවොත් හෝ සයිරන් එක Play වෙලා නැත්නම් පමණක් Play කරන්න
+      if (!(window as any).emergencySiren || lastPlayedAlertIdRef.current !== nearAlert.id) {
+        // කලින් තිබූ Siren & Timer Clean කිරීම
+        if ((window as any).emergencySiren) {
+          (window as any).emergencySiren.pause();
+          (window as any).emergencySiren.currentTime = 0;
+        }
+        if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
+
         const siren = new Audio(sirenSoundFile);
         siren.loop = true;
-        siren.play().catch(e => console.log("Audio Play Blocked:", e));
+        siren.play().catch((e) => console.log('Audio Play Blocked:', e));
         (window as any).emergencySiren = siren;
+        lastPlayedAlertIdRef.current = nearAlert.id;
+
+        // ⏱️ හරියටම විනාඩි 1කින් (තත්පර 60කින්) ඔටෝ සයිරන් එක Off කිරීම:
+        sirenTimerRef.current = setTimeout(() => {
+          if ((window as any).emergencySiren) {
+            (window as any).emergencySiren.pause();
+            (window as any).emergencySiren.currentTime = 0;
+            (window as any).emergencySiren = null;
+          }
+        }, 60000); // 60000ms = 1 Minute
       }
     } else {
+      // ළඟ ආපදා නැත්නම් සයිරන් එක නවත්වන්න
+      if ((window as any).emergencySiren) {
+        (window as any).emergencySiren.pause();
+        (window as any).emergencySiren.currentTime = 0;
+        (window as any).emergencySiren = null;
+      }
+      if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
       setProximityAlertInfo(null);
     }
   }, [redAlerts, userCoords, dismissedProximityAlertIds, myCreatedAlertIds, currentUser]);
@@ -946,12 +987,15 @@ export default function App() {
         alert={proximityAlertInfo?.alert || null}
         distanceKm={proximityAlertInfo?.distanceKm || 0}
         onClose={() => {
-          // 🛑 Stop audio when user closes the popup
+          // 🛑 පරිශීලකයා Close කළ විට සයිරන් එක නවත්වන්න
           if ((window as any).emergencySiren) {
             (window as any).emergencySiren.pause();
             (window as any).emergencySiren.currentTime = 0;
+            (window as any).emergencySiren = null;
           }
+          if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
 
+          // 💾 නැවත ලොග් වෙද්දී පැරණි ආපදාවලට සයිරන් නොවැදීම සඳහා Dismissed ලැයිස්තුවට Save කිරීම
           if (proximityAlertInfo) {
             setDismissedProximityAlertIds((prev) => {
               const next = Array.from(new Set([...prev, proximityAlertInfo.alert.id]));
