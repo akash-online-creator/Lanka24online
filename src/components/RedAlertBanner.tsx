@@ -23,9 +23,6 @@ import {
 // 🚨 Default Tone Import එක
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
 
-// LocalStorage Key for Dismissed Alerts
-const DISMISSED_ALERTS_KEY = 'sahaya_dismissed_red_alerts';
-
 // 🔊 Audio Context Unlock Functionality
 let globalAudioContext: AudioContext | null = null;
 
@@ -69,24 +66,28 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 1️⃣ LocalStorage එකෙන් Dismiss කළ Alert IDs ලබා ගැනීම (Requirement 2)
-  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>(() => {
+  // 🔑 User ID එක මත පදනම්ව Dynamically Storage Key එක සකස් කිරීම
+  const activeUserId = currentUser?.id || currentUser?.phone || currentUser?.nic || 'guest_user';
+  const storageKey = `sahaya_dismissed_red_alerts_${activeUserId}`;
+
+  // 1️⃣ අදාළ පරිශීලකයා Dismiss කළ Alert IDs පමණක් ලබා ගැනීම
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem(DISMISSED_ALERTS_KEY);
-        return saved ? JSON.parse(saved) : [];
+        const saved = localStorage.getItem(storageKey);
+        setDismissedAlertIds(saved ? JSON.parse(saved) : []);
       } catch {
-        return [];
+        setDismissedAlertIds([]);
       }
     }
-    return [];
-  });
+  }, [storageKey]);
 
   // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 2 සීමාව සෙවීම
   const uniqueAlertsMap = new Map<string, RedAlertItem>();
 
   alerts.forEach((alert) => {
-    // 3. එකම දැන්වීම් Duplicate වීම වැළැක්වීම (Requirement 3)
     if (alert.id && alert.status === 'active' && !alert.isFlaggedFake) {
       if (!uniqueAlertsMap.has(alert.id)) {
         uniqueAlertsMap.set(alert.id, alert);
@@ -95,12 +96,12 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   });
 
   const activeAlerts = Array.from(uniqueAlertsMap.values()).filter((alert) => {
-    // Dismiss කරපු Alert එකක් නම් පෙන්නන්න එපා (Requirement 2)
+    // මෙම User විසින් Dismiss කර ඇති Alert එකක් නම් නොපෙන්වන්න
     if (dismissedAlertIds.includes(alert.id)) {
       return false;
     }
 
-    // 1. කිලෝමීටර් 2ක් ඇතුළත සිටින පරිශීලකයන්ට පමණක් පෙන්වීම (Requirement 1)
+    // කිලෝමීටර් 2ක් ඇතුළත සිටින පරිශීලකයන්ට පමණක් පෙන්වීම
     if (
       currentLocation &&
       typeof currentLocation.lat === 'number' &&
@@ -114,10 +115,10 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
         alert.latitude,
         alert.longitude
       );
-      return distanceKm <= 2; // කි.මී. 2 සීමාව
+      return distanceKm <= 2;
     }
 
-    return false; // Location නැත්නම් පෙන්වන්නේ නැත
+    return false;
   });
 
   const currentAlert = activeAlerts.length > 0 
@@ -139,7 +140,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   const isAuthor = isUserAuthorOfRedAlert(currentAlert);
   const hasActiveAlerts = activeAlerts.length > 0;
 
-  // 4️⃣ එක සයිරන් එකක් පමණක් continuous ලෙස ප්ලේ කිරීම (Requirement 4)
+  // 4️⃣ එක සයිරන් එකක් පමණක් continuous ලෙස ප්ලේ කිරීම
   useEffect(() => {
     if (!hasActiveAlerts || isAuthor || isMuted) {
       stopSiren();
@@ -149,7 +150,6 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     playSiren();
 
     return () => {
-      // Clean up when unmounted or alerts list becomes empty
       stopSiren();
     };
   }, [hasActiveAlerts, isAuthor, isMuted]);
@@ -188,7 +188,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  // 🛑 පරිශීලකයා Alert එක Dismiss කළ විට LocalStorage එකට එකතු කිරීම (Requirement 2)
+  // 🛑 පරිශීලකයා Alert එක Dismiss කළ විට අදාළ User ID එක යටතේ Save වීම
   const handleDismissCurrentAlert = () => {
     if (!currentAlert) return;
 
@@ -196,12 +196,11 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     setDismissedAlertIds(updatedDismissedIds);
 
     try {
-      localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(updatedDismissedIds));
+      localStorage.setItem(storageKey, JSON.stringify(updatedDismissedIds));
     } catch (e) {
       console.error("Failed to save dismissed alert to localStorage", e);
     }
 
-    // බැනර් ලැයිස්තුවේ ඊළඟ Alert එකට මාරු කිරීම
     if (activeAlerts.length <= 1) {
       stopSiren();
     } else {
@@ -237,7 +236,6 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  // පෙන්වීමට කිසිදු active අනතුරක් නොමැති නම් Component එක Render නොවනු ඇත
   if (activeAlerts.length === 0 || !currentAlert) {
     return null;
   }
@@ -356,7 +354,6 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
             <ArrowRight className="w-3 h-3" />
           </button>
 
-          {/* Close Button - ක්ලික් කළ විට එකී Alert එක මින්පසු පෙන්වන්නේ නැත */}
           <button
             type="button"
             onClick={handleDismissCurrentAlert}
@@ -369,7 +366,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
       </div>
 
-      {/* 2. කළමනාකරණ තීරුව (Author / Normal User) */}
+      {/* 2. කළමනාකරණ තීරුව */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
           
