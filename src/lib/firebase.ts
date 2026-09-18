@@ -507,3 +507,73 @@ export function subscribeToChatMessages(
     return () => {};
   }
 }
+// ==============================================================
+// 🛒 MARKETPLACE FIRESTORE OPERATIONS
+// ==============================================================
+const MARKETPLACE_COLLECTION = 'marketplace_items';
+
+/**
+ * Subscribes to real-time marketplace items
+ */
+export function subscribeToMarketplaceItems(
+  callback: (items: any[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, MARKETPLACE_COLLECTION);
+    const q = query(colRef, orderBy('createdAt', 'desc'));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(items);
+      },
+      (error) => {
+        console.warn('Marketplace items listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToMarketplaceItems setup error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Adds a new marketplace item to Firestore
+ */
+export async function addMarketplaceItemToFirestore(
+  itemData: Record<string, any>
+): Promise<string> {
+  try {
+    const colRef = collection(db, MARKETPLACE_COLLECTION);
+    const docRef = await addDoc(colRef, {
+      ...itemData,
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.warn('Failed to add marketplace item:', error);
+    handleFirestoreError(error, OperationType.CREATE, MARKETPLACE_COLLECTION);
+    return '';
+  }
+}
+
+/**
+ * Deletes a marketplace item from Firestore
+ */
+export async function deleteMarketplaceItemFromFirestore(
+  itemId: string
+): Promise<void> {
+  try {
+    const docRef = doc(db, MARKETPLACE_COLLECTION, itemId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn('Failed to delete marketplace item:', error);
+    handleFirestoreError(error, OperationType.DELETE, `${MARKETPLACE_COLLECTION}/${itemId}`);
+  }
+}
