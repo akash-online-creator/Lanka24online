@@ -1,12 +1,52 @@
-import React, { useState } from 'react';
-import { Radio, ArrowRight, X, AlertTriangle, ChevronRight, ChevronLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ArrowRight, 
+  X, 
+  ChevronRight, 
+  ChevronLeft, 
+  Volume2, 
+  VolumeX, 
+  ShieldCheck, 
+  CheckCircle, 
+  Trash2, 
+  AlertTriangle 
+} from 'lucide-react';
 import { RedAlertItem, LocationOption } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
+import { 
+  updateRedAlertStatus, 
+  deleteRedAlertInFirestore, 
+  flagRedAlertAsFake 
+} from '../lib/firebase';
+
+// 🔊 Audio Context Unlock Functionality
+let globalAudioContext: AudioContext | null = null;
+
+export const unlockAudioContext = () => {
+  if (!globalAudioContext) {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      globalAudioContext = new AudioContextClass();
+    }
+  }
+  if (globalAudioContext && globalAudioContext.state === 'suspended') {
+    globalAudioContext.resume();
+  }
+};
+
+interface UserProfile {
+  id?: string;
+  nic?: string;
+  email?: string;
+  phone?: string;
+  name?: string;
+}
 
 interface RedAlertBannerProps {
   alerts: RedAlertItem[];
   currentLocation?: LocationOption;
+  currentUser?: UserProfile | null;
   onOpenAlertDetail: (alert: RedAlertItem) => void;
   onOpenCreate: () => void;
 }
@@ -14,22 +54,117 @@ interface RedAlertBannerProps {
 export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   alerts = [],
   currentLocation,
+  currentUser = null,
   onOpenAlertDetail,
   onOpenCreate,
 }) => {
   const [dismissed, setDismissed] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlayingSiren, setIsPlayingSiren] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Filter only active, non-false alarm alerts
   const activeAlerts = alerts.filter(
     (a) => a.status === 'active' && !a.isFlaggedFake
   );
 
-  if (dismissed || activeAlerts.length === 0) {
+  const currentAlert = activeAlerts.length > 0 
+    ? activeAlerts[currentIndex % activeAlerts.length] 
+    : null;
+
+  // 🛡️ පරිශීලකයා මෙම ආපදාව වාර්තා කළ පුද්ගලයාදැයි පරීක්ෂා කිරීම (isUserAuthorOfRedAlert)
+  const isUserAuthorOfRedAlert = (alert: RedAlertItem | null): boolean => {
+    if (!currentUser || !alert) return false;
+
+    const matchesUserId = alert.reportedByUserId && alert.reportedByUserId === currentUser.id;
+    const matchesPhone = alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone;
+    const matchesNic = (alert as any).reportedByNic && currentUser.nic && (alert as any).reportedByNic === currentUser.nic;
+    const matchesEmail = (alert as any).reportedByEmail && currentUser.email && (alert as any).reportedByEmail === currentUser.email;
+
+    return Boolean(matchesUserId || matchesPhone || matchesNic || matchesEmail);
+  };
+
+  const isAuthor = isUserAuthorOfRedAlert(currentAlert);
+
+  // 🚨 ස්වයංක්‍රීය Siren නාදය පාලනය
+  useEffect(() => {
+    if (!currentAlert || dismissed || isAuthor || isMuted) {
+      stopSiren();
+      return;
+    }
+
+    playSiren();
+
+    return () => {
+      stopSiren();
+    };
+  }, [currentAlert, dismissed, isAuthor, isMuted]);
+
+  const playSiren = () => {
+    unlockAudioContext();
+    if (!audioRef.current) {
+      audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+      audioRef.current.loop = true;
+    }
+
+    audioRef.current.play().then(() => {
+      setIsPlayingSiren(true);
+    }).catch((err) => {
+      console.warn("Autoplay policy blocked audio playback:", err);
+    });
+  };
+
+  const stopSiren = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlayingSiren(false);
+  };
+
+  const handleToggleSiren = () => {
+    if (isPlayingSiren) {
+      stopSiren();
+      setIsMuted(true);
+    } else {
+      setIsMuted(false);
+      playSiren();
+    }
+  };
+
+  // Action Handlers
+  const handleResolveAlert = async (alertId: string) => {
+    stopSiren();
+    await updateRedAlertStatus(alertId, 'resolved', 'වාර්තාකරු විසින් අනතුර විසඳූ බව සලකුණු කරන ලදී.');
+  };
+
+  const handleDeleteAlert = async (alertId: string) => {
+    if (confirm('මෙම ආපදා නිවේදනය සම්පූර්ණයෙන්ම ඉවත් කිරීමට ඔබට විශ්වාසද?')) {
+      stopSiren();
+      await deleteRedAlertInFirestore(alertId);
+    }
+  };
+
+  const handleReportFake = async (alertId: string) => {
+    if (!currentUser) {
+      alert('කරුණාකර පළමුව පද්ධතියට ලොග් වන්න.');
+      return;
+    }
+    if (confirm('මෙය සාවද්‍ය / බොරු අනතුරක් ලෙස වාර්තා කිරීමට අවශ්‍යද?')) {
+      await flagRedAlertAsFake(alertId, {
+        userId: currentUser.id,
+        name: currentUser.name,
+        reason: 'User flagged as fake alert'
+      });
+      alert('ඔබගේ වාර්තා කිරීම පද්ධතියට යොමු කෙරුණි.');
+    }
+  };
+
+  if (dismissed || activeAlerts.length === 0 || !currentAlert) {
     return null;
   }
 
-  const currentAlert = activeAlerts[currentIndex % activeAlerts.length];
   const config = getDisasterConfig(currentAlert.disasterType);
 
   let distanceKm = 0;
@@ -53,8 +188,10 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
-    <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white px-3 sm:px-4 py-2 sm:py-2.5 shadow-lg border-b-2 border-red-400/80 relative z-30 animate-fadeIn">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
+    <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg border-b-2 border-red-400/80 relative z-30 animate-fadeIn">
+      
+      {/* 1. ප්‍රධාන Banner තීරුව */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs">
         
         {/* Left Indicator & Incident summary */}
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -66,7 +203,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="bg-black/30 px-2 py-0.5 rounded-full font-black text-[10px] tracking-wide flex items-center gap-1 text-yellow-300 border border-yellow-300/30">
               <span className="animate-pulse">🚨</span>
-              <span>රතු එළිය (හදිසි දැනුම්දීම)</span>
+              <span>රතු එළිය</span>
               {activeAlerts.length > 1 && (
                 <span className="bg-white/20 px-1 rounded text-white ml-0.5">
                   {currentIndex + 1}/{activeAlerts.length}
@@ -85,8 +222,35 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Controls & Action Buttons */}
         <div className="flex items-center gap-1.5 shrink-0">
+          
+          {/* 🔊 Siren On/Off Button */}
+          {!isAuthor && (
+            <button
+              type="button"
+              onClick={handleToggleSiren}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-transform active:scale-95 ${
+                isPlayingSiren 
+                  ? 'bg-yellow-400 hover:bg-yellow-500 text-black animate-bounce' 
+                  : 'bg-black/30 hover:bg-black/40 text-white'
+              }`}
+              title={isPlayingSiren ? "Siren නවත්වන්න" : "Siren නාද කරන්න"}
+            >
+              {isPlayingSiren ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-red-700 animate-pulse" />
+                  <span className="hidden sm:inline">🚨 Siren නවත්වන්න</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 opacity-80" />
+                  <span className="hidden sm:inline">Siren නිහඬයි</span>
+                </>
+              )}
+            </button>
+          )}
+
           {activeAlerts.length > 1 && (
             <div className="hidden sm:flex items-center gap-1 mr-1">
               <button
@@ -111,13 +275,16 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
             onClick={() => onOpenAlertDetail(currentAlert)}
             className="px-3 py-1 bg-white text-red-700 hover:bg-red-50 font-black rounded-lg text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
           >
-            <span>විස්තර බලන්න</span>
+            <span>විස්තර</span>
             <ArrowRight className="w-3 h-3" />
           </button>
 
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={() => {
+              stopSiren();
+              setDismissed(true);
+            }}
             className="w-6 h-6 rounded-full bg-black/20 hover:bg-black/30 text-white flex items-center justify-center font-bold ml-1"
             title="Dismiss"
           >
@@ -126,6 +293,57 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
         </div>
 
       </div>
+
+      {/* 2. පරිශීලක අයිතිය මත පදනම් වන කළමනාකරණ තීරුව (Author / Normal User) */}
+      <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+          
+          {isAuthor ? (
+            /* A. වාර්තා කළ පුද්ගලයා සඳහා වූ කොටස */
+            <div className="w-full flex flex-wrap justify-between items-center gap-2">
+              <span className="font-bold text-yellow-300 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                🛡️ ඔබ මෙම ආපදාව වාර්තා කළ පුද්ගලයායි
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleResolveAlert(currentAlert.id)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-0.5 rounded font-bold flex items-center gap-1 transition-colors"
+                >
+                  <CheckCircle className="w-3 h-3" />
+                  අනතුර විසඳුනි (Resolve)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteAlert(currentAlert.id)}
+                  className="bg-red-950 hover:bg-black text-red-200 border border-red-500/40 px-2.5 py-0.5 rounded font-bold flex items-center gap-1 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  ඉවත් කරන්න (Delete)
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* B. සාමාන්‍ය පරිශීලකයන් සඳහා වූ කොටස */
+            <div className="w-full flex justify-between items-center text-white/80">
+              <span>
+                වාර්තා කළේ: <strong className="text-white">{currentAlert.reportedByName || 'හදිසි දැනුම්දෙන්නා'}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleReportFake(currentAlert.id)}
+                className="text-red-200 hover:text-white underline flex items-center gap-1 transition-colors"
+              >
+                <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                සාවද්‍ය / බොරු දැන්වීමක්ද? (Report Fake)
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+
     </div>
   );
 };
