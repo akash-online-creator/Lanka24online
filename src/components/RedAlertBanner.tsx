@@ -20,6 +20,9 @@ import {
   flagRedAlertAsFake 
 } from '../lib/firebase';
 
+// 🚨 ඔබගේ Default Tone එක Import කිරීම
+import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
+
 // 🔊 Audio Context Unlock Functionality
 let globalAudioContext: AudioContext | null = null;
 
@@ -73,7 +76,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     ? activeAlerts[currentIndex % activeAlerts.length] 
     : null;
 
-  // 🛡️ පරිශීලකයා මෙම ආපදාව වාර්තා කළ පුද්ගලයාදැයි පරීක්ෂා කිරීම (isUserAuthorOfRedAlert)
+  // 🛡️ පරිශීලකයා මෙම ආපදාව වාර්තා කළ පුද්ගලයාදැයි පරීක්ෂා කිරීම
   const isUserAuthorOfRedAlert = (alert: RedAlertItem | null): boolean => {
     if (!currentUser || !alert) return false;
 
@@ -104,7 +107,8 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   const playSiren = () => {
     unlockAudioContext();
     if (!audioRef.current) {
-      audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+      // 🚨 මෙතැන තිබූ පැරණි URL එක වෙනුවට Default WAV sound එක යොදවන ලදී
+      audioRef.current = new Audio(defaultSirenSound);
       audioRef.current.loop = true;
     }
 
@@ -294,12 +298,11 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
       </div>
 
-      {/* 2. පරිශීලක අයිතිය මත පදනම් වන කළමනාකරණ තීරුව (Author / Normal User) */}
+      {/* 2. පරිශීලක අයිතිය මත පදනම් වන කළමනාකරණ තීරුව */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
           
           {isAuthor ? (
-            /* A. වාර්තා කළ පුද්ගලයා සඳහා වූ කොටස */
             <div className="w-full flex flex-wrap justify-between items-center gap-2">
               <span className="font-bold text-yellow-300 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -325,7 +328,6 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
               </div>
             </div>
           ) : (
-            /* B. සාමාන්‍ය පරිශීලකයන් සඳහා වූ කොටස */
             <div className="w-full flex justify-between items-center text-white/80">
               <span>
                 වාර්තා කළේ: <strong className="text-white">{currentAlert.reportedByName || 'හදිසි දැනුම්දෙන්නා'}</strong>
