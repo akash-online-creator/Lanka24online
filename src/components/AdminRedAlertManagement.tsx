@@ -14,7 +14,8 @@ import {
   User as UserIcon,
   RefreshCw,
   Search,
-  Volume2
+  Volume2,
+  RotateCcw
 } from 'lucide-react';
 import { RedAlertItem, Language } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
@@ -31,7 +32,7 @@ interface AdminRedAlertManagementProps {
   onViewAlertDetail?: (alert: RedAlertItem) => void;
 }
 
-const DEFAULT_SIREN_NAME = 'Fire Alert Siren (Default)';
+const DEFAULT_SIREN_NAME = 'Custom Fire Alert (WAV)';
 
 export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = ({
   alerts = [],
@@ -65,8 +66,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
       stopEmergencySiren();
       setIsPlayingSiren(false);
     } else {
-      // Cloud audio එකක් නැත්නම් default local wav file එක ප්ලේ කරයි
-      startEmergencySiren(defaultSirenTone);
+      startEmergencySiren();
       setIsPlayingSiren(true);
     }
   };
@@ -141,7 +141,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handleToggleSiren}
@@ -185,7 +185,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                         await persistSirenSettings(dataUri, file.name);
                         setUploadedSirenFileName(file.name);
                         alert(`✅ සාර්ථකයි! "${file.name}" Siren Tone එක Cloud Database හි ස්ථිරවම ගබඩා කරන ලදී.`);
-                        startEmergencySiren(dataUri);
+                        startEmergencySiren();
                         setIsPlayingSiren(true);
                       }
                     };
@@ -194,6 +194,21 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                 }}
               />
             </label>
+
+            {/* 🔄 Database එකේ පරණ Audio එක ඉවත් කිරීමේ Reset Button එක */}
+            <button
+              type="button"
+              onClick={async () => {
+                await persistSirenSettings(null, DEFAULT_SIREN_NAME);
+                setUploadedSirenFileName(DEFAULT_SIREN_NAME);
+                alert('✅ Cloud Database එකේ පරණ Audio Link එක සාර්ථකව ඉවත් කරන ලදී! දැන් ස්ථිරවම නව Default .wav ශබ්දය ක්‍රියාත්මක වේ.');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-amber-300 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-400/50"
+              title="Reset Database Siren Sound to Default WAV File"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>🔄 Reset Siren</span>
+            </button>
 
             {onRefreshAlerts && (
               <button
@@ -226,7 +241,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                   await persistSirenSettings(url, url);
                   setUploadedSirenFileName(url);
                   alert('✅ සාර්ථකයි! Audio URL එක Cloud Database හි ස්ථිරවම සුරකින ලදී.');
-                  startEmergencySiren(url);
+                  startEmergencySiren();
                   setIsPlayingSiren(true);
                   inputEl.value = '';
                 } else {
@@ -255,7 +270,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
         </div>
       </div>
 
-      {/* Metric Counters & rest of the component... */}
+      {/* Metric Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10">
           <span className="text-[10px] uppercase font-bold text-slate-400">මුළු ඇඟවීම්</span>
