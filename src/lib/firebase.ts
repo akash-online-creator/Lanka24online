@@ -643,3 +643,77 @@ export async function toggleSavePostInFirestore(
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
 }
+// ==============================================================
+// 🆘 HELP POSTS LISTENER & CREATION OPERATIONS
+// ==============================================================
+
+/**
+ * Subscribes to real-time help posts
+ */
+export function subscribeToHelpPosts(
+  callback: (posts: any[]) => void
+): () => void {
+  try {
+    const postsColRef = collection(db, 'posts');
+    const q = query(postsColRef, orderBy('createdAt', 'desc'));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const posts = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(posts);
+      },
+      (error) => {
+        console.warn('Help posts listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToHelpPosts setup error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Adds a new help post to Firestore
+ */
+export async function addHelpPostToFirestore(
+  postData: Record<string, any>
+): Promise<string> {
+  try {
+    const postsColRef = collection(db, 'posts');
+    const docRef = await addDoc(postsColRef, {
+      ...postData,
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.warn('Failed to add help post:', error);
+    handleFirestoreError(error, OperationType.CREATE, 'posts');
+    return '';
+  }
+}
+
+/**
+ * Adds a reply to a specific help post
+ */
+export async function addReplyToFirestore(
+  postId: string,
+  replyData: Record<string, any>
+): Promise<void> {
+  try {
+    const repliesColRef = collection(db, 'posts', postId, 'replies');
+    await addDoc(repliesColRef, {
+      ...replyData,
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to add reply:', error);
+    handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
+  }
+}
