@@ -63,7 +63,6 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
     }
   };
 
-  // Local Storage වෙනස්වීම් සඳහා Listener එකක් එක් කිරීම
   if (typeof window !== 'undefined') {
     window.addEventListener('sahaya_red_alerts_changed', handleLocalEmit);
   }
@@ -74,7 +73,6 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
       const remoteAlerts = snapshot.docs.map((docSnap) => mapDocToRedAlert(docSnap));
       const localAlerts = getLocalRedAlerts();
 
-      // Remote දත්ත සහ Local Storage හි ඇති අලුත්ම දත්ත Merge කිරීම
       const mergedMap = new Map<string, RedAlertItem>();
       localAlerts.forEach((item) => mergedMap.set(item.id, item));
       remoteAlerts.forEach((item) => mergedMap.set(item.id, item));
@@ -98,7 +96,6 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
         return;
       }
 
-      // Default emergency sample alert if completely empty
       const defaultAlerts: RedAlertItem[] = [
         {
           id: 'default_emergency_alert_1',
@@ -151,7 +148,6 @@ export async function createRedAlertInFirestore(
     id: tempId,
   };
 
-  // 1. ක්ෂණිකව Local Storage එකට එකතු කිරීම (එවිට Submit කළ හැටියේම UI එකට පෙන්නුම් කරයි)
   try {
     const existing = getLocalRedAlerts();
     const updated = [newAlertItem, ...existing.filter((a) => a.id !== tempId)];
@@ -161,7 +157,6 @@ export async function createRedAlertInFirestore(
     }
   } catch {}
 
-  // 2. Cloud Firestore වෙත යැවීම
   try {
     const colRef = collection(db, RED_ALERTS_COLLECTION);
     const docRef = await addDoc(colRef, {
@@ -169,7 +164,6 @@ export async function createRedAlertInFirestore(
       createdAtServer: serverTimestamp(),
     });
 
-    // Firestore එකෙන් ලැබෙන සැබෑ Document ID එකෙන් Local Storage යාවත්කාලීන කිරීම
     try {
       const existing = getLocalRedAlerts();
       const updated = existing.map((a) => (a.id === tempId ? { ...a, id: docRef.id } : a));
@@ -185,6 +179,100 @@ export async function createRedAlertInFirestore(
     return tempId;
   }
 }
+
+/**
+ * Updates status (active / resolved / cancelled) of a Red Alert
+ */
+export async function updateRedAlertStatus(
+  alertId: string,
+  status: 'active' | 'resolved' | 'cancelled',
+  note?: string
+): Promise<void> {
+  try {
+    const existing = getLocalRedAlerts();
+    const updated = existing.map((a) =>
+      a.id === alertId ? { ...a, status, adminActionNote: note !== undefined ? note : a.adminActionNote } : a
+    );
+    localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
+    }
+
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await updateDoc(docRef, {
+      status,
+      ...(note !== undefined ? { adminActionNote: note } : {}),
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to update Red Alert status:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Deletes a Red Alert permanently from Firestore and Local Storage
+ */
+export async function deleteRedAlertInFirestore(alertId: string): Promise<void> {
+  try {
+    const existing = getLocalRedAlerts();
+    const updated = existing.filter((a) => a.id !== alertId);
+    localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
+    }
+
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn('Failed to delete Red Alert:', error);
+    handleFirestoreError(error, OperationType.DELETE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Adds comment to Red Alert
+ */
+export async function addCommentToRedAlert(
+  alertId: string,
+  comment: { authorName: string; text: string; createdAt?: string }
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await updateDoc(docRef, {
+      comments: arrayUnion({
+        ...comment,
+        createdAt: comment.createdAt || new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to add comment:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * Flags a Red Alert as fake
+ */
+export async function flagRedAlertAsFake(
+  alertId: string,
+  reporterInfo: { userId?: string; name?: string; reason?: string }
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await updateDoc(docRef, {
+      isFlaggedFake: true,
+      fakeReports: arrayUnion({
+        ...reporterInfo,
+        reportedAt: new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to flag fake report:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
 // ==============================================================
 // 🔊 SYSTEM SETTINGS & SIREN TONE FIRESTORE SYNC
 // ==============================================================
