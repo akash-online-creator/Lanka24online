@@ -717,3 +717,27 @@ export async function addReplyToFirestore(
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
   }
 }
+/**
+ * Reports / Flags a Red Alert as fake
+ */
+export async function reportRedAlertAsFake(
+  alertId: string,
+  reporterInfo?: { userId?: string; name?: string; reason?: string }
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await updateDoc(docRef, {
+      isFlaggedFake: true,
+      fakeReports: arrayUnion({
+        ...(reporterInfo || {}),
+        reportedAt: new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to report fake alert:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+// වෙනත් ස්ථානවල flagRedAlertAsFake භාවිත වේ නම් එයට Alias එකක් ලෙසද තබන්න:
+export const flagRedAlertAsFake = reportRedAlertAsFake;
