@@ -35,6 +35,7 @@ import { RedAlertFloatingTrigger } from './components/RedAlertFloatingTrigger';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
 import { initSirenSettings } from './utils/sirenAudio';
+import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 export default function App() {
   // Persistence state setup
@@ -133,13 +134,11 @@ export default function App() {
 
   // Sync real-time Firestore users (Cloud persistent user directory for Vercel & Web)
   useEffect(() => {
-    // Seed initial users to Firestore if remote DB is empty
     seedInitialUsersToFirestore(initialUsers);
 
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prev) => {
-          // Merge with initial admin if not present
           const hasAdmin = remoteUsers.some(
             (u) => u.userId === '970181547V' || u.role === 'admin'
           );
@@ -256,7 +255,6 @@ export default function App() {
       if (typeof userCoords?.lat !== 'number' || typeof userCoords?.lng !== 'number') return false;
       if (dismissedProximityAlertIds.includes(alert.id)) return false;
 
-      // DO NOT trigger proximity siren modal for the user who created/submitted the alert
       const isCreatedByMe = 
         (currentUser && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
         myCreatedAlertIds.includes(alert.id);
@@ -278,18 +276,25 @@ export default function App() {
         nearAlert.latitude,
         nearAlert.longitude
       );
-      setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
+      
+      if (!proximityAlertInfo || proximityAlertInfo.alert.id !== nearAlert.id) {
+        setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
+        
+        // 🚨 Siren Audio Play
+        const siren = new Audio(sirenSoundFile);
+        siren.loop = true;
+        siren.play().catch(e => console.log("Siren Play Blocked:", e));
+        (window as any).emergencySiren = siren;
+      }
     } else {
       setProximityAlertInfo(null);
     }
   }, [redAlerts, userCoords, dismissedProximityAlertIds, myCreatedAlertIds, currentUser]);
 
-  // Persist storage updates
   useEffect(() => {
     localStorage.setItem('sahaya_lang', language);
   }, [language]);
 
-  // Clean up any legacy persistent session to ensure fresh login & sync Siren Settings
   useEffect(() => {
     localStorage.removeItem('sahaya_current_user');
     localStorage.removeItem('sahaya_view_mode');
@@ -338,9 +343,6 @@ export default function App() {
     saveTagsToStorage(tags);
   }, [tags]);
 
-
-
-  // Live Server clock
   useEffect(() => {
     applyAppFontSize(getStoredFontSize());
     const updateTime = () => {
@@ -356,7 +358,6 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Helper check if credential is blocked
   const isCredentialBlocked = (checkStr: string): boolean => {
     if (!checkStr) return false;
     const cleanStr = checkStr.trim().toLowerCase();
@@ -370,7 +371,6 @@ export default function App() {
     );
   };
 
-  // User Demo Login Handler
   const handleUserDemoLogin = () => {
     const demoUser: User = {
       id: 'demo-user-guest',
@@ -390,17 +390,14 @@ export default function App() {
     setViewMode('dashboard');
   };
 
-  // Auth Handler
   const handleLogin = (userIdInput: string, keyInput: string) => {
     const cleanInput = userIdInput.trim().toLowerCase();
 
-    // User Demo Check
     if (cleanInput === 'demo_user' || cleanInput === 'demo') {
       handleUserDemoLogin();
       return;
     }
 
-    // Admin Master Check
     if (
       (userIdInput.toUpperCase() === '970181547V' && keyInput === '1691@@Devhas') ||
       (userIdInput === 'admin' && keyInput === 'admin123')
@@ -412,9 +409,8 @@ export default function App() {
       return;
     }
 
-    // Check if input matches any Blocked credentials list
     if (isCredentialBlocked(cleanInput)) {
-      alert('⛔ අවධානයයි: ඔබගේ ගිණුම, දුරකථන අංකය, ජා.හැ. අංකය, Gmail හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. පද්ධතියට ඇතුළු විය නොහැක.');
+      alert('⛔ අවධානයයි: ඔබගේ ගිණුම, දුරකථන අංකය, ජා.හැ. අංකය, Gmail හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත.');
       return;
     }
 
@@ -435,29 +431,24 @@ export default function App() {
     );
 
     if (!foundUser) {
-      // Piyawara 1.2: Invalid Login trigger
       setShowWrongLoginModal(true);
       return;
     }
 
-    // Check if user account status is explicitly blocked
     if (foundUser.status === 'blocked') {
-      alert(`⛔ අවධානයයි: පරිපාලක (Admin) විසින් ඔබගේ ගිණුම අවහිර (Block) කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
+      alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
       return;
     }
 
-    // Valid User logic
     setCurrentUser(foundUser);
 
     if (foundUser.role === 'admin') {
       setActiveRoleView('admin');
       setViewMode('admin');
     } else if (foundUser.status === 'pending') {
-      // Piyawara 1.1: Pending status redirect
       setViewMode('pending');
     } else if (foundUser.status === 'approved') {
       setViewMode('dashboard');
-      // Show password change modal if user hasn't changed default/temp password yet
       if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
         setShowChangePasswordModal(true);
       }
@@ -467,7 +458,6 @@ export default function App() {
   };
 
   const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
-    // Check if any of user's details (Phone, NIC, Email, IP) are blocked
     const isBlocked =
       isCredentialBlocked(newUser.phone) ||
       isCredentialBlocked(newUser.nicNumber) ||
@@ -482,7 +472,7 @@ export default function App() {
       );
 
     if (isBlocked) {
-      alert('⛔ අවධානයයි: ඔබගේ දුරකථන අංකය, ජා.හැ. අංකය, Gmail ලිපිනය හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. මෙම පද්ධතියට නැවත ලියාපදිංචි විය නොහැක.');
+      alert('⛔ අවධානයයි: ඔබගේ දුරකථන අංකය, ජා.හැ. අංකය, Gmail ලිපිනය හෝ IP ලිපිනය අවහිර කර ඇත.');
       return;
     }
 
@@ -494,9 +484,9 @@ export default function App() {
     };
 
     setUsers((prev) => [createdUser, ...prev]);
-    saveUserToFirestore(createdUser).catch((err) => console.warn('Save user to firestore notice:', err));
+    saveUserToFirestore(createdUser).catch((err) => console.warn(err));
     setCurrentUser(null);
-    setViewMode('login'); // Redirect to login page upon registration completion
+    setViewMode('login');
   };
 
   const handleLogout = () => {
@@ -505,7 +495,6 @@ export default function App() {
     setViewMode('login');
   };
 
-  // Admin User Actions
   const handleApproveUser = (targetUserId: string) => {
     const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
     if (targetUser) {
@@ -517,7 +506,7 @@ export default function App() {
         status: 'approved',
         ...(isGift ? { credits: (targetUser.credits ?? 0) + 100, welcomeGiftCredited: true } : {})
       };
-      updateUserInFirestore(targetUser.id, updatedFields).catch((err) => console.warn('Approve user firestore notice:', err));
+      updateUserInFirestore(targetUser.id, updatedFields).catch((err) => console.warn(err));
     }
 
     setUsers((prev) =>
@@ -537,26 +526,12 @@ export default function App() {
         return u;
       })
     );
-    if (currentUser && (currentUser.id === targetUserId || currentUser.userId === targetUserId)) {
-      setCurrentUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: 'approved',
-              credits: (prev.credits ?? 0) + 100,
-              welcomeGiftCredited: true,
-            }
-          : null
-      );
-    }
   };
 
   const handleRejectUser = (targetUserId: string, reason?: string) => {
     const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
     if (targetUser) {
-      updateUserInFirestore(targetUser.id, { status: 'rejected', rejectionReason: reason }).catch((err) =>
-        console.warn('Reject user firestore notice:', err)
-      );
+      updateUserInFirestore(targetUser.id, { status: 'rejected', rejectionReason: reason }).catch((err) => console.warn(err));
     }
 
     setUsers((prev) =>
@@ -569,9 +544,7 @@ export default function App() {
   };
 
   const handleUpdateUser = (updatedUser: User) => {
-    updateUserInFirestore(updatedUser.id, updatedUser).catch((err) =>
-      console.warn('Update user firestore notice:', err)
-    );
+    updateUserInFirestore(updatedUser.id, updatedUser).catch((err) => console.warn(err));
     setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
@@ -590,7 +563,7 @@ export default function App() {
       key: newPassword,
       securityCode: newPassword,
       isPasswordChanged: true,
-    }).catch((err) => console.warn('Save password firestore notice:', err));
+    }).catch((err) => console.warn(err));
     setCurrentUser(updatedUser);
     setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     setShowChangePasswordModal(false);
@@ -606,9 +579,8 @@ export default function App() {
       status: 'blocked',
       blockedReason: reason,
       blockedAt,
-    }).catch((err) => console.warn('Block user firestore notice:', err));
+    }).catch((err) => console.warn(err));
 
-    // Update user status
     setUsers((prev) =>
       (prev || []).map((u) =>
         u.id === targetUserId
@@ -622,7 +594,6 @@ export default function App() {
       )
     );
 
-    // Append credential entries to blocked list so Phone, NIC, Email, IP are all blocked
     const newBlockedCred: BlockedCredential = {
       id: `block_${Date.now()}`,
       userId: userToBlock.userId,
@@ -645,9 +616,7 @@ export default function App() {
     if (cred && cred.userId) {
       const userToUnblock = (users || []).find((u) => u.userId === cred.userId);
       if (userToUnblock) {
-        updateUserInFirestore(userToUnblock.id, { status: 'approved' }).catch((err) =>
-          console.warn('Unblock user firestore notice:', err)
-        );
+        updateUserInFirestore(userToUnblock.id, { status: 'approved' }).catch((err) => console.warn(err));
       }
       setUsers((prev) =>
         (prev || []).map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
@@ -657,7 +626,6 @@ export default function App() {
 
   const handleDeletePost = async (postId: string) => {
     addDeletedPostId(postId);
-    const postToDelete = (helpPosts || []).find((p) => p.id === postId);
     const deletedPayload: Partial<HelpPost> = {
       isDeleted: true,
       deletedAt: new Date().toISOString(),
@@ -676,7 +644,7 @@ export default function App() {
     try {
       await updateHelpPostInFirestore(postId, deletedPayload);
     } catch (err) {
-      console.warn('Post deletion sync notice:', err);
+      console.warn(err);
     }
   };
 
@@ -688,7 +656,7 @@ export default function App() {
       localStorage.setItem('sahaya_help_posts', JSON.stringify(updated));
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
-      console.warn('Post permanent deletion sync notice:', err);
+      console.warn(err);
     }
   };
 
@@ -708,7 +676,7 @@ export default function App() {
     try {
       await updateHelpPostInFirestore(postId, restorePayload);
     } catch (err) {
-      console.warn('Post restore sync notice:', err);
+      console.warn(err);
     }
   };
 
@@ -717,11 +685,10 @@ export default function App() {
     try {
       await updateHelpPostInFirestore(updatedPost.id, updatedPost);
     } catch (err) {
-      console.warn('Post update sync notice:', err);
+      console.warn(err);
     }
   };
 
-  // Issue creation action (Piyawara 1.3)
   const handleSubmitIssue = (
     newIssueData: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>
   ) => {
@@ -758,9 +725,9 @@ export default function App() {
     try {
       await seedDemoHelpPostsToFirestore();
     } catch (e) {
-      console.warn('Demo seed notice:', e);
+      console.warn(e);
     }
-    alert('දර්ශන පරීක්ෂණ දත්ත (Demo Seed Data) සාර්ථකව ප්‍රතිස්ථාපනය කෙරිණි!');
+    alert('දර්ශන පරීක්ෂණ දත්ත සාර්ථකව ප්‍රතිස්ථාපනය කෙරිණි!');
   };
 
   const handleNavigate = (targetView: ViewMode) => {
@@ -787,11 +754,9 @@ export default function App() {
           : 'bg-[#f2f7f4] text-slate-900'
       }`}
     >
-      {/* Background Glow Orbs */}
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Navigation Header (For non-dashboard views like Register, Pending, Admin, Issues) */}
       {viewMode !== 'login' && viewMode !== 'gps_gate' && viewMode !== 'dashboard' && (
         <Header
           language={language}
@@ -806,7 +771,6 @@ export default function App() {
         />
       )}
 
-      {/* 🚨 Red Alert Emergency Headline Banner (Visible across all views including login and gps gate) */}
       <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
         <RedAlertBanner
           alerts={redAlerts}
@@ -815,7 +779,6 @@ export default function App() {
         />
       </div>
 
-      {/* Main Container Views */}
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
         {viewMode === 'gps_gate' && (
           <GpsActivationGate
@@ -861,10 +824,10 @@ export default function App() {
                 if (latestUser.status === 'approved') {
                   setViewMode('dashboard');
                 } else if (latestUser.status === 'blocked') {
-                  alert(`ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${latestUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
+                  alert(`ගිණුම අවහිර කර ඇත.`);
                   handleLogout();
                 } else {
-                  alert('ඔබගේ ගිණුම තවමත් පරිපාලක (Admin) අනුමැතිය සඳහා පොරොත්තුවෙන් පවතී.');
+                  alert('අනුමැතිය සඳහා පොරොත්තුවෙන් පවතී.');
                 }
               }
             }}
@@ -950,49 +913,45 @@ export default function App() {
         )}
       </main>
 
-      {/* 🚨 Red Alert Creation Modal with GPS Auto-Scanning */}
       <RedAlertCreateModal
         isOpen={isCreateRedAlertOpen}
         onClose={() => setIsCreateRedAlertOpen(false)}
         currentUser={currentUser}
         onAlertCreated={(newAlert) => {
-          // Do NOT open detail modal for the author who submitted it.
-          // Save alert ID to myCreatedAlertIds and dismissed list so their own siren doesn't blast for their own alert
           setMyCreatedAlertIds((prev) => {
             const next = Array.from(new Set([...prev, newAlert.id]));
             try {
               localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(next));
-            } catch (e) {
-              console.warn(e);
-            }
+            } catch (e) {}
             return next;
           });
           setDismissedProximityAlertIds((prev) => {
             const next = Array.from(new Set([...prev, newAlert.id]));
             try {
               localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
-            } catch (e) {
-              console.warn(e);
-            }
+            } catch (e) {}
             return next;
           });
         }}
       />
 
-      {/* 🚨 Red Alert 2km Proximity Siren & Emergency Broadcast Modal */}
       <RedAlertProximityModal
         isOpen={Boolean(proximityAlertInfo)}
         alert={proximityAlertInfo?.alert || null}
         distanceKm={proximityAlertInfo?.distanceKm || 0}
         onClose={() => {
+          // 🛑 Stop siren when user closes the popup
+          if ((window as any).emergencySiren) {
+            (window as any).emergencySiren.pause();
+            (window as any).emergencySiren.currentTime = 0;
+          }
+
           if (proximityAlertInfo) {
             setDismissedProximityAlertIds((prev) => {
               const next = Array.from(new Set([...prev, proximityAlertInfo.alert.id]));
               try {
                 localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
-              } catch (e) {
-                console.warn(e);
-              }
+              } catch (e) {}
               return next;
             });
           }
@@ -1001,7 +960,6 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      {/* 🚨 Red Alert Full Detail, Community Comments & Admin Fake Report Modal */}
       <RedAlertDetailModal
         isOpen={Boolean(selectedDetailAlert)}
         alert={selectedDetailAlert}
@@ -1009,14 +967,12 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      {/* Wrong Login Modal */}
       <WrongLoginModal
         isOpen={showWrongLoginModal}
         onRetry={() => setShowWrongLoginModal(false)}
         language={language}
       />
 
-      {/* Change Password Card Modal */}
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
@@ -1025,7 +981,6 @@ export default function App() {
         nicNumber={currentUser?.nicNumber}
       />
 
-      {/* Footer Status Bar (compact for login and gps gate) */}
       {viewMode !== 'login' && viewMode !== 'gps_gate' ? (
         <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
           <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
@@ -1057,7 +1012,6 @@ export default function App() {
         </footer>
       )}
 
-      {/* Global AI Assistant & Translator for non-dashboard views */}
       {viewMode !== 'dashboard' && (
         <OmniAssistantChatBox
           currentLanguage={language}
@@ -1073,4 +1027,3 @@ export default function App() {
     </div>
   );
 }
-
