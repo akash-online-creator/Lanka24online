@@ -37,7 +37,7 @@ import { calculateDistanceKm } from './data/redAlertData';
 import { initSirenSettings } from './utils/sirenAudio';
 
 // 🔇 මෙතැනට ඔබගේ Silent Tone එකෙහි Path එක යොදන්න (උදා: ./assets/silent-tone.mp3 හෝ ./assets/silent.mp3)
-import sirenSoundFile from './assets/silent-tone.mp3';
+import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 export default function App() {
   // Persistence state setup
