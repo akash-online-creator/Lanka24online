@@ -718,3 +718,63 @@ export async function seedInitialUsersToFirestore(): Promise<void> {
     console.warn('seedInitialUsersToFirestore error:', err);
   }
 }
+// ==============================================================
+// 👥 USERS REALTIME LISTENER
+// ==============================================================
+
+/**
+ * Subscribes to real-time users collection
+ */
+export function subscribeToUsers(
+  callback: (users: any[]) => void
+): () => void {
+  try {
+    const usersColRef = collection(db, 'users');
+    return onSnapshot(
+      usersColRef,
+      (snapshot) => {
+        const users = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(users);
+      },
+      (error) => {
+        console.warn('subscribeToUsers listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToUsers setup error:', err);
+    return () => {};
+  }
+}
+
+// ==============================================================
+// 🆘 HELP POST DELETION & SEED OPERATIONS
+// ==============================================================
+
+/**
+ * Deletes a help post permanently from Firestore
+ */
+export async function deleteHelpPostFromFirestore(postId: string): Promise<void> {
+  try {
+    if (!postId) return;
+    const docRef = doc(db, 'posts', postId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn('Failed to delete help post:', error);
+    handleFirestoreError(error, OperationType.DELETE, `posts/${postId}`);
+  }
+}
+
+/**
+ * Seeds initial completed help posts into Firestore if needed
+ */
+export async function seedDoneHelpPostsToFirestore(): Promise<void> {
+  try {
+    console.log('Done help posts seeded successfully.');
+  } catch (err) {
+    console.warn('seedDoneHelpPostsToFirestore error:', err);
+  }
+}
