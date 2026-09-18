@@ -473,3 +473,37 @@ export async function sendChatMessageToFirestore(
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/messages`);
   }
 }
+// ==============================================================
+// 💬 REAL-TIME CHAT MESSAGES LISTENER
+// ==============================================================
+
+/**
+ * Subscribes to real-time chat messages for a specific post
+ */
+export function subscribeToChatMessages(
+  postId: string,
+  callback: (messages: any[]) => void
+): () => void {
+  try {
+    const chatColRef = collection(db, 'posts', postId, 'messages');
+    const q = query(chatColRef, orderBy('createdAt', 'asc'));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const messages = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(messages);
+      },
+      (error) => {
+        console.warn('Chat messages listener error:', error);
+        callback([]);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToChatMessages setup error:', err);
+    return () => {};
+  }
+}
