@@ -20,8 +20,11 @@ import {
   flagRedAlertAsFake 
 } from '../lib/firebase';
 
-// 🚨 ඔබගේ Default Tone එක Import කිරීම
+// 🚨 Default Tone Import එක
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
+
+// LocalStorage Key for Dismissed Alerts
+const DISMISSED_ALERTS_KEY = 'sahaya_dismissed_red_alerts';
 
 // 🔊 Audio Context Unlock Functionality
 let globalAudioContext: AudioContext | null = null;
@@ -61,16 +64,61 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   onOpenAlertDetail,
   onOpenCreate,
 }) => {
-  const [dismissed, setDismissed] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlayingSiren, setIsPlayingSiren] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Filter only active, non-false alarm alerts
-  const activeAlerts = alerts.filter(
-    (a) => a.status === 'active' && !a.isFlaggedFake
-  );
+  // 1️⃣ LocalStorage එකෙන් Dismiss කළ Alert IDs ලබා ගැනීම (Requirement 2)
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(DISMISSED_ALERTS_KEY);
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 2 සීමාව සෙවීම
+  const uniqueAlertsMap = new Map<string, RedAlertItem>();
+
+  alerts.forEach((alert) => {
+    // 3. එකම දැන්වීම් Duplicate වීම වැළැක්වීම (Requirement 3)
+    if (alert.id && alert.status === 'active' && !alert.isFlaggedFake) {
+      if (!uniqueAlertsMap.has(alert.id)) {
+        uniqueAlertsMap.set(alert.id, alert);
+      }
+    }
+  });
+
+  const activeAlerts = Array.from(uniqueAlertsMap.values()).filter((alert) => {
+    // Dismiss කරපු Alert එකක් නම් පෙන්නන්න එපා (Requirement 2)
+    if (dismissedAlertIds.includes(alert.id)) {
+      return false;
+    }
+
+    // 1. කිලෝමීටර් 2ක් ඇතුළත සිටින පරිශීලකයන්ට පමණක් පෙන්වීම (Requirement 1)
+    if (
+      currentLocation &&
+      typeof currentLocation.lat === 'number' &&
+      typeof currentLocation.lng === 'number' &&
+      typeof alert.latitude === 'number' &&
+      typeof alert.longitude === 'number'
+    ) {
+      const distanceKm = calculateDistanceKm(
+        currentLocation.lat,
+        currentLocation.lng,
+        alert.latitude,
+        alert.longitude
+      );
+      return distanceKm <= 2; // කි.මී. 2 සීමාව
+    }
+
+    return false; // Location නැත්නම් පෙන්වන්නේ නැත
+  });
 
   const currentAlert = activeAlerts.length > 0 
     ? activeAlerts[currentIndex % activeAlerts.length] 
@@ -89,10 +137,11 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   };
 
   const isAuthor = isUserAuthorOfRedAlert(currentAlert);
+  const hasActiveAlerts = activeAlerts.length > 0;
 
-  // 🚨 ස්වයංක්‍රීය Siren නාදය පාලනය
+  // 4️⃣ එක සයිරන් එකක් පමණක් continuous ලෙස ප්ලේ කිරීම (Requirement 4)
   useEffect(() => {
-    if (!currentAlert || dismissed || isAuthor || isMuted) {
+    if (!hasActiveAlerts || isAuthor || isMuted) {
       stopSiren();
       return;
     }
@@ -100,23 +149,25 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     playSiren();
 
     return () => {
+      // Clean up when unmounted or alerts list becomes empty
       stopSiren();
     };
-  }, [currentAlert, dismissed, isAuthor, isMuted]);
+  }, [hasActiveAlerts, isAuthor, isMuted]);
 
   const playSiren = () => {
     unlockAudioContext();
     if (!audioRef.current) {
-      // 🚨 මෙතැන තිබූ පැරණි URL එක වෙනුවට Default WAV sound එක යොදවන ලදී
       audioRef.current = new Audio(defaultSirenSound);
       audioRef.current.loop = true;
     }
 
-    audioRef.current.play().then(() => {
-      setIsPlayingSiren(true);
-    }).catch((err) => {
-      console.warn("Autoplay policy blocked audio playback:", err);
-    });
+    if (audioRef.current.paused) {
+      audioRef.current.play().then(() => {
+        setIsPlayingSiren(true);
+      }).catch((err) => {
+        console.warn("Autoplay policy blocked audio playback:", err);
+      });
+    }
   };
 
   const stopSiren = () => {
@@ -134,6 +185,27 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     } else {
       setIsMuted(false);
       playSiren();
+    }
+  };
+
+  // 🛑 පරිශීලකයා Alert එක Dismiss කළ විට LocalStorage එකට එකතු කිරීම (Requirement 2)
+  const handleDismissCurrentAlert = () => {
+    if (!currentAlert) return;
+
+    const updatedDismissedIds = [...dismissedAlertIds, currentAlert.id];
+    setDismissedAlertIds(updatedDismissedIds);
+
+    try {
+      localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(updatedDismissedIds));
+    } catch (e) {
+      console.error("Failed to save dismissed alert to localStorage", e);
+    }
+
+    // බැනර් ලැයිස්තුවේ ඊළඟ Alert එකට මාරු කිරීම
+    if (activeAlerts.length <= 1) {
+      stopSiren();
+    } else {
+      setCurrentIndex((prev) => prev % (activeAlerts.length - 1));
     }
   };
 
@@ -165,7 +237,8 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  if (dismissed || activeAlerts.length === 0 || !currentAlert) {
+  // පෙන්වීමට කිසිදු active අනතුරක් නොමැති නම් Component එක Render නොවනු ඇත
+  if (activeAlerts.length === 0 || !currentAlert) {
     return null;
   }
 
@@ -210,7 +283,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
               <span>රතු එළිය</span>
               {activeAlerts.length > 1 && (
                 <span className="bg-white/20 px-1 rounded text-white ml-0.5">
-                  {currentIndex + 1}/{activeAlerts.length}
+                  {(currentIndex % activeAlerts.length) + 1}/{activeAlerts.length}
                 </span>
               )}
             </span>
@@ -283,14 +356,12 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
             <ArrowRight className="w-3 h-3" />
           </button>
 
+          {/* Close Button - ක්ලික් කළ විට එකී Alert එක මින්පසු පෙන්වන්නේ නැත */}
           <button
             type="button"
-            onClick={() => {
-              stopSiren();
-              setDismissed(true);
-            }}
+            onClick={handleDismissCurrentAlert}
             className="w-6 h-6 rounded-full bg-black/20 hover:bg-black/30 text-white flex items-center justify-center font-bold ml-1"
-            title="Dismiss"
+            title="නැවත පෙන්වන්න එපා"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -298,7 +369,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
       </div>
 
-      {/* 2. පරිශීලක අයිතිය මත පදනම් වන කළමනාකරණ තීරුව */}
+      {/* 2. කළමනාකරණ තීරුව (Author / Normal User) */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
           
