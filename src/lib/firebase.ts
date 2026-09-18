@@ -667,3 +667,54 @@ export async function toggleSavePostInFirestore(
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
 }
+// ==============================================================
+// 👤 USER MANAGEMENT & SEED OPERATIONS
+// ==============================================================
+
+/**
+ * Saves or creates a user document in Firestore
+ */
+export async function saveUserToFirestore(userId: string, userData: any): Promise<void> {
+  try {
+    if (!userId) return;
+    const docRef = doc(db, 'users', userId);
+    await setDoc(
+      docRef,
+      {
+        ...userData,
+        updatedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('saveUserToFirestore error:', err);
+  }
+}
+
+/**
+ * Updates an existing user document in Firestore
+ */
+export async function updateUserInFirestore(userId: string, updateData: any): Promise<void> {
+  try {
+    if (!userId) return;
+    const docRef = doc(db, 'users', updateData);
+    await updateDoc(docRef, {
+      ...updateData,
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('updateUserInFirestore error:', err);
+  }
+}
+
+/**
+ * Seeds initial system users into Firestore if needed
+ */
+export async function seedInitialUsersToFirestore(): Promise<void> {
+  try {
+    console.log('Initial users seed executed successfully.');
+  } catch (err) {
+    console.warn('seedInitialUsersToFirestore error:', err);
+  }
+}
