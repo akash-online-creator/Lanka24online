@@ -35,7 +35,9 @@ import { RedAlertFloatingTrigger } from './components/RedAlertFloatingTrigger';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
 import { initSirenSettings } from './utils/sirenAudio';
-import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
+
+// 🔇 මෙතැනට ඔබගේ Silent Tone එකෙහි Path එක යොදන්න (උදා: ./assets/silent-tone.mp3 හෝ ./assets/silent.mp3)
+import sirenSoundFile from './assets/silent-tone.mp3';
 
 export default function App() {
   // Persistence state setup
@@ -280,10 +282,10 @@ export default function App() {
       if (!proximityAlertInfo || proximityAlertInfo.alert.id !== nearAlert.id) {
         setProximityAlertInfo({ alert: nearAlert, distanceKm: dist });
         
-        // 🚨 Siren Audio Play
+        // 🔇 Audio Play (Uses Silent Tone Path)
         const siren = new Audio(sirenSoundFile);
         siren.loop = true;
-        siren.play().catch(e => console.log("Siren Play Blocked:", e));
+        siren.play().catch(e => console.log("Audio Play Blocked:", e));
         (window as any).emergencySiren = siren;
       }
     } else {
@@ -944,7 +946,7 @@ export default function App() {
         alert={proximityAlertInfo?.alert || null}
         distanceKm={proximityAlertInfo?.distanceKm || 0}
         onClose={() => {
-          // 🛑 Stop siren when user closes the popup
+          // 🛑 Stop audio when user closes the popup
           if ((window as any).emergencySiren) {
             (window as any).emergencySiren.pause();
             (window as any).emergencySiren.currentTime = 0;
