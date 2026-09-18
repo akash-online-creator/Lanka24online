@@ -374,3 +374,55 @@ export async function fetchSirenSettingsFromFirestore(): Promise<{
   }
   return null;
 }
+// ==============================================================
+// 📦 BACKUP & USER PROFILE FIRESTORE OPERATIONS
+// ==============================================================
+
+/**
+ * Fetches all posts/data from Firestore for PDF & Backup generation
+ */
+export async function fetchAllPostsBackupData(): Promise<any[]> {
+  try {
+    const colRef = collection(db, 'posts');
+    const snap = await getDocs(colRef);
+    return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.warn('fetchAllPostsBackupData error:', err);
+    return [];
+  }
+}
+
+/**
+ * Restores posts backup data back into Firestore
+ */
+export async function restorePostsBackupData(postsData: any[]): Promise<void> {
+  try {
+    if (!Array.isArray(postsData)) return;
+    for (const item of postsData) {
+      if (item && item.id) {
+        const docRef = doc(db, 'posts', item.id);
+        const { id, ...dataToSave } = item;
+        await setDoc(docRef, dataToSave, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn('restorePostsBackupData error:', err);
+  }
+}
+
+/**
+ * Syncs user profile data to Firestore database
+ */
+export async function syncUserProfileToFirestore(userId: string, profileData: any): Promise<void> {
+  try {
+    if (!userId) return;
+    const docRef = doc(db, 'users', userId);
+    await setDoc(docRef, {
+      ...profileData,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.warn('syncUserProfileToFirestore error:', err);
+  }
+}
