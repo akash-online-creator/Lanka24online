@@ -93,7 +93,7 @@ export async function persistSirenSettings(): Promise<void> {}
 export function setCustomSirenAudio(): void {}
 
 export function getCustomSirenAudio(): string {
-  return defaultSirenSound;
+  return typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
 }
 
 export function getSirenFileName(): string {
@@ -104,15 +104,19 @@ export function unlockAudio(): boolean {
   return true;
 }
 
-// 🚨 ප්‍රධාන සිරන් ක්‍රියාත්මක කිරීම - ස්ථිරවම .wav ගොනුව පමණක් ප්ලේ වේ 🚨
+// 🚨 ප්‍රධාන සිරන් ක්‍රියාත්මක කිරීම 🚨
 export function startEmergencySiren(): () => void {
   try {
     stopEmergencySiren();
     isSirenActive = true;
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
+    const soundUrl = getCustomSirenAudio();
 
-    htmlAudioElement = new Audio(defaultSirenSound);
+    // Debugging Console Log - මෙය Console එකේ පෙන්නයිදැයි බලන්න
+    console.log('🚨 Playing Default Siren File:', soundUrl);
+
+    htmlAudioElement = new Audio(soundUrl);
     htmlAudioElement.loop = true;
     htmlAudioElement.volume = effectiveVolume;
     
