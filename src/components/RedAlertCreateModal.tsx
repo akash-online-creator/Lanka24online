@@ -111,7 +111,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
           setIsScanningGps(false);
         }
       },
-      (err) => {
+      (_err) => {
         setIsScanningGps(false);
         setGpsError('GPS ස්ථානය ලබාගත නොහැකි විය. ස්ථාන නාමය අතින් ඇතුළත් කරන්න.');
         if (currentLocation?.nameSi) {
@@ -149,7 +149,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
     const correctPassword = currentUser?.key || currentUser?.securityCode || currentUser?.password;
 
-    if (correctPassword && enteredPassword.trim() !== correctPassword) {
+    if (correctPassword && enteredPassword.trim() !== String(correctPassword)) {
       setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
       return;
     }
@@ -488,7 +488,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       </div>
 
       {/* =========================================================================
-         🔒 SECURITY & PASSWORD GATE POPUP MODAL (මුරපදය ඉල්ලන Popup එක)
+         🔒 SECURITY & PASSWORD GATE POPUP MODAL
          ========================================================================= */}
       {showPasswordPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
@@ -510,7 +510,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </button>
             </div>
 
-            {/* ඔබ විසින් ලබාදුන් නිශ්චිත අවවාද පාඨය */}
+            {/* අදාළ විශේෂ අවවාද පාඨය */}
             <div className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200 bg-red-500/10 border border-red-500/30 p-3.5 rounded-2xl">
               <p className="font-black text-emerald-600 dark:text-emerald-400 text-center text-xs">
                 මෙය සියලු සත්වයන්ගේ ජිවිතය රෑකිමට ඔබට ලැබෙන වටිනා අවස්ථාවකි.
