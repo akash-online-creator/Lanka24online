@@ -973,7 +973,6 @@ export default function App() {
             onSeedDemoData={handleSeedDemoData}
             language={language}
             redAlerts={redAlerts}
-            onRefreshRedAlerts={() => {}}
             onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
           />
         )}
