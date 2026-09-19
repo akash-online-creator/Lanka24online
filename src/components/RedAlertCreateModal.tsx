@@ -8,11 +8,9 @@ import {
   Navigation, 
   Loader2, 
   CheckCircle2, 
-  Radio,
   FileText,
   User as UserIcon,
-  Phone,
-  Volume2
+  Phone
 } from 'lucide-react';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
@@ -140,10 +138,10 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       const alertCode = `#RED-${Math.floor(1000 + Math.random() * 9000)}`;
 
+      // Firestore එකට undefined අගයන් නොයවන ලෙස සකස් කළ newAlertData object එක
       const newAlertData: Omit<RedAlertItem, 'id'> = {
         alertCode,
         disasterType: selectedDisaster,
-        customDisasterTitle: selectedDisaster === 'other' ? customTitle.trim() : undefined,
         disasterTitleSi: titleSi,
         disasterTitleEn: titleEn,
         disasterTitleTa: titleTa,
@@ -151,7 +149,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         latitude,
         longitude,
         locationName: locationName.trim(),
-        locationAccuracyMeters: accuracyMeters,
         incidentDate,
         incidentTime,
         createdAt: new Date().toISOString(),
@@ -164,6 +161,10 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         comments: [],
         fakeReports: [],
         isFlaggedFake: false,
+
+        // undefined නොවන විට පමණක් පහත ෆීල්ඩ්ස් එකතු වේ
+        ...(selectedDisaster === 'other' && customTitle.trim() ? { customDisasterTitle: customTitle.trim() } : {}),
+        ...(accuracyMeters !== undefined ? { locationAccuracyMeters: accuracyMeters } : {}),
       };
 
       const docId = await createRedAlertInFirestore(newAlertData);
