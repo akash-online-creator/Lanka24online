@@ -117,66 +117,32 @@ function mapDocToRedAlert(docSnap: DocumentData | QueryDocumentSnapshot<Document
   };
 }
 
-function getLocalRedAlerts(): RedAlertItem[] {
-  try {
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('sahaya_red_alerts');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    }
-  } catch {}
-  return [];
-}
-
+// 🔄 100% Real-time Firestore Listener (LocalStorage overrides නොමැත)
 export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void): () => void {
   const colRef = collection(db, RED_ALERTS_COLLECTION);
   const q = query(colRef, limit(100));
 
-  const handleLocalEmit = () => {
-    const localItems = getLocalRedAlerts();
-    if (localItems.length > 0) {
-      callback(localItems);
-    }
-  };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('sahaya_red_alerts_changed', handleLocalEmit);
-  }
-
   const unsubscribeFirestore = onSnapshot(
     q,
     (snapshot) => {
+      // 1. Firestore හි ඇති Documents පමණක් ගන්නවා
       const remoteAlerts = snapshot.docs.map((docSnap) => mapDocToRedAlert(docSnap));
-      const localAlerts = getLocalRedAlerts();
 
-      const mergedMap = new Map<string, RedAlertItem>();
-      localAlerts.forEach((item) => mergedMap.set(item.id, item));
-      remoteAlerts.forEach((item) => mergedMap.set(item.id, item));
-
-      const finalAlerts = Array.from(mergedMap.values()).sort(
+      // 2. දිනය අනුව Sort කර කෙලින්ම UI එකට යවනවා
+      const sortedAlerts = remoteAlerts.sort(
         (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
       );
 
-      try {
-        localStorage.setItem('sahaya_red_alerts', JSON.stringify(finalAlerts));
-      } catch {}
-
-      callback(finalAlerts);
+      callback(sortedAlerts);
     },
     (error) => {
       console.warn('subscribeToRedAlerts snapshot warning:', error);
-      const localAlerts = getLocalRedAlerts();
-      callback(localAlerts.length > 0 ? localAlerts : []);
+      callback([]);
     }
   );
 
   return () => {
     unsubscribeFirestore();
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('sahaya_red_alerts_changed', handleLocalEmit);
-    }
   };
 }
 
@@ -195,31 +161,10 @@ export async function createRedAlertInFirestore(
       ...newAlertItem,
       createdAtServer: serverTimestamp(),
     });
-
-    try {
-      const existing = getLocalRedAlerts();
-      const updated = [newAlertItem, ...existing.filter((a) => a.id !== alertId)];
-      localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
-      }
-    } catch {}
-
     return alertId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
-    
-    // Fallback local save if offline
-    try {
-      const existing = getLocalRedAlerts();
-      const updated = [newAlertItem, ...existing.filter((a) => a.id !== alertId)];
-      localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
-      }
-    } catch {}
-
-    return alertId;
+    throw error;
   }
 }
 
@@ -249,15 +194,6 @@ export async function updateRedAlertStatus(
   note?: string
 ): Promise<void> {
   try {
-    const existing = getLocalRedAlerts();
-    const updated = existing.map((a) =>
-      a.id === alertId ? { ...a, status, adminActionNote: note !== undefined ? note : a.adminActionNote } : a
-    );
-    localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
-    }
-
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     await updateDoc(docRef, {
       status,
@@ -272,13 +208,6 @@ export async function updateRedAlertStatus(
 
 export async function deleteRedAlertInFirestore(alertId: string): Promise<void> {
   try {
-    const existing = getLocalRedAlerts();
-    const updated = existing.filter((a) => a.id !== alertId);
-    localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
-    }
-
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     await deleteDoc(docRef);
   } catch (error) {
