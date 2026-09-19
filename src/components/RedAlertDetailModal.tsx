@@ -216,58 +216,60 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
       <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.35)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
-        {/* Top Header Ribbon - සැමට පොදුයි */}
-        <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white shadow-md shrink-0">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-white text-red-600 font-black flex items-center justify-center text-xl shadow-md shrink-0">
-                {config.icon}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider font-mono shrink-0">
-                    {alert.alertCode}
-                  </span>
-                  {alert.status === 'false_alarm' ? (
-                    <span className="bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
-                      අසත්‍ය පුවතකි (Hoax)
-                    </span>
-                  ) : alert.status === 'resolved' ? (
-                    <span className="bg-emerald-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
-                      නිරාකරණය විය
-                    </span>
-                  ) : (
-                    <span className="bg-red-500/90 text-white px-2 py-0.5 rounded-full text-[10px] font-black uppercase animate-pulse shrink-0">
-                      ක්‍රියාකාරී ආපදාවකි
-                    </span>
-                  )}
+        {/* Alert details are reserved for people viewing someone else's report. */}
+        {!isAuthorOfAlert && (
+          <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white shadow-md shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-white text-red-600 font-black flex items-center justify-center text-xl shadow-md shrink-0">
+                  {config.icon}
                 </div>
-                <h2 className="text-sm sm:text-base font-black tracking-wide text-white pt-0.5 truncate">
-                  {alert.disasterTitleSi}
-                </h2>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider font-mono shrink-0">
+                      {alert.alertCode}
+                    </span>
+                    {alert.status === 'false_alarm' ? (
+                      <span className="bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
+                        අසත්‍ය පුවතකි (Hoax)
+                      </span>
+                    ) : alert.status === 'resolved' ? (
+                      <span className="bg-emerald-400 text-slate-900 px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0">
+                        නිරාකරණය විය
+                      </span>
+                    ) : (
+                      <span className="bg-red-500/90 text-white px-2 py-0.5 rounded-full text-[10px] font-black uppercase animate-pulse shrink-0">
+                        ක්‍රියාකාරී ආපදාවකි
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-sm sm:text-base font-black tracking-wide text-white pt-0.5 truncate">
+                    {alert.disasterTitleSi}
+                  </h2>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={handleShare}
-                className="p-2 rounded-xl bg-black/25 hover:bg-black/40 text-white transition-all cursor-pointer"
-                title="Share alert text"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handleClose}
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
-                title="Close"
-              >
-                <X className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="p-2 rounded-xl bg-black/25 hover:bg-black/40 text-white transition-all cursor-pointer"
+                  title="Share alert text"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Sub-Header Siren Controls - සාමාන්‍ය පරිශීලකයින්ට පමණක් පෙන්වයි */}
         {!isAuthorOfAlert && (
@@ -319,7 +321,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
           </div>
         )}
 
-        {copiedShare && (
+        {!isAuthorOfAlert && copiedShare && (
           <div className="bg-emerald-500 text-white text-xs font-bold py-1 px-4 text-center shrink-0">
             ✅ ආපදා තොරතුරු Clipboard එකට පිටපත් විය!
           </div>
@@ -331,7 +333,16 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
           {isAuthorOfAlert ? (
             /* 1. ආපදාව දැනුම්දුන් පුද්ගලයාට පමණක් පෙනෙන කොටස */
             <div className="flex flex-col justify-center flex-1 my-auto h-full">
-              <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-700/50 shadow-sm space-y-4">
+              <div className="relative p-5 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-700/50 shadow-sm space-y-4">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full text-amber-800 dark:text-amber-300 hover:bg-amber-200/70 dark:hover:bg-amber-900/40 flex items-center justify-center transition-all cursor-pointer"
+                  title="Close"
+                  aria-label="Close reporter management"
+                >
+                  <X className="w-4 h-4" />
+                </button>
                 <div className="flex flex-col gap-1 text-center sm:text-left">
                   <span className="text-[13px] sm:text-sm font-black text-amber-900 dark:text-amber-300 flex flex-wrap items-center justify-center sm:justify-start gap-2">
                     <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400" />
