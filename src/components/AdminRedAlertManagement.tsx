@@ -104,8 +104,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
   };
 
   const handleDelete = async (alertId: string) => {
-    if (!confirm('මෙම ආපදා ඇඟවීම ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) return;
-
     setActionLoadingId(alertId);
     try {
       await deleteRedAlertInFirestore(alertId);
@@ -295,6 +293,187 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
         </div>
       </div>
 
+      {/* Filter Tabs & Search Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#0c1811] p-3.5 rounded-2xl border border-slate-200 dark:border-[#173222] shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filter === 'all'
+                ? 'bg-red-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-[#112318] text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            සියල්ල ({alerts.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('active')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filter === 'active'
+                ? 'bg-red-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-[#112318] text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            ක්‍රියාකාරී ({totalActive})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('flagged_fake')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filter === 'flagged_fake'
+                ? 'bg-rose-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-[#112318] text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            අසත්‍ය වාර්තා ({totalFlagged})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('resolved')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filter === 'resolved'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-[#112318] text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            නිරාකරණය වූ
+          </button>
+        </div>
+
+        <div className="relative flex items-center min-w-[240px]">
+          <Search className="absolute left-3 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="ආපදා ශීර්ෂය හෝ ස්ථානය සෙවීම..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/30"
+          />
+        </div>
+      </div>
+
+      {/* Alerts List Table / Cards */}
+      <div className="space-y-3">
+        {filteredAlerts.length === 0 ? (
+          <div className="text-center py-12 bg-white dark:bg-[#0c1811] rounded-2xl border border-slate-200 dark:border-[#173222] text-slate-500 dark:text-slate-400 text-xs font-medium">
+            ආපදා ඇඟවීම් කිසිවක් හමු නොවීය.
+          </div>
+        ) : (
+          filteredAlerts.map((alert) => {
+            const disasterCfg = getDisasterConfig(alert.disasterType);
+            const isLoading = actionLoadingId === alert.id;
+
+            return (
+              <div 
+                key={alert.id}
+                className="bg-white dark:bg-[#0c1811] rounded-2xl p-4 border border-slate-200 dark:border-[#173222] shadow-sm hover:shadow-md transition-all space-y-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl p-2 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 shadow-inner">
+                      {disasterCfg.icon || '🚨'}
+                    </span>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 font-mono font-black text-[10px]">
+                          {alert.alertCode}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          alert.status === 'active'
+                            ? 'bg-red-500 text-white animate-pulse'
+                            : alert.status === 'resolved'
+                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {alert.status === 'active' ? '🔴 ක්‍රියාකාරී (Active)' : alert.status === 'resolved' ? '🟢 නිරාකරණය විය (Resolved)' : '⚠️ අවලංගුයි'}
+                        </span>
+                        {alert.isFlaggedFake && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40 text-[10px] font-black">
+                            ⚠️ අසත්‍ය වාර්තාවක් ලෙස සලකුණු කර ඇත
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        {alert.disasterTitleSi}
+                      </h4>
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-red-500" />
+                          <span>{alert.locationName}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{alert.incidentDate} {alert.incidentTime}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                          <span>වාර්තාකළේ: {alert.reportedByName || 'පරිපාලක'}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons for Admin */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onViewAlertDetail && (
+                      <button
+                        type="button"
+                        onClick={() => onViewAlertDetail(alert)}
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#112318] hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        title="විස්තර බලන්න"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>බලන්න</span>
+                      </button>
+                    )}
+
+                    {alert.status === 'active' ? (
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => handleUpdateStatus(alert.id, 'resolved', 'පරිපාලක විසින් නිරාකරණය කරන ලදී.')}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>නිරාකරණය කරන්න</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => handleUpdateStatus(alert.id, 'active', 'පරිපාලක විසින් නැවත සක්‍රීය කරන ලදී.')}
+                        className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-700 dark:text-red-300 border border-red-500/30 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                        <span>නැවත සක්‍රීය කරන්න</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleDelete(alert.id)}
+                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                      title="මෙම දැන්වීම සම්පූර්ණයෙන්ම ඉවත් කරන්න"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>ඉවත් කරන්න</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-[#07120c] p-2.5 rounded-xl border border-slate-200 dark:border-[#162e20]">
+                  {alert.description}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };
