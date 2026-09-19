@@ -185,7 +185,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           } catch (err) {
             console.warn('Auto location resolution error:', err);
-          } finally {
+          } font {
             if (isMounted) setIsAutoLoadingLocation(false);
           }
         },
@@ -1465,33 +1465,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-          {/* Button 0: 🚨 රතු එළිය (Red Alert Instant Emergency) */}
-          {onOpenRedAlert && (
-            <button
-              type="button"
-              onClick={onOpenRedAlert}
-              className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-md hover:shadow-xl shadow-red-600/30 border-2 border-red-400 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px] relative overflow-hidden"
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="w-8 h-8 rounded-xl bg-white text-red-600 font-black text-base flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform">
-                  🚨
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-red-700 shadow-xs animate-ping">
-                  SIREN 2KM
-                </span>
-              </div>
-              <div className="min-w-0 mt-1.5">
-                <h4 className="text-xs sm:text-sm font-black text-white leading-tight flex items-center gap-1">
-                  <span>{getLangText('රතු එළිය (හදිසි ආපදා)', 'Red Alert (Disaster)', 'சிவப்பு எச்சரிக்கை')}</span>
-                </h4>
-                <p className="text-[10px] text-red-100 font-medium">
-                  {getLangText('කි.මී. 2 තුළ Siren ශබ්දය සමග දැනුම්දෙන්න', '2km Instant Siren Warning', '2km அவசர எச்சரிக்கை')}
-                </p>
-              </div>
-            </button>
-          )}
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
           {/* Button 1: Blood & Disaster Relief Hub (Compact Square Card) */}
           <button
             type="button"
@@ -2462,4 +2436,3 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     </div>
   );
 };
-
