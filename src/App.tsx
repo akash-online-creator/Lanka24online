@@ -22,18 +22,18 @@ import {
   subscribeToUsers,
   saveUserToFirestore,
   updateUserInFirestore,
-  seedInitialUsersToFirestore,
   subscribeToRedAlerts,
-  seedInitialRedAlertsToFirestore,
-  getUserFromFirestore
+  getUserFromFirestore,
+  markRedAlertAsResolved,
+  cancelRedAlertByReporter,
+  addReporterUpdateToRedAlert
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
-import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
+import { grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
 import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
-import { RedAlertFloatingTrigger } from './components/RedAlertFloatingTrigger';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
 
@@ -127,6 +127,9 @@ export default function App() {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [serverTime, setServerTime] = useState('');
 
+  // ✨ පරිශීලකයන්ට සජීවීව පෙනෙන Popup Toast Notification State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   // Sync real-time Firestore help posts
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
@@ -135,7 +138,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ FIX 1: Sync real-time Firestore users (Auto-seed removed to prevent deleted users from re-appearing)
+  // Sync real-time Firestore users
   useEffect(() => {
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
@@ -153,7 +156,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ FIX 2: Red Alert Initial State default empty array (Sample Data default එක ඉවත් කරන ලදී)
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_red_alerts');
@@ -201,8 +203,9 @@ export default function App() {
 
   const knownAlertIdsRef = useRef<Set<string>>(new Set());
   const isInitialAlertsLoadRef = useRef<boolean>(true);
+  const previousRedAlertsRef = useRef<RedAlertItem[]>([]);
 
-  // ✅ FIX 3: Sync real-time Firestore Red Alerts (Auto-seed call එක ඉවත් කරන ලදී)
+  // 🚨 Sync real-time Firestore Red Alerts + Live Reporter Status Notifications
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
       const newAlerts = remoteAlerts || [];
@@ -246,8 +249,42 @@ export default function App() {
           // 2. Trigger instant in-app popup modal detail
           setSelectedDetailAlert(latestAlert);
         });
+
+        // 3. ✨ වෙනත් පරිශීලකයන් සඳහා වන සජීවී POPUP NOTIFICATIONS (Status Updates / Reporter Comments)
+        if (previousRedAlertsRef.current.length > 0) {
+          previousRedAlertsRef.current.forEach((prevAlert) => {
+            const updatedAlert = newAlerts.find((a) => a.id === prevAlert.id);
+
+            // 🅰️ වාර්තාකරු "ආපදාව විසඳුනා" ක්ලික් කළ විට:
+            if (prevAlert.status === 'active' && updatedAlert?.status === 'resolved') {
+              const msg = updatedAlert.statusChangeMessage || "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.";
+              setToastMessage(msg);
+              setTimeout(() => setToastMessage(null), 6000);
+            }
+
+            // 🅱️ වාර්තාකරු "අනතුර ඉවත් කරන්න" ක්ලික් කළ විට:
+            else if (prevAlert.status === 'active' && updatedAlert?.status === 'cancelled') {
+              const msg = updatedAlert.statusChangeMessage || "ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.";
+              setToastMessage(msg);
+              setTimeout(() => setToastMessage(null), 6000);
+            }
+
+            // Ⓒ වාර්තාකරු "අලුත් Update/කමෙන්ට් එකක්" යැවූ විට:
+            else if (
+              updatedAlert &&
+              updatedAlert.status === 'active' &&
+              updatedAlert.latestReporterUpdate &&
+              updatedAlert.latestReporterUpdate.createdAt !== prevAlert.latestReporterUpdate?.createdAt
+            ) {
+              const msg = updatedAlert.latestReporterUpdate.notificationText || `💬 වාර්තාකරුගෙන් අලුත් යාවත්කාලීන කිරීමක්: ${updatedAlert.latestReporterUpdate.text}`;
+              setToastMessage(msg);
+              setTimeout(() => setToastMessage(null), 6000);
+            }
+          });
+        }
       }
 
+      previousRedAlertsRef.current = newAlerts;
       setRedAlerts(newAlerts);
     });
     return () => unsubscribe();
@@ -278,7 +315,7 @@ export default function App() {
     }
   }, []);
 
-  // Proximity alert calculation: Direct Single Default Siren Execution
+  // Proximity alert calculation
   useEffect(() => {
     if (!userCoords || redAlerts.length === 0) {
       if ((window as any).emergencySiren) {
@@ -478,7 +515,7 @@ export default function App() {
     }
 
     try {
-      const foundUser = await getUserFromFirestore(cleanInput, keyInput);
+      const foundUser = await getUserFromFirestore(cleanInput);
 
       if (!foundUser) {
         setShowWrongLoginModal(true);
@@ -810,6 +847,20 @@ export default function App() {
     >
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* 🔔 පරිශීලකයන්ට සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
+          <p className="text-xs sm:text-sm font-bold leading-relaxed">{toastMessage}</p>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="ml-3 text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {viewMode !== 'login' && viewMode !== 'gps_gate' && viewMode !== 'dashboard' && (
         <Header
