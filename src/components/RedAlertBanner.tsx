@@ -287,7 +287,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
             </span>
 
             <p className="font-bold truncate text-[11px] sm:text-xs">
-              <strong>{currentAlert.locationName}</strong>: {config.icon} {currentAlert.disasterTitleSi}
+              <strong>{currentAlert.locationName}</strong>
               {distanceKm > 0 && (
                 <span className="opacity-90 font-mono ml-1.5 bg-black/20 px-1.5 py-0.5 rounded">
                   (දුර: {distanceDisplay})
@@ -366,9 +366,9 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
       </div>
 
-      {/* 2. කළමනාකරණ තීරුව */}
+      {/* 2. කළමනාකරණ තීරුව (වෙනස් කරන ලද කොටස) */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
-        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-center sm:justify-between items-center gap-2">
           
           {isAuthor ? (
             <div className="w-full flex flex-wrap justify-between items-center gap-2">
@@ -396,18 +396,15 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
               </div>
             </div>
           ) : (
-            <div className="w-full flex justify-between items-center text-white/80">
-              <span>
-                වාර්තා කළේ: <strong className="text-white">{currentAlert.reportedByName || 'හදිසි දැනුම්දෙන්නා'}</strong>
+            // 🔥 අලුතින් එක් කළ 'සිදුවී ඇති අනතුර' පෙන්වන කොටස
+            <div className="w-full flex justify-center items-center text-white">
+              <span className="flex items-center gap-2 text-xs">
+                <AlertTriangle className="w-4 h-4 text-yellow-300" />
+                <span>සිදුවී ඇති අනතුර:</span> 
+                <strong className="text-yellow-300 bg-black/40 px-2.5 py-0.5 rounded border border-white/10 flex items-center gap-1 shadow-sm">
+                  {config.icon} {currentAlert.disasterTitleSi}
+                </strong>
               </span>
-              <button
-                type="button"
-                onClick={() => handleReportFake(currentAlert.id)}
-                className="text-red-200 hover:text-white underline flex items-center gap-1 transition-colors"
-              >
-                <AlertTriangle className="w-3 h-3 text-yellow-400" />
-                සාවද්‍ය / බොරු දැන්වීමක්ද? (Report Fake)
-              </button>
             </div>
           )}
 
