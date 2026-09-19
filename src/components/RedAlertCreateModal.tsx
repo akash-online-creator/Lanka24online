@@ -124,7 +124,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     );
   };
 
-  // 1. Submit කිරීමට යාමේදී මුලින්ම මුරපද Popup එක පෙන්වීම
   const handleOpenPasswordGate = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -143,14 +142,21 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     setShowPasswordPopup(true);
   };
 
-  // 2. Password එක තහවුරු කර සැබෑ ලෙසම Firestore වෙත Submit කිරීම
+  // 🔒 දැඩි සහ ආරක්ෂිත මුරපද පරීක්ෂාව (Strict Password Verification)
   const handleFinalConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const correctPassword = currentUser?.key || currentUser?.securityCode || currentUser?.password;
+    if (!currentUser) {
+      setPasswordError('⚠️ කරුණාකර පළමුව ගිණුමට පිවිසෙන්න.');
+      return;
+    }
 
-    if (correctPassword && enteredPassword.trim() !== String(correctPassword)) {
-      setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
+    // පරිශීලකයාගේ සැබෑ ගිණුමේ මුරපදය ලබා ගැනීම
+    const correctPassword = currentUser?.key || currentUser?.password || currentUser?.securityCode;
+
+    // මුරපදය නොමැති නම් හෝ ඇතුළත් කළ මුරපදය වැරදි නම් දැඩි ලෙස අවහිර කිරීම[span_4](start_span)[span_4](end_span)
+    if (!correctPassword || enteredPassword.trim() !== String(correctPassword).trim()) {
+      setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න[span_5](start_span)[span_5](end_span).');
       return;
     }
 
@@ -221,7 +227,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
       <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.4)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
-        {/* Header Ribbon with Flashing Warning Light */}
+        {/* Header Ribbon */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-5 text-white flex items-center justify-between shadow-md shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="relative flex items-center justify-center shrink-0">
@@ -266,15 +272,11 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               <p className="text-sm font-bold text-red-600 dark:text-red-400">
                 🚨 කි.මී. 2 ක් ඇතුළත සිටින සියලු දෙනාගේ දුරකථනවලට Siren නලා හඬ සමග අනතුරු ඇඟවීම යවන ලදි.
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 pt-1">
-                දිවයින පුරා සෙසු ජනතාවටද ක්ෂණික සේවාවන් හරහා තොරතුරු යාවත්කාලීන විය.
-              </p>
             </div>
           </div>
         ) : (
           <form onSubmit={handleOpenPasswordGate} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             
-            {/* Step 1: Select Disaster Type */}
             <div className="space-y-2">
               <label className="text-xs font-black uppercase text-red-600 dark:text-red-400 flex items-center gap-1.5 tracking-wider">
                 <AlertTriangle className="w-4 h-4" />
@@ -316,7 +318,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                     type="text"
                     value={customTitle}
                     onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="ආපදාවේ නම සටහන් කරන්න (උදා: රසායනික කාන්දුවක් / ගෑස් පිපිරීමක්)..."
+                    placeholder="ආපදාවේ නම සටහන් කරන්න..."
                     className="w-full p-3 rounded-xl border-2 border-red-400 dark:border-red-600 bg-white dark:bg-black/40 text-slate-900 dark:text-white font-bold text-xs focus:ring-2 focus:ring-red-500"
                     required
                   />
@@ -324,7 +326,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               )}
             </div>
 
-            {/* Step 2: Auto GPS Scan Location */}
             <div className="space-y-2 p-3.5 rounded-2xl bg-red-500/10 border border-red-400/40">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase text-red-700 dark:text-red-300 flex items-center gap-1.5">
@@ -380,7 +381,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               )}
             </div>
 
-            {/* Step 3: Incident Date & Time */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
@@ -412,11 +412,10 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </div>
             </div>
 
-            {/* Step 4: Description / Additional Details */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <FileText className="w-3.5 h-3.5 text-slate-500" />
-                <span>වැඩි විස්තර (අවශ්‍ය නම් - මාර්ග අවහිරතා, සිරවූවන්, ගිනි නිවන අවශ්‍යතා)</span>
+                <span>වැඩි විස්තර (අවශ්‍ය නම්)</span>
               </label>
               <textarea
                 rows={3}
@@ -427,7 +426,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               />
             </div>
 
-            {/* Step 5: Reporter details */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs">
               <div className="space-y-1">
                 <span className="font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
@@ -458,7 +456,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </div>
             </div>
 
-            {/* Submit Emergency Button */}
             <div className="pt-2">
               <button
                 type="submit"
@@ -468,7 +465,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>විකාශය වෙමින් පවතී (Broadcasting)...</span>
+                    <span>විකාශය වෙමින් පවතී...</span>
                   </>
                 ) : (
                   <>
@@ -477,9 +474,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                   </>
                 )}
               </button>
-              <p className="text-[10px] text-center text-slate-500 dark:text-slate-400 pt-2">
-                ⚠️ අසත්‍ය ආපදා පළකිරීම සපුරා තහනම් වන අතර, නීතිමය පියවර සඳහා පරිපාලක වෙත වාර්තා වේ.
-              </p>
             </div>
 
           </form>
@@ -487,9 +481,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       </div>
 
-      {/* =========================================================================
-         🔒 SECURITY & PASSWORD GATE POPUP MODAL
-         ========================================================================= */}
+      {/* 🔒 Password Gate Popup Modal */}
       {showPasswordPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
           <div className="relative w-full max-w-md bg-white dark:bg-[#0f1d18] border-2 border-red-500 rounded-3xl shadow-[0_0_60px_rgba(239,68,68,0.6)] p-5 sm:p-6 space-y-4 my-auto">
@@ -510,17 +502,15 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </button>
             </div>
 
-            {/* අදාළ විශේෂ අවවාද පාඨය */}
             <div className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200 bg-red-500/10 border border-red-500/30 p-3.5 rounded-2xl">
               <p className="font-black text-emerald-600 dark:text-emerald-400 text-center text-xs">
                 මෙය සියලු සත්වයන්ගේ ජිවිතය රෑකිමට ඔබට ලැබෙන වටිනා අවස්ථාවකි.
               </p>
               <p className="font-bold text-slate-800 dark:text-slate-100 pt-1">
-                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ලමුන් හා අසත්‍ය අපදා පලකිරිම් වැළැක්වීමට මුරපදයක් පහතින් යොදා ඇත. ඔබගේ මුරපදය ඇතුලත් කර ආපදාව දැනුම් දෙන්න. යම් හෙයකින් අසත්‍ය දැනුම් දීම් සිදුකලහොත් ඔබගේ ගිණුම සදහටම ඔබට අහිමි වී යා හැකි බව කරුණාවෙන් දැනුම් දෙමි.
+                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ලමුන් හා අසත්‍ය අපදා පලකිරිම් වැළැක්වීමට මුරපදයක් පහතින් යොදා ඇත. ඔබගේ මුරපදය ඇතුළත් කර ආපදාව දැනුම් දෙන්න.
               </p>
             </div>
 
-            {/* Password Input Form */}
             <form onSubmit={handleFinalConfirmSubmit} className="space-y-3 pt-1">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
