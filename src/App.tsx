@@ -226,30 +226,55 @@ export default function App() {
     }
   }, []);
 
-  const previousAlertsCountRef = useRef<number>(0);
+  const knownAlertIdsRef = useRef<Set<string>>(new Set());
+  const isInitialAlertsLoadRef = useRef<boolean>(true);
 
-  // Sync real-time Firestore Red Alerts with Push Notification support
+  // Sync real-time Firestore Red Alerts with Push Notification & Instant In-App support
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
       const newAlerts = remoteAlerts || [];
       
-      // If a new active red alert is published, trigger browser notification if supported
-      if (previousAlertsCountRef.current > 0 && newAlerts.length > previousAlertsCountRef.current) {
-        const latestAlert = newAlerts[0];
-        if (latestAlert && latestAlert.status === 'active') {
-          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
-                body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
-                tag: latestAlert.id,
-              });
-            } catch (e) {
-              console.warn('Notification trigger error:', e);
+      if (isInitialAlertsLoadRef.current) {
+        // Populate initial known IDs without triggering notifications
+        newAlerts.forEach((a) => {
+          if (a && a.id) knownAlertIdsRef.current.add(a.id);
+        });
+        isInitialAlertsLoadRef.current = false;
+      } else {
+        // Check for newly added active alerts
+        const brandNewAlerts = newAlerts.filter((a) => a && a.id && !knownAlertIdsRef.current.has(a.id) && a.status === 'active');
+        
+        brandNewAlerts.forEach((latestAlert) => {
+          knownAlertIdsRef.current.add(latestAlert.id);
+
+          // 1. Trigger browser push notification if supported & granted
+          if (typeof window !== 'undefined' && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+              try {
+                new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
+                  body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
+                  tag: latestAlert.id,
+                });
+              } catch (e) {
+                console.warn('Notification trigger error:', e);
+              }
+            } else if (Notification.permission === 'default') {
+              Notification.requestPermission().then((perm) => {
+                if (perm === 'granted') {
+                  new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
+                    body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
+                    tag: latestAlert.id,
+                  });
+                }
+              }).catch(() => {});
             }
           }
-        }
+
+          // 2. Trigger instant in-app popup modal detail so user sees it immediately on screen
+          setSelectedDetailAlert(latestAlert);
+        });
       }
-      previousAlertsCountRef.current = newAlerts.length;
+
       setRedAlerts(newAlerts);
     });
     return () => unsubscribe();
