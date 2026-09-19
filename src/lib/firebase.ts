@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth'; // Auth import කිරීම
+import { getAuth } from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -24,20 +24,25 @@ import {
 // ==============================================================
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
 // ==============================================================
+
+// 1. Hardcoded API Keys ඉවත් කර purely `.env` මත පදනම් වන ලෙස සකස් කර ඇත.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBtTtuWnl4-orEHh9JkPHtkE5_z794EhpQ",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0262698872.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0262698872",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0262698872.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "503381962483",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:503381962483:web:4bda294cd68823f579d186",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+if (!firebaseConfig.apiKey) {
+  console.warn('Firebase API Configuration missing! Check your .env file.');
+}
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// 👇 මෙහිදී නිවැරදි Database ID එක ලබා දී ඇත
 export const db = getFirestore(app, 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f');
-export const auth = getAuth(app); // Auth export කිරීම
+export const auth = getAuth(app);
 
 export enum OperationType {
   CREATE = 'CREATE',
@@ -48,8 +53,10 @@ export enum OperationType {
   WRITE = 'WRITE',
 }
 
-export function handleFirestoreError(error: any, operation: string, path: string) {
+// 2. Error handling වඩාත් නිවැරදි ලෙස Re-throw කර UI එකට (Toasts/Alerts) පණිවිඩ යැවීමට හැකි කර ඇත.
+export function handleFirestoreError(error: any, operation: string, path: string): never {
   console.error(`Firestore Error [${operation}] on ${path}:`, error);
+  throw error;
 }
 
 export interface RedAlertItem {
@@ -117,39 +124,34 @@ function mapDocToRedAlert(docSnap: DocumentData | QueryDocumentSnapshot<Document
   };
 }
 
-// 🔄 100% Real-time Firestore Listener (LocalStorage overrides නොමැත)
-export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void): () => void {
+export function subscribeToRedAlerts(
+  callback: (alerts: RedAlertItem[]) => void,
+  onError?: (error: any) => void
+): () => void {
   const colRef = collection(db, RED_ALERTS_COLLECTION);
   const q = query(colRef, limit(100));
 
-  const unsubscribeFirestore = onSnapshot(
+  return onSnapshot(
     q,
     (snapshot) => {
-      // 1. Firestore හි ඇති Documents පමණක් ගන්නවා
       const remoteAlerts = snapshot.docs.map((docSnap) => mapDocToRedAlert(docSnap));
-
-      // 2. දිනය අනුව Sort කර කෙලින්ම UI එකට යවනවා
       const sortedAlerts = remoteAlerts.sort(
         (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
       );
-
       callback(sortedAlerts);
     },
     (error) => {
-      console.warn('subscribeToRedAlerts snapshot warning:', error);
+      console.error('subscribeToRedAlerts snapshot error:', error);
+      if (onError) onError(error);
       callback([]);
     }
   );
-
-  return () => {
-    unsubscribeFirestore();
-  };
 }
 
 export async function createRedAlertInFirestore(
   alertData: Omit<RedAlertItem, 'id'>
 ): Promise<string> {
-  const alertId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  const alertId = `alert_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const newAlertItem: RedAlertItem = {
     ...alertData,
     id: alertId,
@@ -164,7 +166,6 @@ export async function createRedAlertInFirestore(
     return alertId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
-    throw error;
   }
 }
 
@@ -184,7 +185,7 @@ export async function seedInitialRedAlertsToFirestore(initialAlertsList?: RedAle
       }
     }
   } catch (err) {
-    console.warn('seedInitialRedAlertsToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, RED_ALERTS_COLLECTION);
   }
 }
 
@@ -201,7 +202,6 @@ export async function updateRedAlertStatus(
       updatedAtServer: serverTimestamp(),
     });
   } catch (error) {
-    console.warn('Failed to update Red Alert status:', error);
     handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
@@ -211,7 +211,6 @@ export async function deleteRedAlertInFirestore(alertId: string): Promise<void> 
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     await deleteDoc(docRef);
   } catch (error) {
-    console.warn('Failed to delete Red Alert:', error);
     handleFirestoreError(error, OperationType.DELETE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
@@ -235,7 +234,6 @@ export async function addCommentToRedAlert(
       }),
     });
   } catch (error) {
-    console.warn('Failed to add comment:', error);
     handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
@@ -254,7 +252,6 @@ export async function flagRedAlertAsFake(
       }),
     });
   } catch (error) {
-    console.warn('Failed to flag fake report:', error);
     handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
@@ -300,7 +297,6 @@ export async function saveSirenSettingsToFirestore(
       { merge: true }
     );
   } catch (error) {
-    console.warn('Failed to save siren settings to Firestore:', error);
     handleFirestoreError(error, OperationType.WRITE, `${SYSTEM_SETTINGS_COLLECTION}/${SIREN_CONFIG_DOC}`);
   }
 }
@@ -323,11 +319,11 @@ export function subscribeToSirenSettings(
         }
       },
       (error) => {
-        console.warn('Siren settings listener warning:', error);
+        console.error('Siren settings listener error:', error);
       }
     );
   } catch (err) {
-    console.warn('subscribeToSirenSettings error:', err);
+    console.error('subscribeToSirenSettings error:', err);
     return () => {};
   }
 }
@@ -348,10 +344,10 @@ export async function fetchSirenSettingsFromFirestore(): Promise<{
         presetType: data.presetType || '',
       };
     }
+    return null;
   } catch (err) {
-    console.warn('fetchSirenSettings error:', err);
+    handleFirestoreError(err, OperationType.READ, `${SYSTEM_SETTINGS_COLLECTION}/${SIREN_CONFIG_DOC}`);
   }
-  return null;
 }
 
 // ==============================================================
@@ -366,7 +362,7 @@ export async function fetchAllPostsBackupData(currentPosts?: any[]): Promise<{ i
     const items = remotePosts.length > 0 ? remotePosts : (currentPosts || []);
     return { items, totalPostsCount: items.length };
   } catch (err) {
-    console.warn('fetchAllPostsBackupData error:', err);
+    console.error('fetchAllPostsBackupData error:', err);
     const items = currentPosts || [];
     return { items, totalPostsCount: items.length };
   }
@@ -386,24 +382,27 @@ export async function restorePostsBackupData(postsData: any): Promise<{ restored
     }
     return { restoredPostsList: list, restoredPostsCount: restoredCount, restoredMessagesCount: 0 };
   } catch (err) {
-    console.warn('restorePostsBackupData error:', err);
-    return { restoredPostsList: [], restoredPostsCount: 0, restoredMessagesCount: 0 };
+    handleFirestoreError(err, OperationType.WRITE, 'posts');
   }
 }
 
-export async function syncUserProfileToFirestore(userIdOrData: any, profileData?: any, ...rest: any[]): Promise<void> {
+export async function syncUserProfileToFirestore(userIdOrData: any, profileData?: any): Promise<void> {
   try {
     let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
     let data = profileData || userIdOrData;
     if (!userId) return;
+
+    // Sensitive keys Firestore එකට එකතු වීම වැළැක්වීමට sanitized Data භාවිතය
+    const { password, key, securityCode, ...safeData } = data || {};
+
     const docRef = doc(db, 'users', userId);
     await setDoc(docRef, {
-      ...data,
+      ...safeData,
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
     }, { merge: true });
   } catch (err) {
-    console.warn('syncUserProfileToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, 'users');
   }
 }
 
@@ -428,12 +427,12 @@ export function subscribeToHelpPosts(
         callback(posts);
       },
       (error) => {
-        console.warn('Help posts listener error:', error);
+        console.error('Help posts listener error:', error);
         callback([]);
       }
     );
   } catch (err) {
-    console.warn('subscribeToHelpPosts setup error:', err);
+    console.error('subscribeToHelpPosts setup error:', err);
     return () => {};
   }
 }
@@ -450,16 +449,13 @@ export async function addHelpPostToFirestore(
     });
     return docRef.id;
   } catch (error) {
-    console.warn('Failed to add help post:', error);
     handleFirestoreError(error, OperationType.CREATE, 'posts');
-    return '';
   }
 }
 
 export async function addReplyToFirestore(
   postId: string,
-  replyData: Record<string, any>,
-  ...rest: any[]
+  replyData: Record<string, any>
 ): Promise<void> {
   try {
     const repliesColRef = collection(db, 'posts', postId, 'replies');
@@ -469,7 +465,6 @@ export async function addReplyToFirestore(
       createdAtServer: serverTimestamp(),
     });
   } catch (error) {
-    console.warn('Failed to add reply:', error);
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
   }
 }
@@ -485,7 +480,6 @@ export async function updateHelpPostInFirestore(
       updatedAtServer: serverTimestamp(),
     });
   } catch (error) {
-    console.warn('Failed to update help post:', error);
     handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
   }
 }
@@ -509,7 +503,6 @@ export async function sendChatMessageToFirestore(
       createdAtServer: serverTimestamp(),
     });
   } catch (error) {
-    console.warn('Failed to send chat message:', error);
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/messages`);
   }
 }
@@ -532,12 +525,12 @@ export function subscribeToChatMessages(
         callback(messages);
       },
       (error) => {
-        console.warn('Chat messages listener error:', error);
+        console.error('Chat messages listener error:', error);
         callback([]);
       }
     );
   } catch (err) {
-    console.warn('subscribeToChatMessages setup error:', err);
+    console.error('subscribeToChatMessages setup error:', err);
     return () => {};
   }
 }
@@ -563,12 +556,12 @@ export function subscribeToMarketplaceItems(
         callback(items);
       },
       (error) => {
-        console.warn('Marketplace items listener error:', error);
+        console.error('Marketplace items listener error:', error);
         callback([]);
       }
     );
   } catch (err) {
-    console.warn('subscribeToMarketplaceItems setup error:', err);
+    console.error('subscribeToMarketplaceItems setup error:', err);
     return () => {};
   }
 }
@@ -585,9 +578,7 @@ export async function addMarketplaceItemToFirestore(
     });
     return docRef.id;
   } catch (error) {
-    console.warn('Failed to add marketplace item:', error);
     handleFirestoreError(error, OperationType.CREATE, MARKETPLACE_COLLECTION);
-    return '';
   }
 }
 
@@ -598,7 +589,6 @@ export async function deleteMarketplaceItemFromFirestore(
     const docRef = doc(db, MARKETPLACE_COLLECTION, itemId);
     await deleteDoc(docRef);
   } catch (error) {
-    console.warn('Failed to delete marketplace item:', error);
     handleFirestoreError(error, OperationType.DELETE, `${MARKETPLACE_COLLECTION}/${itemId}`);
   }
 }
@@ -629,12 +619,12 @@ export function subscribeToUserSavedPosts(
         }
       },
       (error) => {
-        console.warn('Saved posts listener error:', error);
+        console.error('Saved posts listener error:', error);
         callback([]);
       }
     );
   } catch (err) {
-    console.warn('subscribeToUserSavedPosts error:', err);
+    console.error('subscribeToUserSavedPosts error:', err);
     return () => {};
   }
 }
@@ -659,7 +649,6 @@ export async function toggleSavePostInFirestore(
       { merge: true }
     );
   } catch (error) {
-    console.warn('Failed to toggle save post:', error);
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
 }
@@ -668,54 +657,54 @@ export async function toggleSavePostInFirestore(
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
-export async function getUserFromFirestore(userIdOrInput: string, passwordInput?: string, ...rest: any[]): Promise<any | null> {
+// 3. Client-side Plaintext Password Checks ඉවත් කර ආරක්ෂිතව දත්ත ලබා ගැනීමේ ක්‍රමවේදය
+export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     if (!userIdOrInput) return null;
     const cleanInput = userIdOrInput.trim().toLowerCase();
 
-    // 1. Try direct doc ref by userId/NIC or id
+    // Direct doc reference search
     const docRef = doc(db, 'users', userIdOrInput);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const userData = { id: snap.id, ...snap.data() };
-      if (!passwordInput || (userData as any).key === passwordInput || (userData as any).password === passwordInput || (userData as any).securityCode === passwordInput || !(userData as any).key) {
-        return userData;
-      }
+      const { password, key, securityCode, ...safeUserData } = snap.data();
+      return { id: snap.id, ...safeUserData };
     }
 
-    // 2. Query collection by userId, nicNumber, or email
+    // Collection query search
     const colRef = collection(db, 'users');
     const qSnap = await getDocs(colRef);
     for (const docSnap of qSnap.docs) {
-      const uData = { id: docSnap.id, ...docSnap.data() } as any;
+      const uData = docSnap.data();
       const uId = (uData.userId || '').toString().trim().toLowerCase();
       const uNic = (uData.nicNumber || '').toString().trim().toLowerCase();
       const uEmail = (uData.email || '').toString().trim().toLowerCase();
       const uDocId = docSnap.id.toLowerCase();
 
       if (uId === cleanInput || uNic === cleanInput || uEmail === cleanInput || uDocId === cleanInput) {
-        if (!passwordInput || uData.key === passwordInput || uData.password === passwordInput || uData.securityCode === passwordInput || !uData.key) {
-          return uData;
-        }
+        const { password, key, securityCode, ...safeUserData } = uData;
+        return { id: docSnap.id, ...safeUserData };
       }
     }
 
     return null;
   } catch (error) {
-    console.warn('getUserFromFirestore error:', error);
-    return null;
+    handleFirestoreError(error, OperationType.READ, 'users');
   }
 }
 
-export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any, ...rest: any[]): Promise<void> {
+export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any): Promise<void> {
   try {
     let userObj = typeof userIdOrUser === 'object' ? userIdOrUser : { ...(userData || {}), id: userIdOrUser };
     const docId = userObj.userId || userObj.nicNumber || userObj.id || `usr_${Date.now()}`;
     const docRef = doc(db, 'users', docId);
+
+    const { password, key, securityCode, ...safeUserObj } = userObj;
+
     await setDoc(
       docRef,
       {
-        ...userObj,
+        ...safeUserObj,
         id: docId,
         updatedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
@@ -723,22 +712,25 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
       { merge: true }
     );
   } catch (err) {
-    console.warn('saveUserToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, 'users');
   }
 }
 
-export async function updateUserInFirestore(userIdOrData: any, updateData?: any, ...rest: any[]): Promise<void> {
+export async function updateUserInFirestore(userIdOrData: any, updateData?: any): Promise<void> {
   try {
     let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
     let data = updateData || userIdOrData;
     if (!userId) return;
+
+    const { password, key, securityCode, ...safeData } = data;
+
     const docRef = doc(db, 'users', userId);
     await updateDoc(docRef, {
-      ...data,
+      ...safeData,
       updatedAtServer: serverTimestamp(),
     });
   } catch (err) {
-    console.warn('updateUserInFirestore error:', err);
+    handleFirestoreError(err, OperationType.UPDATE, `users/${userIdOrData}`);
   }
 }
 
@@ -751,8 +743,9 @@ export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<vo
         const docRef = doc(db, 'users', docId);
         const snap = await getDoc(docRef);
         if (!snap.exists()) {
+          const { password, key, securityCode, ...safeU } = u;
           await setDoc(docRef, {
-            ...u,
+            ...safeU,
             id: docId,
             createdAtServer: serverTimestamp(),
           });
@@ -760,7 +753,7 @@ export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<vo
       }
     }
   } catch (err) {
-    console.warn('seedInitialUsersToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, 'users');
   }
 }
 
@@ -772,19 +765,19 @@ export function subscribeToUsers(
     return onSnapshot(
       usersColRef,
       (snapshot) => {
-        const users = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
+        const users = snapshot.docs.map((docSnap) => {
+          const { password, key, securityCode, ...safeData } = docSnap.data();
+          return { id: docSnap.id, ...safeData };
+        });
         callback(users);
       },
       (error) => {
-        console.warn('subscribeToUsers listener error:', error);
+        console.error('subscribeToUsers listener error:', error);
         callback([]);
       }
     );
   } catch (err) {
-    console.warn('subscribeToUsers setup error:', err);
+    console.error('subscribeToUsers setup error:', err);
     return () => {};
   }
 }
@@ -799,7 +792,6 @@ export async function deleteHelpPostFromFirestore(postId: string): Promise<void>
     const docRef = doc(db, 'posts', postId);
     await deleteDoc(docRef);
   } catch (error) {
-    console.warn('Failed to delete help post:', error);
     handleFirestoreError(error, OperationType.DELETE, `posts/${postId}`);
   }
 }
@@ -808,7 +800,7 @@ export async function seedDoneHelpPostsToFirestore(): Promise<void> {
   try {
     console.log('Done help posts seeded successfully.');
   } catch (err) {
-    console.warn('seedDoneHelpPostsToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, 'posts');
   }
 }
 
@@ -816,6 +808,6 @@ export async function seedDemoHelpPostsToFirestore(): Promise<void> {
   try {
     console.log('Demo help posts seeded successfully.');
   } catch (err) {
-    console.warn('seedDemoHelpPostsToFirestore error:', err);
+    handleFirestoreError(err, OperationType.WRITE, 'posts');
   }
 }
