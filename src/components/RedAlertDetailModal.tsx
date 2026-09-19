@@ -368,35 +368,42 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             </div>
           ) : (
             /* 2. දැන්වීම නරඹන අනෙකුත් පරිශීලකයින්ට පෙනෙන කොටස */
-            <>
-              {/* Main Incident Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-slate-500 dark:text-slate-400">ස්ථානය:</span>
-                      <p className="font-black text-slate-900 dark:text-white text-sm">{alert.locationName}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">📍 Lat: {alert.latitude.toFixed(4)}, Lng: {alert.longitude.toFixed(4)}</p>
-                    </div>
-                  </div>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-black text-xs text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/30">
+                    {alert.alertCode}
+                  </span>
+                  <span className="bg-red-500 text-white font-black text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                    ක්‍රියාකාරී ආපදාවකි
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white pt-1">
+                  {alert.disasterTitleSi}
+                </h3>
+              </div>
 
-                  <div className="flex items-start gap-2">
-                    <Clock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-slate-500 dark:text-slate-400">දිනය සහ වේලාව:</span>
-                      <p className="font-black text-slate-900 dark:text-white text-sm">{alert.incidentDate} - {alert.incidentTime}</p>
-                      {distanceKm > 0 && (
-                        <p className="text-[11px] font-bold text-red-600 dark:text-red-400">
-                          ඔබට ඇති දුර: {distanceDisplay}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+              {/* Main Incident Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-3 text-xs">
+                <div className="space-y-1">
+                  <span className="font-bold text-slate-500 dark:text-slate-400">ස්ථානය:</span>
+                  <p className="font-black text-slate-900 dark:text-white text-sm sm:text-base leading-snug pt-0.5">
+                    {alert.locationName}
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400 font-mono pt-1">
+                    📍 Lat: {alert.latitude.toFixed(4)}, Lng: {alert.longitude.toFixed(4)}
+                  </p>
+                </div>
+
+                <div className="space-y-1 pt-2 border-t border-slate-200 dark:border-white/10">
+                  <span className="font-bold text-slate-500 dark:text-slate-400">දිනය සහ වේලාව:</span>
+                  <p className="font-black text-slate-900 dark:text-white text-sm pt-0.5">
+                    {alert.incidentDate} - {alert.incidentTime}
+                  </p>
                 </div>
 
                 {alert.description && (
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-black/30 border border-slate-200/80 dark:border-white/10 text-xs">
+                  <div className="pt-2 border-t border-slate-200 dark:border-white/10">
                     <span className="font-bold text-slate-500 dark:text-slate-400 block mb-1">වැඩි විස්තර:</span>
                     <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
                       {alert.description}
@@ -433,16 +440,16 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               )}
 
               {/* Fake Alert Warning / Action */}
-              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs">
+              <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs">
                 <span className="text-rose-700 dark:text-rose-400 font-medium">
                   මෙම ආපදාව පිළිබඳ සාවද්‍ය තොරතුරක් ද?
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowFakeReportModal(true)}
-                  className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
                 >
-                  <Flag className="w-3 h-3" />
+                  <Flag className="w-3.5 h-3.5" />
                   <span>Admin ට වාර්තා කරන්න</span>
                 </button>
               </div>
@@ -560,7 +567,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   </button>
                 </form>
               </div>
-            </>
+            </div>
           )}
 
         </div>
