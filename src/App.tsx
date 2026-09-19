@@ -23,7 +23,8 @@ import {
   saveUserToFirestore,
   updateUserInFirestore,
   seedInitialUsersToFirestore,
-  subscribeToRedAlerts
+  subscribeToRedAlerts,
+  getUserFromFirestore // <--- අලුතින් එකතු කළ කොටස
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
@@ -427,7 +428,7 @@ export default function App() {
     setViewMode('dashboard');
   };
 
-  const handleLogin = (userIdInput: string, keyInput: string) => {
+  const handleLogin = async (userIdInput: string, keyInput: string) => { // async ලෙස වෙනස් කර ඇත
     const cleanInput = userIdInput.trim().toLowerCase();
 
     if (cleanInput === 'demo_user' || cleanInput === 'demo') {
@@ -451,46 +452,38 @@ export default function App() {
       return;
     }
 
-    const cleanInputDigits = extractNumericId(cleanInput);
+    try {
+      // 🌟 Local state එක වෙනුවට සෘජුවම Firestore Database එකෙන් User ව සොයා බැලීම
+      const foundUser = await getUserFromFirestore(cleanInput, keyInput);
 
-    const foundUser = users.find(
-      (u) =>
-        (u.userId.toLowerCase() === cleanInput ||
-          u.userNumericId === cleanInput ||
-          (cleanInputDigits && u.userNumericId === cleanInputDigits) ||
-          (cleanInputDigits && extractNumericId(u.nicNumber) === cleanInputDigits) ||
-          u.nicNumber?.toLowerCase() === cleanInput ||
-          u.email.toLowerCase() === cleanInput ||
-          u.phone.toLowerCase() === cleanInput) &&
-        (u.key === keyInput ||
-          (u.securityCode && u.securityCode === keyInput) ||
-          (u.tempCode && u.tempCode === keyInput))
-    );
-
-    if (!foundUser) {
-      setShowWrongLoginModal(true);
-      return;
-    }
-
-    if (foundUser.status === 'blocked') {
-      alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
-      return;
-    }
-
-    setCurrentUser(foundUser);
-
-    if (foundUser.role === 'admin') {
-      setActiveRoleView('admin');
-      setViewMode('admin');
-    } else if (foundUser.status === 'pending') {
-      setViewMode('pending');
-    } else if (foundUser.status === 'approved') {
-      setViewMode('dashboard');
-      if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
-        setShowChangePasswordModal(true);
+      if (!foundUser) {
+        setShowWrongLoginModal(true);
+        return;
       }
-    } else if (foundUser.status === 'rejected') {
-      setShowWrongLoginModal(true);
+
+      if (foundUser.status === 'blocked') {
+        alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
+        return;
+      }
+
+      setCurrentUser(foundUser);
+
+      if (foundUser.role === 'admin') {
+        setActiveRoleView('admin');
+        setViewMode('admin');
+      } else if (foundUser.status === 'pending') {
+        setViewMode('pending');
+      } else if (foundUser.status === 'approved') {
+        setViewMode('dashboard');
+        if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
+          setShowChangePasswordModal(true);
+        }
+      } else if (foundUser.status === 'rejected') {
+        setShowWrongLoginModal(true);
+      }
+    } catch (error) {
+      console.error("Login verification failed:", error);
+      alert("අන්තර්ජාල සම්බන්ධතා දෝෂයක්. කරුණාකර නැවත උත්සාහ කරන්න.");
     }
   };
 
@@ -832,7 +825,7 @@ export default function App() {
 
         {viewMode === 'login' && (
           <LoginForm
-            onLogin={handleLogin}
+            onLogin={handleLogin} // දැන් මෙය async එකකි
             onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setViewMode('register')}
             onNavigateToIssues={() => setViewMode('issues_help')}
