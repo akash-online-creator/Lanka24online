@@ -5,6 +5,7 @@ import {
   doc,
   collection,
   query,
+  where,
   orderBy,
   limit,
   onSnapshot,
@@ -25,7 +26,6 @@ import {
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
 // ==============================================================
 
-// 1. Hardcoded API Keys ඉවත් කර purely `.env` මත පදනම් වන ලෙස සකස් කර ඇත.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -53,10 +53,20 @@ export enum OperationType {
   WRITE = 'WRITE',
 }
 
-// 2. Error handling වඩාත් නිවැරදි ලෙස Re-throw කර UI එකට (Toasts/Alerts) පණිවිඩ යැවීමට හැකි කර ඇත.
 export function handleFirestoreError(error: any, operation: string, path: string): never {
   console.error(`Firestore Error [${operation}] on ${path}:`, error);
   throw error;
+}
+
+export interface RedAlertComment {
+  id?: string;
+  authorName?: string;
+  userName?: string;
+  userId?: string;
+  text?: string;
+  comment?: string;
+  createdAt?: string;
+  isReporterUpdate?: boolean;
 }
 
 export interface RedAlertItem {
@@ -81,10 +91,18 @@ export interface RedAlertItem {
   reportedByPhone?: string;
   status?: 'active' | 'resolved' | 'cancelled' | 'false_alarm';
   severity?: 'critical' | 'high' | 'medium' | 'low' | 'moderate';
-  comments?: any[];
+  comments?: RedAlertComment[];
   fakeReports?: any[];
   isFlaggedFake?: boolean;
   adminActionNote?: string;
+  // ✨ නව පහසුකම් සඳහා එකතු කළ Data Fields
+  statusChangeMessage?: string | null;
+  latestReporterUpdate?: {
+    text: string;
+    createdAt: string;
+    reporterName?: string;
+    notificationText?: string;
+  } | null;
 }
 
 // ==============================================================
@@ -121,6 +139,8 @@ function mapDocToRedAlert(docSnap: DocumentData | QueryDocumentSnapshot<Document
     fakeReports: Array.isArray(data.fakeReports) ? data.fakeReports : [],
     isFlaggedFake: Boolean(data.isFlaggedFake),
     adminActionNote: data.adminActionNote || '',
+    statusChangeMessage: data.statusChangeMessage || null,
+    latestReporterUpdate: data.latestReporterUpdate || null,
   };
 }
 
@@ -129,16 +149,13 @@ export function subscribeToRedAlerts(
   onError?: (error: any) => void
 ): () => void {
   const colRef = collection(db, RED_ALERTS_COLLECTION);
-  const q = query(colRef, limit(100));
+  const q = query(colRef, orderBy('createdAtMs', 'desc'), limit(100));
 
   return onSnapshot(
     q,
     (snapshot) => {
       const remoteAlerts = snapshot.docs.map((docSnap) => mapDocToRedAlert(docSnap));
-      const sortedAlerts = remoteAlerts.sort(
-        (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
-      );
-      callback(sortedAlerts);
+      callback(remoteAlerts);
     },
     (error) => {
       console.error('subscribeToRedAlerts snapshot error:', error);
@@ -168,6 +185,98 @@ export async function createRedAlertInFirestore(
     handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
   }
 }
+
+// --------------------------------------------------------------
+// 🎯 REPORTER ACTIONS (වාර්තාකරුගේ ඔප්ෂන් 3 සඳහා වන ප්‍රධාන Functions)
+// --------------------------------------------------------------
+
+/**
+ * ඔප්ෂන් 01: "ආපදාව විසඳුනා" (Mark as Resolved)
+ */
+export async function markRedAlertAsResolved(
+  alertId: string,
+  note?: string
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    const popupMessage = "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.";
+    
+    await updateDoc(docRef, {
+      status: 'resolved',
+      statusChangeMessage: popupMessage,
+      adminActionNote: note || 'Resolved by reporter',
+      resolvedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * ඔප්ෂන් 02: "අනතුර ඉවත් කරන්න" (Cancel / Remove Alert)
+ */
+export async function cancelRedAlertByReporter(
+  alertId: string,
+  reason?: string
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    const popupMessage = "ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.";
+
+    await updateDoc(docRef, {
+      status: 'cancelled',
+      statusChangeMessage: popupMessage,
+      adminActionNote: reason || 'Cancelled by reporter',
+      cancelledAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+/**
+ * ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න" (Add Comment / Status Update)
+ */
+export async function addReporterUpdateToRedAlert(
+  alertId: string,
+  updateText: string,
+  reporterInfo?: { reporterId?: string; reporterName?: string }
+): Promise<void> {
+  try {
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    const resolvedName = reporterInfo?.reporterName || 'වාර්තාකරු';
+    const timestamp = new Date().toISOString();
+
+    const updateObj: RedAlertComment = {
+      authorName: resolvedName,
+      userName: resolvedName,
+      userId: reporterInfo?.reporterId || '',
+      text: updateText,
+      comment: updateText,
+      createdAt: timestamp,
+      isReporterUpdate: true,
+    };
+
+    const notificationMessage = `💬 වාර්තාකරුගෙන් අලුත් යාවත්කාලීන කිරීමක්: ${updateText}`;
+
+    await updateDoc(docRef, {
+      comments: arrayUnion(updateObj),
+      latestReporterUpdate: {
+        text: updateText,
+        createdAt: timestamp,
+        reporterName: resolvedName,
+        notificationText: notificationMessage,
+      },
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+  }
+}
+
+// --------------------------------------------------------------
 
 export async function seedInitialRedAlertsToFirestore(initialAlertsList?: RedAlertItem[]): Promise<void> {
   try {
@@ -217,7 +326,7 @@ export async function deleteRedAlertInFirestore(alertId: string): Promise<void> 
 
 export async function addCommentToRedAlert(
   alertId: string,
-  comment: { authorName?: string; userName?: string; text?: string; comment?: string; createdAt?: string; [key: string]: any }
+  comment: RedAlertComment
 ): Promise<void> {
   try {
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
@@ -392,7 +501,6 @@ export async function syncUserProfileToFirestore(userIdOrData: any, profileData?
     let data = profileData || userIdOrData;
     if (!userId) return;
 
-    // Sensitive keys Firestore එකට එකතු වීම වැළැක්වීමට sanitized Data භාවිතය
     const { password, key, securityCode, ...safeData } = data || {};
 
     const docRef = doc(db, 'users', userId);
@@ -418,7 +526,7 @@ export function subscribeToHelpPosts(
     const q = query(postsColRef, orderBy('createdAt', 'desc'));
 
     return onSnapshot(
-      postsColRef,
+      q,
       (snapshot) => {
         const posts = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -516,7 +624,7 @@ export function subscribeToChatMessages(
     const q = query(chatColRef, orderBy('createdAt', 'asc'));
 
     return onSnapshot(
-      chatColRef,
+      q,
       (snapshot) => {
         const messages = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -657,34 +765,37 @@ export async function toggleSavePostInFirestore(
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
-// 3. Client-side Plaintext Password Checks ඉවත් කර ආරක්ෂිතව දත්ත ලබා ගැනීමේ ක්‍රමවේදය
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     if (!userIdOrInput) return null;
-    const cleanInput = userIdOrInput.trim().toLowerCase();
+    const cleanInput = userIdOrInput.trim();
 
-    // Direct doc reference search
-    const docRef = doc(db, 'users', userIdOrInput);
+    const docRef = doc(db, 'users', cleanInput);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const { password, key, securityCode, ...safeUserData } = snap.data();
       return { id: snap.id, ...safeUserData };
     }
 
-    // Collection query search
     const colRef = collection(db, 'users');
-    const qSnap = await getDocs(colRef);
-    for (const docSnap of qSnap.docs) {
-      const uData = docSnap.data();
-      const uId = (uData.userId || '').toString().trim().toLowerCase();
-      const uNic = (uData.nicNumber || '').toString().trim().toLowerCase();
-      const uEmail = (uData.email || '').toString().trim().toLowerCase();
-      const uDocId = docSnap.id.toLowerCase();
 
-      if (uId === cleanInput || uNic === cleanInput || uEmail === cleanInput || uDocId === cleanInput) {
-        const { password, key, securityCode, ...safeUserData } = uData;
-        return { id: docSnap.id, ...safeUserData };
-      }
+    const qUserId = query(colRef, where('userId', '==', cleanInput));
+    let qSnap = await getDocs(qUserId);
+
+    if (qSnap.empty) {
+      const qNic = query(colRef, where('nicNumber', '==', cleanInput));
+      qSnap = await getDocs(qNic);
+    }
+
+    if (qSnap.empty) {
+      const qEmail = query(colRef, where('email', '==', cleanInput));
+      qSnap = await getDocs(qEmail);
+    }
+
+    if (!qSnap.empty) {
+      const docSnap = qSnap.docs[0];
+      const { password, key, securityCode, ...safeUserData } = docSnap.data();
+      return { id: docSnap.id, ...safeUserData };
     }
 
     return null;
