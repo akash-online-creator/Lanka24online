@@ -25,7 +25,7 @@ import {
   seedInitialUsersToFirestore,
   subscribeToRedAlerts,
   seedInitialRedAlertsToFirestore,
-  getUserFromFirestore // <--- අලුතින් එකතු කළ කොටස
+  getUserFromFirestore
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { extractNumericId, grantWelcomeGiftCredit } from './utils/creditManager';
@@ -135,10 +135,8 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync real-time Firestore users (Cloud persistent user directory for Vercel & Web)
+  // ✅ FIX 1: Sync real-time Firestore users (Auto-seed removed to prevent deleted users from re-appearing)
   useEffect(() => {
-    seedInitialUsersToFirestore(initialUsers);
-
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prev) => {
@@ -155,7 +153,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Red Alert Emergency System States
+  // ✅ FIX 2: Red Alert Initial State default empty array (Sample Data default එක ඉවත් කරන ලදී)
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_red_alerts');
@@ -164,35 +162,9 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [
-      {
-        id: 'default_emergency_alert_1',
-        alertCode: '#RED-1024',
-        disasterType: 'flood',
-        disasterTitleSi: 'අධික වැසි සහ ගංවතුර අවදානම',
-        disasterTitleEn: 'Heavy Rains & Flood Warning',
-        disasterTitleTa: 'கனமழை மற்றும் வெள்ள எச்சரிக்கை',
-        description: 'කැලණි ගං ද්‍රෝණියේ ජල මට්ටම ඉහළ යමින් පවතී. පහත් බිම්වල වෙසෙන ජනතාව ආරක්ෂිත ස්ථාන වෙත යොමු වන්න.',
-        latitude: 6.9271,
-        longitude: 79.8612,
-        locationName: 'කොළඹ / කැලණි ගං ඉඩකඩ',
-        locationAccuracyMeters: 10,
-        incidentDate: new Date().toISOString().split('T')[0],
-        incidentTime: '08:30 AM',
-        createdAt: new Date().toISOString(),
-        createdAtMs: Date.now(),
-        reportedByUserId: 'admin_sys',
-        reportedByName: 'ආපදා කළමනාකරණ මධ්‍යස්ථානය (DMC)',
-        reportedByPhone: '117',
-        status: 'active',
-        severity: 'critical',
-        comments: [],
-        fakeReports: [],
-        isFlaggedFake: false,
-        adminActionNote: 'පද්ධති ස්වයංක්‍රීය හදිසි අනතුරු ඇඟවීමයි.'
-      }
-    ];
+    return [];
   });
+
   const [isCreateRedAlertOpen, setIsCreateRedAlertOpen] = useState(false);
   const [selectedDetailAlert, setSelectedDetailAlert] = useState<RedAlertItem | null>(null);
   const [proximityAlertInfo, setProximityAlertInfo] = useState<{ alert: RedAlertItem; distanceKm: number } | null>(null);
@@ -230,9 +202,8 @@ export default function App() {
   const knownAlertIdsRef = useRef<Set<string>>(new Set());
   const isInitialAlertsLoadRef = useRef<boolean>(true);
 
-  // Sync real-time Firestore Red Alerts with Push Notification & Instant In-App support
+  // ✅ FIX 3: Sync real-time Firestore Red Alerts (Auto-seed call එක ඉවත් කරන ලදී)
   useEffect(() => {
-    seedInitialRedAlertsToFirestore(redAlerts);
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
       const newAlerts = remoteAlerts || [];
       
@@ -272,7 +243,7 @@ export default function App() {
             }
           }
 
-          // 2. Trigger instant in-app popup modal detail so user sees it immediately on screen
+          // 2. Trigger instant in-app popup modal detail
           setSelectedDetailAlert(latestAlert);
         });
       }
@@ -359,18 +330,15 @@ export default function App() {
         }
         if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
 
-        // පැරණි වෙනත් Tone Cache ඇත්නම් ඉවත් කිරීම
         localStorage.removeItem('sahaya_custom_siren_url');
         localStorage.removeItem('sahaya_siren_tone');
 
-        // Directly play uploaded default audio file
         const siren = new Audio(sirenSoundFile);
         siren.loop = true;
         siren.play().catch((e) => console.log('Audio Play Blocked by browser:', e));
         (window as any).emergencySiren = siren;
         lastPlayedAlertIdRef.current = nearAlert.id;
 
-        // Auto Stop after 1 minute (60,000ms)
         sirenTimerRef.current = setTimeout(() => {
           if ((window as any).emergencySiren) {
             (window as any).emergencySiren.pause();
@@ -485,7 +453,7 @@ export default function App() {
     setViewMode('dashboard');
   };
 
-  const handleLogin = async (userIdInput: string, keyInput: string) => { // async ලෙස වෙනස් කර ඇත
+  const handleLogin = async (userIdInput: string, keyInput: string) => {
     const cleanInput = userIdInput.trim().toLowerCase();
 
     if (cleanInput === 'demo_user' || cleanInput === 'demo') {
@@ -510,7 +478,6 @@ export default function App() {
     }
 
     try {
-      // 🌟 Securely verify user credentials directly against Firestore database for maximum privacy and data security
       const foundUser = await getUserFromFirestore(cleanInput, keyInput);
 
       if (!foundUser) {
@@ -882,7 +849,7 @@ export default function App() {
 
         {viewMode === 'login' && (
           <LoginForm
-            onLogin={handleLogin} // දැන් මෙය async එකකි
+            onLogin={handleLogin}
             onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setViewMode('register')}
             onNavigateToIssues={() => setViewMode('issues_help')}
