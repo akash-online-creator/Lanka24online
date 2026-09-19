@@ -217,10 +217,40 @@ export default function App() {
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPlayedAlertIdRef = useRef<string | null>(null);
 
-  // Sync real-time Firestore Red Alerts
+  // Request browser notification permission on load
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, []);
+
+  const previousAlertsCountRef = useRef<number>(0);
+
+  // Sync real-time Firestore Red Alerts with Push Notification support
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
-      setRedAlerts(remoteAlerts || []);
+      const newAlerts = remoteAlerts || [];
+      
+      // If a new active red alert is published, trigger browser notification if supported
+      if (previousAlertsCountRef.current > 0 && newAlerts.length > previousAlertsCountRef.current) {
+        const latestAlert = newAlerts[0];
+        if (latestAlert && latestAlert.status === 'active') {
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
+                body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
+                tag: latestAlert.id,
+              });
+            } catch (e) {
+              console.warn('Notification trigger error:', e);
+            }
+          }
+        }
+      }
+      previousAlertsCountRef.current = newAlerts.length;
+      setRedAlerts(newAlerts);
     });
     return () => unsubscribe();
   }, []);

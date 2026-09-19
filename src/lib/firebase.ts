@@ -132,7 +132,7 @@ function getLocalRedAlerts(): RedAlertItem[] {
 
 export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void): () => void {
   const colRef = collection(db, RED_ALERTS_COLLECTION);
-  const q = query(colRef, orderBy('createdAtMs', 'desc'), limit(50));
+  const q = query(colRef, limit(100));
 
   const handleLocalEmit = () => {
     const localItems = getLocalRedAlerts();
@@ -166,43 +166,9 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
       callback(finalAlerts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, RED_ALERTS_COLLECTION);
-      
+      console.warn('subscribeToRedAlerts snapshot warning:', error);
       const localAlerts = getLocalRedAlerts();
-      if (localAlerts.length > 0) {
-        callback(localAlerts);
-        return;
-      }
-
-      const defaultAlerts: RedAlertItem[] = [
-        {
-          id: 'default_emergency_alert_1',
-          alertCode: '#RED-1024',
-          disasterType: 'flood',
-          disasterTitleSi: 'අධික වැසි සහ ගංවතුර අවදානම',
-          disasterTitleEn: 'Heavy Rains & Flood Warning',
-          disasterTitleTa: 'கனமழை மற்றும் வெள்ள எச்சரிக்கை',
-          description: 'කැලණි ගං ද්‍රෝණියේ ජල මට්ටම ඉහළ යමින් පවතී. පහත් බිම්වල වෙසෙන ජනතාව ආරක්ෂිත ස්ථාන වෙත යොමු වන්න.',
-          latitude: 6.9271,
-          longitude: 79.8612,
-          locationName: 'කොළඹ / කැලණි ගං ඉඩකඩ',
-          locationAccuracyMeters: 10,
-          incidentDate: new Date().toISOString().split('T')[0],
-          incidentTime: '08:30 AM',
-          createdAt: new Date().toISOString(),
-          createdAtMs: Date.now(),
-          reportedByUserId: 'admin_sys',
-          reportedByName: 'ආපදා කළමනාකරණ මධ්‍යස්ථානය (DMC)',
-          reportedByPhone: '117',
-          status: 'active',
-          severity: 'critical',
-          comments: [],
-          fakeReports: [],
-          isFlaggedFake: false,
-          adminActionNote: 'පද්ධති ස්වයංක්‍රීය හදිසි අනතුරු ඇඟවීමයි.'
-        }
-      ];
-      callback(defaultAlerts);
+      callback(localAlerts.length > 0 ? localAlerts : []);
     }
   );
 
