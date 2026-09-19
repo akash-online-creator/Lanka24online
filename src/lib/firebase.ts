@@ -183,41 +183,63 @@ export function subscribeToRedAlerts(callback: (alerts: RedAlertItem[]) => void)
 export async function createRedAlertInFirestore(
   alertData: Omit<RedAlertItem, 'id'>
 ): Promise<string> {
-  const tempId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  const alertId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
   const newAlertItem: RedAlertItem = {
     ...alertData,
-    id: tempId,
+    id: alertId,
   };
 
   try {
-    const existing = getLocalRedAlerts();
-    const updated = [newAlertItem, ...existing.filter((a) => a.id !== tempId)];
-    localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
-    }
-  } catch {}
-
-  try {
-    const colRef = collection(db, RED_ALERTS_COLLECTION);
-    const docRef = await addDoc(colRef, {
-      ...alertData,
+    const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    await setDoc(docRef, {
+      ...newAlertItem,
       createdAtServer: serverTimestamp(),
     });
 
     try {
       const existing = getLocalRedAlerts();
-      const updated = existing.map((a) => (a.id === tempId ? { ...a, id: docRef.id } : a));
+      const updated = [newAlertItem, ...existing.filter((a) => a.id !== alertId)];
       localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
       }
     } catch {}
 
-    return docRef.id;
+    return alertId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
-    return tempId;
+    
+    // Fallback local save if offline
+    try {
+      const existing = getLocalRedAlerts();
+      const updated = [newAlertItem, ...existing.filter((a) => a.id !== alertId)];
+      localStorage.setItem('sahaya_red_alerts', JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sahaya_red_alerts_changed'));
+      }
+    } catch {}
+
+    return alertId;
+  }
+}
+
+export async function seedInitialRedAlertsToFirestore(initialAlertsList?: RedAlertItem[]): Promise<void> {
+  try {
+    if (!Array.isArray(initialAlertsList)) return;
+    for (const alert of initialAlertsList) {
+      if (alert && alert.id) {
+        const docRef = doc(db, RED_ALERTS_COLLECTION, alert.id);
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) {
+          await setDoc(docRef, {
+            ...alert,
+            createdAtServer: serverTimestamp(),
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('seedInitialRedAlertsToFirestore error:', err);
   }
 }
 

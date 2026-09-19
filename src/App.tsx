@@ -24,6 +24,7 @@ import {
   updateUserInFirestore,
   seedInitialUsersToFirestore,
   subscribeToRedAlerts,
+  seedInitialRedAlertsToFirestore,
   getUserFromFirestore // <--- අලුතින් එකතු කළ කොටස
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
@@ -231,6 +232,7 @@ export default function App() {
 
   // Sync real-time Firestore Red Alerts with Push Notification & Instant In-App support
   useEffect(() => {
+    seedInitialRedAlertsToFirestore(redAlerts);
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
       const newAlerts = remoteAlerts || [];
       
