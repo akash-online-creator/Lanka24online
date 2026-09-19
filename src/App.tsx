@@ -453,7 +453,7 @@ export default function App() {
     }
 
     try {
-      // 🌟 Local state එක වෙනුවට සෘජුවම Firestore Database එකෙන් User ව සොයා බැලීම
+      // 🌟 Securely verify user credentials directly against Firestore database for maximum privacy and data security
       const foundUser = await getUserFromFirestore(cleanInput, keyInput);
 
       if (!foundUser) {
