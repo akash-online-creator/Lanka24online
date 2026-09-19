@@ -12,8 +12,6 @@ import {
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
-  Volume2, 
-  VolumeX,
   Trash2,
   Loader2
 } from 'lucide-react';
@@ -28,16 +26,6 @@ import {
   cancelRedAlertByReporter,
   addReporterUpdateToRedAlert
 } from '../lib/firebase';
-import { 
-  startEmergencySiren, 
-  stopEmergencySiren, 
-  unlockAudio,
-  getSirenVolume,
-  setSirenVolume,
-  isDeviceSirenMuted,
-  setDeviceSirenMuted,
-  subscribeToLocalSirenChanges
-} from '../utils/sirenAudio';
 
 interface RedAlertDetailModalProps {
   alert: RedAlertItem | null;
@@ -54,9 +42,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   currentUser,
   currentLocation,
 }) => {
-  const [isPlayingSiren, setIsPlayingSiren] = useState(false);
-  const [deviceMuted, setLocalDeviceMuted] = useState<boolean>(() => isDeviceSirenMuted());
-  const [currentVolume, setCurrentVolume] = useState<number>(() => getSirenVolume());
   const [localComments, setLocalComments] = useState<RedAlertComment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [reporterUpdateText, setReporterUpdateText] = useState('');
@@ -75,21 +60,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   const [copiedShare, setCopiedShare] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeToLocalSirenChanges(() => {
-      setLocalDeviceMuted(isDeviceSirenMuted());
-      setCurrentVolume(getSirenVolume());
-    });
-    return () => unsub();
-  }, []);
-
-  // Stop siren on unmount or modal close
-  useEffect(() => {
-    return () => {
-      stopEmergencySiren();
-    };
-  }, []);
-
-  useEffect(() => {
     if (alert) {
       setLocalComments((alert.comments as RedAlertComment[]) || []);
     }
@@ -97,20 +67,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
   if (!isOpen || !alert) return null;
 
-  const handleToggleSiren = () => {
-    unlockAudio();
-    if (isPlayingSiren) {
-      stopEmergencySiren();
-      setIsPlayingSiren(false);
-    } else {
-      startEmergencySiren();
-      setIsPlayingSiren(true);
-    }
-  };
-
   const handleClose = () => {
-    stopEmergencySiren();
-    setIsPlayingSiren(false);
     onClose();
   };
 
@@ -162,7 +119,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     }
   };
 
-  // ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න" (Reporter Update Submit)
+  // ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න"
   const handleSendReporterUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!alert || !reporterUpdateText.trim()) return;
@@ -332,54 +289,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* Sub-Header Siren Controls */}
-        <div className="bg-slate-900 border-b border-slate-800 p-2 sm:p-2.5 px-3 sm:px-4 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-200 shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => {
-                const nextMute = !deviceMuted;
-                setLocalDeviceMuted(nextMute);
-                setDeviceSirenMuted(nextMute);
-                if (nextMute && isPlayingSiren) {
-                  stopEmergencySiren();
-                  setIsPlayingSiren(false);
-                }
-              }}
-              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shadow-sm ${
-                deviceMuted
-                  ? 'bg-rose-900/90 text-rose-200 border-rose-500'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-              }`}
-              title={deviceMuted ? 'මගේ දුරකථනයේ Silent ඉවත් කරන්න' : 'මගේ දුරකථනයේ පමණක් Silent කරන්න'}
-            >
-              {deviceMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-              <span>{deviceMuted ? '🔕 Muted' : '🔊 Sound On'}</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">Volume:</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={currentVolume}
-              disabled={deviceMuted}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                setCurrentVolume(val);
-                setSirenVolume(val);
-              }}
-              className="w-18 sm:w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-40"
-            />
-            <span className="font-mono text-xs font-black text-red-400 w-8 text-right">
-              {Math.round(currentVolume * 100)}%
-            </span>
           </div>
         </div>
 
