@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Language, Theme } from '../types';
 import { translations } from '../data/translations';
-import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { 
   Moon, 
   Sun, 
   Languages, 
-  Heart, 
   KeyRound, 
   Contact2,
   Sparkles
@@ -39,35 +37,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 }) => {
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
-  const [savedLocation, setSavedLocation] = useState<any>(() => {
-    try {
-      const raw = localStorage.getItem('sahaya_current_location');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
   const t = (translations[language] || translations.si) as any;
-
-  // Background Auto-load Location prefetching so it's ready upon login
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            const { latitude, longitude } = pos.coords;
-            const geo = await resolveExactLocation(latitude, longitude);
-            const locOpt = toLocationOption(geo);
-            localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-          } catch (e) {
-            // Ignore prefetch error
-          }
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-      );
-    }
-  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,14 +115,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <p className="text-slate-500 dark:text-[#8ba294] text-[11px] font-medium max-w-xs leading-tight">
           {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}
         </p>
-
-        {/* Verified Location Status Badge */}
-        {savedLocation && (
-          <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            <span className="truncate max-w-[260px]">📍 {savedLocation.nameSi || savedLocation.nameEn}</span>
-          </div>
-        )}
       </div>
 
       {/* Main Login Card */}
