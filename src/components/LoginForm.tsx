@@ -7,13 +7,14 @@ import {
   Languages, 
   KeyRound, 
   Contact2,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 
 interface LoginFormProps {
-  onLogin: (userId: string, key: string) => void;
+  onLogin: (userId: string, key: string) => Promise<void> | void;
   onUserDemoLogin?: () => void;
   onNavigateToRegister: () => void;
   onNavigateToIssues: () => void;
@@ -37,11 +38,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 }) => {
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const t = (translations[language] || translations.si) as any;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(userId.trim(), key.trim());
+    setIsLoading(true);
+    try {
+      await onLogin(userId.trim(), key.trim());
+    } catch (error) {
+      console.error("Login Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleNextLanguage = () => {
@@ -132,10 +141,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               <input
                 type="text"
                 required
+                disabled={isLoading}
                 placeholder="XXXXXXXXXV"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium"
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50"
               />
             </div>
           </div>
@@ -161,10 +171,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               <input
                 type="password"
                 required
+                disabled={isLoading}
                 placeholder="••••••••"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium"
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50"
               />
             </div>
           </div>
@@ -173,9 +184,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           <div className="pt-0.5">
             <button
               type="submit"
-              className="w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#008050] text-white font-bold py-2 px-4 rounded-xl shadow-sm transition-all cursor-pointer text-xs sm:text-sm active:scale-[0.99] flex items-center justify-center"
+              disabled={isLoading}
+              className={`w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#008050] text-white font-bold py-2 px-4 rounded-xl shadow-sm transition-all text-xs sm:text-sm active:scale-[0.99] flex items-center justify-center gap-2 ${isLoading ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
             >
-              <span>{t.loginBtn || 'ඇතුළුවන්න'}</span>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>කරුණාකර රැඳී සිටින්න...</span>
+                </>
+              ) : (
+                <span>{t.loginBtn || 'ඇතුළුවන්න'}</span>
+              )}
             </button>
           </div>
 
@@ -191,8 +210,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           {/* Secondary Register Button */}
           <button
             type="button"
+            disabled={isLoading}
             onClick={onNavigateToRegister}
-            className="w-full bg-white dark:bg-transparent hover:bg-emerald-50/40 dark:hover:bg-[#0d1f14] text-[#00a86b] font-bold py-2 px-4 rounded-xl border border-[#00a86b] transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center"
+            className="w-full bg-white dark:bg-transparent hover:bg-emerald-50/40 dark:hover:bg-[#0d1f14] text-[#00a86b] font-bold py-2 px-4 rounded-xl border border-[#00a86b] transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center disabled:opacity-50"
           >
             <span>{t.registerBtn || 'රෙජිස්ටර්වීමට'}</span>
           </button>
@@ -203,6 +223,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-[#173222]">
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => {
                 if (onUserDemoLogin) {
                   onUserDemoLogin();
@@ -210,7 +231,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   onLogin('demo_user', 'demo');
                 }
               }}
-              className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/20 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 text-[11px] sm:text-xs font-black transition-all border border-emerald-300/80 dark:border-emerald-700/80 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+              className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/20 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 text-[11px] sm:text-xs font-black transition-all border border-emerald-300/80 dark:border-emerald-700/80 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>
@@ -229,8 +250,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       <div className="mt-1.5 text-center pb-0.5">
         <button
           type="button"
+          disabled={isLoading}
           onClick={onNavigateToIssues}
-          className="text-[#00a86b] hover:text-[#008f5b] font-semibold text-xs hover:underline cursor-pointer transition-colors"
+          className="text-[#00a86b] hover:text-[#008f5b] font-semibold text-xs hover:underline cursor-pointer transition-colors disabled:opacity-50"
         >
           <span>{t.issuesHelpBtn || 'ගැටලු සඳහා'}</span>
         </button>
