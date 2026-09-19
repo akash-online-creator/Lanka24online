@@ -34,7 +34,9 @@ const firebaseConfig = {
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// 👇 මෙහිදී නිවැරදි Database ID එක ලබා දී ඇත
+export const db = getFirestore(app, 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f');
 export const auth = getAuth(app); // Auth export කිරීම
 
 export enum OperationType {
