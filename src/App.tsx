@@ -127,7 +127,7 @@ export default function App() {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [serverTime, setServerTime] = useState('');
 
-  // ✨ පරිශීලකයන්ට සජීවීව පෙනෙන Popup Toast Notification State
+  // ✨ පරිශීලකයන්ට හැම ඩයලොග් එකකටම උඩින් සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) - z-[9999] ලෙස සකස් කර ඇත
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Sync real-time Firestore help posts
@@ -211,19 +211,16 @@ export default function App() {
       const newAlerts = remoteAlerts || [];
       
       if (isInitialAlertsLoadRef.current) {
-        // Populate initial known IDs without triggering notifications
         newAlerts.forEach((a) => {
           if (a && a.id) knownAlertIdsRef.current.add(a.id);
         });
         isInitialAlertsLoadRef.current = false;
       } else {
-        // Check for newly added active alerts
         const brandNewAlerts = newAlerts.filter((a) => a && a.id && !knownAlertIdsRef.current.has(a.id) && a.status === 'active');
         
         brandNewAlerts.forEach((latestAlert) => {
           knownAlertIdsRef.current.add(latestAlert.id);
 
-          // 1. Trigger browser push notification if supported & granted
           if (typeof window !== 'undefined' && 'Notification' in window) {
             if (Notification.permission === 'granted') {
               try {
@@ -246,7 +243,6 @@ export default function App() {
             }
           }
 
-          // 2. Trigger instant in-app popup modal detail
           setSelectedDetailAlert(latestAlert);
         });
 
@@ -255,21 +251,18 @@ export default function App() {
           previousRedAlertsRef.current.forEach((prevAlert) => {
             const updatedAlert = newAlerts.find((a) => a.id === prevAlert.id);
 
-            // 🅰️ වාර්තාකරු "ආපදාව විසඳුනා" ක්ලික් කළ විට:
             if (prevAlert.status === 'active' && updatedAlert?.status === 'resolved') {
-              const msg = updatedAlert.statusChangeMessage || "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.";
+              const msg = updatedAlert.statusChangeMessage || "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුණු බව සටහන් කළේය.";
               setToastMessage(msg);
               setTimeout(() => setToastMessage(null), 6000);
             }
 
-            // 🅱️ වාර්තාකරු "අනතුර ඉවත් කරන්න" ක්ලික් කළ විට:
             else if (prevAlert.status === 'active' && updatedAlert?.status === 'cancelled') {
               const msg = updatedAlert.statusChangeMessage || "ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.";
               setToastMessage(msg);
               setTimeout(() => setToastMessage(null), 6000);
             }
 
-            // Ⓒ වාර්තාකරු "අලුත් Update/කමෙන්ට් එකක්" යැවූ විට:
             else if (
               updatedAlert &&
               updatedAlert.status === 'active' &&
@@ -848,9 +841,9 @@ export default function App() {
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* 🔔 පරිශීලකයන්ට සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) */}
+      {/* ✨ පරිශීලකයන්ට හැම ඩයලොග් එකකටම උඩින් සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) - z-[9999] මඟින් ඉහළටම ගෙන ඇත */}
       {toastMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
           <p className="text-xs sm:text-sm font-bold leading-relaxed">{toastMessage}</p>
           <button
             type="button"
