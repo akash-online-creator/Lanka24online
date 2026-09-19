@@ -294,28 +294,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 {deviceMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
                 <span>{deviceMuted ? '🔕 Muted' : '🔊 Sound On'}</span>
               </button>
-
-              <button
-                type="button"
-                onClick={handleToggleSiren}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-                  isPlayingSiren
-                    ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border border-amber-600 animate-pulse'
-                    : 'bg-red-600 hover:bg-red-700 text-white border border-red-500'
-                }`}
-              >
-                {isPlayingSiren ? (
-                  <>
-                    <Volume2 className="w-3.5 h-3.5 text-red-700 animate-bounce" />
-                    <span>නවත්වන්න (Stop)</span>
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="w-3.5 h-3.5 text-white" />
-                    <span>Siren අසන්න</span>
-                  </>
-                )}
-              </button>
             </div>
 
             <div className="flex items-center gap-2 ml-auto">
@@ -391,45 +369,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
           ) : (
             /* 2. දැන්වීම නරඹන අනෙකුත් පරිශීලකයින්ට පෙනෙන කොටස */
             <>
-              {/* Interactive Siren Alarm Audio Card */}
-              <div className="p-3 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center text-lg font-black shrink-0">
-                    🚨
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                      කි.මී. 2 අවට සක්‍රීය වන Siren නාදය (Emergency Siren Alarm)
-                    </h4>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                      මෙම ආපදාව ආසන්නයේ සිටින අයට නාද වන හදිසි අනතුරු ඇඟවීමේ Siren ශබ්දය
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleToggleSiren}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 ${
-                    isPlayingSiren
-                      ? 'bg-red-600 text-white animate-pulse border-2 border-red-400'
-                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-2 border-amber-600'
-                  }`}
-                >
-                  {isPlayingSiren ? (
-                    <>
-                      <Volume2 className="w-4 h-4 text-white animate-bounce" />
-                      <span>Siren නවත්වන්න (Stop)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="w-4 h-4 text-slate-950" />
-                      <span>Siren නාදය වාදනය කරන්න (Play)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
               {/* Main Incident Card */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -464,22 +403,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                     </p>
                   </div>
                 )}
-
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <UserIcon className="w-3.5 h-3.5" />
-                    <span>දැනුම්දුන්නේ: <strong className="text-slate-700 dark:text-slate-300">{alert.reportedByName}</strong></span>
-                  </div>
-                  {alert.reportedByPhone && (
-                    <a
-                      href={`tel:${alert.reportedByPhone}`}
-                      className="flex items-center gap-1 text-red-600 dark:text-red-400 font-bold hover:underline"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>{alert.reportedByPhone}</span>
-                    </a>
-                  )}
-                </div>
               </div>
 
               {/* Admin controls for non-authors */}
