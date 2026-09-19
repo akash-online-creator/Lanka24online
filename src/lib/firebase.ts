@@ -751,39 +751,55 @@ export async function toggleSavePostInFirestore(
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
-export async function getUserFromFirestore(userId: string, ...rest: any[]): Promise<any | null> {
+export async function getUserFromFirestore(userIdOrInput: string, passwordInput?: string, ...rest: any[]): Promise<any | null> {
   try {
-    if (!userId) return null;
-    const docRef = doc(db, 'users', userId);
-    const snap = await getDoc(docRef);
+    if (!userIdOrInput) return null;
+    const cleanInput = userIdOrInput.trim().toLowerCase();
 
+    // 1. Try direct doc ref by userId/NIC or id
+    const docRef = doc(db, 'users', userIdOrInput);
+    const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data() };
+      const userData = { id: snap.id, ...snap.data() };
+      if (!passwordInput || (userData as any).key === passwordInput || (userData as any).password === passwordInput || (userData as any).securityCode === passwordInput || !(userData as any).key) {
+        return userData;
+      }
     }
+
+    // 2. Query collection by userId, nicNumber, or email
+    const colRef = collection(db, 'users');
+    const qSnap = await getDocs(colRef);
+    for (const docSnap of qSnap.docs) {
+      const uData = { id: docSnap.id, ...docSnap.data() } as any;
+      const uId = (uData.userId || '').toString().trim().toLowerCase();
+      const uNic = (uData.nicNumber || '').toString().trim().toLowerCase();
+      const uEmail = (uData.email || '').toString().trim().toLowerCase();
+      const uDocId = docSnap.id.toLowerCase();
+
+      if (uId === cleanInput || uNic === cleanInput || uEmail === cleanInput || uDocId === cleanInput) {
+        if (!passwordInput || uData.key === passwordInput || uData.password === passwordInput || uData.securityCode === passwordInput || !uData.key) {
+          return uData;
+        }
+      }
+    }
+
     return null;
   } catch (error) {
-    handleFirestoreError(error, OperationType.READ, `users/${userId}`);
+    console.warn('getUserFromFirestore error:', error);
     return null;
   }
 }
 
 export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any, ...rest: any[]): Promise<void> {
   try {
-    let userId = '';
-    let data = {};
-    if (typeof userIdOrUser === 'string') {
-      userId = userIdOrUser;
-      data = userData || {};
-    } else if (userIdOrUser && userIdOrUser.id) {
-      userId = userIdOrUser.id;
-      data = userIdOrUser;
-    }
-    if (!userId) return;
-    const docRef = doc(db, 'users', userId);
+    let userObj = typeof userIdOrUser === 'object' ? userIdOrUser : { ...(userData || {}), id: userIdOrUser };
+    const docId = userObj.userId || userObj.nicNumber || userObj.id || `usr_${Date.now()}`;
+    const docRef = doc(db, 'users', docId);
     await setDoc(
       docRef,
       {
-        ...data,
+        ...userObj,
+        id: docId,
         updatedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
       },
@@ -796,7 +812,7 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
 
 export async function updateUserInFirestore(userIdOrData: any, updateData?: any, ...rest: any[]): Promise<void> {
   try {
-    let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
+    let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
     let data = updateData || userIdOrData;
     if (!userId) return;
     const docRef = doc(db, 'users', userId);
@@ -813,12 +829,14 @@ export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<vo
   try {
     if (!Array.isArray(usersList)) return;
     for (const u of usersList) {
-      if (u && u.id) {
-        const docRef = doc(db, 'users', u.id);
+      const docId = u.userId || u.nicNumber || u.id;
+      if (docId) {
+        const docRef = doc(db, 'users', docId);
         const snap = await getDoc(docRef);
         if (!snap.exists()) {
           await setDoc(docRef, {
             ...u,
+            id: docId,
             createdAtServer: serverTimestamp(),
           });
         }
