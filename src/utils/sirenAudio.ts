@@ -88,15 +88,43 @@ export function initSirenSettings(): () => void {
   return () => {};
 }
 
-export async function persistSirenSettings(): Promise<void> {}
+export async function persistSirenSettings(audioUrl?: string | null, fileName?: string, ...rest: any[]): Promise<void> {
+  try {
+    if (typeof window !== 'undefined') {
+      if (audioUrl !== undefined) {
+        if (audioUrl) {
+          localStorage.setItem('sahaya_custom_siren_url', audioUrl);
+        } else {
+          localStorage.removeItem('sahaya_custom_siren_url');
+        }
+      }
+      if (fileName) {
+        localStorage.setItem('sahaya_custom_siren_name', fileName);
+      }
+      window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed'));
+    }
+  } catch {}
+}
 
-export function setCustomSirenAudio(): void {}
+export function setCustomSirenAudio(audioUrl?: string, ...rest: any[]): void {
+  if (audioUrl) {
+    persistSirenSettings(audioUrl);
+  }
+}
 
 export function getCustomSirenAudio(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('sahaya_custom_siren_url');
+    if (custom) return custom;
+  }
   return typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
 }
 
 export function getSirenFileName(): string {
+  if (typeof window !== 'undefined') {
+    const name = localStorage.getItem('sahaya_custom_siren_name');
+    if (name) return name;
+  }
   return 'Fire Alert Siren (WAV)';
 }
 

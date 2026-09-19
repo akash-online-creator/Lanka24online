@@ -25,12 +25,12 @@ import {
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
 // ==============================================================
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBtTtuWnl4-orEHh9JkPHtkE5_z794EhpQ",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0262698872.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0262698872",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0262698872.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "503381962483",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:503381962483:web:4bda294cd68823f579d186",
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -72,8 +72,8 @@ export interface RedAlertItem {
   reportedByUserId?: string;
   reportedByName?: string;
   reportedByPhone?: string;
-  status?: 'active' | 'resolved' | 'cancelled';
-  severity?: 'critical' | 'high' | 'medium' | 'low';
+  status?: 'active' | 'resolved' | 'cancelled' | 'false_alarm';
+  severity?: 'critical' | 'high' | 'medium' | 'low' | 'moderate';
   comments?: any[];
   fakeReports?: any[];
   isFlaggedFake?: boolean;
@@ -257,7 +257,7 @@ export async function createRedAlertInFirestore(
 
 export async function updateRedAlertStatus(
   alertId: string,
-  status: 'active' | 'resolved' | 'cancelled',
+  status: 'active' | 'resolved' | 'cancelled' | 'false_alarm',
   note?: string
 ): Promise<void> {
   try {
@@ -301,13 +301,19 @@ export async function deleteRedAlertInFirestore(alertId: string): Promise<void> 
 
 export async function addCommentToRedAlert(
   alertId: string,
-  comment: { authorName: string; text: string; createdAt?: string }
+  comment: { authorName?: string; userName?: string; text?: string; comment?: string; createdAt?: string; [key: string]: any }
 ): Promise<void> {
   try {
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
+    const resolvedName = comment.authorName || comment.userName || 'භාවිතා කරන්නා';
+    const resolvedText = comment.text || comment.comment || '';
     await updateDoc(docRef, {
       comments: arrayUnion({
         ...comment,
+        authorName: resolvedName,
+        userName: resolvedName,
+        text: resolvedText,
+        comment: resolvedText,
         createdAt: comment.createdAt || new Date().toISOString(),
       }),
     });
@@ -435,38 +441,47 @@ export async function fetchSirenSettingsFromFirestore(): Promise<{
 // 📦 BACKUP & USER PROFILE FIRESTORE OPERATIONS
 // ==============================================================
 
-export async function fetchAllPostsBackupData(): Promise<any[]> {
+export async function fetchAllPostsBackupData(currentPosts?: any[]): Promise<{ items: any[]; totalPostsCount: number }> {
   try {
     const colRef = collection(db, 'posts');
     const snap = await getDocs(colRef);
-    return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    const remotePosts = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    const items = remotePosts.length > 0 ? remotePosts : (currentPosts || []);
+    return { items, totalPostsCount: items.length };
   } catch (err) {
     console.warn('fetchAllPostsBackupData error:', err);
-    return [];
+    const items = currentPosts || [];
+    return { items, totalPostsCount: items.length };
   }
 }
 
-export async function restorePostsBackupData(postsData: any[]): Promise<void> {
+export async function restorePostsBackupData(postsData: any): Promise<{ restoredPostsList: any[]; restoredPostsCount: number; restoredMessagesCount: number }> {
   try {
-    if (!Array.isArray(postsData)) return;
-    for (const item of postsData) {
+    const list = Array.isArray(postsData) ? postsData : (postsData?.items || postsData?.posts || []);
+    let restoredCount = 0;
+    for (const item of list) {
       if (item && item.id) {
         const docRef = doc(db, 'posts', item.id);
         const { id, ...dataToSave } = item;
         await setDoc(docRef, dataToSave, { merge: true });
+        restoredCount++;
       }
     }
+    return { restoredPostsList: list, restoredPostsCount: restoredCount, restoredMessagesCount: 0 };
   } catch (err) {
     console.warn('restorePostsBackupData error:', err);
+    return { restoredPostsList: [], restoredPostsCount: 0, restoredMessagesCount: 0 };
   }
 }
 
-export async function syncUserProfileToFirestore(userId: string, profileData: any): Promise<void> {
+export async function syncUserProfileToFirestore(userIdOrData: any, profileData?: any, ...rest: any[]): Promise<void> {
   try {
+    let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
+    let data = profileData || userIdOrData;
     if (!userId) return;
     const docRef = doc(db, 'users', userId);
     await setDoc(docRef, {
-      ...profileData,
+      ...data,
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
     }, { merge: true });
@@ -526,7 +541,8 @@ export async function addHelpPostToFirestore(
 
 export async function addReplyToFirestore(
   postId: string,
-  replyData: Record<string, any>
+  replyData: Record<string, any>,
+  ...rest: any[]
 ): Promise<void> {
   try {
     const repliesColRef = collection(db, 'posts', postId, 'replies');
@@ -560,10 +576,12 @@ export async function updateHelpPostInFirestore(
 export async function sendChatMessageToFirestore(
   postId: string,
   messageData: {
-    senderId: string;
+    senderId?: string;
     senderName: string;
+    senderRole?: string;
     text: string;
     createdAt?: string;
+    [key: string]: any;
   }
 ): Promise<void> {
   try {
@@ -733,7 +751,7 @@ export async function toggleSavePostInFirestore(
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
-export async function getUserFromFirestore(userId: string): Promise<any | null> {
+export async function getUserFromFirestore(userId: string, ...rest: any[]): Promise<any | null> {
   try {
     if (!userId) return null;
     const docRef = doc(db, 'users', userId);
@@ -749,14 +767,23 @@ export async function getUserFromFirestore(userId: string): Promise<any | null> 
   }
 }
 
-export async function saveUserToFirestore(userId: string, userData: any): Promise<void> {
+export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any, ...rest: any[]): Promise<void> {
   try {
+    let userId = '';
+    let data = {};
+    if (typeof userIdOrUser === 'string') {
+      userId = userIdOrUser;
+      data = userData || {};
+    } else if (userIdOrUser && userIdOrUser.id) {
+      userId = userIdOrUser.id;
+      data = userIdOrUser;
+    }
     if (!userId) return;
     const docRef = doc(db, 'users', userId);
     await setDoc(
       docRef,
       {
-        ...userData,
+        ...data,
         updatedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
       },
@@ -767,12 +794,14 @@ export async function saveUserToFirestore(userId: string, userData: any): Promis
   }
 }
 
-export async function updateUserInFirestore(userId: string, updateData: any): Promise<void> {
+export async function updateUserInFirestore(userIdOrData: any, updateData?: any, ...rest: any[]): Promise<void> {
   try {
+    let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
+    let data = updateData || userIdOrData;
     if (!userId) return;
     const docRef = doc(db, 'users', userId);
     await updateDoc(docRef, {
-      ...updateData,
+      ...data,
       updatedAtServer: serverTimestamp(),
     });
   } catch (err) {
@@ -780,9 +809,21 @@ export async function updateUserInFirestore(userId: string, updateData: any): Pr
   }
 }
 
-export async function seedInitialUsersToFirestore(): Promise<void> {
+export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<void> {
   try {
-    console.log('Initial users seed executed successfully.');
+    if (!Array.isArray(usersList)) return;
+    for (const u of usersList) {
+      if (u && u.id) {
+        const docRef = doc(db, 'users', u.id);
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) {
+          await setDoc(docRef, {
+            ...u,
+            createdAtServer: serverTimestamp(),
+          });
+        }
+      }
+    }
   } catch (err) {
     console.warn('seedInitialUsersToFirestore error:', err);
   }
