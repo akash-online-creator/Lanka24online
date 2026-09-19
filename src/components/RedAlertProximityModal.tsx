@@ -24,7 +24,6 @@ import {
   stopEmergencySiren, 
   unlockAudio, 
   isEmergencySirenPlaying,
-  setCustomSirenAudio,
   getSirenVolume,
   setSirenVolume,
   isDeviceSirenMuted,
@@ -61,6 +60,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     });
     return () => unsub();
   }, []);
+
   const [showCommentSection, setShowCommentSection] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [commenterName, setCommenterName] = useState(currentUser?.name || '');
@@ -206,9 +206,11 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   ));
 
   const config = getDisasterConfig(alert.disasterType);
+  
+  // උඩ බැනරයට සහ පහළ කාඩ්පතට එකම දුර ප්‍රමාණ සංදර්ශනය (Distance consistency)
   const distanceDisplay = distanceKm < 1 
     ? `මීටර් ${Math.round(distanceKm * 1000)}` 
-    : `කි.මී. ${distanceKm.toFixed(2)}`;
+    : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
     <div 
@@ -219,7 +221,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         
         {/* Animated Emergency Beacon Banner */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white flex items-center justify-between shadow-lg relative overflow-hidden shrink-0">
-          {/* Beacon light sweep effect */}
           <div className="absolute inset-0 bg-white/15 translate-x-[-100%] animate-[shimmer_2s_infinite]" />
 
           <div className="flex items-center gap-2.5 relative z-10 min-w-0">
@@ -262,7 +263,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         {/* Responsive Siren Audio & Mute Controls Bar */}
         <div className="bg-slate-900 border-b border-slate-800 p-2 sm:p-2.5 px-3 sm:px-4 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-200 shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Quick Silent on this device Button */}
             <button
               type="button"
               onClick={(e) => {
@@ -280,13 +280,11 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                   ? 'bg-rose-900/90 text-rose-200 border-rose-500'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
               }`}
-              title={deviceMuted ? 'මගේ දුරකථනයේ Silent ඉවත් කරන්න' : 'මගේ දුරකථනයේ පමණක් Silent කරන්න'}
             >
               {deviceMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
               <span>{deviceMuted ? '🔕 Muted' : '🔊 Sound On'}</span>
             </button>
 
-            {/* Siren Play/Stop Button */}
             <button
               type="button"
               onClick={handleToggleSiren}
@@ -310,7 +308,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </button>
           </div>
 
-          {/* Volume Slider */}
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">Volume:</span>
             <input
@@ -333,7 +330,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
         </div>
 
-        {/* Autoplay Unlock Interactive Bar if Siren is not playing yet */}
         {!isPlayingSiren && !deviceMuted && (
           <div 
             onClick={handleToggleSiren}
@@ -352,41 +348,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
         {/* Modal Main Content */}
         <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
-          {/* Custom User Audio Uploader Box */}
-          <div className="p-3.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">🎵</span>
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-200">ඔබේම Siren ශබ්ද ගොනුවක් (MP3/WAV) ගබඩා කර භාවිතා කරන්න</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">ඔබ උඩුගත කරන ශබ්දය බ්‍රවුසරයේ සුරැකී ඉදිරියට නාදය ලෙස වාදනය වේ.</p>
-              </div>
-            </div>
-            <label className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl cursor-pointer transition-all shadow-sm text-xs flex items-center gap-1.5 whitespace-nowrap">
-              <span>📁 Audio File තෝරන්න</span>
-              <input 
-                type="file" 
-                accept="audio/*" 
-                className="hidden" 
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (uploadEvent) => {
-                      const dataUri = uploadEvent.target?.result as string;
-                      if (dataUri) {
-                        setCustomSirenAudio(dataUri);
-                        alert('ඔබේ Siren ශබ්ද ගොනුව සාර්ථකව ගබඩා කරන ලදී! දැන් Siren නාදය වාදනය වේ.');
-                        startEmergencySiren();
-                        setIsPlayingSiren(true);
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-              />
-            </label>
-          </div>
-
           {/* Proximity Warning Alert Callout */}
           <div className="p-3.5 rounded-2xl bg-red-500/15 border-2 border-red-500/40 flex items-start gap-3">
             <span className="text-2xl mt-0.5">⚠️</span>
@@ -421,7 +382,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               </div>
             </div>
 
-            {/* Location & Time Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -441,7 +401,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               </div>
             </div>
 
-            {/* Description if available */}
             {alert.description && (
               <div className="p-3 rounded-xl bg-white dark:bg-black/30 border border-slate-200/80 dark:border-white/10 text-xs">
                 <span className="font-bold text-slate-500 dark:text-slate-400 block mb-1">වැඩි විස්තර:</span>
@@ -451,7 +410,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               </div>
             )}
 
-            {/* Reporter details */}
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
               <div className="flex items-center gap-1.5">
                 <UserIcon className="w-3.5 h-3.5" />
@@ -469,7 +427,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
           </div>
 
-          {/* Action Bar: Comments & Fake Report */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <button
               type="button"
@@ -490,7 +447,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </button>
           </div>
 
-          {/* Comments Feed Section */}
           {showCommentSection && (
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-white/10 space-y-3 animate-fadeIn">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -498,7 +454,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 <span>ප්‍රදේශවාසීන්ගේ යාවත්කාලීන කිරීම් (Live Updates)</span>
               </h4>
 
-              {/* Comments List */}
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {localComments.length === 0 ? (
                   <p className="text-xs text-slate-400 italic py-2 text-center">
@@ -520,7 +475,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 )}
               </div>
 
-              {/* Add Comment Input: Only for other users, not the creator */}
               {isAuthorOfAlert ? (
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 space-y-1">
                   <div className="font-bold flex items-center gap-1.5">
@@ -536,7 +490,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                     type="text"
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="වත්මන් තත්ත්වය ගැන සටහන් කරන්න (උදා: ගිනි නිවන රථ පැමිණියා)..."
+                    placeholder="වත්මන් තත්ත්වය ගැන සටහන් කරන්න..."
                     className="flex-1 p-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500"
                     required
                   />
@@ -553,7 +507,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
           )}
 
-          {/* Fake Report Sub-Modal */}
           {showFakeReportModal && (
             <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between">
@@ -619,7 +572,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
           )}
 
-          {/* Dismiss & Mute Bottom Action */}
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-white/10">
             <button
               type="button"
