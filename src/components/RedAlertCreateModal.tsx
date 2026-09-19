@@ -10,7 +10,9 @@ import {
   CheckCircle2, 
   FileText,
   User as UserIcon,
-  Phone
+  Phone,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
@@ -57,6 +59,11 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // 🔒 Security Password Popup State
+  const [showPasswordPopup, setShowPasswordPopup] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
   // Auto scan GPS when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -65,6 +72,9 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       setIncidentTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }));
       setSubmitSuccess(false);
       setIsSubmitting(false);
+      setShowPasswordPopup(false);
+      setEnteredPassword('');
+      setPasswordError(null);
     }
   }, [isOpen]);
 
@@ -89,7 +99,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         setAccuracyMeters(acc);
 
         try {
-          // Resolve Sinhala locality name
           const resolved = await resolveExactLocation(lat, lng);
           if (resolved) {
             setLocationName(resolved.shortDisplaySi || resolved.townSi || resolved.villageSi || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
@@ -115,7 +124,8 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     );
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 1. Submit කිරීමට යාමේදී මුලින්ම මුරපද Popup එක පෙන්වීම
+  const handleOpenPasswordGate = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!locationName.trim()) {
@@ -128,6 +138,23 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       return;
     }
 
+    setPasswordError(null);
+    setEnteredPassword('');
+    setShowPasswordPopup(true);
+  };
+
+  // 2. Password එක තහවුරු කර සැබෑ ලෙසම Firestore වෙත Submit කිරීම
+  const handleFinalConfirmSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const correctPassword = currentUser?.key || currentUser?.securityCode || currentUser?.password;
+
+    if (correctPassword && enteredPassword.trim() !== correctPassword) {
+      setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
+      return;
+    }
+
+    setShowPasswordPopup(false);
     setIsSubmitting(true);
 
     try {
@@ -138,7 +165,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       const alertCode = `#RED-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // Firestore එකට undefined අගයන් නොයවන ලෙස සකස් කළ newAlertData object එක
       const newAlertData: Omit<RedAlertItem, 'id'> = {
         alertCode,
         disasterType: selectedDisaster,
@@ -162,7 +188,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         fakeReports: [],
         isFlaggedFake: false,
 
-        // undefined නොවන විට පමණක් පහත ෆීල්ඩ්ස් එකතු වේ
         ...(selectedDisaster === 'other' && customTitle.trim() ? { customDisasterTitle: customTitle.trim() } : {}),
         ...(accuracyMeters !== undefined ? { locationAccuracyMeters: accuracyMeters } : {}),
       };
@@ -179,7 +204,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         onAlertCreated(createdItem);
       }
 
-      // Auto close after 2.5 seconds
       setTimeout(() => {
         onClose();
       }, 2500);
@@ -214,7 +238,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 </span>
               </h2>
               <p className="text-[11px] sm:text-xs text-red-100 font-medium truncate">
-                ස්ථානයේ සිට කි.මී. 2 ක් ඇතුළත සියලු දෙනාට Siren ශබ්දය සමග ෂණිකව අනතුරු අඟවයි
+                ස්ථානයේ සිට කි.මී. 2 ක් ඇතුළත සියලු දෙනාට Siren ශබ්දය සමග ක්ෂණිකව අනතුරු අඟවයි
               </p>
             </div>
           </div>
@@ -248,7 +272,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
+          <form onSubmit={handleOpenPasswordGate} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             
             {/* Step 1: Select Disaster Type */}
             <div className="space-y-2">
@@ -286,7 +310,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 })}
               </div>
 
-              {/* If "other" chosen, custom input */}
               {selectedDisaster === 'other' && (
                 <div className="pt-2 animate-fadeIn">
                   <input
@@ -399,7 +422,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="සිදුවීම පිළිබඳ වැඩි විස්තර මෙහි ලියන්න (උදා: ප්‍රධාන පාර අවහිර වී ඇත, නිවාස කිහිපයකට හානි සිදුවිය, ක්ෂණික ගලවාගැනීම් අවශ්‍යයි)..."
+                placeholder="සිදුවීම පිළිබඳ වැඩි විස්තර මෙහි ලියන්න..."
                 className="w-full p-3 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/30 text-slate-900 dark:text-white text-xs leading-relaxed focus:ring-2 focus:ring-red-500"
               />
             </div>
@@ -463,6 +486,85 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         )}
 
       </div>
+
+      {/* =========================================================================
+         🔒 SECURITY & PASSWORD GATE POPUP MODAL (මුරපදය ඉල්ලන Popup එක)
+         ========================================================================= */}
+      {showPasswordPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-md bg-white dark:bg-[#0f1d18] border-2 border-red-500 rounded-3xl shadow-[0_0_60px_rgba(239,68,68,0.6)] p-5 sm:p-6 space-y-4 my-auto">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-6 h-6 text-red-600 animate-pulse" />
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  ආරක්ෂිත තහවුරු කිරීම (Security Check)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPasswordPopup(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* ඔබ විසින් ලබාදුන් නිශ්චිත අවවාද පාඨය */}
+            <div className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200 bg-red-500/10 border border-red-500/30 p-3.5 rounded-2xl">
+              <p className="font-black text-emerald-600 dark:text-emerald-400 text-center text-xs">
+                මෙය සියලු සත්වයන්ගේ ජිවිතය රෑකිමට ඔබට ලැබෙන වටිනා අවස්ථාවකි.
+              </p>
+              <p className="font-bold text-slate-800 dark:text-slate-100 pt-1">
+                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ලමුන් හා අසත්‍ය අපදා පලකිරිම් වැළැක්වීමට මුරපදයක් පහතින් යොදා ඇත. ඔබගේ මුරපදය ඇතුලත් කර ආපදාව දැනුම් දෙන්න. යම් හෙයකින් අසත්‍ය දැනුම් දීම් සිදුකලහොත් ඔබගේ ගිණුම සදහටම ඔබට අහිමි වී යා හැකි බව කරුණාවෙන් දැනුම් දෙමි.
+              </p>
+            </div>
+
+            {/* Password Input Form */}
+            <form onSubmit={handleFinalConfirmSubmit} className="space-y-3 pt-1">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-red-500" />
+                  <span>ඔබගේ ගිණුමේ මුරපදය (Password) ඇතුළත් කරන්න:</span>
+                </label>
+                <input
+                  type="password"
+                  value={enteredPassword}
+                  onChange={(e) => setEnteredPassword(e.target.value)}
+                  placeholder="Password ඇතුළත් කරන්න..."
+                  className="w-full p-3 rounded-xl border-2 border-red-400 dark:border-red-600 bg-white dark:bg-black/50 text-slate-900 dark:text-white font-bold text-sm focus:ring-2 focus:ring-red-500"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              {passwordError && (
+                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 p-2 rounded-lg">
+                  {passwordError}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordPopup(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer transition-all"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1"
+                >
+                  <span>🚨 තහවුරු කර යවන්න</span>
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
