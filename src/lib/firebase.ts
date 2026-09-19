@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth'; // Auth import කිරීම
 import {
   getFirestore,
   doc,
@@ -34,6 +35,7 @@ const firebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app); // Auth export කිරීම
 
 export enum OperationType {
   CREATE = 'CREATE',
