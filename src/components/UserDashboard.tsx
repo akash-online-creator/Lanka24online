@@ -185,9 +185,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           } catch (err) {
             console.warn('Auto location resolution error:', err);
-          } font {
+          } finally {
             if (isMounted) setIsAutoLoadingLocation(false);
           }
+
         },
         (error) => {
           if (isMounted) setIsAutoLoadingLocation(false);
