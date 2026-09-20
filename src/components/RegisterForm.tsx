@@ -5,6 +5,8 @@ import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { RegistrationSuccessModal } from './RegistrationSuccessModal';
 import { compressImageFile } from '../utils/imageCompressor';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
 import { 
   UserPlus, 
   Upload, 
@@ -21,7 +23,9 @@ import {
   Sparkles,
   X,
   Navigation,
-  Globe
+  Globe,
+  Lock,
+  Loader2
 } from 'lucide-react';
 
 interface RegisterFormProps {
@@ -53,8 +57,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [nicNumber, setNicNumber] = useState('');
   const [nearestTown, setNearestTown] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [password, setPassword] = useState('');
 
-  // Real-time GPS Location & IP Address Tracking State (Item 01)
+  // UI Status State
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Real-time GPS Location & IP Address Tracking State
   const [trackedLat, setTrackedLat] = useState<number | null>(null);
   const [trackedLng, setTrackedLng] = useState<number | null>(null);
   const [trackedAccuracy, setTrackedAccuracy] = useState<number | null>(null);
@@ -63,7 +72,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [deviceInfo, setDeviceInfo] = useState<string>('');
   const [locationStatus, setLocationStatus] = useState<'detecting' | 'detected' | 'fallback' | 'denied'>('detecting');
 
-  // Photos State - default empty (3 default placeholder photos removed as requested)
+  // Photos State
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
   const [nicBackPhoto, setNicBackPhoto] = useState<string>('');
   const [facePhoto, setFacePhoto] = useState<string>('');
@@ -96,7 +105,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           }
         }
       } catch (err) {
-        // Continue to fallback
+        // Fallback
       }
       try {
         const res2 = await fetch('https://api.db-ip.com/v2/free/myip');
@@ -110,7 +119,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       } catch (err) {
         // Fallback
       }
-      // Dynamic fallback client IP representation if restricted
       setIpAddress(`112.134.${Math.floor(10 + Math.random() * 80)}.${Math.floor(10 + Math.random() * 200)}`);
     };
     getIp();
@@ -128,7 +136,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           setTrackedAccuracy(Math.round(accuracy));
           setLocationStatus('detected');
 
-          // Attempt reverse geocoding for human-readable location tag
           try {
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
             if (geoRes.ok) {
@@ -147,7 +154,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         (error) => {
           console.warn('GPS location tracking error:', error.message);
           setLocationStatus(error.code === error.PERMISSION_DENIED ? 'denied' : 'fallback');
-          // Standard Sri Lanka fallback GPS anchor
           setTrackedLat(6.9271);
           setTrackedLng(79.8612);
           setTrackedLocationName('Colombo / Gampaha GPS Grid');
@@ -197,59 +203,75 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setLoading(true);
 
-    const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
-    // Rule 02: Generate User ID using only digits from NIC number (excluding English letters like V/X)
-    const nicDigits = nicNumber.replace(/[^0-9]/g, '');
-    const generatedUserId = nicDigits || Math.floor(100000000 + Math.random() * 900000000).toString();
-    // Generate random 6-digit security code / passcode for admin verification and initial login
-    const random6DigitCode = Math.floor(100000 + Math.random() * 900000).toString();
+    try {
+      const cleanNic = nicNumber.trim().toLowerCase();
+      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@sahayaseva.com)
+      const userAuthEmail = `${cleanNic}@sahayaseva.com`;
 
-    const currentLat = trackedLat ?? 6.9271;
-    const currentLng = trackedLng ?? 79.8612;
-    const resolvedLocationName = trackedLocationName || `${nearestTown || 'Sri Lanka'} (GPS: ${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
+      // 1. Firebase Auth හි ගිණුම සෑදීම (createUserWithEmailAndPassword)
+      await createUserWithEmailAndPassword(auth, userAuthEmail, password);
 
-    const userPayload: Omit<User, 'id' | 'registeredAt'> = {
-      userId: generatedUserId,
-      userNumericId: generatedUserId,
-      credits: 0, // Gets credited with Rs. 100 welcome bonus once approved by Admin
-      name: fullFullName || firstName || 'පරිශීලක',
-      surname,
-      firstName,
-      lastName,
-      email: `${generatedUserId.toLowerCase()}@sahaya.lk`,
-      nicNumber,
-      phone: whatsappNumber,
-      address,
-      birthDate,
-      nearestTown,
-      whatsappNumber,
-      securityCode: random6DigitCode,
-      tempCode: random6DigitCode,
-      isPasswordChanged: false,
-      role: 'user',
-      status: 'pending', // Requires admin approval
-      photoUrl: facePhoto || '',
-      idCardPhotoUrl: nicFrontPhoto || '',
-      nicFrontPhotoUrl: nicFrontPhoto || '',
-      nicBackPhotoUrl: nicBackPhoto || '',
-      facePhotoUrl: facePhoto || '',
-      key: random6DigitCode,
-      // Accurately tracked GPS location and IP address for admin verification
-      ipAddress: ipAddress || '112.134.120.45',
-      registrationLat: currentLat,
-      registrationLng: currentLng,
-      registrationLocationName: resolvedLocationName,
-      registrationAccuracy: trackedAccuracy ?? 12,
-      locationTimestamp: new Date().toISOString(),
-      deviceInfo: deviceInfo || 'Web Browser',
-    };
+      const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
+      const nicDigits = nicNumber.replace(/[^0-9]/g, '');
+      const generatedUserId = nicDigits || Math.floor(100000000 + Math.random() * 900000000).toString();
 
-    setPendingUserData(userPayload);
-    // Open the success notification modal as requested in item 01
-    setShowSuccessModal(true);
+      const currentLat = trackedLat ?? 6.9271;
+      const currentLng = trackedLng ?? 79.8612;
+      const resolvedLocationName = trackedLocationName || `${nearestTown || 'Sri Lanka'} (GPS: ${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
+
+      // 2. ඩේටාබේස් එකේ (Firestore) සේව් වන පරිශීලක දත්ත Payload එක සාදා ගැනීම
+      // මෙහි password / key / securityCode / tempCode සම්පූර්ණයෙන්ම ඉවත් කර ඇත.
+      const userPayload: Omit<User, 'id' | 'registeredAt'> = {
+        userId: generatedUserId,
+        userNumericId: generatedUserId,
+        credits: 0,
+        name: fullFullName || firstName || 'පරිශීලක',
+        surname,
+        firstName,
+        lastName,
+        email: userAuthEmail,
+        nicNumber,
+        phone: whatsappNumber,
+        address,
+        birthDate,
+        nearestTown,
+        whatsappNumber,
+        isPasswordChanged: false,
+        role: 'user',
+        status: 'pending',
+        photoUrl: facePhoto || '',
+        idCardPhotoUrl: nicFrontPhoto || '',
+        nicFrontPhotoUrl: nicFrontPhoto || '',
+        nicBackPhotoUrl: nicBackPhoto || '',
+        facePhotoUrl: facePhoto || '',
+        ipAddress: ipAddress || '112.134.120.45',
+        registrationLat: currentLat,
+        registrationLng: currentLng,
+        registrationLocationName: resolvedLocationName,
+        registrationAccuracy: trackedAccuracy ?? 12,
+        locationTimestamp: new Date().toISOString(),
+        deviceInfo: deviceInfo || 'Web Browser',
+      };
+
+      setPendingUserData(userPayload);
+      setShowSuccessModal(true);
+    } catch (error: any) {
+      console.error('Firebase Auth / Registration Error:', error);
+      if (error.code === 'auth/email-already-in-use') {
+        setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් ஏற்கனவே ගිණුමක් සාදා ඇත.');
+      } else if (error.code === 'auth/weak-password') {
+        setErrorMessage('මුරපදය අවම වශයෙන් අක්ෂර 6 කින් යුක්ත විය යුතුය.');
+      } else {
+        setErrorMessage(error.message || 'ලියාපදිංචි වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleModalConfirm = () => {
@@ -263,7 +285,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   return (
     <div className="w-full max-w-2xl mx-auto py-6 px-2 sm:px-4">
-      {/* 01. Registration Success Notification Modal */}
+      {/* Registration Success Notification Modal */}
       <RegistrationSuccessModal
         isOpen={showSuccessModal}
         onConfirm={handleModalConfirm}
@@ -271,7 +293,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         userName={`${firstName} ${lastName}`.trim()}
       />
 
-      {/* 3D Card Container (Green & White Theme) */}
+      {/* 3D Card Container */}
       <div className="bg-white border-2 border-emerald-500 rounded-3xl p-6 sm:p-8 shadow-[0_20px_50px_rgba(16,185,129,0.18)] transition-all relative overflow-hidden">
         
         {/* Top Decorative Green Accent Bar */}
@@ -292,6 +314,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             {subtitle}
           </p>
         </div>
+
+        {/* Error Alert Message */}
+        {errorMessage && (
+          <div className="mb-6 bg-rose-50 border-2 border-rose-300 p-4 rounded-2xl flex items-center gap-3 text-rose-950 text-xs font-bold shadow-sm">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         {/* Dynamic Admin Notice Banner */}
         {noticeBanner && (
@@ -377,11 +407,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 5. උපන් වර්ෂය (දිනයක් තෝරන්න) */}
+              {/* 5. උපන් වර්ෂය */}
               <div className="space-y-1">
                 <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>5. උපන් වර්ෂය * (දිනයක් තෝරන්න)</span>
+                  <span>5. උපන් වර්ෂය *</span>
                 </label>
                 <input
                   type="date"
@@ -417,7 +447,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="උදා: ඔබගේ ගම / ප්‍රදේශය ඇතුළත් කරන්න..."
+                  placeholder="උදා: ඔබගේ ගම / ප්‍රදේශය..."
                   value={nearestTown}
                   onChange={(e) => setNearestTown(e.target.value)}
                   className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
@@ -426,26 +456,45 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             </div>
           </div>
 
-          {/* Section B: WhatsApp / Contact */}
+          {/* Section B: WhatsApp & Security / Auth */}
           <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200 space-y-3">
-            {/* 8. වට්සැප් අංකය */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                <PhoneCall className="w-3.5 h-3.5 text-emerald-700" />
-                <span>8. වට්සැප් අංකය *</span>
-              </label>
-              <input
-                type="tel"
-                required
-                placeholder="0771234567"
-                value={whatsappNumber}
-                onChange={(e) => setWhatsappNumber(e.target.value)}
-                className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 8. වට්සැප් අංකය */}
+              <div className="space-y-1">
+                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
+                  <PhoneCall className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>8. වට්සැප් අංකය *</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="0771234567"
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
+                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
+                />
+              </div>
+
+              {/* 9. මුරපදය (Firebase Auth සදහා) */}
+              <div className="space-y-1">
+                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>9. මුරපදය (Password) *</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="අවම වශයෙන් අක්ෂර 6 ක්..."
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Section C: Photo Uploads (ඡායාරූප උඩුගත කිරීම with 3D Medical Plus Icon) */}
+          {/* Section C: Photo Uploads */}
           <div className="bg-emerald-50/50 p-4 sm:p-5 rounded-2xl border border-emerald-200 space-y-4">
             <div className="border-b border-emerald-200 pb-2.5">
               <h3 className="font-black text-emerald-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
@@ -455,14 +504,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-              {/* 9. ජාතික හැඳුනුම්පත ඉදිරිපස ඡායාරූපය */}
+              {/* 10. ජාතික හැඳුනුම්පත ඉදිරිපස ඡායාරූපය */}
               <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
                 <div>
                   <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    9. ජාතික හැඳුනුම්පත ඉදිරිපස ඡායාරූපය *
+                    10. ජාතික හැඳුනුම්පත ඉදිරිපස *
                   </label>
                   
-                  {/* Photo Display or 3D Medical Plus Icon Badge */}
                   <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
                     {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
                       <div className="relative w-full h-full">
@@ -503,14 +551,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </label>
               </div>
 
-              {/* 10. ජාතික හැඳුනුම්පත පිටුපස ඡායාරූපය */}
+              {/* 11. ජාතික හැඳුනුම්පත පිටුපස ඡායාරූපය */}
               <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
                 <div>
                   <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    10. ජාතික හැඳුනුම්පත පිටුපස ඡායාරූපය *
+                    11. ජාතික හැඳුනුම්පත පිටුපස *
                   </label>
                   
-                  {/* Photo Display or 3D Medical Plus Icon Badge */}
                   <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
                     {nicBackPhoto && nicBackPhoto.trim() !== '' ? (
                       <div className="relative w-full h-full">
@@ -551,14 +598,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </label>
               </div>
 
-              {/* 11. ඔබගේ පැහැදිලි ඡායාරූපයක් */}
+              {/* 12. ඔබගේ පැහැදිලි ඡායාරූපයක් */}
               <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
                 <div>
                   <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    11. ඔබගේ පැහැදිලි ඡායාරූපයක් *
+                    12. ඔබගේ පැහැදිලි ඡායාරූපයක් *
                   </label>
                   
-                  {/* Photo Display or 3D Medical Plus Icon Badge */}
                   <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
                     {facePhoto && facePhoto.trim() !== '' ? (
                       <div className="relative w-full h-full">
@@ -618,10 +664,20 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-base flex items-center justify-center gap-2"
+              disabled={loading}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] disabled:opacity-50 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-base flex items-center justify-center gap-2"
             >
-              <CheckCircle2 className="w-6 h-6 text-white" />
-              <span>ලියාපදිංචිය යොමු කරන්න.</span>
+              {loading ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  <span>ගිණුම සාදමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-6 h-6 text-white" />
+                  <span>ලියාපදිංචිය යොමු කරන්න.</span>
+                </>
+              )}
             </button>
           </div>
         </form>
