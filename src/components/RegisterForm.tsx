@@ -6,7 +6,7 @@ import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { RegistrationSuccessModal } from './RegistrationSuccessModal';
 import { compressImageFile } from '../utils/imageCompressor';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
+import { auth } from '../lib/firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
 import { 
   UserPlus, 
   Upload, 
