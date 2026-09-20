@@ -127,7 +127,6 @@ export default function App() {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [serverTime, setServerTime] = useState('');
 
-  // ✨ පරිශීලකයන්ට හැම ඩයලොග් එකකටම උඩින් සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) - z-[9999] ලෙස සකස් කර ඇත
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Sync real-time Firestore help posts
@@ -188,11 +187,9 @@ export default function App() {
   });
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Siren References for 1 Minute Timeout Control
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPlayedAlertIdRef = useRef<string | null>(null);
 
-  // Request browser notification permission on load
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'default') {
@@ -205,7 +202,6 @@ export default function App() {
   const isInitialAlertsLoadRef = useRef<boolean>(true);
   const previousRedAlertsRef = useRef<RedAlertItem[]>([]);
 
-  // 🚨 Sync real-time Firestore Red Alerts + Live Reporter Status Notifications
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
       const newAlerts = remoteAlerts || [];
@@ -246,7 +242,6 @@ export default function App() {
           setSelectedDetailAlert(latestAlert);
         });
 
-        // 3. ✨ වෙනත් පරිශීලකයන් සඳහා වන සජීවී POPUP NOTIFICATIONS (Status Updates / Reporter Comments)
         if (previousRedAlertsRef.current.length > 0) {
           previousRedAlertsRef.current.forEach((prevAlert) => {
             const updatedAlert = newAlerts.find((a) => a.id === prevAlert.id);
@@ -283,7 +278,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Monitor user's real-time GPS location for proximity alerts
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       const geoWatchId = navigator.geolocation.watchPosition(
@@ -308,7 +302,6 @@ export default function App() {
     }
   }, []);
 
-  // Proximity alert calculation
   useEffect(() => {
     if (!userCoords || redAlerts.length === 0) {
       if ((window as any).emergencySiren) {
@@ -483,6 +476,7 @@ export default function App() {
     setViewMode('dashboard');
   };
 
+  // 🔒 දැඩි සහ අනිවාර්ය මුරපද තහවුරු කිරීමේ ක්‍රමවේදය (Strict Mandatory Password Validation)
   const handleLogin = async (userIdInput: string, keyInput: string) => {
     const cleanInput = userIdInput.trim().toLowerCase();
 
@@ -515,18 +509,19 @@ export default function App() {
         return;
       }
 
-      // 🔒 ආරක්ෂිත මුරපද පරීක්ෂාව (Password Verification)
+      // සියලුම ගිණුම්වල මුරපදය අනිවාර්ය විය යුතුය
       const correctPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
-      if (correctPassword) {
-        if (keyInput.trim() !== String(correctPassword).trim()) {
-          setShowWrongLoginModal(true);
-          return;
-        }
-      } else {
-        if (!keyInput.trim()) {
-          setShowWrongLoginModal(true);
-          return;
-        }
+
+      if (!correctPassword || String(correctPassword).trim() === '') {
+        alert('⛔ ආරක්ෂක දෝෂයකි: මෙම ගිණුම සඳහා මුරපදයක් සකසා නැත. සියලුම ගිණුම් සඳහා මුරපදයක් තිබීම අනිවාර්ය වේ. කරුණාකර පරිපාලක අමතන්න.');
+        setShowWrongLoginModal(true);
+        return;
+      }
+
+      // ලබා දී ඇති මුරපදය නිවැරදි දැයි දැඩි ලෙස පරීක්ෂා කිරීම (Strict Check)
+      if (!keyInput || keyInput.trim() !== String(correctPassword).trim()) {
+        setShowWrongLoginModal(true);
+        return;
       }
 
       if (foundUser.status === 'blocked') {
@@ -556,6 +551,12 @@ export default function App() {
   };
 
   const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
+    // රෙජිස්ටර් වීමේදී මුරපදය හිස් නොවිය යුතු බව තහවුරු කිරීම
+    if (!newUser.key || newUser.key.trim() === '') {
+      alert('⛔ දෝෂයකි: ගිණුමක් සෑදීම සඳහා මුරපදයක් ඇතුළත් කිරීම අනිවාර්ය වේ.');
+      return;
+    }
+
     const isBlocked =
       isCredentialBlocked(newUser.phone) ||
       isCredentialBlocked(newUser.nicNumber) ||
@@ -651,6 +652,10 @@ export default function App() {
 
   const handleSaveNewPassword = (newPassword: string) => {
     if (!currentUser) return;
+    if (!newPassword || newPassword.trim() === '') {
+      alert('නව මුරපදය හිස් ව තිබිය නොහැක.');
+      return;
+    }
     const updatedUser: User = {
       ...currentUser,
       key: newPassword,
@@ -855,7 +860,6 @@ export default function App() {
       <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* ✨ පරිශීලකයන්ට හැම ඩයලොග් එකකටම උඩින් සජීවීව පෙනෙන POPUP NOTIFICATION (Toast) - z-[9999] මඟින් ඉහළටම ගෙන ඇත */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
           <p className="text-xs sm:text-sm font-bold leading-relaxed">{toastMessage}</p>
@@ -1125,8 +1129,8 @@ export default function App() {
       ) : (
         <footer className="z-10 py-1 text-center text-[10px] text-slate-400 dark:text-emerald-500/60 font-mono">
           🔒 {t.securityLayer} • {serverTime}
-        </footer>
-      )}
+        ))}
+      </footer>
 
       {viewMode !== 'dashboard' && (
         <OmniAssistantChatBox
