@@ -18,6 +18,7 @@ import {
   arrayUnion,
   arrayRemove,
   serverTimestamp,
+  writeBatch,
   DocumentData,
   QueryDocumentSnapshot,
 } from 'firebase/firestore';
@@ -41,8 +42,8 @@ if (!firebaseConfig.apiKey) {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Auth සහ Firestore Export කිරීම
-export const db = getFirestore(app, 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f');
+// Auth සහ Firestore Export කිරීම (Default Database)
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 
 export enum OperationType {
@@ -463,18 +464,24 @@ export async function fetchAllPostsBackupData(currentPosts?: any[]): Promise<{ i
   }
 }
 
+/**
+ * Posts Backup Data Batch එකක් ලෙස Firestore එකට Restore කරයි (Fast Performance)
+ */
 export async function restorePostsBackupData(postsData: any): Promise<{ restoredPostsList: any[]; restoredPostsCount: number; restoredMessagesCount: number }> {
   try {
     const list = Array.isArray(postsData) ? postsData : (postsData?.items || postsData?.posts || []);
+    const batch = writeBatch(db);
     let restoredCount = 0;
+
     for (const item of list) {
       if (item && item.id) {
         const docRef = doc(db, 'posts', item.id);
         const { id, ...dataToSave } = item;
-        await setDoc(docRef, dataToSave, { merge: true });
+        batch.set(docRef, dataToSave, { merge: true });
         restoredCount++;
       }
     }
+    await batch.commit();
     return { restoredPostsList: list, restoredPostsCount: restoredCount, restoredMessagesCount: 0 };
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'posts');
@@ -487,11 +494,9 @@ export async function syncUserProfileToFirestore(userIdOrData: any, profileData?
     let data = profileData || userIdOrData;
     if (!userId) return;
 
-    const { password, key, securityCode, ...safeData } = data || {};
-
     const docRef = doc(db, 'users', userId);
     await setDoc(docRef, {
-      ...safeData,
+      ...data,
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
     }, { merge: true });
@@ -752,39 +757,62 @@ export async function toggleSavePostInFirestore(
 // ==============================================================
 
 /**
- * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී
+ * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී (Case-Insensitive Search)
  */
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     if (!userIdOrInput) return null;
     const cleanInput = userIdOrInput.trim();
+    const cleanInputLower = cleanInput.toLowerCase();
+    const cleanInputUpper = cleanInput.toUpperCase();
 
-    const docRef = doc(db, 'users', cleanInput);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const { password, key, securityCode, ...safeUserData } = snap.data();
-      return { id: snap.id, ...safeUserData };
+    // 1. Direct Document ID Search
+    let docRef = doc(db, 'users', cleanInput);
+    let snap = await getDoc(docRef);
+    if (!snap.exists() && cleanInput !== cleanInputLower) {
+      docRef = doc(db, 'users', cleanInputLower);
+      snap = await getDoc(docRef);
+    }
+    if (!snap.exists() && cleanInput !== cleanInputUpper) {
+      docRef = doc(db, 'users', cleanInputUpper);
+      snap = await getDoc(docRef);
     }
 
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+
+    // 2. Collection Queries (userId, nicNumber, email)
     const colRef = collection(db, 'users');
 
-    const qUserId = query(colRef, where('userId', '==', cleanInput));
-    let qSnap = await getDocs(qUserId);
-
-    if (qSnap.empty) {
-      const qNic = query(colRef, where('nicNumber', '==', cleanInput));
-      qSnap = await getDocs(qNic);
+    // userId query
+    let qSnap = await getDocs(query(colRef, where('userId', '==', cleanInput)));
+    if (qSnap.empty && cleanInput !== cleanInputLower) {
+      qSnap = await getDocs(query(colRef, where('userId', '==', cleanInputLower)));
     }
 
+    // nicNumber query (Upper, Lower, Raw)
     if (qSnap.empty) {
-      const qEmail = query(colRef, where('email', '==', cleanInput));
-      qSnap = await getDocs(qEmail);
+      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInputUpper)));
+    }
+    if (qSnap.empty) {
+      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInput)));
+    }
+    if (qSnap.empty && cleanInput !== cleanInputLower) {
+      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInputLower)));
+    }
+
+    // email query (Lower, Raw)
+    if (qSnap.empty) {
+      qSnap = await getDocs(query(colRef, where('email', '==', cleanInputLower)));
+    }
+    if (qSnap.empty && cleanInputLower !== cleanInput) {
+      qSnap = await getDocs(query(colRef, where('email', '==', cleanInput)));
     }
 
     if (!qSnap.empty) {
       const docSnap = qSnap.docs[0];
-      const { password, key, securityCode, ...safeUserData } = docSnap.data();
-      return { id: docSnap.id, ...safeUserData };
+      return { id: docSnap.id, ...docSnap.data() };
     }
 
     return null;
@@ -794,7 +822,7 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
 }
 
 /**
- * පරිශීලක දත්ත Firestore එකට සුරකියි (Password රහිතව)
+ * පරිශීලක දත්ත Firestore එකට සුරකියි (Standardized Case Handling)
  */
 export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any): Promise<void> {
   try {
@@ -802,13 +830,18 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
     const docId = userObj.userId || userObj.nicNumber || userObj.id || `usr_${Date.now()}`;
     const docRef = doc(db, 'users', docId);
 
-    // Password සහ අනෙකුත් සංවේදී දත්ත ඉවත් කිරීම
-    const { password, key, securityCode, ...safeUserObj } = userObj;
+    // Standardize NIC / Email format
+    if (userObj.nicNumber) {
+      userObj.nicNumber = String(userObj.nicNumber).trim().toUpperCase();
+    }
+    if (userObj.email) {
+      userObj.email = String(userObj.email).trim().toLowerCase();
+    }
 
     await setDoc(
       docRef,
       {
-        ...safeUserObj,
+        ...userObj,
         id: docId,
         updatedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
@@ -824,20 +857,25 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
  * පරිශීලක දත්ත යාවත්කාලීන කරයි
  */
 export async function updateUserInFirestore(userIdOrData: any, updateData?: any): Promise<void> {
+  let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
   try {
-    let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
     let data = updateData || userIdOrData;
     if (!userId) return;
 
-    const { password, key, securityCode, ...safeData } = data;
+    if (data.nicNumber) {
+      data.nicNumber = String(data.nicNumber).trim().toUpperCase();
+    }
+    if (data.email) {
+      data.email = String(data.email).trim().toLowerCase();
+    }
 
     const docRef = doc(db, 'users', userId);
     await updateDoc(docRef, {
-      ...safeData,
+      ...data,
       updatedAtServer: serverTimestamp(),
     });
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `users/${userIdOrData}`);
+    handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
   }
 }
 
@@ -850,9 +888,8 @@ export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<vo
         const docRef = doc(db, 'users', docId);
         const snap = await getDoc(docRef);
         if (!snap.exists()) {
-          const { password, key, securityCode, ...safeU } = u;
           await setDoc(docRef, {
-            ...safeU,
+            ...u,
             id: docId,
             createdAtServer: serverTimestamp(),
           });
@@ -876,8 +913,7 @@ export function subscribeToUsers(
       usersColRef,
       (snapshot) => {
         const users = snapshot.docs.map((docSnap) => {
-          const { password, key, securityCode, ...safeData } = docSnap.data();
-          return { id: docSnap.id, ...safeData };
+          return { id: docSnap.id, ...docSnap.data() };
         });
         callback(users);
       },
