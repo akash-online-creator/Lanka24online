@@ -884,6 +884,30 @@ export async function updateUserInFirestore(userIdOrData: any, updateData?: any)
   }
 }
 
+/**
+ * පරිශීලක ගිණුමක් මකා දැමීම හෝ status එක 'deleted' ලෙස යාවත්කාලීන කිරීම
+ * @param userId - මකා දැමිය යුතු පරිශීලකයාගේ ID එක
+ * @param hardDelete - true නම් සම්පූර්ණයෙන්ම මකා දමයි, false නම් status එක යාවත්කාලීන කරයි (default: false)
+ */
+export async function deleteUserAccount(userId: string, hardDelete: boolean = false): Promise<void> {
+  try {
+    if (!userId) return;
+    const docRef = doc(db, 'users', userId);
+
+    if (hardDelete) {
+      await deleteDoc(docRef);
+    } else {
+      await updateDoc(docRef, {
+        status: 'deleted',
+        deletedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+  }
+}
+
 export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<void> {
   try {
     if (!Array.isArray(usersList)) return;
