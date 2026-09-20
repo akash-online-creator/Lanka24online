@@ -473,14 +473,13 @@ export default function App() {
     setViewMode('dashboard');
   };
 
-  // 🔒 අතිශයින් දැඩි සහ අනිවාර්ය මුරපද තහවුරු කිරීමේ ක්‍රමවේදය (Ultra-Strict Password Validation)
   const handleLogin = async (userIdInput: string, keyInput: string) => {
     try {
       console.log("--- Login Attempt Started ---");
       console.log("User ID Input:", userIdInput);
 
       const cleanInput = (userIdInput || "").trim().toLowerCase();
-      const submittedPassword = (keyInput || "").trim(); // ඇතුළත් කළ මුරපදය
+      const submittedPassword = (keyInput || "").trim();
 
       if (cleanInput === 'demo_user' || cleanInput === 'demo') {
         handleUserDemoLogin();
@@ -504,10 +503,8 @@ export default function App() {
         return;
       }
 
-      // 1. Firestore හරහා දත්ත සෙවීම
       let foundUser = await getUserFromFirestore(cleanInput);
 
-      // 2. යම් හෙයකින් Firestore අසමත් වුවහොත් Local State එකෙන් (Backup) සෙවීම
       if (!foundUser) {
         foundUser = users.find(
           (u) =>
@@ -523,7 +520,6 @@ export default function App() {
         return;
       }
 
-      // 3. මුරපදය නිවැරදිව ලබා ගැනීම
       const rawStoredPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
 
       if (!rawStoredPassword || String(rawStoredPassword).trim() === '') {
@@ -533,9 +529,8 @@ export default function App() {
         return;
       }
 
-      const finalStoredPassword = String(rawStoredPassword).trim(); // දත්ත ගබඩාවේ ඇති නිවැරදි මුරපදය
+      const finalStoredPassword = String(rawStoredPassword).trim();
 
-      // 4. මුරපද ගැලපීම (Strict Equality Check)
       if (submittedPassword === "") {
         console.warn("Login Error: User submitted an empty password.");
         setShowWrongLoginModal(true);
@@ -544,18 +539,16 @@ export default function App() {
 
       if (submittedPassword !== finalStoredPassword) {
         console.warn("Login Error: PASSWORD MISMATCH!");
-        console.warn(`Typed: '${submittedPassword}', Stored: '${finalStoredPassword}'`); // Console එකෙන් පරික්ෂා කිරීමට
+        console.warn(`Typed: '${submittedPassword}', Stored: '${finalStoredPassword}'`);
         setShowWrongLoginModal(true);
-        return; // ⛔ මෙතැනින් අනිවාර්යයෙන්ම Login වීමේ ක්‍රියාවලිය නවතී! පහළට ගමන් නොකරයි.
+        return;
       }
 
-      // 5. අවහිර කිරීම් පරීක්ෂාව
       if (foundUser.status === 'blocked') {
         alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
         return;
       }
 
-      // 6. සියල්ල නිවැරදි නම් පමණක් Login කිරීම
       console.log("Login Successful! Setting User State...");
       setCurrentUser(foundUser);
 
@@ -670,15 +663,30 @@ export default function App() {
     );
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    updateUserInFirestore(updatedUser.id, updatedUser).catch((err) => console.warn(err));
-    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    if (currentUser && currentUser.id === updatedUser.id) {
-      setCurrentUser(updatedUser);
+  // ✅ නිවැරදි කළ handleUpdateUser function එක
+  const handleUpdateUser = async (updatedUser: User) => {
+    try {
+      await updateUserInFirestore(updatedUser.id, updatedUser);
+      
+      setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+      
+      const currentUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
+      const newUsers = currentUsers.map((u: User) => (u.id === updatedUser.id ? updatedUser : u));
+      localStorage.setItem('sahaya_users', JSON.stringify(newUsers));
+
+      if (currentUser && currentUser.id === updatedUser.id) {
+        setCurrentUser(updatedUser);
+      }
+      
+      console.log("✅ පරිශීලක දත්ත සහ නව මුරපදය දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
+    } catch (err) {
+      console.error("⛔ මුරපදය Save වීමේ දෝෂයක්:", err);
+      alert("අන්තර්ජාල දෝෂයක් හෝ අවසර නැති වීමක් නිසා තොරතුරු දත්ත ගබඩාවට සේව් නොවීය. කරුණාකර නැවත උත්සාහ කරන්න.");
     }
   };
 
-  const handleSaveNewPassword = (newPassword: string) => {
+  // ✅ නිවැරදි කළ handleSaveNewPassword function එක
+  const handleSaveNewPassword = async (newPassword: string) => {
     if (!currentUser) return;
     if (!newPassword || newPassword.trim() === '') {
       alert('නව මුරපදය හිස් ව තිබිය නොහැක.');
@@ -690,14 +698,22 @@ export default function App() {
       securityCode: newPassword,
       isPasswordChanged: true,
     };
-    updateUserInFirestore(updatedUser.id, {
-      key: newPassword,
-      securityCode: newPassword,
-      isPasswordChanged: true,
-    }).catch((err) => console.warn(err));
-    setCurrentUser(updatedUser);
-    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    setShowChangePasswordModal(false);
+    
+    try {
+      await updateUserInFirestore(updatedUser.id, {
+        key: newPassword,
+        securityCode: newPassword,
+        isPasswordChanged: true,
+      });
+      
+      setCurrentUser(updatedUser);
+      setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+      setShowChangePasswordModal(false);
+      alert("ඔබගේ මුරපදය සාර්ථකව යාවත්කාලීන කරන ලදී!");
+    } catch (err) {
+      console.warn("මුරපදය වෙනස් කිරීමේ දෝෂයක්:", err);
+      alert('මුරපදය වෙනස් කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    }
   };
 
   const handleBlockUser = (targetUserId: string, reason: string) => {
