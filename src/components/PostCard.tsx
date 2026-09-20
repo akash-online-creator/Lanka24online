@@ -1343,13 +1343,40 @@ export const PostCard: React.FC<PostCardProps> = ({
               <span className="font-extrabold text-slate-900 dark:text-slate-100"> {cardLabels.personSuffix}</span>
             </div>
 
-            {/* Embedded Media / Video Link Player (Facebook / Telegram / YouTube / Web) */}
-            {(post.externalLink || post.videoUrl) && (
-              <div className="pt-2">
-                <EmbeddedMediaViewer
-                  url={post.externalLink || post.videoUrl}
-                  compact={true}
-                />
+            {/* Media Attachments & Embedded Media (Telegram Photo, Video, Voice Note, External Link) */}
+            {(post.imageUrl || post.videoUrl || post.audioUrl || post.externalLink) && (
+              <div className="pt-2 space-y-2">
+                {/* Voice Note Player */}
+                {post.audioUrl && (
+                  <div className="p-2 rounded-xl bg-slate-900/60 border border-emerald-500/40">
+                    <AudioVoicePlayer 
+                      audioUrl={post.audioUrl} 
+                      durationSec={post.audioDurationSec || 5} 
+                    />
+                  </div>
+                )}
+
+                {/* Photo Attachment */}
+                {post.imageUrl && (
+                  <EmbeddedMediaViewer
+                    url={post.imageUrl}
+                    mediaType="image"
+                    telegramRecord={post.telegramStorage}
+                    compact={true}
+                    onImageClick={(imgUrl) => {
+                      if (onViewPost) onViewPost(post);
+                    }}
+                  />
+                )}
+
+                {/* Video or External Link */}
+                {(post.videoUrl || post.externalLink) && (
+                  <EmbeddedMediaViewer
+                    url={post.videoUrl || post.externalLink}
+                    telegramRecord={post.telegramStorage}
+                    compact={true}
+                  />
+                )}
               </div>
             )}
           </>

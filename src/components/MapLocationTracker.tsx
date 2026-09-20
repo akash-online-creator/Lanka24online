@@ -30,7 +30,6 @@ import {
   ChevronRight, 
   CheckCircle2, 
   Sliders, 
-  MapPinCheck,
   Bookmark,
   History,
   Trash2,
@@ -682,7 +681,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider flex items-center gap-1">
-                  <MapPinCheck className="w-3.5 h-3.5" />
+                  <MapPin className="w-3.5 h-3.5" />
                   <span>තෝරාගත් ස්ථානය (Selected Location)</span>
                 </span>
                 {isGeocoding && (

@@ -125,7 +125,7 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
         file,
         fileName: file.name,
         mimeType: file.type || 'image/jpeg',
-        mediaType: 'photo',
+        mediaType: 'image',
         senderName: userName || 'User',
         sourceContext: 'Help Post Photo',
         caption: `Help Post: ${whatHappened.slice(0, 80) || 'Photo attachment'}`,
