@@ -336,17 +336,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setSelectedUserForModal(updatedUser);
     }
 
-    // Prepare WhatsApp message
+    // Prepare WhatsApp message (Security: exclude NIC/User ID to protect account credentials)
     const rawPhone = user.whatsappNumber || user.phone || '';
     const formattedPhone = formatPhoneForWhatsApp(rawPhone);
-    const loginId = user.userId || user.nicNumber || user.phone || '';
 
     const messageText = `🔑 *සහය සේවා (Sahaya Seva) - මුරපදය නැවත සැකසීම (Password Reset)*\n\n` +
-      `ඔබගේ ගිණුමේ මුරපදය පරිපාලක විසින් සාර්ථකව නැවත සකසන ලදී.\n\n` +
-      `👤 *නම:* ${user.name}\n` +
-      `🆔 *User ID / NIC:* ${loginId}\n` +
+      `ඔබගේ සහය සේවා ගිණුමේ මුරපදය පරිපාලක විසින් සාර්ථකව නැවත සකසන ලදී.\n\n` +
       `🔑 *නව තාවකාලික මුරපදය (New Password):* ${newTempPassword}\n\n` +
-      `🌐 කරුණාකර මෙම නව මුරපදය භාවිතයෙන් ඇප් එකට Log in වී ඔබගේ රහස්‍යභාවය සඳහා නව මුරපදයක් සකසා ගන්න.\n` +
+      `🌐 කරුණාකර මෙම නව මුරපදය භාවිතයෙන් ඔබගේ ලියාපදිංචි ගිණුමෙන් ඇප් එකට Log in වී ඔබගේ රහස්‍යභාවය සඳහා නව මුරපදයක් සකසා ගන්න.\n` +
       `ස්තූතියි! - *සහය සේවා පරිපාලන කණ්ඩායම*`;
 
     if (formattedPhone) {
