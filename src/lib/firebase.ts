@@ -41,6 +41,7 @@ if (!firebaseConfig.apiKey) {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+// Auth සහ Firestore Export කිරීම
 export const db = getFirestore(app, 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f');
 export const auth = getAuth(app);
 
@@ -58,6 +59,7 @@ export function handleFirestoreError(error: any, operation: string, path: string
   throw error;
 }
 
+// Interface Definitions
 export interface RedAlertComment {
   id?: string;
   authorName?: string;
@@ -95,7 +97,6 @@ export interface RedAlertItem {
   fakeReports?: any[];
   isFlaggedFake?: boolean;
   adminActionNote?: string;
-  // ✨ නව පහසුකම් සඳහා එකතු කළ Data Fields
   statusChangeMessage?: string | null;
   latestReporterUpdate?: {
     text: string;
@@ -186,13 +187,6 @@ export async function createRedAlertInFirestore(
   }
 }
 
-// --------------------------------------------------------------
-// 🎯 REPORTER ACTIONS (වාර්තාකරුගේ ඔප්ෂන් 3 සඳහා වන ප්‍රධාන Functions)
-// --------------------------------------------------------------
-
-/**
- * ඔප්ෂන් 01: "ආපදාව විසඳුනා" (Mark as Resolved)
- */
 export async function markRedAlertAsResolved(
   alertId: string,
   note?: string
@@ -213,9 +207,6 @@ export async function markRedAlertAsResolved(
   }
 }
 
-/**
- * ඔප්ෂන් 02: "අනතුර ඉවත් කරන්න" (Cancel / Remove Alert)
- */
 export async function cancelRedAlertByReporter(
   alertId: string,
   reason?: string
@@ -236,9 +227,6 @@ export async function cancelRedAlertByReporter(
   }
 }
 
-/**
- * ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න" (Add Comment / Status Update)
- */
 export async function addReporterUpdateToRedAlert(
   alertId: string,
   updateText: string,
@@ -275,8 +263,6 @@ export async function addReporterUpdateToRedAlert(
     handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
   }
 }
-
-// --------------------------------------------------------------
 
 export async function seedInitialRedAlertsToFirestore(initialAlertsList?: RedAlertItem[]): Promise<void> {
   try {
@@ -765,6 +751,9 @@ export async function toggleSavePostInFirestore(
 // 👤 USER MANAGEMENT & SEED OPERATIONS
 // ==============================================================
 
+/**
+ * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී
+ */
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     if (!userIdOrInput) return null;
@@ -804,12 +793,16 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
   }
 }
 
+/**
+ * පරිශීලක දත්ත Firestore එකට සුරකියි (Password රහිතව)
+ */
 export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any): Promise<void> {
   try {
     let userObj = typeof userIdOrUser === 'object' ? userIdOrUser : { ...(userData || {}), id: userIdOrUser };
     const docId = userObj.userId || userObj.nicNumber || userObj.id || `usr_${Date.now()}`;
     const docRef = doc(db, 'users', docId);
 
+    // Password සහ අනෙකුත් සංවේදී දත්ත ඉවත් කිරීම
     const { password, key, securityCode, ...safeUserObj } = userObj;
 
     await setDoc(
@@ -827,6 +820,9 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
   }
 }
 
+/**
+ * පරිශීලක දත්ත යාවත්කාලීන කරයි
+ */
 export async function updateUserInFirestore(userIdOrData: any, updateData?: any): Promise<void> {
   try {
     let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
@@ -868,6 +864,9 @@ export async function seedInitialUsersToFirestore(usersList?: any[]): Promise<vo
   }
 }
 
+/**
+ * පරිශීලකයන්ගේ Real-time දත්ත සමමුහුර්තකරණය (Sync)
+ */
 export function subscribeToUsers(
   callback: (users: any[]) => void
 ): () => void {
