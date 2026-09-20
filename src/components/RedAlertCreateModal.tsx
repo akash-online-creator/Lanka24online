@@ -14,10 +14,11 @@ import {
   Lock,
   ShieldAlert
 } from 'lucide-react';
+import { EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
 import { resolveExactLocation } from '../utils/geoUtils';
-import { createRedAlertInFirestore } from '../lib/firebase';
+import { auth, createRedAlertInFirestore } from '../lib/firebase';
 
 interface RedAlertCreateModalProps {
   isOpen: boolean;
@@ -142,36 +143,32 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     setShowPasswordPopup(true);
   };
 
-  // 🔒 නිවැරදි කරන ලද මුරපද තහවුරු කිරීමේ ක්‍රියාවලිය
+  // 🔒 Firebase Auth Re-authentication සමග නිවැරදි කළ මුරපද තහවුරු කිරීමේ ක්‍රියාවලිය
   const handleFinalConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError(null);
 
-    if (!currentUser) {
-      setPasswordError('⚠️ කරුණාකර පළමුව ගිණුමට පිවිසෙන්න.');
+    if (!enteredPassword.trim()) {
+      setPasswordError('⚠️ කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
       return;
     }
 
-    // පරිශීලකයාගේ ගිණුමේ මුරපදය විවිධ විචල්‍යයන් හරහා පරීක්ෂා කිරීම
-    const correctPassword = currentUser?.key || currentUser?.password || currentUser?.securityCode || (currentUser as any).pass;
-
-    // ගිණුමේ මුරපදයක් ගබඩා වී ඇත්නම් පමණක් එය සංසන්දනය කරන්න. 
-    // නොමැති නම් පරිශීලකයා ඇතුළත් කළ මුරපදය හිස් නොවන බව පරීක්ෂා කරන්න.
-    if (correctPassword) {
-      if (enteredPassword.trim() !== String(correctPassword).trim()) {
-        setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න.');
-        return;
-      }
-    } else {
-      if (!enteredPassword.trim()) {
-        setPasswordError('⚠️ කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
-        return;
-      }
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser || !firebaseUser.email) {
+      setPasswordError('⚠️ පරිශීලකයා පද්ධතියට ලොග් වී නොමැත. කරුණාකර නැවත ලොග් වන්න.');
+      return;
     }
 
-    setShowPasswordPopup(false);
     setIsSubmitting(true);
 
     try {
+      // 1. Firebase Auth හි reauthenticateWithCredential මගින් සැබෑ මුරපදය පරීක්ෂා කිරීම
+      const credential = EmailAuthProvider.credential(firebaseUser.email, enteredPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+
+      // 2. මුරපදය නිවැරදි නම් Dialog Box එක වසා දැමීම
+      setShowPasswordPopup(false);
+
       const config = getDisasterConfig(selectedDisaster);
       const titleSi = selectedDisaster === 'other' ? customTitle.trim() : config.titleSi;
       const titleEn = selectedDisaster === 'other' ? customTitle.trim() : config.titleEn;
@@ -193,7 +190,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         incidentTime,
         createdAt: new Date().toISOString(),
         createdAtMs: Date.now(),
-        reportedByUserId: currentUser?.userId || currentUser?.id || '',
+        reportedByUserId: currentUser?.userId || currentUser?.id || firebaseUser.uid || '',
         reportedByName: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
         reportedByPhone: reporterPhone.trim(),
         status: 'active',
@@ -206,6 +203,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         ...(accuracyMeters !== undefined ? { locationAccuracyMeters: accuracyMeters } : {}),
       };
 
+      // 3. Firestore එකට Red Alert එක පළ කිරීම
       const docId = await createRedAlertInFirestore(newAlertData);
 
       const createdItem: RedAlertItem = {
@@ -221,9 +219,19 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       setTimeout(() => {
         onClose();
       }, 2500);
-    } catch (err) {
-      console.error('Error broadcasting Red Alert:', err);
-      alert('ආපදා දැනුම්දීම පළ කිරීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } catch (err: any) {
+      console.error('Re-authentication / Submission Error:', err);
+
+      // මුරපදය වැරදි නම් හෝ Firebase Auth Error එකක් ආවොත් ආරක්ෂිත Error Message එකක් පෙන්වීම
+      if (
+        err?.code === 'auth/wrong-password' || 
+        err?.code === 'auth/invalid-credential' ||
+        err?.code === 'auth/user-mismatch'
+      ) {
+        setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න.');
+      } else {
+        setPasswordError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -504,6 +512,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPasswordPopup(false)}
+                disabled={isSubmitting}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -532,6 +541,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                   placeholder="Password ඇතුළත් කරන්න..."
                   className="w-full p-3 rounded-xl border-2 border-red-400 dark:border-red-600 bg-white dark:bg-black/50 text-slate-900 dark:text-white font-bold text-sm focus:ring-2 focus:ring-red-500"
                   autoFocus
+                  disabled={isSubmitting}
                   required
                 />
               </div>
@@ -546,15 +556,24 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPasswordPopup(false)}
-                  className="flex-1 py-3 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer transition-all"
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer transition-all disabled:opacity-50"
                 >
                   අවලංගු කරන්න
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1"
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-50"
                 >
-                  <span>🚨 තහවුරු කර යවන්න</span>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>තහවුරු වෙමින්...</span>
+                    </>
+                  ) : (
+                    <span>🚨 තහවුරු කර යවන්න</span>
+                  )}
                 </button>
               </div>
             </form>
