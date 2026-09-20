@@ -252,7 +252,7 @@ export interface User {
   nicBackPhotoUrl?: string;
   facePhotoUrl?: string;
   registeredAt: string;
-  key: string; // password
+  key?: string; // password
   rejectionReason?: string;
   ipAddress?: string;
   registrationLat?: number;

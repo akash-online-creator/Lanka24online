@@ -3,8 +3,35 @@ import path from 'path';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { initializeApp, getApps, getApp, App } from 'firebase-admin/app';
+import { getAuth, Auth, UserRecord } from 'firebase-admin/auth';
 
 dotenv.config();
+
+// Initialize firebase-admin lazily
+let adminApp: App | null = null;
+function getAdminAuth(): Auth | null {
+  if (!adminApp) {
+    if (getApps().length === 0) {
+      try {
+        const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+        let projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+        if (fs.existsSync(configPath)) {
+          const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          projectId = cfg.projectId || projectId;
+        }
+        adminApp = initializeApp({
+          projectId: projectId || 'gen-lang-client-0262698872',
+        });
+      } catch (err) {
+        console.warn('Firebase Admin initialization warning:', err);
+      }
+    } else {
+      adminApp = getApps()[0] || getApp();
+    }
+  }
+  return adminApp ? getAuth(adminApp) : null;
+}
 
 let aiClient: GoogleGenAI | null = null;
 function getAI() {
@@ -136,6 +163,74 @@ async function startServer() {
 
   app.get(['/healthz', '/livez'], (req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  // Admin Firebase Auth Password Reset Endpoint
+  app.post('/api/admin/reset-password', async (req, res) => {
+    try {
+      const { userId, nicNumber, newPassword } = req.body;
+      if (!newPassword || (!userId && !nicNumber)) {
+        res.status(400).json({ error: 'User identifier and newPassword are required' });
+        return;
+      }
+
+      const cleanNic = (nicNumber || userId || '').trim().toLowerCase();
+      const formattedEmail = `${cleanNic}@app.com`;
+
+      let updatedViaAdmin = false;
+      let errorDetail: string | null = null;
+
+      try {
+        const authAdmin = getAdminAuth();
+        if (authAdmin) {
+          let userRecord: UserRecord | null = null;
+          try {
+            userRecord = await authAdmin.getUserByEmail(formattedEmail);
+          } catch {
+            if (userId) {
+              try {
+                userRecord = await authAdmin.getUser(userId);
+              } catch {
+                // User might not exist yet in Firebase Auth
+              }
+            }
+          }
+
+          if (userRecord) {
+            await authAdmin.updateUser(userRecord.uid, {
+              password: String(newPassword),
+            });
+            updatedViaAdmin = true;
+          } else {
+            // If user did not exist in Firebase Auth yet, create them with new password
+            await authAdmin.createUser({
+              email: formattedEmail,
+              password: String(newPassword),
+              displayName: cleanNic.toUpperCase(),
+            });
+            updatedViaAdmin = true;
+          }
+        } else {
+          errorDetail = 'Firebase Admin Auth could not be initialized';
+        }
+      } catch (adminErr: any) {
+        console.warn('Firebase Admin update warning:', adminErr?.message || adminErr);
+        errorDetail = adminErr?.message || String(adminErr);
+      }
+
+      res.json({
+        success: true,
+        updatedViaAdmin,
+        email: formattedEmail,
+        message: updatedViaAdmin 
+          ? 'Firebase Auth password successfully updated.' 
+          : 'Temporary code generated and ready for sync.',
+        errorDetail
+      });
+    } catch (err: any) {
+      console.error('Password reset endpoint error:', err);
+      res.status(500).json({ error: 'Internal server error', details: err?.message || String(err) });
+    }
   });
 
   // AI Chat Endpoint with graceful fallback & multi-model retry

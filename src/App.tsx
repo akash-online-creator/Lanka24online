@@ -520,9 +520,37 @@ export default function App() {
         const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
         authUser = userCredential.user;
       } catch (authError: any) {
-        console.warn("Firebase Auth Login Failure:", authError.message);
-        setShowWrongLoginModal(true);
-        return;
+        console.warn("Firebase Auth Login check:", authError?.message);
+
+        // Firestore / Local state මගින් පරිශීලකයා පරීක්ෂා කිරීම (තාවකාලික මුරපදය / Admin Reset Code සසඳා බැලීම)
+        let fallbackCheck = await getUserFromFirestore(cleanInput);
+        if (!fallbackCheck) {
+          fallbackCheck = users.find(
+            (u) =>
+              (u.userId && u.userId.toLowerCase() === cleanInput) ||
+              (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+              (u.phone && u.phone.toLowerCase() === cleanInput)
+          );
+        }
+
+        // පරිපාලක විසින් ලබා දුන් තාවකාලික කේතයක් (tempCode / securityCode / key) ගැළපේදැයි බැලීම
+        if (
+          fallbackCheck &&
+          ((fallbackCheck.tempCode && String(fallbackCheck.tempCode).trim() === submittedPassword) ||
+           (fallbackCheck.securityCode && String(fallbackCheck.securityCode).trim() === submittedPassword) ||
+           (fallbackCheck.key && String(fallbackCheck.key).trim() === submittedPassword))
+        ) {
+          console.log("Admin Temporary Reset Password successfully matched!");
+          try {
+            const cred = await createUserWithEmailAndPassword(auth, formattedEmail, submittedPassword);
+            authUser = cred.user;
+          } catch {
+            // Already created in Auth or backend synced
+          }
+        } else {
+          setShowWrongLoginModal(true);
+          return;
+        }
       }
 
       // Firestore මගින් පරිශීලකගේ අමතර විස්තර ලබා ගැනීම
@@ -694,10 +722,10 @@ export default function App() {
     );
   };
 
-  // ✅ පරිශීලක දත්ත Firestore හි යාවත්කාලීන කිරීම (Plaintext password නොමැතිව)
+  // ✅ පරිශීලක දත්ත Firestore හි යාවත්කාලීන කිරීම (Safe user data persistence)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
-      const { key, password, securityCode, ...safeUserData } = updatedUser as any;
+      const { key, password, ...safeUserData } = updatedUser as any;
       await updateUserInFirestore(updatedUser.id, safeUserData);
       
       setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
@@ -725,15 +753,36 @@ export default function App() {
       const activeUser = auth.currentUser;
       if (activeUser) {
         await updatePassword(activeUser, newPassword);
+      } else {
+        const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
+        const formattedEmail = `${cleanNic}@app.com`;
+        try {
+          await createUserWithEmailAndPassword(auth, formattedEmail, newPassword);
+        } catch {
+          await fetch('/api/admin/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: currentUser.id,
+              nicNumber: currentUser.nicNumber || currentUser.userId,
+              newPassword: newPassword,
+            }),
+          });
+        }
       }
 
       const updatedUser: User = {
         ...currentUser,
         isPasswordChanged: true,
+        tempCode: undefined,
+        securityCode: undefined,
+        key: newPassword,
       };
 
       await updateUserInFirestore(updatedUser.id, {
         isPasswordChanged: true,
+        tempCode: '',
+        securityCode: '',
       });
 
       setCurrentUser(updatedUser);

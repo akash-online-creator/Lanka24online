@@ -1318,7 +1318,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     if (targetPost) {
       try {
-        await addReplyToFirestore(postId, newReply, targetPost.replies || []);
+        await addReplyToFirestore(postId, newReply);
       } catch (e) {
         console.error('Failed to save reply to Firestore, updating local state', e);
       }

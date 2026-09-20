@@ -284,7 +284,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Function 1: Reset Password Feature for Admin
-  const handleResetUserPassword = (user: User) => {
+  const handleResetUserPassword = async (user: User) => {
     const confirmReset = window.confirm(`ඔබට ${user.name} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
     if (!confirmReset) return;
 
@@ -295,8 +295,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       ...user,
       securityCode: newTempPassword,
       tempCode: newTempPassword,
+      key: newTempPassword,
       isPasswordChanged: false,
     };
+
+    // 1. Call Backend API to synchronize Firebase Auth password
+    try {
+      await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          nicNumber: user.nicNumber || user.userId,
+          newPassword: newTempPassword,
+        }),
+      });
+    } catch (err) {
+      console.warn('Backend API password reset call error:', err);
+    }
 
     if (onUpdateUser) {
       onUpdateUser(updatedUser);
