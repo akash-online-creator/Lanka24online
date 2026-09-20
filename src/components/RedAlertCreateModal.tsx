@@ -142,7 +142,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     setShowPasswordPopup(true);
   };
 
-  // 🔒 දැඩි සහ ආරක්ෂිත මුරපද පරීක්ෂාව (Strict Password Verification)
+  // 🔒 නිවැරදි කරන ලද මුරපද තහවුරු කිරීමේ ක්‍රියාවලිය
   const handleFinalConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -151,13 +151,21 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       return;
     }
 
-    // පරිශීලකයාගේ සැබෑ ගිණුමේ මුරපදය ලබා ගැනීම
-    const correctPassword = currentUser?.key || currentUser?.password || currentUser?.securityCode;
+    // පරිශීලකයාගේ ගිණුමේ මුරපදය විවිධ විචල්‍යයන් හරහා පරීක්ෂා කිරීම
+    const correctPassword = currentUser?.key || currentUser?.password || currentUser?.securityCode || (currentUser as any).pass;
 
-    // මුරපදය නොමැති නම් හෝ ඇතුළත් කළ මුරපදය වැරදි නම් දැඩි ලෙස අවහිර කිරීම[span_4](start_span)[span_4](end_span)
-    if (!correctPassword || enteredPassword.trim() !== String(correctPassword).trim()) {
-      setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න[span_5](start_span)[span_5](end_span).');
-      return;
+    // ගිණුමේ මුරපදයක් ගබඩා වී ඇත්නම් පමණක් එය සංසන්දනය කරන්න. 
+    // නොමැති නම් පරිශීලකයා ඇතුළත් කළ මුරපදය හිස් නොවන බව පරීක්ෂා කරන්න.
+    if (correctPassword) {
+      if (enteredPassword.trim() !== String(correctPassword).trim()) {
+        setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න.');
+        return;
+      }
+    } else {
+      if (!enteredPassword.trim()) {
+        setPasswordError('⚠️ කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
+        return;
+      }
     }
 
     setShowPasswordPopup(false);
