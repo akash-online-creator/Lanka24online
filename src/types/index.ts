@@ -227,6 +227,40 @@ export interface ChatMessage {
   originalText?: string;
 }
 
+export interface UserLoginLog {
+  id: string;
+  timestamp: string; // Sri Lanka formatted date/time string e.g. "2025-05-18 14:32:10"
+  timestampMs: number;
+  ipAddress: string;
+  locationName: string;
+  lat?: number;
+  lng?: number;
+  deviceInfo: string;
+}
+
+export interface DuplicatePhotoMatch {
+  userId: string;
+  name: string;
+  nicNumber: string;
+  similarityPercent: number;
+  userStatus: string;
+}
+
+export interface AiSecurityScanResult {
+  scannedAt: string;
+  isAiGenerated: boolean;
+  aiConfidence: number; // 0 - 100
+  isDocumentAuthentic: boolean;
+  detectedNicNumber?: string;
+  nicMatch?: boolean;
+  riskLevel: 'low' | 'medium' | 'high';
+  riskScore: number; // 0 - 100
+  analysisSummarySi: string;
+  analysisSummaryEn?: string;
+  flags: string[];
+  duplicateMatches?: DuplicatePhotoMatch[];
+}
+
 export interface User {
   id: string;
   userId: string; // E.g., SS-980124 or email
@@ -246,12 +280,14 @@ export interface User {
   isPasswordChanged?: boolean;
   role: Role;
   status: UserStatus;
+  isBlocked?: boolean;
   photoUrl?: string;
   idCardPhotoUrl?: string;
   nicFrontPhotoUrl?: string;
   nicBackPhotoUrl?: string;
   facePhotoUrl?: string;
   registeredAt: string;
+  approvedAt?: string;
   key?: string; // password
   rejectionReason?: string;
   ipAddress?: string;
@@ -263,6 +299,8 @@ export interface User {
   deviceInfo?: string;
   blockedReason?: string;
   blockedAt?: string;
+  loginHistory?: UserLoginLog[];
+  lastLoginAt?: string;
   pdfDownloadCount?: number;
   lastPdfDownloadedAt?: string;
   personalDetailsPurged?: boolean;
@@ -272,6 +310,7 @@ export interface User {
   userNumericId?: string;
   welcomeGiftCredited?: boolean;
   pendingProfileUpdate?: PendingProfileUpdate;
+  aiScanResult?: AiSecurityScanResult;
 }
 
 export interface PendingProfileUpdate {

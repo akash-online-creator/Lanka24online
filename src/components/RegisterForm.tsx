@@ -5,8 +5,9 @@ import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { RegistrationSuccessModal } from './RegistrationSuccessModal';
 import { compressImageFile } from '../utils/imageCompressor';
+import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
+import { auth, getUserFromFirestore } from '../lib/firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
 import { 
   UserPlus, 
   Upload, 
@@ -25,7 +26,10 @@ import {
   Navigation,
   Globe,
   Lock,
-  Loader2
+  Loader2,
+  Eye,
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 
 interface RegisterFormProps {
@@ -72,10 +76,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [deviceInfo, setDeviceInfo] = useState<string>('');
   const [locationStatus, setLocationStatus] = useState<'detecting' | 'detected' | 'fallback' | 'denied'>('detecting');
 
-  // Photos State
+  // Photos State (Front of NIC is sufficient)
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
-  const [nicBackPhoto, setNicBackPhoto] = useState<string>('');
-  const [facePhoto, setFacePhoto] = useState<string>('');
+  const [showNicGuideModal, setShowNicGuideModal] = useState(false);
 
   // Registration Submission Notification Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -206,14 +209,56 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // 1. Mandatory NIC Front Photo Validation
+    if (!nicFrontPhoto || nicFrontPhoto.trim() === '') {
+      setErrorMessage('කරුණාකර ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය (NIC Front Photo) උඩුගත කරන්න.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const cleanNic = nicNumber.trim().toLowerCase();
-      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@sahayaseva.com)
-      const userAuthEmail = `${cleanNic}@sahayaseva.com`;
+      const cleanNic = nicNumber.trim().toUpperCase();
+      const cleanNicLower = nicNumber.trim().toLowerCase();
 
-      // 1. Firebase Auth හි ගිණුම සෑදීම (createUserWithEmailAndPassword)
+      // 2. Prevent duplicate registrations with the same NIC Number
+      // A. Local storage duplicate check
+      const savedUsersRaw = localStorage.getItem('sahaya_users');
+      if (savedUsersRaw) {
+        try {
+          const localUsers: User[] = JSON.parse(savedUsersRaw);
+          const isDuplicate = localUsers.some(
+            (u) =>
+              (u.nicNumber && u.nicNumber.trim().toUpperCase() === cleanNic) ||
+              (u.userId && u.userId.trim().toUpperCase() === cleanNic)
+          );
+          if (isDuplicate) {
+            setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // Continue
+        }
+      }
+
+      // B. Firestore database duplicate check
+      try {
+        const existingInFirestore = await getUserFromFirestore(cleanNic);
+        if (existingInFirestore) {
+          setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Firestore duplicate check error:', err);
+      }
+
+      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@sahayaseva.com)
+      const userAuthEmail = `${cleanNicLower}@sahayaseva.com`;
+
+      // 3. Firebase Auth හි ගිණුම සෑදීම (createUserWithEmailAndPassword)
       await createUserWithEmailAndPassword(auth, userAuthEmail, password);
 
       const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
@@ -224,8 +269,40 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const currentLng = trackedLng ?? 79.8612;
       const resolvedLocationName = trackedLocationName || `${nearestTown || 'Sri Lanka'} (GPS: ${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
 
-      // 2. ඩේටාබේස් එකේ (Firestore) සේව් වන පරිශීලක දත්ත Payload එක සාදා ගැනීම
-      // මෙහි password / key / securityCode / tempCode සම්පූර්ණයෙන්ම ඉවත් කර ඇත.
+      // 4. Run AI Security Scan & Perceptual Duplicate Detection on the uploaded NIC photo
+      let aiScanResult = undefined;
+      try {
+        let localUsers: User[] = [];
+        if (savedUsersRaw) {
+          try {
+            localUsers = JSON.parse(savedUsersRaw);
+          } catch {
+            // ignore
+          }
+        }
+        aiScanResult = await scanUserNicSecurity(
+          {
+            id: generatedUserId,
+            userId: generatedUserId,
+            name: fullFullName || firstName || 'පරිශීලක',
+            email: userAuthEmail,
+            nicNumber: cleanNic,
+            phone: whatsappNumber,
+            role: 'user',
+            status: 'pending',
+            registeredAt: new Date().toISOString(),
+            photoUrl: nicFrontPhoto || '',
+            idCardPhotoUrl: nicFrontPhoto || '',
+            nicFrontPhotoUrl: nicFrontPhoto || '',
+          },
+          localUsers
+        );
+      } catch (scanErr) {
+        console.warn('Initial registration AI scan error:', scanErr);
+      }
+
+      // 5. ඩේටාබේස් එකේ (Firestore) සේව් වන පරිශීලක දත්ත Payload එක සාදා ගැනීම
+      // මුල් තත්ත්වය 'pending' ලෙස තබා පරිපාලක අනුමැතිය (Admin Approval) බලාපොරොත්තුවෙන් තැබීම
       const userPayload: Omit<User, 'id' | 'registeredAt'> = {
         userId: generatedUserId,
         userNumericId: generatedUserId,
@@ -235,7 +312,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         firstName,
         lastName,
         email: userAuthEmail,
-        nicNumber,
+        nicNumber: cleanNic,
         phone: whatsappNumber,
         address,
         birthDate,
@@ -243,12 +320,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         whatsappNumber,
         isPasswordChanged: false,
         role: 'user',
-        status: 'pending',
-        photoUrl: facePhoto || '',
+        status: 'pending', // Admin review required before accessing dashboard
+        photoUrl: nicFrontPhoto || '',
         idCardPhotoUrl: nicFrontPhoto || '',
         nicFrontPhotoUrl: nicFrontPhoto || '',
-        nicBackPhotoUrl: nicBackPhoto || '',
-        facePhotoUrl: facePhoto || '',
+        nicBackPhotoUrl: '',
+        facePhotoUrl: '',
         ipAddress: ipAddress || '112.134.120.45',
         registrationLat: currentLat,
         registrationLng: currentLng,
@@ -256,6 +333,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         registrationAccuracy: trackedAccuracy ?? 12,
         locationTimestamp: new Date().toISOString(),
         deviceInfo: deviceInfo || 'Web Browser',
+        loginHistory: [],
+        aiScanResult,
       };
 
       setPendingUserData(userPayload);
@@ -263,7 +342,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     } catch (error: any) {
       console.error('Firebase Auth / Registration Error:', error);
       if (error.code === 'auth/email-already-in-use') {
-        setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් ஏற்கனவே ගිණුමක් සාදා ඇත.');
+        setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.');
       } else if (error.code === 'auth/weak-password') {
         setErrorMessage('මුරපදය අවම වශයෙන් අක්ෂර 6 කින් යුක්ත විය යුතුය.');
       } else {
@@ -496,154 +575,96 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
           {/* Section C: Photo Uploads */}
           <div className="bg-emerald-50/50 p-4 sm:p-5 rounded-2xl border border-emerald-200 space-y-4">
-            <div className="border-b border-emerald-200 pb-2.5">
+            <div className="border-b border-emerald-200 pb-2.5 flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-black text-emerald-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                 <Camera className="w-4 h-4 text-emerald-700" />
                 <span>ඡායාරූප උඩුගත කිරීම</span>
               </h3>
+
+              <button
+                type="button"
+                onClick={() => setShowNicGuideModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 text-[11px] font-black transition-colors cursor-pointer shadow-xs"
+              >
+                <Eye className="w-3.5 h-3.5 text-emerald-700" />
+                <span>ආදර්ශ හැඳුනුම්පත් ඡායාරූපය බලන්න</span>
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-              {/* 10. ජාතික හැඳුනුම්පත ඉදිරිපස ඡායාරූපය */}
-              <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
-                <div>
-                  <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    10. ජාතික හැඳුනුම්පත ඉදිරිපස *
-                  </label>
-                  
-                  <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
-                    {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
-                      <div className="relative w-full h-full">
-                        <img
-                          src={nicFrontPhoto}
-                          alt="NIC Front"
-                          className="w-full h-full object-cover rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setNicFrontPhoto('')}
-                          className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1 shadow-md transition-colors"
-                          title="ඉවත් කරන්න"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                        <MedicalPlusBadge size="md" showGlow animated />
-                        <span className="text-[10px] font-black text-pink-700 tracking-tight">
-                          ඉදිරිපස ඡායාරූපය
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+            {/* Security Notice for ID Card Verification */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-3 text-amber-950 text-xs">
+              <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-[11px] leading-relaxed">
+                <p className="font-bold text-amber-900">
+                  ජාතික හැඳුනුම්පත් සත්‍යාපනය (NIC Front Verification):
+                </p>
+                <p className="text-amber-800">
+                  පරිපාලක (Admin) විසින් ඔබගේ හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය සහ ඇතුළත් කළ අංකය සත්‍යාපනය කර අනුමත (Approve) කරන තුරු නව ගිණුම සක්‍රීය නොවේ. කරුණාකර පැහැදිලි ඡායාරූපයක් ලබා දෙන්න.
+                </p>
+              </div>
+            </div>
 
-                <label className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-xl bg-emerald-700 text-white text-xs font-black hover:bg-emerald-800 active:scale-95 cursor-pointer transition-all shadow-md">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{nicFrontPhoto ? 'වෙනස් කරන්න' : 'ඡායාරූපය තෝරන්න'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
-                    className="hidden"
-                  />
-                </label>
+            {/* Single Prominent NIC Front Photo Upload Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 space-y-3 shadow-sm hover:border-emerald-500 transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs sm:text-sm font-black text-emerald-950">
+                    10. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
+                  </label>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    හැඳුනුම්පත් අංකය සහ ඔබගේ ඡායාරූපය හොඳින් පෙනෙන සේ ඉදිරිපස පමණක් උඩුගත කරන්න.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNicGuideModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>ආදර්ශ හැඳුනුම්පත</span>
+                </button>
               </div>
 
-              {/* 11. ජාතික හැඳුනුම්පත පිටුපස ඡායාරූපය */}
-              <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
-                <div>
-                  <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    11. ජාතික හැඳුනුම්පත පිටුපස *
-                  </label>
-                  
-                  <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
-                    {nicBackPhoto && nicBackPhoto.trim() !== '' ? (
-                      <div className="relative w-full h-full">
-                        <img
-                          src={nicBackPhoto}
-                          alt="NIC Back"
-                          className="w-full h-full object-cover rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setNicBackPhoto('')}
-                          className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1 shadow-md transition-colors"
-                          title="ඉවත් කරන්න"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                        <MedicalPlusBadge size="md" showGlow animated />
-                        <span className="text-[10px] font-black text-pink-700 tracking-tight">
-                          පිටුපස ඡායාරූපය
-                        </span>
-                      </div>
-                    )}
+              <div className="w-full min-h-[160px] sm:min-h-[190px] rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 relative group mx-auto flex flex-col items-center justify-center p-3 shadow-inner">
+                {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
+                  <div className="relative w-full h-full max-h-56 flex items-center justify-center">
+                    <img
+                      src={nicFrontPhoto}
+                      alt="NIC Front"
+                      className="max-h-52 w-auto max-w-full object-contain rounded-xl shadow-md border border-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNicFrontPhoto('')}
+                      className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1.5 shadow-lg transition-colors cursor-pointer"
+                      title="ඡායාරූපය ඉවත් කරන්න"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                </div>
-
-                <label className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-xl bg-emerald-700 text-white text-xs font-black hover:bg-emerald-800 active:scale-95 cursor-pointer transition-all shadow-md">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{nicBackPhoto ? 'වෙනස් කරන්න' : 'ඡායාරූපය තෝරන්න'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handlePhotoUpload(e, setNicBackPhoto)}
-                    className="hidden"
-                  />
-                </label>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-4 text-center">
+                    <MedicalPlusBadge size="lg" showGlow animated />
+                    <span className="text-xs font-black text-emerald-900 tracking-tight">
+                      ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනට එක් කරන්න (අනිවාර්යයි *)
+                    </span>
+                    <span className="text-[11px] text-slate-500 max-w-xs">
+                      පැහැදිලිව ඡායාරූපයක් ගන්න හෝ ගැලරියෙන් තෝරන්න (JPG, PNG)
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* 12. ඔබගේ පැහැදිලි ඡායාරූපයක් */}
-              <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 space-y-2.5 text-center shadow-sm flex flex-col justify-between hover:border-emerald-400 transition-colors">
-                <div>
-                  <label className="block text-[11px] font-black text-emerald-950 mb-2">
-                    12. ඔබගේ පැහැදිලි ඡායාරූපයක් *
-                  </label>
-                  
-                  <div className="w-full h-28 rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/50 via-white to-emerald-50/50 border-2 border-dashed border-pink-300/80 relative group mx-auto flex flex-col items-center justify-center p-2 shadow-inner">
-                    {facePhoto && facePhoto.trim() !== '' ? (
-                      <div className="relative w-full h-full">
-                        <img
-                          src={facePhoto}
-                          alt="User Photo"
-                          className="w-full h-full object-cover rounded-xl"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setFacePhoto('')}
-                          className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1 shadow-md transition-colors"
-                          title="ඉවත් කරන්න"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                        <MedicalPlusBadge size="md" showGlow animated />
-                        <span className="text-[10px] font-black text-pink-700 tracking-tight">
-                          පැතිකඩ ඡායාරූපය
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <label className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-xl bg-emerald-700 text-white text-xs font-black hover:bg-emerald-800 active:scale-95 cursor-pointer transition-all shadow-md">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{facePhoto ? 'වෙනස් කරන්න' : 'ඡායාරූපය තෝරන්න'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handlePhotoUpload(e, setFacePhoto)}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+              <label className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-black active:scale-[0.99] cursor-pointer transition-all shadow-md">
+                <Upload className="w-4 h-4" />
+                <span>{nicFrontPhoto ? 'වෙනත් ඡායාරූපයක් තෝරන්න (Change Photo)' : 'හැඳුනුම්පත් ඡායාරූපය උඩුගත කරන්න (Upload NIC Front)'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
+                  className="hidden"
+                />
+              </label>
             </div>
           </div>
 
@@ -693,6 +714,100 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Sample National ID Reference Guide Modal */}
+      {showNicGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-emerald-500 flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-800 to-teal-900 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-300" />
+                <h3 className="font-black text-sm">ජාතික හැඳුනුම්පත් ආදර්ශ ඡායාරූපය</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNicGuideModal(false)}
+                className="p-1 rounded-full hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Visual Card Sample of Sri Lanka NIC */}
+              <div className="relative rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 p-4 shadow-md overflow-hidden">
+                <div className="flex items-center justify-between border-b border-emerald-200 pb-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🇱🇰</span>
+                    <div>
+                      <div className="text-[11px] font-black text-emerald-950">ශ්‍රී ලංකා ජාතික හැඳුනුම්පත (ඉදිරිපස)</div>
+                      <div className="text-[9px] font-bold text-emerald-700">SRI LANKA NATIONAL IDENTITY CARD</div>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-black">
+                    SAMPLE / ආදර්ශය
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 items-center">
+                  {/* Sample Photo Placeholder */}
+                  <div className="h-24 rounded-xl bg-white border-2 border-dashed border-emerald-400 flex flex-col items-center justify-center p-2 text-center shadow-inner">
+                    <Camera className="w-6 h-6 text-emerald-600 mb-1" />
+                    <span className="text-[9px] font-bold text-slate-600">හැඳුනුම්පත් ඡායාරූපය</span>
+                  </div>
+
+                  {/* Sample NIC Details */}
+                  <div className="col-span-2 space-y-1.5 text-left text-[11px]">
+                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
+                      <div className="text-[8px] font-bold text-slate-500">හැඳුනුම්පත් අංකය (NIC NO)</div>
+                      <div className="font-mono font-black text-emerald-950 text-xs tracking-wider">199512345678 / 951234567V</div>
+                    </div>
+                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
+                      <div className="text-[8px] font-bold text-slate-500">සම්පූර්ණ නම (FULL NAME)</div>
+                      <div className="font-bold text-slate-800 text-[10px]">නම සහ මුලකුරු පැහැදිලිව</div>
+                    </div>
+                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
+                      <div className="text-[8px] font-bold text-slate-500">උපන් දිනය (DOB) / ස්ත්‍රී-පුරුෂ භාවය</div>
+                      <div className="font-bold text-slate-700 text-[10px]">1995.05.12 • M / F</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clear watermark badge */}
+                <div className="mt-3 pt-2 border-t border-emerald-200/80 flex items-center justify-between text-[10px] text-emerald-800 font-bold">
+                  <span>✓ කොන් 4 ම පැහැදිලිව පෙනෙන සේ</span>
+                  <span>✓ ආලෝක පරාවර්තන නැතිව</span>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="space-y-2 text-xs text-slate-700">
+                <h4 className="font-black text-emerald-950 flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>ඡායාරූපය ලබා ගැනීමේ නිවැරදි උපදෙස්:</span>
+                </h4>
+                <ul className="space-y-1.5 text-[11px] list-disc list-inside font-medium text-slate-600 pl-1">
+                  <li>හැඳුනුම්පතේ ඉදිරිපස ඇති සියලුම අකුරු සහ ඡායාරූපය පැහැදිලිව කියවිය හැකි විය යුතුය.</li>
+                  <li>හැඳුනුම්පත තිරස්ව (Landscape) තබා කොන් 4 ම ආවරණය නොවී සම්පූර්ණ කාඩ්පත පෙනෙන සේ ඡායාරූපය ගන්න.</li>
+                  <li>ෆ්ලෑෂ් හෝ ආලෝක පරාවර්තන (Glare) නිසා තොරතුරු නොපෙනී යාම වළක්වා ගන්න.</li>
+                  <li><strong>පරිපාලක (Admin) වරයා විසින් ඔබගේ හැඳුනුම්පත් අංකය හා මෙම ඡායාරූපය පරීක්ෂා කර තහවුරු (Accept) කරන තුරු පද්ධතියට ප්‍රවේශ විය නොහැක.</strong></li>
+                </ul>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setShowNicGuideModal(false)}
+                className="w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs transition-colors cursor-pointer shadow-md"
+              >
+                තේරුම් ගතිමි (Close)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

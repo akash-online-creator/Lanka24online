@@ -41,6 +41,7 @@ import {
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
+import { captureUserLoginLog, appendLoginHistory } from './utils/loginTracker';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
 import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
@@ -584,13 +585,42 @@ export default function App() {
         return;
       }
 
-      if (foundUser.status === 'blocked') {
+      if (foundUser.status === 'blocked' || (foundUser as any).isBlocked) {
         alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
         return;
       }
 
+      // Record Login Audit Log (IP, GPS / Location, Device Info, Timestamp)
+      try {
+        let gpsCoords: { lat: number; lng: number } | undefined;
+        const savedLat = localStorage.getItem('sahaya_current_lat');
+        const savedLng = localStorage.getItem('sahaya_current_lng');
+        if (savedLat && savedLng) {
+          gpsCoords = { lat: parseFloat(savedLat), lng: parseFloat(savedLng) };
+        }
+        const loginLog = await captureUserLoginLog(gpsCoords);
+        const updatedHistory = appendLoginHistory(foundUser.loginHistory, loginLog, 20);
+        foundUser = {
+          ...foundUser,
+          loginHistory: updatedHistory,
+          ipAddress: loginLog.ipAddress,
+          lastLoginAt: loginLog.timestamp,
+        };
+        // Update user state in Firestore asynchronously
+        if (foundUser.id) {
+          updateUserInFirestore(foundUser.id, {
+            loginHistory: updatedHistory,
+            ipAddress: loginLog.ipAddress,
+            lastLoginAt: loginLog.timestamp,
+          }).catch((err) => console.warn("Login history persistence warning:", err));
+        }
+      } catch (logErr) {
+        console.warn("Login history recording error:", logErr);
+      }
+
       console.log("Login Successful! Setting User State...");
       setCurrentUser(foundUser);
+      setUsers((prev) => (prev || []).map((u) => (u.id === foundUser!.id ? foundUser! : u)));
 
       if (foundUser.role === 'admin') {
         setActiveRoleView('admin');
