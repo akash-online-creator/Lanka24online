@@ -8,7 +8,10 @@ import {
   KeyRound, 
   Contact2,
   Sparkles,
-  Loader2
+  Loader2,
+  AlertCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
@@ -38,16 +41,58 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 }) => {
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const t = (translations[language] || translations.si) as any;
+
+  // ශ්‍රී ලාංකික NIC අංක Validation (Old: 9 digits + V/X, New: 12 digits)
+  const validateNIC = (nicValue: string) => {
+    const oldNicRegex = /^[0-9]{9}[vVxX]$/;
+    const newNicRegex = /^[0-9]{12}$/;
+    return oldNicRegex.test(nicValue) || newNicRegex.test(nicValue);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    const cleanNic = userId.trim().toUpperCase();
+
+    // 1. NIC පරීක්ෂාව
+    if (!validateNIC(cleanNic)) {
+      setError(
+        language === 'en'
+          ? "Please enter a valid Sri Lankan NIC number (e.g. 912345678V or 199123456789)"
+          : language === 'ta'
+          ? "செல்லுபடியாகும் NIC எண்ணை உள்ளிடவும் (எ.கா: 912345678V)"
+          : "කරුණාකර නිවැරදි NIC අංකයක් ඇතුළත් කරන්න (උදා: 912345678V හෝ 199123456789)"
+      );
+      return;
+    }
+
+    // 2. මුරපද පරීක්ෂාව
+    if (!key.trim()) {
+      setError(
+        language === 'en'
+          ? "Please enter your password / security code"
+          : "කරුණාකර මුරපදය ඇතුළත් කරන්න"
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await onLogin(userId.trim(), key.trim());
-    } catch (error) {
-      console.error("Login Error:", error);
+      await onLogin(cleanNic, key.trim());
+    } catch (err: any) {
+      console.error("Login Error:", err);
+      setError(
+        err?.message || 
+        (language === 'en'
+          ? "Login failed. Please check your credentials."
+          : "ලොග් වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.")
+      );
     } finally {
       setIsLoading(false);
     }
@@ -128,6 +173,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
       {/* Main Login Card */}
       <div className="w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222] backdrop-blur-sm">
+        
+        {/* Error Alert Box */}
+        {error && (
+          <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs rounded-xl flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400" />
+            <span className="font-medium leading-tight">{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-2.5">
           {/* Field 1: Identity Card / NIC */}
           <div className="space-y-0.5">
@@ -142,10 +196,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 type="text"
                 required
                 disabled={isLoading}
-                placeholder="XXXXXXXXXV"
+                placeholder="912345678V / 199123456789"
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50"
+                onChange={(e) => {
+                  setUserId(e.target.value);
+                  if (error) setError(null);
+                }}
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-mono font-medium uppercase disabled:opacity-50"
               />
             </div>
           </div>
@@ -169,14 +226,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 <KeyRound className="w-4 h-4" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 disabled={isLoading}
                 placeholder="••••••••"
                 value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50"
+                onChange={(e) => {
+                  setKey(e.target.value);
+                  if (error) setError(null);
+                }}
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-9 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 text-slate-400 dark:text-[#3d5d48] hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
