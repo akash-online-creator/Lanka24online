@@ -1,4 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  EmailAuthProvider, 
+  reauthenticateWithCredential, 
+  sendPasswordResetEmail, 
+  updatePassword 
+} from 'firebase/auth';
 import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem, RedAlertItem } from './types';
 import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
 import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
@@ -15,6 +24,7 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { 
+  auth,
   subscribeToHelpPosts, 
   updateHelpPostInFirestore, 
   deleteHelpPostFromFirestore, 
@@ -473,11 +483,10 @@ export default function App() {
     setViewMode('dashboard');
   };
 
+  // ✅ 1. NIC + Password මගින් Firebase Auth හරහා ආරක්ෂිතව ලොග් වීම
   const handleLogin = async (userIdInput: string, keyInput: string) => {
     try {
       console.log("--- Login Attempt Started ---");
-      console.log("User ID Input:", userIdInput);
-
       const cleanInput = (userIdInput || "").trim().toLowerCase();
       const submittedPassword = (keyInput || "").trim();
 
@@ -486,7 +495,7 @@ export default function App() {
         return;
       }
 
-      // Admin Login
+      // Admin විශේෂ ලොග් වීම
       if (
         (userIdInput.toUpperCase() === '970181547V' && submittedPassword === '1691@@Devhas') ||
         (userIdInput === 'admin' && submittedPassword === 'admin123')
@@ -503,6 +512,20 @@ export default function App() {
         return;
       }
 
+      // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
+      const formattedEmail = `${cleanInput}@app.com`;
+      let authUser;
+
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
+        authUser = userCredential.user;
+      } catch (authError: any) {
+        console.warn("Firebase Auth Login Failure:", authError.message);
+        setShowWrongLoginModal(true);
+        return;
+      }
+
+      // Firestore මගින් පරිශීලකගේ අමතර විස්තර ලබා ගැනීම
       let foundUser = await getUserFromFirestore(cleanInput);
 
       if (!foundUser) {
@@ -514,32 +537,21 @@ export default function App() {
         );
       }
 
+      if (!foundUser && authUser) {
+        foundUser = {
+          id: authUser.uid,
+          userId: cleanInput.toUpperCase(),
+          name: authUser.displayName || cleanInput.toUpperCase(),
+          email: authUser.email || formattedEmail,
+          nicNumber: cleanInput.toUpperCase(),
+          phone: '',
+          role: 'user',
+          status: 'approved',
+          registeredAt: new Date().toISOString(),
+        };
+      }
+
       if (!foundUser) {
-        console.warn("Login Error: User completely not found in DB.");
-        setShowWrongLoginModal(true);
-        return;
-      }
-
-      const rawStoredPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
-
-      if (!rawStoredPassword || String(rawStoredPassword).trim() === '') {
-        console.warn("Login Error: User exists but NO password is set in DB.");
-        alert('⛔ ආරක්ෂක දෝෂයකි: මෙම ගිණුම සඳහා මුරපදයක් සකසා නැත. කරුණාකර පරිපාලක අමතන්න.');
-        setShowWrongLoginModal(true);
-        return;
-      }
-
-      const finalStoredPassword = String(rawStoredPassword).trim();
-
-      if (submittedPassword === "") {
-        console.warn("Login Error: User submitted an empty password.");
-        setShowWrongLoginModal(true);
-        return;
-      }
-
-      if (submittedPassword !== finalStoredPassword) {
-        console.warn("Login Error: PASSWORD MISMATCH!");
-        console.warn(`Typed: '${submittedPassword}', Stored: '${finalStoredPassword}'`);
         setShowWrongLoginModal(true);
         return;
       }
@@ -572,8 +584,10 @@ export default function App() {
     }
   };
 
-  const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
-    if (!newUser.key || newUser.key.trim() === '') {
+  // ✅ 2. අලුත් පරිශීලකයන් ලියාපදිංචි කිරීම (Firebase Auth + Firestore)
+  const handleRegister = async (newUser: Omit<User, 'id' | 'registeredAt'>) => {
+    const rawPassword = (newUser.key || (newUser as any).password || "").trim();
+    if (!rawPassword) {
       alert('⛔ දෝෂයකි: ගිණුමක් සෑදීම සඳහා මුරපදයක් ඇතුළත් කිරීම අනිවාර්ය වේ.');
       return;
     }
@@ -596,17 +610,34 @@ export default function App() {
       return;
     }
 
-    const createdUser: User = {
-      ...newUser,
-      id: `usr_${Date.now()}`,
-      ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
-      registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    };
+    const cleanNic = (newUser.nicNumber || newUser.userId || "").trim().toLowerCase();
+    const formattedEmail = `${cleanNic}@app.com`;
 
-    setUsers((prev) => [createdUser, ...prev]);
-    saveUserToFirestore(createdUser).catch((err) => console.warn(err));
-    setCurrentUser(null);
-    setViewMode('login');
+    try {
+      // 1. Firebase Auth හි පරිශීලක ගිණුම සෑදීම
+      const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, rawPassword);
+      const uid = userCredential.user.uid;
+
+      // 2. පාස්වර්ඩ් එක ඉවත් කර අනිත් දත්ත Firestore හි සේව් කිරීම
+      const { key, password, securityCode, ...cleanUserData } = newUser as any;
+
+      const createdUser: User = {
+        ...cleanUserData,
+        id: uid,
+        userId: newUser.userId || cleanNic.toUpperCase(),
+        ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
+        registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      };
+
+      setUsers((prev) => [createdUser, ...prev]);
+      await saveUserToFirestore(createdUser);
+      setCurrentUser(null);
+      setViewMode('login');
+      alert('ලියාපදිංචි වීම සාර්ථකයි! දැන් ඔබගේ NIC අංකය සහ මුරපදය යොදා ලොග් වෙන්න.');
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      alert(`⛔ ලියාපදිංචි වීම අසාර්ථක විය: ${error.message || 'නැවත උත්සාහ කරන්න.'}`);
+    }
   };
 
   const handleLogout = () => {
@@ -663,56 +694,93 @@ export default function App() {
     );
   };
 
-  // ✅ නිවැරදි කළ handleUpdateUser function එක
+  // ✅ පරිශීලක දත්ත Firestore හි යාවත්කාලීන කිරීම (Plaintext password නොමැතිව)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
-      await updateUserInFirestore(updatedUser.id, updatedUser);
+      const { key, password, securityCode, ...safeUserData } = updatedUser as any;
+      await updateUserInFirestore(updatedUser.id, safeUserData);
       
       setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
       
-      const currentUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
-      const newUsers = currentUsers.map((u: User) => (u.id === updatedUser.id ? updatedUser : u));
-      localStorage.setItem('sahaya_users', JSON.stringify(newUsers));
-
       if (currentUser && currentUser.id === updatedUser.id) {
         setCurrentUser(updatedUser);
       }
       
-      console.log("✅ පරිශීලක දත්ත සහ නව මුරපදය දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
+      console.log("✅ පරිශීලක දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
     } catch (err) {
-      console.error("⛔ මුරපදය Save වීමේ දෝෂයක්:", err);
-      alert("අන්තර්ජාල දෝෂයක් හෝ අවසර නැති වීමක් නිසා තොරතුරු දත්ත ගබඩාවට සේව් නොවීය. කරුණාකර නැවත උත්සාහ කරන්න.");
+      console.error("⛔ Save වීමේ දෝෂයක්:", err);
+      alert("අන්තර්ජාල දෝෂයක් නිසා තොරතුරු දත්ත ගබඩාවට සේව් නොවීය.");
     }
   };
 
-  // ✅ නිවැරදි කළ handleSaveNewPassword function එක
+  // ✅ 4.1. නව මුරපදයක් සේව් කිරීම (Firebase Auth Level එකෙන්)
   const handleSaveNewPassword = async (newPassword: string) => {
     if (!currentUser) return;
     if (!newPassword || newPassword.trim() === '') {
       alert('නව මුරපදය හිස් ව තිබිය නොහැක.');
       return;
     }
-    const updatedUser: User = {
-      ...currentUser,
-      key: newPassword,
-      securityCode: newPassword,
-      isPasswordChanged: true,
-    };
-    
+
     try {
+      const activeUser = auth.currentUser;
+      if (activeUser) {
+        await updatePassword(activeUser, newPassword);
+      }
+
+      const updatedUser: User = {
+        ...currentUser,
+        isPasswordChanged: true,
+      };
+
       await updateUserInFirestore(updatedUser.id, {
-        key: newPassword,
-        securityCode: newPassword,
         isPasswordChanged: true,
       });
-      
+
       setCurrentUser(updatedUser);
       setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
       setShowChangePasswordModal(false);
       alert("ඔබගේ මුරපදය සාර්ථකව යාවත්කාලීන කරන ලදී!");
-    } catch (err) {
+    } catch (err: any) {
       console.warn("මුරපදය වෙනස් කිරීමේ දෝෂයක්:", err);
-      alert('මුරපදය වෙනස් කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      alert(`මුරපදය වෙනස් කිරීම අසාර්ථක විය: ${err.message || 'නැවත ලොග් වී උත්සාහ කරන්න.'}`);
+    }
+  };
+
+  // ✅ 4.2. ඇඩ්මින් පැනල් එකෙන් Password Reset Link එකක් යැවීම
+  const handleResetUserPasswordByAdmin = async (nicNumber: string) => {
+    try {
+      const formattedEmail = `${nicNumber.trim().toLowerCase()}@app.com`;
+      await sendPasswordResetEmail(auth, formattedEmail);
+      alert(`මුරපදය නැවත සැකසීමේ උපදෙස් ${formattedEmail} වෙත යවන ලදී.`);
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      alert(`මුරපදය Reset කිරීම අසාර්ථක විය: ${error.message}`);
+    }
+  };
+
+  // ✅ 3. Red Alert පලකිරීමේදී මුරපදය පරීක්ෂා කිරීමේ ෆන්ක්ෂන් එක
+  const handleVerifyPasswordBeforeRedAlert = async (passwordInput: string): Promise<boolean> => {
+    const currentUserAuth = auth.currentUser;
+    if (!currentUserAuth || !currentUserAuth.email) {
+      if (currentUser && currentUser.nicNumber) {
+        try {
+          const formattedEmail = `${currentUser.nicNumber.trim().toLowerCase()}@app.com`;
+          await signInWithEmailAndPassword(auth, formattedEmail, passwordInput);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    }
+
+    try {
+      const credential = EmailAuthProvider.credential(currentUserAuth.email, passwordInput);
+      await reauthenticateWithCredential(currentUserAuth, credential);
+      return true;
+    } catch (error) {
+      console.error("Red Alert Password verification failed:", error);
+      return false;
     }
   };
 
@@ -1047,6 +1115,7 @@ export default function App() {
             language={language}
             redAlerts={redAlerts}
             onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
+            onResetUserPassword={handleResetUserPasswordByAdmin}
           />
         )}
 
@@ -1080,6 +1149,7 @@ export default function App() {
         isOpen={isCreateRedAlertOpen}
         onClose={() => setIsCreateRedAlertOpen(false)}
         currentUser={currentUser}
+        onVerifyPassword={handleVerifyPasswordBeforeRedAlert}
         onAlertCreated={(newAlert) => {
           setMyCreatedAlertIds((prev) => {
             const next = Array.from(new Set([...prev, newAlert.id]));
