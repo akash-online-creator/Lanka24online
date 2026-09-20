@@ -41,7 +41,6 @@ import { calculateDistanceKm } from './data/redAlertData';
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 export default function App() {
-  // Persistence state setup
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem('sahaya_lang');
     return (saved as Language) || 'si';
@@ -129,7 +128,6 @@ export default function App() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync real-time Firestore help posts
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
       setHelpPosts(remotePosts || []);
@@ -137,7 +135,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync real-time Firestore users
   useEffect(() => {
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
@@ -476,59 +473,90 @@ export default function App() {
     setViewMode('dashboard');
   };
 
-  // 🔒 දැඩි සහ අනිවාර්ය මුරපද තහවුරු කිරීමේ ක්‍රමවේදය (Strict Mandatory Password Validation)
+  // 🔒 අතිශයින් දැඩි සහ අනිවාර්ය මුරපද තහවුරු කිරීමේ ක්‍රමවේදය (Ultra-Strict Password Validation)
   const handleLogin = async (userIdInput: string, keyInput: string) => {
-    const cleanInput = userIdInput.trim().toLowerCase();
-
-    if (cleanInput === 'demo_user' || cleanInput === 'demo') {
-      handleUserDemoLogin();
-      return;
-    }
-
-    if (
-      (userIdInput.toUpperCase() === '970181547V' && keyInput === '1691@@Devhas') ||
-      (userIdInput === 'admin' && keyInput === 'admin123')
-    ) {
-      const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
-      setCurrentUser(adminUser);
-      setActiveRoleView('admin');
-      setViewMode('admin');
-      return;
-    }
-
-    if (isCredentialBlocked(cleanInput)) {
-      alert('⛔ අවධානයයි: ඔබගේ ගිණුම, දුරකථන අංකය, ජා.හැ. අංකය, Gmail හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත.');
-      return;
-    }
-
     try {
-      const foundUser = await getUserFromFirestore(cleanInput);
+      console.log("--- Login Attempt Started ---");
+      console.log("User ID Input:", userIdInput);
+
+      const cleanInput = (userIdInput || "").trim().toLowerCase();
+      const submittedPassword = (keyInput || "").trim(); // ඇතුළත් කළ මුරපදය
+
+      if (cleanInput === 'demo_user' || cleanInput === 'demo') {
+        handleUserDemoLogin();
+        return;
+      }
+
+      // Admin Login
+      if (
+        (userIdInput.toUpperCase() === '970181547V' && submittedPassword === '1691@@Devhas') ||
+        (userIdInput === 'admin' && submittedPassword === 'admin123')
+      ) {
+        const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
+        setCurrentUser(adminUser);
+        setActiveRoleView('admin');
+        setViewMode('admin');
+        return;
+      }
+
+      if (isCredentialBlocked(cleanInput)) {
+        alert('⛔ අවධානයයි: ඔබගේ ගිණුම හෝ හැඳුනුම්පත පරිපාලක (Admin) විසින් අවහිර කර ඇත.');
+        return;
+      }
+
+      // 1. Firestore හරහා දත්ත සෙවීම
+      let foundUser = await getUserFromFirestore(cleanInput);
+
+      // 2. යම් හෙයකින් Firestore අසමත් වුවහොත් Local State එකෙන් (Backup) සෙවීම
+      if (!foundUser) {
+        foundUser = users.find(
+          (u) =>
+            (u.userId && u.userId.toLowerCase() === cleanInput) ||
+            (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+            (u.phone && u.phone.toLowerCase() === cleanInput)
+        );
+      }
 
       if (!foundUser) {
+        console.warn("Login Error: User completely not found in DB.");
         setShowWrongLoginModal(true);
         return;
       }
 
-      // සියලුම ගිණුම්වල මුරපදය අනිවාර්ය විය යුතුය
-      const correctPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
+      // 3. මුරපදය නිවැරදිව ලබා ගැනීම
+      const rawStoredPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
 
-      if (!correctPassword || String(correctPassword).trim() === '') {
-        alert('⛔ ආරක්ෂක දෝෂයකි: මෙම ගිණුම සඳහා මුරපදයක් සකසා නැත. සියලුම ගිණුම් සඳහා මුරපදයක් තිබීම අනිවාර්ය වේ. කරුණාකර පරිපාලක අමතන්න.');
+      if (!rawStoredPassword || String(rawStoredPassword).trim() === '') {
+        console.warn("Login Error: User exists but NO password is set in DB.");
+        alert('⛔ ආරක්ෂක දෝෂයකි: මෙම ගිණුම සඳහා මුරපදයක් සකසා නැත. කරුණාකර පරිපාලක අමතන්න.');
         setShowWrongLoginModal(true);
         return;
       }
 
-      // ලබා දී ඇති මුරපදය නිවැරදි දැයි දැඩි ලෙස පරීක්ෂා කිරීම (Strict Check)
-      if (!keyInput || keyInput.trim() !== String(correctPassword).trim()) {
+      const finalStoredPassword = String(rawStoredPassword).trim(); // දත්ත ගබඩාවේ ඇති නිවැරදි මුරපදය
+
+      // 4. මුරපද ගැලපීම (Strict Equality Check)
+      if (submittedPassword === "") {
+        console.warn("Login Error: User submitted an empty password.");
         setShowWrongLoginModal(true);
         return;
       }
 
+      if (submittedPassword !== finalStoredPassword) {
+        console.warn("Login Error: PASSWORD MISMATCH!");
+        console.warn(`Typed: '${submittedPassword}', Stored: '${finalStoredPassword}'`); // Console එකෙන් පරික්ෂා කිරීමට
+        setShowWrongLoginModal(true);
+        return; // ⛔ මෙතැනින් අනිවාර්යයෙන්ම Login වීමේ ක්‍රියාවලිය නවතී! පහළට ගමන් නොකරයි.
+      }
+
+      // 5. අවහිර කිරීම් පරීක්ෂාව
       if (foundUser.status === 'blocked') {
         alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
         return;
       }
 
+      // 6. සියල්ල නිවැරදි නම් පමණක් Login කිරීම
+      console.log("Login Successful! Setting User State...");
       setCurrentUser(foundUser);
 
       if (foundUser.role === 'admin') {
@@ -544,14 +572,14 @@ export default function App() {
       } else if (foundUser.status === 'rejected') {
         setShowWrongLoginModal(true);
       }
+
     } catch (error) {
-      console.error("Login verification failed:", error);
+      console.error("Login verification failed with an exception:", error);
       alert("අන්තර්ජාල සම්බන්ධතා දෝෂයක්. කරුණාකර නැවත උත්සාහ කරන්න.");
     }
   };
 
   const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
-    // රෙජිස්ටර් වීමේදී මුරපදය හිස් නොවිය යුතු බව තහවුරු කිරීම
     if (!newUser.key || newUser.key.trim() === '') {
       alert('⛔ දෝෂයකි: ගිණුමක් සෑදීම සඳහා මුරපදයක් ඇතුළත් කිරීම අනිවාර්ය වේ.');
       return;
@@ -1129,8 +1157,8 @@ export default function App() {
       ) : (
         <footer className="z-10 py-1 text-center text-[10px] text-slate-400 dark:text-emerald-500/60 font-mono">
           🔒 {t.securityLayer} • {serverTime}
-        ))}
-      </footer>
+        </footer>
+      )}
 
       {viewMode !== 'dashboard' && (
         <OmniAssistantChatBox
