@@ -46,6 +46,7 @@ import { getLocalizedPost, getCardLabels, translateText, translateName } from '.
 import { translatePostWithGoogle } from '../utils/googleTranslator';
 import { renderTextWithLinks } from '../utils/textUtils';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
+import { AudioVoicePlayer } from './AudioVoiceNote';
 
 interface PostCardProps {
   post: HelpPost;

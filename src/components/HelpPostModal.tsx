@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   AlertTriangle, 
   Wrench, 
@@ -12,13 +12,23 @@ import {
   ArrowRight,
   ArrowLeft,
   MapPin,
-  Sparkles
+  Sparkles,
+  Video,
+  Mic,
+  Image as ImageIcon,
+  Cloud,
+  Loader2,
+  Trash2,
+  Play
 } from 'lucide-react';
-import { HelpPost, Language, LocationOption, TagItem } from '../types';
+import { HelpPost, Language, LocationOption, TagItem, TelegramMediaRecord } from '../types';
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
+import { uploadMediaToTelegram } from '../utils/telegramStorage';
+import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
+import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 
 interface HelpPostModalProps {
   isOpen: boolean;
@@ -48,6 +58,19 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   const [payment, setPayment] = useState('');
   const [externalLink, setExternalLink] = useState('');
 
+  // Media & Telegram State
+  const [uploadedImageUrl, setUploadedImageUrl] = useState('');
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState('');
+  const [uploadedAudioUrl, setUploadedAudioUrl] = useState('');
+  const [audioDurationSec, setAudioDurationSec] = useState(0);
+  const [telegramStorage, setTelegramStorage] = useState<TelegramMediaRecord | undefined>(undefined);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+
   // Tag State
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
@@ -70,6 +93,13 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       setTransport('');
       setPayment('');
       setExternalLink('');
+      setUploadedImageUrl('');
+      setUploadedVideoUrl('');
+      setUploadedAudioUrl('');
+      setAudioDurationSec(0);
+      setTelegramStorage(undefined);
+      setIsUploadingMedia(false);
+      setShowVoiceRecorder(false);
       setSelectedTag(null);
       setTagError('');
       setOtpSent(false);
@@ -81,6 +111,82 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   }, [isOpen]);
 
   const [rateLimitError, setRateLimitError] = useState('');
+
+  // Handle Image Upload
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMedia(true);
+    setUploadProgressText('චායාරූපය Telegram Cloud වෙත සුරකිමින් පවතී...');
+
+    try {
+      const res = await uploadMediaToTelegram({
+        file,
+        fileName: file.name,
+        mimeType: file.type || 'image/jpeg',
+        mediaType: 'photo',
+        senderName: userName || 'User',
+        sourceContext: 'Help Post Photo',
+        caption: `Help Post: ${whatHappened.slice(0, 80) || 'Photo attachment'}`,
+      });
+
+      setUploadedImageUrl(res.url);
+      if (res.record) {
+        setTelegramStorage(res.record);
+      }
+    } catch (err) {
+      console.error('Image upload failed:', err);
+      // Local fallback
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImageUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingMedia(false);
+      setUploadProgressText('');
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
+
+  // Handle Video Upload
+  const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('වීඩියෝවේ ප්‍රමාණය 50MB ට වඩා අඩු විය යුතුය.');
+      return;
+    }
+
+    setIsUploadingMedia(true);
+    setUploadProgressText('වීඩියෝව Telegram Cloud වෙත සුරකිමින් පවතී...');
+
+    try {
+      const res = await uploadMediaToTelegram({
+        file,
+        fileName: file.name,
+        mimeType: file.type || 'video/mp4',
+        mediaType: 'video',
+        senderName: userName || 'User',
+        sourceContext: 'Help Post Video',
+        caption: `Help Post Video: ${whatHappened.slice(0, 80) || 'Video attachment'}`,
+      });
+
+      setUploadedVideoUrl(res.url);
+      if (res.record) {
+        setTelegramStorage(res.record);
+      }
+    } catch (err) {
+      console.error('Video upload failed:', err);
+      alert('වීඩියෝව අප්ලෝඩ් කිරීමේදී ගැටලුවක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } finally {
+      setIsUploadingMedia(false);
+      setUploadProgressText('');
+      if (videoInputRef.current) videoInputRef.current.value = '';
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -129,6 +235,12 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       transport: transport.trim(),
       payment: payment.trim(),
       externalLink: externalLink.trim(),
+      imageUrl: uploadedImageUrl || undefined,
+      videoUrl: uploadedVideoUrl || undefined,
+      audioUrl: uploadedAudioUrl || undefined,
+      audioDurationSec: audioDurationSec || undefined,
+      telegramStorage: telegramStorage || undefined,
+      mediaType: uploadedVideoUrl ? 'video' : uploadedAudioUrl ? 'voice' : uploadedImageUrl ? 'photo' : undefined,
       locationName: `${currentLocation.nameSi} (${currentLocation.nameEn})`,
       distanceKm: 0.5, // Posted from current location
       lat: currentLocation.lat,
@@ -334,6 +446,185 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-slate-100 text-sm focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* 📷 🎥 🎙️ Telegram Cloud Media Upload (Video, Photo, Voice Note) */}
+              <div className="p-3.5 bg-slate-950/80 border border-sky-500/40 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-bold text-sky-200">
+                      Telegram Cloud මාධ්‍ය ඇමිණුම් (Video / Photo / Voice)
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
+                    Auto-Sync
+                  </span>
+                </div>
+
+                {isUploadingMedia && (
+                  <div className="p-2.5 bg-sky-950/60 border border-sky-500/50 rounded-xl flex items-center gap-2 text-xs text-sky-200 animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin text-sky-400 shrink-0" />
+                    <span>{uploadProgressText || 'මාධ්‍ය ගොනුව Telegram Cloud වෙත සුරකිමින් පවතී...'}</span>
+                  </div>
+                )}
+
+                {/* Media Action Buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Photo Upload Button */}
+                  <div>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingMedia}
+                      onClick={() => imageInputRef.current?.click()}
+                      className="w-full py-2 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/50 text-slate-200 text-xs font-semibold flex flex-col items-center gap-1 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      <ImageIcon className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[11px]">පින්තූරයක් (Photo)</span>
+                    </button>
+                  </div>
+
+                  {/* Video Upload Button */}
+                  <div>
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      onChange={handleVideoFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingMedia}
+                      onClick={() => videoInputRef.current?.click()}
+                      className="w-full py-2 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-sky-500/50 text-slate-200 text-xs font-semibold flex flex-col items-center gap-1 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      <Video className="w-4 h-4 text-rose-400" />
+                      <span className="text-[11px]">වීඩියෝවක් (Video)</span>
+                    </button>
+                  </div>
+
+                  {/* Voice Note Button */}
+                  <div>
+                    <button
+                      type="button"
+                      disabled={isUploadingMedia}
+                      onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
+                      className={`w-full py-2 px-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                        showVoiceRecorder
+                          ? 'bg-emerald-900/60 border-emerald-500 text-emerald-200'
+                          : 'bg-slate-900 hover:bg-slate-800 border-slate-700 hover:border-emerald-500/50 text-slate-200'
+                      }`}
+                    >
+                      <Mic className="w-4 h-4 text-amber-400" />
+                      <span className="text-[11px]">හඬ පණිවිඩයක්</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Voice Recorder Inline */}
+                {showVoiceRecorder && (
+                  <div className="mt-2">
+                    <AudioVoiceRecorder
+                      senderName={userName || 'Help Seeker'}
+                      sourceContext="Help Post Voice"
+                      onSendAudio={(audioUrl, durationSec, tgRecord) => {
+                        setUploadedAudioUrl(audioUrl);
+                        setAudioDurationSec(durationSec);
+                        if (tgRecord) setTelegramStorage(tgRecord);
+                        setShowVoiceRecorder(false);
+                      }}
+                      onCancel={() => setShowVoiceRecorder(false)}
+                    />
+                  </div>
+                )}
+
+                {/* Uploaded Media Previews */}
+                {(uploadedImageUrl || uploadedVideoUrl || uploadedAudioUrl) && (
+                  <div className="pt-2 border-t border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      අමුණන ලද මාධ්‍ය (Attached Media)
+                    </span>
+
+                    {/* Image Preview */}
+                    {uploadedImageUrl && (
+                      <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 bg-slate-900 p-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={uploadedImageUrl}
+                            alt="Uploaded preview"
+                            className="w-12 h-12 rounded-lg object-cover border border-slate-700"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-emerald-300 block">📷 චායාරූපය සූදානම්</span>
+                            <span className="text-[10px] text-sky-400 flex items-center gap-1">
+                              <Cloud className="w-3 h-3" /> Telegram Vault හි සුරකින ලදී
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setUploadedImageUrl('')}
+                          className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 transition-colors"
+                          title="ඉවත් කරන්න"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Video Preview */}
+                    {uploadedVideoUrl && (
+                      <div className="relative rounded-xl overflow-hidden border border-sky-500/40 bg-slate-900 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Video className="w-4 h-4 text-sky-400" />
+                            <span className="text-xs font-bold text-sky-300">🎥 වීඩියෝව සූදානම්</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setUploadedVideoUrl('')}
+                            className="p-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs"
+                            title="ඉවත් කරන්න"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <EmbeddedMediaViewer
+                          videoUrl={uploadedVideoUrl}
+                          telegramRecord={telegramStorage}
+                          title="Uploaded Video"
+                        />
+                      </div>
+                    )}
+
+                    {/* Voice Note Preview */}
+                    {uploadedAudioUrl && (
+                      <div className="relative rounded-xl overflow-hidden border border-amber-500/40 bg-slate-900 p-2 flex items-center justify-between">
+                        <AudioVoicePlayer audioUrl={uploadedAudioUrl} durationSec={audioDurationSec || 5} />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploadedAudioUrl('');
+                            setAudioDurationSec(0);
+                          }}
+                          className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 transition-colors ml-2"
+                          title="ඉවත් කරන්න"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 🔗 වීඩියෝ / සමාජ මාධ්‍ය / වෙබ් ලින්ක් (External Link / Video) */}

@@ -1,22 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Play, Pause, Trash2, Send, Volume2, AlertCircle } from 'lucide-react';
+import { Mic, Square, Play, Pause, Trash2, Send, Volume2, AlertCircle, Cloud, Loader2 } from 'lucide-react';
+import { uploadMediaToTelegram } from '../utils/telegramStorage';
+import { TelegramMediaRecord } from '../types';
 
 interface AudioVoiceRecorderProps {
-  onSendAudio: (audioBase64: string, durationSec: number) => void;
+  onSendAudio: (audioUrl: string, durationSec: number, telegramRecord?: TelegramMediaRecord) => void;
   onCancel: () => void;
   maxDurationSec?: number;
+  senderName?: string;
+  sourceContext?: string;
 }
 
 export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
   onSendAudio,
   onCancel,
   maxDurationSec = 60,
+  senderName = 'User',
+  sourceContext = 'Audio Message',
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -95,14 +102,35 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
     }
   };
 
-  const handleSend = () => {
-    if (!audioBlob) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64Audio = reader.result as string;
-      onSendAudio(base64Audio, Math.max(1, elapsedSec));
-    };
-    reader.readAsDataURL(audioBlob);
+  const handleSend = async () => {
+    if (!audioBlob || isUploading) return;
+    setIsUploading(true);
+
+    try {
+      const uploadRes = await uploadMediaToTelegram({
+        file: audioBlob,
+        fileName: `voice_note_${Date.now()}.webm`,
+        mimeType: 'audio/webm',
+        mediaType: 'voice',
+        senderName,
+        sourceContext,
+        caption: `Voice Note (${Math.max(1, elapsedSec)}s)`,
+      });
+
+      const finalAudioUrl = uploadRes.url || audioUrl || '';
+      onSendAudio(finalAudioUrl, Math.max(1, elapsedSec), uploadRes.record);
+    } catch (err) {
+      console.error('Audio upload error:', err);
+      // Fallback to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Audio = reader.result as string;
+        onSendAudio(base64Audio, Math.max(1, elapsedSec));
+      };
+      reader.readAsDataURL(audioBlob);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const togglePreview = () => {
@@ -156,9 +184,14 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
           {formatTimer(elapsedSec)} / {formatTimer(maxDurationSec)}
         </span>
 
-        {isRecording && (
+        {isRecording ? (
           <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold animate-pulse">
             🎙️ පටිගත වෙමින් පවතී...
+          </span>
+        ) : (
+          <span className="text-[9px] text-sky-600 dark:text-sky-300 font-bold flex items-center gap-1">
+            <Cloud className="w-3 h-3" />
+            <span>Telegram Auto-Vault</span>
           </span>
         )}
       </div>
@@ -169,7 +202,7 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
           <button
             type="button"
             onClick={stopRecording}
-            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1 shadow-sm active:scale-95"
+            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
             <span>නවතන්න (Stop)</span>
@@ -187,7 +220,7 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
                 <button
                   type="button"
                   onClick={togglePreview}
-                  className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-sm active:scale-95"
+                  className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-sm active:scale-95 cursor-pointer"
                   title="අසා බලන්න"
                 >
                   {isPlayingPreview ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -197,11 +230,21 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
 
             <button
               type="button"
+              disabled={isUploading}
               onClick={handleSend}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1 shadow-md active:scale-95 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>යවන්න (Send Voice)</span>
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>සුරකිමින්...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>යවන්න (Send Voice)</span>
+                </>
+              )}
             </button>
           </>
         )}
@@ -209,7 +252,8 @@ export const AudioVoiceRecorder: React.FC<AudioVoiceRecorderProps> = ({
         <button
           type="button"
           onClick={onCancel}
-          className="p-2 rounded-xl bg-slate-200 dark:bg-emerald-950/80 hover:bg-slate-300 text-slate-700 dark:text-slate-300 text-xs active:scale-95"
+          disabled={isUploading}
+          className="p-2 rounded-xl bg-slate-200 dark:bg-emerald-950/80 hover:bg-slate-300 text-slate-700 dark:text-slate-300 text-xs active:scale-95 cursor-pointer"
           title="අවලංගු කරන්න"
         >
           <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -240,8 +284,7 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.warn);
     }
   };
 
@@ -261,7 +304,7 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
 
   return (
     <div className={`flex items-center gap-2.5 p-2 rounded-xl min-w-[200px] max-w-xs ${
-      isMe ? 'bg-emerald-700/60 text-white' : 'bg-emerald-50 dark:bg-[#0b2418] text-slate-800 dark:text-slate-100 border border-emerald-200/80 dark:border-emerald-800/60'
+      isMe ? 'bg-emerald-700/70 text-white' : 'bg-emerald-50 dark:bg-[#0b2418] text-slate-800 dark:text-slate-100 border border-emerald-200/80 dark:border-emerald-800/60'
     }`}>
       <audio
         ref={audioRef}
@@ -278,7 +321,7 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         type="button"
         onClick={togglePlay}
         className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm active:scale-95 transition-all cursor-pointer ${
-          isMe ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+          isMe ? 'bg-white text-emerald-700 hover:bg-emerald-50' : 'bg-emerald-600 text-white hover:bg-emerald-700'
         }`}
       >
         {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
@@ -287,7 +330,10 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
       <div className="flex-1 space-y-1">
         <div className="flex items-center justify-between text-[10px] font-mono font-bold opacity-80">
           <span>{formatSec(currentTime)}</span>
-          <span>{formatSec(durationSec)}</span>
+          <span className="flex items-center gap-0.5">
+            <Cloud className="w-2.5 h-2.5 text-sky-400" />
+            <span>{formatSec(durationSec)}</span>
+          </span>
         </div>
         {/* Progress Bar / Waveform Simulator */}
         <div className="h-1.5 bg-black/20 dark:bg-white/20 rounded-full overflow-hidden">
@@ -298,7 +344,8 @@ export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({
         </div>
       </div>
 
-      <span className="text-xs">🎙️</span>
+      <span className="text-xs" title="Voice Note">🎙️</span>
     </div>
   );
 };
+

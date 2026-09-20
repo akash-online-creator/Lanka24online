@@ -154,7 +154,8 @@ const MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1
 async function startServer() {
   const app = express();
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Health check endpoints for Cloud Run and internal probes
   app.get('/api/health', (req, res) => {
@@ -503,6 +504,599 @@ Respond ONLY with valid JSON in this schema (no markdown, no backticks):
         fallback: true,
       });
     }
+  });
+
+  // ==========================================
+  // ☁️ TELEGRAM CLOUD MEDIA STORAGE ENDPOINTS
+  // ==========================================
+
+  interface StoredTelegramItem {
+    fileId: string;
+    fileUniqueId?: string;
+    fileType: 'image' | 'video' | 'voice' | 'audio' | 'document';
+    mimeType: string;
+    fileSize: number;
+    fileName: string;
+    messageId?: number;
+    chatId?: string | number;
+    directTelegramUrl?: string;
+    proxyUrl: string;
+    caption?: string;
+    createdAt: string;
+    senderName?: string;
+    sourceContext?: string;
+    localBase64Fallback?: string;
+  }
+
+  // In-memory cache for fast file lookup and admin inspection logs
+  const telegramFileCache = new Map<string, { filePath: string; mimeType: string; timestamp: number }>();
+  const telegramUploadLogs: StoredTelegramItem[] = [];
+
+  // Helper to get configured Telegram credentials
+  function getTelegramConfig() {
+    const token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const chatId = (process.env.TELEGRAM_CHAT_ID || '').trim();
+    return {
+      token,
+      chatId,
+      isConfigured: Boolean(token && chatId),
+    };
+  }
+
+  // 1. Status & Connectivity Check Endpoint
+  app.get('/api/telegram/status', async (req, res) => {
+    try {
+      const { token, chatId, isConfigured } = getTelegramConfig();
+
+      if (!isConfigured) {
+        res.json({
+          configured: false,
+          bot: null,
+          chat: null,
+          totalStoredMedia: telegramUploadLogs.length,
+          stats: {
+            videos: telegramUploadLogs.filter((i) => i.fileType === 'video').length,
+            voices: telegramUploadLogs.filter((i) => i.fileType === 'voice' || i.fileType === 'audio').length,
+            images: telegramUploadLogs.filter((i) => i.fileType === 'image').length,
+          },
+          message: 'Telegram Bot Token / Chat ID .env හි සකසා නොමැත. Local Storage Fallback සක්‍රීයව පවතී.',
+        });
+        return;
+      }
+
+      // Fetch Bot details from Telegram API
+      let botInfo: any = null;
+      try {
+        const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+        const meJson = await meRes.json();
+        if (meJson.ok) {
+          botInfo = meJson.result;
+        }
+      } catch (e) {
+        console.warn('Telegram getMe error:', e);
+      }
+
+      // Fetch Chat/Channel details from Telegram API
+      let chatInfo: any = null;
+      try {
+        const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(chatId)}`);
+        const chatJson = await chatRes.json();
+        if (chatJson.ok) {
+          chatInfo = chatJson.result;
+        }
+      } catch (e) {
+        console.warn('Telegram getChat error:', e);
+      }
+
+      res.json({
+        configured: true,
+        bot: botInfo
+          ? {
+              id: botInfo.id,
+              name: botInfo.first_name,
+              username: botInfo.username,
+              canJoinGroups: botInfo.can_join_groups,
+            }
+          : null,
+        chat: chatInfo
+          ? {
+              id: chatInfo.id,
+              title: chatInfo.title || chatInfo.username || 'Media Channel',
+              type: chatInfo.type,
+            }
+          : { id: chatId, title: 'Configured Storage Chat' },
+        totalStoredMedia: telegramUploadLogs.length,
+        stats: {
+          videos: telegramUploadLogs.filter((i) => i.fileType === 'video').length,
+          voices: telegramUploadLogs.filter((i) => i.fileType === 'voice' || i.fileType === 'audio').length,
+          images: telegramUploadLogs.filter((i) => i.fileType === 'image').length,
+        },
+        message: 'Telegram Cloud Storage සාර්ථකව සම්බන්ධ වී ඇත.',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to retrieve Telegram status', details: err.message });
+    }
+  });
+
+  // 2. Upload Media to Telegram Endpoint
+  app.post('/api/telegram/upload', async (req, res) => {
+    try {
+      const {
+        fileBase64,
+        fileName = 'media_upload',
+        mimeType = 'application/octet-stream',
+        mediaType = 'image',
+        caption = '',
+        senderName = 'Anonymous',
+        sourceContext = 'HelpPost',
+      } = req.body;
+
+      if (!fileBase64 || typeof fileBase64 !== 'string') {
+        res.status(400).json({ error: 'fileBase64 is required for Telegram upload' });
+        return;
+      }
+
+      // Decode base64 to binary buffer
+      let buffer: Buffer;
+      let effectiveMime = mimeType;
+      if (fileBase64.startsWith('data:')) {
+        const matches = fileBase64.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          effectiveMime = matches[1];
+          buffer = Buffer.from(matches[2], 'base64');
+        } else {
+          buffer = Buffer.from(fileBase64, 'base64');
+        }
+      } else {
+        buffer = Buffer.from(fileBase64, 'base64');
+      }
+
+      const { token, chatId, isConfigured } = getTelegramConfig();
+      const timestamp = new Date().toISOString();
+
+      // Graceful local fallback if Telegram credentials are not yet set
+      if (!isConfigured) {
+        const fallbackId = `local_media_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const localRecord: StoredTelegramItem = {
+          fileId: fallbackId,
+          fileType: mediaType,
+          mimeType: effectiveMime,
+          fileSize: buffer.length,
+          fileName,
+          proxyUrl: fileBase64, // Local data URL
+          caption,
+          createdAt: timestamp,
+          senderName,
+          sourceContext,
+          localBase64Fallback: fileBase64,
+        };
+
+        telegramUploadLogs.unshift(localRecord);
+        if (telegramUploadLogs.length > 200) telegramUploadLogs.pop();
+
+        res.json({
+          success: true,
+          isTelegramStored: false,
+          isLocalFallback: true,
+          telegramFileId: fallbackId,
+          proxyUrl: fileBase64,
+          mediaType,
+          mimeType: effectiveMime,
+          fileSize: buffer.length,
+          caption,
+          createdAt: timestamp,
+          warning: 'Telegram Bot Token not configured in .env. Falling back to local data URL.',
+        });
+        return;
+      }
+
+      // Determine appropriate Telegram API method and field name based on file type
+      let apiMethod = 'sendPhoto';
+      let fieldName = 'photo';
+      let fileExt = 'jpg';
+
+      const isVideo = mediaType === 'video' || effectiveMime.startsWith('video/');
+      const isVoice = mediaType === 'voice' || (effectiveMime.includes('audio') && (effectiveMime.includes('webm') || effectiveMime.includes('ogg') || effectiveMime.includes('opus')));
+      const isAudio = mediaType === 'audio' || (effectiveMime.startsWith('audio/') && !isVoice);
+      const isImage = mediaType === 'image' || effectiveMime.startsWith('image/');
+
+      if (isVideo) {
+        apiMethod = 'sendVideo';
+        fieldName = 'video';
+        fileExt = effectiveMime.includes('webm') ? 'webm' : effectiveMime.includes('mov') ? 'mov' : 'mp4';
+      } else if (isVoice) {
+        apiMethod = 'sendVoice';
+        fieldName = 'voice';
+        fileExt = 'ogg';
+      } else if (isAudio) {
+        apiMethod = 'sendAudio';
+        fieldName = 'audio';
+        fileExt = 'mp3';
+      } else if (isImage) {
+        apiMethod = 'sendPhoto';
+        fieldName = 'photo';
+        fileExt = effectiveMime.includes('png') ? 'png' : effectiveMime.includes('webp') ? 'webp' : 'jpg';
+      } else {
+        apiMethod = 'sendDocument';
+        fieldName = 'document';
+        fileExt = 'bin';
+      }
+
+      // Build rich caption
+      const formattedCaption = `🚨 *Sahaya Seva Cloud Media Storage*\n` +
+        `👤 *Sender:* ${senderName}\n` +
+        `📌 *Context:* ${sourceContext}\n` +
+        `📁 *Type:* ${mediaType.toUpperCase()} (${(buffer.length / 1024).toFixed(1)} KB)\n` +
+        `${caption ? `💬 *Note:* ${caption}\n` : ''}` +
+        `⏰ *Time:* ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+
+      // Construct Multipart Form Data
+      const formData = new FormData();
+      formData.append('chat_id', chatId);
+      const blob = new Blob([buffer], { type: effectiveMime });
+      const finalFileName = fileName.includes('.') ? fileName : `${fileName}_${Date.now()}.${fileExt}`;
+      formData.append(fieldName, blob, finalFileName);
+      formData.append('caption', formattedCaption);
+      formData.append('parse_mode', 'Markdown');
+
+      const tgResponse = await fetch(`https://api.telegram.org/bot${token}/${apiMethod}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const tgJson: any = await tgResponse.json();
+
+      if (!tgJson.ok) {
+        console.warn('Telegram API send error:', tgJson);
+        // If specific method failed (e.g. video format rejected by sendVideo), try sendDocument fallback
+        if (apiMethod !== 'sendDocument') {
+          const docFormData = new FormData();
+          docFormData.append('chat_id', chatId);
+          docFormData.append('document', blob, finalFileName);
+          docFormData.append('caption', formattedCaption);
+
+          const docRes = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+            method: 'POST',
+            body: docFormData,
+          });
+          const docJson: any = await docRes.json();
+          if (docJson.ok) {
+            const fileId = docJson.result.document.file_id;
+            const uniqueId = docJson.result.document.file_unique_id;
+
+            // Resolve file path
+            let filePath = '';
+            try {
+              const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+              const fileJson: any = await fileRes.json();
+              if (fileJson.ok) {
+                filePath = fileJson.result.file_path;
+                telegramFileCache.set(fileId, { filePath, mimeType: effectiveMime, timestamp: Date.now() });
+              }
+            } catch (e) {
+              console.warn('Telegram getFile error:', e);
+            }
+
+            const proxyUrl = `/api/telegram/file/${fileId}`;
+            const record: StoredTelegramItem = {
+              fileId,
+              fileUniqueId: uniqueId,
+              fileType: mediaType,
+              mimeType: effectiveMime,
+              fileSize: buffer.length,
+              fileName: finalFileName,
+              messageId: docJson.result.message_id,
+              chatId,
+              proxyUrl,
+              caption,
+              createdAt: timestamp,
+              senderName,
+              sourceContext,
+              localBase64Fallback: fileBase64,
+            };
+
+            telegramUploadLogs.unshift(record);
+            if (telegramUploadLogs.length > 200) telegramUploadLogs.pop();
+
+            res.json({
+              success: true,
+              isTelegramStored: true,
+              telegramFileId: fileId,
+              proxyUrl,
+              directTelegramUrl: filePath ? `https://api.telegram.org/file/bot${token}/${filePath}` : undefined,
+              mediaType,
+              mimeType: effectiveMime,
+              fileSize: buffer.length,
+              caption,
+              messageId: docJson.result.message_id,
+              createdAt: timestamp,
+            });
+            return;
+          }
+        }
+
+        // Return local fallback on Telegram error so user experience never breaks
+        const fallbackId = `err_fallback_${Date.now()}`;
+        res.json({
+          success: true,
+          isTelegramStored: false,
+          isLocalFallback: true,
+          telegramFileId: fallbackId,
+          proxyUrl: fileBase64,
+          mediaType,
+          mimeType: effectiveMime,
+          fileSize: buffer.length,
+          caption,
+          createdAt: timestamp,
+          warning: `Telegram Upload Warning: ${tgJson.description || 'Unknown error'}. Saved locally.`,
+        });
+        return;
+      }
+
+      // Extract file_id from Telegram response
+      const result = tgJson.result;
+      let fileId = '';
+      let fileUniqueId = '';
+
+      if (result.photo && Array.isArray(result.photo)) {
+        const largest = result.photo[result.photo.length - 1];
+        fileId = largest.file_id;
+        fileUniqueId = largest.file_unique_id;
+      } else if (result.video) {
+        fileId = result.video.file_id;
+        fileUniqueId = result.video.file_unique_id;
+      } else if (result.voice) {
+        fileId = result.voice.file_id;
+        fileUniqueId = result.voice.file_unique_id;
+      } else if (result.audio) {
+        fileId = result.audio.file_id;
+        fileUniqueId = result.audio.file_unique_id;
+      } else if (result.document) {
+        fileId = result.document.file_id;
+        fileUniqueId = result.document.file_unique_id;
+      }
+
+      // Resolve Telegram file_path for streaming
+      let filePath = '';
+      if (fileId) {
+        try {
+          const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+          const fileJson: any = await fileRes.json();
+          if (fileJson.ok) {
+            filePath = fileJson.result.file_path;
+            telegramFileCache.set(fileId, { filePath, mimeType: effectiveMime, timestamp: Date.now() });
+          }
+        } catch (e) {
+          console.warn('Telegram getFile error:', e);
+        }
+      }
+
+      const proxyUrl = fileId ? `/api/telegram/file/${fileId}` : fileBase64;
+
+      const record: StoredTelegramItem = {
+        fileId: fileId || `tg_${Date.now()}`,
+        fileUniqueId,
+        fileType: mediaType,
+        mimeType: effectiveMime,
+        fileSize: buffer.length,
+        fileName: finalFileName,
+        messageId: result.message_id,
+        chatId,
+        proxyUrl,
+        caption,
+        createdAt: timestamp,
+        senderName,
+        sourceContext,
+        localBase64Fallback: fileBase64,
+      };
+
+      telegramUploadLogs.unshift(record);
+      if (telegramUploadLogs.length > 200) telegramUploadLogs.pop();
+
+      res.json({
+        success: true,
+        isTelegramStored: true,
+        telegramFileId: fileId,
+        filePath,
+        proxyUrl,
+        directTelegramUrl: filePath ? `https://api.telegram.org/file/bot${token}/${filePath}` : undefined,
+        mediaType,
+        mimeType: effectiveMime,
+        fileSize: buffer.length,
+        caption,
+        messageId: result.message_id,
+        createdAt: timestamp,
+      });
+    } catch (err: any) {
+      console.error('Telegram upload controller error:', err);
+      res.status(200).json({
+        success: true,
+        isTelegramStored: false,
+        isLocalFallback: true,
+        proxyUrl: req.body?.fileBase64 || '',
+        mediaType: req.body?.mediaType || 'image',
+        warning: 'Internal upload error. Falling back to local data.',
+      });
+    }
+  });
+
+  // 3. Media Stream Proxy Endpoint with Range Headers for Video/Audio Seeking
+  app.get('/api/telegram/file/:fileId', async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      const { token, isConfigured } = getTelegramConfig();
+
+      // Check in-memory logs for fallback
+      const loggedItem = telegramUploadLogs.find((l) => l.fileId === fileId);
+
+      if (!isConfigured) {
+        if (loggedItem?.localBase64Fallback) {
+          const match = loggedItem.localBase64Fallback.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            const mime = match[1];
+            const buf = Buffer.from(match[2], 'base64');
+            res.setHeader('Content-Type', mime);
+            res.setHeader('Content-Length', buf.length);
+            res.send(buf);
+            return;
+          }
+        }
+        res.status(404).json({ error: 'File not available on server' });
+        return;
+      }
+
+      // Check cache for file path or fetch fresh from Telegram
+      let filePath = telegramFileCache.get(fileId)?.filePath;
+      let cachedMime = telegramFileCache.get(fileId)?.mimeType || loggedItem?.mimeType;
+
+      if (!filePath) {
+        const getFileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+        const getFileJson: any = await getFileRes.json();
+        if (getFileJson.ok) {
+          filePath = getFileJson.result.file_path;
+          telegramFileCache.set(fileId, {
+            filePath,
+            mimeType: cachedMime || 'application/octet-stream',
+            timestamp: Date.now(),
+          });
+        } else {
+          // If Telegram getFile fails, check if we have local fallback
+          if (loggedItem?.localBase64Fallback) {
+            const match = loggedItem.localBase64Fallback.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              const mime = match[1];
+              const buf = Buffer.from(match[2], 'base64');
+              res.setHeader('Content-Type', mime);
+              res.send(buf);
+              return;
+            }
+          }
+          res.status(404).json({ error: 'Telegram file not found', details: getFileJson.description });
+          return;
+        }
+      }
+
+      const telegramMediaUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+
+      // Handle Range Header for Video & Audio scrub/seek support
+      const range = req.headers.range;
+      const fetchHeaders: Record<string, string> = {};
+      if (range) {
+        fetchHeaders['Range'] = range;
+      }
+
+      const fileFetch = await fetch(telegramMediaUrl, {
+        headers: fetchHeaders,
+      });
+
+      if (!fileFetch.ok && fileFetch.status !== 206) {
+        res.status(fileFetch.status).json({ error: 'Failed to fetch media stream from Telegram' });
+        return;
+      }
+
+      // Infer Content-Type from file path extension if not already determined
+      let finalContentType = fileFetch.headers.get('content-type') || cachedMime;
+      if (!finalContentType || finalContentType === 'application/octet-stream') {
+        const lowerPath = filePath.toLowerCase();
+        if (lowerPath.endsWith('.mp4')) finalContentType = 'video/mp4';
+        else if (lowerPath.endsWith('.webm')) finalContentType = 'video/webm';
+        else if (lowerPath.endsWith('.mov')) finalContentType = 'video/quicktime';
+        else if (lowerPath.endsWith('.ogg') || lowerPath.endsWith('.oga')) finalContentType = 'audio/ogg';
+        else if (lowerPath.endsWith('.mp3')) finalContentType = 'audio/mpeg';
+        else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) finalContentType = 'image/jpeg';
+        else if (lowerPath.endsWith('.png')) finalContentType = 'image/png';
+        else if (lowerPath.endsWith('.webp')) finalContentType = 'image/webp';
+      }
+
+      // Set standard headers for optimal streaming and caching
+      res.setHeader('Content-Type', finalContentType || 'application/octet-stream');
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+
+      const contentLength = fileFetch.headers.get('content-length');
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+
+      const contentRange = fileFetch.headers.get('content-range');
+      if (contentRange) {
+        res.setHeader('Content-Range', contentRange);
+        res.status(206);
+      } else {
+        res.status(200);
+      }
+
+      // Stream the media response
+      if (fileFetch.body) {
+        // @ts-ignore - native fetch body is a ReadableStream
+        const reader = fileFetch.body.getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              res.end();
+              break;
+            }
+            res.write(Buffer.from(value));
+          }
+        };
+        await pump();
+      } else {
+        const arrayBuf = await fileFetch.arrayBuffer();
+        res.send(Buffer.from(arrayBuf));
+      }
+    } catch (err: any) {
+      console.error('Telegram streaming proxy error:', err);
+      res.status(500).json({ error: 'Telegram media streaming failed', details: err.message });
+    }
+  });
+
+  // 4. Test Telegram Connection & Storage Bot
+  app.post('/api/telegram/test', async (req, res) => {
+    try {
+      const { token, chatId, isConfigured } = getTelegramConfig();
+      if (!isConfigured) {
+        res.status(400).json({
+          success: false,
+          message: 'TELEGRAM_BOT_TOKEN හෝ TELEGRAM_CHAT_ID සකසා නොමැත. කරුණාකර .env හි Token එක සහ Chat ID එක ඇතුළත් කරන්න.',
+        });
+        return;
+      }
+
+      const testMessage = `🤖 *Sahaya Seva Telegram Storage Test*\n\n✅ සාර්ථකව සම්බන්ධ විය!\n⏰ ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}\n🚀 Cloud Media Vault is ready for Videos, Voice Notes, and Photos.`;
+
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: testMessage,
+          parse_mode: 'Markdown',
+        }),
+      });
+
+      const json: any = await response.json();
+      if (json.ok) {
+        res.json({
+          success: true,
+          message: 'Telegram Bot වෙත පරීක්ෂණ පණිවිඩය සාර්ථකව යවන ලදී (Test message sent successfully)!',
+          messageId: json.result.message_id,
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          message: `Telegram Error: ${json.description || 'Failed to send test message'}`,
+        });
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // 5. Admin Upload Logs Endpoint
+  app.get('/api/telegram/logs', (req, res) => {
+    res.json({
+      logs: telegramUploadLogs,
+      totalCount: telegramUploadLogs.length,
+    });
   });
 
   // Vite middleware setup for dev; static files for production

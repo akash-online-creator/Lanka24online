@@ -176,6 +176,11 @@ export interface HelpPost {
   // External links & Embedded media (Facebook video, Telegram, YouTube, Website)
   externalLink?: string;
   videoUrl?: string;
+  audioUrl?: string;
+  audioDurationSec?: number;
+  imageUrl?: string;
+  images?: string[];
+  telegramStorage?: TelegramMediaRecord;
   // Master Plan Anti-Fraud & Two-Party Completion Verification
   completionPin?: string;
   settlementBreakdown?: {
@@ -199,6 +204,22 @@ export interface HelpPost {
   moderationStatus?: 'clean' | 'flagged' | 'poster_responded' | 'resolved' | 'approved' | 'pending_review';
 }
 
+export interface TelegramMediaRecord {
+  fileId: string;
+  fileUniqueId?: string;
+  fileType: 'image' | 'video' | 'voice' | 'audio' | 'document';
+  mimeType?: string;
+  fileSize?: number;
+  fileName?: string;
+  messageId?: number;
+  chatId?: string | number;
+  directTelegramUrl?: string;
+  proxyUrl?: string;
+  caption?: string;
+  createdAt?: string;
+  senderName?: string;
+}
+
 export interface TagItem {
   id: string;
   tagName: string; // e.g., "Food", "Vehicle Repair"
@@ -217,6 +238,10 @@ export interface ChatMessage {
   senderPhone?: string;
   audioUrl?: string;
   audioDurationSec?: number;
+  imageUrl?: string;
+  videoUrl?: string;
+  mediaType?: 'image' | 'video' | 'voice' | 'audio';
+  telegramStorage?: TelegramMediaRecord;
   senderLang?: Language;
   detectedLang?: string;
   translations?: {
