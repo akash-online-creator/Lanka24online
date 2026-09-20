@@ -515,6 +515,20 @@ export default function App() {
         return;
       }
 
+      // 🔒 ආරක්ෂිත මුරපද පරීක්ෂාව (Password Verification)
+      const correctPassword = foundUser.key || foundUser.password || foundUser.securityCode || (foundUser as any).pass;
+      if (correctPassword) {
+        if (keyInput.trim() !== String(correctPassword).trim()) {
+          setShowWrongLoginModal(true);
+          return;
+        }
+      } else {
+        if (!keyInput.trim()) {
+          setShowWrongLoginModal(true);
+          return;
+        }
+      }
+
       if (foundUser.status === 'blocked') {
         alert(`⛔ අවධානයයි: පරිපාලක විසින් ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
         return;
