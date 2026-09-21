@@ -13,11 +13,11 @@ import {
   BookOpen 
 } from 'lucide-react';
 
-// මෙම components ඔබගේ ව්‍යාපෘතියේ ඇති පරිදි import කරගන්න.
-import AdminCreditManagement from './AdminCreditManagement';
-import AdminEmergencyDirectoryManagement from './AdminEmergencyDirectoryManagement';
-import AdminSearchDictionaryManager from './AdminSearchDictionaryManager';
-import AdminRedAlertManagement from './AdminRedAlertManagement';
+// දෝෂය නිවැරදි කර සඟල වරහන් {} සහිතව Import කර ඇති ආකාරය 👇
+import { AdminCreditManagement } from './AdminCreditManagement';
+import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
+import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
+import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 
 // අදාළ දත්ත සඳහා Interfaces
 interface User {
@@ -74,7 +74,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="w-full max-w-7xl mx-auto p-4 md:p-6 bg-slate-50 min-h-screen">
       
-      {/* ප්‍රධාන අන්තර්ගතය - උදාහරණයක් ලෙස */}
+      {/* ප්‍රධාන අන්තර්ගතය */}
       <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-2xl font-black text-slate-800 mb-4">පරිපාලක පුවරුව (Admin Dashboard)</h2>
         <p className="text-sm text-slate-500 font-semibold mb-6">
