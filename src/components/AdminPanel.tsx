@@ -1,286 +1,1863 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  X, 
-  ShieldAlert, 
-  ZoomOut, 
-  ZoomIn, 
-  RotateCcw, 
-  RotateCw, 
-  AlertTriangle, 
+  User, 
+  Issue, 
+  Language, 
+  HelpPost, 
+  BlockedCredential, 
+  UserStatus, 
+  RegistrationConfig, 
+  CategoryItem, 
+  CustomFormField, 
+  TagItem,
+  BloodDonationRequest,
+  VolunteerDonor,
+  DisasterReliefItem,
+  BloodGroup,
+  RedAlertItem,
+  AiSecurityScanResult,
+  DuplicatePhotoMatch
+} from '../types';
+import { translations } from '../data/translations';
+import { initialRegistrationConfig, initialCategories } from '../data/initialData';
+import { AppLogo } from './AppLogo';
+import { MemoryStorageBar } from './MemoryStorageBar';
+import { generateAndDownloadUserPdf } from '../utils/pdfGenerator';
+import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
+import { 
+  fetchAllPostsBackupData, 
+  restorePostsBackupData, 
+  syncUserProfileToFirestore,
+  updateHelpPostInFirestore,
+  sendChatMessageToFirestore
+} from '../lib/firebase';
+import { AdminModerationModal } from './AdminModerationModal';
+import { 
+  getStoredTags, 
+  saveTagsToStorage, 
+  addTagToStorage, 
+  updateTagInStorage, 
+  deleteTagFromStorage, 
+  purgeUnusedTagsFromStorage 
+} from '../utils/tagUtils';
+import {
+  getStoredBloodRequests,
+  saveBloodRequestsToStorage,
+  getStoredVolunteerDonors,
+  saveVolunteerDonorsToStorage,
+  getStoredDisasterReliefItems,
+  saveDisasterReliefItemsToStorage
+} from '../data/bloodAndDisasterData';
+import {
+  addDeletedBloodId,
+  addDeletedDisasterId,
+  addDeletedDonorId,
+  addDeletedPostId,
+  removeDeletedPostId
+} from '../utils/deletedPostsManager';
+import { 
+  Shield, 
+  ShieldAlert,
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  MessageSquare, 
+  MessageCircle,
+  Search, 
+  Sparkles, 
+  UserCheck, 
+  Eye, 
+  Ban, 
+  Edit, 
   Trash2, 
-  Coins, 
-  PhoneCall, 
-  BookOpen 
+  Globe, 
+  Phone, 
+  Mail, 
+  Lock, 
+  Save, 
+  FileText,
+  UserX,
+  MapPin,
+  Calendar,
+  AlertTriangle,
+  Plus,
+  Layers,
+  Settings,
+  ListPlus,
+  Navigation,
+  ExternalLink,
+  Compass,
+  Smartphone,
+  KeyRound,
+  Copy,
+  Tag,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RotateCcw,
+  Maximize2,
+  Download,
+  FileDown,
+  Loader2,
+  Image as ImageIcon,
+  RefreshCw,
+  CreditCard,
+  UserCheck2,
+  Database,
+  X,
+  Coins,
+  PhoneCall,
+  BookOpen,
+  Heart,
+  Droplet,
+  Waves,
+  Building,
+  Check,
+  Users,
+  HeartHandshake,
+  Activity,
+  Package,
+  Share2,
+  SlidersHorizontal,
+  HelpCircle,
+  Key
 } from 'lucide-react';
-
-// දෝෂය නිවැරදි කර සඟල වරහන් {} සහිතව Import කර ඇති ආකාරය 👇
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminRedAlertManagement } from './AdminRedAlertManagement';
+import { getEmergencyAdminAlerts, getStoredEmergencyContacts } from '../data/emergencyDirectory';
 
-// අදාළ දත්ත සඳහා Interfaces
-interface User {
-  id: string;
-  name: string;
-  // අවශ්‍ය අනෙකුත් දත්ත...
-}
-
-interface PhotoInspectorState {
-  activeType: 'nicFront' | 'nicBack' | 'face';
-  nicFrontPhotoUrl: string;
-  nicBackPhotoUrl: string;
-  facePhotoUrl?: string;
-  zoom: number;
-  rotation: number;
-}
-
-interface ScanResult {
-  riskLevel: 'high' | 'medium' | 'low';
-  riskScore: number;
-  analysisSummarySi: string;
-}
-
-interface AdminDashboardProps {
+interface AdminPanelProps {
   users: User[];
-  redAlerts: any[];
-  onUpdateUser: (user: any) => void;
-  onRefreshRedAlerts: () => void;
-  onViewRedAlertDetail: (id: string) => void;
+  issues: Issue[];
+  helpPosts?: HelpPost[];
+  blockedCredentials?: BlockedCredential[];
+  registrationConfig?: RegistrationConfig;
+  onUpdateRegistrationConfig?: (config: RegistrationConfig) => void;
+  categories?: CategoryItem[];
+  onUpdateCategories?: (categories: CategoryItem[]) => void;
+  tags?: TagItem[];
+  onUpdateTags?: (tags: TagItem[]) => void;
+  redAlerts?: RedAlertItem[];
+  onRefreshRedAlerts?: () => void;
+  onViewRedAlertDetail?: (alert: RedAlertItem) => void;
+  onApproveUser: (userId: string) => void;
+  onRejectUser: (userId: string, reason?: string) => void;
+  onUpdateUser?: (updatedUser: User) => void;
+  onBlockUser?: (userId: string, reason: string) => void;
+  onUnblockCredential?: (id: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onPermanentDeletePost?: (postId: string) => void;
+  onRestorePost?: (postId: string) => void;
+  onUpdatePost?: (updatedPost: HelpPost) => void;
+  onRestoreAllPosts?: (posts: HelpPost[]) => void;
+  onReplyIssue: (issueId: string, reply: string, resolve: boolean) => void;
+  onSeedDemoData: () => void;
+  language: Language;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  users,
-  redAlerts,
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  users = [],
+  issues = [],
+  helpPosts = [],
+  blockedCredentials = [],
+  registrationConfig,
+  onUpdateRegistrationConfig,
+  categories = initialCategories,
+  onUpdateCategories,
+  tags,
+  onUpdateTags,
+  onApproveUser,
+  onRejectUser,
   onUpdateUser,
+  onBlockUser,
+  onUnblockCredential,
+  onDeletePost,
+  onPermanentDeletePost,
+  onRestorePost,
+  onUpdatePost,
+  onRestoreAllPosts,
+  onReplyIssue,
+  onSeedDemoData,
+  language,
+  redAlerts = [],
   onRefreshRedAlerts,
-  onViewRedAlertDetail
+  onViewRedAlertDetail,
 }) => {
-  // State කළමනාකරණය
-  const [activeTab, setActiveTab] = useState<string>('users');
-  const [photoInspector, setPhotoInspector] = useState<PhotoInspectorState | null>(null);
-  const [inspectorScanResult, setInspectorScanResult] = useState<ScanResult | null>(null);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const t = translations[language];
+  const [activeTab, setActiveTab] = useState<
+    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security'
+  >('pending');
+  
+  // AI Security Scanner States
+  const [scanningUsersMap, setScanningUsersMap] = useState<Record<string, boolean>>({});
+  const [batchScanning, setBatchScanning] = useState(false);
+  const [inspectorScanning, setInspectorScanning] = useState(false);
+  const [inspectorScanResult, setInspectorScanResult] = useState<AiSecurityScanResult | null>(null);
 
-  // ගිණුම මකා දැමීම තහවුරු කිරීමේ ෆන්ක්ෂන් එක
-  const handleConfirmDelete = () => {
-    if (userToDelete) {
-      console.log('පරිශීලකයා මකා දමන්න:', userToDelete.name);
-      // API call එක මෙතැනින් ඇතුළත් කරන්න (උදා: deleteUser(userToDelete.id))
-      setUserToDelete(null);
+  // High-Clarity Photo Inspector State
+  interface PhotoInspectorState {
+    user: User;
+    userName: string;
+    userId?: string;
+    nicNumber?: string;
+    facePhotoUrl?: string;
+    nicFrontPhotoUrl?: string;
+    nicBackPhotoUrl?: string;
+    activeType: 'face' | 'nicFront' | 'nicBack';
+    zoom: number;
+    rotation: number;
+  }
+  const [photoInspector, setPhotoInspector] = useState<PhotoInspectorState | null>(null);
+
+  const openInspectorForUser = (
+    user: User,
+    activeType: 'face' | 'nicFront' | 'nicBack' = 'nicFront'
+  ) => {
+    setInspectorScanResult(user.aiScanResult || null);
+    setPhotoInspector({
+      user,
+      userName: user.name,
+      userId: user.userId,
+      nicNumber: user.nicNumber,
+      facePhotoUrl: (user.facePhotoUrl && user.facePhotoUrl.trim() !== '') ? user.facePhotoUrl : user.photoUrl,
+      nicFrontPhotoUrl: (user.nicFrontPhotoUrl && user.nicFrontPhotoUrl.trim() !== '') ? user.nicFrontPhotoUrl : user.idCardPhotoUrl,
+      nicBackPhotoUrl: user.nicBackPhotoUrl,
+      activeType,
+      zoom: 1,
+      rotation: 0,
+    });
+  };
+
+  const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<string>('all');
+
+  // Detailed Modal for User Editing & Posts View
+  const [selectedUserForModal, setSelectedUserForModal] = useState<User | null>(null);
+  const [modalSubTab, setModalSubTab] = useState<'profile' | 'posts'>('profile');
+  const [editingUserForm, setEditingUserForm] = useState<Partial<User>>({});
+  const [blockReasonInput, setBlockReasonInput] = useState('අනිසි භාවිතය සහ විධාන කඩකිරීම (Policy Violation)');
+
+  // Registration Text Edit State
+  const [regEditLang, setRegEditLang] = useState<Language>('si');
+  const [regState, setRegState] = useState<RegistrationConfig>(
+    () => registrationConfig || initialRegistrationConfig
+  );
+
+  // Category & Dynamic Forms State
+  const [categoryItems, setCategoryItems] = useState<CategoryItem[]>(
+    () => categories || initialCategories
+  );
+  const [selectedCatForFields, setSelectedCatForFields] = useState<string>(
+    categories?.[0]?.id || 'quick_services'
+  );
+
+  // Posts Management State
+  const [postSearchQuery, setPostSearchQuery] = useState('');
+  const [adminPostFilter, setAdminPostFilter] = useState<'all' | 'active' | 'flagged' | 'deleted'>('all');
+  const [adminPostCategoryFilter, setAdminPostCategoryFilter] = useState<string>('all');
+  
+  // Blood, Disaster, Donors Data States
+  const [bloodRequests, setBloodRequests] = useState<BloodDonationRequest[]>(() => getStoredBloodRequests());
+  const [disasterItems, setDisasterItems] = useState<DisasterReliefItem[]>(() => getStoredDisasterReliefItems());
+  const [volunteerDonors, setVolunteerDonors] = useState<VolunteerDonor[]>(() => getStoredVolunteerDonors());
+
+  const [adminActionNotification, setAdminActionNotification] = useState<string | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  // Tag Management State
+  const [tagItems, setTagItems] = useState<TagItem[]>(() => tags || getStoredTags());
+
+  const pendingUsers = users.filter((u) => u.status === 'pending');
+  const usersWithPendingProfileUpdates = users.filter(
+    (u) => u.pendingProfileUpdate && u.pendingProfileUpdate.status === 'pending'
+  );
+  const approvedUsers = users.filter((u) => u.status === 'approved');
+  const blockedUsers = users.filter((u) => u.status === 'blocked');
+  const pendingIssues = issues.filter((i) => i.status !== 'resolved');
+
+  // AI Security Analytics
+  const scannedUsers = users.filter((u) => !!u.aiScanResult);
+  const highRiskUsers = users.filter(
+    (u) => u.aiScanResult && (u.aiScanResult.riskLevel === 'high' || u.aiScanResult.isAiGenerated)
+  );
+  const duplicateDetectedUsers = users.filter(
+    (u) => u.aiScanResult && u.aiScanResult.duplicateMatches && u.aiScanResult.duplicateMatches.length > 0
+  );
+  const aiSyntheticUsers = users.filter(
+    (u) => u.aiScanResult && u.aiScanResult.isAiGenerated
+  );
+  const totalAiSecurityAlerts = highRiskUsers.length + duplicateDetectedUsers.length;
+
+  // AI Scanner Handler for Single User
+  const handleScanUserNic = async (user: User): Promise<AiSecurityScanResult | undefined> => {
+    setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+    try {
+      const result = await scanUserNicSecurity(user, users);
+      const updatedUser: User = {
+        ...user,
+        aiScanResult: result,
+      };
+
+      if (onUpdateUser) {
+        onUpdateUser(updatedUser);
+      }
+
+      // Sync to local storage
+      const savedUsers = localStorage.getItem('sahaya_users');
+      if (savedUsers) {
+        try {
+          const usersList: User[] = JSON.parse(savedUsers);
+          const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+          localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
+        } catch (err) {
+          console.warn('Local storage sync error:', err);
+        }
+      }
+
+      if (selectedUserForModal && selectedUserForModal.id === user.id) {
+        setSelectedUserForModal(updatedUser);
+      }
+
+      if (photoInspector && photoInspector.user.id === user.id) {
+        setInspectorScanResult(result);
+      }
+
+      const riskLabel = result.riskLevel === 'high' ? 'අධි අවදානම් (HIGH RISK)' : result.riskLevel === 'medium' ? 'මධ්‍යම අවදානම් (MEDIUM RISK)' : 'අඩු අවදානම් / නිරවුල් (LOW RISK)';
+      setAdminActionNotification(`🤖 ${user.name} සඳහා AI ස්කෑන් පරීක්ෂාව අවසන්! (අවදානම: ${riskLabel}, ලකුණු: ${result.riskScore}/100)`);
+      setTimeout(() => setAdminActionNotification(null), 7000);
+      return result;
+    } catch (err) {
+      console.error('AI Scan execution error:', err);
+    } finally {
+      setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
     }
   };
 
+  // Batch AI Scan Handler for all Pending Users
+  const handleBatchScanPending = async () => {
+    if (pendingUsers.length === 0) return;
+    setBatchScanning(true);
+    let highRiskCount = 0;
+    let dupCount = 0;
+
+    for (const user of pendingUsers) {
+      setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+      try {
+        const res = await scanUserNicSecurity(user, users);
+        const updatedUser: User = {
+          ...user,
+          aiScanResult: res,
+        };
+        if (onUpdateUser) onUpdateUser(updatedUser);
+        if (res.riskLevel === 'high' || res.isAiGenerated) highRiskCount++;
+        if (res.duplicateMatches && res.duplicateMatches.length > 0) dupCount++;
+      } catch {
+        // continue to next
+      } finally {
+        setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
+      }
+    }
+    setBatchScanning(false);
+    setAdminActionNotification(`🤖 සියලුම පොරොත්තු අයදුම්පත් (${pendingUsers.length}) AI ස්කෑන් කර අවසන්! (අධි අවදානම්: ${highRiskCount}, සමාන ඡායාරූප: ${dupCount})`);
+    setTimeout(() => setAdminActionNotification(null), 8000);
+  };
+
+  // Batch AI Scan Handler for All Users in Directory
+  const handleDeepScanAllUsers = async () => {
+    if (users.length === 0) return;
+    const confirmAll = window.confirm(`පද්ධතියේ සිටින සියලුම පරිශීලකයන් (${users.length}) AI මගින් පරීක්ෂා කිරීමට ඔබට අවශ්‍යද?`);
+    if (!confirmAll) return;
+
+    setBatchScanning(true);
+    let flaggedCount = 0;
+
+    for (const user of users) {
+      setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+      try {
+        const res = await scanUserNicSecurity(user, users);
+        const updatedUser: User = {
+          ...user,
+          aiScanResult: res,
+        };
+        if (onUpdateUser) onUpdateUser(updatedUser);
+        if (res.riskLevel === 'high' || (res.duplicateMatches && res.duplicateMatches.length > 0)) {
+          flaggedCount++;
+        }
+      } catch {
+        // continue
+      } finally {
+        setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
+      }
+    }
+    setBatchScanning(false);
+    setAdminActionNotification(`🤖 සම්පූර්ණ පරිශීලක ලැයිස්තුව (${users.length}) AI ස්කෑන් කර අවසන්! සැක සහිත ගිණුම්: ${flaggedCount}`);
+    setTimeout(() => setAdminActionNotification(null), 8000);
+  };
+
+  const emergencyAlerts = useMemo(() => getEmergencyAdminAlerts().filter(a => !a.isResolved), [activeTab]);
+  const emergencyFlagged = useMemo(() => getStoredEmergencyContacts(true).filter(c => c.isInactiveDeactivated), [activeTab]);
+  const totalEmergencyBadge = emergencyAlerts.length + emergencyFlagged.length;
+
+  // Helper to format Sri Lankan phone number for WhatsApp
+  const formatPhoneForWhatsApp = (rawPhone?: string): string => {
+    if (!rawPhone) return '';
+    let cleaned = rawPhone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+      cleaned = '94' + cleaned.slice(1);
+    } else if (cleaned.length === 9) {
+      cleaned = '94' + cleaned;
+    }
+    return cleaned;
+  };
+
+  // Function 1: Reset Password Feature for Admin
+  const handleResetUserPassword = async (user: User) => {
+    const confirmReset = window.confirm(`ඔබට ${user.name} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
+    if (!confirmReset) return;
+
+    // Generate a secure 6-digit random temporary password
+    const newTempPassword = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const updatedUser: User = {
+      ...user,
+      securityCode: newTempPassword,
+      tempCode: newTempPassword,
+      key: newTempPassword,
+      isPasswordChanged: false,
+    };
+
+    // 1. Call Backend API to synchronize Firebase Auth password
+    try {
+      await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          nicNumber: user.nicNumber || user.userId,
+          newPassword: newTempPassword,
+        }),
+      });
+    } catch (err) {
+      console.warn('Backend API password reset call error:', err);
+    }
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+
+    // Save to local storage
+    const savedUsers = localStorage.getItem('sahaya_users');
+    if (savedUsers) {
+      try {
+        const usersList: User[] = JSON.parse(savedUsers);
+        const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+        localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
+      } catch (err) {
+        console.warn('User update error:', err);
+      }
+    }
+
+    if (selectedUserForModal && selectedUserForModal.id === user.id) {
+      setSelectedUserForModal(updatedUser);
+    }
+
+    // Prepare WhatsApp message (Security: exclude NIC/User ID to protect account credentials)
+    const rawPhone = user.whatsappNumber || user.phone || '';
+    const formattedPhone = formatPhoneForWhatsApp(rawPhone);
+
+    const messageText = `🔑 *සහය සේවා (Sahaya Seva) - මුරපදය නැවත සැකසීම (Password Reset)*\n\n` +
+      `ඔබගේ සහය සේවා ගිණුමේ මුරපදය පරිපාලක විසින් සාර්ථකව නැවත සකසන ලදී.\n\n` +
+      `🔑 *නව තාවකාලික මුරපදය (New Password):* ${newTempPassword}\n\n` +
+      `🌐 කරුණාකර මෙම නව මුරපදය භාවිතයෙන් ඔබගේ ලියාපදිංචි ගිණුමෙන් ඇප් එකට Log in වී ඔබගේ රහස්‍යභාවය සඳහා නව මුරපදයක් සකසා ගන්න.\n` +
+      `ස්තූතියි! - *සහය සේවා පරිපාලන කණ්ඩායම*`;
+
+    if (formattedPhone) {
+      const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    setAdminActionNotification(`🔑 ${user.name} ගේ මුරපදය සාර්ථකව Reset කරන ලදී! නව මුරපදය: ${newTempPassword}`);
+    setTimeout(() => setAdminActionNotification(null), 8000);
+  };
+
+  // Function 2: Save User Edit without affecting Password
+  const handleSaveUserEdit = () => {
+    if (!selectedUserForModal || !onUpdateUser) return;
+
+    // Explicitly exclude any password attributes from the edit form
+    const { securityCode, tempCode, key, ...safeEditFields } = editingUserForm as any;
+
+    const updated: User = {
+      ...selectedUserForModal,
+      ...safeEditFields,
+      // Retain existing password credentials unchanged
+      securityCode: selectedUserForModal.securityCode,
+      tempCode: selectedUserForModal.tempCode,
+      key: selectedUserForModal.key,
+    };
+
+    onUpdateUser(updated);
+    setSelectedUserForModal(updated);
+
+    const savedUsers = localStorage.getItem('sahaya_users');
+    if (savedUsers) {
+      try {
+        const usersList: User[] = JSON.parse(savedUsers);
+        const newUsersList = usersList.map((u) => (u.id === updated.id ? updated : u));
+        localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
+      } catch (err) {
+        console.warn('Update error:', err);
+      }
+    }
+
+    alert('පරිශීලක තොරතුරු සාර්ථකව යාවත්කාලීන කෙරිණි! (මුරපදය වෙනස් නොවීය)');
+  };
+
+  const handleDirectApproveUser = (user: User) => {
+    const updatedUser: User = {
+      ...user,
+      status: 'approved',
+      isBlocked: false,
+      approvedAt: new Date().toISOString(),
+    };
+    if (onUpdateUser) onUpdateUser(updatedUser);
+    if (onApproveUser) onApproveUser(user.id);
+    setAdminActionNotification(`✅ ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම සාර්ථකව අනුමත (Approve) කරන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const handleDirectRejectUser = (user: User) => {
+    const reason = window.prompt(`කරුණාකර ${user.name} ගේ ගිණුම ප්‍රතික්ෂේප කිරීමට හේතුව ඇතුළත් කරන්න (හෝ Cancel කරන්න):`, 'හැඳුනුම්පත් ඡායාරූපය අපැහැදිලියි හෝ තොරතුරු නොගැළපේ');
+    if (reason === null) return;
+    const updatedUser: User = {
+      ...user,
+      status: 'rejected',
+      rejectionReason: reason,
+    };
+    if (onUpdateUser) onUpdateUser(updatedUser);
+    if (onRejectUser) onRejectUser(user.id, reason);
+    setAdminActionNotification(`❌ ${user.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කරන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const handleToggleBlockUser = (user: User) => {
+    const willBlock = user.status !== 'blocked';
+    const promptMsg = willBlock 
+      ? `ඔබට ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම අවහිර (Block) කිරීමට අවශ්‍යද?` 
+      : `ඔබට ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුමේ අවහිරය ඉවත් (Unblock) කිරීමට අවශ්‍යද?`;
+    if (!window.confirm(promptMsg)) return;
+
+    let reason = user.blockedReason;
+    if (willBlock) {
+      reason = window.prompt('අවහිර කිරීමට හේතුව:', 'නීති රීති උල්ලංඝනය කිරීම හෝ වංචනික ක්‍රියාවක්') || 'පරිපාලක විසින් ගිණුම අවහිර කරන ලදී';
+    }
+
+    const updatedUser: User = {
+      ...user,
+      status: willBlock ? 'blocked' : 'approved',
+      isBlocked: willBlock,
+      blockedReason: willBlock ? reason : undefined,
+    };
+
+    if (onUpdateUser) onUpdateUser(updatedUser);
+    if (willBlock && onBlockUser) onBlockUser(user.id, reason || 'Blocked by Admin');
+    setAdminActionNotification(willBlock ? `⛔ ${user.name} ගේ ගිණුම අවහිර (Blocked) කරන ලදී.` : `✅ ${user.name} ගේ ගිණුම නැවත සක්‍රීය (Unblocked) කරන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.nicNumber.includes(searchQuery) ||
+      u.phone.includes(searchQuery) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus =
+      userStatusFilter === 'all' || u.status === userStatusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 md:p-6 bg-slate-50 min-h-screen">
-      
-      {/* ප්‍රධාන අන්තර්ගතය */}
-      <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <h2 className="text-2xl font-black text-slate-800 mb-4">පරිපාලක පුවරුව (Admin Dashboard)</h2>
-        <p className="text-sm text-slate-500 font-semibold mb-6">
-          පද්ධතියේ පරිශීලකයින්, ආරක්ෂක දැනුම්දීම් සහ අනෙකුත් සැකසුම් කළමනාකරණය කරන්න.
-        </p>
+    <div className="w-full max-w-6xl mx-auto py-4 space-y-6">
+      {/* Top Banner Stats */}
+      <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 rounded-3xl p-6 shadow-xl border-2 border-emerald-400/40 text-white">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <AppLogo size="md" showGlow animated />
+            <div>
+              <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                <span>{t.adminDashboard}</span>
+                <span className="text-xs bg-amber-400 text-slate-950 font-black px-2.5 py-0.5 rounded-full uppercase font-mono shadow-sm">
+                  LIVE CONTROLLER
+                </span>
+              </h2>
+              <p className="text-xs text-emerald-100 font-medium">
+                සහය සේවා (Sahaya Seva) • පරිශීලක කළමනාකරණය, ආරක්ෂාව සහ පාලන මධ්‍යස්ථානය
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Numbers Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="bg-white/95 text-slate-900 border-2 border-amber-300 p-3.5 rounded-2xl shadow-md">
+            <div className="text-[10px] uppercase tracking-wider text-amber-800 font-black mb-1">
+              පොරොත්තු අනුමැති
+            </div>
+            <div className="text-2xl font-black text-amber-900 font-mono">
+              {pendingUsers.length}
+            </div>
+          </div>
+
+          <div className="bg-white/95 text-slate-900 border-2 border-teal-300 p-3.5 rounded-2xl shadow-md">
+            <div className="text-[10px] uppercase tracking-wider text-teal-800 font-black mb-1">
+              වාර්තා වූ ගැටලු
+            </div>
+            <div className="text-2xl font-black text-teal-900 font-mono">
+              {pendingIssues.length}
+            </div>
+          </div>
+
+          <div className="bg-white/95 text-slate-900 border-2 border-emerald-300 p-3.5 rounded-2xl shadow-md">
+            <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-black mb-1">
+              සක්‍රීය පරිශීලකයන්
+            </div>
+            <div className="text-2xl font-black text-emerald-900 font-mono">
+              {approvedUsers.length}
+            </div>
+          </div>
+
+          <div className="bg-white/95 text-slate-900 border-2 border-rose-300 p-3.5 rounded-2xl shadow-md">
+            <div className="text-[10px] uppercase tracking-wider text-rose-800 font-black mb-1">
+              Block කළ ගිණුම්
+            </div>
+            <div className="text-2xl font-black text-rose-900 font-mono">
+              {blockedUsers.length || blockedCredentials.length}
+            </div>
+          </div>
+
+          <div className="bg-white/95 text-slate-900 border-2 border-slate-200 p-3.5 rounded-2xl shadow-md">
+            <div className="text-[10px] uppercase tracking-wider text-slate-700 font-black mb-1">
+              මුළු ලියාපදිංචි
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">
+              {users.length}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ඡායාරූප පරීක්ෂක (Photo Inspector Modal) */}
-      {photoInspector && (
-        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex flex-col p-4 md:p-8 backdrop-blur-sm">
-          <div className="max-w-5xl w-full mx-auto flex flex-col h-full bg-slate-900 rounded-3xl shadow-2xl border border-slate-700 p-4 md:p-6 animate-scaleUp">
-            
-            {/* Header */}
-            <div className="flex justify-between items-center pb-4 border-b border-white/10">
-              <div className="flex bg-slate-800 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'nicFront' })}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    photoInspector.activeType === 'nicFront' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  NIC Front
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'nicBack' })}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    photoInspector.activeType === 'nicBack' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  NIC Back
-                </button>
-                {photoInspector.facePhotoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'face' })}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      photoInspector.activeType === 'face' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+      {/* Admin Action Notification Alert */}
+      {adminActionNotification && (
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white px-5 py-3.5 rounded-2xl shadow-xl border-2 border-emerald-300 flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-black">
+            <CheckCircle2 className="w-5 h-5 text-emerald-200 shrink-0" />
+            <span>{adminActionNotification}</span>
+          </div>
+          <button
+            onClick={() => setAdminActionNotification(null)}
+            className="text-white/80 hover:text-white font-bold text-xs p-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
+      <div className="flex flex-wrap border-b-2 border-emerald-200 gap-2">
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'pending'
+              ? 'bg-white border-emerald-500 text-emerald-900 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-slate-700 hover:bg-emerald-100'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-emerald-600" />
+          <span>පොරොත්තු අනුමැති (Pending Approvals)</span>
+          {pendingUsers.length > 0 && (
+            <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full">
+              {pendingUsers.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('ai_security')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'ai_security'
+              ? 'bg-white border-purple-600 text-purple-900 shadow-md font-black'
+              : 'bg-purple-50/80 border-slate-200 text-purple-800 hover:bg-purple-100'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-purple-600" />
+          <span>🤖 AI ආරක්ෂක ස්කෑනරය (AI Fraud & Duplicates)</span>
+          {totalAiSecurityAlerts > 0 ? (
+            <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+              {totalAiSecurityAlerts} Alerts
+            </span>
+          ) : (
+            <span className="bg-purple-200 text-purple-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+              {scannedUsers.length} Scanned
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('all_users')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'all_users'
+              ? 'bg-white border-emerald-500 text-emerald-900 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-slate-700 hover:bg-emerald-100'
+          }`}
+        >
+          <UserCheck className="w-4 h-4 text-emerald-600" />
+          <span>පරිශීලක ලැයිස්තුව (Users Directory)</span>
+          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+            {users.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Tab: Pending Approvals (හැඳුනුම්පත් ඡායාරූපය සහ තොරතුරු සත්‍යාපනය) */}
+      {activeTab === 'pending' && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-950 space-y-1">
+                <p className="font-extrabold">
+                  🛡️ නව ලියාපදිංචි අනුමැතිය සහ හැඳුනුම්පත් සත්‍යාපනය (NIC Verification Gateway)
+                </p>
+                <p className="text-amber-800 leading-relaxed font-medium">
+                  පරිශීලකයා ලබාදුන් ජාතික හැඳුනුම්පත් අංකය (NIC Number) සහ උඩුගත කළ හැඳුනුම්පත් ඉදිරිපස ඡායාරූපය (Front ID) සසඳා බලා අනුමත (Accept) කරන්න. කෘතිම බුද්ධිය (AI) මගින් සාදන ලද ව්‍යාජ හැඳුනුම්පත් හා සමාන ඡායාරූප සහිත ගිණුම් පරීක්ෂා කිරීමට AI Scanner භාවිතා කරන්න.
+                </p>
+              </div>
+            </div>
+
+            {pendingUsers.length > 0 && (
+              <button
+                type="button"
+                onClick={handleBatchScanPending}
+                disabled={batchScanning}
+                className="shrink-0 bg-purple-700 hover:bg-purple-800 disabled:bg-purple-300 text-white font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              >
+                {batchScanning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>AI පරිලෝකනය වෙමින් පවතී...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="w-4 h-4 text-purple-200" />
+                    <span>🤖 සියලුම පොරොත්තු අයදුම්පත් AI ස්කෑන් කරන්න</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {pendingUsers.length === 0 ? (
+            <div className="bg-white rounded-3xl border-2 border-emerald-200 p-12 text-center space-y-3 shadow-md">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h4 className="text-base font-black text-slate-900">
+                පොරොත්තු අනුමැති කිසිවක් නොමැත!
+              </h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                සියලුම නව ලියාපදිංචි ගිණුම් සාර්ථකව පරීක්ෂා කර අනුමත කර ඇත.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingUsers.map((user) => {
+                const nicFront = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
+                const isScanning = !!scanningUsersMap[user.id];
+                const scan = user.aiScanResult;
+
+                return (
+                  <div 
+                    key={user.id} 
+                    className={`bg-white rounded-3xl border-2 shadow-md p-5 space-y-4 transition-all flex flex-col justify-between ${
+                      scan?.riskLevel === 'high' || scan?.isAiGenerated
+                        ? 'border-rose-400 bg-rose-50/20'
+                        : scan?.riskLevel === 'medium'
+                        ? 'border-amber-300 bg-amber-50/10'
+                        : 'border-slate-200 hover:border-emerald-400'
                     }`}
                   >
-                    Face / Profile
-                  </button>
-                )}
+                    <div className="space-y-3">
+                      {/* User Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            onClick={() => nicFront && openInspectorForUser(user, 'nicFront')}
+                            className="w-12 h-12 rounded-2xl bg-slate-100 border-2 border-emerald-300 overflow-hidden shrink-0 flex items-center justify-center font-black text-emerald-900 cursor-pointer shadow-sm hover:scale-105 transition-transform"
+                            title="ඡායාරූපය විශාල කර බලන්න (Click to inspect)"
+                          >
+                            {nicFront ? (
+                              <img src={nicFront} alt={user.name} className="w-full h-full object-cover" />
+                            ) : (
+                              user.name.charAt(0)
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-slate-900 text-sm">{user.name}</h4>
+                            <div className="text-[11px] font-mono text-emerald-800 font-bold">
+                              ID: {user.userId}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              ලියාපදිංචි දිනය: {user.registeredAt ? new Date(user.registeredAt).toLocaleDateString('si-LK') : 'නැත'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                          Pending Review
+                        </span>
+                      </div>
+
+                      {/* User Verification Info Cards */}
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-1.5 text-xs font-semibold text-slate-700">
+                        <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500">ජාතික හැඳුනුම්පත් අංකය (NIC):</span>
+                          <span className="font-mono font-black text-slate-950 bg-amber-200/60 px-2 py-0.5 rounded-md text-xs">
+                            {user.nicNumber}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                          <span className="text-slate-500">දුරකථන අංකය:</span>
+                          <span className="font-mono font-bold text-slate-900">{user.phone}</span>
+                        </div>
+
+                        {user.whatsappNumber && (
+                          <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span className="text-slate-500">WhatsApp:</span>
+                            <span className="font-mono font-bold text-emerald-700">{user.whatsappNumber}</span>
+                          </div>
+                        )}
+
+                        {user.address && (
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-slate-500">ලිපිනය / නගරය:</span>
+                            <span className="text-slate-900 truncate max-w-[180px] text-right">{user.address}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Front ID Photo Box (Single Prominent Card) */}
+                      <div>
+                        <div className="text-[11px] font-extrabold text-slate-800 mb-1.5 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo):</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            (විශාල කර බැලීමට ක්ලික් කරන්න)
+                          </span>
+                        </div>
+
+                        <div 
+                          onClick={() => nicFront && openInspectorForUser(user, 'nicFront')}
+                          className="relative bg-slate-900/5 rounded-2xl border-2 border-slate-200 p-2 cursor-pointer group hover:border-emerald-500 transition-all text-center"
+                        >
+                          <div className="h-40 rounded-xl overflow-hidden bg-slate-950 flex items-center justify-center relative">
+                            {nicFront ? (
+                              <img 
+                                src={nicFront} 
+                                alt="NIC Front" 
+                                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                              />
+                            ) : (
+                              <div className="text-xs text-slate-400 font-bold p-4">
+                                ඡායාරූපයක් උඩුගත කර නොමැත
+                              </div>
+                            )}
+
+                            {/* Hover Inspector Pill */}
+                            <div className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 opacity-90 group-hover:opacity-100">
+                              <Eye className="w-3 h-3 text-emerald-400" />
+                              <span>විශාල කර බලන්න</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 🤖 AI Security Analysis Card */}
+                      <div className="rounded-2xl border p-3 text-xs space-y-2.5 transition-all bg-slate-50 border-slate-200">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 font-black text-slate-900 text-xs">
+                            <ShieldAlert className={`w-4 h-4 ${
+                              scan?.riskLevel === 'high' ? 'text-rose-600' : scan?.riskLevel === 'medium' ? 'text-amber-600' : 'text-purple-600'
+                            }`} />
+                            <span>AI ආරක්ෂක වාර්තාව (AI Security Scan):</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleScanUserNic(user)}
+                            disabled={isScanning}
+                            className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 flex items-center gap-1 cursor-pointer transition-all"
+                          >
+                            {isScanning ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 animate-spin text-purple-700" />
+                                <span>ස්කෑන් වෙමින්...</span>
+                              </>
+                            ) : scan ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 text-purple-700" />
+                                <span>යළි ස්කෑන් (Re-scan)</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>🤖 දැන් ස්කෑන් කරන්න</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {scan ? (
+                          <div className="space-y-2">
+                            {/* Risk Gauge Bar */}
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-slate-600">අවදානම් ලකුණු (Risk Score):</span>
+                              <span className={`font-mono font-black px-2 py-0.5 rounded-md ${
+                                scan.riskLevel === 'high' 
+                                  ? 'bg-rose-600 text-white' 
+                                  : scan.riskLevel === 'medium'
+                                  ? 'bg-amber-500 text-slate-950'
+                                  : 'bg-emerald-600 text-white'
+                              }`}>
+                                {scan.riskScore} / 100 ({scan.riskLevel.toUpperCase()})
+                              </span>
+                            </div>
+
+                            {/* AI Generated Warning Pill */}
+                            {scan.isAiGenerated && (
+                              <div className="bg-rose-100 border border-rose-400 p-2 rounded-xl text-rose-900 flex items-start gap-2 text-[11px] font-bold">
+                                <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-black text-rose-950">🚨 AI කෘතිම ඡායාරූපයක් (AI-Generated / Deepfake Face Detected)</p>
+                                  <p className="text-[10px] font-medium text-rose-800">මෙම ඡායාරූපය AI තාක්ෂණයෙන් ජනනය කළ එකක් ලෙස හඳුනාගෙන ඇත (විශ්වාසය: {scan.aiConfidence}%).</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Duplicate Photos Warning */}
+                            {scan.duplicateMatches && scan.duplicateMatches.length > 0 && (
+                              <div className="bg-amber-100 border border-amber-400 p-2 rounded-xl text-amber-950 text-[11px] space-y-1">
+                                <div className="font-black flex items-center gap-1 text-amber-900">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>⚠️ සමාන ඡායාරූප සහිත වෙනත් ගිණුම් {scan.duplicateMatches.length} ක් හමු විය!</span>
+                                </div>
+                                <div className="space-y-0.5 pl-4 text-[10px]">
+                                  {scan.duplicateMatches.map((dup, i) => (
+                                    <div key={i} className="font-medium text-slate-800">
+                                      • <strong className="text-slate-950">{dup.name}</strong> (NIC: {dup.nicNumber}) - <span className="text-amber-800 font-mono font-bold">{dup.similarityPercent}% සමානයි</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Document & OCR Info */}
+                            <div className="text-[10px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200 space-y-1">
+                              <p className="font-semibold leading-relaxed">
+                                📝 {scan.analysisSummarySi}
+                              </p>
+                              {scan.detectedNicNumber && (
+                                <div className="flex justify-between items-center text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                                  <span>ඡායාරූපයෙන් හඳුනාගත් NIC: <strong className="font-mono text-slate-900">{scan.detectedNicNumber}</strong></span>
+                                  <span>ගැළපීම: {scan.nicMatch ? '✅ නිවැරදියි' : '⚠️ නොගැළපේ'}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 italic">
+                            තවමත් AI ආරක්ෂක පරීක්ෂාවක් සිදු කර නොමැත. "දැන් ස්කෑන් කරන්න" ක්ලික් කරන්න.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDirectApproveUser(user)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                        title="ගිණුම අනුමත කරන්න"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Accept (අනුමතයි)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDirectRejectUser(user)}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        title="ලියාපදිංචිය ප්‍රතික්ෂේප කරන්න"
+                      >
+                        <XCircle className="w-4 h-4 text-amber-700" />
+                        <span>Reject</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleBlockUser(user)}
+                        className="bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 font-bold text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        title="ගිණුම අවහිර කරන්න"
+                      >
+                        <Ban className="w-4 h-4 text-rose-700" />
+                        <span>Block</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: AI Security Hub (AI Fraud & Duplicate Accounts Detection Center) */}
+      {activeTab === 'ai_security' && (
+        <div className="space-y-6">
+          {/* Top Banner with Action Button */}
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-950 text-white p-6 rounded-3xl shadow-xl border border-purple-500/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-1 max-w-2xl">
+              <h3 className="text-lg font-black flex items-center gap-2">
+                <ShieldAlert className="w-6 h-6 text-purple-400" />
+                <span>AI ආරක්ෂක සහ වංචා පරීක්ෂණ මධ්‍යස්ථානය (AI Security & Fraud Center)</span>
+              </h3>
+              <p className="text-xs text-purple-200 leading-relaxed">
+                කෘතිම බුද්ධිය (AI) මගින් සකස් කරන ලද ව්‍යාජ ඡායාරූප (Deepfakes/Synthetics), විවිධ NIC අංක යටතේ එකම ඡායාරූපය යොදාගත් බහු ගිණුම් (Duplicate Photo Accounts), සහ හැඳුනුම්පත් අංක නොගැළපීම් ස්වයංක්‍රීයව පරිලෝකනය කර හසුකරගැනීම.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleDeepScanAllUsers}
+              disabled={batchScanning}
+              className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 text-white font-black text-xs px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg transition-all cursor-pointer shrink-0"
+            >
+              {batchScanning ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>ස්කෑන් වෙමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="w-4 h-4 text-purple-200" />
+                  <span>සියලුම ගිණුම් AI ස්කෑන් කරන්න (Deep Scan All)</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 4 Overview Metric Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl shadow-sm">
+              <div className="text-[10px] font-black uppercase text-slate-500">පරීක්ෂා කළ මුළු ගිණුම්</div>
+              <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+                {scannedUsers.length} <span className="text-xs font-normal text-slate-500">/ {users.length}</span>
+              </div>
+            </div>
+
+            <div className="bg-white border-2 border-rose-200 p-4 rounded-2xl shadow-sm">
+              <div className="text-[10px] font-black uppercase text-rose-700">AI කෘතිම ඡායාරූප (Synthetic)</div>
+              <div className="text-2xl font-black text-rose-600 font-mono mt-1">
+                {aiSyntheticUsers.length}
+              </div>
+            </div>
+
+            <div className="bg-white border-2 border-amber-200 p-4 rounded-2xl shadow-sm">
+              <div className="text-[10px] font-black uppercase text-amber-700">සමාන ඡායාරූප සහිත ගිණුම්</div>
+              <div className="text-2xl font-black text-amber-600 font-mono mt-1">
+                {duplicateDetectedUsers.length}
+              </div>
+            </div>
+
+            <div className="bg-white border-2 border-purple-200 p-4 rounded-2xl shadow-sm">
+              <div className="text-[10px] font-black uppercase text-purple-700">අධි අවදානම් ගිණුම් (High Risk)</div>
+              <div className="text-2xl font-black text-purple-900 font-mono mt-1">
+                {highRiskUsers.length}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: 🚨 Duplicate Photo Networks */}
+          <div className="bg-white rounded-3xl border-2 border-amber-300 p-5 space-y-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                <h4 className="font-black text-slate-900 text-sm">
+                  🚨 අනාවරණය වූ සමාන ඡායාරූප සහිත ගිණුම් ජාලය (Duplicate Photo Matches)
+                </h4>
+              </div>
+              <span className="text-xs font-bold text-slate-500">
+                {duplicateDetectedUsers.length} ගිණුම් හමු විය
+              </span>
+            </div>
+
+            {duplicateDetectedUsers.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
+                ✅ සමාන හෝ එකම ඡායාරූපය යොදාගත් කිසිදු ව්‍යාජ ගිණුමක් හමු වී නොමැත.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {duplicateDetectedUsers.map((user) => {
+                  const frontPhoto = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
+                  const duplicates = user.aiScanResult?.duplicateMatches || [];
+
+                  return (
+                    <div key={user.id} className="bg-amber-50/40 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div 
+                            onClick={() => frontPhoto && openInspectorForUser(user, 'nicFront')}
+                            className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden border border-amber-300 cursor-pointer shrink-0"
+                          >
+                            {frontPhoto ? (
+                              <img src={frontPhoto} alt={user.name} className="w-full h-full object-cover" />
+                            ) : null}
+                          </div>
+                          <div>
+                            <h5 className="font-black text-slate-900 text-xs">{user.name}</h5>
+                            <div className="text-[11px] font-mono text-slate-600">NIC: {user.nicNumber}</div>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              user.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              Status: {user.status.toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBlockUser(user)}
+                          className="bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 font-bold text-[10px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                        >
+                          <Ban className="w-3 h-3 text-rose-700" />
+                          <span>Block</span>
+                        </button>
+                      </div>
+
+                      {/* Duplicate Accounts Match List */}
+                      <div className="bg-white p-2.5 rounded-xl border border-amber-200 text-xs space-y-1.5">
+                        <div className="text-[11px] font-extrabold text-amber-900">
+                          සමාන ඡායාරූපය යොදා ඇති වෙනත් ගිණුම් ({duplicates.length}):
+                        </div>
+                        {duplicates.map((dup, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-[11px] py-1 border-b border-slate-100 last:border-0">
+                            <div>
+                              <strong className="text-slate-900">{dup.name}</strong>
+                              <span className="text-slate-500 font-mono ml-1.5">(NIC: {dup.nicNumber})</span>
+                            </div>
+                            <span className="font-mono font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md text-[10px]">
+                              {dup.similarityPercent}% සමානයි
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: 🤖 AI-Generated & Flagged Accounts */}
+          <div className="bg-white rounded-3xl border-2 border-purple-300 p-5 space-y-4 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-purple-600" />
+                <h4 className="font-black text-slate-900 text-sm">
+                  🤖 AI-Generated හෝ සැක සහිත හැඳුනුම්පත් (AI Synthetics & High Risk List)
+                </h4>
+              </div>
+              <span className="text-xs font-bold text-slate-500">
+                {highRiskUsers.length} ගිණුම්
+              </span>
+            </div>
+
+            {highRiskUsers.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
+                ✅ AI මගින් නිපදවන ලද හෝ සැක සහිත හැඳුනුම්පත් කිසිවක් හමු වී නොමැත.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {highRiskUsers.map((user) => {
+                  const frontPhoto = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
+                  const scan = user.aiScanResult;
+
+                  return (
+                    <div key={user.id} className="bg-rose-50/30 border-2 border-rose-300 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div 
+                            onClick={() => frontPhoto && openInspectorForUser(user, 'nicFront')}
+                            className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden border border-rose-300 cursor-pointer shrink-0"
+                          >
+                            {frontPhoto ? (
+                              <img src={frontPhoto} alt={user.name} className="w-full h-full object-cover" />
+                            ) : null}
+                          </div>
+                          <div>
+                            <h5 className="font-black text-slate-900 text-xs">{user.name}</h5>
+                            <div className="text-[11px] font-mono text-slate-600">NIC: {user.nicNumber}</div>
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white font-mono">
+                              Risk Score: {scan?.riskScore} / 100
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBlockUser(user)}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                          >
+                            <Ban className="w-3 h-3" />
+                            <span>Block</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Details & Flags */}
+                      <div className="bg-white p-2.5 rounded-xl border border-rose-200 text-xs space-y-1.5">
+                        <p className="font-semibold text-rose-950 text-[11px]">
+                          {scan?.analysisSummarySi}
+                        </p>
+                        {scan?.flags && scan.flags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {scan.flags.map((flag, fIdx) => (
+                              <span key={fIdx} className="bg-rose-100 text-rose-900 text-[9px] font-bold px-2 py-0.5 rounded-md border border-rose-300">
+                                ⚠️ {flag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: All Users (Users Directory - WITHOUT PASSWORD COLUMN) */}
+      {activeTab === 'all_users' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-2xl border-2 border-emerald-200 shadow-sm">
+            <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="නම, User ID, NIC හෝ දුරකථන අංකයෙන් සොයන්න..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-xs font-semibold focus:outline-none bg-transparent"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-600">තත්ත්වය:</span>
+              <select
+                value={userStatusFilter}
+                onChange={(e) => setUserStatusFilter(e.target.value)}
+                className="text-xs font-bold border border-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+              >
+                <option value="all">සියලුම පරිශීලකයන්</option>
+                <option value="approved">අනුමත (Approved)</option>
+                <option value="pending">පොරොත්තු (Pending)</option>
+                <option value="blocked">අවහිර කළ (Blocked)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Users Table WITHOUT Password Column */}
+          <div className="bg-white rounded-3xl border-2 border-emerald-200 shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-800 font-black border-b-2 border-slate-200 uppercase tracking-wider">
+                    <th className="p-3.5">පරිශීලක (User Details)</th>
+                    <th className="p-3.5">ID / NIC</th>
+                    <th className="p-3.5">දුරකථන අංකය</th>
+                    <th className="p-3.5">හැඳුනුම්පත (ID Photo)</th>
+                    <th className="p-3.5">තත්ත්වය (Status)</th>
+                    <th className="p-3.5 text-center">ක්‍රියාමාර්ග (Actions)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-500 font-bold">
+                        පරිශීලකයන් හමු නොවිණි.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user) => {
+                      const nicFront = user.nicFrontPhotoUrl || user.idCardPhotoUrl;
+                      const hasLoginHistory = Array.isArray(user.loginHistory) && user.loginHistory.length > 0;
+
+                      return (
+                        <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                onClick={() => openInspectorForUser(user, 'face')}
+                                className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-300 overflow-hidden shrink-0 flex items-center justify-center font-black text-emerald-900 cursor-pointer hover:scale-105 transition-transform"
+                                title="පින්තූරය විශාල කර බලන්න"
+                              >
+                                {user.photoUrl ? (
+                                  <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  user.name.charAt(0)
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                                  <span>{user.name}</span>
+                                  {user.role === 'admin' && (
+                                    <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase">
+                                      Admin
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5 font-mono font-bold text-slate-700">
+                            <div>ID: {user.userId}</div>
+                            <div className="text-[10px] text-slate-500">NIC: {user.nicNumber}</div>
+                          </td>
+                          <td className="p-3.5 font-mono font-bold text-slate-800">
+                            {user.phone}
+                          </td>
+                          <td className="p-3.5">
+                            {nicFront ? (
+                              <button
+                                type="button"
+                                onClick={() => openInspectorForUser(user, 'nicFront')}
+                                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                                title="හැඳුනුම්පත් ඡායාරූපය පරීක්ෂා කරන්න"
+                              >
+                                <Eye className="w-3 h-3 text-emerald-700" />
+                                <span>බලන්න (View)</span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-bold">නැත</span>
+                            )}
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                              user.status === 'approved'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : user.status === 'pending'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-rose-100 text-rose-800 border border-rose-300'
+                            }`}>
+                              {user.status}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {/* Quick Approve button if pending */}
+                              {user.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirectApproveUser(user)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                                  title="ගිණුම අනුමත කරන්න"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                              )}
+
+                              {/* Toggle Block/Unblock */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBlockUser(user)}
+                                className={`px-2.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95 border ${
+                                  user.status === 'blocked'
+                                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border-emerald-300'
+                                    : 'bg-rose-100 hover:bg-rose-200 text-rose-900 border-rose-300'
+                                }`}
+                                title={user.status === 'blocked' ? 'අවහිරය ඉවත් කරන්න' : 'ගිණුම අවහිර කරන්න'}
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                                <span>{user.status === 'blocked' ? 'Unblock' : 'Block'}</span>
+                              </button>
+
+                              {/* Reset Password Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleResetUserPassword(user)}
+                                className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                                title="මුරපදය නැවත සකස් කරන්න (Reset Password)"
+                              >
+                                <Key className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Reset Pass</span>
+                              </button>
+
+                              {/* View / Edit Modal Button */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserForModal(user);
+                                  setEditingUserForm({ ...user });
+                                  setModalSubTab('profile');
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-2.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                                <span>Profile & Logs</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Edit / Details / Login History Modal */}
+      {selectedUserForModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full border-2 border-emerald-400 shadow-2xl p-6 space-y-5 animate-scaleUp my-8">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-200">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-6 h-6 text-emerald-600" />
+                <h3 className="text-lg font-black text-slate-900">
+                  {selectedUserForModal.name} - පරිශීලක තොරතුරු සහ පාලනය
+                </h3>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setPhotoInspector(null);
-                  setInspectorScanResult(null);
-                }}
-                className="p-1.5 bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer shadow-md"
+                onClick={() => setSelectedUserForModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* AI Scan Mini-Banner (if available) */}
-            {inspectorScanResult && (
-              <div className={`mt-3 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between border ${
-                inspectorScanResult.riskLevel === 'high' ? 'bg-rose-950/50 border-rose-500/50 text-rose-300' :
-                inspectorScanResult.riskLevel === 'medium' ? 'bg-amber-950/50 border-amber-500/50 text-amber-300' :
-                'bg-emerald-950/50 border-emerald-500/50 text-emerald-300'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5" />
-                  <span>AI Scan Result: {inspectorScanResult.riskLevel.toUpperCase()} RISK (Score: {inspectorScanResult.riskScore}/100)</span>
+            {/* Modal Sub-Tabs */}
+            <div className="flex border-b border-slate-200 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalSubTab('profile')}
+                className={`px-4 py-2 font-bold text-xs rounded-t-xl transition-all cursor-pointer ${
+                  modalSubTab === 'profile'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                පැතිකඩ විස්තර (Profile Info)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalSubTab('posts')}
+                className={`px-4 py-2 font-bold text-xs rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                  modalSubTab === 'posts'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>ප්‍රවේශ ඉතිහාසය (Login History - පසුගිය අවස්ථා 20)</span>
+                {Array.isArray(selectedUserForModal.loginHistory) && (
+                  <span className="bg-white/20 text-xs px-1.5 py-0.2 rounded-full font-mono">
+                    {selectedUserForModal.loginHistory.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* SubTab 1: Profile Info Form */}
+            {modalSubTab === 'profile' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-bold text-slate-700">
+                  <div>
+                    <label className="block mb-1">සම්පූර්ණ නම (Full Name):</label>
+                    <input
+                      type="text"
+                      value={editingUserForm.name || ''}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, name: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1">ජාතික හැඳුනුම්පත් අංකය (NIC):</label>
+                    <input
+                      type="text"
+                      value={editingUserForm.nicNumber || ''}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, nicNumber: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1">දුරකථන අංකය (Phone):</label>
+                    <input
+                      type="text"
+                      value={editingUserForm.phone || ''}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, phone: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1">WhatsApp අංකය:</label>
+                    <input
+                      type="text"
+                      value={editingUserForm.whatsappNumber || ''}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, whatsappNumber: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1">ලිපිනය (Address):</label>
+                    <input
+                      type="text"
+                      value={editingUserForm.address || ''}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, address: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1">ගිණුමේ තත්ත්වය (Account Status):</label>
+                    <select
+                      value={editingUserForm.status || 'approved'}
+                      onChange={(e) => setEditingUserForm({ ...editingUserForm, status: e.target.value as UserStatus })}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-500 font-bold"
+                    >
+                      <option value="approved">Approved (අනුමතයි)</option>
+                      <option value="pending">Pending (පොරොත්තු)</option>
+                      <option value="blocked">Blocked (අවහිරයි)</option>
+                    </select>
+                  </div>
                 </div>
-                <span className="opacity-90">{inspectorScanResult.analysisSummarySi}</span>
+
+                {/* ID Photo Preview in Profile Tab */}
+                {(selectedUserForModal.nicFrontPhotoUrl || selectedUserForModal.idCardPhotoUrl) && (
+                  <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl">
+                    <div className="text-xs font-black text-slate-800 mb-2 flex items-center justify-between">
+                      <span>හැඳුනුම්පත් ඡායාරූප (NIC Photos):</span>
+                      <button
+                        type="button"
+                        onClick={() => openInspectorForUser(selectedUserForModal, 'nicFront')}
+                        className="text-[11px] text-emerald-700 font-bold underline flex items-center gap-1"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                        <span>විශාල කර බලන්න</span>
+                      </button>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-32 h-20 bg-slate-200 rounded-xl overflow-hidden border border-slate-300">
+                        <img 
+                          src={selectedUserForModal.nicFrontPhotoUrl || selectedUserForModal.idCardPhotoUrl} 
+                          alt="Front NIC" 
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      {selectedUserForModal.nicBackPhotoUrl && (
+                        <div className="w-32 h-20 bg-slate-200 rounded-xl overflow-hidden border border-slate-300">
+                          <img 
+                            src={selectedUserForModal.nicBackPhotoUrl} 
+                            alt="Back NIC" 
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Password & Security Actions */}
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-[11px] text-amber-900 font-semibold flex items-center justify-between gap-2 flex-wrap">
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>ආරක්ෂිතයි: වෙනස්කම් සුරැකීමේදී පරිශීලකයාගේ මුරපදයට බලපෑමක් සිදු නොවේ.</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => handleResetUserPassword(selectedUserForModal)}
+                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded-xl font-extrabold text-[11px] shrink-0 transition-all cursor-pointer shadow-sm"
+                  >
+                    🔑 Reset Password
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Viewer Area */}
-            <div className="flex-1 relative overflow-hidden bg-slate-950/50 rounded-2xl border border-slate-700 my-4 min-h-[50vh] flex items-center justify-center">
-              <img
-                src={
-                  photoInspector.activeType === 'nicFront' ? photoInspector.nicFrontPhotoUrl :
-                  photoInspector.activeType === 'nicBack' ? photoInspector.nicBackPhotoUrl :
-                  photoInspector.facePhotoUrl
-                }
-                alt="Inspection View"
-                className="max-w-full max-h-full object-contain transition-transform duration-200"
-                style={{
-                  transform: `scale(${photoInspector.zoom}) rotate(${photoInspector.rotation}deg)`
-                }}
-              />
-            </div>
+            {/* SubTab 2: Login History (පසුගිය අවස්ථා 20 ප්‍රවේශ වාර්තා) */}
+            {modalSubTab === 'posts' && (
+              <div className="space-y-4">
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 flex items-center justify-between">
+                  <div>
+                    <span className="font-extrabold text-slate-900">පරිශීලක ප්‍රවේශ ඉතිහාසය: </span>
+                    <span>පරිශීලකයා ඇප් එකට පිවිසි අවසන් අවස්ථා 20 හි IP ලිපිනය, ස්ථානය සහ දිනය/වේලාව මෙහි සටහන් වේ.</span>
+                  </div>
+                </div>
 
-            {/* Controls */}
-            <div className="flex flex-wrap justify-center gap-3 bg-slate-900 pt-2 border-t border-white/10">
-              <button 
-                type="button"
-                onClick={() => setPhotoInspector({ ...photoInspector, zoom: Math.max(0.5, photoInspector.zoom - 0.2) })} 
-                className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <ZoomOut className="w-4 h-4" /> Zoom Out
-              </button>
-              <button 
-                type="button"
-                onClick={() => setPhotoInspector({ ...photoInspector, zoom: Math.min(4, photoInspector.zoom + 0.2) })} 
-                className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <ZoomIn className="w-4 h-4" /> Zoom In
-              </button>
-              <button 
-                type="button"
-                onClick={() => setPhotoInspector({ ...photoInspector, rotation: photoInspector.rotation - 90 })} 
-                className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" /> Rotate Left
-              </button>
-              <button 
-                type="button"
-                onClick={() => setPhotoInspector({ ...photoInspector, rotation: photoInspector.rotation + 90 })} 
-                className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <RotateCw className="w-4 h-4" /> Rotate Right
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-800 font-black border-b border-slate-200 uppercase tracking-wider">
+                        <th className="p-3">#</th>
+                        <th className="p-3">දිනය සහ වේලාව (Date & Time)</th>
+                        <th className="p-3">IP ලිපිනය (IP Address)</th>
+                        <th className="p-3">ස්ථානය / නගරය (Location)</th>
+                        <th className="p-3">උපාංගය (Device / Browser)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {!Array.isArray(selectedUserForModal.loginHistory) || selectedUserForModal.loginHistory.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-6 text-center text-slate-500 font-bold">
+                            තවමත් ප්‍රවේශ වාර්තා සටහන් වී නොමැත. (පළමු පිවිසුමෙන් පසු වාර්තා වේ)
+                          </td>
+                        </tr>
+                      ) : (
+                        selectedUserForModal.loginHistory.map((log, index) => (
+                          <tr key={log.id || index} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 font-mono text-slate-500 font-bold">{index + 1}</td>
+                            <td className="p-3 font-mono font-bold text-slate-900">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString('si-LK') : 'නැත'}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-emerald-800 bg-emerald-50/50">
+                              {log.ipAddress || 'නොදනී'}
+                            </td>
+                            <td className="p-3 font-bold text-slate-700">
+                              {log.locationName || 'නොදනී'}
+                            </td>
+                            <td className="p-3 text-[11px] text-slate-600 truncate max-w-[160px]" title={log.deviceInfo}>
+                              {log.deviceInfo || 'නොදනී'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-      {/* User Deletion Confirmation Modal */}
-      {userToDelete && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full border-2 border-rose-500 shadow-2xl p-6 space-y-5 animate-scaleUp">
-            <div className="flex items-center gap-3 text-rose-600 border-b border-slate-200 pb-3">
-              <AlertTriangle className="w-8 h-8" />
-              <h3 className="text-lg font-black">ගිණුම මකා දැමීම (Delete User)</h3>
-            </div>
-            
-            <div className="text-slate-700 text-sm space-y-3 font-semibold leading-relaxed">
-              <p>
-                ඔබ <strong className="text-slate-900">{userToDelete.name}</strong> ගේ ගිණුම සම්පූර්ණයෙන්ම මකා දැමීමට සැරසේ.
-              </p>
-              <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-rose-900 text-xs">
-                ⚠️ <strong>අවවාදයයි:</strong> මෙම ක්‍රියාව ආපසු හැරවිය නොහැක. පරිශීලකයාගේ සියලු දත්ත, පෝස්ට් සහ ඉතිහාසය පද්ධතියෙන් ඉවත් වනු ඇත.
+            {/* Modal Actions */}
+            <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => handleToggleBlockUser(selectedUserForModal)}
+                className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  selectedUserForModal.status === 'blocked'
+                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                    : 'bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300'
+                }`}
+              >
+                {selectedUserForModal.status === 'blocked' ? '✅ Unblock Account' : '⛔ Block Account'}
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForModal(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs cursor-pointer"
+                >
+                  වසන්න (Close)
+                </button>
+                {modalSubTab === 'profile' && (
+                  <button
+                    type="button"
+                    onClick={handleSaveUserEdit}
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+                  >
+                    වෙනස්කම් සුරකින්න (Save Changes)
+                  </button>
+                )}
               </div>
             </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setUserToDelete(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs cursor-pointer transition-colors"
-              >
-                අවලංගු කරන්න (Cancel)
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md transition-colors cursor-pointer flex items-center gap-2"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>ඔව්, මකා දමන්න</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Remaining Admin Modules Rendering based on activeTab */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        {activeTab === 'credits' && (
-          <AdminCreditManagement users={users} onUpdateUser={onUpdateUser} />
-        )}
+      {/* High-Clarity Photo Inspector Lightbox Modal */}
+      {photoInspector && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-4">
+          <div className="w-full max-w-4xl bg-slate-900 border border-emerald-500/40 rounded-3xl shadow-2xl p-4 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 text-white">
+              <div>
+                <h3 className="text-base font-black flex items-center gap-2">
+                  <span>{photoInspector.userName}</span>
+                  {photoInspector.nicNumber && (
+                    <span className="text-xs bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md font-mono font-black">
+                      NIC: {photoInspector.nicNumber}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  ඡායාරූපය විශාල කර පරීක්ෂා කිරීම (High-Clarity ID & Face Inspector)
+                </p>
+              </div>
 
-        {activeTab === 'emergency_directory' && (
-          <AdminEmergencyDirectoryManagement />
-        )}
+              {/* Photo Switch Tabs */}
+              <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl">
+                {photoInspector.nicFrontPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'nicFront', zoom: 1, rotation: 0 })}
+                    className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                      photoInspector.activeType === 'nicFront'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    Front ID
+                  </button>
+                )}
+                {photoInspector.nicBackPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'nicBack', zoom: 1, rotation: 0 })}
+                    className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                      photoInspector.activeType === 'nicBack'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    Back ID
+                  </button>
+                )}
+                {photoInspector.facePhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoInspector({ ...photoInspector, activeType: 'face', zoom: 1, rotation: 0 })}
+                    className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                      photoInspector.activeType === 'face'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    Face Photo
+                  </button>
+                )}
+              </div>
 
-        {activeTab === 'search_dictionary' && (
-          <AdminSearchDictionaryManager />
-        )}
+              <button
+                type="button"
+                onClick={() => setPhotoInspector(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-        {activeTab === 'red_alerts' && (
-          <AdminRedAlertManagement 
-            alerts={redAlerts} 
-            onRefresh={onRefreshRedAlerts} 
-            onViewDetail={onViewRedAlertDetail} 
-          />
-        )}
-      </div>
+            {/* Photo Canvas Area */}
+            <div className="flex-1 min-h-[350px] overflow-hidden flex items-center justify-center p-4 bg-slate-950/80 rounded-2xl my-3 relative">
+              {(() => {
+                const currentImg = 
+                  photoInspector.activeType === 'nicFront' 
+                    ? photoInspector.nicFrontPhotoUrl 
+                    : photoInspector.activeType === 'nicBack' 
+                    ? photoInspector.nicBackPhotoUrl 
+                    : photoInspector.facePhotoUrl;
 
-      {/* More Tabs Navigation Dropdown (For space-saving on mobile) */}
-      <div className="mt-8 pt-4 border-t border-slate-200">
-        <h4 className="text-sm font-black text-slate-500 mb-3 uppercase tracking-wider">වෙනත් පරිපාලන මෙවලම් (Other Admin Tools)</h4>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setActiveTab('credits')} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors ${activeTab === 'credits' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-            <Coins className="w-4 h-4" /> Credits
-          </button>
-          <button onClick={() => setActiveTab('emergency_directory')} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors ${activeTab === 'emergency_directory' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-            <PhoneCall className="w-4 h-4" /> හදිසි අංක (Emergency)
-          </button>
-          <button onClick={() => setActiveTab('red_alerts')} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors ${activeTab === 'red_alerts' ? 'bg-red-100 text-red-800 border-red-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-            <AlertTriangle className="w-4 h-4" /> Red Alerts
-          </button>
-          <button onClick={() => setActiveTab('search_dictionary')} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors ${activeTab === 'search_dictionary' ? 'bg-sky-100 text-sky-800 border-sky-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-            <BookOpen className="w-4 h-4" /> Search Dictionary
-          </button>
+                return currentImg ? (
+                  <img
+                    src={currentImg}
+                    alt="Inspect Target"
+                    style={{
+                      transform: `scale(${photoInspector.zoom}) rotate(${photoInspector.rotation}deg)`,
+                      transition: 'transform 0.2s ease-out',
+                    }}
+                    className="max-h-[65vh] max-w-full object-contain rounded-lg shadow-2xl"
+                  />
+                ) : (
+                  <div className="text-slate-400 font-bold text-sm">
+                    ඡායාරූපයක් ලබා දී නොමැත.
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Zoom / Rotate Controls Bar */}
+            <div className="flex justify-between items-center pt-2 text-white">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector({ ...photoInspector, zoom: Math.min(photoInspector.zoom + 0.25, 3) })}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl font-bold flex items-center gap-1 text-xs cursor-pointer"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                  <span>Zoom In</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector({ ...photoInspector, zoom: Math.max(photoInspector.zoom - 0.25, 0.5) })}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl font-bold flex items-center gap-1 text-xs cursor-pointer"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                  <span>Zoom Out</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector({ ...photoInspector, rotation: (photoInspector.rotation + 90) % 360 })}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl font-bold flex items-center gap-1 text-xs cursor-pointer"
+                  title="Rotate 90°"
+                >
+                  <RotateCw className="w-4 h-4" />
+                  <span>Rotate</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPhotoInspector({ ...photoInspector, zoom: 1, rotation: 0 })}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                  title="Reset View"
+                >
+                  Reset
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-400 font-mono">
+                Zoom: {Math.round(photoInspector.zoom * 100)}% | Rotate: {photoInspector.rotation}°
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      
+      )}
     </div>
   );
 };
-
-export default AdminDashboard;
