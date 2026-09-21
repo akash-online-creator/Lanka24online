@@ -4,9 +4,10 @@ import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ShieldCheck } from 'l
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSavePassword: (newPassword: string) => void;
+  onSavePassword: (newPassword: string, tempPassword?: string) => void;
   userName?: string;
   nicNumber?: string;
+  currentTempPassword?: string;
 }
 
 export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
@@ -15,13 +16,23 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   onSavePassword,
   userName,
   nicNumber,
+  currentTempPassword = '',
 }) => {
+  const [tempPassword, setTempPassword] = useState(currentTempPassword);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showTempPassword, setShowTempPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Sync initial temp password when modal opens
+  React.useEffect(() => {
+    if (isOpen && currentTempPassword) {
+      setTempPassword(currentTempPassword);
+    }
+  }, [isOpen, currentTempPassword]);
 
   if (!isOpen) return null;
 
@@ -29,6 +40,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     e.preventDefault();
     setErrorMessage('');
 
+    const cleanTemp = tempPassword.trim();
     const cleanNew = newPassword.trim();
     const cleanConfirm = confirmPassword.trim();
 
@@ -49,7 +61,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
     setIsSuccess(true);
     setTimeout(() => {
-      onSavePassword(cleanNew);
+      onSavePassword(cleanNew, cleanTemp);
       setIsSuccess(false);
       setNewPassword('');
       setConfirmPassword('');
@@ -115,6 +127,33 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         {/* Form Inputs */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
+          {/* Field 0: Current / Temporary Password (දැනට ඇති තාවකාලික මුරපදය) */}
+          <div className="space-y-1.5">
+            <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              දැනට ඇති තාවකාලික මුරපදය (Temporary Password)
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showTempPassword ? 'text' : 'password'}
+                placeholder="දැනට ලැබී ඇති තාවකාලික මුරපදය"
+                value={tempPassword}
+                onChange={(e) => {
+                  setTempPassword(e.target.value);
+                  if (errorMessage) setErrorMessage('');
+                }}
+                className="w-full bg-slate-50 dark:bg-[#07120c] border-2 border-slate-200 dark:border-[#162e20] focus:border-[#007a4b] dark:focus:border-emerald-500 rounded-2xl py-3 pl-4 pr-11 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner"
+              />
+              <button
+                type="button"
+                onClick={() => setShowTempPassword(!showTempPassword)}
+                className="absolute right-3 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 p-1 cursor-pointer"
+                title={showTempPassword ? 'Hide password' : 'Show password'}
+              >
+                {showTempPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
           {/* Field 1: New Password (නව මුරපදය) */}
           <div className="space-y-1.5">
             <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">

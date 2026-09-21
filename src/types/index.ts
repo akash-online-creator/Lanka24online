@@ -302,6 +302,8 @@ export interface User {
   whatsappNumber?: string;
   securityCode?: string;
   tempCode?: string;
+  tempPassword?: string;
+  isTemporaryPassword?: boolean;
   isPasswordChanged?: boolean;
   role: Role;
   status: UserStatus;
