@@ -17,7 +17,7 @@ import { RegisterForm } from './components/RegisterForm';
 import { PendingApprovalView } from './components/PendingApprovalView';
 import { WrongLoginModal } from './components/WrongLoginModal';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
-import AdminPanel from './components/AdminPanel'; 
+import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
