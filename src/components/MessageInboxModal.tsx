@@ -214,8 +214,8 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     );
     const isNameMatch = Boolean(
       user?.name &&
-      post.userName &&
-      post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()
+      post?.userName &&
+      (post.userName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
     );
 
     return isPhoneMatch || isIdMatch || isNameMatch;
@@ -307,10 +307,10 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
-      thread.respondentName.toLowerCase().includes(q) ||
-      thread.lastMessage.toLowerCase().includes(q) ||
-      thread.post.whatHappened.toLowerCase().includes(q) ||
-      thread.post.postCode.toLowerCase().includes(q)
+      (thread.respondentName || '').toLowerCase().includes(q) ||
+      (thread.lastMessage || '').toLowerCase().includes(q) ||
+      (thread.post?.whatHappened || '').toLowerCase().includes(q) ||
+      (thread.post?.postCode || '').toLowerCase().includes(q)
     );
   });
 

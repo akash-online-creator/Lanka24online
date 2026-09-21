@@ -2013,16 +2013,16 @@ export async function searchSriLankanPlacesAndRoads(query: string): Promise<Plac
   // 1. Search in curated places first (instant local results)
   const localMatches = SRI_LANKA_CURATED_PLACES.filter((p) => {
     return (
-      p.titleSi.toLowerCase().includes(cleanQ) ||
-      p.titleEn.toLowerCase().includes(cleanQ) ||
-      p.roadSi.toLowerCase().includes(cleanQ) ||
-      p.roadEn.toLowerCase().includes(cleanQ) ||
-      p.villageSi.toLowerCase().includes(cleanQ) ||
-      p.villageEn.toLowerCase().includes(cleanQ) ||
-      p.townSi.toLowerCase().includes(cleanQ) ||
-      p.townEn.toLowerCase().includes(cleanQ) ||
-      p.shortDisplaySi.toLowerCase().includes(cleanQ) ||
-      p.shortDisplayEn.toLowerCase().includes(cleanQ)
+      (p.titleSi || '').toLowerCase().includes(cleanQ) ||
+      (p.titleEn || '').toLowerCase().includes(cleanQ) ||
+      (p.roadSi || '').toLowerCase().includes(cleanQ) ||
+      (p.roadEn || '').toLowerCase().includes(cleanQ) ||
+      (p.villageSi || '').toLowerCase().includes(cleanQ) ||
+      (p.villageEn || '').toLowerCase().includes(cleanQ) ||
+      (p.townSi || '').toLowerCase().includes(cleanQ) ||
+      (p.townEn || '').toLowerCase().includes(cleanQ) ||
+      (p.shortDisplaySi || '').toLowerCase().includes(cleanQ) ||
+      (p.shortDisplayEn || '').toLowerCase().includes(cleanQ)
     );
   });
 

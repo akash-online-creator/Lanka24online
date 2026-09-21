@@ -87,8 +87,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
   const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
 
   // Tag matching logic as user types title
+  const cleanTitle = (title || '').trim().toLowerCase();
   const matchingTags = allTags.filter((t) =>
-    title.trim() && (t.tagName.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(t.tagName.toLowerCase()))
+    cleanTitle && ((t?.tagName || '').toLowerCase().includes(cleanTitle) || cleanTitle.includes((t?.tagName || '').toLowerCase()))
   );
 
   const toggleSaleType = (type: MarketItemSaleType) => {

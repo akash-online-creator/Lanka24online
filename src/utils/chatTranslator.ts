@@ -585,7 +585,7 @@ export function translateChatMessage(
 
     // Check Sinhala unicode keys in CHAT_WORD_MAP values
     for (const entry of Object.values(CHAT_WORD_MAP)) {
-      if (entry.si === trimmed || entry.en.toLowerCase() === tokenLower || entry.ta === trimmed) {
+      if (entry.si === trimmed || (entry.en && entry.en.toLowerCase() === tokenLower) || entry.ta === trimmed) {
         hasTranslatedAny = true;
         return entry[targetLang];
       }

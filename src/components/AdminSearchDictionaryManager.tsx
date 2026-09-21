@@ -97,8 +97,8 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
       }
       // Text query
       if (q) {
-        const canonicalMatch = g.canonical.toLowerCase().includes(q);
-        const termMatch = g.terms.some((t) => t.toLowerCase().includes(q));
+        const canonicalMatch = (g.canonical || '').toLowerCase().includes(q);
+        const termMatch = (g.terms || []).some((t) => (t || '').toLowerCase().includes(q));
         const catMatch = (g.category || '').toLowerCase().includes(q);
         if (!canonicalMatch && !termMatch && !catMatch) return false;
       }

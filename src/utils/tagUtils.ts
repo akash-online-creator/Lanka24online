@@ -156,8 +156,8 @@ export function addTagToStorage(tagName: string, category: string): { tag: TagIt
   // Check if identical or near-identical name & category exists
   const existing = currentTags.find(
     (t) =>
-      t.tagName.toLowerCase() === trimmedName.toLowerCase() &&
-      t.category.toLowerCase() === trimmedCategory.toLowerCase()
+      (t?.tagName || '').toLowerCase() === trimmedName.toLowerCase() &&
+      (t?.category || '').toLowerCase() === trimmedCategory.toLowerCase()
   );
 
   if (existing) {

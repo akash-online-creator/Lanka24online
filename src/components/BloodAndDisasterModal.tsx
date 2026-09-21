@@ -267,10 +267,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
-          b.hospitalName.toLowerCase().includes(q) ||
-          b.patientName.toLowerCase().includes(q) ||
-          b.district.toLowerCase().includes(q) ||
-          b.bloodGroup.toLowerCase().includes(q)
+          (b.hospitalName || '').toLowerCase().includes(q) ||
+          (b.patientName || '').toLowerCase().includes(q) ||
+          (b.district || '').toLowerCase().includes(q) ||
+          (b.bloodGroup || '').toLowerCase().includes(q)
         );
       }
       return true;
@@ -283,7 +283,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       if (selectedDistrict !== 'all' && d.district !== selectedDistrict) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        return d.name.toLowerCase().includes(q) || d.district.toLowerCase().includes(q);
+        return (d.name || '').toLowerCase().includes(q) || (d.district || '').toLowerCase().includes(q);
       }
       return true;
     });
@@ -295,10 +295,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
-          item.title.toLowerCase().includes(q) ||
-          item.district.toLowerCase().includes(q) ||
-          item.locationName.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q)
+          (item.title || '').toLowerCase().includes(q) ||
+          (item.district || '').toLowerCase().includes(q) ||
+          (item.locationName || '').toLowerCase().includes(q) ||
+          (item.description || '').toLowerCase().includes(q)
         );
       }
       return true;

@@ -603,12 +603,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const filteredUsers = users.filter((u) => {
+    const q = (searchQuery || '').trim().toLowerCase();
     const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.nicNumber.includes(searchQuery) ||
-      u.phone.includes(searchQuery) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.userId || '').toLowerCase().includes(q) ||
+      (u.nicNumber || '').toLowerCase().includes(q) ||
+      (u.phone || '').includes(q) ||
+      (u.email || '').toLowerCase().includes(q);
 
     const matchesStatus =
       userStatusFilter === 'all' || u.status === userStatusFilter;

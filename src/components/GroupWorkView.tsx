@@ -182,9 +182,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
   const searchMatchedGroups = cleanSearch
     ? groups.filter(
         (grp) =>
-          grp.username.toLowerCase().replace(/^@/, '').includes(cleanSearch) ||
-          grp.name.toLowerCase().includes(cleanSearch) ||
-          grp.description.toLowerCase().includes(cleanSearch)
+          (grp.username || '').toLowerCase().replace(/^@/, '').includes(cleanSearch) ||
+          (grp.name || '').toLowerCase().includes(cleanSearch) ||
+          (grp.description || '').toLowerCase().includes(cleanSearch)
       )
     : [];
 
@@ -201,9 +201,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
     // Search query filtering
     if (cleanSearch) {
       return (
-        grp.username.toLowerCase().replace(/^@/, '').includes(cleanSearch) ||
-        grp.name.toLowerCase().includes(cleanSearch) ||
-        grp.description.toLowerCase().includes(cleanSearch)
+        (grp.username || '').toLowerCase().replace(/^@/, '').includes(cleanSearch) ||
+        (grp.name || '').toLowerCase().includes(cleanSearch) ||
+        (grp.description || '').toLowerCase().includes(cleanSearch)
       );
     }
     return true;

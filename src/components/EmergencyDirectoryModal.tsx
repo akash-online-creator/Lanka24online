@@ -325,12 +325,12 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesNameSi = item.serviceNameSi.toLowerCase().includes(q);
-        const matchesNameEn = item.serviceNameEn.toLowerCase().includes(q);
-        const matchesPhone = item.phone.includes(q) || (item.altPhone && item.altPhone.includes(q));
-        const matchesDesc = item.descriptionSi?.toLowerCase().includes(q);
-        const matchesSubmitter = item.submittedByUserName?.toLowerCase().includes(q);
-        const matchesAddress = item.address?.toLowerCase().includes(q);
+        const matchesNameSi = (item.serviceNameSi || '').toLowerCase().includes(q);
+        const matchesNameEn = (item.serviceNameEn || '').toLowerCase().includes(q);
+        const matchesPhone = (item.phone || '').includes(q) || (item.altPhone && item.altPhone.includes(q));
+        const matchesDesc = (item.descriptionSi || '').toLowerCase().includes(q);
+        const matchesSubmitter = (item.submittedByUserName || '').toLowerCase().includes(q);
+        const matchesAddress = (item.address || '').toLowerCase().includes(q);
         if (!matchesNameSi && !matchesNameEn && !matchesPhone && !matchesDesc && !matchesSubmitter && !matchesAddress) {
           return false;
         }

@@ -12,12 +12,13 @@ export function calculateTrustProfile(user: User, helpPosts: HelpPost[] = []): U
   const userPhoneNorm = normalizePhone(user.phone);
 
   // Count posts where this user was the confirmed / completed helper
+  const uName = (user?.name || '').trim().toLowerCase();
   const completedHelps = (helpPosts || []).filter((p) => {
     const isHelper =
       (p.confirmedHelperPhone && normalizePhone(p.confirmedHelperPhone) === userPhoneNorm) ||
       (p.completedHelperPhone && normalizePhone(p.completedHelperPhone) === userPhoneNorm) ||
-      (p.confirmedBy && p.confirmedBy.toLowerCase() === user.name.toLowerCase()) ||
-      (p.completedBy && p.completedBy.toLowerCase() === user.name.toLowerCase());
+      (uName && p.confirmedBy && p.confirmedBy.trim().toLowerCase() === uName) ||
+      (uName && p.completedBy && p.completedBy.trim().toLowerCase() === uName);
     return isHelper && (p.isCompleted || p.requesterResolved || p.status === 'completed');
   }).length;
 

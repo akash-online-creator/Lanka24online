@@ -76,7 +76,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
       // Search query filter with synonym expansion
       if (searchQuery.trim()) {
         const keywords = getExpandedSearchKeywords(searchQuery);
-        const srvText = `${srv.providerName} ${srv.serviceTitle} ${srv.categoryName} ${srv.subCategoryName} ${srv.locationName || ''} ${srv.qualifications || ''}`.toLowerCase();
+        const srvText = `${srv.providerName || ''} ${srv.serviceTitle || ''} ${srv.categoryName || ''} ${srv.subCategoryName || ''} ${srv.locationName || ''} ${srv.qualifications || ''}`.toLowerCase();
         const matches = keywords.some((kw) => srvText.includes(kw));
         if (!matches) return false;
       }

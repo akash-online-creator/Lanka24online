@@ -78,9 +78,9 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchTitle = alert.disasterTitleSi.toLowerCase().includes(q) || alert.disasterTitleEn?.toLowerCase().includes(q);
-      const matchLoc = alert.locationName.toLowerCase().includes(q);
-      const matchCode = alert.alertCode.toLowerCase().includes(q);
+      const matchTitle = (alert.disasterTitleSi || '').toLowerCase().includes(q) || (alert.disasterTitleEn || '').toLowerCase().includes(q);
+      const matchLoc = (alert.locationName || '').toLowerCase().includes(q);
+      const matchCode = (alert.alertCode || '').toLowerCase().includes(q);
       return matchTitle || matchLoc || matchCode;
     }
     return true;

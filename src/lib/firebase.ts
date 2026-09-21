@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import {
+  initializeFirestore,
   getFirestore,
   doc,
   collection,
@@ -45,24 +46,67 @@ if (!firebaseConfig.apiKey) {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Auth සහ Firestore Export කිරීම (Configured Database ID)
-export const db = firebaseConfigJson.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId) 
-  : getFirestore(app);
+// Auth සහ Firestore Export කිරීම (Configured Database ID with Long Polling)
+function initFirestoreInstance() {
+  const dbId = firebaseConfigJson.firestoreDatabaseId || undefined;
+  try {
+    return initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, dbId);
+  } catch {
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
+}
+
+export const db = initFirestoreInstance();
 export const auth = getAuth(app);
 
 export enum OperationType {
-  CREATE = 'CREATE',
-  READ = 'READ',
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-  LIST = 'LIST',
-  WRITE = 'WRITE',
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+  READ = 'read',
 }
 
-export function handleFirestoreError(error: any, operation: string, path: string): never {
-  console.error(`Firestore Error [${operation}] on ${path}:`, error);
-  throw error;
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType | string;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: any, operation: OperationType | string, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || [],
+    },
+    operationType: operation,
+    path,
+  };
+  console.warn(`Firestore Warning [${operation}] on ${path}:`, errInfo.error);
+  throw new Error(JSON.stringify(errInfo));
 }
 
 // Interface Definitions
@@ -165,9 +209,8 @@ export function subscribeToRedAlerts(
       callback(remoteAlerts);
     },
     (error) => {
-      console.error('subscribeToRedAlerts snapshot error:', error);
+      console.warn('subscribeToRedAlerts snapshot status:', error?.message || error);
       if (onError) onError(error);
-      callback([]);
     }
   );
 }
@@ -531,8 +574,7 @@ export function subscribeToHelpPosts(
         callback(posts);
       },
       (error) => {
-        console.error('Help posts listener error:', error);
-        callback([]);
+        console.warn('Help posts snapshot status:', error?.message || error);
       }
     );
   } catch (err) {
@@ -630,8 +672,7 @@ export function subscribeToChatMessages(
         callback(messages);
       },
       (error) => {
-        console.error('Chat messages listener error:', error);
-        callback([]);
+        console.warn('Chat messages snapshot status:', error?.message || error);
       }
     );
   } catch (err) {
@@ -661,8 +702,7 @@ export function subscribeToMarketplaceItems(
         callback(items);
       },
       (error) => {
-        console.error('Marketplace items listener error:', error);
-        callback([]);
+        console.warn('Marketplace items snapshot status:', error?.message || error);
       }
     );
   } catch (err) {
@@ -1022,8 +1062,7 @@ export function subscribeToUsers(
         callback(users);
       },
       (error) => {
-        console.error('subscribeToUsers listener error:', error);
-        callback([]);
+        console.warn('subscribeToUsers snapshot status:', error?.message || error);
       }
     );
   } catch (err) {

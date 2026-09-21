@@ -370,8 +370,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       );
       const isNameMatch = Boolean(
         user?.name &&
-        post.userName &&
-        post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()
+        post?.userName &&
+        (post.userName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
       );
       return isPhoneMatch || isIdMatch || isNameMatch;
     };
@@ -741,15 +741,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     // Tag Filter Check
     let matchesTagFilter = true;
     if (selectedTagFilter) {
-      const tagN = selectedTagFilter.tagName.toLowerCase();
-      const tagC = selectedTagFilter.category.toLowerCase();
+      const tagN = (selectedTagFilter.tagName || '').toLowerCase();
+      const tagC = (selectedTagFilter.category || '').toLowerCase();
+      const postWhatHappened = (post.whatHappened || '').toLowerCase();
+      const postWhatIsNeeded = (post.whatIsNeeded || '').toLowerCase();
       matchesTagFilter =
-        (post.tagName && post.tagName.toLowerCase() === tagN) ||
-        (post.tagCategory && post.tagCategory.toLowerCase() === tagC) ||
-        post.whatHappened.toLowerCase().includes(tagN) ||
-        post.whatHappened.toLowerCase().includes(tagC) ||
-        post.whatIsNeeded.toLowerCase().includes(tagN) ||
-        post.whatIsNeeded.toLowerCase().includes(tagC);
+        Boolean(post.tagName && post.tagName.toLowerCase() === tagN) ||
+        Boolean(post.tagCategory && post.tagCategory.toLowerCase() === tagC) ||
+        Boolean(tagN && postWhatHappened.includes(tagN)) ||
+        Boolean(tagC && postWhatHappened.includes(tagC)) ||
+        Boolean(tagN && postWhatIsNeeded.includes(tagN)) ||
+        Boolean(tagC && postWhatIsNeeded.includes(tagC));
     }
 
     // Query Keyword Check (with Smart Synonym / Alias Expansion)

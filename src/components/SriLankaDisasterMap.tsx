@@ -629,7 +629,8 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
   const disastersByDistrict = useMemo(() => {
     const map = new Map<string, DisasterReliefItem[]>();
     for (const item of disasterItems) {
-      const dKey = item.district.trim().toLowerCase();
+      const dKey = (item?.district || '').trim().toLowerCase();
+      if (!dKey) continue;
       const existing = map.get(dKey) || [];
       existing.push(item);
       map.set(dKey, existing);
@@ -638,11 +639,11 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
   }, [disasterItems]);
 
   const getDistrictDisasters = (districtNameSi: string, districtNameEn?: string): DisasterReliefItem[] => {
-    const dKeySi = districtNameSi.trim().toLowerCase();
+    const dKeySi = (districtNameSi || '').trim().toLowerCase();
     const listSi = disastersByDistrict.get(dKeySi) || [];
     if (listSi.length > 0) return listSi;
     if (districtNameEn) {
-      const dKeyEn = districtNameEn.trim().toLowerCase();
+      const dKeyEn = (districtNameEn || '').trim().toLowerCase();
       return disastersByDistrict.get(dKeyEn) || [];
     }
     return [];
@@ -657,10 +658,10 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
       if (filterSearch.trim()) {
         const q = filterSearch.toLowerCase();
         return (
-          item.title.toLowerCase().includes(q) ||
-          item.district.toLowerCase().includes(q) ||
-          item.locationName.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q)
+          (item.title || '').toLowerCase().includes(q) ||
+          (item.district || '').toLowerCase().includes(q) ||
+          (item.locationName || '').toLowerCase().includes(q) ||
+          (item.description || '').toLowerCase().includes(q)
         );
       }
       return true;

@@ -227,14 +227,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         // Search query with expanded synonym keywords
         if (searchQuery.trim()) {
           const keywords = getExpandedSearchKeywords(searchQuery);
-          const itemText = `${item.title} ${item.tagName} ${item.userName} ${item.barterNeeds || ''}`.toLowerCase();
+          const itemText = `${item.title || ''} ${item.tagName || ''} ${item.userName || ''} ${item.barterNeeds || ''}`.toLowerCase();
           const matches = keywords.some((kw) => itemText.includes(kw));
           if (!matches) return false;
         }
 
         // Sub tab: wholesale, retail, exchange
         if (sellerSubTab !== 'all') {
-          if (!item.saleTypes.includes(sellerSubTab)) return false;
+          if (!item.saleTypes || !item.saleTypes.includes(sellerSubTab)) return false;
         }
 
         // Category Tag
@@ -264,7 +264,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
       .filter((item) => {
         if (searchQuery.trim()) {
           const keywords = getExpandedSearchKeywords(searchQuery);
-          const itemText = `${item.title} ${item.tagName} ${item.userName}`.toLowerCase();
+          const itemText = `${item.title || ''} ${item.tagName || ''} ${item.userName || ''}`.toLowerCase();
           const matches = keywords.some((kw) => itemText.includes(kw));
           if (!matches) return false;
         }
@@ -284,9 +284,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         }
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          const matchesName = s.name.toLowerCase().includes(q);
-          const matchesTag = s.categoryTag.toLowerCase().includes(q);
-          const matchesInv = s.inventory.some((inv) => inv.name.toLowerCase().includes(q));
+          const matchesName = (s.name || '').toLowerCase().includes(q);
+          const matchesTag = (s.categoryTag || '').toLowerCase().includes(q);
+          const matchesInv = (s.inventory || []).some((inv) => (inv?.name || '').toLowerCase().includes(q));
           if (!matchesName && !matchesTag && !matchesInv) return false;
         }
         return true;
@@ -301,9 +301,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
       .filter((s) => {
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          const matchesName = s.name.toLowerCase().includes(q);
-          const matchesTag = s.categoryTag.toLowerCase().includes(q);
-          const matchesInv = s.inventory.some((inv) => inv.name.toLowerCase().includes(q));
+          const matchesName = (s.name || '').toLowerCase().includes(q);
+          const matchesTag = (s.categoryTag || '').toLowerCase().includes(q);
+          const matchesInv = (s.inventory || []).some((inv) => (inv?.name || '').toLowerCase().includes(q));
           if (!matchesName && !matchesTag && !matchesInv) return false;
         }
         return true;

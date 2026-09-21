@@ -47,12 +47,12 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   // Live real-time matching of tags as user types
   const queryLower = searchQuery.trim().toLowerCase();
   const matchingTags = allTags.filter((t) =>
-    queryLower && (t.tagName.toLowerCase().includes(queryLower) || queryLower.includes(t.tagName.toLowerCase()))
+    queryLower && ((t?.tagName || '').toLowerCase().includes(queryLower) || queryLower.includes((t?.tagName || '').toLowerCase()))
   );
 
   // Live matching of existing available seller items
   const matchingSellerItems = existingSellerItems.filter((it) =>
-    queryLower && (it.title.toLowerCase().includes(queryLower) || it.tagName.toLowerCase().includes(queryLower))
+    queryLower && ((it?.title || '').toLowerCase().includes(queryLower) || (it?.tagName || '').toLowerCase().includes(queryLower))
   );
 
   const handleSubmit = (e: React.FormEvent) => {

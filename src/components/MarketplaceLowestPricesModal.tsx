@@ -74,13 +74,14 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
 
     sellerItems.forEach((item) => {
       // Group by canonical product title or tag
-      const key = item.title.trim().toLowerCase();
+      const key = (item.title || item.tagName || '').trim().toLowerCase();
+      if (!key) return;
       if (!groups[key]) {
         groups[key] = {
           groupKey: key,
-          title: item.title,
-          tagName: item.tagName,
-          tagCategory: item.tagCategory,
+          title: item.title || item.tagName || '',
+          tagName: item.tagName || '',
+          tagCategory: item.tagCategory || '',
           lowestPrice: item.price!,
           highestPrice: item.price!,
           priceGap: 0,
@@ -116,13 +117,14 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
   // If a group is selected for "වැඩි විස්තර", get all its items sorted from lowest to highest price
   const selectedGroupDetails = useMemo(() => {
     if (!selectedGroupKey) return null;
+    const cleanKey = selectedGroupKey.trim().toLowerCase();
 
     // Find in grouped items by groupKey or tagName
     const match = groupedLowestPriceItems.find(
       (g) =>
-        g.groupKey === selectedGroupKey.toLowerCase() ||
-        g.title.toLowerCase().includes(selectedGroupKey.toLowerCase()) ||
-        g.tagName.toLowerCase() === selectedGroupKey.toLowerCase()
+        (g.groupKey && g.groupKey.toLowerCase() === cleanKey) ||
+        (g.title && g.title.toLowerCase().includes(cleanKey)) ||
+        (g.tagName && g.tagName.toLowerCase() === cleanKey)
     );
 
     if (match) {
@@ -152,8 +154,8 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
         (it) =>
           it.type === 'seller_item' &&
           typeof it.price === 'number' &&
-          (it.title.toLowerCase().includes(selectedGroupKey.toLowerCase()) ||
-            it.tagName.toLowerCase() === selectedGroupKey.toLowerCase())
+          (((it.title || '').toLowerCase().includes(cleanKey)) ||
+            ((it.tagName || '').toLowerCase() === cleanKey))
       )
       .sort((a, b) => (a.price || 0) - (b.price || 0));
 

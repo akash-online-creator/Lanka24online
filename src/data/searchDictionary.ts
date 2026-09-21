@@ -556,12 +556,12 @@ export function findSynonymSuggestionPrompt<T>(
   if (matchedGroups.length === 0) return null;
 
   // Build searchable text corpus of current dataset
-  const datasetTexts = items.map((it) => extractSearchableText(it).toLowerCase());
+  const datasetTexts = (items || []).map((it) => (extractSearchableText(it) || '').toLowerCase());
   const combinedDataText = datasetTexts.join(' ');
 
   // Look through matched groups to find the best candidate alternate word
   for (const group of matchedGroups) {
-    const allTerms = group.terms.map((t) => t.trim());
+    const allTerms = (group?.terms || []).map((t) => (t || '').trim());
     
     // Check if query is in terms
     const matchingTermIndex = allTerms.findIndex((t) => normalizeWord(t) === q || q.includes(normalizeWord(t)));
