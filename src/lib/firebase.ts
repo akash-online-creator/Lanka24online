@@ -1001,25 +1001,40 @@ export async function updateUserInFirestore(userIdOrData: any, updateData?: any)
 
 /**
  * පරිශීලක ගිණුමක් මකා දැමීම හෝ status එක 'deleted' ලෙස යාවත්කාලීන කිරීම
- * @param userId - මකා දැමිය යුතු පරිශීලකයාගේ ID එක
- * @param hardDelete - true නම් සම්පූර්ණයෙන්ම මකා දමයි, false නම් status එක යාවත්කාලීන කරයි (default: false)
+ * @param userIdOrUser - මකා දැමිය යුතු පරිශීලකයාගේ ID හෝ User Object එක
+ * @param hardDelete - true නම් සම්පූර්ණයෙන්ම මකා දමයි, false නම් status එක යාවත්කාලීන කරයි (default: true)
  */
-export async function deleteUserAccount(userId: string, hardDelete: boolean = false): Promise<void> {
-  try {
-    if (!userId) return;
-    const docRef = doc(db, 'users', userId);
+export async function deleteUserAccount(userIdOrUser: any, hardDelete: boolean = true): Promise<void> {
+  if (!userIdOrUser) return;
+  const docIds = new Set<string>();
 
-    if (hardDelete) {
-      await deleteDoc(docRef);
-    } else {
-      await updateDoc(docRef, {
-        status: 'deleted',
-        deletedAt: new Date().toISOString(),
-        updatedAtServer: serverTimestamp(),
-      });
+  if (typeof userIdOrUser === 'string') {
+    docIds.add(userIdOrUser.trim());
+  } else if (typeof userIdOrUser === 'object') {
+    if (userIdOrUser.id) docIds.add(String(userIdOrUser.id).trim());
+    if (userIdOrUser.userId) docIds.add(String(userIdOrUser.userId).trim());
+    if (userIdOrUser.nicNumber) {
+      docIds.add(String(userIdOrUser.nicNumber).trim().toUpperCase());
+      docIds.add(String(userIdOrUser.nicNumber).trim().toLowerCase());
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+  }
+
+  for (const docId of docIds) {
+    if (!docId) continue;
+    try {
+      const docRef = doc(db, 'users', docId);
+      if (hardDelete) {
+        await deleteDoc(docRef);
+      } else {
+        await updateDoc(docRef, {
+          status: 'deleted',
+          deletedAt: new Date().toISOString(),
+          updatedAtServer: serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      console.warn(`Could not delete doc users/${docId}:`, error);
+    }
   }
 }
 

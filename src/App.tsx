@@ -32,6 +32,7 @@ import {
   subscribeToUsers,
   saveUserToFirestore,
   updateUserInFirestore,
+  deleteUserAccount,
   subscribeToRedAlerts,
   getUserFromFirestore,
   markRedAlertAsResolved,
@@ -752,6 +753,41 @@ export default function App() {
     );
   };
 
+  // ✅ පරිශීලක ගිණුමක් සම්පූර්ණයෙන්ම ඉවත් කිරීම (Delete User from state, storage, and Firestore)
+  const handleDeleteUser = async (targetUserId: string) => {
+    const targetUser = (users || []).find(
+      (u) => u.id === targetUserId || u.userId === targetUserId || u.nicNumber === targetUserId
+    );
+
+    // 1. React State එකෙන් ඉවත් කිරීම
+    setUsers((prev) =>
+      (prev || []).filter(
+        (u) => u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+      )
+    );
+
+    // 2. Local Storage එකෙන් ඉවත් කිරීම
+    try {
+      const saved = localStorage.getItem('sahaya_users');
+      if (saved) {
+        const parsed: User[] = JSON.parse(saved);
+        const filtered = parsed.filter(
+          (u) => u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+        );
+        localStorage.setItem('sahaya_users', JSON.stringify(filtered));
+      }
+    } catch (err) {
+      console.warn('Delete user localStorage error:', err);
+    }
+
+    // 3. Firestore දත්ත ගබඩාවෙන් ඉවත් කිරීම
+    try {
+      await deleteUserAccount(targetUser || targetUserId, true);
+    } catch (err) {
+      console.warn('Delete user Firestore error:', err);
+    }
+  };
+
   // ✅ පරිශීලක දත්ත Firestore හි යාවත්කාලීන කිරීම (Safe user data persistence)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
@@ -1175,6 +1211,7 @@ export default function App() {
             onUpdateTags={setTags}
             onApproveUser={handleApproveUser}
             onRejectUser={handleRejectUser}
+            onDeleteUser={handleDeleteUser}
             onUpdateUser={handleUpdateUser}
             onBlockUser={handleBlockUser}
             onUnblockCredential={handleUnblockCredential}

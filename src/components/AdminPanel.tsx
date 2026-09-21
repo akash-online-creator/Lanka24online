@@ -29,7 +29,8 @@ import {
   restorePostsBackupData, 
   syncUserProfileToFirestore,
   updateHelpPostInFirestore,
-  sendChatMessageToFirestore
+  sendChatMessageToFirestore,
+  deleteUserAccount
 } from '../lib/firebase';
 import { AdminModerationModal } from './AdminModerationModal';
 import { 
@@ -577,27 +578,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Handler for Confirming User Deletion
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!userToDelete) return;
+    const targetUser = { ...userToDelete };
     
-    // Call props method if defined
+    // 1. Call parent props method to update App state & Firestore
     if (onDeleteUser) {
-      onDeleteUser(userToDelete.id);
+      onDeleteUser(targetUser.id);
     }
     
-    // Perform direct local storage update
+    // 2. Perform direct local storage update
     const savedUsers = localStorage.getItem('sahaya_users');
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.filter((u) => u.id !== userToDelete.id);
+        const newUsersList = usersList.filter((u) => 
+          u.id !== targetUser.id && 
+          u.userId !== targetUser.userId && 
+          u.nicNumber !== targetUser.nicNumber
+        );
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('Delete user storage error:', err);
       }
     }
+
+    // 3. Fallback direct Firestore deletion to guarantee immediate deletion
+    try {
+      await deleteUserAccount(targetUser, true);
+    } catch (err) {
+      console.warn('Direct Firestore user deletion warning:', err);
+    }
     
-    setAdminActionNotification(`🗑️ ${userToDelete.name} ගේ ගිණුම සාර්ථකව මකා දමන ලදී.`);
+    setAdminActionNotification(`🗑️ ${targetUser.name} ගේ ගිණුම සාර්ථකව මකා දමන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
     setUserToDelete(null); // Close Modal
   };
@@ -1026,35 +1039,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2">
+                    <div className="pt-3 border-t border-slate-100 grid grid-cols-4 gap-1.5">
                       <button
                         type="button"
                         onClick={() => handleDirectApproveUser(user)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2 px-1 rounded-xl flex items-center justify-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer"
                         title="ගිණුම අනුමත කරන්න"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Accept (අනුමතයි)</span>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Accept</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleDirectRejectUser(user)}
-                        className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs py-2 px-1 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
                         title="ලියාපදිංචිය ප්‍රතික්ෂේප කරන්න"
                       >
-                        <XCircle className="w-4 h-4 text-amber-700" />
+                        <XCircle className="w-3.5 h-3.5 text-amber-700" />
                         <span>Reject</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleToggleBlockUser(user)}
-                        className="bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 font-bold text-xs py-2.5 px-2 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300 font-bold text-xs py-2 px-1 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
                         title="ගිණුම අවහිර කරන්න"
                       >
-                        <Ban className="w-4 h-4 text-rose-700" />
+                        <Ban className="w-3.5 h-3.5 text-rose-700" />
                         <span>Block</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUserToDelete(user)}
+                        className="bg-rose-100 hover:bg-rose-600 text-rose-900 hover:text-white border border-rose-300 font-bold text-xs py-2 px-1 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        title="අයදුම්පත සම්පූර්ණයෙන්ම මකා දමන්න"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
@@ -1716,18 +1739,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
 
             {/* Modal Actions */}
-            <div className="flex justify-between items-center pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleToggleBlockUser(selectedUserForModal)}
-                className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                  selectedUserForModal.status === 'blocked'
-                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
-                    : 'bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300'
-                }`}
-              >
-                {selectedUserForModal.status === 'blocked' ? '✅ Unblock Account' : '⛔ Block Account'}
-              </button>
+            <div className="flex justify-between items-center pt-3 border-t border-slate-200 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleBlockUser(selectedUserForModal)}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                    selectedUserForModal.status === 'blocked'
+                      ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                      : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                  }`}
+                >
+                  {selectedUserForModal.status === 'blocked' ? '✅ Unblock Account' : '⛔ Block Account'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const u = selectedUserForModal;
+                    setSelectedUserForModal(null);
+                    setUserToDelete(u);
+                  }}
+                  className="px-4 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer bg-rose-50 hover:bg-rose-600 text-rose-900 hover:text-white border border-rose-300 hover:border-rose-600 flex items-center gap-1.5 active:scale-95 shadow-sm"
+                  title="ගිණුම සම්පූර්ණයෙන්ම ඉවත් කරන්න"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete User</span>
+                </button>
+              </div>
 
               <div className="flex gap-2">
                 <button
