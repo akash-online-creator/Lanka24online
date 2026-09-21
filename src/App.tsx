@@ -34,6 +34,8 @@ import {
   updateUserInFirestore,
   subscribeToRedAlerts,
   getUserFromFirestore,
+  getAllMatchingUsersFromFirestore,
+  syncUserPasswordInFirestore,
   markRedAlertAsResolved,
   cancelRedAlertByReporter,
   addReporterUpdateToRedAlert
@@ -515,78 +517,92 @@ export default function App() {
 
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
       const formattedEmail = `${cleanInput}@app.com`;
-      let authUser;
-      let matchedFallbackUser: User | null = null;
+      let authUser: any = null;
+      let matchedUser: User | null = null;
+      let matchedCandidateType: 'permanent' | 'temporary' = 'permanent';
 
       try {
         const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
         authUser = userCredential.user;
       } catch (authError: any) {
         console.warn("Firebase Auth Login check:", authError?.message);
+      }
 
-        // Firestore / Local state / LocalStorage මගින් පරිශීලකයා පරීක්ෂා කිරීම
-        let fallbackCheck = await getUserFromFirestore(cleanInput);
-        if (!fallbackCheck) {
-          fallbackCheck = users.find(
+      // Firestore, React state, සහ LocalStorage මගින් මෙම පරිශීලකයාගේ සියලුම ලේඛන එකතු කිරීම
+      const firestoreMatches: User[] = await getAllMatchingUsersFromFirestore(cleanInput);
+
+      const stateMatches: User[] = (users || []).filter(
+        (u) =>
+          (u.userId && u.userId.toLowerCase() === cleanInput) ||
+          (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+          (u.phone && u.phone.toLowerCase() === cleanInput) ||
+          (u.id && u.id.toLowerCase() === cleanInput)
+      );
+
+      let localMatches: User[] = [];
+      const savedUsersStr = localStorage.getItem('sahaya_users');
+      if (savedUsersStr) {
+        try {
+          const parsedList: User[] = JSON.parse(savedUsersStr);
+          localMatches = parsedList.filter(
             (u) =>
               (u.userId && u.userId.toLowerCase() === cleanInput) ||
               (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
-              (u.phone && u.phone.toLowerCase() === cleanInput)
+              (u.phone && u.phone.toLowerCase() === cleanInput) ||
+              (u.id && u.id.toLowerCase() === cleanInput)
           );
-        }
-        if (!fallbackCheck) {
-          const savedUsers = localStorage.getItem('sahaya_users');
-          if (savedUsers) {
-            try {
-              const parsedList: User[] = JSON.parse(savedUsers);
-              fallbackCheck = parsedList.find(
-                (u) =>
-                  (u.userId && u.userId.toLowerCase() === cleanInput) ||
-                  (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
-                  (u.phone && u.phone.toLowerCase() === cleanInput)
-              );
-            } catch {
-              // ignore
-            }
-          }
-        }
+        } catch {}
+      }
 
-        // මුරපදය (tempCode / securityCode / key / password) ගැළපේදැයි බැලීම
-        const isPasswordMatch = Boolean(
-          fallbackCheck &&
-          ((fallbackCheck.key && String(fallbackCheck.key).trim() === submittedPassword) ||
-           (fallbackCheck.tempCode && String(fallbackCheck.tempCode).trim() === submittedPassword) ||
-           (fallbackCheck.securityCode && String(fallbackCheck.securityCode).trim() === submittedPassword) ||
-           (fallbackCheck.tempPassword && String(fallbackCheck.tempPassword).trim() === submittedPassword) ||
-           ((fallbackCheck as any).password && String((fallbackCheck as any).password).trim() === submittedPassword))
-        );
-
-        if (isPasswordMatch && fallbackCheck) {
-          console.log("User password verified successfully via database record!");
-          matchedFallbackUser = fallbackCheck;
-          try {
-            const cred = await createUserWithEmailAndPassword(auth, formattedEmail, submittedPassword);
-            authUser = cred.user;
-          } catch {
-            // Already created in Auth or backend synced
+      // සියලුම candidate objects එකතු කිරීම
+      const allCandidates: User[] = [];
+      const seenIds = new Set<string>();
+      for (const list of [firestoreMatches, stateMatches, localMatches]) {
+        for (const item of list) {
+          if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            allCandidates.push(item);
+          } else if (item && !item.id) {
+            allCandidates.push(item);
           }
-        } else {
-          setShowWrongLoginModal(true);
-          return;
         }
       }
 
-      // Firestore මගින් පරිශීලකගේ අමතර විස්තර ලබා ගැනීම
-      let foundUser = matchedFallbackUser || await getUserFromFirestore(cleanInput);
+      // ඇතුළත් කළ මුරපදය (submittedPassword) permanent හෝ temporary ලෙස ගැළපේදැයි පරික්ෂා කිරීම
+      for (const candidate of allCandidates) {
+        const pKey = candidate.key ? String(candidate.key).trim() : '';
+        const pPass = (candidate as any).password ? String((candidate as any).password).trim() : '';
+        const pTemp = candidate.tempCode ? String(candidate.tempCode).trim() : '';
+        const pSec = candidate.securityCode ? String(candidate.securityCode).trim() : '';
+        const pTempPass = candidate.tempPassword ? String(candidate.tempPassword).trim() : '';
 
-      if (!foundUser) {
-        foundUser = users.find(
-          (u) =>
-            (u.userId && u.userId.toLowerCase() === cleanInput) ||
-            (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
-            (u.phone && u.phone.toLowerCase() === cleanInput)
-        );
+        // 1. ස්ථීර මුරපදය (Permanent Password match)
+        if ((pKey && pKey === submittedPassword) || (pPass && pPass === submittedPassword)) {
+          matchedUser = candidate;
+          matchedCandidateType = 'permanent';
+          break;
+        }
+
+        // 2. තාවකාලික මුරපදය (Temporary Password match)
+        if (
+          (pTemp && pTemp === submittedPassword) ||
+          (pSec && pSec === submittedPassword) ||
+          (pTempPass && pTempPass === submittedPassword)
+        ) {
+          matchedUser = candidate;
+          matchedCandidateType = 'temporary';
+          break;
+        }
       }
+
+      // මුරපදය හෝ Auth තහවුරු නොවූයේ නම් වැරදි පිවිසුම් modal එක පෙන්වීම
+      if (!authUser && !matchedUser) {
+        setShowWrongLoginModal(true);
+        return;
+      }
+
+      // Firestore මගින් පරිශීලකගේ ප්‍රධාන විස්තර ලබා ගැනීම
+      let foundUser: User | null = matchedUser || (firestoreMatches.length > 0 ? firestoreMatches[0] : null) || (stateMatches.length > 0 ? stateMatches[0] : null);
 
       if (!foundUser && authUser) {
         foundUser = {
@@ -599,6 +615,30 @@ export default function App() {
           role: 'user',
           status: 'approved',
           registeredAt: new Date().toISOString(),
+        };
+      }
+
+      if (!foundUser) {
+        setShowWrongLoginModal(true);
+        return;
+      }
+
+      // මුරපද තත්ත්වය නිරවුල් කිරීම
+      if (matchedCandidateType === 'permanent') {
+        foundUser = {
+          ...foundUser,
+          isPasswordChanged: true,
+          isTemporaryPassword: false,
+          key: submittedPassword,
+        };
+        // Background sync to ensure all duplicate docs are updated with this permanent password
+        syncUserPasswordInFirestore(foundUser, submittedPassword).catch(() => {});
+      } else if (matchedCandidateType === 'temporary') {
+        foundUser = {
+          ...foundUser,
+          isPasswordChanged: false,
+          isTemporaryPassword: true,
+          tempCode: submittedPassword,
         };
       }
 
@@ -651,8 +691,10 @@ export default function App() {
         setViewMode('pending');
       } else if (foundUser.status === 'approved') {
         setViewMode('dashboard');
-        if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
+        if (!foundUser.isPasswordChanged) {
           setShowChangePasswordModal(true);
+        } else {
+          setShowChangePasswordModal(false);
         }
       } else if (foundUser.status === 'rejected') {
         setShowWrongLoginModal(true);
@@ -806,13 +848,31 @@ export default function App() {
     let newPassword = '';
     let tempPassword = '';
 
+    const currentKnownTemp = (
+      currentUser?.tempCode ||
+      currentUser?.securityCode ||
+      currentUser?.tempPassword ||
+      currentUser?.key ||
+      ''
+    ).trim();
+
     if (param1 && param2) {
-      // ChangePasswordModal passes (cleanNew, cleanTemp)
-      newPassword = param1.trim();
-      tempPassword = param2.trim();
+      const p1 = param1.trim();
+      const p2 = param2.trim();
+      if (currentKnownTemp && p1 === currentKnownTemp) {
+        tempPassword = p1;
+        newPassword = p2;
+      } else if (currentKnownTemp && p2 === currentKnownTemp) {
+        tempPassword = p2;
+        newPassword = p1;
+      } else {
+        // ChangePasswordModal passes (cleanNew, cleanTemp)
+        newPassword = p1;
+        tempPassword = p2;
+      }
     } else if (param1) {
       newPassword = param1.trim();
-      tempPassword = (currentUser?.key || currentUser?.tempCode || currentUser?.securityCode || currentUser?.tempPassword || '').trim();
+      tempPassword = currentKnownTemp;
     }
 
     if (!newPassword) {
@@ -826,7 +886,7 @@ export default function App() {
     }
 
     try {
-      // 1. Firebase Auth Attempt (if user is authenticated or Auth enabled)
+      // 1. Firebase Auth Re-authentication & Update (User request requirement)
       try {
         let user = auth.currentUser;
         if (!user && currentUser) {
@@ -837,7 +897,7 @@ export default function App() {
               const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempPassword);
               user = userCred.user;
             } catch {
-              // Ignore if Auth operation fails
+              // Ignore if auth is not in local session
             }
           }
         }
@@ -858,50 +918,9 @@ export default function App() {
         console.warn("Firebase Auth update notice (database fallback used):", authError);
       }
 
-      // 2. CRITICAL: Save new password into Firestore across all associated document IDs
-      const docIdsToUpdate = new Set<string>();
-      if (currentUser?.id) docIdsToUpdate.add(currentUser.id);
-      if (currentUser?.userId) {
-        docIdsToUpdate.add(currentUser.userId);
-        docIdsToUpdate.add(currentUser.userId.toUpperCase());
-        docIdsToUpdate.add(currentUser.userId.toLowerCase());
-      }
-      if (currentUser?.nicNumber) {
-        docIdsToUpdate.add(currentUser.nicNumber);
-        docIdsToUpdate.add(currentUser.nicNumber.toUpperCase());
-        docIdsToUpdate.add(currentUser.nicNumber.toLowerCase());
-      }
-
-      for (const docId of docIdsToUpdate) {
-        try {
-          const userDocRef = doc(db, "users", docId);
-          await updateDoc(userDocRef, {
-            key: newPassword,
-            password: newPassword,
-            isPasswordChanged: true,
-            isTemporaryPassword: false,
-            tempPassword: deleteField(),
-            tempCode: deleteField(),
-            securityCode: deleteField(),
-            updatedAt: new Date().toISOString(),
-            updatedAtServer: serverTimestamp(),
-          });
-          console.log(`Firestore user doc ${docId} successfully updated with new password.`);
-        } catch (dbErr: any) {
-          try {
-            await updateUserInFirestore(docId, {
-              key: newPassword,
-              password: newPassword,
-              isPasswordChanged: true,
-              isTemporaryPassword: false,
-              tempCode: '',
-              securityCode: '',
-              tempPassword: '',
-            });
-          } catch (fallbackErr) {
-            console.warn(`Fallback update notice for ${docId}:`, fallbackErr);
-          }
-        }
+      // 2. CRITICAL: Save new password into Firestore across ALL matching user documents
+      if (currentUser) {
+        await syncUserPasswordInFirestore(currentUser, newPassword);
       }
 
       // 3. Local Storage synchronization (sahaya_users)
@@ -940,6 +959,7 @@ export default function App() {
         const updatedUser: User = {
           ...currentUser,
           key: newPassword,
+          password: newPassword,
           isPasswordChanged: true,
           isTemporaryPassword: false,
           tempCode: undefined,
@@ -969,6 +989,7 @@ export default function App() {
       } catch (soErr) {
         console.warn("Firebase sign out notice:", soErr);
       }
+      localStorage.removeItem('sahaya_current_user');
       setCurrentUser(null);
       setActiveRoleView('user');
       setViewMode('login');

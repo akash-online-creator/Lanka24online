@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   getDoc,
   getDocs,
   arrayUnion,
@@ -762,67 +763,137 @@ export async function toggleSavePostInFirestore(
 // ==============================================================
 
 /**
+ * සියලුම ගැළපෙන පරිශීලක ලේඛන Firestore එකෙන් ලබා ගනී (Doc ID, NIC, User ID, Phone, Email)
+ */
+export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): Promise<any[]> {
+  try {
+    if (!userIdOrInput) return [];
+    const cleanInput = userIdOrInput.trim();
+    const cleanInputLower = cleanInput.toLowerCase();
+    const cleanInputUpper = cleanInput.toUpperCase();
+    const resultsMap = new Map<string, any>();
+
+    // 1. Direct Document ID Search (raw, lower, upper)
+    for (const docId of [cleanInput, cleanInputUpper, cleanInputLower]) {
+      if (!docId) continue;
+      try {
+        const snap = await getDoc(doc(db, 'users', docId));
+        if (snap.exists()) {
+          resultsMap.set(snap.id, { id: snap.id, ...snap.data() });
+        }
+      } catch {}
+    }
+
+    // 2. Collection Queries (userId, nicNumber, phone, email)
+    const colRef = collection(db, 'users');
+    const queries = [
+      query(colRef, where('userId', '==', cleanInput)),
+      query(colRef, where('userId', '==', cleanInputUpper)),
+      query(colRef, where('nicNumber', '==', cleanInputUpper)),
+      query(colRef, where('nicNumber', '==', cleanInput)),
+      query(colRef, where('phone', '==', cleanInput)),
+      query(colRef, where('email', '==', cleanInputLower)),
+      query(colRef, where('email', '==', `${cleanInputLower}@app.com`)),
+      query(colRef, where('email', '==', `${cleanInputLower}@sahayaseva.com`)),
+    ];
+
+    const snapshots = await Promise.all(queries.map((q) => getDocs(q).catch(() => null)));
+    for (const qSnap of snapshots) {
+      if (qSnap && !qSnap.empty) {
+        qSnap.forEach((d) => resultsMap.set(d.id, { id: d.id, ...d.data() }));
+      }
+    }
+
+    return Array.from(resultsMap.values());
+  } catch (err) {
+    console.warn('Matching users lookup warning:', err);
+    return [];
+  }
+}
+
+/**
  * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී (Case-Insensitive Search)
  */
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
-    if (!userIdOrInput) return null;
-    const cleanInput = userIdOrInput.trim();
-    const cleanInputLower = cleanInput.toLowerCase();
-    const cleanInputUpper = cleanInput.toUpperCase();
+    const matches = await getAllMatchingUsersFromFirestore(userIdOrInput);
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
 
-    // 1. Direct Document ID Search
-    let docRef = doc(db, 'users', cleanInput);
-    let snap = await getDoc(docRef);
-    if (!snap.exists() && cleanInput !== cleanInputLower) {
-      docRef = doc(db, 'users', cleanInputLower);
-      snap = await getDoc(docRef);
-    }
-    if (!snap.exists() && cleanInput !== cleanInputUpper) {
-      docRef = doc(db, 'users', cleanInputUpper);
-      snap = await getDoc(docRef);
-    }
+    // බහුවිධ ලේඛන ඇති විට නවතම හෝ ස්ථීර මුරපදය සහිත ලේඛනයට ප්‍රමුඛතාව ලබා දීම
+    matches.sort((a, b) => {
+      if (a.isPasswordChanged && !b.isPasswordChanged) return -1;
+      if (!a.isPasswordChanged && b.isPasswordChanged) return 1;
+      const tA = new Date(a.updatedAt || a.registeredAt || 0).getTime();
+      const tB = new Date(b.updatedAt || b.registeredAt || 0).getTime();
+      return tB - tA;
+    });
 
-    if (snap.exists()) {
-      return { id: snap.id, ...snap.data() };
-    }
-
-    // 2. Collection Queries (userId, nicNumber, email)
-    const colRef = collection(db, 'users');
-
-    // userId query
-    let qSnap = await getDocs(query(colRef, where('userId', '==', cleanInput)));
-    if (qSnap.empty && cleanInput !== cleanInputLower) {
-      qSnap = await getDocs(query(colRef, where('userId', '==', cleanInputLower)));
-    }
-
-    // nicNumber query (Upper, Lower, Raw)
-    if (qSnap.empty) {
-      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInputUpper)));
-    }
-    if (qSnap.empty) {
-      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInput)));
-    }
-    if (qSnap.empty && cleanInput !== cleanInputLower) {
-      qSnap = await getDocs(query(colRef, where('nicNumber', '==', cleanInputLower)));
-    }
-
-    // email query (Lower, Raw)
-    if (qSnap.empty) {
-      qSnap = await getDocs(query(colRef, where('email', '==', cleanInputLower)));
-    }
-    if (qSnap.empty && cleanInputLower !== cleanInput) {
-      qSnap = await getDocs(query(colRef, where('email', '==', cleanInput)));
-    }
-
-    if (!qSnap.empty) {
-      const docSnap = qSnap.docs[0];
-      return { id: docSnap.id, ...docSnap.data() };
-    }
-
-    return null;
+    return matches[0];
   } catch (error) {
     handleFirestoreError(error, OperationType.READ, 'users');
+    return null;
+  }
+}
+
+/**
+ * පරිශීලකයාගේ නව මුරපදය Firestore හි ඇති සියලුම අදාළ ලේඛනවලට එකවර යාවත්කාලීන කරයි
+ */
+export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPassword: string): Promise<void> {
+  try {
+    const cleanPass = (newPassword || '').trim();
+    if (!cleanPass) return;
+
+    let id = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.id;
+    let nic = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.nicNumber;
+    let uid = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.userId;
+
+    const allMatches = await getAllMatchingUsersFromFirestore(nic || uid || id || '');
+    const docIdsToUpdate = new Set<string>();
+    if (id) docIdsToUpdate.add(id);
+    if (nic) {
+      docIdsToUpdate.add(String(nic).trim());
+      docIdsToUpdate.add(String(nic).trim().toUpperCase());
+      docIdsToUpdate.add(String(nic).trim().toLowerCase());
+    }
+    if (uid) {
+      docIdsToUpdate.add(String(uid).trim());
+      docIdsToUpdate.add(String(uid).trim().toUpperCase());
+      docIdsToUpdate.add(String(uid).trim().toLowerCase());
+    }
+    allMatches.forEach((m) => docIdsToUpdate.add(m.id));
+
+    const payload: any = {
+      key: cleanPass,
+      password: cleanPass,
+      isPasswordChanged: true,
+      isTemporaryPassword: false,
+      tempCode: '',
+      securityCode: '',
+      tempPassword: '',
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    };
+
+    await Promise.all(
+      Array.from(docIdsToUpdate).map(async (docId) => {
+        try {
+          const docRef = doc(db, 'users', docId);
+          await setDoc(docRef, payload, { merge: true });
+          try {
+            await updateDoc(docRef, {
+              tempCode: deleteField(),
+              securityCode: deleteField(),
+              tempPassword: deleteField(),
+            });
+          } catch {}
+        } catch (e) {
+          console.warn(`Doc ${docId} password update notice:`, e);
+        }
+      })
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, 'users');
   }
 }
 
@@ -859,7 +930,7 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
 }
 
 /**
- * පරිශීලක දත්ත යාවත්කාලීන කරයි
+ * පරිශීලක දත්ත යාවත්කාලීන කරයි (Safe setDoc with merge)
  */
 export async function updateUserInFirestore(userIdOrData: any, updateData?: any): Promise<void> {
   let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId || userIdOrData?.nicNumber;
@@ -875,10 +946,14 @@ export async function updateUserInFirestore(userIdOrData: any, updateData?: any)
     }
 
     const docRef = doc(db, 'users', userId);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAtServer: serverTimestamp(),
-    });
+    await setDoc(
+      docRef,
+      {
+        ...data,
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
   }
