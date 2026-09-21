@@ -182,8 +182,19 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------
-  // 🤖 3. AI Smart Assistant Proxy (Gemini 2.5 Flash)
+  // 🤖 3. AI Smart Assistant Proxy (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
+  const GEMINI_MODELS = [
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+  ];
+
   app.post('/api/chat', async (req: any, res: any) => {
     try {
       const { message, language = 'si', conversationHistory = [], mode = 'full' } = req.body;
@@ -196,19 +207,30 @@ async function startServer() {
         return res.json({ fallback: true, reply: '' });
       }
 
-      const systemPrompt = `You are the helpful Sahaya Seva (සහය සේවා) AI Assistant in Sri Lanka.
-Sahaya Seva is a community support and mutual-aid platform providing:
-1. Community Help Requests & Bulletin Board (උපකාර ඉල්ලීම් සහ දැන්වීම් පුවරුව)
-2. Blood Donation & Emergency Disaster Relief (රතු නිවේදන / Red Alerts)
-3. Artisan & Professional Quick Services (electricians, plumbers, mechanics, etc.)
-4. Free item sharing (From Me To You / නොමිලේ බෙදාගැනීම)
-5. Shramadana & Group initiatives (ශ්‍රමදාන)
-6. Community Marketplace & Lowest Prices Guide (වෙළඳපල අඩුම මිල දර්ශකය)
-7. Emergency Hotlines Directory (Police 119, Ambulance 1990, Disaster 117)
-8. User Credit Wallet & Verification Badges
+      const systemPrompt = `You are "Sahaya Mithura" (සහය මිතුරා) — an exceptionally intelligent, friendly, compassionate, and versatile AI assistant in Sri Lanka.
 
-Respond politely, accurately, and concisely in the user's preferred language (${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}).
-Mode: ${mode}. Provide direct guidance to help the user navigate to the right section or solve their emergency or service request.`;
+🌟 Core Identity & Capabilities:
+1. 🧠 ANSWER ANY QUESTION FREELY & INTELLIGENTLY (ඕනෑම ප්‍රශ්නයකට පිළිතුරු දීම):
+   - You can answer ANY question the user asks on ANY topic (General Knowledge, Science, Math, Technology, History, Healthcare & First Aid, Education, Advice, Daily Living, Sinhala/English/Tamil Literature, Cooking/Recipes, Law, Travel, Coding, etc.) with the depth, clarity, and helpfulness of a world-class AI (like ChatGPT or Gemini).
+   - Never refuse or evade a general question by saying "I only know Sahaya Seva". Always answer the user's specific question directly and comprehensively!
+
+2. 🤝 SAHAYA SEVA (සහය සේවා) PLATFORM EXPERT:
+   - When asked about Sahaya Seva services, you are the definitive guide:
+     • Community Help Requests (උපකාර ඉල්ලීම් සහ දැන්වීම් පුවරුව)
+     • Blood Donation & Disaster Radar (රතු නිවේදන / Red Alerts / ලේ පරිත්‍යාග)
+     • 24/7 Artisan & Quick Services (විදුලි, නල, වාහන කාර්මික, මේසන් සේවා - 15km radar)
+     • Find For Me / Lost & Found (නැතිවූ හැඳුනුම්පත්, පසුම්බි, සුරතල් සතුන්)
+     • From Me To You / Free Donations (නොමිලේ පොත්පත්, ඇඳුම්, උපකරණ දීමනා)
+     • Community Marketplace & Lowest Prices Guide (වෙළඳපල අඩුම මිල දර්ශකය)
+     • Group Initiatives & Shramadana (ශ්‍රමදාන සහ ප්‍රජා වැඩ)
+     • Verified Professional Services & Emergency Directory (119, 1990, 117)
+     • Form-filling step-by-step guidance (මාතෘකාව, විස්තරය, ස්ථානය, ඡායාරූප, සම්බන්ධතා)
+
+Guidelines:
+- Language: Respond naturally and fluently in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}. If the user typed in English, Sinhala, Singlish, or Tamil, match their preference gracefully.
+- Tone: Warm, respectful, natural, intelligent, supportive, and polite (මිත්‍රශීලී සහ ගෞරවනීය).
+- Formatting: Use clear Markdown formatting with paragraphs, bullet points, bold key terms, and numbered steps when explaining.
+- Mode: ${mode}. Always address what the user actually asked first!`;
 
       const contents: any[] = [];
       if (Array.isArray(conversationHistory)) {
@@ -226,25 +248,44 @@ Mode: ${mode}. Provide direct guidance to help the user navigate to the right se
         parts: [{ text: String(message) }],
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.7,
-        },
-      });
+      let reply = '';
+      let lastError: any = null;
 
-      const reply = response.text || '';
-      return res.json({ success: true, reply, fallback: false });
+      // Try candidate models in order of speed and availability
+      for (const modelName of GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents,
+            config: {
+              systemInstruction: systemPrompt,
+              temperature: 0.7,
+            },
+          });
+          if (response && response.text) {
+            reply = response.text;
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+          // Continue to next model in fallback cascade
+        }
+      }
+
+      if (reply) {
+        return res.json({ success: true, reply, fallback: false });
+      }
+
+      console.warn('All Gemini models in cascade failed:', lastError?.message || lastError);
+      return res.json({ fallback: true, reply: '' });
     } catch (error: any) {
-      console.warn('Chat API Gemini Warning:', error?.message || error);
+      console.warn('Chat API Error:', error?.message || error);
       return res.json({ fallback: true, reply: '' });
     }
   });
 
   // -------------------------------------------------------------
-  // 🌐 4. Multilingual Translation API (Gemini 2.5 Flash)
+  // 🌐 4. Multilingual Translation API (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
   app.post('/api/translate', async (req: any, res: any) => {
     try {
@@ -261,18 +302,32 @@ Mode: ${mode}. Provide direct guidance to help the user navigate to the right se
       const targetLangName = targetLanguage === 'ta' ? 'Tamil' : targetLanguage === 'en' ? 'English' : 'Sinhala';
       const prompt = `Translate the following text accurately to ${targetLangName}. Return ONLY the direct translation, without explanations, quotes, or additional commentary:\n\n${text}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          temperature: 0.2,
-        },
-      });
+      let translatedText = '';
+      for (const modelName of GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+              temperature: 0.2,
+            },
+          });
+          if (response && response.text) {
+            translatedText = response.text.trim();
+            break;
+          }
+        } catch (err: any) {
+          // Continue to next model
+        }
+      }
 
-      const translatedText = response.text?.trim() || '';
-      return res.json({ success: true, translatedText, fallback: false });
+      if (translatedText) {
+        return res.json({ success: true, translatedText, fallback: false });
+      }
+
+      return res.json({ fallback: true, translatedText: '' });
     } catch (error: any) {
-      console.warn('Translate API Gemini Warning:', error?.message || error);
+      console.warn('Translate API Error:', error?.message || error);
       return res.json({ fallback: true, translatedText: '' });
     }
   });

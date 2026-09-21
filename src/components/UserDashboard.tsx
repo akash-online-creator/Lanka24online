@@ -2427,6 +2427,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onOpenEmergencyDirectory={() => {
           setIsEmergencyDirectoryModalOpen(true);
         }}
+        onOpenHelpPost={() => {
+          setIsCreateModalOpen(true);
+        }}
       />
 
       {/* Marketplace Lowest Prices & Price Gap Modal */}

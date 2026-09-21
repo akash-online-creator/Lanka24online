@@ -49,6 +49,9 @@ interface OmniAssistantChatBoxProps {
   onOpenMarketplace?: () => void;
   onOpenWallet?: () => void;
   onOpenEmergencyDirectory?: () => void;
+  onOpenHelpPost?: () => void;
+  onOpenRedAlertCreate?: () => void;
+  onOpenProfessionalServices?: () => void;
   // Auth action triggers from parent
   onSwitchToRegister?: () => void;
   onSwitchToLogin?: () => void;
@@ -70,6 +73,9 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
   onOpenMarketplace,
   onOpenWallet,
   onOpenEmergencyDirectory,
+  onOpenHelpPost,
+  onOpenRedAlertCreate,
+  onOpenProfessionalServices,
   onSwitchToRegister,
   onSwitchToLogin,
   onOpenIssuesHelp,
@@ -138,30 +144,21 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         sender: 'assistant',
         text:
           chatLanguage === 'en'
-            ? '👋 Hello! I am **Sahaya AI Assistant**.\nI support all features across **Sinhala, English, and Tamil**:\n• 🩸 Emergency Blood & Disaster Relief\n• ⚡ 24/7 Quick Services\n• 🔍 Find For Me (Lost & Found)\n• 🎁 From Me To You (Free Donations)\n• 🛒 Daily Lowest Market Prices\n• 🌐 Instant Auto-Translator\n\nHow can I help you today?'
+            ? '👋 Hello! I am **Sahaya Mithura (AI Assistant)**.\nYou can ask me **any question on any topic** (general knowledge, science, education, advice, daily life) or get step-by-step guidance for any **Sahaya Seva** community service.\n\nWhat would you like to ask or explore today?'
             : chatLanguage === 'ta'
-            ? '👋 வணக்கம்! நான் **சகாய AI உதவியாளர்**.\nசிங்களம், ஆங்கிலம் மற்றும் தமிழ் ஆகிய மூன்று மொழிகளிலும் அனைத்து சேවைகளுக்கும் நான் உங்களுக்கு உதவுகிறேன்:\n• 🩸 அவசர இரத்தம் மற்றும் பேரழிவு நிவாரணம்\n• ⚡ 24/7 விரைவு சேவைகள்\n• 🔍 தொலைந்த பொருட்களைக் கண்டறிதல்\n• 🎁 இலவச தானங்கள்\n• 🛒 அன்றாட குறைந்தபட்ச விலைகள்\n• 🌐 உடனடி மொழிபெயர்ப்பாளர்\n\nஇன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?'
-            : '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Assistant)**.\nසිංහල, ඉංග්‍රීසි සහ දෙමළ භාෂා ත්‍රිත්වයෙන්ම පද්ධතියේ සියලුම අංශයන් සඳහා මට ඔබට මඟපෙන්විය හැක:\n• 🩸 හදිසි ලේ සහ ආපදා සහන\n• ⚡ 24/7 ඉක්මන් සේවා (විදුලි, නල, වාහන කාර්මිකයන්)\n• 🔍 නැතිවූ දේ සොයාගැනීම (Find For Me)\n• 🎁 නොමිලේ දීමනා සහ පරිත්‍යාග (From Me To You)\n• 🛒 දවසේ වෙළඳපල අඩුම මිල ගණන්\n• 🌐 ක්ෂණික භාෂා ත්‍රිත්ව පරිවර්තනය\n\nඔබට අවශ්‍ය සහය කුමක්ද?',
+            ? '👋 வணக்கம்! நான் உங்கள் **சகாய AI உதவியாளர்**.\nபொது அறிவு, அறிவியல், கல்வி, அன்றாட வாழ்க்கை ஆலோசனை அல்லது **சகாய சேவை** தளத்தின் சேவைகள் உட்பட **எந்தவொரு கேள்வியையும்** என்னிடம் கேட்கலாம்.\n\nஇன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?'
+            : '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Assistant)**.\nසාමාන්‍ය දැනුම, අධ්‍යාපනය, විද්‍යාව, එදිනෙදා උපදෙස් ඇතුළු **ඕනෑම විෂයයක ඕනෑම ප්‍රශ්නයක්** මෙන්ම **සහය සේවා පද්ධතියේ සියලුම සේවාවන්** පිළිබඳව මගෙන් විමසිය හැක.\n\nඔබට අද මගෙන් දැනගැනීමට අවශ්‍ය කුමක්ද?',
         detectedLang: chatLanguage,
         timestamp: 'දැන්',
         actions: [
           {
-            type: 'open_find',
+            type: 'open_help_post',
             label:
               chatLanguage === 'en'
-                ? '🔍 Find For Me'
+                ? '📝 Post Help'
                 : chatLanguage === 'ta'
-                ? '🔍 தேடுங்கள் (Find)'
-                : '🔍 සොයාදෙන්න',
-          },
-          {
-            type: 'open_market',
-            label:
-              chatLanguage === 'en'
-                ? '🛒 Lowest Prices'
-                : chatLanguage === 'ta'
-                ? '🛒 சந்தை விலைகள்'
-                : '🛒 අඩුම මිල ගණන්',
+                ? '📝 உதவி கோரிக்கை'
+                : '📝 උපකාර ඉල්ලුම් පෝරමය',
           },
           {
             type: 'open_quick',
@@ -171,6 +168,15 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
                 : chatLanguage === 'ta'
                 ? '⚡ விரைவு சேவைகள்'
                 : '⚡ ඉක්මන් සේවා',
+          },
+          {
+            type: 'open_market',
+            label:
+              chatLanguage === 'en'
+                ? '🛒 Lowest Prices'
+                : chatLanguage === 'ta'
+                ? '🛒 சந்தை விலைகள்'
+                : '🛒 අඩුම මිල ගණන්',
           },
           {
             type: 'open_blood',
@@ -184,10 +190,10 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         ],
         quickChips:
           chatLanguage === 'en'
-            ? ['Find For Me', 'Check Commodity Prices', 'Find Electrician', 'Emergency Blood']
+            ? ['Ask any question', 'How to fill Help Form?', 'Check Market Prices', 'Emergency Blood']
             : chatLanguage === 'ta'
-            ? ['தேடுங்கள் (Find)', 'விலை விபரம்', 'மின்சார வல்லுநர்', 'இரத்தம் தேவை']
-            : ['සොයාදෙන්න', 'අඩුම මිල ගණන් බලන්න', 'විදුලි කාර්මිකයෙක් සොයන්න', 'හදිසි ලේ අවශ්‍යයි'],
+            ? ['எந்த கேள்வியையும் கேளுங்கள்', 'படிவம் நிரப்புவது எப்படி?', 'சந்தை விலைகள்', 'இரத்தம் தேவை']
+            : ['ඕනෑම ප්‍රශ්නයක් අසන්න', 'පෝරම පුරවන්නේ කොහොමද?', 'අඩුම මිල ගණන් බලන්න', 'හදිසි ලේ අවශ්‍යයි'],
       },
     ];
   });
@@ -333,6 +339,16 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         break;
       case 'open_directory':
         onOpenEmergencyDirectory?.();
+        break;
+      case 'open_help_post':
+      case 'post_help':
+        onOpenHelpPost?.();
+        break;
+      case 'open_red_alert_create':
+        onOpenRedAlertCreate?.();
+        break;
+      case 'open_pro_services':
+        onOpenProfessionalServices?.();
         break;
       case 'switch_to_register':
         onSwitchToRegister?.();
