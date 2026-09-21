@@ -298,17 +298,17 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
 
               <div className="relative shrink-0">
                 <div className="w-8 h-8 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs">
-                  {(user.facePhotoUrl || user.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                  {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
                     <img 
                       src={user.facePhotoUrl || user.photoUrl} 
-                      alt={user.name} 
+                      alt={user.name || 'User'} 
                       loading="lazy"
                       decoding="async"
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover" 
                     />
                   ) : (
-                    user.name.charAt(0).toUpperCase()
+                    (user?.name || 'U').charAt(0).toUpperCase()
                   )}
                 </div>
                 <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
@@ -496,17 +496,17 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
 
             <div className="relative shrink-0">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-sm">
-                {(user.facePhotoUrl || user.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
                   <img 
                     src={user.facePhotoUrl || user.photoUrl} 
-                    alt={user.name} 
+                    alt={user.name || 'User'} 
                     loading="lazy"
                     decoding="async"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover" 
                   />
                 ) : (
-                  user.name.charAt(0).toUpperCase()
+                  (user?.name || 'U').charAt(0).toUpperCase()
                 )}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />

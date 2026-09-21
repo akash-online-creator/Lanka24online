@@ -692,11 +692,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-8 h-8 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0">
-                          {sm.user.photoUrl ? (
-                            <img src={sm.user.photoUrl} alt={sm.user.name} className="w-full h-full object-cover" />
+                          {sm.user?.photoUrl ? (
+                            <img src={sm.user.photoUrl} alt={sm.user?.name || 'User'} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-xs font-bold text-indigo-700">
-                              {sm.user.name.charAt(0)}
+                              {(sm.user?.name || 'U').charAt(0)}
                             </span>
                           )}
                         </div>

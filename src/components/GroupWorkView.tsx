@@ -468,14 +468,14 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                       {req.userPhotoUrl ? (
                         <img 
                           src={req.userPhotoUrl} 
-                          alt={req.userName} 
+                          alt={req.userName || 'User'} 
                           loading="lazy"
                           decoding="async"
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover" 
                         />
                       ) : (
-                        <span>{req.userName.charAt(0)}</span>
+                        <span>{(req.userName || 'U').charAt(0)}</span>
                       )}
                     </div>
                     <div>

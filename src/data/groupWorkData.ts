@@ -569,11 +569,13 @@ export function saveGroupInvitesToStorage(invites: GroupInviteNotification[]): v
 
 // Normalization helper for checking duplicate names
 export function normalizeGroupName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 // Normalization helper for checking duplicate username
 export function normalizeUsername(username: string): string {
+  if (!username || typeof username !== 'string') return '';
   let clean = username.trim().toLowerCase();
   if (clean.startsWith('@')) clean = clean.substring(1);
   return clean.replace(/[^a-z0-9_]/g, '');

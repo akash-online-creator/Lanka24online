@@ -355,7 +355,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                         {service.providerPhotoUrl && service.providerPhotoUrl.trim() !== '' ? (
                           <img
                             src={service.providerPhotoUrl}
-                            alt={service.providerName}
+                            alt={service.providerName || 'Provider'}
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
@@ -363,7 +363,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xl">
-                            {service.providerName.charAt(0)}
+                            {(service.providerName || 'P').charAt(0)}
                           </div>
                         )}
                       </div>

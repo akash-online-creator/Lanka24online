@@ -133,7 +133,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
               {service.providerPhotoUrl && service.providerPhotoUrl.trim() !== '' ? (
                 <img
                   src={service.providerPhotoUrl}
-                  alt={service.providerName}
+                  alt={service.providerName || 'Provider'}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
@@ -141,7 +141,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-3xl">
-                  {service.providerName.charAt(0)}
+                  {(service.providerName || 'P').charAt(0)}
                 </div>
               )}
             </div>
@@ -379,7 +379,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center justify-center">
-                          {rev.userName.charAt(0)}
+                          {(rev.userName || 'U').charAt(0)}
                         </div>
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {rev.userName}

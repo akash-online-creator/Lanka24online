@@ -472,7 +472,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                         {msg.senderPhotoUrl ? (
                           <img 
                             src={msg.senderPhotoUrl} 
-                            alt={msg.senderName} 
+                            alt={msg.senderName || 'Sender'} 
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
@@ -480,7 +480,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                           />
                         ) : (
                           <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {msg.senderName.charAt(0)}
+                            {(msg.senderName || 'U').charAt(0)}
                           </span>
                         )}
                       </div>
@@ -764,7 +764,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                               {m.photoUrl ? (
                                 <img 
                                   src={m.photoUrl} 
-                                  alt={m.name} 
+                                  alt={m.name || 'Member'} 
                                   loading="lazy"
                                   decoding="async"
                                   referrerPolicy="no-referrer"
@@ -772,7 +772,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                                 />
                               ) : (
                                 <span className="font-bold text-indigo-700 dark:text-indigo-300">
-                                  {m.name.charAt(0)}
+                                  {(m.name || 'U').charAt(0)}
                                 </span>
                               )}
                             </div>

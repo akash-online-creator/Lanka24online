@@ -339,7 +339,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           ? 'bg-gradient-to-tr from-emerald-600 to-teal-600'
                           : 'bg-gradient-to-tr from-amber-500 to-orange-600'
                       }`}>
-                        {helperName.charAt(0).toUpperCase()}
+                        {(helperName || 'U').charAt(0).toUpperCase()}
                       </div>
 
                       <div className="min-w-0">

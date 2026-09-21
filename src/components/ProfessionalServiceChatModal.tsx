@@ -221,9 +221,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
             <div className="relative">
               <div className="w-10 h-10 rounded-2xl overflow-hidden bg-emerald-100 dark:bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-800 dark:text-emerald-300 font-bold text-sm">
                 {service.providerPhotoUrl ? (
-                  <img src={service.providerPhotoUrl} alt={service.providerName} className="w-full h-full object-cover" />
+                  <img src={service.providerPhotoUrl} alt={service.providerName || 'Provider'} className="w-full h-full object-cover" />
                 ) : (
-                  service.providerName.charAt(0)
+                  (service.providerName || 'P').charAt(0)
                 )}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0c1a12]" />

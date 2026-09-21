@@ -838,9 +838,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             title="ඡායාරූපය විශාල කර බලන්න (Click to inspect)"
                           >
                             {nicFront ? (
-                              <img src={nicFront} alt={user.name} className="w-full h-full object-cover" />
+                              <img src={nicFront} alt={user.name || 'User'} className="w-full h-full object-cover" />
                             ) : (
-                              user.name.charAt(0)
+                              (user.name || 'U').charAt(0)
                             )}
                           </div>
                           <div>
@@ -1359,9 +1359,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 title="පින්තූරය විශාල කර බලන්න"
                               >
                                 {user.photoUrl ? (
-                                  <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+                                  <img src={user.photoUrl} alt={user.name || 'User'} className="w-full h-full object-cover" />
                                 ) : (
-                                  user.name.charAt(0)
+                                  (user.name || 'U').charAt(0)
                                 )}
                               </div>
                               <div>

@@ -515,7 +515,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                             <div className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center shrink-0 shadow-sm ${
                               thread.isCurrentUserAuthor ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
                             }`}>
-                              {thread.respondentName.charAt(0).toUpperCase()}
+                              {(thread.respondentName || 'U').charAt(0).toUpperCase()}
                             </div>
                             <span className="text-sm font-black text-slate-900 dark:text-white truncate">
                               {thread.respondentName}
