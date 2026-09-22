@@ -316,6 +316,7 @@ export interface User {
   registeredAt: string;
   approvedAt?: string;
   key?: string; // password
+  password?: string; // stored password representation
   rejectionReason?: string;
   ipAddress?: string;
   registrationLat?: number;

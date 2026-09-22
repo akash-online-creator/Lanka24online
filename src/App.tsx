@@ -35,6 +35,7 @@ import {
   deleteUserAccount,
   subscribeToRedAlerts,
   getUserFromFirestore,
+  syncUserPasswordInFirestore,
   markRedAlertAsResolved,
   cancelRedAlertByReporter,
   addReporterUpdateToRedAlert
@@ -516,46 +517,16 @@ export default function App() {
 
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
       const formattedEmail = `${cleanInput}@app.com`;
-      let authUser;
+      let authUser: any = null;
 
       try {
         const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
-        authUser = userCredential.user;
+        authUser = userCredential?.user || null;
       } catch (authError: any) {
-        console.warn("Firebase Auth Login check:", authError?.message);
-
-        // Firestore / Local state මගින් පරිශීලකයා පරීක්ෂා කිරීම (තාවකාලික මුරපදය / Admin Reset Code සසඳා බැලීම)
-        let fallbackCheck = await getUserFromFirestore(cleanInput);
-        if (!fallbackCheck) {
-          fallbackCheck = users.find(
-            (u) =>
-              (u.userId && u.userId.toLowerCase() === cleanInput) ||
-              (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
-              (u.phone && u.phone.toLowerCase() === cleanInput)
-          );
-        }
-
-        // පරිපාලක විසින් ලබා දුන් තාවකාලික කේතයක් (tempCode / securityCode / key) ගැළපේදැයි බැලීම
-        if (
-          fallbackCheck &&
-          ((fallbackCheck.tempCode && String(fallbackCheck.tempCode).trim() === submittedPassword) ||
-           (fallbackCheck.securityCode && String(fallbackCheck.securityCode).trim() === submittedPassword) ||
-           (fallbackCheck.key && String(fallbackCheck.key).trim() === submittedPassword))
-        ) {
-          console.log("Admin Temporary Reset Password successfully matched!");
-          try {
-            const cred = await createUserWithEmailAndPassword(auth, formattedEmail, submittedPassword);
-            authUser = cred.user;
-          } catch {
-            // Already created in Auth or backend synced
-          }
-        } else {
-          setShowWrongLoginModal(true);
-          return;
-        }
+        console.warn("Firebase Auth Login check notice:", authError?.message || authError);
       }
 
-      // Firestore මගින් පරිශීලකගේ අමතර විස්තර ලබා ගැනීම
+      // Firestore / Local state මගින් පරිශීලකයා පරීක්ෂා කිරීම
       let foundUser = await getUserFromFirestore(cleanInput);
 
       if (!foundUser) {
@@ -584,6 +555,27 @@ export default function App() {
       if (!foundUser) {
         setShowWrongLoginModal(true);
         return;
+      }
+
+      // AuthUser හරහා ලොග් නොවූයේ නම් (හෝ Auth provider disabled නම්) Firestore / Local දත්ත මගින් මුරපදය පරීක්ෂා කිරීම
+      if (!authUser) {
+        const userKey = (foundUser.key || '').trim();
+        const userPass = ((foundUser as any).password || '').trim();
+        const userTemp = (foundUser.tempCode || '').trim();
+        const userSec = (foundUser.securityCode || '').trim();
+        const userTempPw = ((foundUser as any).tempPassword || '').trim();
+
+        const isPasswordCorrect =
+          (userKey && userKey === submittedPassword) ||
+          (userPass && userPass === submittedPassword) ||
+          (userTemp && userTemp === submittedPassword) ||
+          (userSec && userSec === submittedPassword) ||
+          (userTempPw && userTempPw === submittedPassword);
+
+        if (!isPasswordCorrect) {
+          setShowWrongLoginModal(true);
+          return;
+        }
       }
 
       if (foundUser.status === 'blocked' || (foundUser as any).isBlocked) {
@@ -673,17 +665,26 @@ export default function App() {
     const formattedEmail = `${cleanNic}@app.com`;
 
     try {
-      // 1. Firebase Auth හි පරිශීලක ගිණුම සෑදීම
-      const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, rawPassword);
-      const uid = userCredential.user.uid;
+      let uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-      // 2. පාස්වර්ඩ් එක ඉවත් කර අනිත් දත්ත Firestore හි සේව් කිරීම
-      const { key, password, securityCode, ...cleanUserData } = newUser as any;
+      // 1. Firebase Auth හි පරිශීලක ගිණුම සෑදීමට උත්සාහ කිරීම (Graceful)
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, rawPassword);
+        if (userCredential?.user?.uid) {
+          uid = userCredential.user.uid;
+        }
+      } catch (authErr: any) {
+        console.warn("Firebase Auth Register notice (continuing with Firestore user):", authErr?.message || authErr);
+      }
 
+      // 2. පාස්වර්ඩ් එකත් සමග අනිත් දත්ත Firestore හි සේව් කිරීම
       const createdUser: User = {
-        ...cleanUserData,
+        ...newUser,
         id: uid,
         userId: newUser.userId || cleanNic.toUpperCase(),
+        nicNumber: (newUser.nicNumber || cleanNic).toUpperCase(),
+        key: rawPassword,
+        password: rawPassword,
         ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
         registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
       };
@@ -807,10 +808,11 @@ export default function App() {
     }
   };
 
-  // ✅ 4.1. නව මුරපදයක් සේව් කිරීම (Firebase Auth Level එකෙන්)
+  // ✅ 4.1. නව මුරපදයක් සේව් කිරීම (Firebase Auth + Firestore Level එකෙන්)
   const handleSaveNewPassword = async (newPassword: string) => {
     if (!currentUser) return;
-    if (!newPassword || newPassword.trim() === '') {
+    const cleanPass = (newPassword || '').trim();
+    if (!cleanPass) {
       alert('නව මුරපදය හිස් ව තිබිය නොහැක.');
       return;
     }
@@ -818,22 +820,18 @@ export default function App() {
     try {
       const activeUser = auth.currentUser;
       if (activeUser) {
-        await updatePassword(activeUser, newPassword);
+        try {
+          await updatePassword(activeUser, cleanPass);
+        } catch (pwErr) {
+          console.warn("Auth updatePassword notice:", pwErr);
+        }
       } else {
         const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
         const formattedEmail = `${cleanNic}@app.com`;
         try {
-          await createUserWithEmailAndPassword(auth, formattedEmail, newPassword);
+          await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
         } catch {
-          await fetch('/api/admin/reset-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id,
-              nicNumber: currentUser.nicNumber || currentUser.userId,
-              newPassword: newPassword,
-            }),
-          });
+          // Backend or Firestore fallback
         }
       }
 
@@ -842,14 +840,10 @@ export default function App() {
         isPasswordChanged: true,
         tempCode: undefined,
         securityCode: undefined,
-        key: newPassword,
+        key: cleanPass,
       };
 
-      await updateUserInFirestore(updatedUser.id, {
-        isPasswordChanged: true,
-        tempCode: '',
-        securityCode: '',
-      });
+      await syncUserPasswordInFirestore(currentUser, cleanPass);
 
       setCurrentUser(updatedUser);
       setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));

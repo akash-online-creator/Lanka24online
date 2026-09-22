@@ -258,8 +258,17 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@sahayaseva.com)
       const userAuthEmail = `${cleanNicLower}@sahayaseva.com`;
 
-      // 3. Firebase Auth හි ගිණුම සෑදීම (createUserWithEmailAndPassword)
-      await createUserWithEmailAndPassword(auth, userAuthEmail, password);
+      // 3. Firebase Auth හි ගිණුම සෑදීම (Gracefully attempt createUserWithEmailAndPassword)
+      try {
+        await createUserWithEmailAndPassword(auth, userAuthEmail, password);
+      } catch (authErr: any) {
+        console.warn('Firebase Auth creation notice (continuing with Firestore account):', authErr?.message || authErr);
+        if (authErr?.code === 'auth/email-already-in-use') {
+          setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.');
+          setLoading(false);
+          return;
+        }
+      }
 
       const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
       const nicDigits = nicNumber.replace(/[^0-9]/g, '');
@@ -318,6 +327,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         birthDate,
         nearestTown,
         whatsappNumber,
+        key: password,
+        password: password,
         isPasswordChanged: false,
         role: 'user',
         status: 'pending', // Admin review required before accessing dashboard
@@ -340,13 +351,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       setPendingUserData(userPayload);
       setShowSuccessModal(true);
     } catch (error: any) {
-      console.error('Firebase Auth / Registration Error:', error);
-      if (error.code === 'auth/email-already-in-use') {
+      console.error('Registration Processing Error:', error);
+      if (error?.code === 'auth/email-already-in-use') {
         setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.');
-      } else if (error.code === 'auth/weak-password') {
+      } else if (error?.code === 'auth/weak-password') {
         setErrorMessage('මුරපදය අවම වශයෙන් අක්ෂර 6 කින් යුක්ත විය යුතුය.');
       } else {
-        setErrorMessage(error.message || 'ලියාපදිංචි වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+        setErrorMessage(error?.message || 'ලියාපදිංචි වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
       }
     } finally {
       setLoading(false);
