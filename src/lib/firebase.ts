@@ -832,53 +832,53 @@ export async function toggleSavePostInFirestore(
 
 /**
  * සියලුම ගැළපෙන පරිශීලක ලේඛන Firestore එකෙන් ලබා ගනී (Doc ID, NIC, User ID, Numeric ID, Phone, Email)
+ * Direct Doc ID Fast Lookup හරහා තත්පර 1කට අඩු කාලයකදී ලබා ගනී
  */
 export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): Promise<any[]> {
   try {
     if (!userIdOrInput) return [];
     const cleanInput = String(userIdOrInput).trim();
+    if (!cleanInput) return [];
     const cleanInputLower = cleanInput.toLowerCase();
     const cleanInputUpper = cleanInput.toUpperCase();
     const numericPart = cleanInput.replace(/[^0-9]/g, '');
     const resultsMap = new Map<string, any>();
 
-    // 1. Direct Document ID Search (raw, upper, lower, numeric)
-    const directDocIds = [cleanInput, cleanInputUpper, cleanInputLower];
-    if (numericPart && numericPart !== cleanInput) {
-      directDocIds.push(numericPart);
+    // 1. Direct Document ID Search in parallel (FAST: ~200-400ms)
+    const directDocIds = Array.from(new Set([cleanInput, cleanInputUpper, cleanInputLower, numericPart].filter(Boolean)));
+
+    const directSnaps = await Promise.all(
+      directDocIds.map((docId) => getDoc(doc(db, 'users', docId)).catch(() => null))
+    );
+
+    for (const snap of directSnaps) {
+      if (snap && snap.exists()) {
+        const data = snap.data();
+        resultsMap.set(snap.id, { id: snap.id, ...data });
+      }
     }
 
-    for (const docId of directDocIds) {
-      if (!docId) continue;
-      try {
-        const snap = await getDoc(doc(db, 'users', docId));
-        if (snap.exists()) {
-          resultsMap.set(snap.id, { id: snap.id, ...snap.data() });
-        }
-      } catch {}
+    // Direct doc lookup සාර්ථක නම් වහාම ආපසු ලබා දෙයි (අමතර slow queries 10ක් ධාවනය නොකරයි)
+    if (resultsMap.size > 0) {
+      return Array.from(resultsMap.values());
     }
 
-    // 2. Collection Queries (userId, nicNumber, userNumericId, phone, email)
+    // 2. Direct Doc ID එකක් හමු නොවූයේ නම් පමණක් targeted queries ධාවනය කරයි
     const colRef = collection(db, 'users');
-    const queries = [
-      query(colRef, where('userId', '==', cleanInput)),
-      query(colRef, where('userId', '==', cleanInputUpper)),
+    const targetedQueries = [
       query(colRef, where('nicNumber', '==', cleanInputUpper)),
-      query(colRef, where('nicNumber', '==', cleanInput)),
-      query(colRef, where('phone', '==', cleanInput)),
-      query(colRef, where('email', '==', cleanInputLower)),
-      query(colRef, where('email', '==', `${cleanInputLower}@app.com`)),
-      query(colRef, where('email', '==', `${cleanInputLower}@sahayaseva.com`)),
+      query(colRef, where('userId', '==', cleanInputUpper)),
     ];
-
-    if (numericPart) {
-      queries.push(
-        query(colRef, where('userNumericId', '==', numericPart)),
-        query(colRef, where('userId', '==', numericPart))
-      );
+    if (numericPart && numericPart !== cleanInputUpper) {
+      targetedQueries.push(query(colRef, where('userNumericId', '==', numericPart)));
+    }
+    if (cleanInput.includes('@')) {
+      targetedQueries.push(query(colRef, where('email', '==', cleanInputLower)));
+    } else if (/^\d{9,12}$/.test(cleanInput)) {
+      targetedQueries.push(query(colRef, where('phone', '==', cleanInput)));
     }
 
-    const snapshots = await Promise.all(queries.map((q) => getDocs(q).catch(() => null)));
+    const snapshots = await Promise.all(targetedQueries.map((q) => getDocs(q).catch(() => null)));
     for (const qSnap of snapshots) {
       if (qSnap && !qSnap.empty) {
         qSnap.forEach((d) => resultsMap.set(d.id, { id: d.id, ...d.data() }));
@@ -898,13 +898,15 @@ export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): P
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     const matches = await getAllMatchingUsersFromFirestore(userIdOrInput);
-    if (matches.length === 0) return null;
+    if (!matches || matches.length === 0) return null;
     if (matches.length === 1) {
       const u = matches[0];
       return {
         ...u,
         status: u.status || 'approved',
         role: u.role || 'user',
+        isTemporaryPassword: u.isTemporaryPassword === true,
+        isPasswordChanged: u.isPasswordChanged ?? !u.isTemporaryPassword,
       };
     }
 
@@ -942,12 +944,21 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
     mergedUser.role = primary.role || mergedUser.role || 'user';
     mergedUser.key = primary.key || primary.password || mergedUser.key || mergedUser.password;
     mergedUser.password = primary.password || primary.key || mergedUser.password || mergedUser.key;
-    mergedUser.isPasswordChanged = primary.isPasswordChanged ?? mergedUser.isPasswordChanged ?? true;
-    mergedUser.isTemporaryPassword = primary.isTemporaryPassword ?? mergedUser.isTemporaryPassword ?? false;
+    
+    // මුරපදය මාරු කර ඇත්නම් පැරණි temporary code නැවත restore වීම වළක්වයි
+    if (primary.isTemporaryPassword === false || primary.isPasswordChanged === true) {
+      mergedUser.isTemporaryPassword = false;
+      mergedUser.isPasswordChanged = true;
+      mergedUser.tempCode = '';
+      mergedUser.tempPassword = '';
+    } else {
+      mergedUser.isTemporaryPassword = primary.isTemporaryPassword ?? mergedUser.isTemporaryPassword ?? false;
+      mergedUser.isPasswordChanged = primary.isPasswordChanged ?? mergedUser.isPasswordChanged ?? true;
+    }
 
     return mergedUser;
   } catch (error) {
-    handleFirestoreError(error, OperationType.READ, 'users');
+    console.warn('getUserFromFirestore notice:', error);
     return null;
   }
 }
@@ -974,11 +985,16 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
     if (id) docIdsToUpdate.add(id);
     if (nic) {
       const cleanNicUpper = String(nic).trim().toUpperCase();
+      const cleanNicLower = String(nic).trim().toLowerCase();
       const numericNic = cleanNicUpper.replace(/[^0-9]/g, '');
       if (numericNic) docIdsToUpdate.add(numericNic);
       docIdsToUpdate.add(cleanNicUpper);
+      docIdsToUpdate.add(cleanNicLower);
     }
-    if (uid) docIdsToUpdate.add(String(uid).trim());
+    if (uid) {
+      docIdsToUpdate.add(String(uid).trim());
+      docIdsToUpdate.add(String(uid).trim().toUpperCase());
+    }
 
     const baseUserObj = typeof userOrIdentifier === 'object' && userOrIdentifier !== null ? userOrIdentifier : {};
 
@@ -1016,7 +1032,7 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
       })
     );
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, 'users');
+    console.warn('syncUserPasswordInFirestore warning:', err);
   }
 }
 

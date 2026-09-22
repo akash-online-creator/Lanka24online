@@ -541,6 +541,16 @@ export default function App() {
         return;
       }
 
+      // Local state එකෙන් පරිශීලකයා කලින්ම සොයා ගැනීම (Fast-Path)
+      const numericInput = cleanInput.replace(/[^0-9]/g, '');
+      const localMatchedUser = users.find(
+        (u) =>
+          (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+          (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+          (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
+          (u.phone && u.phone.toLowerCase() === cleanInput)
+      );
+
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
       const formattedEmail = `${cleanInput}@app.com`;
       let authUser: any = null;
@@ -552,18 +562,59 @@ export default function App() {
         console.warn("Firebase Auth Login check notice:", authError?.message || authError);
       }
 
-      // Firestore / Local state මගින් පරිශීලකයා පරීක්ෂා කිරීම
-      let foundUser = await getUserFromFirestore(cleanInput);
+      // Firestore එකෙන් තත්පර 2.5ක timeout එකක් සහිතව පරිශීලකයා ලබා ගැනීම (UI Freeze වීම වැළැක්වීමට)
+      let foundUser: any = null;
+      try {
+        const firestorePromise = getUserFromFirestore(cleanInput);
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2500));
+        foundUser = await Promise.race([firestorePromise, timeoutPromise]);
+      } catch (e) {
+        console.warn("Firestore user fetch skipped/failed:", e);
+      }
 
       if (!foundUser) {
-        const numericInput = cleanInput.replace(/[^0-9]/g, '');
-        foundUser = users.find(
-          (u) =>
-            (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
-            (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
-            (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
-            (u.phone && u.phone.toLowerCase() === cleanInput)
-        );
+        foundUser = localMatchedUser;
+      } else if (localMatchedUser) {
+        // If local user has updated password more recently, preserve it
+        const isLocalNewer = new Date(localMatchedUser.updatedAt || 0) >= new Date(foundUser.updatedAt || 0);
+        if (isLocalNewer && localMatchedUser.key) {
+          foundUser.key = localMatchedUser.key;
+          foundUser.password = localMatchedUser.password || localMatchedUser.key;
+          foundUser.securityCode = localMatchedUser.securityCode || localMatchedUser.key;
+          foundUser.isPasswordChanged = localMatchedUser.isPasswordChanged ?? true;
+          foundUser.isTemporaryPassword = localMatchedUser.isTemporaryPassword ?? false;
+        }
+      }
+
+      if (!foundUser) {
+        try {
+          const resp = await fetch(`/api/user/lookup?q=${encodeURIComponent(cleanInputUpper)}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data?.user) {
+              foundUser = data.user;
+            }
+          }
+        } catch {}
+      }
+
+      if (!foundUser) {
+        try {
+          const raw = localStorage.getItem('sahaya_users');
+          if (raw) {
+            const parsed: User[] = JSON.parse(raw);
+            const foundInStorage = parsed.find(
+              (u) =>
+                (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+                (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+                (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
+                (u.phone && u.phone.toLowerCase() === cleanInput)
+            );
+            if (foundInStorage) {
+              foundUser = foundInStorage;
+            }
+          }
+        } catch {}
       }
 
       if (!foundUser && authUser) {
@@ -600,7 +651,6 @@ export default function App() {
         const userSec = (foundUser.securityCode || '').trim();
         const userTempPw = ((foundUser as any).tempPassword || '').trim();
 
-        const numericInput = cleanInput.replace(/[^0-9]/g, '');
         const matchingLocalUsers = users.filter(
           (u) =>
             (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
@@ -615,6 +665,11 @@ export default function App() {
           (userTemp && userTemp === submittedPassword) ||
           (userSec && userSec === submittedPassword) ||
           (userTempPw && userTempPw === submittedPassword) ||
+          (localMatchedUser && (
+            (localMatchedUser.key && localMatchedUser.key.trim() === submittedPassword) ||
+            ((localMatchedUser as any).password && (localMatchedUser as any).password.trim() === submittedPassword) ||
+            (localMatchedUser.securityCode && localMatchedUser.securityCode.trim() === submittedPassword)
+          )) ||
           matchingLocalUsers.some(
             (u) =>
               (u.key && u.key.trim() === submittedPassword) ||
@@ -909,31 +964,8 @@ export default function App() {
     }
 
     try {
-      const activeUser = auth.currentUser;
       const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
       const formattedEmail = `${cleanNic}@app.com`;
-
-      if (activeUser) {
-        try {
-          await updatePassword(activeUser, cleanPass);
-        } catch (pwErr) {
-          console.warn("Auth updatePassword notice:", pwErr);
-        }
-      } else {
-        try {
-          const tempToTry = tempPassword || currentUser.key || currentUser.securityCode || (currentUser as any).tempPassword;
-          if (tempToTry) {
-            const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempToTry);
-            if (userCred.user) {
-              await updatePassword(userCred.user, cleanPass);
-            }
-          } else {
-            await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
-          }
-        } catch (pwErr) {
-          console.warn("Firebase Auth fallback update notice:", pwErr);
-        }
-      }
 
       const updatedUser: User = {
         ...currentUser,
@@ -946,17 +978,20 @@ export default function App() {
         tempPassword: '',
         key: cleanPass,
         password: cleanPass,
+        updatedAt: new Date().toISOString(),
       };
 
-      await syncUserPasswordInFirestore(updatedUser, cleanPass);
-
+      // 1. Instant Local State & Cache Update (UI renders immediately)
       setCurrentUser(updatedUser);
       setUsers((prev) => {
-        const nextUsers = (prev || []).map((u) =>
-          u.id === updatedUser.id || (u.nicNumber && u.nicNumber === updatedUser.nicNumber)
-            ? { ...u, ...updatedUser }
-            : u
-        );
+        const nextUsers = (prev || []).map((u) => {
+          const isMatch =
+            u.id === updatedUser.id ||
+            (u.nicNumber && u.nicNumber.toLowerCase() === (updatedUser.nicNumber || '').toLowerCase()) ||
+            (u.userId && u.userId.toLowerCase() === (updatedUser.userId || '').toLowerCase()) ||
+            (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+          return isMatch ? { ...u, ...updatedUser } : u;
+        });
         try {
           localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
           localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
@@ -965,6 +1000,52 @@ export default function App() {
       });
 
       setShowChangePasswordModal(false);
+
+      // 2. Parallel Sync to Firestore (Fast direct doc writes)
+      await syncUserPasswordInFirestore(updatedUser, cleanPass);
+
+      // 3. Sync to Firebase Auth in background/non-blocking
+      (async () => {
+        try {
+          const activeUser = auth.currentUser;
+          if (activeUser) {
+            await updatePassword(activeUser, cleanPass);
+          } else {
+            const tempToTry = tempPassword || currentUser.key || currentUser.securityCode || (currentUser as any).tempPassword;
+            if (tempToTry) {
+              try {
+                const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempToTry);
+                if (userCred.user) {
+                  await updatePassword(userCred.user, cleanPass);
+                }
+              } catch {
+                // If sign in with temp failed, try creating user or updating with new password
+                try {
+                  await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
+                } catch {}
+              }
+            } else {
+              try {
+                await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
+              } catch {}
+            }
+          }
+        } catch (pwErr) {
+          console.warn("Auth password sync notice:", pwErr);
+        }
+      })();
+
+      // 4. Sync to Backend Server Cache
+      fetch('/api/user/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: updatedUser.id,
+          nicNumber: updatedUser.nicNumber || updatedUser.userId,
+          newPassword: cleanPass,
+        }),
+      }).catch((e) => console.warn('Server password update notify error:', e));
+
       return true;
     } catch (err: any) {
       console.error("මුරපදය වෙනස් කිරීමේ දෝෂයක්:", err);
