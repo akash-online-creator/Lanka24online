@@ -44,8 +44,7 @@ import {
   Key
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
-import { syncUserProfileToFirestore, syncUserPasswordInFirestore, auth } from '../lib/firebase';
-import { updatePassword } from 'firebase/auth';
+import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
 import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
@@ -376,7 +375,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSaveSuccessMsg(null);
@@ -385,6 +384,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     const trimmedPhone = phone.trim();
     const trimmedAddress = address.trim();
     const trimmedEmail = email.trim();
+    const cleanNewKey = newKey.trim();
+    const cleanConfirmKey = confirmKey.trim();
 
     if (!trimmedName) {
       setErrorMsg(getLang('කරුණාකර ඔබගේ නම ඇතුළත් කරන්න.', 'Please enter your name.', 'உங்கள் பெயரை உள்ளிடவும்.'));
@@ -397,11 +398,11 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     }
 
     if (changePassword) {
-      if (!newKey || newKey.length < 4) {
+      if (!cleanNewKey || cleanNewKey.length < 4) {
         setErrorMsg(getLang('නව මුරපදය සඳහා අවම වශයෙන් අක්ෂර 4ක් ඇතුළත් කරන්න.', 'New password must have at least 4 characters.', 'கடவுச்சொல் குறைந்தது 4 எழுத்துக்கள் கொண்டிருக்க வேண்டும்.'));
         return;
       }
-      if (newKey !== confirmKey) {
+      if (cleanNewKey !== cleanConfirmKey) {
         setErrorMsg(getLang('මුරපද දෙක නොගැලපේ.', 'Passwords do not match.', 'கடவுச்சொற்கள் பொருந்தவில்லை.'));
         return;
       }
@@ -436,58 +437,22 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       photoUrl: photoUrl || user.photoUrl,
       facePhotoUrl: photoUrl || user.facePhotoUrl || user.photoUrl,
       pendingProfileUpdate: (isNameChanged || isAddressChanged) ? pendingUpdate : user.pendingProfileUpdate,
-      ...(changePassword && newKey
+      ...(changePassword && cleanNewKey
         ? {
-            key: newKey,
-            password: newKey,
-            securityCode: newKey,
+            key: cleanNewKey,
+            securityCode: cleanNewKey,
+            password: cleanNewKey,
             tempCode: '',
             tempPassword: '',
+            isPasswordChanged: true,
             isTemporaryPassword: false,
-            isPasswordChanged: true
+            updatedAt: new Date().toISOString(),
           }
         : {})
     };
 
-    if (onUpdateUser) {
-      onUpdateUser(updatedUser);
-    }
-
-    // Update Local Storage & Sync to Cloud Firestore
+    // Update Local Storage immediately
     localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
-    syncUserProfileToFirestore(updatedUser).catch((err) => {
-      console.warn('Sync profile to Firestore notice:', err);
-    });
-
-    if (changePassword && newKey) {
-      // Sync password to all Firestore user document identifiers
-      syncUserPasswordInFirestore(updatedUser, newKey).catch((err) => {
-        console.warn('Password sync to Firestore notice:', err);
-      });
-
-      // Update Firebase Auth password if active session exists
-      try {
-        if (auth.currentUser) {
-          updatePassword(auth.currentUser, newKey).catch((err) => {
-            console.warn('Firebase Auth password update notice:', err);
-          });
-        }
-      } catch (authEx) {
-        console.warn('Firebase auth instance check notice:', authEx);
-      }
-
-      // Sync with backend API
-      fetch('/api/user/update-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: updatedUser.id,
-          nicNumber: updatedUser.nicNumber || updatedUser.userId,
-          newPassword: newKey,
-        }),
-      }).catch((e) => console.warn('Backend password sync notice:', e));
-    }
-
     const savedUsers = localStorage.getItem('sahaya_users');
     if (savedUsers) {
       try {
@@ -499,12 +464,40 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       }
     }
 
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+
+    // Sync profile and password to Firestore
+    try {
+      await syncUserProfileToFirestore(updatedUser);
+      if (changePassword && cleanNewKey) {
+        await syncUserPasswordInFirestore(updatedUser, cleanNewKey);
+      }
+    } catch (syncErr) {
+      console.warn('Sync to Firestore notice:', syncErr);
+    }
+
+    if (changePassword && cleanNewKey) {
+      setChangePassword(false);
+      setNewKey('');
+      setConfirmKey('');
+    }
+
     if (isNameChanged || isAddressChanged) {
       setSaveSuccessMsg(
         getLang(
-          '⏳ ඔබගේ නම / ලිපිනය සංශෝධන ඉල්ලීම පරිපාලක (Admin) අනුමැතිය සඳහා යොමු කරන ලදී. පරිපාලක අනුමත කරන තෙක් පැරණි තොරතුරු නොවෙනස්ව පවතී.',
-          '⏳ Name / Address change request has been submitted for Admin approval. Current information remains active until approved.',
-          '⏳ பெயர் / முகவரி மாற்றக் கோரிக்கை நிர்வாகி ஒப்புதலுக்கு அனுப்பப்பட்டது. ஒப்புதல் கிடைக்கும் வரை தற்போதைய விவரங்கள் மாறாது.'
+          '⏳ ඔබගේ නම / ලිපිනය සංශෝධන ඉල්ලීම පරිපාලක (Admin) අනුමැතිය සඳහා යොමු කරන ලදී. (නව මුරපදය සාර්ථකව සුරැකිණි)',
+          '⏳ Name / Address change request has been submitted for Admin approval. (New password saved successfully)',
+          '⏳ பெயர் / முகவரி மாற்றக் கோரிக்கை நிர்வாகி ஒப்புதலுக்கு அனுப்பப்பட்டது. (புதிய கடவுச்சொல் சேமிக்கப்பட்டது)'
+        )
+      );
+    } else if (changePassword && cleanNewKey) {
+      setSaveSuccessMsg(
+        getLang(
+          '✅ නව මුරපදය සහ පැතිකඩ තොරතුරු සාර්ථකව සුරැකිණි!',
+          '✅ New password and profile information saved successfully!',
+          '✅ புதிய கடவுச்சொல் மற்றும் சுயவிவரத் தகவல்கள் வெற்றிகரமாக சேமிக்கப்பட்டன!'
         )
       );
     } else {

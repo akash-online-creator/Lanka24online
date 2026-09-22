@@ -26,6 +26,7 @@ interface RedAlertCreateModalProps {
   currentUser?: User | null;
   currentLocation?: LocationOption;
   onAlertCreated?: (newAlert: RedAlertItem) => void;
+  onVerifyPassword?: (password: string) => Promise<boolean> | boolean;
 }
 
 export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
@@ -34,6 +35,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   currentUser,
   currentLocation,
   onAlertCreated,
+  onVerifyPassword,
 }) => {
   const [selectedDisaster, setSelectedDisaster] = useState<RedAlertDisasterType>('fire');
   const [customTitle, setCustomTitle] = useState('');
@@ -143,30 +145,69 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     setShowPasswordPopup(true);
   };
 
-  // 🔒 Firebase Auth Re-authentication සමග නිවැරදි කළ මුරපද තහවුරු කිරීමේ ක්‍රියාවලිය
+  // 🔒 ගිණුමේ ලොගින් මුරපදය (Login Password) තහවුරු කිරීමේ ක්‍රියාවලිය
   const handleFinalConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
 
-    if (!enteredPassword.trim()) {
-      setPasswordError('⚠️ කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
-      return;
-    }
-
-    const firebaseUser = auth.currentUser;
-    if (!firebaseUser || !firebaseUser.email) {
-      setPasswordError('⚠️ පරිශීලකයා පද්ධතියට ලොග් වී නොමැත. කරුණාකර නැවත ලොග් වන්න.');
+    const entered = enteredPassword.trim();
+    if (!entered) {
+      setPasswordError('⚠️ කරුණාකර ඔබගේ ලොගින් මුරපදය (Password) ඇතුළත් කරන්න.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // 1. Firebase Auth හි reauthenticateWithCredential මගින් සැබෑ මුරපදය පරීක්ෂා කිරීම
-      const credential = EmailAuthProvider.credential(firebaseUser.email, enteredPassword);
-      await reauthenticateWithCredential(firebaseUser, credential);
+      let isVerified = false;
 
-      // 2. මුරපදය නිවැරදි නම් Dialog Box එක වසා දැමීම
+      // 1. First check via onVerifyPassword handler
+      if (onVerifyPassword) {
+        try {
+          isVerified = await onVerifyPassword(entered);
+        } catch (vErr) {
+          console.warn("onVerifyPassword execution notice:", vErr);
+        }
+      }
+
+      // 2. Direct Fallback verification against current session user
+      if (!isVerified && currentUser) {
+        const userKey = (currentUser.key || '').trim();
+        const userPass = ((currentUser as any).password || '').trim();
+        const userSec = (currentUser.securityCode || '').trim();
+        const userTemp = (currentUser.tempCode || (currentUser as any).tempPassword || '').trim();
+
+        if (
+          (userKey && userKey === entered) ||
+          (userPass && userPass === entered) ||
+          (userSec && userSec === entered) ||
+          (userTemp && userTemp === entered)
+        ) {
+          isVerified = true;
+        }
+      }
+
+      // 3. Fallback to Firebase Auth Re-authentication if available
+      if (!isVerified) {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser && firebaseUser.email) {
+          try {
+            const credential = EmailAuthProvider.credential(firebaseUser.email, entered);
+            await reauthenticateWithCredential(firebaseUser, credential);
+            isVerified = true;
+          } catch (authErr) {
+            console.warn("Firebase Auth reauth check notice:", authErr);
+          }
+        }
+      }
+
+      if (!isVerified) {
+        setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ ගිණුමේ ලොගින් මුරපදය නිවැරදිව ඇතුළත් කරන්න.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // මුරපදය නිවැරදි නම් Popup එක වසා දමා Red Alert වාර්තාව පළ කිරීම
       setShowPasswordPopup(false);
 
       const config = getDisasterConfig(selectedDisaster);
@@ -190,7 +231,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         incidentTime,
         createdAt: new Date().toISOString(),
         createdAtMs: Date.now(),
-        reportedByUserId: currentUser?.userId || currentUser?.id || firebaseUser.uid || '',
+        reportedByUserId: currentUser?.userId || currentUser?.id || auth.currentUser?.uid || '',
         reportedByName: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
         reportedByPhone: reporterPhone.trim(),
         status: 'active',
@@ -203,7 +244,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         ...(accuracyMeters !== undefined ? { locationAccuracyMeters: accuracyMeters } : {}),
       };
 
-      // 3. Firestore එකට Red Alert එක පළ කිරීම
+      // Firestore එකට Red Alert එක පළ කිරීම
       const docId = await createRedAlertInFirestore(newAlertData);
 
       const createdItem: RedAlertItem = {
@@ -220,18 +261,8 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         onClose();
       }, 2500);
     } catch (err: any) {
-      console.error('Re-authentication / Submission Error:', err);
-
-      // මුරපදය වැරදි නම් හෝ Firebase Auth Error එකක් ආවොත් ආරක්ෂිත Error Message එකක් පෙන්වීම
-      if (
-        err?.code === 'auth/wrong-password' || 
-        err?.code === 'auth/invalid-credential' ||
-        err?.code === 'auth/user-mismatch'
-      ) {
-        setPasswordError('⚠️ ඇතුළත් කළ මුරපදය (Password) වැරදියි. කරුණාකර ඔබගේ සැබෑ ගිණුම් මුරපදය නිවැරදිව ඇතුළත් කරන්න.');
-      } else {
-        setPasswordError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
-      }
+      console.error('Submission Error:', err);
+      setPasswordError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -524,7 +555,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 මෙය සියලු සත්වයන්ගේ ජිවිතය රෑකිමට ඔබට ලැබෙන වටිනා අවස්ථාවකි.
               </p>
               <p className="font-bold text-slate-800 dark:text-slate-100 pt-1">
-                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ලමුන් හා අසත්‍ය අපදා පලකිරිම් වැළැක්වීමට මුරපදයක් පහතින් යොදා ඇත. ඔබගේ මුරපදය ඇතුළත් කර ආපදාව දැනුම් දෙන්න.
+                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ලමුන් හා අසත්‍ය ආපදා පළකිරීම් වැළැක්වීමට ඔබගේ ලොගින් මුරපදය (Login Password) ඇතුළත් කර ආපදාව තහවුරු කරන්න.
               </p>
             </div>
 
@@ -532,13 +563,13 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Lock className="w-3.5 h-3.5 text-red-500" />
-                  <span>ඔබගේ ගිණුමේ මුරපදය (Password) ඇතුළත් කරන්න:</span>
+                  <span>ඔබගේ ලොගින් මුරපදය (Login Password) ඇතුළත් කරන්න:</span>
                 </label>
                 <input
                   type="password"
                   value={enteredPassword}
                   onChange={(e) => setEnteredPassword(e.target.value)}
-                  placeholder="Password ඇතුළත් කරන්න..."
+                  placeholder="ඔබගේ Login Password එක ඇතුළත් කරන්න..."
                   className="w-full p-3 rounded-xl border-2 border-red-400 dark:border-red-600 bg-white dark:bg-black/50 text-slate-900 dark:text-white font-bold text-sm focus:ring-2 focus:ring-red-500"
                   autoFocus
                   disabled={isSubmitting}

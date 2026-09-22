@@ -37,6 +37,7 @@ import {
   deleteUserAccount,
   subscribeToRedAlerts,
   getUserFromFirestore,
+  getAllMatchingUsersFromFirestore,
   syncUserPasswordInFirestore,
   markRedAlertAsResolved,
   cancelRedAlertByReporter,
@@ -54,7 +55,7 @@ import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
-import { deduplicateUsers, normalizeNIC, getAuthEmail, getAuthEmailCandidates } from './utils/userUtils';
+import { deduplicateUsers } from './utils/userUtils';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -521,9 +522,9 @@ export default function App() {
   const handleLogin = async (userIdInput: string, keyInput: string) => {
     try {
       console.log("--- Login Attempt Started ---");
-      const cleanInput = (userIdInput || "").trim().replace(/\s+/g, '').toLowerCase();
-      const cleanInputUpper = (userIdInput || "").trim().replace(/\s+/g, '').toUpperCase();
-      const submittedPassword = String(keyInput || "").trim();
+      const cleanInput = (userIdInput || "").trim().toLowerCase();
+      const cleanInputUpper = (userIdInput || "").trim().toUpperCase();
+      const submittedPassword = (keyInput || "").trim();
 
       if (cleanInput === 'demo_user' || cleanInput === 'demo') {
         handleUserDemoLogin();
@@ -532,8 +533,8 @@ export default function App() {
 
       // Admin විශේෂ ලොග් වීම
       if (
-        (cleanInputUpper === '970181547V' && submittedPassword === '1691@@Devhas') ||
-        (cleanInput === 'admin' && submittedPassword === 'admin123')
+        (userIdInput.toUpperCase() === '970181547V' && submittedPassword === '1691@@Devhas') ||
+        (userIdInput === 'admin' && submittedPassword === 'admin123')
       ) {
         const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
         setCurrentUser(adminUser);
@@ -558,19 +559,14 @@ export default function App() {
       );
 
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
-      const emailCandidates = getAuthEmailCandidates(cleanInput);
+      const formattedEmail = `${cleanInput}@app.com`;
       let authUser: any = null;
 
-      for (const email of emailCandidates) {
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, email, submittedPassword);
-          if (userCredential?.user) {
-            authUser = userCredential.user;
-            break;
-          }
-        } catch (authError: any) {
-          // Continue to next candidate email
-        }
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
+        authUser = userCredential?.user || null;
+      } catch (authError: any) {
+        console.warn("Firebase Auth Login check notice:", authError?.message || authError);
       }
 
       // Firestore එකෙන් තත්පර 2.5ක timeout එකක් සහිතව පරිශීලකයා ලබා ගැනීම (UI Freeze වීම වැළැක්වීමට)
@@ -633,7 +629,7 @@ export default function App() {
           id: authUser.uid,
           userId: cleanInput.toUpperCase(),
           name: authUser.displayName || cleanInput.toUpperCase(),
-          email: authUser.email || emailCandidates[0],
+          email: authUser.email || formattedEmail,
           nicNumber: cleanInput.toUpperCase(),
           phone: '',
           role: 'user',
@@ -656,11 +652,11 @@ export default function App() {
 
       // AuthUser හරහා ලොග් නොවූයේ නම් (හෝ Auth provider disabled නම්) Firestore / Local දත්ත මගින් මුරපදය පරීක්ෂා කිරීම
       if (!authUser) {
-        const userKey = String(foundUser.key || '').trim();
-        const userPass = String((foundUser as any).password || '').trim();
-        const userTemp = String(foundUser.tempCode || '').trim();
-        const userSec = String(foundUser.securityCode || '').trim();
-        const userTempPw = String((foundUser as any).tempPassword || '').trim();
+        const userKey = (foundUser.key || '').trim();
+        const userPass = ((foundUser as any).password || '').trim();
+        const userTemp = (foundUser.tempCode || '').trim();
+        const userSec = (foundUser.securityCode || '').trim();
+        const userTempPw = ((foundUser as any).tempPassword || '').trim();
 
         const matchingLocalUsers = users.filter(
           (u) =>
@@ -677,17 +673,17 @@ export default function App() {
           (userSec && userSec === submittedPassword) ||
           (userTempPw && userTempPw === submittedPassword) ||
           (localMatchedUser && (
-            (localMatchedUser.key && String(localMatchedUser.key).trim() === submittedPassword) ||
-            ((localMatchedUser as any).password && String((localMatchedUser as any).password).trim() === submittedPassword) ||
-            (localMatchedUser.securityCode && String(localMatchedUser.securityCode).trim() === submittedPassword)
+            (localMatchedUser.key && localMatchedUser.key.trim() === submittedPassword) ||
+            ((localMatchedUser as any).password && (localMatchedUser as any).password.trim() === submittedPassword) ||
+            (localMatchedUser.securityCode && localMatchedUser.securityCode.trim() === submittedPassword)
           )) ||
           matchingLocalUsers.some(
             (u) =>
-              (u.key && String(u.key).trim() === submittedPassword) ||
-              ((u as any).password && String((u as any).password).trim() === submittedPassword) ||
-              (u.tempCode && String(u.tempCode).trim() === submittedPassword) ||
-              (u.securityCode && String(u.securityCode).trim() === submittedPassword) ||
-              ((u as any).tempPassword && String((u as any).tempPassword).trim() === submittedPassword)
+              (u.key && u.key.trim() === submittedPassword) ||
+              ((u as any).password && (u as any).password.trim() === submittedPassword) ||
+              (u.tempCode && u.tempCode.trim() === submittedPassword) ||
+              (u.securityCode && u.securityCode.trim() === submittedPassword) ||
+              ((u as any).tempPassword && (u as any).tempPassword.trim() === submittedPassword)
           );
 
         if (!isPasswordCorrect) {
@@ -818,8 +814,8 @@ export default function App() {
       return;
     }
 
-    const cleanNic = normalizeNIC(newUser.nicNumber || newUser.userId);
-    const formattedEmail = getAuthEmail(cleanNic);
+    const cleanNic = (newUser.nicNumber || newUser.userId || "").trim().toLowerCase();
+    const formattedEmail = `${cleanNic}@app.com`;
 
     try {
       let uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -838,11 +834,10 @@ export default function App() {
       const createdUser: User = {
         ...newUser,
         id: uid,
-        userId: newUser.userId || cleanNic,
-        nicNumber: (newUser.nicNumber || cleanNic),
+        userId: newUser.userId || cleanNic.toUpperCase(),
+        nicNumber: (newUser.nicNumber || cleanNic).toUpperCase(),
         key: rawPassword,
         password: rawPassword,
-        securityCode: rawPassword,
         isPasswordChanged: true,
         isTemporaryPassword: false,
         ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
@@ -857,7 +852,6 @@ export default function App() {
         return next;
       });
       await saveUserToFirestore(createdUser);
-      await syncUserPasswordInFirestore(createdUser, rawPassword);
       setCurrentUser(null);
       setViewMode('login');
       alert('ලියාපදිංචි වීම සාර්ථකයි! දැන් ඔබගේ NIC අංකය සහ මුරපදය යොදා ලොග් වෙන්න.');
@@ -956,18 +950,70 @@ export default function App() {
     }
   };
 
-  // ✅ පරිශීලක දත්ත Firestore හි යාවත්කාලීන කිරීම (Safe user data persistence)
+  // ✅ පරිශීලක දත්ත Firestore හා Auth හි යාවත්කාලීන කිරීම (Safe user data & password persistence)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
-      const { key, password, ...safeUserData } = updatedUser as any;
-      await updateUserInFirestore(updatedUser.id, safeUserData);
-      
-      setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-      
+      // 1. Immediately update local state & localStorage
+      setUsers((prev) => {
+        const nextUsers = deduplicateUsers(
+          (prev || []).map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u))
+        );
+        try {
+          localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
+        } catch {}
+        return nextUsers;
+      });
+
       if (currentUser && currentUser.id === updatedUser.id) {
         setCurrentUser(updatedUser);
+        try {
+          localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+        } catch {}
       }
-      
+
+      // 2. If password/securityCode was changed in UserSettingsModal, sync to Firestore and Auth
+      const activePassword = (updatedUser.key || (updatedUser as any).password || updatedUser.securityCode || '').trim();
+      if (activePassword) {
+        await syncUserPasswordInFirestore(updatedUser, activePassword);
+
+        // Sync to Firebase Auth in background
+        (async () => {
+          try {
+            const activeAuth = auth.currentUser;
+            if (activeAuth) {
+              await updatePassword(activeAuth, activePassword);
+            } else {
+              const cleanNic = (updatedUser.nicNumber || updatedUser.userId || '').trim().toLowerCase();
+              if (cleanNic) {
+                const formattedEmail = `${cleanNic}@app.com`;
+                try {
+                  const userCred = await signInWithEmailAndPassword(auth, formattedEmail, activePassword);
+                  if (userCred.user) {
+                    await updatePassword(userCred.user, activePassword);
+                  }
+                } catch {}
+              }
+            }
+          } catch (pwErr) {
+            console.warn("Auth password update notice:", pwErr);
+          }
+        })();
+
+        // Sync to backend server
+        fetch('/api/user/update-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: updatedUser.id,
+            nicNumber: updatedUser.nicNumber || updatedUser.userId,
+            newPassword: activePassword,
+          }),
+        }).catch((e) => console.warn('Server password update notify error:', e));
+      }
+
+      // 3. Save profile document to Firestore
+      await updateUserInFirestore(updatedUser.id, updatedUser);
+
       console.log("✅ පරිශීලක දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
     } catch (err) {
       console.error("⛔ Save වීමේ දෝෂයක්:", err);
@@ -985,9 +1031,8 @@ export default function App() {
     }
 
     try {
-      const cleanNic = normalizeNIC(currentUser.nicNumber || currentUser.userId);
-      const formattedEmail = getAuthEmail(cleanNic);
-      const emailCandidates = getAuthEmailCandidates(cleanNic);
+      const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
+      const formattedEmail = `${cleanNic}@app.com`;
 
       const updatedUser: User = {
         ...currentUser,
@@ -1010,8 +1055,8 @@ export default function App() {
           (prev || []).map((u) => {
             const isMatch =
               u.id === updatedUser.id ||
-              (u.nicNumber && normalizeNIC(u.nicNumber) === cleanNic) ||
-              (u.userId && normalizeNIC(u.userId) === cleanNic) ||
+              (u.nicNumber && u.nicNumber.toLowerCase() === (updatedUser.nicNumber || '').toLowerCase()) ||
+              (u.userId && u.userId.toLowerCase() === (updatedUser.userId || '').toLowerCase()) ||
               (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
             return isMatch ? { ...u, ...updatedUser } : u;
           })
@@ -1036,20 +1081,19 @@ export default function App() {
             await updatePassword(activeUser, cleanPass);
           } else {
             const tempToTry = tempPassword || currentUser.key || currentUser.securityCode || (currentUser as any).tempPassword;
-            let updated = false;
             if (tempToTry) {
-              for (const email of emailCandidates) {
+              try {
+                const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempToTry);
+                if (userCred.user) {
+                  await updatePassword(userCred.user, cleanPass);
+                }
+              } catch {
+                // If sign in with temp failed, try creating user or updating with new password
                 try {
-                  const userCred = await signInWithEmailAndPassword(auth, email, tempToTry);
-                  if (userCred.user) {
-                    await updatePassword(userCred.user, cleanPass);
-                    updated = true;
-                    break;
-                  }
+                  await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
                 } catch {}
               }
-            }
-            if (!updated) {
+            } else {
               try {
                 await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
               } catch {}
@@ -1082,8 +1126,7 @@ export default function App() {
   // ✅ 4.2. ඇඩ්මින් පැනල් එකෙන් Password Reset Link එකක් යැවීම
   const handleResetUserPasswordByAdmin = async (nicNumber: string) => {
     try {
-      const cleanNic = normalizeNIC(nicNumber);
-      const formattedEmail = getAuthEmail(cleanNic);
+      const formattedEmail = `${nicNumber.trim().toLowerCase()}@app.com`;
       await sendPasswordResetEmail(auth, formattedEmail);
       alert(`මුරපදය නැවත සැකසීමේ උපදෙස් ${formattedEmail} වෙත යවන ලදී.`);
     } catch (error: any) {
@@ -1092,49 +1135,93 @@ export default function App() {
     }
   };
 
-  // ✅ 3. Red Alert පලකිරීමේදී මුරපදය පරීක්ෂා කිරීමේ ෆන්ක්ෂන් එක
+  // ✅ 3. Red Alert පලකිරීමේදී පරිශීලකයාගේ ලොගින් මුරපදය පරීක්ෂා කිරීමේ ෆන්ක්ෂන් එක
   const handleVerifyPasswordBeforeRedAlert = async (passwordInput: string): Promise<boolean> => {
-    const cleanSubmitted = (passwordInput || '').trim();
-    if (!cleanSubmitted) return false;
+    const entered = (passwordInput || '').trim();
+    if (!entered) return false;
 
-    // Direct match against active current user profile keys
+    // 1. First check against currentUser in session state
     if (currentUser) {
-      const userKey = String(currentUser.key || '').trim();
-      const userPass = String((currentUser as any).password || '').trim();
-      const userSec = String(currentUser.securityCode || '').trim();
-      const userTemp = String(currentUser.tempCode || '').trim();
-      const userTempPw = String((currentUser as any).tempPassword || '').trim();
+      const userKey = (currentUser.key || '').trim();
+      const userPass = ((currentUser as any).password || '').trim();
+      const userSec = (currentUser.securityCode || '').trim();
+      const userTemp = (currentUser.tempCode || (currentUser as any).tempPassword || '').trim();
 
       if (
-        (userKey && userKey === cleanSubmitted) ||
-        (userPass && userPass === cleanSubmitted) ||
-        (userSec && userSec === cleanSubmitted) ||
-        (userTemp && userTemp === cleanSubmitted) ||
-        (userTempPw && userTempPw === cleanSubmitted)
+        (userKey && userKey === entered) ||
+        (userPass && userPass === entered) ||
+        (userSec && userSec === entered) ||
+        (userTemp && userTemp === entered)
       ) {
         return true;
       }
     }
 
+    // 2. Check against users list and localStorage
+    try {
+      const savedUsersStr = typeof window !== 'undefined' ? localStorage.getItem('sahaya_users') : null;
+      const allKnownUsers: User[] = [
+        ...users,
+        ...(savedUsersStr ? JSON.parse(savedUsersStr || '[]') : []),
+      ];
+
+      if (currentUser) {
+        const matchInUsers = allKnownUsers.find(
+          (u) =>
+            u.id === currentUser.id ||
+            (u.nicNumber && u.nicNumber.toLowerCase() === (currentUser.nicNumber || '').toLowerCase()) ||
+            (u.userId && u.userId.toLowerCase() === (currentUser.userId || '').toLowerCase())
+        );
+        if (matchInUsers) {
+          const uKey = (matchInUsers.key || '').trim();
+          const uPass = ((matchInUsers as any).password || '').trim();
+          const uSec = (matchInUsers.securityCode || '').trim();
+          const uTemp = (matchInUsers.tempCode || (matchInUsers as any).tempPassword || '').trim();
+          if (
+            (uKey && uKey === entered) ||
+            (uPass && uPass === entered) ||
+            (uSec && uSec === entered) ||
+            (uTemp && uTemp === entered)
+          ) {
+            return true;
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Try Firebase Auth (re-authentication or sign-in)
     const currentUserAuth = auth.currentUser;
-    if (currentUserAuth?.email) {
+    if (currentUserAuth && currentUserAuth.email) {
       try {
-        const credential = EmailAuthProvider.credential(currentUserAuth.email, cleanSubmitted);
+        const credential = EmailAuthProvider.credential(currentUserAuth.email, entered);
         await reauthenticateWithCredential(currentUserAuth, credential);
         return true;
-      } catch (error) {
-        // Fall through to try candidate emails
+      } catch (authErr) {
+        // Continue to Firestore check
+      }
+    } else if (currentUser && (currentUser.nicNumber || currentUser.userId)) {
+      try {
+        const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
+        const formattedEmail = `${cleanNic}@app.com`;
+        await signInWithEmailAndPassword(auth, formattedEmail, entered);
+        return true;
+      } catch (authErr) {
+        // Continue to Firestore check
       }
     }
 
-    if (currentUser && (currentUser.nicNumber || currentUser.userId)) {
-      const candidates = getAuthEmailCandidates(currentUser.nicNumber || currentUser.userId);
-      for (const email of candidates) {
-        try {
-          await signInWithEmailAndPassword(auth, email, cleanSubmitted);
-          return true;
-        } catch {}
-      }
+    // 4. Try Firestore user lookup
+    if (currentUser && (currentUser.nicNumber || currentUser.userId || currentUser.id)) {
+      try {
+        const identifier = currentUser.nicNumber || currentUser.userId || currentUser.id;
+        const dbUser = await getUserFromFirestore(identifier);
+        if (dbUser) {
+          const dbKey = (dbUser.key || (dbUser as any).password || dbUser.securityCode || dbUser.tempCode || '').trim();
+          if (dbKey && dbKey === entered) {
+            return true;
+          }
+        }
+      } catch (e) {}
     }
 
     return false;
