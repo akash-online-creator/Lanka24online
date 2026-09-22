@@ -288,7 +288,7 @@ export const HelperBillModal: React.FC<HelperBillModalProps> = ({
 
             <div className="space-y-2.5">
               {allBillItems.map((item, index) => (
-                <div key={item.id} className="space-y-1.5">
+                <div key={`bill_item_${item.id || 'b'}_${index}`} className="space-y-1.5">
                   <div 
                     className={`p-3 rounded-2xl border flex items-center justify-between gap-2.5 transition-all ${
                       item.isTravelFee 

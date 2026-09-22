@@ -496,11 +496,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 තෝරාගත් ලේ වර්ගය හෝ දිස්ත්‍රික්කය සඳහා දැනට සක්‍රිය ලේ ඉල්ලීම් නොමැත.
               </div>
             ) : (
-              filteredBloodRequests.map((req) => {
+              filteredBloodRequests.map((req, rIdx) => {
                 const isSupported = supportedBloodIds.includes(req.id);
                 return (
                   <div
-                    key={req.id}
+                    key={`blood_req_${req.id || 'r'}_${rIdx}`}
                     className="p-4 bg-white dark:bg-[#071d12] border-2 border-rose-200 dark:border-rose-950 rounded-2xl shadow-xs hover:border-rose-400 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="flex items-start gap-3">
@@ -604,9 +604,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 තෝරාගත් ලේ වර්ගය සඳහා ලියාපදිංචි පරිත්‍යාගශීලීන් නොමැත. ඔබත් ස්වේච්ඡා පරිත්‍යාගශීලියෙකු ලෙස එක්වන්න!
               </div>
             ) : (
-              filteredDonors.map((donor) => (
+              filteredDonors.map((donor, dIdx) => (
                 <div
-                  key={donor.id}
+                  key={`blood_donor_${donor.id || 'd'}_${dIdx}`}
                   className="p-3.5 bg-white dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/60 rounded-2xl shadow-xs flex items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3">
@@ -696,11 +696,11 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 </button>
               </div>
             ) : (
-              filteredDisasterItems.map((item) => {
+              filteredDisasterItems.map((item, itmIdx) => {
                 const isSupported = supportedDisasterIds.includes(item.id);
                 return (
                   <div
-                    key={item.id}
+                    key={`disaster_item_${item.id || 'itm'}_${itmIdx}`}
                     className="p-4 sm:p-5 bg-white dark:bg-[#071d12] border-2 border-emerald-200/80 dark:border-emerald-900/80 hover:border-emerald-400 rounded-2xl shadow-xs transition-all space-y-3"
                   >
                     {/* Card Top: Badges & Title */}

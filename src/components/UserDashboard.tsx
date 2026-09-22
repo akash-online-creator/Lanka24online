@@ -38,6 +38,7 @@ import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
 import { filterNonDeletedPosts, addDeletedPostId } from '../utils/deletedPostsManager';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
+import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { UserWalletModal } from './UserWalletModal';
@@ -1761,9 +1762,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           registeredUsers={(() => {
             try {
               const saved = localStorage.getItem('sahaya_users');
-              return saved ? JSON.parse(saved) : initialUsers;
+              return saved ? deduplicateUsers(JSON.parse(saved)) : deduplicateUsers(initialUsers);
             } catch {
-              return initialUsers;
+              return deduplicateUsers(initialUsers);
             }
           })()}
           redAlerts={redAlerts}
@@ -1896,11 +1897,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {services.map((srv) => {
+              {services.map((srv, srvIdx) => {
                 const Icon = srv.icon;
                 return (
                   <div
-                    key={srv.id}
+                    key={`srv_${srv.id}_${srvIdx}`}
                     onClick={() => {
                       if (srv.id === 'professional_services') {
                         setBoardCategoryFilter('professional_services');

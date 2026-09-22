@@ -371,9 +371,9 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                   මෙම සේවාව සඳහා තවම අදහස් පළ කර නොමැත. පළමු අදහස ඔබ එක් කරන්න!
                 </p>
               ) : (
-                reviewsList.map((rev) => (
+                reviewsList.map((rev, rIdx) => (
                   <div
-                    key={rev.id}
+                    key={`ps_rev_${rev.id || 'r'}_${rIdx}`}
                     className="p-3.5 rounded-2xl bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#173222] shadow-sm space-y-1.5"
                   >
                     <div className="flex items-center justify-between">

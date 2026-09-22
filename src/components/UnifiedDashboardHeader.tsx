@@ -120,6 +120,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
   );
   const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   // Synchronize manual lock state on changes
   useEffect(() => {
@@ -254,14 +255,14 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   return (
     <div className="relative z-20 mb-3 sm:mb-4 space-y-2">
       {/* 
-        LAYER 1: Header Bar (App Logo + Central Quick Controls + Profile Summary)
+        LAYER 1: Header Bar (App Logo + Central Quick Utilities + Emergency Red Alert & User Account / Logout Zone)
       */}
       <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md backdrop-blur-xl transition-all duration-300">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
-          {/* Top Bar on Mobile: Logo on Left, Profile Avatar on Right */}
-          <div className="flex items-center justify-between gap-2">
-            {/* 1. App Logo & Brand (LEFT) */}
+          {/* Top Bar on Mobile / Left on Desktop: App Brand + Language Switcher */}
+          <div className="flex items-center justify-between gap-3 shrink-0">
+            {/* 1. App Logo & Brand */}
             <div 
               onClick={() => {
                 if (onNavigate) onNavigate('dashboard');
@@ -281,45 +282,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </div>
             </div>
 
-            {/* Mobile-Only Profile Avatar Trigger */}
-            <div 
-              onClick={onOpenSettings}
-              className={`flex sm:hidden items-center gap-2 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
-              title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
-            >
-              <div className="text-right min-w-0">
-                <h2 className="font-extrabold text-[11px] text-slate-900 dark:text-white truncate max-w-[90px]">
-                  {user.name}
-                </h2>
-                <p className="text-[9px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                  ID: {numericId || user.userId}
-                </p>
-              </div>
-
-              <div className="relative shrink-0">
-                <div className="w-8 h-8 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs">
-                  {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
-                    <img 
-                      src={user.facePhotoUrl || user.photoUrl} 
-                      alt={user.name || 'User'} 
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover" 
-                    />
-                  ) : (
-                    (user?.name || 'U').charAt(0).toUpperCase()
-                  )}
-                </div>
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Controls & Actions (Language, Theme, Help, Admin, Logout) */}
-          <div className="flex items-center justify-between sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 pt-1 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-[#142e20]">
             {/* Language Selector */}
-            <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-[#1c402b]">
+            <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-[#1c402b] shrink-0">
               {(['si', 'en', 'ta'] as Language[]).map((langKey) => (
                 <button
                   key={langKey}
@@ -335,182 +299,194 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 </button>
               ))}
             </div>
+          </div>
 
-            <div className="flex items-center gap-1 sm:gap-1.5">
-              {/* 🚨 රතු එළිය (Red Alert) Fast-Access Button */}
-              {onOpenRedAlert && (
-                <button
-                  type="button"
-                  onClick={onOpenRedAlert}
-                  className="relative flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-xs shadow-[0_0_15px_rgba(239,68,68,0.5)] hover:shadow-[0_0_20px_rgba(239,68,68,0.8)] hover:scale-105 active:scale-95 transition-all cursor-pointer border border-red-400 shrink-0"
-                  title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
-                >
-                  <span className="text-sm animate-pulse">🚨</span>
-                  <span className="font-extrabold tracking-wide">රතු එළිය</span>
-                  {activeRedAlertsCount > 0 && (
-                    <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black font-mono shadow-xs">
-                      {activeRedAlertsCount}
-                    </span>
-                  )}
-                </button>
-              )}
-
-
-
-              {/* Live Notifications Bell */}
-              {onOpenNotifications && (
-                <button
-                  type="button"
-                  onClick={onOpenNotifications}
-                  className="relative p-1.5 sm:px-2 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="සජීවී දැනුම්දීම් (Live Notifications)"
-                >
-                  <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
-                  {unreadNotifCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs animate-pulse">
-                      {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {/* Message Inbox Button (පණිවිඩ පෙට්ටිය & සංවාද) */}
-              {onOpenInbox && (
-                <button
-                  type="button"
-                  onClick={onOpenInbox}
-                  className="relative p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 flex items-center gap-1 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                  title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ සහ සංවාද (Messages)'}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
-                  <span className="hidden sm:inline text-[11px]">
-                    {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
-                  </span>
-                  {typeof inboxCount === 'number' && inboxCount > 0 && (
-                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs">
-                      {inboxCount > 9 ? '9+' : inboxCount}
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {/* AI Assistant & Auto-Translator Trigger */}
-              {onOpenAssistant && (
-                <button
-                  type="button"
-                  onClick={onOpenAssistant}
-                  className="relative p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                  title="සහය මිතුරා & පරිවර්තකය (AI Assistant & Auto-Translator)"
-                >
-                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 fill-amber-500 animate-spin-slow" />
-                  <span className="hidden lg:inline text-[11px]">
-                    {language === 'en' ? 'AI Assistant' : language === 'ta' ? 'AI உதவியாளர்' : 'සහය මිතුරා'}
-                  </span>
-                </button>
-              )}
-
-              {/* Dark / Light Theme Toggle */}
+          {/* Center Utilities Group: Clean interactive quick tools */}
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
+            {/* Live Notifications Bell */}
+            {onOpenNotifications && (
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="p-1.5 sm:px-2 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="තේමාව මාරු කරන්න (Light / Dark Mode)"
+                onClick={onOpenNotifications}
+                className="relative p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                title="සජීවී දැනුම්දීම් (Live Notifications)"
               >
-                {theme === 'dark' ? (
-                  <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 fill-amber-400" />
-                ) : (
-                  <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700" />
+                <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-4.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs animate-pulse">
+                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                  </span>
                 )}
               </button>
+            )}
 
-              {/* App Help ("ඇප් සහය") */}
-              {onNavigateToIssues && (
-                <button
-                  type="button"
-                  onClick={onNavigateToIssues}
-                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
-                  title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-                >
-                  <HelpCircle className="w-3.5 h-3.5 text-[#007a4b] dark:text-[#00c880]" />
-                  <span className="hidden sm:inline font-bold">
-                    {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
+            {/* Message Inbox Button */}
+            {onOpenInbox && (
+              <button
+                type="button"
+                onClick={onOpenInbox}
+                className="relative p-2 sm:px-3 sm:py-2 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ සහ සංවාද (Messages)'}
+              >
+                <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline text-xs font-bold">
+                  {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
+                </span>
+                {typeof inboxCount === 'number' && inboxCount > 0 && (
+                  <span className="min-w-[17px] h-4.5 px-1 rounded-full bg-blue-600 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs">
+                    {inboxCount > 9 ? '9+' : inboxCount}
                   </span>
-                </button>
-              )}
+                )}
+              </button>
+            )}
 
-              {/* Admin Switcher (If Admin user) */}
-              {user.role === 'admin' && setActiveRoleView && onNavigate && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
-                    setActiveRoleView(nextRole);
-                    onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
-                  }}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
-                    activeRoleView === 'admin'
-                      ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50'
-                      : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200'
-                  }`}
-                >
-                  <Shield className="w-3.5 h-3.5 text-amber-500" />
-                  <span className="text-[11px]">{activeRoleView === 'admin' ? 'Admin' : 'Admin'}</span>
-                </button>
-              )}
+            {/* AI Assistant & Auto-Translator */}
+            {onOpenAssistant && (
+              <button
+                type="button"
+                onClick={onOpenAssistant}
+                className="relative p-2 sm:px-3 sm:py-2 rounded-xl bg-white hover:bg-emerald-50 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 border border-emerald-300/80 dark:border-emerald-800/80 text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title="සහය මිතුරා & පරිවර්තකය (AI Assistant & Auto-Translator)"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500 animate-spin-slow" />
+                <span className="hidden sm:inline text-xs font-bold">
+                  {language === 'en' ? 'AI Assistant' : language === 'ta' ? 'AI உதவியாளர்' : 'සහය මිතුරා'}
+                </span>
+              </button>
+            )}
 
-              {/* Logout Button */}
+            {/* Dark / Light Theme Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+              title="තේමාව මාරු කරන්න (Light / Dark Mode)"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400 fill-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-700" />
+              )}
+            </button>
+
+            {/* App Help ("ඇප් සහය") */}
+            {onNavigateToIssues && (
+              <button
+                type="button"
+                onClick={onNavigateToIssues}
+                className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-black bg-white hover:bg-emerald-50 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
+                title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
+              >
+                <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
+                <span className="hidden sm:inline font-bold text-xs">
+                  {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
+                </span>
+              </button>
+            )}
+
+            {/* Admin Switcher (If Admin user) */}
+            {user.role === 'admin' && setActiveRoleView && onNavigate && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
+                  setActiveRoleView(nextRole);
+                  onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
+                }}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
+                  activeRoleView === 'admin'
+                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50'
+                    : 'bg-white dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-[11px]">{activeRoleView === 'admin' ? 'Admin' : 'Admin'}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Right Action & Account Zone: (1) 🚨 Red Alert Button + (2) Profile + (3) 🚪 Logout Button */}
+          <div className="flex items-center justify-between lg:justify-end gap-2.5 sm:gap-3 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
+            
+            {/* 🚨 රතු එළිය (Red Alert) Dedicated Standalone Emergency Action */}
+            {onOpenRedAlert && (
+              <button
+                type="button"
+                onClick={onOpenRedAlert}
+                className="relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs sm:text-sm shadow-[0_0_18px_rgba(239,68,68,0.5)] hover:shadow-[0_0_24px_rgba(239,68,68,0.8)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-red-300/80 shrink-0"
+                title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
+              >
+                <span className="text-base animate-pulse">🚨</span>
+                <span className="font-black tracking-wide">රතු එළිය</span>
+                {activeRedAlertsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-white text-red-700 text-[11px] font-black font-mono shadow-xs">
+                    {activeRedAlertsCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Subtle Divider between Emergency & Account */}
+            <div className="hidden sm:block h-8 w-px bg-slate-200 dark:bg-[#183926] shrink-0" />
+
+            {/* User Profile & Logout Group */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Profile Card Trigger */}
+              <div 
+                onClick={onOpenSettings}
+                className={`flex items-center gap-2 p-1 rounded-xl transition-all ${
+                  onOpenSettings ? 'cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15' : ''
+                }`}
+                title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
+              >
+                <div className="text-right min-w-0">
+                  <div className="flex items-center justify-end gap-1">
+                    <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[110px] sm:max-w-[140px]">
+                      {user.name}
+                    </h2>
+                    <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
+                      <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
+                      <span>VERIFIED</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
+                    ID: {numericId || user.userId}
+                  </p>
+                </div>
+
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-sm">
+                    {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                      <img 
+                        src={user.facePhotoUrl || user.photoUrl} 
+                        alt={user.name || 'User'} 
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      (user?.name || 'U').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
+                </div>
+              </div>
+
+              {/* 🚪 Safe Dedicated Logout Button */}
               {onLogout && (
                 <button
                   type="button"
-                  onClick={onLogout}
-                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+                  onClick={() => setIsLogoutConfirmOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-900/60 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 hover:scale-105 shrink-0"
                   title={getLangText('පද්ධතියෙන් ඉවත් වන්න (Logout)', 'Log out of system', 'கணக்கிலிருந்து வெளியேறு')}
                 >
-                  <LogOut className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  <span className="hidden sm:inline">{getLangText('ඉවත් වන්න', 'Log Out', 'வெளியேறு')}</span>
+                  <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Log Out', 'வெளியேறு')}</span>
                 </button>
               )}
             </div>
-          </div>
 
-          {/* 3. Desktop User Profile Photo & Info (RIGHT) */}
-          <div 
-            onClick={onOpenSettings}
-            className={`hidden sm:flex items-center gap-2 sm:gap-2.5 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1 rounded-xl hover:bg-emerald-500/10' : ''}`}
-            title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
-          >
-            <div className="text-right min-w-0">
-              <div className="flex items-center justify-end gap-1">
-                <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[130px]">
-                  {user.name}
-                </h2>
-                <span className="text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider flex items-center gap-0.5 shrink-0">
-                  <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
-                  <span>VERIFIED</span>
-                </span>
-              </div>
-              <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                ID: {numericId || user.userId}
-              </p>
-            </div>
-
-            <div className="relative shrink-0">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-sm">
-                {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
-                  <img 
-                    src={user.facePhotoUrl || user.photoUrl} 
-                    alt={user.name || 'User'} 
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover" 
-                  />
-                ) : (
-                  (user?.name || 'U').charAt(0).toUpperCase()
-                )}
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
-            </div>
           </div>
         </div>
       </div>
@@ -652,6 +628,56 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         onOpenMapPicker={() => setIsMapModalOpen(true)}
         language={language}
       />
+
+      {/* 🚪 Safe Logout Confirmation Modal */}
+      {isLogoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#07160e] border border-slate-200 dark:border-[#163625] rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 shadow-md">
+                <LogOut className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  {getLangText('පද්ධතියෙන් ඉවත් වීම', 'Log Out of Account', 'கணக்கிலிருந்து வெளியேறு')}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  {getLangText('ඔබට ඉවත් වීමට අවශ්‍ය බව තහවුරු කරන්න', 'Please confirm you want to log out', 'வெளியேற விரும்புகிறீர்களா?')}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              {getLangText(
+                'ඔබ සහය සේවා පද්ධතියෙන් ඉවත් වීමට සූදානම් වේ. නැවත පිවිසීමට ඔබගේ ජාතික හැඳුනුම්පත් අංකය සහ මුරපදය අවශ්‍ය වේ.',
+                'You are about to log out of Sahaya Sewa. You will need your NIC and password to log in again.',
+                'நீங்கள் சகாய சேவா கணக்கிலிருந்து வெளியேற உள்ளீர்கள்.'
+              )}
+            </p>
+
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsLogoutConfirmOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs transition-all cursor-pointer"
+              >
+                {getLangText('අවලංගු කරන්න', 'Cancel', 'ரத்துசெய்')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogoutConfirmOpen(false);
+                  if (onLogout) onLogout();
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{getLangText('ඔව්, ඉවත් වන්න', 'Yes, Log Out', 'ஆம், வெளியேறு')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

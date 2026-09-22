@@ -685,9 +685,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   යැවීමට සූදානම් ආරාධනා (Pending Requests):
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {stagedMembers.map((sm) => (
+                  {stagedMembers.map((sm, idx) => (
                     <div 
-                      key={sm.user.id || sm.user.userId}
+                      key={`staged_${sm.user.id || sm.user.userId}_${idx}`}
                       className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-zinc-700 shadow-xs"
                     >
                       <div className="flex items-center gap-2 min-w-0">

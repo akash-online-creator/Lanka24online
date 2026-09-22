@@ -8,6 +8,7 @@ import { compressImageFile } from '../utils/imageCompressor';
 import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, getUserFromFirestore } from '../lib/firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
+import { getAuthEmail, normalizeNIC } from '../utils/userUtils';
 import { 
   UserPlus, 
   Upload, 
@@ -219,8 +220,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setLoading(true);
 
     try {
-      const cleanNic = nicNumber.trim().toUpperCase();
-      const cleanNicLower = nicNumber.trim().toLowerCase();
+      const cleanNic = normalizeNIC(nicNumber);
+      const cleanNicLower = cleanNic.toLowerCase();
 
       // 2. Prevent duplicate registrations with the same NIC Number
       // A. Local storage duplicate check
@@ -230,8 +231,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           const localUsers: User[] = JSON.parse(savedUsersRaw);
           const isDuplicate = localUsers.some(
             (u) =>
-              (u.nicNumber && u.nicNumber.trim().toUpperCase() === cleanNic) ||
-              (u.userId && u.userId.trim().toUpperCase() === cleanNic)
+              (u.nicNumber && normalizeNIC(u.nicNumber) === cleanNic) ||
+              (u.userId && normalizeNIC(u.userId) === cleanNic)
           );
           if (isDuplicate) {
             setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
@@ -255,8 +256,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         console.warn('Firestore duplicate check error:', err);
       }
 
-      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@sahayaseva.com)
-      const userAuthEmail = `${cleanNicLower}@sahayaseva.com`;
+      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@app.com)
+      const userAuthEmail = getAuthEmail(cleanNic);
 
       // 3. Firebase Auth හි ගිණුම සෑදීම (Gracefully attempt createUserWithEmailAndPassword)
       try {
@@ -264,9 +265,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       } catch (authErr: any) {
         console.warn('Firebase Auth creation notice (continuing with Firestore account):', authErr?.message || authErr);
         if (authErr?.code === 'auth/email-already-in-use') {
-          setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.');
-          setLoading(false);
-          return;
+          // Account already created in auth, allow proceeding to save profile in Firestore
         }
       }
 

@@ -474,9 +474,9 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
               { id: 'disaster', label: '🌊 ආපදා (117)' },
               { id: 'helpline', label: '🛡️ උපකාරක සේවා' },
               { id: 'utilities', label: '⚡ ජල/විදුලි' },
-            ].map((cat) => (
+            ].map((cat, cIdx) => (
               <button
-                key={cat.id}
+                key={`emg_cat_${cat.id}_${cIdx}`}
                 type="button"
                 onClick={() => setSelectedCategory(cat.id as FilterCategory)}
                 className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all text-xs cursor-pointer ${
@@ -530,13 +530,13 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
               </button>
             </div>
           ) : (
-            filteredContacts.map((contact) => {
+            filteredContacts.map((contact, cIdx) => {
               const hasReportedByMe = currentUser && contact.reportedInactiveUserIds?.includes(currentUser.id);
               const reportCount = contact.reportedInactiveCount || (contact.reportedInactiveUserIds?.length || 0);
 
               return (
                 <div
-                  key={contact.id}
+                  key={`emg_contact_${contact.id || 'c'}_${cIdx}`}
                   className="p-3.5 sm:p-4 bg-white dark:bg-[#092217] border border-emerald-200/80 dark:border-emerald-900/60 rounded-2xl shadow-xs hover:border-emerald-400 transition-all flex flex-col gap-2.5"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -904,9 +904,9 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
                     { id: 'වැරදි ආයතනයක් / වෙනත් පුද්ගලයෙකුට අයත් වේ', label: '🚫 වැරදි ආයතනයක් / වෙනත් පුද්ගලයෙකුට අයත් වේ' },
                     { id: 'ඇමතුම්වලට කිසිදු ප්‍රතිචාරයක් නොදක්වයි (No Response)', label: '🔇 ඇමතුම්වලට කිසිදු ප්‍රතිචාරයක් නොදක්වයි' },
                     { id: 'other', label: '✍️ වෙනත් හේතුවක් (Other Reason)' },
-                  ].map((r) => (
+                  ].map((r, rIdx) => (
                     <label
-                      key={r.id}
+                      key={`rep_reason_${r.id}_${rIdx}`}
                       className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer font-medium ${
                         reportReason === r.id
                           ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-900 dark:text-rose-200'

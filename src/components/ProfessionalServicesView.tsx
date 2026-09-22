@@ -219,13 +219,13 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
 
           {/* Main 9 Categories Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-2.5">
-            {professionalServiceCategories.map((cat) => {
+            {professionalServiceCategories.map((cat, cIdx) => {
               const isSelected = selectedCategoryId === cat.category_id;
               const matchingCount = professionalServices.filter((s) => s.categoryId === cat.category_id).length;
 
               return (
                 <button
-                  key={cat.category_id}
+                  key={`pro_cat_${cat.category_id}_${cIdx}`}
                   type="button"
                   onClick={() => {
                     if (selectedCategoryId === cat.category_id) {
@@ -263,11 +263,11 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                 {activeCategoryObj.category_icon} {activeCategoryObj.category_name} යටතේ Tags:
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {activeCategoryObj.sub_categories.map((sub) => {
+                {activeCategoryObj.sub_categories.map((sub, sIdx) => {
                   const isSubSelected = selectedSubCategoryName === sub.name;
                   return (
                     <button
-                      key={sub.name}
+                      key={`pro_sub_${sub.name}_${sIdx}`}
                       type="button"
                       onClick={() => {
                         setSelectedSubCategoryName(isSubSelected ? null : sub.name);
@@ -335,7 +335,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredServices.map((service) => {
+            {filteredServices.map((service, sIdx) => {
               const reviewsList = service.reviews || [];
               const avg = reviewsList.length > 0
                 ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsList.length).toFixed(1)
@@ -344,7 +344,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
               return (
                 /* Requirement 03: Profile Card with Avatar, Name, Profession */
                 <div
-                  key={service.id}
+                  key={`pro_srv_${service.id || 'srv'}_${sIdx}`}
                   onClick={() => setSelectedServiceForDetail(service)}
                   className="group bg-white dark:bg-[#0c1811] hover:bg-slate-50/80 dark:hover:bg-[#112318] border border-slate-200/90 dark:border-[#173222] hover:border-emerald-500/50 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between active:scale-[0.99]"
                 >

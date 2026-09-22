@@ -385,8 +385,8 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                       onChange={(e) => handleCategoryChange(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-[#112318] border border-slate-300 dark:border-[#1e3e2b] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     >
-                      {professionalServiceCategories.map((cat) => (
-                        <option key={cat.category_id} value={cat.category_id}>
+                      {professionalServiceCategories.map((cat, cIdx) => (
+                        <option key={`reg_cat_${cat.category_id}_${cIdx}`} value={cat.category_id}>
                           {cat.category_icon} {cat.category_name}
                         </option>
                       ))}
@@ -414,11 +414,11 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     {currentCategory.category_name} යටතේ උප කාණ්ඩය:
                   </span>
                   <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 bg-slate-50 dark:bg-[#0e2116] border border-slate-200 dark:border-[#173222] rounded-2xl">
-                    {currentCategory.sub_categories.map((sub) => {
+                    {currentCategory.sub_categories.map((sub, sIdx) => {
                       const isSelected = selectedSubCategoryName === sub.name;
                       return (
                         <button
-                          key={sub.name}
+                          key={`reg_sub_${sub.name}_${sIdx}`}
                           type="button"
                           onClick={() => handleSubCategorySelect(sub.name, sub.icon)}
                           className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
@@ -465,9 +465,9 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     { id: 'online', label: 'Online හරහා (Remote / Online)' },
                     { id: 'customer_must_come', label: 'ඔබ පැමිණිය යුතුයි (Client Visit)' },
                     { id: 'other', label: 'වෙනත් ආකාරයකින් (Other)' },
-                  ].map((method) => (
+                  ].map((method, mIdx) => (
                     <label
-                      key={method.id}
+                      key={`deliv_method_${method.id}_${mIdx}`}
                       className={`flex items-center gap-2 p-2.5 rounded-2xl border cursor-pointer transition-all ${
                         deliveryMethod === method.id
                           ? 'bg-emerald-50 dark:bg-[#122e1e] border-emerald-500 text-emerald-800 dark:text-emerald-300 font-bold shadow-sm'

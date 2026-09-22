@@ -203,8 +203,8 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                  {shop.inventory.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                  {shop.inventory.map((inv, invIdx) => (
+                    <tr key={`shop_inv_${inv.id || 'i'}_${invIdx}`} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
                       <td className="p-2.5 font-bold text-slate-900 dark:text-zinc-100">
                         {inv.name}
                       </td>

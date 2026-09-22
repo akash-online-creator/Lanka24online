@@ -210,11 +210,11 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
 
               {matchingTags.length > 0 ? (
                 <div className="divide-y divide-emerald-100 dark:divide-emerald-900/40">
-                  {matchingTags.map((tag) => {
+                  {matchingTags.map((tag, tIdx) => {
                     const TagIconComp = getTagIconComponent(tag.tagName, tag.category);
                     return (
                       <button
-                        key={tag.id}
+                        key={`search_tag_${tag.id || 't'}_${tIdx}`}
                         type="button"
                         onClick={() => handleSelectTag(tag)}
                         className="w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60 text-slate-900 dark:text-slate-100 flex items-center justify-between transition-colors cursor-pointer"

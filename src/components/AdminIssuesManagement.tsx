@@ -365,14 +365,14 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredIssues.map((issue) => {
+          {filteredIssues.map((issue, idx) => {
             const isReg = checkIsRegistered(issue);
             const isResolved = issue.status === 'resolved';
             const isPending = issue.status === 'pending';
 
             return (
               <div
-                key={issue.id}
+                key={`admin_issue_${issue.id || 'iss'}_${idx}`}
                 className={`bg-white dark:bg-[#081a11] rounded-3xl border-2 transition-all p-5 shadow-md flex flex-col justify-between ${
                   isPending
                     ? 'border-amber-400 dark:border-amber-600/80 shadow-amber-500/5'

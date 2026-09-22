@@ -1175,11 +1175,11 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                     සොයන ස්ථානය හමුනොවී නම් "✍️ අතින් ලිවීම" ටැබ් එකෙන් ගම, පාර සහ නගරය සෘජුවම ඇතුළත් කළ හැක.
                   </div>
                 ) : (
-                  searchResults.map((res) => {
+                  searchResults.map((res, rIdx) => {
                     const isSelected = customRoadSi === res.roadSi && customVillageSi === res.villageSi;
                     return (
                       <div
-                        key={res.id}
+                        key={`loc_search_${res.id || 'r'}_${rIdx}`}
                         className={`w-full p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
                           isSelected
                             ? 'bg-teal-600 text-white border-teal-700 shadow-md'
@@ -1411,9 +1411,9 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                     තවමත් සුරකින ලද ස්ථාන නොමැත.
                   </div>
                 ) : (
-                  savedLocationsList.map((loc) => (
+                  savedLocationsList.map((loc, lIdx) => (
                     <div
-                      key={loc.id}
+                      key={`saved_loc_${loc.id || 'loc'}_${lIdx}`}
                       onClick={() => {
                         stopLiveGpsTracking();
                         if (loc.lat && loc.lng) {

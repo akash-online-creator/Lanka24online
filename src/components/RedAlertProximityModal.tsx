@@ -460,9 +460,9 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                     තවම අදහස් පළවී නොමැත. සිදුවීම පිළිබඳ නවතම තොරතුරක් ඇත්නම් සටහන් කරන්න.
                   </p>
                 ) : (
-                  localComments.map((c) => (
+                  localComments.map((c, cIdx) => (
                     <div
-                      key={c.id}
+                      key={`prox_comment_${c.id || 'c'}_${cIdx}`}
                       className="p-2.5 rounded-xl bg-white dark:bg-white/5 border border-slate-200/80 dark:border-white/5 text-xs space-y-1"
                     >
                       <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">

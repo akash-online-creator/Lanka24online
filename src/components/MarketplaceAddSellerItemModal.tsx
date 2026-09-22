@@ -252,9 +252,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                         <Sparkles className="w-3 h-3" /> ගැලපෙන Tags (Matching Tags):
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {matchingTags.map((t) => (
+                        {matchingTags.map((t, tIdx) => (
                           <button
-                            key={t.id}
+                            key={`match_tag_${t.id || 't'}_${tIdx}`}
                             type="button"
                             onClick={() => setSelectedTag(t.tagName)}
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -271,9 +271,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                   )}
 
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700/60">
-                    {allTags.slice(0, 15).map((t) => (
+                    {allTags.slice(0, 15).map((t, tIdx) => (
                       <button
-                        key={t.id}
+                        key={`all_tag_${t.id || 't'}_${tIdx}`}
                         type="button"
                         onClick={() => setSelectedTag(t.tagName)}
                         className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
@@ -382,11 +382,11 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                   { id: 'wholesale' as MarketItemSaleType, label: 'තොග (Wholesale)' },
                   { id: 'retail' as MarketItemSaleType, label: 'සිල්ලර (Retail)' },
                   { id: 'exchange' as MarketItemSaleType, label: 'හුවමාරු (Barter)' }
-                ].map((st) => {
+                ].map((st, sIdx) => {
                   const isChecked = saleTypes.includes(st.id);
                   return (
                     <button
-                      key={st.id}
+                      key={`sale_type_${st.id}_${sIdx}`}
                       type="button"
                       onClick={() => toggleSaleType(st.id)}
                       className={`p-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
@@ -552,9 +552,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                   { id: 'seller_deliver' as MarketDeliveryOption, label: 'මම ගෙනවිත් දෙන්නම්' },
                   { id: 'free_shipping' as MarketDeliveryOption, label: 'මම නොමිලේ එවන්නම් (Free Delivery)' },
                   { id: 'paid_shipping' as MarketDeliveryOption, label: 'මම එවන්නම් ඩිලිවරි ගාස්තු අයවේ' }
-                ].map((opt) => (
+                ].map((opt, oIdx) => (
                   <button
-                    key={opt.id}
+                    key={`deliv_opt_${opt.id}_${oIdx}`}
                     type="button"
                     onClick={() => setDeliveryOption(opt.id)}
                     className={`p-2.5 rounded-xl text-xs font-bold text-left border flex items-center gap-2 transition-all cursor-pointer ${

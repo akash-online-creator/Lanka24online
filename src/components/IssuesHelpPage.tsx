@@ -546,9 +546,9 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
               </div>
             ) : (
               <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
-                {(issues || []).map((issue) => (
+                {(issues || []).map((issue, idx) => (
                   <div
-                    key={issue.id}
+                    key={`issue_${issue.id || 'iss'}_${idx}`}
                     className="bg-emerald-50/40 dark:bg-[#082517] border-2 border-emerald-200 dark:border-emerald-800/80 hover:border-emerald-500 rounded-2xl p-4 transition-all shadow-sm space-y-3"
                   >
                     <div className="flex justify-between items-start gap-2">

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { User, CreditTransaction, CreditTransactionType, Language } from '../types';
+import { deduplicateUsers } from '../utils/userUtils';
 import { 
   extractNumericId, 
   getUserCreditBalance, 
@@ -68,10 +69,11 @@ interface AdminCreditManagementProps {
 }
 
 export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
-  users,
+  users: rawUsers,
   onUpdateUser,
   language = 'si',
 }) => {
+  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserForCredit, setSelectedUserForCredit] = useState<User | null>(null);
   const [operationMode, setOperationMode] = useState<'add' | 'deduct'>('add');
@@ -401,14 +403,14 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               </p>
             </div>
           ) : (
-            filteredUsers.map((u) => {
+            filteredUsers.map((u, idx) => {
               const numericId = extractNumericId(u.nicNumber || u.userId);
               const userBal = getUserCreditBalance(u);
               const isSelected = selectedUserForCredit?.id === u.id;
 
               return (
                 <div
-                  key={u.id}
+                  key={`credit_user_${u.id || u.nicNumber}_${idx}`}
                   className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
                     isSelected
                       ? operationMode === 'add'
@@ -686,8 +688,8 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                   onChange={(e) => setSelectedReason(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-white dark:bg-[#07170e] border border-slate-300 dark:border-[#173a26] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
                 >
-                  {currentPresets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
+                  {currentPresets.map((preset, prIdx) => (
+                    <option key={`c_preset_${preset.id}_${prIdx}`} value={preset.id}>
                       {preset.label}
                     </option>
                   ))}
@@ -817,11 +819,11 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
           </div>
         ) : (
           <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-            {filteredLedger.map((tx) => {
+            {filteredLedger.map((tx, txIdx) => {
               const isPositive = tx.amount > 0;
               return (
                 <div
-                  key={tx.id}
+                  key={`admin_credit_tx_${tx.id || 't'}_${txIdx}`}
                   className="bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-500/50 transition-all"
                 >
                   <div className="flex items-start gap-3 min-w-0">

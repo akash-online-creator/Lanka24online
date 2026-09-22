@@ -256,9 +256,9 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             { id: 'quick_service', label: getLang('⚡ ඉක්මන් සේවා', '⚡ Quick Services', '⚡ அவசர சேவை'), count: notifications.filter(n => n.type === 'quick_service').length },
             { id: 'marketplace_price', label: getLang('🏷️ අඩුම මිල', '🏷️ Lowest Prices', '🏷️ குறைந்த விலை'), count: notifications.filter(n => n.type === 'marketplace_price').length },
             { id: 'find_for_me', label: getLang('🔍 සොයාදෙන්න', '🔍 Find For Me', '🔍 தேடுங்கள்'), count: notifications.filter(n => n.type === 'find_for_me').length },
-          ].map(tab => (
+          ].map((tab, tIdx) => (
             <button
-              key={tab.id}
+              key={`notif_tab_${tab.id}_${tIdx}`}
               type="button"
               onClick={() => setActiveFilter(tab.id as typeof activeFilter)}
               className={`px-3 py-1 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -294,12 +294,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               </p>
             </div>
           ) : (
-            filteredNotifs.map((notif) => {
+            filteredNotifs.map((notif, nIdx) => {
               const isUrgent = notif.type === 'emergency_blood';
 
               return (
                 <div
-                  key={notif.id}
+                  key={`notif_${notif.id || 'n'}_${nIdx}`}
                   onClick={() => {
                     markNotificationAsRead(notif.id);
                     loadNotifs();

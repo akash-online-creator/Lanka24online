@@ -255,11 +255,11 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {filteredTransactions.map((tx) => {
+                    {filteredTransactions.map((tx, txIdx) => {
                       const isPositive = tx.amount > 0;
                       return (
                         <div
-                          key={tx.id}
+                          key={`wallet_tx_${tx.id || 't'}_${txIdx}`}
                           className="bg-white dark:bg-[#0c1f15] border border-slate-200 dark:border-[#163a25] rounded-2xl p-3.5 sm:p-4 hover:border-emerald-500/50 transition-all flex items-center justify-between gap-3 shadow-xs"
                         >
                           <div className="flex items-start gap-3 min-w-0">
@@ -473,9 +473,9 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
 
               {/* Fee Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {Object.values(CATEGORY_CREDIT_FEES).map((item) => (
+                {Object.values(CATEGORY_CREDIT_FEES).map((item, iIdx) => (
                   <div
-                    key={item.key}
+                    key={`credit_fee_${item.key}_${iIdx}`}
                     className="bg-white dark:bg-[#08180f] border border-slate-200 dark:border-[#153422] rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-500 transition-all"
                   >
                     <div>

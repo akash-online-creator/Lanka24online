@@ -54,6 +54,7 @@ import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
+import { deduplicateUsers, normalizeNIC, getAuthEmail, getAuthEmailCandidates } from './utils/userUtils';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -89,8 +90,12 @@ export default function App() {
   });
 
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('sahaya_users');
-    return saved ? JSON.parse(saved) : initialUsers;
+    try {
+      const saved = localStorage.getItem('sahaya_users');
+      return saved ? deduplicateUsers(JSON.parse(saved)) : deduplicateUsers(initialUsers);
+    } catch {
+      return deduplicateUsers(initialUsers);
+    }
   });
 
   const [issues, setIssues] = useState<Issue[]>(() => {
@@ -177,13 +182,14 @@ export default function App() {
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prev) => {
-          const hasAdmin = remoteUsers.some(
+          const merged = deduplicateUsers([...(prev || []), ...remoteUsers]);
+          const hasAdmin = merged.some(
             (u) => u.userId === '970181547V' || u.role === 'admin'
           );
           if (!hasAdmin && initialUsers[0]) {
-            return [initialUsers[0], ...remoteUsers];
+            return deduplicateUsers([initialUsers[0], ...merged]);
           }
-          return remoteUsers;
+          return merged;
         });
       }
     });
@@ -515,9 +521,9 @@ export default function App() {
   const handleLogin = async (userIdInput: string, keyInput: string) => {
     try {
       console.log("--- Login Attempt Started ---");
-      const cleanInput = (userIdInput || "").trim().toLowerCase();
-      const cleanInputUpper = (userIdInput || "").trim().toUpperCase();
-      const submittedPassword = (keyInput || "").trim();
+      const cleanInput = (userIdInput || "").trim().replace(/\s+/g, '').toLowerCase();
+      const cleanInputUpper = (userIdInput || "").trim().replace(/\s+/g, '').toUpperCase();
+      const submittedPassword = String(keyInput || "").trim();
 
       if (cleanInput === 'demo_user' || cleanInput === 'demo') {
         handleUserDemoLogin();
@@ -526,8 +532,8 @@ export default function App() {
 
       // Admin විශේෂ ලොග් වීම
       if (
-        (userIdInput.toUpperCase() === '970181547V' && submittedPassword === '1691@@Devhas') ||
-        (userIdInput === 'admin' && submittedPassword === 'admin123')
+        (cleanInputUpper === '970181547V' && submittedPassword === '1691@@Devhas') ||
+        (cleanInput === 'admin' && submittedPassword === 'admin123')
       ) {
         const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
         setCurrentUser(adminUser);
@@ -552,14 +558,19 @@ export default function App() {
       );
 
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
-      const formattedEmail = `${cleanInput}@app.com`;
+      const emailCandidates = getAuthEmailCandidates(cleanInput);
       let authUser: any = null;
 
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, submittedPassword);
-        authUser = userCredential?.user || null;
-      } catch (authError: any) {
-        console.warn("Firebase Auth Login check notice:", authError?.message || authError);
+      for (const email of emailCandidates) {
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, email, submittedPassword);
+          if (userCredential?.user) {
+            authUser = userCredential.user;
+            break;
+          }
+        } catch (authError: any) {
+          // Continue to next candidate email
+        }
       }
 
       // Firestore එකෙන් තත්පර 2.5ක timeout එකක් සහිතව පරිශීලකයා ලබා ගැනීම (UI Freeze වීම වැළැක්වීමට)
@@ -622,7 +633,7 @@ export default function App() {
           id: authUser.uid,
           userId: cleanInput.toUpperCase(),
           name: authUser.displayName || cleanInput.toUpperCase(),
-          email: authUser.email || formattedEmail,
+          email: authUser.email || emailCandidates[0],
           nicNumber: cleanInput.toUpperCase(),
           phone: '',
           role: 'user',
@@ -645,11 +656,11 @@ export default function App() {
 
       // AuthUser හරහා ලොග් නොවූයේ නම් (හෝ Auth provider disabled නම්) Firestore / Local දත්ත මගින් මුරපදය පරීක්ෂා කිරීම
       if (!authUser) {
-        const userKey = (foundUser.key || '').trim();
-        const userPass = ((foundUser as any).password || '').trim();
-        const userTemp = (foundUser.tempCode || '').trim();
-        const userSec = (foundUser.securityCode || '').trim();
-        const userTempPw = ((foundUser as any).tempPassword || '').trim();
+        const userKey = String(foundUser.key || '').trim();
+        const userPass = String((foundUser as any).password || '').trim();
+        const userTemp = String(foundUser.tempCode || '').trim();
+        const userSec = String(foundUser.securityCode || '').trim();
+        const userTempPw = String((foundUser as any).tempPassword || '').trim();
 
         const matchingLocalUsers = users.filter(
           (u) =>
@@ -666,17 +677,17 @@ export default function App() {
           (userSec && userSec === submittedPassword) ||
           (userTempPw && userTempPw === submittedPassword) ||
           (localMatchedUser && (
-            (localMatchedUser.key && localMatchedUser.key.trim() === submittedPassword) ||
-            ((localMatchedUser as any).password && (localMatchedUser as any).password.trim() === submittedPassword) ||
-            (localMatchedUser.securityCode && localMatchedUser.securityCode.trim() === submittedPassword)
+            (localMatchedUser.key && String(localMatchedUser.key).trim() === submittedPassword) ||
+            ((localMatchedUser as any).password && String((localMatchedUser as any).password).trim() === submittedPassword) ||
+            (localMatchedUser.securityCode && String(localMatchedUser.securityCode).trim() === submittedPassword)
           )) ||
           matchingLocalUsers.some(
             (u) =>
-              (u.key && u.key.trim() === submittedPassword) ||
-              ((u as any).password && (u as any).password.trim() === submittedPassword) ||
-              (u.tempCode && u.tempCode.trim() === submittedPassword) ||
-              (u.securityCode && u.securityCode.trim() === submittedPassword) ||
-              ((u as any).tempPassword && (u as any).tempPassword.trim() === submittedPassword)
+              (u.key && String(u.key).trim() === submittedPassword) ||
+              ((u as any).password && String((u as any).password).trim() === submittedPassword) ||
+              (u.tempCode && String(u.tempCode).trim() === submittedPassword) ||
+              (u.securityCode && String(u.securityCode).trim() === submittedPassword) ||
+              ((u as any).tempPassword && String((u as any).tempPassword).trim() === submittedPassword)
           );
 
         if (!isPasswordCorrect) {
@@ -745,13 +756,15 @@ export default function App() {
       const exists = (prev || []).some(
         (u) => u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
       );
-      const nextUsers = exists
-        ? (prev || []).map((u) =>
-            u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
-              ? { ...u, ...normalizedUser }
-              : u
-          )
-        : [normalizedUser, ...(prev || [])];
+      const nextUsers = deduplicateUsers(
+        exists
+          ? (prev || []).map((u) =>
+              u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
+                ? { ...u, ...normalizedUser }
+                : u
+            )
+          : [normalizedUser, ...(prev || [])]
+      );
 
       try {
         localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
@@ -805,8 +818,8 @@ export default function App() {
       return;
     }
 
-    const cleanNic = (newUser.nicNumber || newUser.userId || "").trim().toLowerCase();
-    const formattedEmail = `${cleanNic}@app.com`;
+    const cleanNic = normalizeNIC(newUser.nicNumber || newUser.userId);
+    const formattedEmail = getAuthEmail(cleanNic);
 
     try {
       let uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -825,18 +838,26 @@ export default function App() {
       const createdUser: User = {
         ...newUser,
         id: uid,
-        userId: newUser.userId || cleanNic.toUpperCase(),
-        nicNumber: (newUser.nicNumber || cleanNic).toUpperCase(),
+        userId: newUser.userId || cleanNic,
+        nicNumber: (newUser.nicNumber || cleanNic),
         key: rawPassword,
         password: rawPassword,
+        securityCode: rawPassword,
         isPasswordChanged: true,
         isTemporaryPassword: false,
         ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
         registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
       };
 
-      setUsers((prev) => [createdUser, ...prev]);
+      setUsers((prev) => {
+        const next = deduplicateUsers([createdUser, ...(prev || [])]);
+        try {
+          localStorage.setItem('sahaya_users', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
       await saveUserToFirestore(createdUser);
+      await syncUserPasswordInFirestore(createdUser, rawPassword);
       setCurrentUser(null);
       setViewMode('login');
       alert('ලියාපදිංචි වීම සාර්ථකයි! දැන් ඔබගේ NIC අංකය සහ මුරපදය යොදා ලොග් වෙන්න.');
@@ -964,8 +985,9 @@ export default function App() {
     }
 
     try {
-      const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
-      const formattedEmail = `${cleanNic}@app.com`;
+      const cleanNic = normalizeNIC(currentUser.nicNumber || currentUser.userId);
+      const formattedEmail = getAuthEmail(cleanNic);
+      const emailCandidates = getAuthEmailCandidates(cleanNic);
 
       const updatedUser: User = {
         ...currentUser,
@@ -984,14 +1006,16 @@ export default function App() {
       // 1. Instant Local State & Cache Update (UI renders immediately)
       setCurrentUser(updatedUser);
       setUsers((prev) => {
-        const nextUsers = (prev || []).map((u) => {
-          const isMatch =
-            u.id === updatedUser.id ||
-            (u.nicNumber && u.nicNumber.toLowerCase() === (updatedUser.nicNumber || '').toLowerCase()) ||
-            (u.userId && u.userId.toLowerCase() === (updatedUser.userId || '').toLowerCase()) ||
-            (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
-          return isMatch ? { ...u, ...updatedUser } : u;
-        });
+        const nextUsers = deduplicateUsers(
+          (prev || []).map((u) => {
+            const isMatch =
+              u.id === updatedUser.id ||
+              (u.nicNumber && normalizeNIC(u.nicNumber) === cleanNic) ||
+              (u.userId && normalizeNIC(u.userId) === cleanNic) ||
+              (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+            return isMatch ? { ...u, ...updatedUser } : u;
+          })
+        );
         try {
           localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
           localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
@@ -1012,19 +1036,20 @@ export default function App() {
             await updatePassword(activeUser, cleanPass);
           } else {
             const tempToTry = tempPassword || currentUser.key || currentUser.securityCode || (currentUser as any).tempPassword;
+            let updated = false;
             if (tempToTry) {
-              try {
-                const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempToTry);
-                if (userCred.user) {
-                  await updatePassword(userCred.user, cleanPass);
-                }
-              } catch {
-                // If sign in with temp failed, try creating user or updating with new password
+              for (const email of emailCandidates) {
                 try {
-                  await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
+                  const userCred = await signInWithEmailAndPassword(auth, email, tempToTry);
+                  if (userCred.user) {
+                    await updatePassword(userCred.user, cleanPass);
+                    updated = true;
+                    break;
+                  }
                 } catch {}
               }
-            } else {
+            }
+            if (!updated) {
               try {
                 await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
               } catch {}
@@ -1057,7 +1082,8 @@ export default function App() {
   // ✅ 4.2. ඇඩ්මින් පැනල් එකෙන් Password Reset Link එකක් යැවීම
   const handleResetUserPasswordByAdmin = async (nicNumber: string) => {
     try {
-      const formattedEmail = `${nicNumber.trim().toLowerCase()}@app.com`;
+      const cleanNic = normalizeNIC(nicNumber);
+      const formattedEmail = getAuthEmail(cleanNic);
       await sendPasswordResetEmail(auth, formattedEmail);
       alert(`මුරපදය නැවත සැකසීමේ උපදෙස් ${formattedEmail} වෙත යවන ලදී.`);
     } catch (error: any) {
@@ -1068,28 +1094,50 @@ export default function App() {
 
   // ✅ 3. Red Alert පලකිරීමේදී මුරපදය පරීක්ෂා කිරීමේ ෆන්ක්ෂන් එක
   const handleVerifyPasswordBeforeRedAlert = async (passwordInput: string): Promise<boolean> => {
-    const currentUserAuth = auth.currentUser;
-    if (!currentUserAuth || !currentUserAuth.email) {
-      if (currentUser && currentUser.nicNumber) {
-        try {
-          const formattedEmail = `${currentUser.nicNumber.trim().toLowerCase()}@app.com`;
-          await signInWithEmailAndPassword(auth, formattedEmail, passwordInput);
-          return true;
-        } catch (e) {
-          return false;
-        }
+    const cleanSubmitted = (passwordInput || '').trim();
+    if (!cleanSubmitted) return false;
+
+    // Direct match against active current user profile keys
+    if (currentUser) {
+      const userKey = String(currentUser.key || '').trim();
+      const userPass = String((currentUser as any).password || '').trim();
+      const userSec = String(currentUser.securityCode || '').trim();
+      const userTemp = String(currentUser.tempCode || '').trim();
+      const userTempPw = String((currentUser as any).tempPassword || '').trim();
+
+      if (
+        (userKey && userKey === cleanSubmitted) ||
+        (userPass && userPass === cleanSubmitted) ||
+        (userSec && userSec === cleanSubmitted) ||
+        (userTemp && userTemp === cleanSubmitted) ||
+        (userTempPw && userTempPw === cleanSubmitted)
+      ) {
+        return true;
       }
-      return false;
     }
 
-    try {
-      const credential = EmailAuthProvider.credential(currentUserAuth.email, passwordInput);
-      await reauthenticateWithCredential(currentUserAuth, credential);
-      return true;
-    } catch (error) {
-      console.error("Red Alert Password verification failed:", error);
-      return false;
+    const currentUserAuth = auth.currentUser;
+    if (currentUserAuth?.email) {
+      try {
+        const credential = EmailAuthProvider.credential(currentUserAuth.email, cleanSubmitted);
+        await reauthenticateWithCredential(currentUserAuth, credential);
+        return true;
+      } catch (error) {
+        // Fall through to try candidate emails
+      }
     }
+
+    if (currentUser && (currentUser.nicNumber || currentUser.userId)) {
+      const candidates = getAuthEmailCandidates(currentUser.nicNumber || currentUser.userId);
+      for (const email of candidates) {
+        try {
+          await signInWithEmailAndPassword(auth, email, cleanSubmitted);
+          return true;
+        } catch {}
+      }
+    }
+
+    return false;
   };
 
   const handleBlockUser = (targetUserId: string, reason: string) => {

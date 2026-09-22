@@ -444,12 +444,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             count: shops.filter((s) => s.type === 'business').length,
             color: 'from-amber-600 to-orange-700'
           }
-        ].map((sec) => {
+        ].map((sec, sIdx) => {
           const Icon = sec.icon;
           const isActive = activeSection === sec.id;
           return (
             <button
-              key={sec.id}
+              key={`market_sec_${sec.id}_${sIdx}`}
               type="button"
               onClick={() => setActiveSection(sec.id)}
               className={`p-3.5 sm:p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer border-2 shadow-xs active:scale-95 ${
@@ -512,9 +512,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 { id: 'wholesale' as MarketSellerSubTab, label: 'තොග (Wholesale)' },
                 { id: 'retail' as MarketSellerSubTab, label: 'සිල්ලර (Retail)' },
                 { id: 'exchange' as MarketSellerSubTab, label: 'හුවමාරු (Exchange)' }
-              ].map((st) => (
+              ].map((st, stIdx) => (
                 <button
-                  key={st.id}
+                  key={`sub_tab_${st.id}_${stIdx}`}
                   type="button"
                   onClick={() => setSellerSubTab(st.id)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
@@ -620,9 +620,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               >
                 සියලු Tags
               </button>
-              {allTags.slice(0, 10).map((t) => (
+              {allTags.slice(0, 10).map((t, tIdx) => (
                 <button
-                  key={t.id}
+                  key={`mkt_tag_${t.id || 't'}_${tIdx}`}
                   type="button"
                   onClick={() => setSelectedCategoryTag(t.tagName)}
                   className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
@@ -657,9 +657,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredSellerItems.map((item) => (
+              {filteredSellerItems.map((item, itmIdx) => (
                 <div
-                  key={item.id}
+                  key={`seller_item_${item.id || 'itm'}_${itmIdx}`}
                   className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-emerald-500/60 dark:hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-3.5"
                 >
                   {/* Top Badges & Title */}
@@ -912,9 +912,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {filteredBuyerRequests.map((req) => (
+              {filteredBuyerRequests.map((req, rIdx) => (
                 <div
-                  key={req.id}
+                  key={`buyer_req_${req.id || 'r'}_${rIdx}`}
                   className="bg-white dark:bg-zinc-900 border-2 border-indigo-500/20 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-indigo-500/60 transition-all flex flex-col justify-between space-y-3.5"
                 >
                   <div className="space-y-2">
@@ -1091,9 +1091,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               </div>
 
               <div className="space-y-2">
-                {mySavedShops.map((shop) => (
+                {mySavedShops.map((shop, sIdx) => (
                   <div
-                    key={shop.id}
+                    key={`my_shop_${shop.id || 's'}_${sIdx}`}
                     className="p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-teal-200/80 dark:border-teal-900/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
@@ -1165,9 +1165,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredShops.map((shop) => (
+                {filteredShops.map((shop, sIdx) => (
                   <div
-                    key={shop.id}
+                    key={`shop_${shop.id || 's'}_${sIdx}`}
                     className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-teal-500/60 transition-all flex flex-col justify-between space-y-3.5"
                   >
                     <div className="space-y-2">
@@ -1197,9 +1197,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                           ප්‍රධාන භාණ්ඩ ({shop.inventory.length}) :
                         </div>
                         <div className="space-y-1">
-                          {shop.inventory.slice(0, 2).map((inv) => (
+                          {shop.inventory.slice(0, 2).map((inv, invIdx) => (
                             <div
-                              key={inv.id}
+                              key={`shop_inv_${shop.id}_${inv.id || 'i'}_${invIdx}`}
                               className="flex items-center justify-between text-xs font-semibold"
                             >
                               <span className="truncate text-slate-800 dark:text-zinc-200">
@@ -1342,9 +1342,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               </div>
 
               <div className="space-y-2">
-                {mySavedBusinesses.map((biz) => (
+                {mySavedBusinesses.map((biz, bIdx) => (
                   <div
-                    key={biz.id}
+                    key={`my_biz_${biz.id || 'b'}_${bIdx}`}
                     className="p-3.5 bg-white dark:bg-zinc-900 rounded-2xl border border-amber-200/80 dark:border-amber-900/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
@@ -1396,9 +1396,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
           {/* All Businesses Directory */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {filteredBusinesses.map((biz) => (
+            {filteredBusinesses.map((biz, bIdx) => (
               <div
-                key={biz.id}
+                key={`biz_${biz.id || 'b'}_${bIdx}`}
                 className="bg-white dark:bg-zinc-900 border-2 border-slate-200/80 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-sm hover:border-amber-500/60 transition-all flex flex-col justify-between space-y-3.5"
               >
                 <div className="space-y-2">
@@ -1427,9 +1427,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       සේවාවන් හා නිෂ්පාදන ({biz.inventory.length}) :
                     </div>
                     <div className="space-y-1">
-                      {biz.inventory.slice(0, 2).map((inv) => (
+                      {biz.inventory.slice(0, 2).map((inv, invIdx) => (
                         <div
-                          key={inv.id}
+                          key={`biz_inv_${biz.id}_${inv.id || 'i'}_${invIdx}`}
                           className="flex items-center justify-between text-xs font-semibold"
                         >
                           <span className="truncate text-slate-800 dark:text-zinc-200">

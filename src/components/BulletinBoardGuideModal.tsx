@@ -171,12 +171,12 @@ export const BulletinBoardGuideModal: React.FC<BulletinBoardGuideModalProps> = (
 
         {/* Section Tabs */}
         <div className="flex items-center gap-1.5 p-2 bg-slate-100 dark:bg-zinc-800/80 border-b border-slate-200 dark:border-zinc-800 overflow-x-auto scrollbar-none shrink-0">
-          {sections.map((sec) => {
+          {sections.map((sec, sIdx) => {
             const Icon = sec.icon;
             const isActive = activeTab === sec.id;
             return (
               <button
-                key={sec.id}
+                key={`bulletin_sec_${sec.id}_${sIdx}`}
                 type="button"
                 onClick={() => setActiveTab(sec.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${

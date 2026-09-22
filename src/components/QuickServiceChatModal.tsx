@@ -429,7 +429,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
           {/* Chat Messages Feed */}
           <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#f6faf8] dark:bg-[#040e08]">
-            {(messages || []).map((msg) => {
+            {(messages || []).map((msg, msgIdx) => {
               const isMe = 
                 (currentUser.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
                 (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone);
@@ -497,7 +497,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
               return (
                 <div
-                  key={msg.id}
+                  key={`qs_msg_${msg.id || 'm'}_${msgIdx}`}
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   {/* Meta header */}

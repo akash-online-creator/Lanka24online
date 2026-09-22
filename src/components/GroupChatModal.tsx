@@ -458,13 +458,13 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   තවමත් පණිවිඩ නොමැත. සංවාදය ආරම්භ කිරීමට පහතින් පණිවිඩයක් යවන්න.
                 </div>
               ) : (
-                messages.map((msg) => {
+                messages.map((msg, mIdx) => {
                   const isMe = msg.senderId === currentUserId;
                   const isMsgAdmin = msg.senderRole === 'admin';
 
                   return (
                     <div
-                      key={msg.id}
+                      key={`chat_msg_${msg.id || 'm'}_${mIdx}`}
                       className={`flex gap-2 max-w-[85%] sm:max-w-[75%] ${isMe ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                     >
                       {/* Avatar */}
@@ -660,9 +660,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                     </div>
 
                     <div className="space-y-2 pt-1">
-                      {groupJoinRequests.map((req) => (
+                      {groupJoinRequests.map((req, rIdx) => (
                         <div
-                          key={req.id}
+                          key={`join_req_${req.id || 'r'}_${rIdx}`}
                           className="bg-white dark:bg-zinc-900 p-2 rounded-xl border border-amber-200 dark:border-zinc-700 space-y-1.5"
                         >
                           <div className="flex items-center justify-between">
@@ -750,13 +750,13 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   </div>
 
                   <div className="space-y-2">
-                    {group.members.map((m) => {
+                    {group.members.map((m, mIdx) => {
                       const isMemAdmin = m.role === 'admin';
                       const isCreator = m.userId === group.creatorId;
 
                       return (
                         <div
-                          key={m.userId || m.phone}
+                          key={`group_mem_${m.userId || m.phone || 'm'}_${mIdx}`}
                           className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs"
                         >
                           <div className="flex items-center gap-2 min-w-0">

@@ -371,7 +371,7 @@ export const MarketplaceLowestPricesModal: React.FC<MarketplaceLowestPricesModal
 
                   return (
                     <div
-                      key={seller.id}
+                      key={`seller_${seller.id || 's'}_${index}`}
                       className={`p-4 rounded-2xl border-2 transition-all shadow-xs space-y-3 ${
                         isLowestPrice
                           ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500/80 shadow-md'

@@ -955,8 +955,8 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#04140d] border border-slate-300 dark:border-[#1a3826] text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-xs"
                 >
                   <option value="">-- ප්‍රධාන මාතෘකාවක් තෝරන්න --</option>
-                  {donationCategories.map((cat) => (
-                    <option key={cat.id} value={cat.id} className="dark:bg-[#04140d]">
+                  {donationCategories.map((cat, cIdx) => (
+                    <option key={`don_cat_opt_${cat.id}_${cIdx}`} value={cat.id} className="dark:bg-[#04140d]">
                       {cat.name}
                     </option>
                   ))}
@@ -969,12 +969,12 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                   තෝරාගත් Tags:
                 </label>
                 <div className="flex flex-wrap gap-2 pt-0.5">
-                  {donationCategories.map((cat) => {
+                  {donationCategories.map((cat, cIdx) => {
                     const isSelected = selectedTag?.tagName === cat.name || selectedDonationCatId === cat.id;
                     const IconComp = cat.icon;
                     return (
                       <button
-                        key={cat.id}
+                        key={`don_cat_${cat.id}_${cIdx}`}
                         type="button"
                         onClick={() => {
                           if (isSelected) {

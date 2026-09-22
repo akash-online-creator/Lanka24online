@@ -47,21 +47,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   const t = (translations[language] || translations.si) as any;
 
-  // ශ්‍රී ලාංකික NIC අංක Validation (Old: 9 digits + V/X, New: 12 digits)
-  const validateNIC = (nicValue: string) => {
-    const oldNicRegex = /^[0-9]{9}[vVxX]$/;
+  // ශ්‍රී ලාංකික NIC අංක සහ Login Identifier Validation
+  const validateIdentifier = (inputVal: string) => {
+    const clean = inputVal.trim().replace(/\s+/g, '').toUpperCase();
+    if (clean === 'ADMIN' || clean.toLowerCase() === 'demo' || clean.toLowerCase() === 'demo_user') return true;
+    const oldNicRegex = /^[0-9]{9}[VVXX]$/;
     const newNicRegex = /^[0-9]{12}$/;
-    return oldNicRegex.test(nicValue) || newNicRegex.test(nicValue);
+    const phoneRegex = /^(0|\+94)?[0-9]{9,10}$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return oldNicRegex.test(clean) || newNicRegex.test(clean) || phoneRegex.test(clean) || emailRegex.test(clean);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const cleanNic = userId.trim().toUpperCase();
+    const cleanIdentifier = userId.trim().replace(/\s+/g, '');
 
-    // 1. NIC පරීක්ෂාව
-    if (!validateNIC(cleanNic)) {
+    // 1. Identifier පරීක්ෂාව
+    if (!cleanIdentifier || !validateIdentifier(cleanIdentifier)) {
       setError(
         language === 'en'
           ? "Please enter a valid Sri Lankan NIC number (e.g. 912345678V or 199123456789)"
@@ -84,7 +88,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     setIsLoading(true);
     try {
-      await onLogin(cleanNic, key.trim());
+      await onLogin(cleanIdentifier, key.trim());
     } catch (err: any) {
       console.error("Login Error:", err);
       setError(

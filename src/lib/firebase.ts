@@ -26,6 +26,8 @@ import {
 } from 'firebase/firestore';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
+import { User } from '../types';
+import { deduplicateUsers } from '../utils/userUtils';
 
 // ==============================================================
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
@@ -1246,9 +1248,11 @@ export function subscribeToUsers(
     return onSnapshot(
       usersColRef,
       (snapshot) => {
-        const users = snapshot.docs.map((docSnap) => {
-          return { id: docSnap.id, ...docSnap.data() };
-        });
+        const rawUsers = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return { ...data, id: docSnap.id || data.id };
+        }) as User[];
+        const users = deduplicateUsers(rawUsers);
         callback(users);
       },
       (error) => {

@@ -315,6 +315,7 @@ export interface User {
   facePhotoUrl?: string;
   registeredAt: string;
   approvedAt?: string;
+  updatedAt?: string;
   key?: string; // password
   password?: string; // stored password representation
   rejectionReason?: string;

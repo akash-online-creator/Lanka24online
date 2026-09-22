@@ -211,12 +211,12 @@ export const AdminModerationModal: React.FC<AdminModerationModalProps> = ({
               </label>
 
               <div className="grid grid-cols-1 gap-1.5">
-                {COMMON_VIOLATION_REASONS.map((reason) => {
+                {COMMON_VIOLATION_REASONS.map((reason, rIdx) => {
                   const label = language === 'en' ? reason.en : language === 'ta' ? reason.ta : reason.si;
                   const isSelected = customReason.includes(label);
                   return (
                     <button
-                      key={reason.key}
+                      key={`v_reason_${reason.key}_${rIdx}`}
                       type="button"
                       onClick={() => handleSelectPreset(label)}
                       className={`p-2.5 rounded-xl text-left text-xs font-bold transition-all border flex items-start gap-2 cursor-pointer ${

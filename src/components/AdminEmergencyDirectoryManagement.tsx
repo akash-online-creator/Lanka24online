@@ -468,9 +468,9 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
               කිසිදු හදිසි සේවා දැනුම්දීමක් වාර්තා වී නැත.
             </div>
           ) : (
-            alerts.map((alertItem) => (
+            alerts.map((alertItem, aIdx) => (
               <div
-                key={alertItem.id}
+                key={`admin_emg_alert_${alertItem.id || 'a'}_${aIdx}`}
                 className={`p-4 rounded-2xl border transition-all ${
                   alertItem.isResolved
                     ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-70'
@@ -529,13 +529,13 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
               කිසිදු හදිසි අංකයක් හමුවූයේ නැත.
             </div>
           ) : (
-            filteredList.map((contact) => {
+            filteredList.map((contact, cIdx) => {
               const isFlagged = contact.isInactiveDeactivated || (contact.reportedInactiveCount && contact.reportedInactiveCount > 0);
               const isCommunity = !!contact.submittedByUserId || contact.id.startsWith('custom_emg_');
 
               return (
                 <div
-                  key={contact.id}
+                  key={`admin_emg_contact_${contact.id || 'c'}_${cIdx}`}
                   className={`p-4 bg-white dark:bg-[#071911] border-2 rounded-2xl shadow-xs transition-all ${
                     contact.isInactiveDeactivated
                       ? 'border-rose-400 bg-rose-50/20 dark:bg-rose-950/20'

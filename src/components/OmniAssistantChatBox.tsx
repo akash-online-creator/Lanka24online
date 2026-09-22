@@ -607,7 +607,7 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
                 <div className="flex-1 flex flex-col overflow-hidden">
                   {/* Messages Feed */}
                   <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-3.5 text-xs sm:text-sm">
-                    {messages.map((msg) => {
+                    {messages.map((msg, mIdx) => {
                       const isUser = msg.sender === 'user';
                       const displayText =
                         msg.activeViewLang && msg.translations?.[msg.activeViewLang]
@@ -616,7 +616,7 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
 
                       return (
                         <div
-                          key={msg.id}
+                          key={`omni_msg_${msg.id || 'm'}_${mIdx}`}
                           className={`flex gap-2.5 ${isUser ? 'justify-end' : 'justify-start'}`}
                         >
                           {!isUser && (

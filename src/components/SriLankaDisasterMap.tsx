@@ -762,7 +762,7 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
 
               {/* 25 Individual Colored District Polygons */}
               <g filter="url(#districtGlow)">
-                {SRI_LANKA_DISTRICT_MAP.map((district) => {
+                {SRI_LANKA_DISTRICT_MAP.map((district, dIdx) => {
                   const disasters = getDistrictDisasters(district.nameSi, district.nameEn);
                   const hasDisaster = disasters.length > 0;
                   const isSelected = selectedDistrict === district.nameSi || activeDistrictId === district.id;
@@ -770,7 +770,7 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
 
                   return (
                     <g
-                      key={district.id}
+                      key={`district_poly_${district.id}_${dIdx}`}
                       className="cursor-pointer transition-all duration-200"
                       onClick={() => handleSelectDistrictOnMap(district)}
                       onMouseEnter={() => setHoveredDistrict(district)}
@@ -913,10 +913,10 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
                 className="px-2.5 py-1 bg-slate-900 border border-emerald-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-400 cursor-pointer"
               >
                 <option value="all">සියලු දිස්ත්‍රික්ක ({disasterItems.length})</option>
-                {SRI_LANKA_DISTRICT_MAP.map((d) => {
+                {SRI_LANKA_DISTRICT_MAP.map((d, dIdx) => {
                   const cnt = getDistrictDisasters(d.nameSi, d.nameEn).length;
                   return (
-                    <option key={d.id} value={d.nameSi}>
+                    <option key={`dist_opt_${d.id}_${dIdx}`} value={d.nameSi}>
                       {d.nameSi} ({d.nameEn}) {cnt > 0 ? `(🚨 ${cnt})` : ''}
                     </option>
                   );
@@ -1063,9 +1063,9 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
                   තෝරාගත් සෙවුමට හෝ දිස්ත්‍රික්කයට අදාළ ආපදා වාර්තා වී නොමැත.
                 </div>
               ) : (
-                filteredDisasterItems.map((item) => (
+                filteredDisasterItems.map((item, dIdx) => (
                   <button
-                    key={item.id}
+                    key={`map_disaster_${item.id || 'd'}_${dIdx}`}
                     type="button"
                     onClick={() => setActiveItem(item)}
                     className={`w-full p-2.5 rounded-xl text-left transition-all flex items-center justify-between gap-2 border cursor-pointer ${

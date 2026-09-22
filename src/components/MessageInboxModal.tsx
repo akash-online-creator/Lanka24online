@@ -499,13 +499,13 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                     </p>
                   </div>
                 ) : (
-                  (filteredThreads || []).map((thread) => {
+                  (filteredThreads || []).map((thread, tIdx) => {
                     const post = thread.post;
                     const isConfirmed = Boolean(post.isConfirmed);
 
                     return (
                       <div
-                        key={thread.id}
+                        key={`thread_${thread.id || 't'}_${tIdx}`}
                         onClick={() => setActiveThread(thread)}
                         className="bg-white dark:bg-[#071c12] border border-emerald-500/30 hover:border-emerald-500 hover:bg-emerald-50/40 dark:hover:bg-[#0a281a] p-3.5 sm:p-4 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99] group space-y-1.5"
                       >
@@ -710,7 +710,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
               {/* Chat history එක (චැට්කල පිළිවෙලින්) */}
               <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f6faf8] dark:bg-[#040e08]">
-                {(messages || []).map((msg) => {
+                {(messages || []).map((msg, msgIdx) => {
                   const isMe = 
                     (user.name && msg.senderName && msg.senderName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
                     (msg.senderPhone && userPhoneClean && normalizePhone(msg.senderPhone) === userPhoneClean);
@@ -769,7 +769,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
                   return (
                     <div
-                      key={msg.id}
+                      key={`inbox_msg_${msg.id || 'm'}_${msgIdx}`}
                       className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                     >
                       {/* Meta header */}

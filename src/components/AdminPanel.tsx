@@ -23,11 +23,13 @@ import { initialRegistrationConfig, initialCategories } from '../data/initialDat
 import { AppLogo } from './AppLogo';
 import { MemoryStorageBar } from './MemoryStorageBar';
 import { generateAndDownloadUserPdf } from '../utils/pdfGenerator';
+import { deduplicateUsers } from '../utils/userUtils';
 import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
 import { 
   fetchAllPostsBackupData, 
   restorePostsBackupData, 
   syncUserProfileToFirestore,
+  syncUserPasswordInFirestore,
   updateHelpPostInFirestore,
   sendChatMessageToFirestore,
   deleteUserAccount
@@ -170,7 +172,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  users = [],
+  users: rawUsers = [],
   issues = [],
   helpPosts = [],
   blockedCredentials = [],
@@ -198,6 +200,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onRefreshRedAlerts,
   onViewRedAlertDetail,
 }) => {
+  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
     'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security'
@@ -478,6 +481,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // 2. Sync to Firestore
     try {
       await syncUserProfileToFirestore(updatedUser);
+      await syncUserPasswordInFirestore(updatedUser, newTempPassword);
     } catch (err) {
       console.warn('Firestore password reset sync notice:', err);
     }
@@ -963,14 +967,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pendingUsers.map((user) => {
+              {pendingUsers.map((user, idx) => {
                 const nicFront = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
                 const isScanning = !!scanningUsersMap[user.id];
                 const scan = user.aiScanResult;
 
                 return (
                   <div 
-                    key={user.id} 
+                    key={`pending_${user.id || user.nicNumber}_${idx}`} 
                     className={`bg-white rounded-3xl border-2 shadow-md p-5 space-y-4 transition-all flex flex-col justify-between ${
                       scan?.riskLevel === 'high' || scan?.isAiGenerated
                         ? 'border-rose-400 bg-rose-50/20'
@@ -1312,12 +1316,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {duplicateDetectedUsers.map((user) => {
+                {duplicateDetectedUsers.map((user, idx) => {
                   const frontPhoto = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
                   const duplicates = user.aiScanResult?.duplicateMatches || [];
 
                   return (
-                    <div key={user.id} className="bg-amber-50/40 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
+                    <div key={`dup_${user.id || user.nicNumber}_${idx}`} className="bg-amber-50/40 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2.5">
                           <div 
@@ -1393,12 +1397,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {highRiskUsers.map((user) => {
+                {highRiskUsers.map((user, idx) => {
                   const frontPhoto = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
                   const scan = user.aiScanResult;
 
                   return (
-                    <div key={user.id} className="bg-rose-50/30 border-2 border-rose-300 rounded-2xl p-4 space-y-3">
+                    <div key={`risk_${user.id || user.nicNumber}_${idx}`} className="bg-rose-50/30 border-2 border-rose-300 rounded-2xl p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2.5">
                           <div 
@@ -1507,12 +1511,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => {
+                    filteredUsers.map((user, idx) => {
                       const nicFront = user.nicFrontPhotoUrl || user.idCardPhotoUrl;
                       const hasLoginHistory = Array.isArray(user.loginHistory) && user.loginHistory.length > 0;
 
                       return (
-                        <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={`tbl_${user.id || user.nicNumber}_${idx}`} className="hover:bg-slate-50/80 transition-colors">
                           <td className="p-3.5">
                             <div className="flex items-center gap-3">
                               <div 
@@ -2056,13 +2060,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-xs focus:outline-none focus:border-amber-500"
                         >
                           {modalCreditMode === 'add'
-                            ? ADMIN_ADD_REASON_PRESETS.map((p) => (
-                                <option key={p.id} value={p.id}>
+                            ? ADMIN_ADD_REASON_PRESETS.map((p, pIdx) => (
+                                <option key={`preset_add_${p.id}_${pIdx}`} value={p.id}>
                                   {p.label}
                                 </option>
                               ))
-                            : ADMIN_DEDUCT_REASON_PRESETS.map((p) => (
-                                <option key={p.id} value={p.id}>
+                            : ADMIN_DEDUCT_REASON_PRESETS.map((p, pIdx) => (
+                                <option key={`preset_deduct_${p.id}_${pIdx}`} value={p.id}>
                                   {p.label}
                                 </option>
                               ))}
@@ -2223,7 +2227,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             const isInflow = tx.amount > 0;
 
                             return (
-                              <tr key={tx.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                              <tr key={`admin_tx_${tx.id || 'tx'}_${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                 <td className="p-3 font-mono text-slate-500 font-bold">{idx + 1}</td>
                                 <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">
                                   {tx.timestamp || 'නැත'}
@@ -2304,7 +2308,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </tr>
                       ) : (
                         selectedUserForModal.loginHistory.map((log, index) => (
-                          <tr key={log.id || index} className="hover:bg-slate-50 transition-colors">
+                          <tr key={`admin_log_${log.id || 'log'}_${index}`} className="hover:bg-slate-50 transition-colors">
                             <td className="p-3 font-mono text-slate-500 font-bold">{index + 1}</td>
                             <td className="p-3 font-mono font-bold text-slate-900">
                               {log.timestamp ? new Date(log.timestamp).toLocaleString('si-LK') : 'නැත'}

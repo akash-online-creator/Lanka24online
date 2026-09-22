@@ -368,9 +368,9 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
                   { id: 'weekdays_only' as const, label: 'සති අන්තයේ හැර (Weekdays)' },
                   { id: 'no_poya' as const, label: 'පෝය හැර' },
                   { id: 'no_holidays' as const, label: 'රජයේ නිවාඩු හැර' }
-                ].map((p) => (
+                ].map((p, pIdx) => (
                   <button
-                    key={p.id}
+                    key={`sched_preset_${p.id}_${pIdx}`}
                     type="button"
                     onClick={() => handleApplyPreset(p.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
@@ -452,7 +452,7 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
               <div className="space-y-2">
                 {inventory.map((row, idx) => (
                   <div
-                    key={row.id}
+                    key={`inv_row_${row.id || 'r'}_${idx}`}
                     className="p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700/80 rounded-xl space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-2"
                   >
                     <div className="flex-1 min-w-[130px]">
@@ -523,9 +523,9 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
                 * අයත් අංශය / කාණ්ඩය (Category Tag) :
               </label>
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700">
-                {allTags.map((t) => (
+                {allTags.map((t, tIdx) => (
                   <button
-                    key={t.id}
+                    key={`shop_tag_${t.id || 't'}_${tIdx}`}
                     type="button"
                     onClick={() => setCategoryTag(t.tagName)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${

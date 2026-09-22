@@ -301,11 +301,11 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </label>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
-                {DISASTER_TYPES.map((type) => {
+                {DISASTER_TYPES.map((type, tIdx) => {
                   const isSelected = selectedDisaster === type.id;
                   return (
                     <button
-                      key={type.id}
+                      key={`disaster_type_${type.id}_${tIdx}`}
                       type="button"
                       onClick={() => setSelectedDisaster(type.id)}
                       className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 active:scale-95 ${

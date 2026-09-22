@@ -275,11 +275,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
             >
               සියල්ල ({allOffers.length})
             </button>
-            {(postsWithOffers || []).map((p) => {
+            {(postsWithOffers || []).map((p, pIdx) => {
               const count = (allOffers || []).filter((o) => o?.post?.id === p.id).length;
               return (
                 <button
-                  key={p.id}
+                  key={`post_filter_${p.id || 'p'}_${pIdx}`}
                   onClick={() => setSelectedPostIdFilter(p.id)}
                   className={`px-3 py-1 rounded-full text-xs font-black font-mono transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
                     selectedPostIdFilter === p.id

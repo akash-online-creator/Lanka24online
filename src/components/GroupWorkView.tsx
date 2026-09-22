@@ -457,9 +457,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            {pendingAdminRequests.map((req) => (
+            {pendingAdminRequests.map((req, rIdx) => (
               <div
-                key={req.id}
+                key={`pending_req_${req.id || 'r'}_${rIdx}`}
                 className="bg-white dark:bg-zinc-900 p-3.5 rounded-2xl border border-amber-200 dark:border-amber-900/60 flex flex-col justify-between space-y-2 shadow-xs"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -546,14 +546,14 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {searchMatchedGroups.map((grp) => {
+              {searchMatchedGroups.map((grp, sIdx) => {
                 const isSaved = savedGroupIds.includes(grp.id);
                 const { isCreator, isAdmin, isActive, isPending } = getUserGroupStatus(grp);
                 const activeMembersCount = grp.members.filter((m) => m.status === 'active').length;
 
                 return (
                   <div
-                    key={`search_${grp.id}`}
+                    key={`search_${grp.id || 'grp'}_${sIdx}`}
                     className="bg-white dark:bg-zinc-900 border-2 border-indigo-300 dark:border-zinc-700 rounded-2xl p-4 shadow-md flex flex-col justify-between space-y-3 hover:border-indigo-500 transition-all"
                   >
                     {/* Top Row: Icon, Name, Username, Privacy & Save */}
@@ -717,7 +717,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredGroups.map((group) => {
+            {filteredGroups.map((group, gIdx) => {
               const subMeta = getSubCategoryLabel(group.subCategory);
               const isSaved = savedGroupIds.includes(group.id);
               const { isCreator, isAdmin, isActive, isPending } = getUserGroupStatus(group);
@@ -725,7 +725,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
 
               return (
                 <div
-                  key={group.id}
+                  key={`group_${group.id || 'grp'}_${gIdx}`}
                   className="bg-white dark:bg-zinc-900 border-2 border-indigo-100 dark:border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-800 transition-all flex flex-col justify-between space-y-4"
                 >
                   <div className="space-y-3">

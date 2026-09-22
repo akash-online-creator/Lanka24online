@@ -44,7 +44,8 @@ import {
   Key
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
-import { syncUserProfileToFirestore } from '../lib/firebase';
+import { syncUserProfileToFirestore, syncUserPasswordInFirestore, auth } from '../lib/firebase';
+import { updatePassword } from 'firebase/auth';
 import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
@@ -438,7 +439,11 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       ...(changePassword && newKey
         ? {
             key: newKey,
+            password: newKey,
             securityCode: newKey,
+            tempCode: '',
+            tempPassword: '',
+            isTemporaryPassword: false,
             isPasswordChanged: true
           }
         : {})
@@ -453,6 +458,35 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     syncUserProfileToFirestore(updatedUser).catch((err) => {
       console.warn('Sync profile to Firestore notice:', err);
     });
+
+    if (changePassword && newKey) {
+      // Sync password to all Firestore user document identifiers
+      syncUserPasswordInFirestore(updatedUser, newKey).catch((err) => {
+        console.warn('Password sync to Firestore notice:', err);
+      });
+
+      // Update Firebase Auth password if active session exists
+      try {
+        if (auth.currentUser) {
+          updatePassword(auth.currentUser, newKey).catch((err) => {
+            console.warn('Firebase Auth password update notice:', err);
+          });
+        }
+      } catch (authEx) {
+        console.warn('Firebase auth instance check notice:', authEx);
+      }
+
+      // Sync with backend API
+      fetch('/api/user/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: updatedUser.id,
+          nicNumber: updatedUser.nicNumber || updatedUser.userId,
+          newPassword: newKey,
+        }),
+      }).catch((e) => console.warn('Backend password sync notice:', e));
+    }
 
     const savedUsers = localStorage.getItem('sahaya_users');
     if (savedUsers) {

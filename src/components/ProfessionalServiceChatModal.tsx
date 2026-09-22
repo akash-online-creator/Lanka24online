@@ -324,7 +324,7 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
               <p className="text-[11px]">පහතින් පණිවිඩයක් යවා සංවාදය ආරම්භ කරන්න.</p>
             </div>
           ) : (
-            messages.map((msg) => {
+            messages.map((msg, mIdx) => {
               const isMine = isCurrentSender(msg);
               const showOriginal = Boolean(toggledOriginals[msg.id]);
               const rawSanitized = inspectAndSanitizeMessage(msg.text).sanitizedText;
@@ -368,7 +368,7 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
 
               return (
                 <div
-                  key={msg.id}
+                  key={`ps_msg_${msg.id || 'm'}_${mIdx}`}
                   className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} space-y-1`}
                 >
                   <div className="flex items-center gap-1 px-1 text-[10px] text-slate-400 font-semibold">

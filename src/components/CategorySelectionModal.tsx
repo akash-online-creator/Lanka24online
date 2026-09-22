@@ -210,7 +210,7 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
             return (
               <div
-                key={cat.id}
+                key={`cat_sel_${cat.id}_${idx}`}
                 onClick={() => onSelectCategory(cat.id, title, cat)}
                 className={`w-full rounded-[1.5rem] p-4 sm:p-4.5 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group active:scale-[0.99] ${
                   isFindForMe

@@ -168,9 +168,9 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
 
                 {matchingTags.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {matchingTags.map((t) => (
+                    {matchingTags.map((t, tIdx) => (
                       <button
-                        key={t.id}
+                        key={`buyer_tag_${t.id || 't'}_${tIdx}`}
                         type="button"
                         onClick={() => {
                           setSelectedTag(t.tagName);
@@ -200,9 +200,9 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
                       වෙළඳපොළේ දැනට ඇති ගැලපෙන භාණ්ඩ ({matchingSellerItems.length}) :
                     </div>
                     <div className="space-y-1">
-                      {matchingSellerItems.slice(0, 2).map((it) => (
+                      {matchingSellerItems.slice(0, 2).map((it, itIdx) => (
                         <div
-                          key={it.id}
+                          key={`seller_item_${it.id || 'it'}_${itIdx}`}
                           className="flex items-center justify-between text-xs bg-white dark:bg-zinc-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700"
                         >
                           <span className="font-bold text-slate-800 dark:text-zinc-200 truncate">

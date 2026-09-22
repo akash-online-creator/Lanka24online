@@ -397,12 +397,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       {/* 🚨 Emergency Disaster Red Alert Banner at the Very Top of Notice Board */}
       {activeRedAlerts.length > 0 && (
         <div className="space-y-3">
-          {activeRedAlerts.map((alert) => {
+          {activeRedAlerts.map((alert, aIdx) => {
             const config = getDisasterConfig(alert.disasterType);
             const distStr = getAlertDistanceDisplay(alert);
             return (
               <div
-                key={`top-red-alert-${alert.id}`}
+                key={`top-red-alert-${alert.id || 'alt'}_${aIdx}`}
                 className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/90 relative overflow-hidden animate-fadeIn"
               >
                 {/* Visual Ambient Light Effect */}
@@ -989,12 +989,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               {/* Active Red Alert Emergency Cards Pinned at Top of Feed */}
               {activeRedAlerts.length > 0 && (
                 <div className="space-y-3 pb-1">
-                  {activeRedAlerts.map((alert) => {
+                  {activeRedAlerts.map((alert, aIdx) => {
                     const config = getDisasterConfig(alert.disasterType);
                     const distStr = getAlertDistanceDisplay(alert);
                     return (
                       <div
-                        key={`feed-top-alert-${alert.id}`}
+                        key={`feed-top-alert-${alert.id || 'alt'}_${aIdx}`}
                         className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400 relative overflow-hidden animate-fadeIn"
                       >
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
@@ -1082,7 +1082,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
                 return (
                   <div
-                    key={post.id}
+                    key={`feed_post_${post.id || 'p'}_${idx}`}
                     ref={isTrigger ? observerTargetRef : null}
                     className="transition-all duration-300"
                   >

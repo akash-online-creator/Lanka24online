@@ -563,11 +563,11 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   තවම අදහස් හෝ යාවත්කාලීන කිරීම් නොමැත. පහතින් තොරතුරු සටහන් කළ හැක.
                 </p>
               ) : (
-                localComments.map((c) => {
+                localComments.map((c, cIdx) => {
                   const isReporterComment = c.userName?.includes('වාර්තාකරු') || c.isReporterUpdate;
                   return (
                     <div
-                      key={c.id || Math.random().toString()}
+                      key={`alert_comment_${c.id || 'c'}_${cIdx}`}
                       className={`p-3.5 rounded-xl text-xs space-y-1.5 border ${
                         isReporterComment
                           ? 'bg-amber-500/10 border-amber-500/40 text-amber-900 dark:text-amber-200'

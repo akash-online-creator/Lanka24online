@@ -353,10 +353,10 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredGroups.map((group) => {
+            {filteredGroups.map((group, gIdx) => {
               return (
                 <div
-                  key={group.id}
+                  key={`dict_grp_${group.id || 'grp'}_${gIdx}`}
                   className={`bg-white dark:bg-[#07130c] border-2 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-all hover:shadow-md ${
                     group.isLearned
                       ? 'border-amber-400/70 dark:border-amber-500/50 bg-gradient-to-b from-amber-500/5 to-transparent'
