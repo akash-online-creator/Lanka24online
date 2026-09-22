@@ -641,11 +641,10 @@ export default function App() {
         setViewMode('pending');
       } else if (foundUser.status === 'approved') {
         setViewMode('dashboard');
-        // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ හෝ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
+        // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
         const needsPasswordChange =
           foundUser.role !== 'admin' &&
-          (foundUser.isTemporaryPassword === true ||
-           (foundUser.isPasswordChanged === false && (Boolean(foundUser.tempCode) || Boolean(foundUser.tempPassword) || Boolean(foundUser.securityCode))));
+          foundUser.isTemporaryPassword === true;
         if (needsPasswordChange) {
           setShowChangePasswordModal(true);
         }
@@ -864,9 +863,12 @@ export default function App() {
       const updatedUser: User = {
         ...currentUser,
         isPasswordChanged: true,
+        isTemporaryPassword: false,
         tempCode: undefined,
         securityCode: undefined,
+        tempPassword: undefined,
         key: cleanPass,
+        password: cleanPass,
       };
 
       await syncUserPasswordInFirestore(currentUser, cleanPass);
@@ -1349,6 +1351,7 @@ export default function App() {
         onSavePassword={handleSaveNewPassword}
         userName={currentUser?.name}
         nicNumber={currentUser?.nicNumber}
+        currentTempPassword={currentUser?.tempPassword || currentUser?.tempCode || currentUser?.securityCode || currentUser?.key}
       />
 
       <UpdateWhatsAppModal

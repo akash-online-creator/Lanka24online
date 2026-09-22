@@ -432,8 +432,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       ...user,
       securityCode: newTempPassword,
       tempCode: newTempPassword,
+      tempPassword: newTempPassword,
       key: newTempPassword,
+      password: newTempPassword,
       isPasswordChanged: false,
+      isTemporaryPassword: true,
     };
 
     // 1. Call Backend API to synchronize Firebase Auth password
@@ -451,6 +454,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       });
     } catch (err) {
       console.warn('Backend API password reset call error:', err);
+    }
+
+    // 2. Sync to Firestore
+    try {
+      await syncUserProfileToFirestore(updatedUser);
+    } catch (err) {
+      console.warn('Firestore password reset sync notice:', err);
     }
 
     if (onUpdateUser) {
