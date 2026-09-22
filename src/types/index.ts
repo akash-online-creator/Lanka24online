@@ -337,6 +337,9 @@ export interface User {
   credits?: number;
   userNumericId?: string;
   welcomeGiftCredited?: boolean;
+  twoFactorEnabled?: boolean;
+  twoFactorSecret?: string;
+  twoFactorConfirmedAt?: string;
   pendingProfileUpdate?: PendingProfileUpdate;
   aiScanResult?: AiSecurityScanResult;
 }
@@ -422,7 +425,11 @@ export interface Issue {
   attachmentUrl?: string;
   status: IssueStatus;
   createdAt: string;
+  isRegisteredUser?: boolean;
+  targetChannel?: 'inbox' | 'sms' | 'whatsapp';
   adminReply?: string;
+  adminRepliedAt?: string;
+  replyChannel?: 'inbox' | 'sms' | 'whatsapp';
   updatedAt?: string;
 }
 

@@ -39,13 +39,16 @@ import {
   Square,
   Bell,
   BellOff,
-  SlidersHorizontal
+  SlidersHorizontal,
+  QrCode,
+  Key
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore } from '../lib/firebase';
 import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
+import { GoogleAuthSetupModal } from './GoogleAuthSetupModal';
 import {
   getSirenVolume,
   setSirenVolume,
@@ -60,7 +63,7 @@ import {
 } from '../utils/sirenAudio';
 
 export type FontSizeKey = 'small' | 'normal' | 'medium' | 'large' | 'extra_large';
-export type SettingsTabKey = 'profile' | 'font_size' | 'data_saver' | 'siren_settings';
+export type SettingsTabKey = 'profile' | 'security_2fa' | 'font_size' | 'data_saver' | 'siren_settings';
 
 export interface FontSizeOption {
   key: FontSizeKey;
@@ -212,6 +215,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // 2FA Google Authenticator State
+  const [showGoogleAuthModal, setShowGoogleAuthModal] = useState(false);
+  const [showDisable2FAConfirm, setShowDisable2FAConfirm] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       setName(user?.name || '');
@@ -231,6 +238,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       setIsSirenMuted(isDeviceSirenMuted());
       setSirenTone(getSirenFileName());
       setIsTestingSiren(false);
+      setShowGoogleAuthModal(false);
+      setShowDisable2FAConfirm(false);
     }
   }, [isOpen, user, initialTab]);
 
@@ -240,6 +249,77 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (language === 'en') return en;
     if (language === 'ta') return ta;
     return si;
+  };
+
+  const handleEnable2FASuccess = async (secret: string) => {
+    const updatedUser: User = {
+      ...user,
+      twoFactorEnabled: true,
+      twoFactorSecret: secret,
+      twoFactorConfirmedAt: new Date().toISOString(),
+    };
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+
+    localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+    const savedUsers = localStorage.getItem('sahaya_users');
+    if (savedUsers) {
+      try {
+        const list: User[] = JSON.parse(savedUsers);
+        localStorage.setItem('sahaya_users', JSON.stringify(list.map(u => u.id === updatedUser.id ? updatedUser : u)));
+      } catch (e) {
+        console.warn('Error saving local users:', e);
+      }
+    }
+
+    await syncUserProfileToFirestore(updatedUser);
+
+    setSaveSuccessMsg(
+      getLang(
+        '✅ Google Authenticator (2FA) සාර්ථකව සක්‍රීය කරන ලදී!',
+        '✅ Google Authenticator (2FA) successfully enabled!',
+        '✅ Google Authenticator (2FA) வெற்றிகரமாக செயல்படுத்தப்பட்டது!'
+      )
+    );
+    setTimeout(() => setSaveSuccessMsg(null), 3500);
+  };
+
+  const handleDisable2FA = async () => {
+    const updatedUser: User = {
+      ...user,
+      twoFactorEnabled: false,
+      twoFactorSecret: undefined,
+      twoFactorConfirmedAt: undefined,
+    };
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+
+    localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+    const savedUsers = localStorage.getItem('sahaya_users');
+    if (savedUsers) {
+      try {
+        const list: User[] = JSON.parse(savedUsers);
+        localStorage.setItem('sahaya_users', JSON.stringify(list.map(u => u.id === updatedUser.id ? updatedUser : u)));
+      } catch (e) {
+        console.warn('Error saving local users:', e);
+      }
+    }
+
+    await syncUserProfileToFirestore(updatedUser);
+
+    setShowDisable2FAConfirm(false);
+    setSaveSuccessMsg(
+      getLang(
+        'Google Authenticator (2FA) ආරක්ෂාව අක්‍රීය කරන ලදී.',
+        'Google Authenticator (2FA) disabled.',
+        'Google Authenticator (2FA) முடக்கப்பட்டது.'
+      )
+    );
+    setTimeout(() => setSaveSuccessMsg(null), 3500);
   };
 
   const handleFontSizeChange = (sizeKey: FontSizeKey) => {
@@ -458,7 +538,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         </div>
 
         {/* Top Tabs Switcher */}
-        <div className="flex items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-1.5 sm:gap-2">
+        <div className="flex items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-1 sm:gap-1.5 overflow-x-auto">
           {/* Tab 1: Profile Setting */}
           <button
             type="button"
@@ -466,65 +546,85 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('profile');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[75px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'profile'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <UserIcon className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{getLang('👤 Profile', '👤 Profile', '👤 சுயவிவரம்')}</span>
           </button>
 
-          {/* Tab 2: Font Size */}
+          {/* Tab 2: Security & 2FA */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('security_2fa');
+              setErrorMsg(null);
+            }}
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+              activeTab === 'security_2fa'
+                ? 'bg-gradient-to-r from-teal-600 to-emerald-700 text-white shadow-md scale-[1.01]'
+                : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+            <span className="truncate">{getLang('🔐 2FA ආරක්ෂාව', '🔐 2FA Security', '🔐 2FA பாதுகாப்பு')}</span>
+            {user?.twoFactorEnabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            )}
+          </button>
+
+          {/* Tab 3: Font Size */}
           <button
             type="button"
             onClick={() => {
               setActiveTab('font_size');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[75px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'font_size'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <Type className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="truncate">{getLang('🔤 Font Size', '🔤 Font Size', '🔤 எழுத்துரு')}</span>
+            <Type className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{getLang('🔤 Font', '🔤 Font', '🔤 எழுத்து')}</span>
           </button>
 
-          {/* Tab 3: Data Saver */}
+          {/* Tab 4: Data Saver */}
           <button
             type="button"
             onClick={() => {
               setActiveTab('data_saver');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[80px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'data_saver'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-300" />
-            <span className="truncate">{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா சேவர்')}</span>
+            <Zap className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+            <span className="truncate">{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா')}</span>
           </button>
 
-          {/* Tab 4: Siren & Emergency Volume Settings */}
+          {/* Tab 5: Siren & Emergency Volume Settings */}
           <button
             type="button"
             onClick={() => {
               setActiveTab('siren_settings');
               setErrorMsg(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 sm:px-4 rounded-2xl text-[11px] sm:text-xs md:text-sm font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'siren_settings'
                 ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
-            <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-red-400" />
-            <span className="truncate">{getLang('🚨 සයිරන් / Volume', '🚨 Siren / Volume', '🚨 சைரன் ஒலி')}</span>
+            <Volume2 className="w-3.5 h-3.5 shrink-0 text-red-400" />
+            <span className="truncate">{getLang('🚨 සයිරන්', '🚨 Siren', '🚨 சைரன்')}</span>
           </button>
         </div>
 
@@ -1601,8 +1701,170 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* TAB: 2FA GOOGLE AUTHENTICATOR SECURITY */}
+          {activeTab === 'security_2fa' && (
+            <div className="space-y-5 animate-in fade-in">
+              {/* Header Overview Card */}
+              <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-900/10 via-teal-900/10 to-slate-900/10 dark:from-emerald-950/40 dark:via-teal-950/40 dark:to-slate-950/40 border-2 border-emerald-500/30 dark:border-emerald-500/40 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-emerald-500/20 dark:bg-emerald-500/30 rounded-2xl text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>Google Authenticator (2FA)</span>
+                        <span className="text-xs bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full">
+                          Two-Factor Auth
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400">
+                        {getLang(
+                          'ඔබගේ ගිණුමට ලොග් වීමේදී මුරපදයට අමතරව 6-digit ආරක්ෂක කේතයක් ලබාදීම මගින් ගිණුම උපරිම ලෙස සුරක්ෂිත කරන්න.',
+                          'Protect your account by requiring a 6-digit TOTP security code when signing in.',
+                          'உள்நுழையும் போது 6-இலக்க பாதுகாப்பு குறியீட்டைக் கோருவதன் மூலம் உங்கள் கணக்கைப் பாதுகாக்கவும்.'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="self-start sm:self-center">
+                    {user?.twoFactorEnabled ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/70 border-2 border-emerald-500 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-sm">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{getLang('සක්‍රීයයි (Active)', 'Active & Protected', 'செயலில் உள்ளது')}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 text-xs font-black">
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span>{getLang('අක්‍රීයයි (Disabled)', 'Disabled', 'முடக்கப்பட்டுள்ளது')}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2FA Action Buttons */}
+                <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+                  {!user?.twoFactorEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowGoogleAuthModal(true)}
+                      className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 cursor-pointer transition-all active:scale-95"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      <span>{getLang('Google Authenticator සක්‍රීය කරන්න', 'Enable Google Authenticator (2FA)', 'Google Authenticator ஐ இயக்கு')}</span>
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+                      {!showDisable2FAConfirm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowDisable2FAConfirm(true)}
+                          className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>{getLang('2FA ආරක්ෂාව අක්‍රීය කරන්න', 'Disable 2FA', '2FA முடக்கு')}</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100 dark:bg-rose-950 border border-rose-300 dark:border-rose-800">
+                          <span className="text-xs font-bold text-rose-900 dark:text-rose-200">
+                            {getLang('2FA අක්‍රීය කිරීමට විශ්වාසද?', 'Disable 2FA?', 'நிச்சயமா?')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleDisable2FA}
+                            className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-black hover:bg-rose-700 transition-colors"
+                          >
+                            {getLang('ඔව්, අක්‍රීය කරන්න', 'Yes, Disable', 'ஆம்')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowDisable2FAConfirm(false)}
+                            className="px-2 py-1 bg-slate-200 dark:bg-zinc-700 text-slate-800 dark:text-zinc-200 rounded-lg text-xs font-bold"
+                          >
+                            {getLang('නැත', 'Cancel', 'இல்லை')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {user?.twoFactorConfirmedAt && (
+                    <div className="text-[11px] text-slate-500 dark:text-zinc-400 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{getLang('සක්‍රීය කළ දිනය:', 'Enabled on:', 'இயக்கப்பட்ட தேதி:')} {new Date(user.twoFactorConfirmedAt).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Step-by-Step Instructions */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 shadow-sm">
+                <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-emerald-600" />
+                  <span>{getLang('Google Authenticator භාවිතා කරන්නේ කෙසේද?', 'How to use Google Authenticator?', 'Google Authenticator ஐ எவ்வாறு பயன்படுத்துவது?')}</span>
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-700 space-y-1.5">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center text-xs">1</div>
+                    <p className="font-bold text-slate-900 dark:text-zinc-200">
+                      {getLang('ඇප් එක Install කරන්න', 'Install the App', 'செயலியை நிறுவவும்')}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      {getLang('Google Play Store හෝ Apple App Store වෙතින් Google Authenticator බාගත කරන්න.', 'Download Google Authenticator from Play Store or App Store.', 'Google Authenticator செயலியைப் பதிவிறக்கவும்.')}
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-700 space-y-1.5">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center text-xs">2</div>
+                    <p className="font-bold text-slate-900 dark:text-zinc-200">
+                      {getLang('QR කේතය Scan කරන්න', 'Scan the QR Code', 'QR குறியீட்டை ஸ்கேன் செய்க')}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      {getLang('සක්‍රීය කිරීමේ බොත්තම ක්ලික් කර දිස්වන QR Code එක හෝ Secret Key එක ඇප් එකට එක්කරන්න.', 'Click Enable and scan the QR code using your authenticator app.', 'QR குறியீட்டை ஸ்கேன் செய்யவும்.')}
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-700 space-y-1.5">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center text-xs">3</div>
+                    <p className="font-bold text-slate-900 dark:text-zinc-200">
+                      {getLang('ආරක්ෂිතව ලොග් වන්න', 'Secure Login Every Time', 'பாதுகாப்பான உள்நுழைவு')}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      {getLang('ලොග් වීමේදී ඔබගේ දුරකථනයේ දිස්වන තත්පර 30න් මාරුවන 6-digit අංකය ඇතුළත් කරන්න.', 'Enter the 6-digit TOTP code from your phone whenever signing in.', 'ஒவ்வொரு முறையும் 6 இலக்கக் குறியீட்டை உள்ளிடவும்.')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <div className="pt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Google Authenticator Setup Modal */}
+      {showGoogleAuthModal && (
+        <GoogleAuthSetupModal
+          isOpen={showGoogleAuthModal}
+          onClose={() => setShowGoogleAuthModal(false)}
+          onEnableSuccess={handleEnable2FASuccess}
+          userLabel={user?.nicNumber || user?.phone || user?.name || 'User'}
+          language={language}
+        />
+      )}
     </div>
   );
 };

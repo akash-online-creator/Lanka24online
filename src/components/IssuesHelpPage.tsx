@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Issue, Language } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Issue, Language, User } from '../types';
 import { translations } from '../data/translations';
 import { 
   HelpCircle, 
@@ -15,11 +15,17 @@ import {
   Maximize2, 
   ShieldAlert,
   Sparkles,
-  Lock
+  Lock,
+  Inbox,
+  Smartphone,
+  MessageCircle,
+  ShieldCheck
 } from 'lucide-react';
 
 interface IssuesHelpPageProps {
   issues: Issue[];
+  users?: User[];
+  currentUser?: User | null;
   onSubmitIssue: (newIssue: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>) => void;
   onBackToLogin: () => void;
   language: Language;
@@ -27,16 +33,18 @@ interface IssuesHelpPageProps {
 
 export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
   issues = [],
+  users = [],
+  currentUser = null,
   onSubmitIssue,
   onBackToLogin,
   language,
 }) => {
   const t = translations[language];
 
-  const [userName, setUserName] = useState('');
-  const [userPhone, setUserPhone] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [nicNumber, setNicNumber] = useState('');
+  const [userName, setUserName] = useState(currentUser?.name || '');
+  const [userPhone, setUserPhone] = useState(currentUser?.phone || '');
+  const [userEmail, setUserEmail] = useState(currentUser?.email || '');
+  const [nicNumber, setNicNumber] = useState(currentUser?.nicNumber || '');
   const [category, setCategory] = useState(t.catLogin);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -46,7 +54,29 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [submittedCode, setSubmittedCode] = useState<string | null>(null);
+  const [submittedChannel, setSubmittedChannel] = useState<'inbox' | 'sms' | 'whatsapp'>('sms');
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
+
+  // Sync if currentUser arrives late
+  useEffect(() => {
+    if (currentUser) {
+      if (!userName) setUserName(currentUser.name || '');
+      if (!userPhone) setUserPhone(currentUser.phone || '');
+      if (!userEmail) setUserEmail(currentUser.email || '');
+      if (!nicNumber) setNicNumber(currentUser.nicNumber || '');
+    }
+  }, [currentUser]);
+
+  // Check if current phone/user is registered in the system
+  const isRegistered = Boolean(
+    currentUser ||
+    (userPhone.trim().length >= 9 && users.some(u => {
+      const uDigits = (u.phone || '').replace(/[^0-9]/g, '');
+      const inDigits = userPhone.replace(/[^0-9]/g, '');
+      return (uDigits.length >= 9 && inDigits.length >= 9 && (uDigits.endsWith(inDigits.slice(-9)) || inDigits.endsWith(uDigits.slice(-9)))) ||
+             (nicNumber && u.nicNumber && u.nicNumber.toLowerCase().trim() === nicNumber.toLowerCase().trim());
+    }))
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,6 +155,9 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
     const isOtherCategory = category === t.catOther;
     const finalTitle = isOtherCategory ? (title.trim() || t.catOther) : category;
 
+    const channel: 'inbox' | 'sms' = isRegistered ? 'inbox' : 'sms';
+    setSubmittedChannel(channel);
+
     onSubmitIssue({
       userName: userName.trim(),
       userPhone: userPhone.trim(),
@@ -134,6 +167,8 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
       title: finalTitle,
       description: description.trim(),
       attachmentUrl,
+      isRegisteredUser: isRegistered,
+      targetChannel: channel,
     });
 
     const code = `#ISSUE-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -195,17 +230,34 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
 
             {/* Submission Success Alert Banner */}
             {submittedCode && (
-              <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border-2 border-emerald-500 text-emerald-900 dark:text-emerald-100 text-xs space-y-2.5 shadow-[0_8px_20px_rgba(16,185,129,0.2)] animate-fadeIn">
+              <div className="mb-6 p-4 sm:p-5 rounded-3xl bg-emerald-50 dark:bg-[#082819] border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 text-xs space-y-3 shadow-[0_12px_30px_rgba(16,185,129,0.25)] animate-fadeIn">
                 <div className="flex items-center gap-2 font-black text-sm text-emerald-800 dark:text-emerald-300">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>{t.issueSubmittedSuccess}</span>
                 </div>
                 <p className="font-semibold text-slate-700 dark:text-slate-200">
                   {t.issueRefCode}: <span className="font-mono font-black text-white bg-emerald-700 px-3 py-1 rounded-xl shadow-sm border border-emerald-500">{submittedCode}</span>
                 </p>
-                <p className="text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
-                  ඔබගේ ගැටලුව පරිපාලක පැනලයට (Admin Panel) යොමු කෙරිණි. නිරීක්ෂණයෙන් පසු පිළිතුර මෙහි දැක්වේ.
-                </p>
+                <div className="p-3 bg-white dark:bg-[#05180f] rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                  <p className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 mb-1">
+                    {submittedChannel === 'inbox' ? (
+                      <>
+                        <Inbox className="w-4 h-4 text-teal-600" />
+                        <span>පිළිතුර ලැබෙන ආකාරය: සහය සේවා Inbox & WhatsApp</span>
+                      </>
+                    ) : (
+                      <>
+                        <Smartphone className="w-4 h-4 text-sky-600" />
+                        <span>පිළිතුර ලැබෙන ආකාරය: සෘජු SMS පණිවිඩයක් (Direct SMS)</span>
+                      </>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-300 leading-relaxed">
+                    {submittedChannel === 'inbox'
+                      ? 'ඔබ සහය සේවා ලියාපදිංචි සාමාජිකයෙකු බැවින්, පරිපාලකගේ පිළිතුර ඔබගේ ඇප් එකේ Inbox (පණිවිඩ හුවමාරුව) වෙත ලැබෙනු ඇත.'
+                      : `ඔබ ඇතුළත් කළ දුරකථන අංකය (${userPhone || 'ඔබගේ අංකය'}) වෙත පරිපාලකගේ පිළිතුර සෘජු SMS පණිවිඩයක් ලෙස ලැබෙනු ඇත.`}
+                  </p>
+                </div>
               </div>
             )}
 
@@ -426,10 +478,35 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
                 )}
               </div>
 
+              {/* Delivery Channel Notice Box Before Submitting */}
+              <div className={`p-4 rounded-2xl border-2 transition-all ${
+                isRegistered
+                  ? 'bg-teal-50/80 dark:bg-[#07291a] border-teal-400 dark:border-teal-700 text-teal-950 dark:text-teal-100'
+                  : 'bg-sky-50/80 dark:bg-[#07202d] border-sky-400 dark:border-sky-700 text-sky-950 dark:text-sky-100'
+              }`}>
+                <div className="flex items-start gap-2.5">
+                  {isRegistered ? (
+                    <Inbox className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <Smartphone className="w-5 h-5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold flex items-center gap-1.5">
+                      <span>{isRegistered ? '✅ ලියාපදිංචි සාමාජික ගිණුමකි (Registered Account)' : '📱 ලියාපදිංචි නොවූ අමුත්තෙකි (Guest / Non-registered)'}</span>
+                    </p>
+                    <p className="font-medium text-slate-700 dark:text-zinc-200 leading-relaxed text-[11px]">
+                      {isRegistered
+                        ? 'පරිපාලකගේ පිළිතුර ඔබගේ සහය සේවා Inbox (පණිවිඩ හුවමාරුව) වෙත සහ WhatsApp හරහා සෘජුවම ලැබෙනු ඇත.'
+                        : 'පරිපාලකගේ පිළිතුර ඔබ ලබාදුන් දුරකථන අංකයට සෘජු SMS පණිවිඩයක් (Direct SMS) ලෙස ලැබෙනු ඇත.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* 3D Submit Button */}
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-4 rounded-2xl shadow-[0_12px_28px_rgba(16,185,129,0.38)] border-b-4 border-emerald-800 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2.5 cursor-pointer text-base mt-4"
+                className="w-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-4 rounded-2xl shadow-[0_12px_28px_rgba(16,185,129,0.38)] border-b-4 border-emerald-800 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2.5 cursor-pointer text-base mt-2"
               >
                 <Send className="w-5 h-5 text-emerald-100" />
                 <span>{t.submitIssueBtn}</span>

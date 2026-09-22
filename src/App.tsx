@@ -23,6 +23,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UpdateWhatsAppModal } from './components/UpdateWhatsAppModal';
+import { GoogleAuthVerifyModal } from './components/GoogleAuthVerifyModal';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { 
   auth,
@@ -39,12 +40,15 @@ import {
   syncUserPasswordInFirestore,
   markRedAlertAsResolved,
   cancelRedAlertByReporter,
-  addReporterUpdateToRedAlert
+  addReporterUpdateToRedAlert,
+  saveIssueToFirestore,
+  updateIssueInFirestore
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { grantWelcomeGiftCredit } from './utils/creditManager';
 import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
 import { captureUserLoginLog, appendLoginHistory } from './utils/loginTracker';
+import { broadcastAppNotification } from './utils/notificationManager';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
 import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
@@ -68,6 +72,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     return null;
   });
+
+  const [pending2FAUser, setPending2FAUser] = useState<User | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
@@ -631,30 +637,41 @@ export default function App() {
       }
 
       console.log("Login Successful! Setting User State...");
-      setCurrentUser(foundUser);
-      setUsers((prev) => (prev || []).map((u) => (u.id === foundUser!.id ? foundUser! : u)));
-
-      if (foundUser.role === 'admin') {
-        setActiveRoleView('admin');
-        setViewMode('admin');
-      } else if (foundUser.status === 'pending') {
-        setViewMode('pending');
-      } else if (foundUser.status === 'approved') {
-        setViewMode('dashboard');
-        // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
-        const needsPasswordChange =
-          foundUser.role !== 'admin' &&
-          foundUser.isTemporaryPassword === true;
-        if (needsPasswordChange) {
-          setShowChangePasswordModal(true);
-        }
-      } else if (foundUser.status === 'rejected') {
-        setShowWrongLoginModal(true);
+      
+      // If user has 2FA enabled, prompt for TOTP verification code before finalizing login
+      if (foundUser.twoFactorEnabled === true && foundUser.twoFactorSecret) {
+        setPending2FAUser(foundUser);
+        return;
       }
+
+      completeSuccessfulLogin(foundUser);
 
     } catch (error) {
       console.error("Login verification failed with an exception:", error);
       alert("අන්තර්ජාල සම්බන්ධතා දෝෂයක්. කරුණාකර නැවත උත්සාහ කරන්න.");
+    }
+  };
+
+  const completeSuccessfulLogin = (authenticatedUser: User) => {
+    setCurrentUser(authenticatedUser);
+    setUsers((prev) => (prev || []).map((u) => (u.id === authenticatedUser.id ? authenticatedUser : u)));
+
+    if ((authenticatedUser.role as string) === 'admin') {
+      setActiveRoleView('admin');
+      setViewMode('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setViewMode('pending');
+    } else if (authenticatedUser.status === 'approved') {
+      setViewMode('dashboard');
+      // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
+      const needsPasswordChange =
+        (authenticatedUser.role as string) !== 'admin' &&
+        authenticatedUser.isTemporaryPassword === true;
+      if (needsPasswordChange) {
+        setShowChangePasswordModal(true);
+      }
+    } else if (authenticatedUser.status === 'rejected') {
+      setShowWrongLoginModal(true);
     }
   };
 
@@ -1041,33 +1058,75 @@ export default function App() {
     }
   };
 
-  const handleSubmitIssue = (
+  const handleSubmitIssue = async (
     newIssueData: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>
   ) => {
     const createdIssue: Issue = {
       ...newIssueData,
-      id: `iss_${Date.now()}`,
+      id: `iss_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       issueCode: `#ISSUE-${Math.floor(1000 + Math.random() * 9000)}`,
       status: 'pending',
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
 
-    setIssues((prev) => [createdIssue, ...(prev || [])]);
+    setIssues((prev) => {
+      const updated = [createdIssue, ...(prev || [])];
+      localStorage.setItem('sahaya_issues', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      await saveIssueToFirestore(createdIssue);
+    } catch (err) {
+      console.warn("saveIssueToFirestore notice:", err);
+    }
   };
 
-  const handleReplyIssue = (issueId: string, reply: string, resolve: boolean) => {
-    setIssues((prev) =>
-      (prev || []).map((iss) =>
-        iss.id === issueId
-          ? {
-              ...iss,
-              adminReply: reply,
-              status: resolve ? 'resolved' : 'in_progress',
-              updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-            }
-          : iss
-      )
-    );
+  const handleReplyIssue = (
+    issueId: string, 
+    reply: string, 
+    resolve: boolean,
+    replyChannel?: 'inbox' | 'sms' | 'whatsapp'
+  ) => {
+    setIssues((prev) => {
+      const updatedList = (prev || []).map((iss) => {
+        if (iss.id === issueId) {
+          const channel = replyChannel || iss.targetChannel || (iss.isRegisteredUser ? 'inbox' : 'sms');
+          const updatedIss: Issue = {
+            ...iss,
+            adminReply: reply,
+            status: resolve ? 'resolved' : 'in_progress',
+            replyChannel: channel,
+            updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          };
+
+          // Save updates to Firestore
+          updateIssueInFirestore(issueId, {
+            adminReply: reply,
+            status: resolve ? 'resolved' : 'in_progress',
+            replyChannel: channel,
+            updatedAt: new Date().toISOString(),
+          }).catch((err) => console.warn("updateIssueInFirestore notice:", err));
+
+          // Trigger In-App Notification if user is registered / has known account
+          if (iss.isRegisteredUser || iss.userId || iss.nicNumber) {
+            broadcastAppNotification({
+              type: 'issue_reply',
+              title: '💬 පරිපාලක පිළිතුරක් (Admin Reply)',
+              message: `ඔබගේ ගැටලුව (${iss.issueCode}) සඳහා පිළිතුර: ${reply.slice(0, 80)}`,
+              badgeText: iss.issueCode,
+              targetModal: 'detail',
+            });
+          }
+
+          return updatedIss;
+        }
+        return iss;
+      });
+
+      localStorage.setItem('sahaya_issues', JSON.stringify(updatedList));
+      return updatedList;
+    });
   };
 
   const handleSeedDemoData = async () => {
@@ -1207,6 +1266,8 @@ export default function App() {
         {viewMode === 'issues_help' && (
           <IssuesHelpPage
             issues={issues}
+            users={users}
+            currentUser={currentUser}
             onSubmitIssue={handleSubmitIssue}
             onBackToLogin={() => {
               if (currentUser && currentUser.status === 'approved') {
@@ -1344,6 +1405,22 @@ export default function App() {
         onRetry={() => setShowWrongLoginModal(false)}
         language={language}
       />
+
+      {/* 2FA TOTP Google Authenticator Verification Modal during Login */}
+      {pending2FAUser && pending2FAUser.twoFactorSecret && (
+        <GoogleAuthVerifyModal
+          isOpen={Boolean(pending2FAUser)}
+          onClose={() => setPending2FAUser(null)}
+          onVerifySuccess={() => {
+            const userToAuth = pending2FAUser;
+            setPending2FAUser(null);
+            completeSuccessfulLogin(userToAuth);
+          }}
+          secretBase32={pending2FAUser.twoFactorSecret}
+          userName={pending2FAUser.name || pending2FAUser.nicNumber}
+          language={language}
+        />
+      )}
 
       <ChangePasswordModal
         isOpen={showChangePasswordModal}

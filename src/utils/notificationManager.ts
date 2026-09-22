@@ -5,6 +5,7 @@ export type NotificationType =
   | 'marketplace_price' 
   | 'group_work' 
   | 'from_me_to_you' 
+  | 'issue_reply'
   | 'general';
 
 export interface AppNotification {

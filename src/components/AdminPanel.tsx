@@ -123,6 +123,7 @@ import {
   HelpCircle,
   Key
 } from 'lucide-react';
+import { AdminIssuesManagement } from './AdminIssuesManagement';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
@@ -154,7 +155,7 @@ interface AdminPanelProps {
   onRestorePost?: (postId: string) => void;
   onUpdatePost?: (updatedPost: HelpPost) => void;
   onRestoreAllPosts?: (posts: HelpPost[]) => void;
-  onReplyIssue: (issueId: string, reply: string, resolve: boolean) => void;
+  onReplyIssue: (issueId: string, reply: string, resolve: boolean, replyChannel?: 'inbox' | 'sms' | 'whatsapp') => void;
   onSeedDemoData: () => void;
   language: Language;
 }
@@ -738,10 +739,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           }`}
         >
           <Clock className="w-4 h-4 text-emerald-600" />
-          <span>පොරොත්තු අනුමැති (Pending Approvals)</span>
+          <span>පොරොත්තු අනුමැති (Approvals)</span>
           {pendingUsers.length > 0 && (
             <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full">
               {pendingUsers.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('issues')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'issues'
+              ? 'bg-white border-teal-600 text-teal-900 shadow-md font-black'
+              : 'bg-teal-50/80 border-slate-200 text-teal-800 hover:bg-teal-100'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 text-teal-600" />
+          <span>💬 වාර්තා වූ ගැටලු (User Issues & Replies)</span>
+          {pendingIssues.length > 0 ? (
+            <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+              {pendingIssues.length} Pending
+            </span>
+          ) : (
+            <span className="bg-teal-200 text-teal-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+              {issues.length}
             </span>
           )}
         </button>
@@ -755,14 +777,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           }`}
         >
           <ShieldAlert className="w-4 h-4 text-purple-600" />
-          <span>🤖 AI ආරක්ෂක ස්කෑනරය (AI Fraud & Duplicates)</span>
+          <span>🤖 AI ආරක්ෂක (AI Fraud)</span>
           {totalAiSecurityAlerts > 0 ? (
             <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
-              {totalAiSecurityAlerts} Alerts
+              {totalAiSecurityAlerts}
             </span>
           ) : (
             <span className="bg-purple-200 text-purple-900 text-[10px] font-black px-2 py-0.5 rounded-full">
-              {scannedUsers.length} Scanned
+              {scannedUsers.length}
             </span>
           )}
         </button>
@@ -776,10 +798,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           }`}
         >
           <UserCheck className="w-4 h-4 text-emerald-600" />
-          <span>පරිශීලක ලැයිස්තුව (Users Directory)</span>
+          <span>පරිශීලකයන් (Users)</span>
           <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
             {users.length}
           </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('red_alerts')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'red_alerts'
+              ? 'bg-white border-rose-500 text-rose-900 shadow-md font-black'
+              : 'bg-rose-50/80 border-slate-200 text-rose-800 hover:bg-rose-100'
+          }`}
+        >
+          <AlertTriangle className="w-4 h-4 text-rose-600" />
+          <span>🚨 Red Alerts</span>
+          {redAlerts.filter(a => a.status === 'active').length > 0 && (
+            <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+              {redAlerts.filter(a => a.status === 'active').length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('credits')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'credits'
+              ? 'bg-white border-amber-500 text-amber-900 shadow-md font-black'
+              : 'bg-amber-50/80 border-slate-200 text-amber-800 hover:bg-amber-100'
+          }`}
+        >
+          <Coins className="w-4 h-4 text-amber-600" />
+          <span>💰 Credits</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('emergency_directory')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'emergency_directory'
+              ? 'bg-white border-blue-500 text-blue-900 shadow-md font-black'
+              : 'bg-blue-50/80 border-slate-200 text-blue-800 hover:bg-blue-100'
+          }`}
+        >
+          <PhoneCall className="w-4 h-4 text-blue-600" />
+          <span>📞 Directory</span>
+          {totalEmergencyBadge > 0 && (
+            <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {totalEmergencyBadge}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('search_dictionary')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'search_dictionary'
+              ? 'bg-white border-indigo-500 text-indigo-900 shadow-md font-black'
+              : 'bg-indigo-50/80 border-slate-200 text-indigo-800 hover:bg-indigo-100'
+          }`}
+        >
+          <Search className="w-4 h-4 text-indigo-600" />
+          <span>🔍 Dictionary</span>
         </button>
       </div>
 
@@ -1519,6 +1599,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tab: User Issues & Reply Management (වාර්තා වූ ගැටලු සහ පිළිතුරු කළමනාකරණය) */}
+      {activeTab === 'issues' && (
+        <AdminIssuesManagement
+          issues={issues}
+          users={users}
+          onReplyIssue={onReplyIssue}
+          language={language}
+        />
+      )}
+
+      {/* Tab: Red Alerts Management */}
+      {activeTab === 'red_alerts' && (
+        <AdminRedAlertManagement
+          redAlerts={redAlerts}
+          onRefreshRedAlerts={onRefreshRedAlerts}
+          onViewDetail={onViewRedAlertDetail}
+          language={language}
+        />
+      )}
+
+      {/* Tab: User Credits Management */}
+      {activeTab === 'credits' && (
+        <AdminCreditManagement
+          users={users}
+          onUpdateUser={onUpdateUser}
+          language={language}
+        />
+      )}
+
+      {/* Tab: Emergency Contacts Directory Management */}
+      {activeTab === 'emergency_directory' && (
+        <AdminEmergencyDirectoryManagement
+          language={language}
+        />
+      )}
+
+      {/* Tab: Search Synonym Dictionary Management */}
+      {activeTab === 'search_dictionary' && (
+        <AdminSearchDictionaryManager
+          language={language}
+        />
       )}
 
       {/* User Edit / Details / Login History Modal */}

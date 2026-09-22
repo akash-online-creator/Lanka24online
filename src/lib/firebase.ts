@@ -1169,6 +1169,63 @@ export function subscribeToUsers(
 }
 
 // ==============================================================
+// 🆘 ISSUE REPORTING & ADMIN REPLY PERSISTENCE
+// ==============================================================
+
+export async function saveIssueToFirestore(issueData: any): Promise<string> {
+  try {
+    const colRef = collection(db, 'issues');
+    const docId = issueData.id || `issue_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const docRef = doc(colRef, docId);
+    await setDoc(docRef, {
+      ...issueData,
+      id: docId,
+      createdAtServer: serverTimestamp(),
+      updatedAtServer: serverTimestamp(),
+    });
+    return docId;
+  } catch (error) {
+    console.warn('saveIssueToFirestore notice:', error);
+    return issueData.id || `issue_${Date.now()}`;
+  }
+}
+
+export async function updateIssueInFirestore(issueId: string, updateData: Record<string, any>): Promise<void> {
+  try {
+    if (!issueId) return;
+    const docRef = doc(db, 'issues', issueId);
+    await updateDoc(docRef, {
+      ...updateData,
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('updateIssueInFirestore notice:', error);
+  }
+}
+
+export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'issues');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const issues = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(issues);
+      },
+      (error) => {
+        console.warn('subscribeToIssues snapshot notice:', error?.message || error);
+      }
+    );
+  } catch (err) {
+    console.error('subscribeToIssues setup error:', err);
+    return () => {};
+  }
+}
+
+// ==============================================================
 // 🆘 HELP POST DELETION & SEED OPERATIONS
 // ==============================================================
 
