@@ -31,13 +31,15 @@ import firebaseConfigJson from '../../firebase-applet-config.json';
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
 // ==============================================================
 
+const env: any = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env : {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
+  apiKey: env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
+  appId: env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
 };
 
 if (!firebaseConfig.apiKey) {
@@ -536,6 +538,31 @@ export async function restorePostsBackupData(postsData: any): Promise<{ restored
   }
 }
 
+/**
+ * Recursively cleans any object to remove `undefined` fields which Firestore rejects with error
+ */
+export function sanitizeForFirestore<T = any>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (obj instanceof Date || ('nanoseconds' in (obj as any)) || ('_methodName' in (obj as any))) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return (obj
+      .filter((item) => item !== undefined)
+      .map((item) => (item !== null && typeof item === 'object' ? sanitizeForFirestore(item) : item)) as unknown) as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj as Record<string, any>)) {
+    if (val === undefined) continue;
+    if (val !== null && typeof val === 'object') {
+      clean[key] = sanitizeForFirestore(val);
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean as T;
+}
+
 export async function syncUserProfileToFirestore(userIdOrData: any, profileData?: any): Promise<void> {
   try {
     let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
@@ -543,11 +570,12 @@ export async function syncUserProfileToFirestore(userIdOrData: any, profileData?
     if (!userId) return;
 
     const docRef = doc(db, 'users', userId);
-    await setDoc(docRef, {
+    const sanitized = sanitizeForFirestore({
       ...data,
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
-    }, { merge: true });
+    });
+    await setDoc(docRef, sanitized, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'users');
   }
@@ -803,18 +831,24 @@ export async function toggleSavePostInFirestore(
 // ==============================================================
 
 /**
- * සියලුම ගැළපෙන පරිශීලක ලේඛන Firestore එකෙන් ලබා ගනී (Doc ID, NIC, User ID, Phone, Email)
+ * සියලුම ගැළපෙන පරිශීලක ලේඛන Firestore එකෙන් ලබා ගනී (Doc ID, NIC, User ID, Numeric ID, Phone, Email)
  */
 export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): Promise<any[]> {
   try {
     if (!userIdOrInput) return [];
-    const cleanInput = userIdOrInput.trim();
+    const cleanInput = String(userIdOrInput).trim();
     const cleanInputLower = cleanInput.toLowerCase();
     const cleanInputUpper = cleanInput.toUpperCase();
+    const numericPart = cleanInput.replace(/[^0-9]/g, '');
     const resultsMap = new Map<string, any>();
 
-    // 1. Direct Document ID Search (raw, lower, upper)
-    for (const docId of [cleanInput, cleanInputUpper, cleanInputLower]) {
+    // 1. Direct Document ID Search (raw, upper, lower, numeric)
+    const directDocIds = [cleanInput, cleanInputUpper, cleanInputLower];
+    if (numericPart && numericPart !== cleanInput) {
+      directDocIds.push(numericPart);
+    }
+
+    for (const docId of directDocIds) {
       if (!docId) continue;
       try {
         const snap = await getDoc(doc(db, 'users', docId));
@@ -824,7 +858,7 @@ export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): P
       } catch {}
     }
 
-    // 2. Collection Queries (userId, nicNumber, phone, email)
+    // 2. Collection Queries (userId, nicNumber, userNumericId, phone, email)
     const colRef = collection(db, 'users');
     const queries = [
       query(colRef, where('userId', '==', cleanInput)),
@@ -836,6 +870,13 @@ export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): P
       query(colRef, where('email', '==', `${cleanInputLower}@app.com`)),
       query(colRef, where('email', '==', `${cleanInputLower}@sahayaseva.com`)),
     ];
+
+    if (numericPart) {
+      queries.push(
+        query(colRef, where('userNumericId', '==', numericPart)),
+        query(colRef, where('userId', '==', numericPart))
+      );
+    }
 
     const snapshots = await Promise.all(queries.map((q) => getDocs(q).catch(() => null)));
     for (const qSnap of snapshots) {
@@ -867,30 +908,42 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
       };
     }
 
-    // බහුවිධ ලේඛන ඇති විට නවතම හෝ ස්ථීර මුරපදය සහිත ලේඛනයට ප්‍රමුඛතාව ලබා දීම
+    // බහුවිධ ලේඛන ඇති විට සම්පූර්ණ නම සහිත, මුරපදය මාරු කළ සහ නවතම ලේඛනයට ප්‍රමුඛතාව ලබා දීම
     matches.sort((a, b) => {
+      const aHasName = Boolean(a.name && String(a.name).trim().length > 0);
+      const bHasName = Boolean(b.name && String(b.name).trim().length > 0);
+      if (aHasName && !bHasName) return -1;
+      if (!aHasName && bHasName) return 1;
+
       if (a.isPasswordChanged && !b.isPasswordChanged) return -1;
       if (!a.isPasswordChanged && b.isPasswordChanged) return 1;
+
       const tA = new Date(a.updatedAt || a.registeredAt || 0).getTime();
       const tB = new Date(b.updatedAt || b.registeredAt || 0).getTime();
       return tB - tA;
     });
 
-    // Merge attributes across all matches so no fields (status, name, phone, password, credits) are lost
-    const mergedUser: any = {};
-    for (let i = matches.length - 1; i >= 0; i--) {
-      Object.assign(mergedUser, matches[i]);
-    }
+    // Primary document retains authority; merge non-empty attributes from other matches
     const primary = matches[0];
-    Object.assign(mergedUser, {
-      ...primary,
-      status: primary.status || mergedUser.status || 'approved',
-      role: primary.role || mergedUser.role || 'user',
-      key: primary.key || primary.password || mergedUser.key || mergedUser.password,
-      password: primary.password || primary.key || mergedUser.password || mergedUser.key,
-      isPasswordChanged: primary.isPasswordChanged ?? mergedUser.isPasswordChanged ?? true,
-      isTemporaryPassword: primary.isTemporaryPassword ?? mergedUser.isTemporaryPassword ?? false,
-    });
+    const mergedUser: any = { ...primary };
+
+    for (let i = 1; i < matches.length; i++) {
+      const other = matches[i];
+      for (const [key, value] of Object.entries(other)) {
+        if (value !== undefined && value !== null && value !== '') {
+          if (mergedUser[key] === undefined || mergedUser[key] === null || mergedUser[key] === '') {
+            mergedUser[key] = value;
+          }
+        }
+      }
+    }
+
+    mergedUser.status = primary.status || mergedUser.status || 'approved';
+    mergedUser.role = primary.role || mergedUser.role || 'user';
+    mergedUser.key = primary.key || primary.password || mergedUser.key || mergedUser.password;
+    mergedUser.password = primary.password || primary.key || mergedUser.password || mergedUser.key;
+    mergedUser.isPasswordChanged = primary.isPasswordChanged ?? mergedUser.isPasswordChanged ?? true;
+    mergedUser.isTemporaryPassword = primary.isTemporaryPassword ?? mergedUser.isTemporaryPassword ?? false;
 
     return mergedUser;
   } catch (error) {
@@ -918,40 +971,45 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
       if (m.id) docIdsToUpdate.add(m.id);
     });
 
-    if (docIdsToUpdate.size === 0) {
-      if (id) docIdsToUpdate.add(id);
-      else if (nic) docIdsToUpdate.add(String(nic).trim().toUpperCase());
-      else if (uid) docIdsToUpdate.add(String(uid).trim().toUpperCase());
+    if (id) docIdsToUpdate.add(id);
+    if (nic) {
+      const cleanNicUpper = String(nic).trim().toUpperCase();
+      const numericNic = cleanNicUpper.replace(/[^0-9]/g, '');
+      if (numericNic) docIdsToUpdate.add(numericNic);
+      docIdsToUpdate.add(cleanNicUpper);
     }
+    if (uid) docIdsToUpdate.add(String(uid).trim());
 
     const baseUserObj = typeof userOrIdentifier === 'object' && userOrIdentifier !== null ? userOrIdentifier : {};
 
-    const payload: any = {
-      ...baseUserObj,
+    // Remove any undefined fields or leftover temp codes from base object
+    const safeBase: any = {};
+    for (const [k, v] of Object.entries(baseUserObj)) {
+      if (v !== undefined && k !== 'tempCode' && k !== 'tempPassword') {
+        safeBase[k] = v;
+      }
+    }
+
+    const payload = sanitizeForFirestore({
+      ...safeBase,
       key: cleanPass,
       password: cleanPass,
+      securityCode: cleanPass,
       isPasswordChanged: true,
       isTemporaryPassword: false,
-      status: baseUserObj.status || 'approved',
-      role: baseUserObj.role || 'user',
+      status: safeBase.status || 'approved',
+      role: safeBase.role || 'user',
       tempCode: '',
-      securityCode: cleanPass,
       tempPassword: '',
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
-    };
+    });
 
     await Promise.all(
       Array.from(docIdsToUpdate).map(async (docId) => {
         try {
           const docRef = doc(db, 'users', docId);
           await setDoc(docRef, payload, { merge: true });
-          try {
-            await updateDoc(docRef, {
-              tempCode: deleteField(),
-              tempPassword: deleteField(),
-            });
-          } catch {}
         } catch (e) {
           console.warn(`Doc ${docId} password update notice:`, e);
         }
@@ -1061,16 +1119,13 @@ export async function saveUserToFirestore(userIdOrUser: string | any, userData?:
       userObj.email = String(userObj.email).trim().toLowerCase();
     }
 
-    await setDoc(
-      docRef,
-      {
-        ...userObj,
-        id: docId,
-        updatedAt: new Date().toISOString(),
-        updatedAtServer: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const sanitized = sanitizeForFirestore({
+      ...userObj,
+      id: docId,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    });
+    await setDoc(docRef, sanitized, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'users');
   }
@@ -1093,14 +1148,11 @@ export async function updateUserInFirestore(userIdOrData: any, updateData?: any)
     }
 
     const docRef = doc(db, 'users', userId);
-    await setDoc(
-      docRef,
-      {
-        ...data,
-        updatedAtServer: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const sanitized = sanitizeForFirestore({
+      ...data,
+      updatedAtServer: serverTimestamp(),
+    });
+    await setDoc(docRef, sanitized, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
   }

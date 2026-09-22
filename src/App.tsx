@@ -516,6 +516,7 @@ export default function App() {
     try {
       console.log("--- Login Attempt Started ---");
       const cleanInput = (userIdInput || "").trim().toLowerCase();
+      const cleanInputUpper = (userIdInput || "").trim().toUpperCase();
       const submittedPassword = (keyInput || "").trim();
 
       if (cleanInput === 'demo_user' || cleanInput === 'demo') {
@@ -555,10 +556,12 @@ export default function App() {
       let foundUser = await getUserFromFirestore(cleanInput);
 
       if (!foundUser) {
+        const numericInput = cleanInput.replace(/[^0-9]/g, '');
         foundUser = users.find(
           (u) =>
-            (u.userId && u.userId.toLowerCase() === cleanInput) ||
-            (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+            (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+            (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+            (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
             (u.phone && u.phone.toLowerCase() === cleanInput)
         );
       }
@@ -597,10 +600,12 @@ export default function App() {
         const userSec = (foundUser.securityCode || '').trim();
         const userTempPw = ((foundUser as any).tempPassword || '').trim();
 
+        const numericInput = cleanInput.replace(/[^0-9]/g, '');
         const matchingLocalUsers = users.filter(
           (u) =>
-            (u.userId && u.userId.toLowerCase() === cleanInput) ||
-            (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+            (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+            (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+            (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
             (u.phone && u.phone.toLowerCase() === cleanInput)
         );
 
@@ -630,33 +635,29 @@ export default function App() {
         return;
       }
 
-      // Record Login Audit Log (IP, GPS / Location, Device Info, Timestamp)
-      try {
-        let gpsCoords: { lat: number; lng: number } | undefined;
-        const savedLat = localStorage.getItem('sahaya_current_lat');
-        const savedLng = localStorage.getItem('sahaya_current_lng');
-        if (savedLat && savedLng) {
-          gpsCoords = { lat: parseFloat(savedLat), lng: parseFloat(savedLng) };
+      // Non-blocking Login Audit Log (background update without freezing login UI)
+      const userToLog = { ...foundUser };
+      (async () => {
+        try {
+          let gpsCoords: { lat: number; lng: number } | undefined;
+          const savedLat = localStorage.getItem('sahaya_current_lat');
+          const savedLng = localStorage.getItem('sahaya_current_lng');
+          if (savedLat && savedLng) {
+            gpsCoords = { lat: parseFloat(savedLat), lng: parseFloat(savedLng) };
+          }
+          const loginLog = await captureUserLoginLog(gpsCoords);
+          const updatedHistory = appendLoginHistory(userToLog.loginHistory, loginLog, 20);
+          if (userToLog.id) {
+            updateUserInFirestore(userToLog.id, {
+              loginHistory: updatedHistory,
+              ipAddress: loginLog.ipAddress,
+              lastLoginAt: loginLog.timestamp,
+            }).catch((err) => console.warn("Login history persistence warning:", err));
+          }
+        } catch (logErr) {
+          console.warn("Login history recording error:", logErr);
         }
-        const loginLog = await captureUserLoginLog(gpsCoords);
-        const updatedHistory = appendLoginHistory(foundUser.loginHistory, loginLog, 20);
-        foundUser = {
-          ...foundUser,
-          loginHistory: updatedHistory,
-          ipAddress: loginLog.ipAddress,
-          lastLoginAt: loginLog.timestamp,
-        };
-        // Update user state in Firestore asynchronously
-        if (foundUser.id) {
-          updateUserInFirestore(foundUser.id, {
-            loginHistory: updatedHistory,
-            ipAddress: loginLog.ipAddress,
-            lastLoginAt: loginLog.timestamp,
-          }).catch((err) => console.warn("Login history persistence warning:", err));
-        }
-      } catch (logErr) {
-        console.warn("Login history recording error:", logErr);
-      }
+      })();
 
       console.log("Login Successful! Setting User State...");
       
@@ -940,9 +941,9 @@ export default function App() {
         role: currentUser.role || 'user',
         isPasswordChanged: true,
         isTemporaryPassword: false,
-        tempCode: undefined,
+        tempCode: '',
         securityCode: cleanPass,
-        tempPassword: undefined,
+        tempPassword: '',
         key: cleanPass,
         password: cleanPass,
       };
@@ -964,10 +965,11 @@ export default function App() {
       });
 
       setShowChangePasswordModal(false);
-      alert("ඔබගේ මුරපදය සාර්ථකව යාවත්කාලීන කරන ලදී!");
+      return true;
     } catch (err: any) {
-      console.warn("මුරපදය වෙනස් කිරීමේ දෝෂයක්:", err);
-      alert(`මුරපදය වෙනස් කිරීම අසාර්ථක විය: ${err.message || 'නැවත ලොග් වී උත්සාහ කරන්න.'}`);
+      console.error("මුරපදය වෙනස් කිරීමේ දෝෂයක්:", err);
+      alert(`මුරපදය වෙනස් කිරීම අසාර්ථක විය: ${err.message || 'නැවත උත්සාහ කරන්න.'}`);
+      throw err;
     }
   };
 

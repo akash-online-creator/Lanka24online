@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSavePassword: (newPassword: string, tempPassword?: string) => void;
+  onSavePassword: (newPassword: string, tempPassword?: string) => Promise<boolean | void> | void;
   userName?: string;
   nicNumber?: string;
   currentTempPassword?: string;
@@ -26,6 +26,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sync initial temp password when modal opens
   React.useEffect(() => {
@@ -36,8 +37,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMessage('');
 
     const cleanTemp = tempPassword.trim();
@@ -59,13 +61,21 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       return;
     }
 
-    setIsSuccess(true);
-    setTimeout(() => {
-      onSavePassword(cleanNew, cleanTemp);
-      setIsSuccess(false);
-      setNewPassword('');
-      setConfirmPassword('');
-    }, 600);
+    try {
+      setIsSubmitting(true);
+      await onSavePassword(cleanNew, cleanTemp);
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        setIsSubmitting(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMessage(err?.message || 'මුරපදය යාවත්කාලීන කිරීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    }
   };
 
   return (
@@ -214,10 +224,22 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           <div className="pt-3">
             <button
               type="submit"
-              className="w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#007a4b] text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-600/25 border-b-4 border-[#006e43] transition-all cursor-pointer text-base active:translate-y-0.5 active:border-b-0 flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className={`w-full ${
+                isSubmitting ? 'bg-emerald-600/70 cursor-not-allowed' : 'bg-[#00a86b] hover:bg-[#00925c] active:bg-[#007a4b] cursor-pointer'
+              } text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-600/25 border-b-4 border-[#006e43] transition-all text-base active:translate-y-0.5 active:border-b-0 flex items-center justify-center gap-2`}
             >
-              <CheckCircle2 className="w-5 h-5" />
-              <span>Confirm</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>සුරකිමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Confirm</span>
+                </>
+              )}
             </button>
           </div>
 
