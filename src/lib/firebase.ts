@@ -852,13 +852,20 @@ export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): P
 }
 
 /**
- * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී (Case-Insensitive Search)
+ * NIC, User ID, හෝ Email එක මගින් පරිශීලක දත්ත ලබා ගනී (Case-Insensitive Search & Merged Attributes)
  */
 export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     const matches = await getAllMatchingUsersFromFirestore(userIdOrInput);
     if (matches.length === 0) return null;
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) {
+      const u = matches[0];
+      return {
+        ...u,
+        status: u.status || 'approved',
+        role: u.role || 'user',
+      };
+    }
 
     // බහුවිධ ලේඛන ඇති විට නවතම හෝ ස්ථීර මුරපදය සහිත ලේඛනයට ප්‍රමුඛතාව ලබා දීම
     matches.sort((a, b) => {
@@ -869,7 +876,23 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
       return tB - tA;
     });
 
-    return matches[0];
+    // Merge attributes across all matches so no fields (status, name, phone, password, credits) are lost
+    const mergedUser: any = {};
+    for (let i = matches.length - 1; i >= 0; i--) {
+      Object.assign(mergedUser, matches[i]);
+    }
+    const primary = matches[0];
+    Object.assign(mergedUser, {
+      ...primary,
+      status: primary.status || mergedUser.status || 'approved',
+      role: primary.role || mergedUser.role || 'user',
+      key: primary.key || primary.password || mergedUser.key || mergedUser.password,
+      password: primary.password || primary.key || mergedUser.password || mergedUser.key,
+      isPasswordChanged: primary.isPasswordChanged ?? mergedUser.isPasswordChanged ?? true,
+      isTemporaryPassword: primary.isTemporaryPassword ?? mergedUser.isTemporaryPassword ?? false,
+    });
+
+    return mergedUser;
   } catch (error) {
     handleFirestoreError(error, OperationType.READ, 'users');
     return null;
@@ -890,26 +913,29 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
 
     const allMatches = await getAllMatchingUsersFromFirestore(nic || uid || id || '');
     const docIdsToUpdate = new Set<string>();
-    if (id) docIdsToUpdate.add(id);
-    if (nic) {
-      docIdsToUpdate.add(String(nic).trim());
-      docIdsToUpdate.add(String(nic).trim().toUpperCase());
-      docIdsToUpdate.add(String(nic).trim().toLowerCase());
+
+    allMatches.forEach((m) => {
+      if (m.id) docIdsToUpdate.add(m.id);
+    });
+
+    if (docIdsToUpdate.size === 0) {
+      if (id) docIdsToUpdate.add(id);
+      else if (nic) docIdsToUpdate.add(String(nic).trim().toUpperCase());
+      else if (uid) docIdsToUpdate.add(String(uid).trim().toUpperCase());
     }
-    if (uid) {
-      docIdsToUpdate.add(String(uid).trim());
-      docIdsToUpdate.add(String(uid).trim().toUpperCase());
-      docIdsToUpdate.add(String(uid).trim().toLowerCase());
-    }
-    allMatches.forEach((m) => docIdsToUpdate.add(m.id));
+
+    const baseUserObj = typeof userOrIdentifier === 'object' && userOrIdentifier !== null ? userOrIdentifier : {};
 
     const payload: any = {
+      ...baseUserObj,
       key: cleanPass,
       password: cleanPass,
       isPasswordChanged: true,
       isTemporaryPassword: false,
+      status: baseUserObj.status || 'approved',
+      role: baseUserObj.role || 'user',
       tempCode: '',
-      securityCode: '',
+      securityCode: cleanPass,
       tempPassword: '',
       updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
@@ -923,7 +949,6 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
           try {
             await updateDoc(docRef, {
               tempCode: deleteField(),
-              securityCode: deleteField(),
               tempPassword: deleteField(),
             });
           } catch {}

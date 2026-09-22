@@ -129,6 +129,15 @@ import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryMana
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { getEmergencyAdminAlerts, getStoredEmergencyContacts } from '../data/emergencyDirectory';
+import { 
+  getUserCreditBalance, 
+  getUserCreditTransactions, 
+  addCreditByAdmin, 
+  deductCreditByAdmin, 
+  extractNumericId, 
+  ADMIN_ADD_REASON_PRESETS, 
+  ADMIN_DEDUCT_REASON_PRESETS 
+} from '../utils/creditManager';
 
 interface AdminPanelProps {
   users: User[];
@@ -243,9 +252,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Detailed Modal for User Editing & Posts View
   const [selectedUserForModal, setSelectedUserForModal] = useState<User | null>(null);
-  const [modalSubTab, setModalSubTab] = useState<'profile' | 'posts'>('profile');
+  const [modalSubTab, setModalSubTab] = useState<'profile' | 'posts' | 'credits'>('profile');
   const [editingUserForm, setEditingUserForm] = useState<Partial<User>>({});
   const [blockReasonInput, setBlockReasonInput] = useState('අනිසි භාවිතය සහ විධාන කඩකිරීම (Policy Violation)');
+  
+  // Modal Credit Adjustment State
+  const [modalCreditAmount, setModalCreditAmount] = useState<string>('100');
+  const [modalCreditMode, setModalCreditMode] = useState<'add' | 'deduct'>('add');
+  const [modalCreditReason, setModalCreditReason] = useState<string>('boc_slip');
+  const [modalCreditRemark, setModalCreditRemark] = useState<string>('');
+  const [modalCreditNotice, setModalCreditNotice] = useState<string | null>(null);
+  const [modalCreditFilter, setModalCreditFilter] = useState<string>('all');
+  const [modalCreditSearch, setModalCreditSearch] = useState<string>('');
 
   // Registration Text Edit State
   const [regEditLang, setRegEditLang] = useState<Language>('si');
@@ -534,6 +552,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     alert('පරිශීලක තොරතුරු සාර්ථකව යාවත්කාලීන කෙරිණි! (මුරපදය වෙනස් නොවීය)');
+  };
+
+  // Function 3: Adjust user credit balance directly from user details modal
+  const handleAdminUserCreditAdjust = () => {
+    if (!selectedUserForModal) return;
+    const numAmount = parseFloat(modalCreditAmount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      alert('කරුණාකර වලංගු මුදලක් ඇතුළත් කරන්න.');
+      return;
+    }
+
+    let res;
+    if (modalCreditMode === 'add') {
+      const reasonObj = ADMIN_ADD_REASON_PRESETS.find((p) => p.id === modalCreditReason);
+      const title = reasonObj ? reasonObj.label : 'පරිපාලක ගිණුම් බැර කිරීම (Admin Top-Up)';
+      res = addCreditByAdmin(selectedUserForModal, numAmount, 'deposit', title, modalCreditRemark);
+    } else {
+      const reasonObj = ADMIN_DEDUCT_REASON_PRESETS.find((p) => p.id === modalCreditReason);
+      const title = reasonObj ? reasonObj.label : 'පරිපාලක ගිණුම් අඩු කිරීම (Admin Debit)';
+      res = deductCreditByAdmin(selectedUserForModal, numAmount, 'admin_adjustment', title, modalCreditRemark);
+    }
+
+    if (res && res.success) {
+      const updatedUser: User = { ...selectedUserForModal, credits: res.newBalance };
+      setSelectedUserForModal(updatedUser);
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      setModalCreditNotice(`සාර්ථකයි! නව ක්‍රෙඩිට් ශේෂය: රු. ${res.newBalance.toFixed(2)}`);
+      setModalCreditRemark('');
+      setTimeout(() => setModalCreditNotice(null), 4000);
+    }
   };
 
   const handleDirectApproveUser = (user: User) => {
@@ -1445,6 +1493,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="p-3.5">පරිශීලක (User Details)</th>
                     <th className="p-3.5">ID / NIC</th>
                     <th className="p-3.5">දුරකථන අංකය</th>
+                    <th className="p-3.5">ක්‍රෙඩිට් (Credits)</th>
                     <th className="p-3.5">හැඳුනුම්පත (ID Photo)</th>
                     <th className="p-3.5">තත්ත්වය (Status)</th>
                     <th className="p-3.5 text-center">ක්‍රියාමාර්ග (Actions)</th>
@@ -1453,7 +1502,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-500 font-bold">
+                      <td colSpan={7} className="p-8 text-center text-slate-500 font-bold">
                         පරිශීලකයන් හමු නොවිණි.
                       </td>
                     </tr>
@@ -1496,6 +1545,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </td>
                           <td className="p-3.5 font-mono font-bold text-slate-800">
                             {user.phone}
+                          </td>
+                          <td className="p-3.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedUserForModal(user);
+                                setEditingUserForm({ ...user });
+                                setModalSubTab('credits');
+                              }}
+                              className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 px-2.5 py-1.5 rounded-xl font-mono font-black text-xs transition-all cursor-pointer shadow-xs active:scale-95 group"
+                              title="ක්‍රෙඩිට් ගනුදෙනු විස්තර බලන්න (View Credits & Statement)"
+                            >
+                              <Coins className="w-3.5 h-3.5 text-amber-600 group-hover:rotate-12 transition-transform" />
+                              <span>රු. {getUserCreditBalance(user).toFixed(2)}</span>
+                            </button>
                           </td>
                           <td className="p-3.5">
                             {nicFront ? (
@@ -1647,8 +1711,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* User Edit / Details / Login History Modal */}
       {selectedUserForModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full border-2 border-emerald-400 shadow-2xl p-6 space-y-5 animate-scaleUp my-8">
-            <div className="flex justify-between items-center border-b pb-3 border-slate-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full border-2 border-emerald-400 dark:border-emerald-600 shadow-2xl p-6 space-y-5 animate-scaleUp my-8">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-6 h-6 text-emerald-600" />
                 <h3 className="text-lg font-black text-slate-900">
@@ -1665,7 +1729,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Modal Sub-Tabs */}
-            <div className="flex border-b border-slate-200 gap-2">
+            <div className="flex border-b border-slate-200 gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => setModalSubTab('profile')}
@@ -1680,6 +1744,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <button
                 type="button"
+                onClick={() => setModalSubTab('credits')}
+                className={`px-4 py-2 font-bold text-xs rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                  modalSubTab === 'credits'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 text-amber-300" />
+                <span>ක්‍රෙඩිට් ගනුදෙනු (Credits & Statement)</span>
+                <span className="bg-amber-400 text-slate-950 font-mono text-[10px] font-black px-2 py-0.5 rounded-full">
+                  රු. {getUserCreditBalance(selectedUserForModal).toFixed(2)}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setModalSubTab('posts')}
                 className={`px-4 py-2 font-bold text-xs rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
                   modalSubTab === 'posts'
@@ -1688,7 +1768,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>ප්‍රවේශ ඉතිහාසය (Login History - පසුගිය අවස්ථා 20)</span>
+                <span>ප්‍රවේශ ඉතිහාසය (Login History)</span>
                 {Array.isArray(selectedUserForModal.loginHistory) && (
                   <span className="bg-white/20 text-xs px-1.5 py-0.2 rounded-full font-mono">
                     {selectedUserForModal.loginHistory.length}
@@ -1818,7 +1898,383 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             )}
 
-            {/* SubTab 2: Login History (පසුගිය අවස්ථා 20 ප්‍රවේශ වාර්තා) */}
+            {/* SubTab 2: User Credits & Detailed Transactions Statement */}
+            {modalSubTab === 'credits' && (() => {
+              const userTxList = getUserCreditTransactions(selectedUserForModal);
+              const currentBalance = getUserCreditBalance(selectedUserForModal);
+
+              const inflowTotal = userTxList
+                .filter((tx) => ['deposit', 'welcome_gift', 'reward'].includes(tx.type) || (tx.type === 'admin_adjustment' && tx.amount > 0))
+                .reduce((sum, tx) => sum + (tx.amount > 0 ? tx.amount : 0), 0);
+
+              const outflowTotal = userTxList
+                .filter((tx) => ['ad_fee', 'penalty_compensation'].includes(tx.type) || (tx.type === 'admin_adjustment' && tx.amount < 0))
+                .reduce((sum, tx) => sum + (tx.amount < 0 ? Math.abs(tx.amount) : 0), 0);
+
+              const filteredTxList = userTxList
+                .filter((tx) => {
+                  if (modalCreditFilter === 'inflow') {
+                    return ['deposit', 'welcome_gift', 'reward'].includes(tx.type) || (tx.type === 'admin_adjustment' && tx.amount > 0);
+                  }
+                  if (modalCreditFilter === 'outflow') {
+                    return ['ad_fee', 'penalty_compensation'].includes(tx.type) || (tx.type === 'admin_adjustment' && tx.amount < 0);
+                  }
+                  if (modalCreditFilter === 'reward') {
+                    return tx.type === 'reward' || tx.type === 'welcome_gift';
+                  }
+                  return true;
+                })
+                .filter((tx) => {
+                  if (!modalCreditSearch.trim()) return true;
+                  const q = modalCreditSearch.toLowerCase();
+                  return (
+                    (tx.title && tx.title.toLowerCase().includes(q)) ||
+                    (tx.description && tx.description.toLowerCase().includes(q)) ||
+                    (tx.postCode && tx.postCode.toLowerCase().includes(q)) ||
+                    (tx.adminRemark && tx.adminRemark.toLowerCase().includes(q)) ||
+                    (tx.categoryKey && tx.categoryKey.toLowerCase().includes(q))
+                  );
+                });
+
+              return (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 p-3 rounded-2xl">
+                      <div className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1 mb-1">
+                        <Coins className="w-3.5 h-3.5 text-amber-600" />
+                        <span>වත්මන් ශේෂය (Balance)</span>
+                      </div>
+                      <div className="text-xl font-black font-mono text-amber-950 dark:text-amber-100">
+                        රු. {currentBalance.toFixed(2)}
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/60 p-3 rounded-2xl">
+                      <div className="text-[11px] font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1 mb-1">
+                        <span>📥 මුළු බැර කළ (Inflow)</span>
+                      </div>
+                      <div className="text-xl font-black font-mono text-emerald-700 dark:text-emerald-300">
+                        + රු. {inflowTotal.toFixed(2)}
+                      </div>
+                    </div>
+
+                    <div className="bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-700/60 p-3 rounded-2xl">
+                      <div className="text-[11px] font-bold text-rose-900 dark:text-rose-300 flex items-center gap-1 mb-1">
+                        <span>📤 මුළු අඩු කළ (Outflow)</span>
+                      </div>
+                      <div className="text-xl font-black font-mono text-rose-700 dark:text-rose-300">
+                        - රු. {outflowTotal.toFixed(2)}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 p-3 rounded-2xl">
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
+                        <FileText className="w-3.5 h-3.5 text-slate-500" />
+                        <span>මුළු ගනුදෙනු ගණන</span>
+                      </div>
+                      <div className="text-xl font-black font-mono text-slate-900 dark:text-slate-100">
+                        {userTxList.length} <span className="text-xs font-normal text-slate-500">වාර්තා</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Admin Credit Quick Adjustment Tool */}
+                  <div className="bg-slate-50 dark:bg-slate-900/60 border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Coins className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs font-black text-slate-900 dark:text-slate-100">
+                          පරිපාලක ගිණුම් ගැලපුම (Admin Quick Credit Adjustment)
+                        </span>
+                      </div>
+
+                      {/* Mode Toggle */}
+                      <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-xl gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalCreditMode('add');
+                            setModalCreditReason('boc_slip');
+                          }}
+                          className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                            modalCreditMode === 'add'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-slate-700 dark:text-slate-300 hover:text-slate-950'
+                          }`}
+                        >
+                          🟢 මුදල් බැර කිරීම (Deposit / Reward)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalCreditMode('deduct');
+                            setModalCreditReason('policy_violation');
+                          }}
+                          className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                            modalCreditMode === 'deduct'
+                              ? 'bg-rose-600 text-white shadow-xs'
+                              : 'text-slate-700 dark:text-slate-300 hover:text-slate-950'
+                          }`}
+                        >
+                          🔴 මුදල් අඩු කිරීම (Debit / Penalty)
+                        </button>
+                      </div>
+                    </div>
+
+                    {modalCreditNotice && (
+                      <div className="p-2.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold text-xs flex items-center gap-2 animate-fadeIn">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span>{modalCreditNotice}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                      {/* Amount Input */}
+                      <div className="sm:col-span-3">
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          මුදල (Amount - රු.):
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={modalCreditAmount}
+                          onChange={(e) => setModalCreditAmount(e.target.value)}
+                          className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-sm focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      {/* Reason Preset Dropdown */}
+                      <div className="sm:col-span-4">
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          හේතුව (Preset Reason):
+                        </label>
+                        <select
+                          value={modalCreditReason}
+                          onChange={(e) => setModalCreditReason(e.target.value)}
+                          className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-xs focus:outline-none focus:border-amber-500"
+                        >
+                          {modalCreditMode === 'add'
+                            ? ADMIN_ADD_REASON_PRESETS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))
+                            : ADMIN_DEDUCT_REASON_PRESETS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
+                        </select>
+                      </div>
+
+                      {/* Custom Remark */}
+                      <div className="sm:col-span-3">
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          සටහන / Reference (Remarks):
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="උදා: BOC Slip #4928"
+                          value={modalCreditRemark}
+                          onChange={(e) => setModalCreditRemark(e.target.value)}
+                          className="w-full p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      {/* Submit Button */}
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={handleAdminUserCreditAdjust}
+                          className={`w-full p-2 rounded-xl font-black text-xs text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center gap-1 ${
+                            modalCreditMode === 'add'
+                              ? 'bg-emerald-600 hover:bg-emerald-700'
+                              : 'bg-rose-600 hover:bg-rose-700'
+                          }`}
+                        >
+                          {modalCreditMode === 'add' ? (
+                            <>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>බැර කරන්න</span>
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>අඩු කරන්න</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Amount Chips */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <span className="text-[10px] font-bold text-slate-500">ක්ෂණික මුදල්:</span>
+                      {[25, 50, 100, 250, 500, 1000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setModalCreditAmount(amt.toString())}
+                          className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 hover:border-amber-500 transition-colors cursor-pointer"
+                        >
+                          + රු. {amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Transaction Statement Header, Search & Filter Bar */}
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-black text-slate-900 dark:text-slate-100">
+                        සම්පූර්ණ ගනුදෙනු ලේඛනය (Detailed Transaction Statement)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Search */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="සොයන්න..."
+                          value={modalCreditSearch}
+                          onChange={(e) => setModalCreditSearch(e.target.value)}
+                          className="pl-8 pr-2.5 py-1 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      {/* Filter Chips */}
+                      <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl text-[11px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setModalCreditFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            modalCreditFilter === 'all'
+                              ? 'bg-white dark:bg-slate-700 text-slate-950 dark:text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          සියල්ල ({userTxList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalCreditFilter('inflow')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            modalCreditFilter === 'inflow'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          බැර (+)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalCreditFilter('outflow')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            modalCreditFilter === 'outflow'
+                              ? 'bg-rose-600 text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          අඩු (-)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalCreditFilter('reward')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            modalCreditFilter === 'reward'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          ත්‍යාග 🎁
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transactions Table */}
+                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider">
+                          <th className="p-3">#</th>
+                          <th className="p-3">දිනය සහ වේලාව (Date & Time)</th>
+                          <th className="p-3">ගනුදෙනු විස්තරය (Description)</th>
+                          <th className="p-3">වර්ගය (Type)</th>
+                          <th className="p-3">මුදල (Amount)</th>
+                          <th className="p-3">ශේෂය (Balance After)</th>
+                          <th className="p-3">Reference / Code</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filteredTxList.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-slate-500 font-bold">
+                              ගනුදෙනු වාර්තා හමු නොවිණි.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredTxList.map((tx, idx) => {
+                            const isInflow = tx.amount > 0;
+
+                            return (
+                              <tr key={tx.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="p-3 font-mono text-slate-500 font-bold">{idx + 1}</td>
+                                <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">
+                                  {tx.timestamp || 'නැත'}
+                                </td>
+                                <td className="p-3">
+                                  <div className="font-extrabold text-slate-900 dark:text-slate-100">{tx.title}</div>
+                                  {tx.description && (
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                      {tx.description}
+                                    </div>
+                                  )}
+                                  {tx.adminRemark && (
+                                    <div className="text-[10px] font-bold text-amber-700 dark:text-amber-300 mt-0.5 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md inline-block border border-amber-200 dark:border-amber-800/50">
+                                      📝 Remark: {tx.adminRemark}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-3">
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                      isInflow
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                                    }`}
+                                  >
+                                    {tx.type}
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono font-black text-sm">
+                                  <span className={isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                                    {isInflow ? '+' : '-'} රු. {Math.abs(tx.amount).toFixed(2)}
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  රු. {(tx.balanceAfter ?? currentBalance).toFixed(2)}
+                                </td>
+                                <td className="p-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                                  {tx.postCode || tx.categoryKey || '-'}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* SubTab 3: Login History (පසුගිය අවස්ථා 20 ප්‍රවේශ වාර්තා) */}
             {modalSubTab === 'posts' && (
               <div className="space-y-4">
                 <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-xs text-slate-700 flex items-center justify-between">

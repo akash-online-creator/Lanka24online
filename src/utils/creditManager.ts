@@ -696,3 +696,23 @@ export const boostHelpPost = (
     newBalance,
   };
 };
+
+/**
+ * Admin adjustment reason presets for quick selection
+ */
+export const ADMIN_ADD_REASON_PRESETS = [
+  { id: 'bank_deposit', label: 'බැංකු තැන්පතු අනුමැතිය (BOC Direct Bank Deposit)', amount: 500, type: 'deposit' as CreditTransactionType },
+  { id: 'welcome_gift', label: 'ලියාපදිංචි විශේෂ පිළිගැනීමේ ත්‍යාගය (Welcome Bonus)', amount: 100, type: 'welcome_gift' as CreditTransactionType },
+  { id: 'community_reward', label: 'ප්‍රජා සේවා දායකත්ව ත්‍යාගය (Community Contributor Reward)', amount: 250, type: 'reward' as CreditTransactionType },
+  { id: 'emergency_reward', label: 'හදිසි දුරකථන අංක එකතු කිරීමේ ත්‍යාගය (Emergency Directory Reward)', amount: 50, type: 'reward' as CreditTransactionType },
+  { id: 'admin_refund', label: 'වැරදි අයවීමක් ආපසු ගෙවීම (Admin Refund / Correction)', amount: 100, type: 'admin_adjustment' as CreditTransactionType },
+  { id: 'other_add', label: 'වෙනත් විශේෂ බැර කිරීමක් (Other Credit Addition)', amount: 100, type: 'admin_adjustment' as CreditTransactionType },
+];
+
+export const ADMIN_DEDUCT_REASON_PRESETS = [
+  { id: 'travel_penalty', label: 'මගහැරීම් වන්දි / ගමන් ගාස්තු අය කිරීම (No-Show Travel Compensation)', amount: 200, type: 'penalty_compensation' as CreditTransactionType },
+  { id: 'ad_fee', label: 'දැන්වීම් සේවා ගාස්තු අතින් අය කිරීම (Manual Ad Posting Fee)', amount: 100, type: 'ad_fee' as CreditTransactionType },
+  { id: 'policy_violation', label: 'ව්‍යාජ හෝ නීති විරෝධී දැන්වීම් දඩ මුදල (Policy Violation Penalty)', amount: 150, type: 'penalty_compensation' as CreditTransactionType },
+  { id: 'system_correction', label: 'පද්ධති ගැලපුම් අඩු කිරීම (Manual System Debit / Correction)', amount: 100, type: 'admin_adjustment' as CreditTransactionType },
+  { id: 'other_deduct', label: 'වෙනත් අය කිරීමක් (Other Debit Deduction)', amount: 50, type: 'admin_adjustment' as CreditTransactionType },
+];

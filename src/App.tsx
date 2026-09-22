@@ -582,6 +582,13 @@ export default function App() {
         return;
       }
 
+      // Ensure standard default status and role
+      foundUser = {
+        ...foundUser,
+        status: foundUser.status || 'approved',
+        role: foundUser.role || 'user',
+      };
+
       // AuthUser හරහා ලොග් නොවූයේ නම් (හෝ Auth provider disabled නම්) Firestore / Local දත්ත මගින් මුරපදය පරීක්ෂා කිරීම
       if (!authUser) {
         const userKey = (foundUser.key || '').trim();
@@ -590,12 +597,27 @@ export default function App() {
         const userSec = (foundUser.securityCode || '').trim();
         const userTempPw = ((foundUser as any).tempPassword || '').trim();
 
+        const matchingLocalUsers = users.filter(
+          (u) =>
+            (u.userId && u.userId.toLowerCase() === cleanInput) ||
+            (u.nicNumber && u.nicNumber.toLowerCase() === cleanInput) ||
+            (u.phone && u.phone.toLowerCase() === cleanInput)
+        );
+
         const isPasswordCorrect =
           (userKey && userKey === submittedPassword) ||
           (userPass && userPass === submittedPassword) ||
           (userTemp && userTemp === submittedPassword) ||
           (userSec && userSec === submittedPassword) ||
-          (userTempPw && userTempPw === submittedPassword);
+          (userTempPw && userTempPw === submittedPassword) ||
+          matchingLocalUsers.some(
+            (u) =>
+              (u.key && u.key.trim() === submittedPassword) ||
+              ((u as any).password && (u as any).password.trim() === submittedPassword) ||
+              (u.tempCode && u.tempCode.trim() === submittedPassword) ||
+              (u.securityCode && u.securityCode.trim() === submittedPassword) ||
+              ((u as any).tempPassword && (u as any).tempPassword.trim() === submittedPassword)
+          );
 
         if (!isPasswordCorrect) {
           setShowWrongLoginModal(true);
@@ -653,25 +675,51 @@ export default function App() {
   };
 
   const completeSuccessfulLogin = (authenticatedUser: User) => {
-    setCurrentUser(authenticatedUser);
-    setUsers((prev) => (prev || []).map((u) => (u.id === authenticatedUser.id ? authenticatedUser : u)));
+    const userRole = (authenticatedUser.role as string) || 'user';
+    const userStatus = authenticatedUser.status || 'approved';
 
-    if ((authenticatedUser.role as string) === 'admin') {
+    const normalizedUser: User = {
+      ...authenticatedUser,
+      role: userRole as any,
+      status: userStatus as any,
+    };
+
+    setCurrentUser(normalizedUser);
+    setUsers((prev) => {
+      const exists = (prev || []).some(
+        (u) => u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
+      );
+      const nextUsers = exists
+        ? (prev || []).map((u) =>
+            u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
+              ? { ...u, ...normalizedUser }
+              : u
+          )
+        : [normalizedUser, ...(prev || [])];
+
+      try {
+        localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
+        localStorage.setItem('sahaya_current_user', JSON.stringify(normalizedUser));
+      } catch {}
+      return nextUsers;
+    });
+
+    if (userRole === 'admin') {
       setActiveRoleView('admin');
       setViewMode('admin');
-    } else if (authenticatedUser.status === 'pending') {
+    } else if (userStatus === 'pending') {
       setViewMode('pending');
-    } else if (authenticatedUser.status === 'approved') {
+    } else if (userStatus === 'rejected') {
+      setShowWrongLoginModal(true);
+    } else {
       setViewMode('dashboard');
       // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
       const needsPasswordChange =
-        (authenticatedUser.role as string) !== 'admin' &&
-        authenticatedUser.isTemporaryPassword === true;
+        userRole !== 'admin' &&
+        normalizedUser.isTemporaryPassword === true;
       if (needsPasswordChange) {
         setShowChangePasswordModal(true);
       }
-    } else if (authenticatedUser.status === 'rejected') {
-      setShowWrongLoginModal(true);
     }
   };
 
@@ -851,7 +899,7 @@ export default function App() {
   };
 
   // ✅ 4.1. නව මුරපදයක් සේව් කිරීම (Firebase Auth + Firestore Level එකෙන්)
-  const handleSaveNewPassword = async (newPassword: string) => {
+  const handleSaveNewPassword = async (newPassword: string, tempPassword?: string) => {
     if (!currentUser) return;
     const cleanPass = (newPassword || '').trim();
     if (!cleanPass) {
@@ -861,6 +909,9 @@ export default function App() {
 
     try {
       const activeUser = auth.currentUser;
+      const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
+      const formattedEmail = `${cleanNic}@app.com`;
+
       if (activeUser) {
         try {
           await updatePassword(activeUser, cleanPass);
@@ -868,30 +919,50 @@ export default function App() {
           console.warn("Auth updatePassword notice:", pwErr);
         }
       } else {
-        const cleanNic = (currentUser.nicNumber || currentUser.userId || '').trim().toLowerCase();
-        const formattedEmail = `${cleanNic}@app.com`;
         try {
-          await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
-        } catch {
-          // Backend or Firestore fallback
+          const tempToTry = tempPassword || currentUser.key || currentUser.securityCode || (currentUser as any).tempPassword;
+          if (tempToTry) {
+            const userCred = await signInWithEmailAndPassword(auth, formattedEmail, tempToTry);
+            if (userCred.user) {
+              await updatePassword(userCred.user, cleanPass);
+            }
+          } else {
+            await createUserWithEmailAndPassword(auth, formattedEmail, cleanPass);
+          }
+        } catch (pwErr) {
+          console.warn("Firebase Auth fallback update notice:", pwErr);
         }
       }
 
       const updatedUser: User = {
         ...currentUser,
+        status: currentUser.status || 'approved',
+        role: currentUser.role || 'user',
         isPasswordChanged: true,
         isTemporaryPassword: false,
         tempCode: undefined,
-        securityCode: undefined,
+        securityCode: cleanPass,
         tempPassword: undefined,
         key: cleanPass,
         password: cleanPass,
       };
 
-      await syncUserPasswordInFirestore(currentUser, cleanPass);
+      await syncUserPasswordInFirestore(updatedUser, cleanPass);
 
       setCurrentUser(updatedUser);
-      setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+      setUsers((prev) => {
+        const nextUsers = (prev || []).map((u) =>
+          u.id === updatedUser.id || (u.nicNumber && u.nicNumber === updatedUser.nicNumber)
+            ? { ...u, ...updatedUser }
+            : u
+        );
+        try {
+          localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
+          localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+        } catch {}
+        return nextUsers;
+      });
+
       setShowChangePasswordModal(false);
       alert("ඔබගේ මුරපදය සාර්ථකව යාවත්කාලීන කරන ලදී!");
     } catch (err: any) {
