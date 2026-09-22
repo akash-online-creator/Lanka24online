@@ -329,7 +329,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         whatsappNumber,
         key: password,
         password: password,
-        isPasswordChanged: false,
+        isPasswordChanged: true,
+        isTemporaryPassword: false,
         role: 'user',
         status: 'pending', // Admin review required before accessing dashboard
         photoUrl: nicFrontPhoto || '',

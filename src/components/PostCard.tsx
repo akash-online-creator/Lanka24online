@@ -47,6 +47,7 @@ import { translatePostWithGoogle } from '../utils/googleTranslator';
 import { renderTextWithLinks } from '../utils/textUtils';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 import { AudioVoicePlayer } from './AudioVoiceNote';
+import { RequestWhatsAppSmsModal } from './RequestWhatsAppSmsModal';
 
 interface PostCardProps {
   post: HelpPost;
@@ -90,6 +91,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onPosterRespondIssue,
 }) => {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const [showRequestSmsModal, setShowRequestSmsModal] = React.useState(false);
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -933,16 +935,30 @@ export const PostCard: React.FC<PostCardProps> = ({
                 )}
 
                 {hasContactPermission && effectiveContactWhatsapp ? (
-                  <a
-                    href={`https://wa.me/${effectiveContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>WhatsApp</span>
-                  </a>
+                  <div className="flex flex-col gap-1">
+                    <a
+                      href={`https://wa.me/${effectiveContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="py-2 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>WhatsApp</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowRequestSmsModal(true);
+                      }}
+                      className="text-[10px] text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 font-bold flex items-center justify-center gap-1 cursor-pointer bg-amber-50 dark:bg-amber-950/60 p-1 rounded-lg border border-amber-300 dark:border-amber-800/60 transition-all active:scale-95"
+                      title="WhatsApp ගිණුම හමුනොවූයේ නම් SMS මඟින් නව අංකයක් ඉල්ලන්න"
+                    >
+                      <Phone className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                      <span>WhatsApp හමුනොවීද? SMS යවන්න</span>
+                    </button>
+                  </div>
                 ) : (
                   <button
                     type="button"
@@ -1617,6 +1633,15 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       </div>
 
+      <RequestWhatsAppSmsModal
+        isOpen={showRequestSmsModal}
+        onClose={() => setShowRequestSmsModal(false)}
+        targetUserName={displayPost.userName || post.userName || 'දැන්වීම්කරු'}
+        targetUserPhone={post.contactWhatsapp || post.userPhone || ''}
+        targetUserIdentifier={post.userId || post.userNic || post.userPhone || post.id}
+        postCode={displayPostCode}
+        language={activeCardLang}
+      />
     </Card3D>
   );
 };

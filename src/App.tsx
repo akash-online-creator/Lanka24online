@@ -22,6 +22,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { UpdateWhatsAppModal } from './components/UpdateWhatsAppModal';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { 
   auth,
@@ -137,7 +138,25 @@ export default function App() {
 
   const [showWrongLoginModal, setShowWrongLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showUpdateWhatsAppModal, setShowUpdateWhatsAppModal] = useState(false);
+  const [targetWhatsAppUserIdentifier, setTargetWhatsAppUserIdentifier] = useState<string>('');
   const [serverTime, setServerTime] = useState('');
+
+  // Auto-open WhatsApp update modal if requested via URL param (from SMS link)
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.search) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const waParam = urlParams.get('update_whatsapp') || urlParams.get('whatsapp_update') || urlParams.get('wa_update');
+        if (waParam) {
+          setTargetWhatsAppUserIdentifier(waParam.trim());
+          setShowUpdateWhatsAppModal(true);
+        }
+      }
+    } catch (e) {
+      console.warn('URL param parse notice:', e);
+    }
+  }, []);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -622,7 +641,12 @@ export default function App() {
         setViewMode('pending');
       } else if (foundUser.status === 'approved') {
         setViewMode('dashboard');
-        if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
+        // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ හෝ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
+        const needsPasswordChange =
+          foundUser.role !== 'admin' &&
+          (foundUser.isTemporaryPassword === true ||
+           (foundUser.isPasswordChanged === false && (Boolean(foundUser.tempCode) || Boolean(foundUser.tempPassword) || Boolean(foundUser.securityCode))));
+        if (needsPasswordChange) {
           setShowChangePasswordModal(true);
         }
       } else if (foundUser.status === 'rejected') {
@@ -685,6 +709,8 @@ export default function App() {
         nicNumber: (newUser.nicNumber || cleanNic).toUpperCase(),
         key: rawPassword,
         password: rawPassword,
+        isPasswordChanged: true,
+        isTemporaryPassword: false,
         ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
         registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
       };
@@ -1325,36 +1351,20 @@ export default function App() {
         nicNumber={currentUser?.nicNumber}
       />
 
-      {viewMode !== 'login' && viewMode !== 'gps_gate' ? (
-        <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
-            {t.securityLayer}
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase font-bold text-slate-400">
-                {t.adminStatus}
-              </span>
-              <span className="text-xs text-green-400 font-mono font-semibold flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span>● {t.online}</span>
-              </span>
-            </div>
-
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase font-bold text-slate-400">
-                {t.serverTime}
-              </span>
-              <span className="text-xs text-slate-300 font-mono">{serverTime}</span>
-            </div>
-          </div>
-        </footer>
-      ) : (
-        <footer className="z-10 py-1 text-center text-[10px] text-slate-400 dark:text-emerald-500/60 font-mono">
-          🔒 {t.securityLayer} • {serverTime}
-        </footer>
-      )}
+      <UpdateWhatsAppModal
+        isOpen={showUpdateWhatsAppModal}
+        onClose={() => setShowUpdateWhatsAppModal(false)}
+        targetUserIdentifier={targetWhatsAppUserIdentifier}
+        currentUser={currentUser}
+        users={users}
+        language={language}
+        onSuccess={(updatedUser) => {
+          if (currentUser && (currentUser.id === updatedUser.id || currentUser.nicNumber === updatedUser.nicNumber)) {
+            setCurrentUser((prev) => prev ? { ...prev, ...updatedUser } : null);
+          }
+          setUsers((prev) => prev.map((u) => (u.id === updatedUser.id || u.nicNumber === updatedUser.nicNumber ? { ...u, ...updatedUser } : u)));
+        }}
+      />
 
       {viewMode !== 'dashboard' && (
         <OmniAssistantChatBox

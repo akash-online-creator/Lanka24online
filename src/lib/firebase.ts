@@ -938,6 +938,88 @@ export async function syncUserPasswordInFirestore(userOrIdentifier: any, newPass
 }
 
 /**
+ * පරිශීලකයාගේ නව WhatsApp අංකය Firestore හි ඇති සියලුම අදාළ ලේඛන සහ Help Posts වලට යාවත්කාලීන කරයි
+ */
+export async function syncUserWhatsappInFirestore(userOrIdentifier: any, newWhatsapp: string): Promise<boolean> {
+  try {
+    const cleanWhatsapp = (newWhatsapp || '').trim().replace(/[^\d+]/g, '');
+    if (!cleanWhatsapp) return false;
+
+    let id = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.id;
+    let nic = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.nicNumber;
+    let uid = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.userId;
+    let phone = typeof userOrIdentifier === 'string' ? userOrIdentifier : userOrIdentifier?.phone;
+
+    const allMatches = await getAllMatchingUsersFromFirestore(nic || uid || id || phone || '');
+    const docIdsToUpdate = new Set<string>();
+    if (id) docIdsToUpdate.add(id);
+    if (nic) {
+      docIdsToUpdate.add(String(nic).trim());
+      docIdsToUpdate.add(String(nic).trim().toUpperCase());
+      docIdsToUpdate.add(String(nic).trim().toLowerCase());
+    }
+    if (uid) {
+      docIdsToUpdate.add(String(uid).trim());
+      docIdsToUpdate.add(String(uid).trim().toUpperCase());
+    }
+    allMatches.forEach((m) => docIdsToUpdate.add(m.id));
+
+    const payload: any = {
+      whatsappNumber: cleanWhatsapp,
+      phone: cleanWhatsapp,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    };
+
+    // 1. Update Users collection
+    await Promise.all(
+      Array.from(docIdsToUpdate).map(async (docId) => {
+        try {
+          const docRef = doc(db, 'users', docId);
+          await setDoc(docRef, payload, { merge: true });
+        } catch (e) {
+          console.warn(`Doc users/${docId} WhatsApp update notice:`, e);
+        }
+      })
+    );
+
+    // 2. Update Help Posts created by this user
+    try {
+      const helpPostsRef = collection(db, 'help_posts');
+      const postsSnap = await getDocs(helpPostsRef);
+      const batchPromises: Promise<any>[] = [];
+
+      postsSnap.forEach((postDoc) => {
+        const pData = postDoc.data();
+        const matchesPoster =
+          (nic && (pData.userNic === nic || pData.nicNumber === nic)) ||
+          (uid && (pData.userId === uid || pData.userNumericId === uid)) ||
+          (id && pData.userId === id) ||
+          (phone && (pData.userPhone === phone || pData.contactWhatsapp === phone));
+
+        if (matchesPoster) {
+          batchPromises.push(
+            updateDoc(doc(db, 'help_posts', postDoc.id), {
+              contactWhatsapp: cleanWhatsapp,
+              userPhone: cleanWhatsapp,
+            }).catch(() => null)
+          );
+        }
+      });
+
+      await Promise.all(batchPromises);
+    } catch (postErr) {
+      console.warn('Help posts WhatsApp sync notice:', postErr);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('syncUserWhatsappInFirestore error:', err);
+    return false;
+  }
+}
+
+/**
  * පරිශීලක දත්ත Firestore එකට සුරකියි (Standardized Case Handling)
  */
 export async function saveUserToFirestore(userIdOrUser: string | any, userData?: any): Promise<void> {
