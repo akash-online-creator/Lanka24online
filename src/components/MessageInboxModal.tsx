@@ -209,8 +209,8 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
           postPhoneClean.endsWith(userPhoneClean.slice(-7)))
     );
     const isIdMatch = Boolean(
-      (user?.userId && (post.userId === user.userId || post.userId === user.id)) ||
-      (user?.id && (post.userId === user.id || post.userId === user.userId))
+      (user?.userId && (post.userId === user.userId || (user?.id && post.userId === user.id))) ||
+      (user?.id && (post.userId === user.id || (user?.userId && post.userId === user.userId)))
     );
     const isNameMatch = Boolean(
       user?.name &&
@@ -237,7 +237,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
   const conversationThreads: ConversationThread[] = [];
 
   (helpPosts || []).forEach((post) => {
-    if (!post || post.isDeleted) return;
+    if (!post || !post.id || post.isDeleted) return;
 
     if (isUserPostAuthor(post)) {
       // USER IS THE POST AUTHOR (Seeker): Show each helper respondent thread

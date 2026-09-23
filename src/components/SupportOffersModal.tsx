@@ -54,7 +54,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [confirmingCancelOffer, setConfirmingCancelOffer] = useState<{ post: HelpPost; reply: PostReply } | null>(null);
 
   useEffect(() => {
-    if (targetPost) {
+    if (targetPost && targetPost.id) {
       setSelectedPostIdFilter(targetPost.id);
     } else {
       setSelectedPostIdFilter('all');
@@ -69,10 +69,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const allOffers: FlattenedOffer[] = [];
 
   (userPosts || []).forEach((post) => {
-    if (!post || post.status === 'deleted' || post.isDeleted) return;
+    if (!post || !post.id || post.status === 'deleted' || post.isDeleted) return;
 
     if (post.replies && (post.replies?.length || 0) > 0) {
       (post.replies || []).forEach((rep) => {
+        if (!rep) return;
         const isSelected = Boolean(
           rep.isConfirmed ||
           rep.isAccepted ||
@@ -104,7 +105,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   const filteredOffers = selectedPostIdFilter === 'all'
     ? allOffers
-    : allOffers.filter((off) => off.post.id === selectedPostIdFilter);
+    : allOffers.filter((off) => off.post && off.post.id === selectedPostIdFilter);
 
   // Distinct posts with offers for filter pills (if user has multiple posts)
   const postsWithOffers = Array.from(new Set((allOffers || []).map((o) => o?.post?.id).filter(Boolean)))

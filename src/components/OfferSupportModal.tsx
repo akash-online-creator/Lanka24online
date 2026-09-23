@@ -99,14 +99,15 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
       setShowPolicyModal(true);
     }
 
+    if (!post || !post.id) return;
     onSendReply(post.id, name.trim(), phone.trim(), finalMsg);
     setSubmitted(true);
 
-    if (isConfirmed) {
+    if (isConfirmed && post.userPhone) {
       // Formatted WhatsApp redirect only when confirmed
-      const formattedPhone = post.userPhone.replace(/^0/, '94');
+      const formattedPhone = (post.userPhone || '').replace(/^0/, '94');
       const text = encodeURIComponent(
-        `හලෝ ${post.userName}, මම සහය සේවා (Sahaya Seva) ඇප් එකෙන් ඔබේ ඉල්ලීම (${post.postCode}) දැක්කා.\nනම: ${name}\nදුරකථනය: ${phone}\nපණිවිඩය: ${finalMsg}`
+        `හලෝ ${post.userName || ''}, මම සහය සේවා (Sahaya Seva) ඇප් එකෙන් ඔබේ ඉල්ලීම (${post.postCode || ''}) දැක්කා.\nනම: ${name}\nදුරකථනය: ${phone}\nපණිවිඩය: ${finalMsg}`
       );
 
       setTimeout(() => {

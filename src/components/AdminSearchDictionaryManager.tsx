@@ -60,13 +60,14 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
 
   // Summary statistics
   const stats = useMemo(() => {
-    const totalGroups = dictionary.length;
+    const totalGroups = (dictionary || []).length;
     let totalTermsCount = 0;
     let learnedCount = 0;
     let totalConfirmations = 0;
 
-    dictionary.forEach((g) => {
-      totalTermsCount += g.terms.length;
+    (dictionary || []).forEach((g) => {
+      if (!g) return;
+      totalTermsCount += (g.terms || []).length;
       if (g.isLearned) learnedCount++;
       totalConfirmations += g.confirmedCount || 0;
     });
@@ -77,8 +78,8 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
   // Unique categories list
   const availableCategories = useMemo(() => {
     const cats = new Set<string>();
-    dictionary.forEach((g) => {
-      if (g.category) cats.add(g.category);
+    (dictionary || []).forEach((g) => {
+      if (g && g.category) cats.add(g.category);
     });
     return Array.from(cats);
   }, [dictionary]);
@@ -86,7 +87,8 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
   // Filtered groups
   const filteredGroups = useMemo(() => {
     const q = searchFilter.trim().toLowerCase();
-    return dictionary.filter((g) => {
+    return (dictionary || []).filter((g) => {
+      if (!g) return false;
       // Category filter
       if (selectedCategoryFilter !== 'all' && g.category !== selectedCategoryFilter) {
         return false;
@@ -353,7 +355,7 @@ export const AdminSearchDictionaryManager: React.FC<AdminSearchDictionaryManager
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredGroups.map((group, gIdx) => {
+            {filteredGroups.filter(Boolean).map((group, gIdx) => {
               return (
                 <div
                   key={`dict_grp_${group.id || 'grp'}_${gIdx}`}

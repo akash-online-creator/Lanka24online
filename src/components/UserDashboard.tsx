@@ -67,6 +67,7 @@ import {
   sendChatMessageToFirestore
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
   ShieldCheck, 
   ShieldAlert,
@@ -270,8 +271,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleAddProfessionalReview = (serviceId: string, review: ServiceReview) => {
-    const updated = professionalServices.map((srv) => {
-      if (srv.id === serviceId) {
+    const updated = (professionalServices || []).map((srv) => {
+      if (srv && srv.id === serviceId) {
         const currentReviews = srv.reviews || [];
         const newReviews = [review, ...currentReviews];
         const newAvg = Number((newReviews.reduce((sum, r) => sum + r.rating, 0) / newReviews.length).toFixed(1));
@@ -332,7 +333,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Navigation handler when user clicks a notification toast or modal item
   const handleOpenFromNotification = (notif: AppNotification) => {
     if (notif.targetPostId) {
-      const matched = (helpPosts || []).find((p) => p.id === notif.targetPostId);
+      const matched = (helpPosts || []).find((p) => p && p.id === notif.targetPostId);
       if (matched) {
         setSelectedPostForDetail(matched);
         return;
@@ -442,7 +443,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     hidePost: boolean,
     customNote?: string
   ) => {
-    const targetPost = helpPosts.find((p) => p.id === postId);
+    const targetPost = (helpPosts || []).find((p) => p && p.id === postId);
     if (!targetPost) return;
 
     const combinedReason = customNote 
@@ -463,7 +464,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (propOnUpdatePost) {
       propOnUpdatePost(updated);
     } else {
-      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === postId ? updated : p)));
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === postId ? updated : p)));
     }
 
     if (selectedPostForDetail?.id === postId) setSelectedPostForDetail(updated);
@@ -495,7 +496,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleRestorePostByAdmin = async (postId: string) => {
-    const targetPost = helpPosts.find((p) => p.id === postId);
+    const targetPost = (helpPosts || []).find((p) => p && p.id === postId);
     if (!targetPost) return;
 
     const updated: HelpPost = {
@@ -509,7 +510,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (propOnUpdatePost) {
       propOnUpdatePost(updated);
     } else {
-      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === postId ? updated : p)));
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === postId ? updated : p)));
     }
 
     if (selectedPostForDetail?.id === postId) setSelectedPostForDetail(updated);
@@ -536,7 +537,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handlePosterSubmitCorrection = async (postId: string, responseNote: string) => {
-    const targetPost = helpPosts.find((p) => p.id === postId);
+    const targetPost = (helpPosts || []).find((p) => p && p.id === postId);
     if (!targetPost) return;
 
     const nowIso = new Date().toISOString();
@@ -550,7 +551,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (propOnUpdatePost) {
       propOnUpdatePost(updated);
     } else {
-      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === postId ? updated : p)));
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === postId ? updated : p)));
     }
 
     if (selectedPostForDetail?.id === postId) setSelectedPostForDetail(updated);
@@ -576,6 +577,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleEditPost = (post: HelpPost) => {
+    if (!post) return;
     if (post.category === 'find_for_me' || post.findForMeType) {
       setEditingFindForMePost(post);
       setIsFindForMeModalOpen(true);
@@ -594,10 +596,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleSaveEditedPost = async (updatedPost: HelpPost) => {
+    if (!updatedPost || !updatedPost.id) return;
     if (propOnUpdatePost) {
       propOnUpdatePost(updatedPost);
     } else {
-      setLocalHelpPosts((prev) => (prev || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
     }
     if (selectedPostForDetail?.id === updatedPost.id) {
       setSelectedPostForDetail(updatedPost);
@@ -617,12 +620,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleConfirmDeletePost = async (postId: string) => {
+    if (!postId) return;
     addDeletedPostId(postId);
-    const postToDelete = (helpPosts || []).find((p) => p.id === postId);
+    const postToDelete = (helpPosts || []).find((p) => p && p.id === postId);
 
     // Immediately remove from local state
     setLocalHelpPosts((prev) => {
-      const updated = (prev || []).filter((p) => p.id !== postId);
+      const updated = (prev || []).filter((p) => p && p.id !== postId);
       try {
         localStorage.setItem('sahaya_help_posts', JSON.stringify(updated));
       } catch (e) {}
@@ -640,7 +644,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const deletedPayload: Partial<HelpPost> = {
         isDeleted: true,
         deletedAt: new Date().toISOString(),
-        deletedBy: user.role === 'admin' ? `Admin (${user.name})` : (user.name || postToDelete?.userName || 'User'),
+        deletedBy: checkIsAdmin(user) ? `Admin (${user.name})` : (user.name || postToDelete?.userName || 'User'),
         status: 'deleted',
       };
       await updateHelpPostInFirestore(postId, deletedPayload);
@@ -712,7 +716,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     // Check if post author is blocked or deleted by admin
     if (isAuthorBlocked(post)) {
-      const isViewerAdmin = user.role === 'admin' || user.isAdmin;
+      const isViewerAdmin = checkIsAdmin(user);
       if (!isViewerAdmin) {
         return false;
       }
@@ -722,11 +726,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     // If hidden by admin, only Admin or the Post Owner can see it (to rectify/respond)
     if (post.isHiddenByAdmin) {
       const isPostOwner = 
-        post.userId === user.id ||
-        (post.userName && user.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
-        (post.userPhone && user.phone && post.userPhone.trim() === user.phone.trim());
+        (user?.id && post.userId === user.id) ||
+        (user?.userId && post.userId === user.userId) ||
+        (post.userName && user?.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
+        (post.userPhone && user?.phone && post.userPhone.trim() === user.phone.trim());
       
-      const isViewerAdmin = user.role === 'admin' || user.isAdmin;
+      const isViewerAdmin = checkIsAdmin(user);
 
       if (!isViewerAdmin && !isPostOwner) {
         return false;
@@ -931,7 +936,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     const postToSave = {
       ...newPostData,
-      userId: user.userId || user.id || '',
+      userId: user?.userId || user?.id || '',
       category: categoryToSave,
     };
 
@@ -1049,7 +1054,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updatedPost);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === post.id ? updatedPost : p))
+        (prev || []).map((p) => (p && post && p.id === post.id ? updatedPost : p))
       );
     }
 
@@ -1072,10 +1077,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Helper function to cancel / remove an unwanted helper offer / response
   const handleCancelHelperOffer = async (post: HelpPost, reply: PostReply) => {
     const updatedReplies = (post.replies || []).filter((r) => 
-      r.id !== reply.id && (reply.id !== 'confirmed_helper' || r.responderName !== reply.responderName)
+      r && reply && r.id !== reply.id && (reply.id !== 'confirmed_helper' || r.responderName !== reply.responderName)
     );
     const neededHelpers = post.helpersNeeded && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
-    const acceptedCount = updatedReplies.filter((r) => r.isAccepted || r.isConfirmed).length;
+    const acceptedCount = updatedReplies.filter((r) => r && (r.isAccepted || r.isConfirmed)).length;
     const isComplete = acceptedCount >= neededHelpers;
 
     const wasThisReplyConfirmed = Boolean(
@@ -1102,7 +1107,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updatedPost);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === post.id ? updatedPost : p))
+        (prev || []).map((p) => (p && post && p.id === post.id ? updatedPost : p))
       );
     }
 
@@ -1142,7 +1147,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updated);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === completedPost.id ? updated : p))
+        (prev || []).map((p) => (p && completedPost && p.id === completedPost.id ? updated : p))
       );
     }
 
@@ -1182,7 +1187,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updated);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === resolvedPost.id ? updated : p))
+        (prev || []).map((p) => (p && resolvedPost && p.id === resolvedPost.id ? updated : p))
       );
     }
 
@@ -1218,7 +1223,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updated);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === post.id ? updated : p))
+        (prev || []).map((p) => (p && post && p.id === post.id ? updated : p))
       );
     }
 
@@ -1243,26 +1248,29 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Check if there is a post created by current user that helper completed, but requester hasn't resolved yet
   const pendingResolutionPost = useMemo(() => {
-    return helpPosts.find((post) => {
+    return (helpPosts || []).find((post) => {
+      if (!post || !post.id) return false;
       if (post.isDeleted || post.status === 'deleted') return false;
       if (post.requesterResolved) return false;
       if (!post.isCompleted && post.status !== 'completed') return false;
       if (postponedResolutionPostIds.includes(post.id)) return false;
 
       const isMyPost =
-        post.userId === user.id ||
-        (post.userName && user.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase());
+        (user?.id && post.userId === user.id) ||
+        (user?.userId && post.userId === user.userId) ||
+        (post.userName && user?.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase());
 
-      return isMyPost;
+      return Boolean(isMyPost);
     });
   }, [helpPosts, user, postponedResolutionPostIds]);
 
   const handleConfirmPost = async (confirmedPost: HelpPost, confirmedReplyId?: string) => {
     const matchedReply = (confirmedPost.replies || []).find((r) =>
-      confirmedReplyId ? r.id === confirmedReplyId : r.isAccepted || r.isConfirmed
+      r && (confirmedReplyId ? r.id === confirmedReplyId : r.isAccepted || r.isConfirmed)
     );
 
     const updatedReplies = (confirmedPost.replies || []).map((rep) => {
+      if (!rep) return rep;
       if (confirmedReplyId) {
         if (rep.id === confirmedReplyId) {
           return { ...rep, isAccepted: true, isConfirmed: true };
@@ -1290,7 +1298,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnUpdatePost(updated);
     } else {
       setLocalHelpPosts((prev) =>
-        (prev || []).map((p) => (p.id === confirmedPost.id ? updated : p))
+        (prev || []).map((p) => (p && confirmedPost && p.id === confirmedPost.id ? updated : p))
       );
     }
 
@@ -1326,7 +1334,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     responderPhone: string,
     message: string
   ) => {
-    const targetPost = helpPosts.find((p) => p.id === postId);
+    const targetPost = (helpPosts || []).find((p) => p && p.id === postId);
     const newReply = {
       id: `rep_${Date.now()}`,
       responderName,
@@ -1354,7 +1362,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         propOnUpdatePost(updatedTarget);
       } else {
         setLocalHelpPosts((prev) =>
-          (prev || []).map((p) => (p.id === postId ? updatedTarget : p))
+          (prev || []).map((p) => (p && p.id === postId ? updatedTarget : p))
         );
       }
     }
@@ -1857,9 +1865,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           />
 
           {/* 3.1 Prominent Action Buttons: 'කැමැත්ත දැක්වූවන්' (Only if Post Author with ads or Admin) & 'සහය වන්න' */}
-          <div className={`grid ${user?.role === 'admin' || myPosts.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-4 pt-1`}>
+          <div className={`grid ${checkIsAdmin(user) || myPosts.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-4 pt-1`}>
             {/* Button 1: කැමැත්ත දැක්වූවන් (Support Offers) - Only shown to Post Author with ads or Admin */}
-            {Boolean(user?.role === 'admin' || myPosts.length > 0) && (
+            {Boolean(checkIsAdmin(user) || myPosts.length > 0) && (
               <button
                 type="button"
                 onClick={() => {
@@ -2264,7 +2272,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         userPosts={
           user?.role === 'admin'
             ? (targetPostForOffers ? [targetPostForOffers] : helpPosts)
-            : (targetPostForOffers ? (myPosts.some(p => p.id === targetPostForOffers.id) ? myPosts : [targetPostForOffers, ...myPosts]) : myPosts)
+            : (targetPostForOffers && targetPostForOffers.id ? (myPosts.some(p => p && p.id === targetPostForOffers.id) ? myPosts : [targetPostForOffers, ...myPosts]) : myPosts)
         }
         lang={language}
         viewerLocation={currentLocation}
@@ -2345,16 +2353,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       />
 
       {/* Requester Screen-Lock Resolution Prompt Modal */}
-      {pendingResolutionPost && (
+      {pendingResolutionPost && pendingResolutionPost.id && (
         <ResolutionPromptModal
           post={pendingResolutionPost}
           lang={language}
           onPostpone={() => {
-            setPostponedResolutionPostIds((prev) => [...prev, pendingResolutionPost.id]);
+            if (pendingResolutionPost?.id) {
+              setPostponedResolutionPostIds((prev) => [...prev, pendingResolutionPost.id]);
+            }
           }}
           onRejectCompletion={handleRequesterRejectCompletion}
           onOpenChat={(post) => {
-            setPostponedResolutionPostIds((prev) => [...prev, post.id]);
+            if (post?.id) {
+              setPostponedResolutionPostIds((prev) => [...prev, post.id]);
+            }
             setSelectedPostForChat(post);
           }}
           onConfirmResolved={handleRequesterConfirmResolved}

@@ -125,7 +125,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
     let wantCat = customMatchWantCat;
 
     if (selectedMyItemForMatch) {
-      const myItem = items.find(i => i.id === selectedMyItemForMatch);
+      const myItem = (items || []).find(i => i && i.id === selectedMyItemForMatch);
       if (myItem) {
         offer = myItem.offeringTitle;
         offerCat = myItem.offeringCategory;
@@ -140,7 +140,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
         offerCat,
         want,
         wantCat,
-        user.id || user.userId,
+        user?.id || user?.userId || '',
         items
       );
       setSmartMatchResults(results);
@@ -352,9 +352,10 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
     return true;
   });
 
-  const myBarterListings = items.filter(it => it.userId === (user.id || user.userId));
-  const myReceivedProposals = proposals.filter(p => p.targetUserId === (user.id || user.userId));
-  const mySentProposals = proposals.filter(p => p.proposerUserId === (user.id || user.userId));
+  const myUserId = user?.id || user?.userId || '';
+  const myBarterListings = myUserId ? items.filter(it => it && it.userId === myUserId) : [];
+  const myReceivedProposals = myUserId ? proposals.filter(p => p && p.targetUserId === myUserId) : [];
+  const mySentProposals = myUserId ? proposals.filter(p => p && p.proposerUserId === myUserId) : [];
 
   if (!isOpen) return null;
 
@@ -518,7 +519,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredItems.map(item => {
                     const cond = getBarterConditionLabel(item.condition);
-                    const isMyItem = item.userId === (user.id || user.userId);
+                    const isMyItem = Boolean(myUserId && item.userId === myUserId);
 
                     return (
                       <div

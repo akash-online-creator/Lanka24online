@@ -103,6 +103,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   // Facebook-style like/support state
   const [hasLiked, setHasLiked] = React.useState(() => {
     try {
+      if (!post?.id) return false;
       return localStorage.getItem(`post_liked_${post.id}_${currentUser?.id || 'anon'}`) === 'true';
     } catch {
       return false;
@@ -110,50 +111,9 @@ export const PostCard: React.FC<PostCardProps> = ({
   });
 
   const [likesCount, setLikesCount] = React.useState(() => {
-    const seed = (post.id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 18 + 5;
-    return post.likeCount || seed;
+    const seed = (post?.id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 18 + 5;
+    return post?.likeCount || seed;
   });
-
-  const handleToggleLike = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setHasLiked((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(`post_liked_${post.id}_${currentUser?.id || 'anon'}`, String(next));
-      } catch {}
-      setLikesCount((c) => (next ? c + 1 : Math.max(0, c - 1)));
-      return next;
-    });
-  };
-
-  const handleSharePost = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      if (navigator.share) {
-        navigator.share({
-          title: `Sahaya Sewa - ${post.tagName || post.category || 'Help Post'} (${post.postCode || '#HLP'})`,
-          text: `${displayPost.whatHappened || displayPost.whatIsNeeded || 'සහය ඉල්ලීමක්'}\nස්ථානය: ${displayPost.locationName || 'ශ්‍රී ලංකාව'}`,
-          url: window.location.href
-        }).catch(() => {});
-      } else {
-        navigator.clipboard?.writeText(window.location.href);
-        setShowCopiedToast(true);
-        setTimeout(() => setShowCopiedToast(false), 2500);
-      }
-    } catch {
-      setShowCopiedToast(true);
-      setTimeout(() => setShowCopiedToast(false), 2500);
-    }
-  };
-
-  React.useEffect(() => {
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-    }, 10000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const isDemo = Boolean(currentUser?.isDemo);
 
   // Google Translate Dynamic Engine Integration
   const [googlePost, setGooglePost] = React.useState<HelpPost | null>(null);
@@ -168,13 +128,13 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const activeCardLang: Language = (translationMode === 'original' ? 'si' : (targetGoogleLang || lang || 'si')) as Language;
 
-  const displayPost = React.useMemo(() => getLocalizedPost(post, activeCardLang), [post, activeCardLang]);
+  const displayPost = React.useMemo(() => (post ? getLocalizedPost(post, activeCardLang) : null), [post, activeCardLang]);
   const cardLabels = React.useMemo(() => getCardLabels(activeCardLang), [activeCardLang]);
 
   // Execute dynamic Google Translate
   React.useEffect(() => {
     let isMounted = true;
-    if (translationMode === 'original') {
+    if (!post || translationMode === 'original') {
       setGooglePost(null);
       setIsTranslating(false);
       return;
@@ -203,21 +163,67 @@ export const PostCard: React.FC<PostCardProps> = ({
   }, [post, targetGoogleLang, translationMode]);
 
   const effectivePost = React.useMemo(() => {
+    if (!post) return null;
     if (translationMode === 'original') return post;
     if (googlePost) {
       return {
         ...displayPost,
         ...googlePost,
-        whatHappened: translateText(googlePost.whatHappened || displayPost.whatHappened, activeCardLang),
-        whatIsNeeded: translateText(googlePost.whatIsNeeded || displayPost.whatIsNeeded, activeCardLang),
-        conditions: translateText(googlePost.conditions || displayPost.conditions, activeCardLang),
-        specialNotice: translateText(googlePost.specialNotice || displayPost.specialNotice, activeCardLang),
-        transport: translateText(googlePost.transport || displayPost.transport, activeCardLang),
-        payment: translateText(googlePost.payment || displayPost.payment, activeCardLang),
+        whatHappened: translateText(googlePost.whatHappened || displayPost?.whatHappened || '', activeCardLang),
+        whatIsNeeded: translateText(googlePost.whatIsNeeded || displayPost?.whatIsNeeded || '', activeCardLang),
+        conditions: translateText(googlePost.conditions || displayPost?.conditions || '', activeCardLang),
+        specialNotice: translateText(googlePost.specialNotice || displayPost?.specialNotice || '', activeCardLang),
+        transport: translateText(googlePost.transport || displayPost?.transport || '', activeCardLang),
+        payment: translateText(googlePost.payment || displayPost?.payment || '', activeCardLang),
       };
     }
-    return displayPost;
+    return displayPost || post;
   }, [translationMode, googlePost, displayPost, post, activeCardLang]);
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleToggleLike = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!post?.id) return;
+    setHasLiked((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(`post_liked_${post.id}_${currentUser?.id || 'anon'}`, String(next));
+      } catch {}
+      setLikesCount((c) => (next ? c + 1 : Math.max(0, c - 1)));
+      return next;
+    });
+  };
+
+  const handleSharePost = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!post) return;
+    try {
+      if (navigator.share) {
+        navigator.share({
+          title: `Sahaya Sewa - ${post.tagName || post.category || 'Help Post'} (${post.postCode || '#HLP'})`,
+          text: `${displayPost?.whatHappened || displayPost?.whatIsNeeded || 'සහය ඉල්ලීමක්'}\nස්ථානය: ${displayPost?.locationName || 'ශ්‍රී ලංකාව'}`,
+          url: window.location.href
+        }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(window.location.href);
+        setShowCopiedToast(true);
+        setTimeout(() => setShowCopiedToast(false), 2500);
+      }
+    } catch {
+      setShowCopiedToast(true);
+      setTimeout(() => setShowCopiedToast(false), 2500);
+    }
+  };
+
+  if (!post || !post.id || !effectivePost) return null;
+
+  const isDemo = Boolean(currentUser?.isDemo);
 
   const handleInterceptAction = (actionCallback?: (p: HelpPost) => void) => {
     if (isDemo) {

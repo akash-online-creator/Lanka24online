@@ -199,8 +199,6 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   const [broadcastTotalValue, setBroadcastTotalValue] = useState('');
   const [broadcastPhoto, setBroadcastPhoto] = useState('');
 
-  if (!isOpen) return null;
-
   // ----------------------------------------------------
   // Metrics Calculations
   // ----------------------------------------------------
@@ -416,11 +414,11 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
   // 5. Recipient Confirm Received
   const handleConfirmReceived = (recordId: string) => {
-    const targetRecord = deliveries.find(d => d.id === recordId);
+    const targetRecord = (deliveries || []).find(d => d && d.id === recordId);
     if (!targetRecord) return;
 
-    const confirmedDeliveries = deliveries.map(d => {
-      if (d.id === recordId) {
+    const confirmedDeliveries = (deliveries || []).map(d => {
+      if (d && d.id === recordId) {
         return {
           ...d,
           status: 'confirmed_received' as const,
@@ -437,20 +435,20 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     setDeliveries(confirmedDeliveries);
     saveAidDeliveriesToStorage(confirmedDeliveries);
 
-    const confirmedDelivery = confirmedDeliveries.find(d => d.id === recordId);
+    const confirmedDelivery = confirmedDeliveries.find(d => d && d.id === recordId);
     if (confirmedDelivery) {
       updateAidDeliveryInFirestore(recordId, confirmedDelivery);
     }
 
     // Update Center Totals
-    const updatedCenters = centers.map(c => {
-      if (c.centerCode === targetRecord.centerCode) {
+    const updatedCenters = (centers || []).map(c => {
+      if (c && c.centerCode === targetRecord.centerCode) {
         const updatedC = {
           ...c,
           totalDeliveriesCount: (c.totalDeliveriesCount || 0) + 1,
           totalEstimatedValue: (c.totalEstimatedValue || 0) + (targetRecord.monetaryValueEstimate || 0),
         };
-        updateAidCenterInFirestore(c.id, updatedC);
+        if (c.id) updateAidCenterInFirestore(c.id, updatedC);
         return updatedC;
       }
       return c;
@@ -519,6 +517,8 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     setBroadcasts(updated);
     saveCommunityBroadcastsToStorage(updated);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">

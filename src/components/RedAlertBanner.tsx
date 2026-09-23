@@ -87,8 +87,8 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 2 සීමාව සෙවීම
   const uniqueAlertsMap = new Map<string, RedAlertItem>();
 
-  alerts.forEach((alert) => {
-    if (alert.id && alert.status === 'active' && !alert.isFlaggedFake) {
+  (alerts || []).forEach((alert) => {
+    if (alert && alert.id && alert.status === 'active' && !alert.isFlaggedFake) {
       if (!uniqueAlertsMap.has(alert.id)) {
         uniqueAlertsMap.set(alert.id, alert);
       }
@@ -96,6 +96,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   });
 
   const activeAlerts = Array.from(uniqueAlertsMap.values()).filter((alert) => {
+    if (!alert || !alert.id) return false;
     // මෙම User විසින් Dismiss කර ඇති Alert එකක් නම් නොපෙන්වන්න
     if (dismissedAlertIds.includes(alert.id)) {
       return false;
@@ -129,9 +130,10 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   const isUserAuthorOfRedAlert = (alert: RedAlertItem | null): boolean => {
     if (!currentUser || !alert) return false;
 
-    const matchesUserId = alert.reportedByUserId && alert.reportedByUserId === currentUser.id;
+    const currentUserId = currentUser.id || currentUser.userId;
+    const matchesUserId = alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId);
     const matchesPhone = alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone;
-    const matchesNic = (alert as any).reportedByNic && currentUser.nic && (alert as any).reportedByNic === currentUser.nic;
+    const matchesNic = (alert as any).reportedByNic && (currentUser as any).nic && (alert as any).reportedByNic === (currentUser as any).nic;
     const matchesEmail = (alert as any).reportedByEmail && currentUser.email && (alert as any).reportedByEmail === currentUser.email;
 
     return Boolean(matchesUserId || matchesPhone || matchesNic || matchesEmail);
@@ -190,7 +192,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
   // 🛑 පරිශීලකයා Alert එක Dismiss කළ විට අදාළ User ID එක යටතේ Save වීම
   const handleDismissCurrentAlert = () => {
-    if (!currentAlert) return;
+    if (!currentAlert || !currentAlert.id) return;
 
     const updatedDismissedIds = [...dismissedAlertIds, currentAlert.id];
     setDismissedAlertIds(updatedDismissedIds);
@@ -228,15 +230,15 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
     if (confirm('මෙය සාවද්‍ය / බොරු අනතුරක් ලෙස වාර්තා කිරීමට අවශ්‍යද?')) {
       await flagRedAlertAsFake(alertId, {
-        userId: currentUser.id,
-        name: currentUser.name,
+        userId: currentUser?.userId || currentUser?.id || '',
+        name: currentUser?.name || 'පරිශීලක',
         reason: 'User flagged as fake alert'
       });
       alert('ඔබගේ වාර්තා කිරීම පද්ධතියට යොමු කෙරුණි.');
     }
   };
 
-  if (activeAlerts.length === 0 || !currentAlert) {
+  if (activeAlerts.length === 0 || !currentAlert || !currentAlert.id) {
     return null;
   }
 

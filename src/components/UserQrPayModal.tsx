@@ -102,7 +102,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentBalance = getUserCreditBalance(user);
-  const userNumericId = extractNumericId(user.nicNumber || user.userId);
+  const userNumericId = extractNumericId(user?.nicNumber || user?.userId);
 
   // Initialize My QR
   useEffect(() => {
@@ -226,10 +226,12 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
 
     // Try finding matching user from allUsers or use payload
-    let matchedUser = allUsers.find(
-      u => (result.recipientUserId && (u.id === result.recipientUserId || u.userId === result.recipientUserId)) ||
-           (result.recipientNumericId && extractNumericId(u.nicNumber || u.userId) === result.recipientNumericId) ||
-           (result.recipientPhone && u.phone === result.recipientPhone)
+    let matchedUser = (allUsers || []).find(
+      u => u && (
+        (result.recipientUserId && (u.id === result.recipientUserId || u.userId === result.recipientUserId)) ||
+        (result.recipientNumericId && extractNumericId(u.nicNumber || u.userId) === result.recipientNumericId) ||
+        (result.recipientPhone && u.phone === result.recipientPhone)
+      )
     );
 
     const recipientData = {

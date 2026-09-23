@@ -73,7 +73,8 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
   const isOwner = Boolean(
     currentUser && (
-      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
+      (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
+      (currentUser.id && post.userId && currentUser.id === post.userId) ||
       (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
       (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
     )

@@ -54,11 +54,11 @@ export const BoostPostModal: React.FC<BoostPostModalProps> = ({
   const [slipReference, setSlipReference] = useState('');
   const [slipFile, setSlipFile] = useState<File | null>(null);
 
-  if (!isOpen || !post) return null;
+  if (!isOpen || !post || !currentUser) return null;
 
   const currentWalletBalance = getUserCreditBalance(currentUser);
   const isWalletSufficient = currentWalletBalance >= BOOST_AD_FEE;
-  const numericId = extractNumericId(currentUser.nicNumber || currentUser.userId);
+  const numericId = extractNumericId(currentUser?.nicNumber || currentUser?.userId);
 
   const getLangText = (si: string, en: string, ta: string) => {
     if (language === 'en') return en;

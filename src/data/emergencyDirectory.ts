@@ -291,23 +291,23 @@ const saveDefaultOverrides = (overrides: Record<string, Partial<EmergencyService
 export const getStoredEmergencyContacts = (includeDeactivated: boolean = false): EmergencyServiceContact[] => {
   try {
     const customList = getStoredCustomContacts();
-    const overrides = getDefaultOverrides();
+    const overrides = getDefaultOverrides() || {};
 
-    const mergedDefaults: EmergencyServiceContact[] = SRI_LANKA_EMERGENCY_CONTACTS.map((c) => {
-      if (overrides[c.id]) {
+    const mergedDefaults: EmergencyServiceContact[] = (SRI_LANKA_EMERGENCY_CONTACTS || []).map((c) => {
+      if (c && c.id && overrides[c.id]) {
         return { ...c, ...overrides[c.id] };
       }
       return c;
     });
 
-    const combined = [...customList, ...mergedDefaults];
+    const combined = [...(customList || []).filter((c) => Boolean(c && c.id)), ...mergedDefaults];
 
     if (includeDeactivated) {
       return combined;
     }
 
     // Hide deactivated numbers from public view
-    return combined.filter((c) => !c.isInactiveDeactivated);
+    return combined.filter((c) => c && !c.isInactiveDeactivated);
   } catch (err) {
     console.error('Failed to load emergency contacts:', err);
     return SRI_LANKA_EMERGENCY_CONTACTS;
@@ -326,11 +326,11 @@ export const getAllEmergencyContactsForAdmin = (): EmergencyServiceContact[] => 
  */
 export const saveCustomEmergencyContact = (contact: EmergencyServiceContact): EmergencyServiceContact[] => {
   try {
-    const existing = getStoredCustomContacts();
-    const index = existing.findIndex((c) => c.id === contact.id);
+    const existing = (getStoredCustomContacts() || []).filter((c) => Boolean(c && c.id));
+    const index = existing.findIndex((c) => c && c.id === contact.id);
     let updated: EmergencyServiceContact[];
     if (index >= 0) {
-      updated = existing.map((c) => (c.id === contact.id ? contact : c));
+      updated = existing.map((c) => (c && c.id === contact.id ? contact : c));
     } else {
       updated = [contact, ...existing];
     }
@@ -348,15 +348,15 @@ export const saveCustomEmergencyContact = (contact: EmergencyServiceContact): Em
  */
 export const deleteCustomEmergencyContact = (id: string): EmergencyServiceContact[] => {
   try {
-    const customList = getStoredCustomContacts();
-    const isCustom = customList.some((c) => c.id === id);
+    const customList = (getStoredCustomContacts() || []).filter((c) => Boolean(c && c.id));
+    const isCustom = customList.some((c) => c && c.id === id);
 
     if (isCustom) {
-      const updated = customList.filter((c) => c.id !== id);
+      const updated = customList.filter((c) => c && c.id !== id);
       localStorage.setItem(CUSTOM_EMERGENCY_STORAGE_KEY, JSON.stringify(updated));
     } else {
       // Is default contact: override as deactivated/removed
-      const overrides = getDefaultOverrides();
+      const overrides = getDefaultOverrides() || {};
       overrides[id] = {
         ...overrides[id],
         isInactiveDeactivated: true,
@@ -379,7 +379,7 @@ export const deleteCustomEmergencyContact = (id: string): EmergencyServiceContac
  */
 export const reportEmergencyContactInactive = (
   contactId: string,
-  user: { id: string; name: string; phone?: string },
+  user?: { id?: string; name?: string; phone?: string } | null,
   reason?: string
 ): {
   success: boolean;
@@ -390,7 +390,7 @@ export const reportEmergencyContactInactive = (
 } => {
   try {
     const allContacts = getAllEmergencyContactsForAdmin();
-    const contact = allContacts.find((c) => c.id === contactId);
+    const contact = (allContacts || []).find((c) => c && c.id === contactId);
 
     if (!contact) {
       return {
@@ -402,9 +402,10 @@ export const reportEmergencyContactInactive = (
     }
 
     const currentReportUserIds = contact.reportedInactiveUserIds || [];
+    const userId = user?.id || 'guest_user';
 
     // Check if user already reported
-    if (currentReportUserIds.includes(user.id)) {
+    if (userId && currentReportUserIds.includes(userId)) {
       return {
         success: false,
         message: 'ඔබ දැනටමත් මෙම අංකය ක්‍රියා විරහිත බවට වාර්තා කර ඇත.',
@@ -414,15 +415,15 @@ export const reportEmergencyContactInactive = (
       };
     }
 
-    const updatedUserIds = [...currentReportUserIds, user.id];
+    const updatedUserIds = [...currentReportUserIds, userId];
     const newReportCount = (contact.reportedInactiveCount || 0) + 1;
     const nowIso = new Date().toISOString();
     const nowReadable = nowIso.replace('T', ' ').slice(0, 16);
 
     const newReportDetail = {
-      userId: user.id,
-      userName: user.name || 'පරිශීලක',
-      userPhone: user.phone || '',
+      userId: userId,
+      userName: user?.name || 'පරිශීලක',
+      userPhone: user?.phone || '',
       reportedAt: nowReadable,
       reportedAtMs: Date.now(),
       reason: reason || 'දුරකථන අංකය ක්‍රියා විරහිතයි / වැරදියි',
@@ -443,14 +444,14 @@ export const reportEmergencyContactInactive = (
     };
 
     // Save to custom or default overrides
-    const customList = getStoredCustomContacts();
-    const isCustom = customList.some((c) => c.id === contactId);
+    const customList = (getStoredCustomContacts() || []).filter((c) => Boolean(c && c.id));
+    const isCustom = customList.some((c) => c && c.id === contactId);
 
     if (isCustom) {
-      const newCustomList = customList.map((c) => (c.id === contactId ? updatedContact : c));
+      const newCustomList = customList.map((c) => (c && c.id === contactId ? updatedContact : c));
       localStorage.setItem(CUSTOM_EMERGENCY_STORAGE_KEY, JSON.stringify(newCustomList));
     } else {
-      const overrides = getDefaultOverrides();
+      const overrides = getDefaultOverrides() || {};
       overrides[contactId] = {
         reportedInactiveCount: newReportCount,
         reportedInactiveUserIds: updatedUserIds,
@@ -533,12 +534,12 @@ export const getEmergencyAdminAlerts = (): EmergencyAdminAlert[] => {
  */
 export const adminReactivateEmergencyContact = (contactId: string): EmergencyServiceContact[] => {
   try {
-    const customList = getStoredCustomContacts();
-    const isCustom = customList.some((c) => c.id === contactId);
+    const customList = (getStoredCustomContacts() || []).filter((c) => Boolean(c && c.id));
+    const isCustom = customList.some((c) => c && c.id === contactId);
 
     if (isCustom) {
       const updated = customList.map((c) => {
-        if (c.id === contactId) {
+        if (c && c.id === contactId) {
           return {
             ...c,
             isInactiveDeactivated: false,
@@ -553,7 +554,7 @@ export const adminReactivateEmergencyContact = (contactId: string): EmergencySer
       });
       localStorage.setItem(CUSTOM_EMERGENCY_STORAGE_KEY, JSON.stringify(updated));
     } else {
-      const overrides = getDefaultOverrides();
+      const overrides = getDefaultOverrides() || {};
       overrides[contactId] = {
         ...overrides[contactId],
         isInactiveDeactivated: false,
@@ -581,7 +582,7 @@ export const markEmergencyAdminAlertResolved = (alertId: string) => {
     const raw = localStorage.getItem(ADMIN_EMERGENCY_ALERTS_KEY);
     if (!raw) return;
     const list: EmergencyAdminAlert[] = JSON.parse(raw);
-    const updated = list.map((a) => (a.id === alertId ? { ...a, isResolved: true } : a));
+    const updated = (list || []).map((a) => (a && a.id === alertId ? { ...a, isResolved: true } : a));
     localStorage.setItem(ADMIN_EMERGENCY_ALERTS_KEY, JSON.stringify(updated));
   } catch (err) {
     console.warn('Failed to resolve alert:', err);

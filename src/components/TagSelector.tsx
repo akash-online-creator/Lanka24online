@@ -120,7 +120,8 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
 
           <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
             {filteredTags.map((tag, tIdx) => {
-              const isSelected = selectedTag?.id === tag.id;
+              if (!tag) return null;
+              const isSelected = Boolean(selectedTag?.id && tag.id && selectedTag.id === tag.id);
               const TagIconComp = getTagIconComponent(tag.tagName, tag.category);
               return (
                 <button

@@ -15,7 +15,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onClose,
   onConfirmDelete,
 }) => {
-  if (!isOpen || !post) return null;
+  if (!isOpen || !post || !post.id) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
@@ -77,7 +77,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              onConfirmDelete(post.id);
+              if (post?.id) {
+                onConfirmDelete(post.id);
+              }
               onClose();
             }}
             className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-lg flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"

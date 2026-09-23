@@ -24,12 +24,12 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
     // 🔄 Firestore සජීවීව (Real-time) පරීක්ෂා කිරීම
     const unsubscribe = subscribeToRedAlerts((alerts) => {
       // 1. දැනට Active වී ඇති පළමු Alert එක ගැනීම
-      const currentActive = alerts.find((a) => a.status === 'active') || null;
+      const currentActive = (alerts || []).find((a) => a && a.status === 'active') || null;
       const prevAlert = prevAlertRef.current;
 
       // 2. වෙනස්කම් සිදු වූ විට පරිශීලකයන්ට POPUP NOTIFICATIONS පෙන්වීම
       if (prevAlert) {
-        const updatedAlertInList = alerts.find((a) => a.id === prevAlert.id);
+        const updatedAlertInList = (alerts || []).find((a) => a && prevAlert && a.id === prevAlert.id);
 
         // 🅰️ පළකළ කෙනා "විසඳුනා" (Resolved) ලෙස ක්ලික් කළ විට:
         if (prevAlert.status === 'active' && updatedAlertInList?.status === 'resolved') {
@@ -50,6 +50,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
         // Ⓒ පළකළ කෙනා "අලුත් Update/කමෙන්ට් එකක්" දැමූ විට:
         else if (
           currentActive && 
+          prevAlert &&
           currentActive.id === prevAlert.id &&
           currentActive.latestReporterUpdate?.createdAt !== prevAlert.latestReporterUpdate?.createdAt
         ) {
@@ -60,7 +61,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
       }
 
       setActiveAlert(currentActive);
-      prevAlertRef.current = currentActive || (alerts.find((a) => a.id === prevAlertRef.current?.id) || null);
+      prevAlertRef.current = currentActive || ((alerts || []).find((a) => a && prevAlertRef.current?.id && a.id === prevAlertRef.current.id) || null);
     });
 
     return () => unsubscribe();
@@ -76,7 +77,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
 
   // 1. "ආපදාව විසඳුනා" Button Click එක
   const handleResolve = async () => {
-    if (!activeAlert) return;
+    if (!activeAlert || !activeAlert.id) return;
     try {
       await markRedAlertAsResolved(activeAlert.id);
     } catch (err) {
@@ -86,7 +87,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
 
   // 2. "අනතුර ඉවත් කරන්න" Button Click එක
   const handleCancel = async () => {
-    if (!activeAlert) return;
+    if (!activeAlert || !activeAlert.id) return;
     try {
       await cancelRedAlertByReporter(activeAlert.id);
     } catch (err) {
@@ -97,7 +98,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
   // 3. "තව අදහසක් / Update එකක් දාන්න" Submit එක
   const handleSendUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeAlert || !updateText.trim()) return;
+    if (!activeAlert || !activeAlert.id || !updateText.trim()) return;
 
     try {
       await addReporterUpdateToRedAlert(activeAlert.id, updateText.trim(), {

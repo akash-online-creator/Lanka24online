@@ -423,6 +423,26 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           </div>
         )}
 
+        {/* Free Tier Model Welcome Gift Banner */}
+        <div className="mb-6 bg-gradient-to-r from-emerald-800 via-[#006e40] to-teal-800 border-2 border-emerald-400/50 p-4 rounded-2xl text-white shadow-lg flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-2xl shrink-0 shadow-md">
+            🎁
+          </div>
+          <div className="text-xs leading-relaxed">
+            <div className="flex items-center gap-2">
+              <span className="font-black text-sm text-amber-300">
+                රුපියල් 100 නොමිලේ (Free Tier Model)
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[10px] font-bold">
+                Welcome Bonus
+              </span>
+            </div>
+            <p className="text-emerald-100 mt-0.5">
+              ලියාපදිංචි වන සෑම නව සාමාජිකයෙකුට සහ සේවා සපයන්නෙකුටම රු. 100 ක ආරම්භක ක්‍රෙඩිට් නොමිලේ හිමිවේ! කිසිදු මූලික වියදමකින් තොරව දැන්වීම් පළකර සහය ජාලය අත්විඳින්න.
+            </p>
+          </div>
+        </div>
+
         {/* Registration Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           

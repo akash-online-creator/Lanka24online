@@ -202,9 +202,9 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
       whatsappNumber: showWhatsapp ? whatsappNumber.trim() : undefined,
       chatEnabled: true,
       revealContactConsent,
-      userId: currentUser.userId || currentUser.id,
-      userName: currentUser.name,
-      userPhone: currentUser.phone,
+      userId: currentUser?.userId || currentUser?.id || '',
+      userName: currentUser?.name || '',
+      userPhone: currentUser?.phone || '',
       createdAt: editShop ? editShop.createdAt : new Date().toLocaleDateString('si-LK'),
       createdAtMs: editShop ? editShop.createdAtMs : Date.now()
     };

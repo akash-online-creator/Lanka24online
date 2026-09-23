@@ -28,8 +28,8 @@ export const MessageInboxBubble: React.FC<MessageInboxBubbleProps> = ({
           postPhoneClean.endsWith(userPhoneClean.slice(-7)))
     );
     const isIdMatch = Boolean(
-      (user?.userId && (post.userId === user.userId || post.userId === user.id)) ||
-      (user?.id && (post.userId === user.id || post.userId === user.userId))
+      (user?.userId && post.userId && post.userId === user.userId) ||
+      (user?.id && post.userId && post.userId === user.id)
     );
     const isNameMatch = Boolean(
       user?.name &&

@@ -6,6 +6,22 @@ export const normalizePhone = (phone?: string): string => {
 };
 
 /**
+ * Checks if the given user has administrator permissions.
+ */
+export const checkIsAdmin = (user: User | null | undefined): boolean => {
+  if (!user) return false;
+  if (user.role === 'admin' || (user as any).isAdmin === true || (user as any).isSuperAdmin === true) return true;
+  const uid = (user.userId || '').trim().toUpperCase();
+  const nic = (user.nicNumber || '').trim().toUpperCase();
+  const email = (user.email || '').trim().toLowerCase();
+  const id = (user.id || '').trim();
+  if (uid === '970181547V' || nic === '970181547V' || uid === 'ADMIN' || nic === 'ADMIN') return true;
+  if (email === 'admin@sahaya.lk' || email === 'www.akash.online@gmail.com') return true;
+  if (id === 'usr_admin') return true;
+  return false;
+};
+
+/**
  * Strictly checks if the given user is the original author/owner of the post.
  * Rules:
  * 1. Demo / Guest users can NEVER be the owner of real posts.
@@ -56,3 +72,4 @@ export const checkIsPostOwner = (
   // Require both phone match AND name match for legacy posts
   return phoneMatch && nameMatch;
 };
+

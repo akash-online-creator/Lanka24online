@@ -60,7 +60,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
       if (kw === searchQuery.toLowerCase().trim()) continue;
       const found = searchTags(kw, Array.isArray(allTags) ? allTags : []);
       for (const t of found) {
-        if (!matchedSet.has(t.id)) {
+        if (t && t.id && !matchedSet.has(t.id)) {
           matchedSet.add(t.id);
           synMatches.push(t);
         }

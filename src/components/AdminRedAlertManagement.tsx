@@ -71,7 +71,8 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     }
   };
 
-  const filteredAlerts = alerts.filter((alert) => {
+  const filteredAlerts = (alerts || []).filter((alert) => {
+    if (!alert) return false;
     if (filter === 'active' && alert.status !== 'active') return false;
     if (filter === 'flagged_fake' && (!alert.isFlaggedFake && (alert.fakeReports?.length || 0) === 0)) return false;
     if (filter === 'resolved' && alert.status !== 'resolved') return false;
@@ -290,7 +291,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
         <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40">
           <span className="text-[10px] uppercase font-bold text-emerald-500">නිරාකරණය වූ ආපදා</span>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-            {alerts.filter((a) => a.status === 'resolved').length}
+            {(alerts || []).filter((a) => a && a.status === 'resolved').length}
           </div>
         </div>
       </div>

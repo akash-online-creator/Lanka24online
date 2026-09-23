@@ -223,7 +223,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   };
 
   const handleRemoveStagedMember = (userId: string) => {
-    setStagedMembers((prev) => prev.filter((m) => m.user.id !== userId && m.user.userId !== userId));
+    setStagedMembers((prev) => (prev || []).filter((m) => m?.user && m.user?.id !== userId && m.user?.userId !== userId));
   };
 
   // Submit & Create Group
@@ -274,10 +274,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
     // Staged Members as Pending Invites
     const invitedMembers: GroupMember[] = stagedMembers.map((sm) => ({
-      userId: sm.user.userId || sm.user.id,
-      name: sm.user.name,
-      phone: sm.user.phone || sm.user.whatsappNumber || '',
-      photoUrl: sm.user.photoUrl || '',
+      userId: sm.user?.userId || sm.user?.id || `usr_${Date.now()}`,
+      name: sm.user?.name || 'සාමාජිකයා',
+      phone: sm.user?.phone || sm.user?.whatsappNumber || '',
+      photoUrl: sm.user?.photoUrl || '',
       role: 'member',
       status: 'pending_invite',
       joinedAt: new Date().toLocaleString()
@@ -317,8 +317,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       subCategory: newGroup.subCategory,
       inviterName: currentUser?.name || 'පරිපාලක',
       inviterPhone: currentUser?.phone || '',
-      targetPhone: sm.user.phone || sm.user.whatsappNumber || '',
-      targetUserId: sm.user.userId || sm.user.id,
+      targetPhone: sm.user?.phone || sm.user?.whatsappNumber || '',
+      targetUserId: sm.user?.userId || sm.user?.id || '',
       status: 'pending',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       createdAtMs: Date.now()
@@ -705,7 +705,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {stagedMembers.map((sm, idx) => (
                     <div 
-                      key={`staged_${sm.user.id || sm.user.userId}_${idx}`}
+                      key={`staged_${sm.user?.id || sm.user?.userId || idx}_${idx}`}
                       className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-zinc-700 shadow-xs"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -719,13 +719,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs font-black truncate">{sm.user.name}</div>
-                          <div className="text-[10px] text-zinc-500 font-mono truncate">{sm.user.phone || sm.user.whatsappNumber}</div>
+                          <div className="text-xs font-black truncate">{sm.user?.name}</div>
+                          <div className="text-[10px] text-zinc-500 font-mono truncate">{sm.user?.phone || sm.user?.whatsappNumber}</div>
                         </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleRemoveStagedMember(sm.user.id || sm.user.userId)}
+                        onClick={() => handleRemoveStagedMember(sm.user?.id || sm.user?.userId || '')}
                         className="text-rose-500 hover:text-rose-700 p-1 transition-colors cursor-pointer"
                         title="ඉවත් කරන්න"
                       >

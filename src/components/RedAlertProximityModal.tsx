@@ -143,7 +143,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert || !commentText.trim()) return;
+    if (!alert || !alert.id || !commentText.trim()) return;
 
     setIsSubmittingComment(true);
     const newComment: RedAlertComment = {
@@ -169,7 +169,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 
   const handleReportFake = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert) return;
+    if (!alert || !alert.id) return;
 
     setIsReportingFake(true);
     const report: RedAlertFakeReport = {
@@ -197,12 +197,13 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     }
   };
 
-  if (!isOpen || !alert) return null;
+  if (!isOpen || !alert || !alert.id) return null;
 
+  const currentUserId = currentUser?.id || currentUser?.userId;
   const isAuthorOfAlert = Boolean(currentUser && (
-    (alert.reportedByUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
-    (alert.reportedByPhone && alert.reportedByPhone === currentUser.phone) ||
-    (alert.reportedByName && alert.reportedByName === currentUser.name)
+    (alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+    (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
+    (alert.reportedByName && currentUser.name && alert.reportedByName === currentUser.name)
   ));
 
   const config = getDisasterConfig(alert.disasterType);

@@ -9,16 +9,18 @@ import {
   Clock, 
   Star, 
   MessageSquare, 
-  MessageCircle,
+  MessageCircle, 
   CheckCircle2, 
   Share2, 
   ShieldCheck, 
-  Send,
-  Sparkles,
-  Check,
-  Lock
+  Send, 
+  Sparkles, 
+  Check, 
+  Lock 
 } from 'lucide-react';
 import { ProfessionalServiceChatModal } from './ProfessionalServiceChatModal';
+import { calculateProviderReputation } from '../utils/reputationSystem';
+import { ProviderReputationCard } from './ProviderReputationCard';
 
 interface ProfessionalServiceDetailModalProps {
   isOpen: boolean;
@@ -46,7 +48,8 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
 
   const isOwner = Boolean(
     currentUser && (
-      (currentUser.userId && service.userId && (currentUser.userId === service.userId || currentUser.id === service.userId)) ||
+      (currentUser.userId && service.userId && (currentUser.userId === service.userId || (currentUser.id && currentUser.id === service.userId))) ||
+      (currentUser.id && service.userId && currentUser.id === service.userId) ||
       (currentUser.phone && service.providerPhone && currentUser.phone.replace(/\D/g, '') === service.providerPhone.replace(/\D/g, ''))
     )
   );
@@ -75,9 +78,9 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
 
     const newReview: ServiceReview = {
       id: `rev_${Date.now()}`,
-      userId: currentUser.userId || currentUser.id || 'guest',
-      userName: currentUser.name || 'පරිශීලක',
-      userPhotoUrl: currentUser.photoUrl || '',
+      userId: currentUser?.userId || currentUser?.id || 'guest',
+      userName: currentUser?.name || 'පරිශීලක',
+      userPhotoUrl: currentUser?.photoUrl || '',
       rating,
       comment: commentText.trim(),
       createdAt: 'දැන්',
@@ -293,6 +296,14 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Reputation & Leveling Card */}
+          <div className="my-2">
+            <ProviderReputationCard
+              reputation={calculateProviderReputation(service.userId, service)}
+              showAllLevelsLadder={false}
+            />
           </div>
 
           {/* 4. Comments & Reviews Section (Requirement 04) */}

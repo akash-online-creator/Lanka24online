@@ -279,10 +279,29 @@ export const getUserCreditTransactions = (user?: User | null): CreditTransaction
  * Grant Rs. 100 Welcome Gift upon Admin Approval
  */
 export const grantWelcomeGiftCredit = (
-  user: User
+  user?: User | null
 ): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
+  if (!user) {
+    return {
+      success: false,
+      newBalance: 0,
+      transaction: {
+        id: `tx_gift_err_${Date.now()}`,
+        userId: '',
+        userNumericId: '',
+        userName: '',
+        description: '',
+        amount: 0,
+        type: 'welcome_gift',
+        title: 'Welcome Gift',
+        timestamp: formatCreditDate(),
+        timestampMs: Date.now(),
+        balanceAfter: 0,
+      },
+    };
+  }
   const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId;
+  const idKey = user.id || user.userId || '';
   const currentBalance = getUserCreditBalance(user);
   const newBalance = currentBalance + 100;
 
@@ -317,12 +336,31 @@ export const grantWelcomeGiftCredit = (
  * Reward User 2 Credits for contributing a valid Emergency Service Contact Number
  */
 export const rewardEmergencyContactCredit = (
-  user: User,
-  serviceName: string,
-  phone: string
+  user?: User | null,
+  serviceName?: string,
+  phone?: string
 ): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
+  if (!user) {
+    return {
+      success: false,
+      newBalance: 0,
+      transaction: {
+        id: `tx_emg_err_${Date.now()}`,
+        userId: '',
+        userNumericId: '',
+        userName: '',
+        description: '',
+        amount: 0,
+        type: 'reward',
+        title: 'Emergency Reward',
+        timestamp: formatCreditDate(),
+        timestampMs: Date.now(),
+        balanceAfter: 0,
+      },
+    };
+  }
   const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId;
+  const idKey = user.id || user.userId || '';
   const currentBalance = getUserCreditBalance(user);
   const rewardAmount = 2; // 2 Credits
   const newBalance = Number((currentBalance + rewardAmount).toFixed(2));
@@ -368,8 +406,8 @@ export const getCategoryFee = (categoryKey?: string): number => {
  * Deduct posting fee before creating an Ad / Service / Post
  */
 export const deductPostingFee = (
-  user: User,
-  feeKey: string,
+  user?: User | null,
+  feeKey: string = 'general',
   postCode?: string,
   customTitle?: string
 ): { 
@@ -389,6 +427,16 @@ export const deductPostingFee = (
   };
 
   const requiredFee = feeInfo.fee;
+  if (!user) {
+    return {
+      success: false,
+      newBalance: 0,
+      currentBalance: 0,
+      requiredFee,
+      requiredAmount: requiredFee,
+      error: 'පරිශීලක තොරතුරු හමුනොවිණි.',
+    };
+  }
   const currentBalance = getUserCreditBalance(user);
 
   if (currentBalance < requiredFee) {
@@ -403,7 +451,7 @@ export const deductPostingFee = (
   }
 
   const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId;
+  const idKey = user.id || user.userId || '';
   const newBalance = Number((currentBalance - requiredFee).toFixed(2));
 
   // Update in balances storage
@@ -447,14 +495,33 @@ export const deductPostingFee = (
  * Admin Top-Up or Gift Custom Credits to Any User
  */
 export const addCreditByAdmin = (
-  user: User,
-  amount: number,
+  user?: User | null,
+  amount: number = 0,
   type: CreditTransactionType = 'deposit',
   title?: string,
   adminRemark?: string
 ): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
+  if (!user) {
+    return {
+      success: false,
+      newBalance: 0,
+      transaction: {
+        id: `tx_admin_err_${Date.now()}`,
+        userId: '',
+        userNumericId: '',
+        userName: '',
+        description: '',
+        amount: 0,
+        type,
+        title: title || 'Admin Credit',
+        timestamp: formatCreditDate(),
+        timestampMs: Date.now(),
+        balanceAfter: 0,
+      },
+    };
+  }
   const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId;
+  const idKey = user.id || user.userId || '';
   const currentBalance = getUserCreditBalance(user);
   const positiveAmount = Math.abs(amount);
   const newBalance = Number((currentBalance + positiveAmount).toFixed(2));
@@ -498,14 +565,33 @@ export const addCreditByAdmin = (
  * Admin Deduct / Remove Credits from Any User
  */
 export const deductCreditByAdmin = (
-  user: User,
-  amount: number,
+  user?: User | null,
+  amount: number = 0,
   type: CreditTransactionType = 'admin_adjustment',
   title?: string,
   adminRemark?: string
 ): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
+  if (!user) {
+    return {
+      success: false,
+      newBalance: 0,
+      transaction: {
+        id: `tx_admin_deduct_err_${Date.now()}`,
+        userId: '',
+        userNumericId: '',
+        userName: '',
+        description: '',
+        amount: 0,
+        type,
+        title: title || 'Admin Debit',
+        timestamp: formatCreditDate(),
+        timestampMs: Date.now(),
+        balanceAfter: 0,
+      },
+    };
+  }
   const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId;
+  const idKey = user.id || user.userId || '';
   const currentBalance = getUserCreditBalance(user);
   const deductionAmount = Math.abs(amount);
   const newBalance = Number(Math.max(0, currentBalance - deductionAmount).toFixed(2));
@@ -553,8 +639,27 @@ export const applyEvadingPenalty = (
   travelFeeAmount: number,
   reason: string
 ): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
+  if (!seekerUser) {
+    return {
+      success: false,
+      newBalance: 0,
+      transaction: {
+        id: `tx_err_${Date.now()}`,
+        userId: '',
+        userNumericId: '',
+        userName: '',
+        amount: 0,
+        type: 'penalty_compensation',
+        title: 'Error',
+        description: '',
+        timestamp: formatCreditDate(),
+        timestampMs: Date.now(),
+        balanceAfter: 0,
+      },
+    };
+  }
   const numericId = extractNumericId(seekerUser.nicNumber || seekerUser.userId);
-  const idKey = seekerUser.id || seekerUser.userId;
+  const idKey = seekerUser.id || seekerUser.userId || '';
   const currentBalance = getUserCreditBalance(seekerUser);
   const newBalance = Number((currentBalance - travelFeeAmount).toFixed(2));
 
@@ -593,8 +698,8 @@ export const BOOST_AD_FEE = 250;
  */
 export const boostHelpPost = (
   post: HelpPost,
-  user: User,
-  paymentMethod: 'wallet' | 'bank_slip' | string,
+  user?: User | null,
+  paymentMethod: 'wallet' | 'bank_slip' | string = 'wallet',
   paymentDetails?: { reference?: string; slipName?: string }
 ): {
   success: boolean;
@@ -603,6 +708,13 @@ export const boostHelpPost = (
   transaction?: CreditTransaction;
   newBalance?: number;
 } => {
+  if (!user) {
+    return {
+      success: false,
+      updatedPost: post,
+      error: 'පරිශීලක තොරතුරු හමුනොවිණි.',
+    };
+  }
   const boostDurationMs = 7 * 24 * 60 * 60 * 1000; // 7 days top priority
   const now = Date.now();
   const boostedAt = new Date(now).toISOString();
@@ -623,7 +735,7 @@ export const boostHelpPost = (
     }
 
     const numericId = extractNumericId(user.nicNumber || user.userId);
-    const idKey = user.id || user.userId;
+    const idKey = user.id || user.userId || '';
     newBalance = Number((currentBalance - BOOST_AD_FEE).toFixed(2));
 
     const balancesMap = getBalancesMap();
@@ -654,7 +766,7 @@ export const boostHelpPost = (
   } else {
     // For online card/LankaQR or bank slip
     const numericId = extractNumericId(user.nicNumber || user.userId);
-    const idKey = user.id || user.userId;
+    const idKey = user.id || user.userId || '';
     transaction = {
       id: `tx_boost_direct_${now}_${Math.floor(Math.random() * 1000)}`,
       userId: idKey,

@@ -438,14 +438,14 @@ export function getStoredSearchDictionary(): SearchSynonymGroup[] {
       const parsed: SearchSynonymGroup[] = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Merge any new built-in groups that might not exist in parsed
-        const existingIds = new Set(parsed.map((g) => g.id));
-        const missing = initialSearchDictionary.filter((g) => !existingIds.has(g.id));
+        const existingIds = new Set(parsed.filter((g) => g && g.id).map((g) => g.id));
+        const missing = initialSearchDictionary.filter((g) => g && g.id && !existingIds.has(g.id));
         if (missing.length > 0) {
-          const merged = [...parsed, ...missing];
+          const merged = [...parsed.filter(Boolean), ...missing];
           saveSearchDictionary(merged);
           return merged;
         }
-        return parsed;
+        return parsed.filter(Boolean);
       }
     }
   } catch (err) {

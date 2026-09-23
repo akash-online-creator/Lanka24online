@@ -81,6 +81,8 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  if (!post || !post.id) return null;
+
   const elapsedTimeLabel = getAccurateElapsedTime(post.createdAt, post.createdAtMs, nowMs);
 
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');

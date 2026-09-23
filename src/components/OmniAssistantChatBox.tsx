@@ -282,12 +282,12 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
 
   // On-demand message translation toggle
   const handleTranslateMessage = async (msgId: string, targetLang: 'si' | 'en' | 'ta') => {
-    const targetMsg = messages.find((m) => m.id === msgId);
+    const targetMsg = (messages || []).find((m) => m && m.id === msgId);
     if (!targetMsg) return;
 
     if (targetMsg.translations?.[targetLang]) {
       setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, activeViewLang: targetLang } : m))
+        (prev || []).map((m) => (m && m.id === msgId ? { ...m, activeViewLang: targetLang } : m))
       );
       return;
     }
@@ -295,8 +295,8 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
     try {
       const translated = await translateText(targetMsg.text, targetLang);
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msgId
+        (prev || []).map((m) =>
+          m && m.id === msgId
             ? {
                 ...m,
                 translations: {

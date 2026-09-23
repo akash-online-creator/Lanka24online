@@ -89,12 +89,15 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
   // Group Join Requests (for Admins)
   const [groupJoinRequests, setGroupJoinRequests] = useState<GroupJoinRequest[]>(() =>
-    getStoredGroupJoinRequests().filter((r) => r.groupId === initialGroup.id && r.status === 'pending')
+    initialGroup && initialGroup.id
+      ? getStoredGroupJoinRequests().filter((r) => r && r.groupId === initialGroup.id && r.status === 'pending')
+      : []
   );
 
   const refreshJoinRequests = () => {
+    if (!group || !group.id) return;
     setGroupJoinRequests(
-      getStoredGroupJoinRequests().filter((r) => r.groupId === group.id && r.status === 'pending')
+      getStoredGroupJoinRequests().filter((r) => r && r.groupId === group.id && r.status === 'pending')
     );
   };
 
@@ -107,15 +110,15 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
   // Check if current user is an admin
   const currentUserId = currentUser?.userId || currentUser?.id || '';
-  const currentMemberRecord = group.members.find(
-    (m) => m.userId === currentUserId || (currentUser?.phone && m.phone === currentUser?.phone)
+  const currentMemberRecord = group?.members?.find(
+    (m) => m && (m.userId === currentUserId || (currentUser?.phone && m.phone === currentUser?.phone))
   );
 
-  const isAdmin = currentMemberRecord?.role === 'admin' || group.creatorId === currentUserId;
-  const canSendMessages = isAdmin || group.permissions.sendNewMessages;
-  const canEditSettings = isAdmin || group.permissions.editGroupSettings;
-  const canAddMembers = isAdmin || group.permissions.addOtherMembers;
-  const canInviteViaLink = isAdmin || group.permissions.inviteViaLinkOrQr;
+  const isAdmin = currentMemberRecord?.role === 'admin' || group?.creatorId === currentUserId;
+  const canSendMessages = isAdmin || Boolean(group?.permissions?.sendNewMessages);
+  const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings);
+  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers);
+  const canInviteViaLink = isAdmin || Boolean(group?.permissions?.inviteViaLinkOrQr);
 
   // Sync group when prop changes
   useEffect(() => {
@@ -413,14 +416,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
         </div>
 
         {/* Pinned Messages Banner */}
-        {pinnedMessages.length > 0 && (
+        {pinnedMessages.length > 0 && pinnedMessages[pinnedMessages.length - 1] && (
           <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/60 px-4 py-2 flex items-center justify-between text-xs text-amber-950 dark:text-amber-200 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <Pin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span className="font-black shrink-0">Pinned Message:</span>
-              <span className="truncate italic">{pinnedMessages[pinnedMessages.length - 1].text}</span>
+              <span className="truncate italic">{pinnedMessages[pinnedMessages.length - 1]?.text}</span>
             </div>
-            {canEditSettings && (
+            {canEditSettings && pinnedMessages[pinnedMessages.length - 1]?.id && (
               <button
                 type="button"
                 onClick={() => handleTogglePin(pinnedMessages[pinnedMessages.length - 1].id)}

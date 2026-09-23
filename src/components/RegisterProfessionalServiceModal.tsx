@@ -276,11 +276,11 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
     const newService: ProfessionalService = {
       id: `ps_${Date.now()}`,
-      userId: user.userId || user.id || '',
-      providerName: user.name || 'සේවා වෘත්තිකයා',
-      providerPhotoUrl: user.photoUrl || '',
-      providerPhone: user.phone || '',
-      providerWhatsapp: user.whatsappNumber || user.phone || '',
+      userId: user?.userId || user?.id || '',
+      providerName: user?.name || 'සේවා වෘත්තිකයා',
+      providerPhotoUrl: user?.photoUrl || '',
+      providerPhone: user?.phone || '',
+      providerWhatsapp: user?.whatsappNumber || user?.phone || '',
       altPhone: altPhone.trim(),
       serviceTitle: serviceTitle.trim(),
       deliveryMethod,
@@ -348,6 +348,21 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
         {/* Modal Content / Form */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
+          {/* Free Tier Model Welcome Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-800 via-[#005e37] to-teal-800 border border-emerald-400/40 text-white shadow-md flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-xl shrink-0 shadow-xs">
+              🎁
+            </div>
+            <div className="text-xs">
+              <span className="font-extrabold text-amber-300 block">
+                පළමු ලියාපදිංචිය රු. 100 නොමිලේ (Free Tier Model)!
+              </span>
+              <span className="text-emerald-100">
+                කිසිදු මූලික වියදමක් නැත. සේවාව ලියාපදිංචි කර, හොඳ Reviews සහ තරු ලබාගනිමින් ඔබගේ Reputation Level එක වර්ධනය කරගන්න.
+              </span>
+            </div>
+          </div>
+
           {isSubmittedSuccess ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center animate-bounce">

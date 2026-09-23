@@ -486,14 +486,14 @@ export function getStoredMarketItems(): MarketItem[] {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Merge missing initial items
-        const existingIds = new Set(parsed.map((p: MarketItem) => p.id));
-        const missingDefaults = initialMarketItems.filter((it) => !existingIds.has(it.id));
+        const existingIds = new Set(parsed.filter((p: MarketItem) => p && p.id).map((p: MarketItem) => p.id));
+        const missingDefaults = initialMarketItems.filter((it) => it && it.id && !existingIds.has(it.id));
         if (missingDefaults.length > 0) {
-          const merged = [...parsed, ...missingDefaults];
+          const merged = [...parsed.filter(Boolean), ...missingDefaults];
           localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(merged));
           return merged;
         }
-        return parsed;
+        return parsed.filter(Boolean);
       }
     }
   } catch (e) {

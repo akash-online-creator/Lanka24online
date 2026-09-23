@@ -14,7 +14,8 @@ const STORAGE_KEY_BALANCES = 'sahaya_user_credit_balances';
 /**
  * Generate 6-digit payment authorization code for user
  */
-export const generateUserPayCode = (user: User): string => {
+export const generateUserPayCode = (user?: User | null): string => {
+  if (!user) return '123456';
   const numericId = extractNumericId(user.nicNumber || user.userId || '123456');
   // Seed with digits and modulo to produce stable 6-digit base or dynamic code
   const last4 = numericId.slice(-4) || '7890';
@@ -27,9 +28,10 @@ export const generateUserPayCode = (user: User): string => {
  * Encode payload for Sahaya QR Code
  */
 export const createQrPayPayloadString = (
-  user: User,
+  user?: User | null,
   fixedAmount?: number
 ): string => {
+  if (!user) return '';
   const numericId = extractNumericId(user.nicNumber || user.userId || '');
   const payCode = generateUserPayCode(user);
   
@@ -211,7 +213,7 @@ export const executeQrWalletPayment = (
   }
 
   const payerNumericId = extractNumericId(payer.nicNumber || payer.userId);
-  const payerIdKey = payer.id || payer.userId;
+  const payerIdKey = payer.id || payer.userId || '';
 
   const payeeNumericId = payee.numericId || extractNumericId(payee.userId || payee.phone);
   const payeeIdKey = payee.userId || payeeNumericId;

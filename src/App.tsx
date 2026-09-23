@@ -56,6 +56,7 @@ import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
+import { checkIsAdmin } from './utils/postOwnerHelper';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -185,7 +186,7 @@ export default function App() {
         setUsers((prev) => {
           const merged = deduplicateUsers([...(prev || []), ...remoteUsers]);
           const hasAdmin = merged.some(
-            (u) => u.userId === '970181547V' || u.role === 'admin'
+            (u) => u && checkIsAdmin(u)
           );
           if (!hasAdmin && initialUsers[0]) {
             return deduplicateUsers([initialUsers[0], ...merged]);
@@ -286,7 +287,8 @@ export default function App() {
 
         if (previousRedAlertsRef.current.length > 0) {
           previousRedAlertsRef.current.forEach((prevAlert) => {
-            const updatedAlert = newAlerts.find((a) => a.id === prevAlert.id);
+            if (!prevAlert || !prevAlert.id) return;
+            const updatedAlert = newAlerts.find((a) => a && a.id === prevAlert.id);
 
             if (prevAlert.status === 'active' && updatedAlert?.status === 'resolved') {
               const msg = updatedAlert.statusChangeMessage || "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුණු බව සටහන් කළේය.";
@@ -357,6 +359,7 @@ export default function App() {
     }
 
     const nearAlert = redAlerts.find((alert) => {
+      if (!alert || !alert.id) return false;
       if (alert.status !== 'active') return false;
       if (alert.isFlaggedFake) return false;
       if (typeof alert.latitude !== 'number' || typeof alert.longitude !== 'number') return false;
@@ -365,7 +368,7 @@ export default function App() {
       if (dismissedProximityAlertIds.includes(alert.id)) return false;
 
       const isCreatedByMe = 
-        (currentUser && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+        (currentUser && (alert.reportedByUserId === currentUser?.id || alert.reportedByUserId === currentUser?.userId)) ||
         myCreatedAlertIds.includes(alert.id);
       if (isCreatedByMe) return false;
 
@@ -536,7 +539,7 @@ export default function App() {
         (userIdInput.toUpperCase() === '970181547V' && submittedPassword === '1691@@Devhas') ||
         (userIdInput === 'admin' && submittedPassword === 'admin123')
       ) {
-        const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
+        const adminUser = users.find((u) => u && (u.userId === '970181547V' || checkIsAdmin(u))) || initialUsers[0];
         setCurrentUser(adminUser);
         setActiveRoleView('admin');
         setViewMode('admin');
@@ -550,12 +553,14 @@ export default function App() {
 
       // Local state එකෙන් පරිශීලකයා කලින්ම සොයා ගැනීම (Fast-Path)
       const numericInput = cleanInput.replace(/[^0-9]/g, '');
-      const localMatchedUser = users.find(
+      const localMatchedUser = (users || []).find(
         (u) =>
-          (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
-          (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
-          (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
-          (u.phone && u.phone.toLowerCase() === cleanInput)
+          u && (
+            (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+            (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+            (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
+            (u.phone && u.phone.toLowerCase() === cleanInput)
+          )
       );
 
       // NIC අංකය ඊමේල් format එකකට හරවා Firebase Auth එකෙන් පරික්ෂා කිරීම
@@ -610,12 +615,14 @@ export default function App() {
           const raw = localStorage.getItem('sahaya_users');
           if (raw) {
             const parsed: User[] = JSON.parse(raw);
-            const foundInStorage = parsed.find(
+            const foundInStorage = (parsed || []).find(
               (u) =>
-                (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
-                (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
-                (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
-                (u.phone && u.phone.toLowerCase() === cleanInput)
+                u && (
+                  (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+                  (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+                  (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
+                  (u.phone && u.phone.toLowerCase() === cleanInput)
+                )
             );
             if (foundInStorage) {
               foundUser = foundInStorage;
@@ -658,12 +665,14 @@ export default function App() {
         const userSec = (foundUser.securityCode || '').trim();
         const userTempPw = ((foundUser as any).tempPassword || '').trim();
 
-        const matchingLocalUsers = users.filter(
+        const matchingLocalUsers = (users || []).filter(
           (u) =>
-            (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
-            (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
-            (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
-            (u.phone && u.phone.toLowerCase() === cleanInput)
+            u && (
+              (u.userId && (u.userId.toLowerCase() === cleanInput || u.userId.toUpperCase() === cleanInputUpper)) ||
+              (u.nicNumber && (u.nicNumber.toLowerCase() === cleanInput || u.nicNumber.toUpperCase() === cleanInputUpper)) ||
+              (numericInput && (u.userNumericId === numericInput || (u.nicNumber && u.nicNumber.replace(/[^0-9]/g, '') === numericInput))) ||
+              (u.phone && u.phone.toLowerCase() === cleanInput)
+            )
         );
 
         const isPasswordCorrect =
@@ -750,12 +759,12 @@ export default function App() {
     setCurrentUser(normalizedUser);
     setUsers((prev) => {
       const exists = (prev || []).some(
-        (u) => u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
+        (u) => u && (u.id === normalizedUser.id || (u.nicNumber && normalizedUser.nicNumber && u.nicNumber === normalizedUser.nicNumber))
       );
       const nextUsers = deduplicateUsers(
         exists
           ? (prev || []).map((u) =>
-              u.id === normalizedUser.id || (u.nicNumber && u.nicNumber === normalizedUser.nicNumber)
+              u && (u.id === normalizedUser.id || (u.nicNumber && normalizedUser.nicNumber && u.nicNumber === normalizedUser.nicNumber))
                 ? { ...u, ...normalizedUser }
                 : u
             )
@@ -769,7 +778,7 @@ export default function App() {
       return nextUsers;
     });
 
-    if (userRole === 'admin') {
+    if (checkIsAdmin(normalizedUser)) {
       setActiveRoleView('admin');
       setViewMode('admin');
     } else if (userStatus === 'pending') {
@@ -780,7 +789,7 @@ export default function App() {
       setViewMode('dashboard');
       // මුල්වරට ලියාපදිංචි වූ පරිශීලකයන්ට නොව, පරිපාලක Reset කළ තාවකාලික මුරපද සහිත පරිශීලකයන්ට පමණක් Change Password පෙන්වයි
       const needsPasswordChange =
-        userRole !== 'admin' &&
+        !checkIsAdmin(normalizedUser) &&
         normalizedUser.isTemporaryPassword === true;
       if (needsPasswordChange) {
         setShowChangePasswordModal(true);
@@ -801,8 +810,9 @@ export default function App() {
       isCredentialBlocked(newUser.nicNumber) ||
       isCredentialBlocked(newUser.email) ||
       isCredentialBlocked(newUser.ipAddress || '') ||
-      users.some(
+      (users || []).some(
         (u) =>
+          u &&
           u.status === 'blocked' &&
           (u.phone === newUser.phone ||
             u.nicNumber === newUser.nicNumber ||
@@ -868,8 +878,8 @@ export default function App() {
   };
 
   const handleApproveUser = (targetUserId: string) => {
-    const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
-    if (targetUser) {
+    const targetUser = (users || []).find((u) => u && (u.id === targetUserId || u.userId === targetUserId));
+    if (targetUser && targetUser.id) {
       const isGift = !targetUser.welcomeGiftCredited;
       if (isGift) {
         grantWelcomeGiftCredit(targetUser);
@@ -883,6 +893,7 @@ export default function App() {
 
     setUsers((prev) =>
       (prev || []).map((u) => {
+        if (!u) return u;
         if (u.id === targetUserId || u.userId === targetUserId) {
           if (!u.welcomeGiftCredited) {
             grantWelcomeGiftCredit(u);
@@ -901,14 +912,14 @@ export default function App() {
   };
 
   const handleRejectUser = (targetUserId: string, reason?: string) => {
-    const targetUser = (users || []).find((u) => u.id === targetUserId || u.userId === targetUserId);
-    if (targetUser) {
+    const targetUser = (users || []).find((u) => u && (u.id === targetUserId || u.userId === targetUserId));
+    if (targetUser && targetUser.id) {
       updateUserInFirestore(targetUser.id, { status: 'rejected', rejectionReason: reason }).catch((err) => console.warn(err));
     }
 
     setUsers((prev) =>
       (prev || []).map((u) =>
-        u.id === targetUserId
+        u && (u.id === targetUserId || u.userId === targetUserId)
           ? { ...u, status: 'rejected', rejectionReason: reason }
           : u
       )
@@ -918,13 +929,13 @@ export default function App() {
   // ✅ පරිශීලක ගිණුමක් සම්පූර්ණයෙන්ම ඉවත් කිරීම (Delete User from state, storage, and Firestore)
   const handleDeleteUser = async (targetUserId: string) => {
     const targetUser = (users || []).find(
-      (u) => u.id === targetUserId || u.userId === targetUserId || u.nicNumber === targetUserId
+      (u) => u && (u.id === targetUserId || u.userId === targetUserId || u.nicNumber === targetUserId)
     );
 
     // 1. React State එකෙන් ඉවත් කිරීම
     setUsers((prev) =>
       (prev || []).filter(
-        (u) => u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+        (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
       )
     );
 
@@ -933,8 +944,8 @@ export default function App() {
       const saved = localStorage.getItem('sahaya_users');
       if (saved) {
         const parsed: User[] = JSON.parse(saved);
-        const filtered = parsed.filter(
-          (u) => u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+        const filtered = (parsed || []).filter(
+          (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
         );
         localStorage.setItem('sahaya_users', JSON.stringify(filtered));
       }
@@ -957,11 +968,12 @@ export default function App() {
       setUsers((prev) => {
         const nextUsers = deduplicateUsers(
           (prev || []).map((u) => {
+            if (!u) return u;
             const isMatch =
-              u.id === updatedUser.id ||
-              (u.nicNumber && updatedUser.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
-              (u.userId && updatedUser.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
-              (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+              (updatedUser?.id && u.id === updatedUser.id) ||
+              (u.nicNumber && updatedUser?.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+              (u.userId && updatedUser?.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+              (updatedUser?.userNumericId && u.userNumericId === updatedUser.userNumericId);
             return isMatch ? { ...u, ...updatedUser } : u;
           })
         );
@@ -973,17 +985,19 @@ export default function App() {
 
       const isCurrentMatch =
         currentUser &&
-        (currentUser.id === updatedUser.id ||
-          (currentUser.nicNumber && updatedUser.nicNumber && currentUser.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
-          (currentUser.userId && updatedUser.userId && currentUser.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
-          (updatedUser.userNumericId && currentUser.userNumericId === updatedUser.userNumericId));
+        ((updatedUser?.id && currentUser.id && currentUser.id === updatedUser.id) ||
+          (currentUser.nicNumber && updatedUser?.nicNumber && currentUser.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+          (currentUser.userId && updatedUser?.userId && currentUser.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+          (updatedUser?.userNumericId && currentUser.userNumericId && currentUser.userNumericId === updatedUser.userNumericId));
 
-      if (isCurrentMatch) {
+      if (isCurrentMatch && updatedUser) {
         setCurrentUser(updatedUser);
         try {
           localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
         } catch {}
       }
+
+      if (!updatedUser) return;
 
       // 2. If password/securityCode was changed in UserSettingsModal, sync to Firestore and Auth
       const activePassword = (updatedUser.key || (updatedUser as any).password || updatedUser.securityCode || '').trim();
@@ -1022,7 +1036,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: updatedUser.id,
+            userId: updatedUser.id || updatedUser.userId || '',
             nicNumber: updatedUser.nicNumber || updatedUser.userId,
             newPassword: activePassword,
           }),
@@ -1030,7 +1044,9 @@ export default function App() {
       }
 
       // 3. Save profile document to Firestore
-      await updateUserInFirestore(updatedUser.id, updatedUser);
+      if (updatedUser.id) {
+        await updateUserInFirestore(updatedUser.id, updatedUser);
+      }
 
       console.log("✅ පරිශීලක දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
     } catch (err) {
@@ -1070,11 +1086,12 @@ export default function App() {
       setUsers((prev) => {
         const nextUsers = deduplicateUsers(
           (prev || []).map((u) => {
+            if (!u) return u;
             const isMatch =
-              u.id === updatedUser.id ||
-              (u.nicNumber && u.nicNumber.toLowerCase() === (updatedUser.nicNumber || '').toLowerCase()) ||
-              (u.userId && u.userId.toLowerCase() === (updatedUser.userId || '').toLowerCase()) ||
-              (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+              (updatedUser?.id && u.id === updatedUser.id) ||
+              (u.nicNumber && updatedUser?.nicNumber && u.nicNumber.toLowerCase() === (updatedUser.nicNumber || '').toLowerCase()) ||
+              (u.userId && updatedUser?.userId && u.userId.toLowerCase() === (updatedUser.userId || '').toLowerCase()) ||
+              (updatedUser?.userNumericId && u.userNumericId === updatedUser.userNumericId);
             return isMatch ? { ...u, ...updatedUser } : u;
           })
         );
@@ -1185,9 +1202,10 @@ export default function App() {
       if (currentUser) {
         const matchInUsers = allKnownUsers.find(
           (u) =>
-            u.id === currentUser.id ||
-            (u.nicNumber && u.nicNumber.toLowerCase() === (currentUser.nicNumber || '').toLowerCase()) ||
-            (u.userId && u.userId.toLowerCase() === (currentUser.userId || '').toLowerCase())
+            u &&
+            ((currentUser.id && u.id && u.id === currentUser.id) ||
+              (u.nicNumber && currentUser.nicNumber && u.nicNumber.toLowerCase() === currentUser.nicNumber.toLowerCase()) ||
+              (u.userId && currentUser.userId && u.userId.toLowerCase() === currentUser.userId.toLowerCase()))
         );
         if (matchInUsers) {
           const uKey = (matchInUsers.key || '').trim();
@@ -1245,8 +1263,8 @@ export default function App() {
   };
 
   const handleBlockUser = (targetUserId: string, reason: string) => {
-    const userToBlock = users.find((u) => u.id === targetUserId);
-    if (!userToBlock) return;
+    const userToBlock = users.find((u) => u && (u.id === targetUserId || u.userId === targetUserId));
+    if (!userToBlock || !userToBlock.id) return;
 
     const blockedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
@@ -1258,7 +1276,7 @@ export default function App() {
 
     setUsers((prev) =>
       (prev || []).map((u) =>
-        u.id === targetUserId
+        u && (u.id === targetUserId || u.userId === targetUserId)
           ? {
               ...u,
               status: 'blocked',
@@ -1271,7 +1289,7 @@ export default function App() {
 
     const newBlockedCred: BlockedCredential = {
       id: `block_${Date.now()}`,
-      userId: userToBlock.userId,
+      userId: userToBlock.userId || userToBlock.id,
       userName: userToBlock.name,
       phone: userToBlock.phone,
       nicNumber: userToBlock.nicNumber,
@@ -1285,16 +1303,16 @@ export default function App() {
   };
 
   const handleUnblockCredential = (credentialId: string) => {
-    const cred = (blockedCredentials || []).find((c) => c.id === credentialId);
-    setBlockedCredentials((prev) => (prev || []).filter((c) => c.id !== credentialId));
+    const cred = (blockedCredentials || []).find((c) => c && c.id === credentialId);
+    setBlockedCredentials((prev) => (prev || []).filter((c) => c && c.id !== credentialId));
 
     if (cred && cred.userId) {
-      const userToUnblock = (users || []).find((u) => u.userId === cred.userId);
-      if (userToUnblock) {
+      const userToUnblock = (users || []).find((u) => u && (u.userId === cred.userId || u.id === cred.userId));
+      if (userToUnblock && userToUnblock.id) {
         updateUserInFirestore(userToUnblock.id, { status: 'approved' }).catch((err) => console.warn(err));
       }
       setUsers((prev) =>
-        (prev || []).map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
+        (prev || []).map((u) => (u && (u.userId === cred.userId || u.id === cred.userId) ? { ...u, status: 'approved' } : u))
       );
     }
   };
@@ -1309,7 +1327,7 @@ export default function App() {
     };
 
     setHelpPosts((prev) => {
-      const updated = (prev || []).filter((p) => p.id !== postId);
+      const updated = (prev || []).filter((p) => p && p.id !== postId);
       try {
         localStorage.setItem('sahaya_help_posts', JSON.stringify(updated));
       } catch (e) {}
@@ -1317,26 +1335,30 @@ export default function App() {
     });
 
     try {
-      await updateHelpPostInFirestore(postId, deletedPayload);
+      if (postId) {
+        await updateHelpPostInFirestore(postId, deletedPayload);
+      }
     } catch (err) {
       console.warn(err);
     }
   };
 
   const handlePermanentDeletePost = async (postId: string) => {
-    addDeletedPostId(postId);
-    const updated = (helpPosts || []).filter((p) => p.id !== postId);
+    if (postId) addDeletedPostId(postId);
+    const updated = (helpPosts || []).filter((p) => p && p.id !== postId);
     setHelpPosts(updated);
     try {
       localStorage.setItem('sahaya_help_posts', JSON.stringify(updated));
-      await deleteHelpPostFromFirestore(postId);
+      if (postId) {
+        await deleteHelpPostFromFirestore(postId);
+      }
     } catch (err) {
       console.warn(err);
     }
   };
 
   const handleRestorePost = async (postId: string) => {
-    removeDeletedPostId(postId);
+    if (postId) removeDeletedPostId(postId);
     const restorePayload: Partial<HelpPost> = {
       isDeleted: false,
       deletedAt: undefined,
@@ -1345,18 +1367,21 @@ export default function App() {
     };
 
     setHelpPosts((prev) =>
-      (prev || []).map((p) => (p.id === postId ? { ...p, isDeleted: false, deletedAt: undefined, deletedBy: undefined, status: 'active' } : p))
+      (prev || []).map((p) => (p && p.id === postId ? { ...p, isDeleted: false, deletedAt: undefined, deletedBy: undefined, status: 'active' } : p))
     );
 
     try {
-      await updateHelpPostInFirestore(postId, restorePayload);
+      if (postId) {
+        await updateHelpPostInFirestore(postId, restorePayload);
+      }
     } catch (err) {
       console.warn(err);
     }
   };
 
   const handleUpdatePost = async (updatedPost: HelpPost) => {
-    setHelpPosts((prev) => (prev || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+    if (!updatedPost || !updatedPost.id) return;
+    setHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
     try {
       await updateHelpPostInFirestore(updatedPost.id, updatedPost);
     } catch (err) {
@@ -1396,7 +1421,7 @@ export default function App() {
   ) => {
     setIssues((prev) => {
       const updatedList = (prev || []).map((iss) => {
-        if (iss.id === issueId) {
+        if (iss && iss.id === issueId) {
           const channel = replyChannel || iss.targetChannel || (iss.isRegisteredUser ? 'inbox' : 'sms');
           const updatedIss: Issue = {
             ...iss,
@@ -1448,12 +1473,23 @@ export default function App() {
   };
 
   const handleNavigate = (targetView: ViewMode) => {
-    if (targetView === 'admin' && currentUser?.role !== 'admin') {
-      if (currentUser && currentUser.status === 'approved') {
-        setViewMode('dashboard');
-      } else {
-        setViewMode('login');
+    if (targetView === 'admin') {
+      if (!checkIsAdmin(currentUser)) {
+        alert('⛔ පරිපාලක ප්‍රකාරයට පිවිසීමට පරිපාලක අවසර (Admin privileges) අවශ්‍ය වේ.');
+        if (currentUser && currentUser.status === 'approved') {
+          setViewMode('dashboard');
+        } else {
+          setViewMode('login');
+        }
+        return;
       }
+      setActiveRoleView('admin');
+      setViewMode('admin');
+      return;
+    }
+    if (targetView === 'dashboard') {
+      setActiveRoleView('user');
+      setViewMode('dashboard');
       return;
     }
     setViewMode(targetView);
@@ -1551,7 +1587,7 @@ export default function App() {
             user={currentUser}
             language={language}
             onRefreshStatus={() => {
-              const latestUser = users.find((u) => u.id === currentUser.id);
+              const latestUser = users.find((u) => u && (u.id === currentUser?.id || u.userId === currentUser?.userId || u.nicNumber === currentUser?.nicNumber));
               if (latestUser) {
                 setCurrentUser(latestUser);
                 if (latestUser.status === 'approved') {
@@ -1586,7 +1622,7 @@ export default function App() {
           />
         )}
 
-        {viewMode === 'admin' && currentUser?.role === 'admin' && (
+        {viewMode === 'admin' && checkIsAdmin(currentUser) && (
           <AdminPanel
             users={users}
             issues={issues}
@@ -1610,8 +1646,8 @@ export default function App() {
             onUpdatePost={handleUpdatePost}
             onRestoreAllPosts={(restored) => {
               setHelpPosts((prev) => {
-                const map = new Map((prev || []).map((p) => [p.id, p]));
-                (restored || []).forEach((p) => map.set(p.id, p));
+                const map = new Map((prev || []).filter((p) => p && p.id).map((p) => [p.id, p]));
+                (restored || []).filter((p) => p && p.id).forEach((p) => map.set(p.id, p));
                 return Array.from(map.values());
               });
             }}
@@ -1621,6 +1657,8 @@ export default function App() {
             redAlerts={redAlerts}
             onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
             onResetUserPassword={handleResetUserPasswordByAdmin}
+            onNavigate={handleNavigate}
+            onSwitchToUserMode={() => handleNavigate('dashboard')}
           />
         )}
 
@@ -1643,7 +1681,7 @@ export default function App() {
             setActiveRoleView={setActiveRoleView}
             onNavigate={handleNavigate}
             onOpenRedAlert={() => setIsCreateRedAlertOpen(true)}
-            activeRedAlertsCount={redAlerts.filter((a) => a.status === 'active' && !a.isFlaggedFake).length}
+            activeRedAlertsCount={(redAlerts || []).filter((a) => a && a.status === 'active' && !a.isFlaggedFake).length}
             redAlerts={redAlerts}
             onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
           />
@@ -1656,20 +1694,22 @@ export default function App() {
         currentUser={currentUser}
         onVerifyPassword={handleVerifyPasswordBeforeRedAlert}
         onAlertCreated={(newAlert) => {
-          setMyCreatedAlertIds((prev) => {
-            const next = Array.from(new Set([...prev, newAlert.id]));
-            try {
-              localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(next));
-            } catch (e) {}
-            return next;
-          });
-          setDismissedProximityAlertIds((prev) => {
-            const next = Array.from(new Set([...prev, newAlert.id]));
-            try {
-              localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
-            } catch (e) {}
-            return next;
-          });
+          if (newAlert?.id) {
+            setMyCreatedAlertIds((prev) => {
+              const next = Array.from(new Set([...prev, newAlert.id]));
+              try {
+                localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(next));
+              } catch (e) {}
+              return next;
+            });
+            setDismissedProximityAlertIds((prev) => {
+              const next = Array.from(new Set([...prev, newAlert.id]));
+              try {
+                localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(next));
+              } catch (e) {}
+              return next;
+            });
+          }
         }}
       />
 
@@ -1685,7 +1725,7 @@ export default function App() {
           }
           if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
 
-          if (proximityAlertInfo) {
+          if (proximityAlertInfo?.alert?.id) {
             setDismissedProximityAlertIds((prev) => {
               const next = Array.from(new Set([...prev, proximityAlertInfo.alert.id]));
               try {
@@ -1745,10 +1785,10 @@ export default function App() {
         users={users}
         language={language}
         onSuccess={(updatedUser) => {
-          if (currentUser && (currentUser.id === updatedUser.id || currentUser.nicNumber === updatedUser.nicNumber)) {
+          if (currentUser && updatedUser && ((currentUser.id && currentUser.id === updatedUser.id) || (currentUser.nicNumber && currentUser.nicNumber === updatedUser.nicNumber))) {
             setCurrentUser((prev) => prev ? { ...prev, ...updatedUser } : null);
           }
-          setUsers((prev) => prev.map((u) => (u.id === updatedUser.id || u.nicNumber === updatedUser.nicNumber ? { ...u, ...updatedUser } : u)));
+          setUsers((prev) => (prev || []).map((u) => (u && updatedUser && ((u.id && u.id === updatedUser.id) || (u.nicNumber && u.nicNumber === updatedUser.nicNumber)) ? { ...u, ...updatedUser } : u)));
         }}
       />
 

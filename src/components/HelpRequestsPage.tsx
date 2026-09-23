@@ -219,6 +219,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
   // Toggle Save Post with Firestore sync
   const handleToggleSavePost = (post: HelpPost) => {
+    if (!post || !post.id) return;
     const isAlreadySaved = savedPostIds.includes(post.id);
     const nextSavedState = !isAlreadySaved;
 
@@ -241,7 +242,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       return next;
     });
 
-    if (userIdentifier) {
+    if (userIdentifier && post?.id) {
       toggleSavePostInFirestore(userIdentifier, post.id, nextSavedState);
     }
   };
@@ -314,7 +315,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   // 4. All other posts are sorted chronologically (newest first)
   // 5. Tab filter applied (All / Emergency only / Quick Services only / Saved posts only)
   const newsFeedSortedPosts = useMemo(() => {
-    const sourceList = [...(filteredPosts || [])];
+    const sourceList = (filteredPosts || []).filter((p): p is HelpPost => Boolean(p && typeof p === 'object' && p.id));
 
     let result = sourceList;
 
@@ -324,11 +325,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     } else if (activeFeedTab === 'quick_services') {
       result = result.filter((p) => isQuickService(p));
     } else if (activeFeedTab === 'saved') {
-      result = result.filter((p) => savedPostIds.includes(p.id));
+      result = result.filter((p) => p?.id && savedPostIds.includes(p.id));
     }
 
     // Sort: Emergency & Pinned first, then Boosted, then Quick Services, then chronological newest first
     return result.sort((a, b) => {
+      if (!a || !b) return 0;
       const aIsEmerg = isEmergencyOrHighPriority(a);
       const bIsEmerg = isEmergencyOrHighPriority(b);
       if (aIsEmerg && !bIsEmerg) return -1;

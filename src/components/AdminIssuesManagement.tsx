@@ -88,19 +88,21 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
     if (issue.userId) return true;
     const phoneDigits = (issue.userPhone || '').replace(/[^0-9]/g, '');
     if (phoneDigits.length >= 9) {
-      return users.some((u) => {
+      return (users || []).some((u) => {
+        if (!u) return false;
         const uPhoneDigits = (u.phone || '').replace(/[^0-9]/g, '');
         return uPhoneDigits.endsWith(phoneDigits.slice(-9)) || phoneDigits.endsWith(uPhoneDigits.slice(-9));
       });
     }
     if (issue.nicNumber) {
-      return users.some((u) => u.nicNumber && u.nicNumber.toLowerCase() === issue.nicNumber?.toLowerCase().trim());
+      return (users || []).some((u) => u && u.nicNumber && u.nicNumber.toLowerCase() === issue.nicNumber?.toLowerCase().trim());
     }
     return false;
   };
 
   const filteredIssues = useMemo(() => {
-    return issues.filter((issue) => {
+    return (issues || []).filter((issue) => {
+      if (!issue) return false;
       // Search matching
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
@@ -128,11 +130,12 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
   }, [issues, users, searchQuery, statusFilter, userTypeFilter]);
 
   const stats = useMemo(() => {
-    const total = issues.length;
-    const pending = issues.filter((i) => i.status === 'pending').length;
-    const inProgress = issues.filter((i) => i.status === 'in_progress').length;
-    const resolved = issues.filter((i) => i.status === 'resolved').length;
-    const registeredCount = issues.filter((i) => checkIsRegistered(i)).length;
+    const validIssues = (issues || []).filter(Boolean);
+    const total = validIssues.length;
+    const pending = validIssues.filter((i) => i.status === 'pending').length;
+    const inProgress = validIssues.filter((i) => i.status === 'in_progress').length;
+    const resolved = validIssues.filter((i) => i.status === 'resolved').length;
+    const registeredCount = validIssues.filter((i) => checkIsRegistered(i)).length;
     const unregisteredCount = total - registeredCount;
     return { total, pending, inProgress, resolved, registeredCount, unregisteredCount };
   }, [issues, users]);
@@ -365,7 +368,7 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredIssues.map((issue, idx) => {
+          {filteredIssues.filter(Boolean).map((issue, idx) => {
             const isReg = checkIsRegistered(issue);
             const isResolved = issue.status === 'resolved';
             const isPending = issue.status === 'pending';
@@ -386,7 +389,7 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
                   <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 dark:border-emerald-950">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-black text-xs px-2.5 py-1 rounded-xl bg-slate-900 text-emerald-300 dark:bg-black dark:text-emerald-400 border border-slate-700 shadow-sm">
-                        {issue.issueCode || `#ISSUE-${issue.id.slice(-4)}`}
+                        {issue.issueCode || (issue.id ? `#ISSUE-${issue.id.slice(-4)}` : '#ISSUE')}
                       </span>
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                         {issue.category}
@@ -526,7 +529,7 @@ export const AdminIssuesManagement: React.FC<AdminIssuesManagementProps> = ({
                     {onUpdateIssueStatus && (
                       <select
                         value={issue.status}
-                        onChange={(e) => onUpdateIssueStatus(issue.id, e.target.value as IssueStatus)}
+                        onChange={(e) => issue.id && onUpdateIssueStatus(issue.id, e.target.value as IssueStatus)}
                         className="text-[11px] font-bold bg-slate-100 dark:bg-[#0d261a] border border-slate-300 dark:border-emerald-800 rounded-xl px-2 py-1.5 focus:outline-none cursor-pointer text-slate-800 dark:text-zinc-200"
                       >
                         <option value="pending">පොරොත්තු</option>

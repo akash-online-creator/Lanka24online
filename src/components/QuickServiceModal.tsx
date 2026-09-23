@@ -259,9 +259,9 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     }
 
     onSubmitPost({
-      userName: currentUser.name || 'පරිශීලක',
+      userName: currentUser?.name || 'පරිශීලක',
       userPhone: whatsappNumber.trim() || userWhatsAppNumber,
-      userId: currentUser.userId || currentUser.id || '',
+      userId: currentUser?.userId || currentUser?.id || '',
       whatHappened: whatHappened.trim(),
       whatIsNeeded: whatIsNeeded.trim(),
       conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',

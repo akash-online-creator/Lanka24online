@@ -39,9 +39,12 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
 
   const isShop = shop.type === 'shop';
 
-  const isOwner = currentUser && (
-    (currentUser.userId && shop.userId && (currentUser.userId === shop.userId || currentUser.id === shop.userId)) ||
-    (currentUser.phone && shop.userPhone && currentUser.phone.replace(/\D/g, '') === shop.userPhone.replace(/\D/g, ''))
+  const isOwner = Boolean(
+    currentUser && (
+      (currentUser.userId && shop.userId && currentUser.userId === shop.userId) ||
+      (currentUser.id && shop.userId && currentUser.id === shop.userId) ||
+      (currentUser.phone && shop.userPhone && currentUser.phone.replace(/\D/g, '') === shop.userPhone.replace(/\D/g, ''))
+    )
   );
   const isAdmin = currentUser?.role === 'admin';
   const hasContactPermission = isOwner || isAdmin || shop.revealContactConsent !== false;

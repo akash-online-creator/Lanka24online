@@ -245,13 +245,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   };
 
   const handleSupportDisaster = (item: DisasterReliefItem) => {
+    if (!item || !item.id) return;
     if (!supportedDisasterIds.includes(item.id)) {
       const nextSupported = [...supportedDisasterIds, item.id];
       setSupportedDisasterIds(nextSupported);
       saveSupportedDisasterIdsToStorage(nextSupported);
 
-      const updatedItems = disasterItems.map((d) => {
-        if (d.id === item.id) {
+      const updatedItems = (disasterItems || []).map((d) => {
+        if (d && d.id === item.id) {
           return { ...d, supportedCount: (d.supportedCount || 0) + 1 };
         }
         return d;
@@ -513,8 +514,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 තෝරාගත් ලේ වර්ගය හෝ දිස්ත්‍රික්කය සඳහා දැනට සක්‍රිය ලේ ඉල්ලීම් නොමැත.
               </div>
             ) : (
-              filteredBloodRequests.map((req, rIdx) => {
-                const isSupported = supportedBloodIds.includes(req.id);
+              filteredBloodRequests.filter(Boolean).map((req, rIdx) => {
+                const isSupported = req.id ? supportedBloodIds.includes(req.id) : false;
                 return (
                   <div
                     key={`blood_req_${req.id || 'r'}_${rIdx}`}
@@ -713,8 +714,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 </button>
               </div>
             ) : (
-              filteredDisasterItems.map((item, itmIdx) => {
-                const isSupported = supportedDisasterIds.includes(item.id);
+              filteredDisasterItems.filter(Boolean).map((item, itmIdx) => {
+                const isSupported = item.id ? supportedDisasterIds.includes(item.id) : false;
                 return (
                   <div
                     key={`disaster_item_${item.id || 'itm'}_${itmIdx}`}

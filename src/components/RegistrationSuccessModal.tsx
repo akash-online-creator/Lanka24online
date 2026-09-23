@@ -50,13 +50,19 @@ export const RegistrationSuccessModal: React.FC<RegistrationSuccessModalProps> =
         </div>
 
         {/* Target Message Prompt (Exact Requirement) */}
-        <div className="bg-emerald-50/80 border-2 border-emerald-200/80 rounded-2xl p-4 sm:p-5 text-slate-800 text-xs sm:text-sm leading-relaxed text-left space-y-2.5 mb-5 shadow-inner">
+        <div className="bg-emerald-50/80 border-2 border-emerald-200/80 rounded-2xl p-4 sm:p-5 text-slate-800 text-xs sm:text-sm leading-relaxed text-left space-y-2.5 mb-4 shadow-inner">
           <p className="font-extrabold text-emerald-950 text-[13px] sm:text-[14px] leading-relaxed">
             ඔබගේ තොරතුරු ලියාපදිංචිය සඳහා යොමු කර ඇත. තොරතුරු පරීක්ෂා කිරීමෙන් පසු ඔබ සඳහන් කර ඇති වට්ස්ඇප් අංකයට පණිවිඩයක් එවනු ඇත.
           </p>
           <div className="pt-2 border-t border-emerald-200/60 font-black text-emerald-800 text-[12px] sm:text-[13px]">
             සහය සේවය සමඟ සම්බන්ධ වූ ඔබට ස්තුතියි....!
           </div>
+        </div>
+
+        {/* Free Tier Model Welcome Gift Pill */}
+        <div className="bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 border border-amber-400/40 rounded-2xl p-3 mb-4 text-xs font-bold text-emerald-950 flex items-center justify-center gap-2">
+          <span>🎁</span>
+          <span>ඔබගේ ගිණුම අනුමත වූ පසු <strong>රු. 100 නොමිලේ (Welcome Bonus)</strong> ස්වයංක්‍රීයව හිමිවේ!</span>
         </div>
 
         {/* User Context Details Pill */}

@@ -42,7 +42,8 @@ export const UpdateWhatsAppModal: React.FC<UpdateWhatsAppModalProps> = ({
     if (searchKey) {
       setIdentifierInput(targetUserIdentifier || currentUser?.nicNumber || currentUser?.userId || '');
       
-      const found = users.find((u) => {
+      const found = (users || []).find((u) => {
+        if (!u) return false;
         const uId = (u.id || '').toLowerCase();
         const uUserId = (u.userId || '').toLowerCase();
         const uNic = (u.nicNumber || '').toLowerCase();
@@ -50,9 +51,9 @@ export const UpdateWhatsAppModal: React.FC<UpdateWhatsAppModalProps> = ({
         const cleanKey = searchKey.replace(/\D/g, '');
         
         return (
-          uId === searchKey ||
-          uUserId === searchKey ||
-          uNic === searchKey ||
+          (uId && uId === searchKey) ||
+          (uUserId && uUserId === searchKey) ||
+          (uNic && uNic === searchKey) ||
           (cleanKey && uPhone === cleanKey)
         );
       });
@@ -66,7 +67,7 @@ export const UpdateWhatsAppModal: React.FC<UpdateWhatsAppModalProps> = ({
       }
     } else if (currentUser) {
       setTargetUser(currentUser);
-      setIdentifierInput(currentUser.nicNumber || currentUser.userId || '');
+      setIdentifierInput(currentUser?.nicNumber || currentUser?.userId || '');
       setNewWhatsapp(currentUser.whatsappNumber || currentUser.phone || '');
     }
   }, [isOpen, targetUserIdentifier, currentUser, users]);
@@ -117,12 +118,13 @@ export const UpdateWhatsAppModal: React.FC<UpdateWhatsAppModalProps> = ({
           const saved = localStorage.getItem('sahaya_users');
           if (saved) {
             const list: User[] = JSON.parse(saved);
-            const updatedList = list.map((u) => {
+            const updatedList = (list || []).map((u) => {
+              if (!u) return u;
               if (
-                u.id === userKey ||
-                u.userId === userKey ||
-                u.nicNumber === userKey ||
-                u.phone === userKey
+                (u.id && u.id === userKey) ||
+                (u.userId && u.userId === userKey) ||
+                (u.nicNumber && u.nicNumber === userKey) ||
+                (u.phone && u.phone === userKey)
               ) {
                 return {
                   ...u,

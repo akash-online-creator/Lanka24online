@@ -380,9 +380,9 @@ export function deductTrustPoints(
       id: `blk-${Date.now()}`,
       userId: uid,
       userName: uName,
-      phone: user.phone,
-      nicNumber: user.nicNumber,
-      email: user.email,
+      phone: user?.phone,
+      nicNumber: user?.nicNumber,
+      email: user?.email,
       blockedAt: new Date().toLocaleString('si-LK'),
       reason: `විශ්වාසනීය ලකුණු 0 වීම: ${reason}`,
     };
@@ -488,8 +488,8 @@ export function unblockUserAndRestoreTrust(
 
   // Remove from blocked credentials list
   removeBlockedCredential(uid);
-  if (user.phone) removeBlockedCredential(user.phone);
-  if (user.nicNumber) removeBlockedCredential(user.nicNumber);
+  if (user?.phone) removeBlockedCredential(user.phone);
+  if (user?.nicNumber) removeBlockedCredential(user.nicNumber);
 
   addTrustAuditLog({
     userId: uid,

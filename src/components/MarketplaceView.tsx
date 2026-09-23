@@ -166,7 +166,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     if (currentUser?.role === 'admin') return true;
     const isOwner = Boolean(
       currentUser && (
-        (userId && (currentUser.userId === userId || currentUser.id === userId)) ||
+        (userId && ((currentUser.userId && currentUser.userId === userId) || (currentUser.id && currentUser.id === userId))) ||
         (phone && currentUser.phone && phone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, ''))
       )
     );
@@ -191,18 +191,21 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
   // Handlers for Shops / Businesses
   const handleSaveShop = (savedShop: MarketShop) => {
+    if (!savedShop || !savedShop.id) return;
     setShops((prev) => {
-      const exists = prev.some((s) => s.id === savedShop.id);
+      const list = prev || [];
+      const exists = list.some((s) => s && s.id === savedShop.id);
       if (exists) {
-        return prev.map((s) => (s.id === savedShop.id ? savedShop : s));
+        return list.map((s) => (s && s.id === savedShop.id ? savedShop : s));
       } else {
-        return [savedShop, ...prev];
+        return [savedShop, ...list];
       }
     });
   };
 
   const handleDeleteShop = (shopId: string) => {
-    setShops((prev) => prev.filter((s) => s.id !== shopId));
+    if (!shopId) return;
+    setShops((prev) => (prev || []).filter((s) => s && s.id !== shopId));
     setShopToDelete(null);
   };
 
@@ -276,11 +279,16 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
   // Filtered Shops
   const filteredShops = useMemo(() => {
-    return shops
-      .filter((s) => s.type === 'shop')
+    const curId = currentUser?.id;
+    const curUserId = currentUser?.userId;
+    return (shops || [])
+      .filter((s) => s && s.type === 'shop')
       .filter((s) => {
-        if (myShopsOnly && s.userId !== currentUser.id && s.userId !== currentUser.userId) {
-          return false;
+        if (myShopsOnly) {
+          if (!curId && !curUserId) return false;
+          if (s.userId !== curId && s.userId !== curUserId) {
+            return false;
+          }
         }
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
@@ -296,8 +304,8 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
   // Filtered Businesses
   const filteredBusinesses = useMemo(() => {
-    return shops
-      .filter((s) => s.type === 'business')
+    return (shops || [])
+      .filter((s) => s && s.type === 'business')
       .filter((s) => {
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
@@ -312,14 +320,24 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   }, [shops, searchQuery]);
 
   // Current user's saved shops
-  const mySavedShops = shops.filter(
-    (s) => s.type === 'shop' && (s.userId === currentUser.id || s.userId === currentUser.userId)
-  );
+  const mySavedShops = useMemo(() => {
+    const curId = currentUser?.id;
+    const curUserId = currentUser?.userId;
+    if (!curId && !curUserId) return [];
+    return (shops || []).filter(
+      (s) => s && s.type === 'shop' && ((curId && s.userId === curId) || (curUserId && s.userId === curUserId))
+    );
+  }, [shops, currentUser]);
 
   // Current user's saved businesses
-  const mySavedBusinesses = shops.filter(
-    (s) => s.type === 'business' && (s.userId === currentUser.id || s.userId === currentUser.userId)
-  );
+  const mySavedBusinesses = useMemo(() => {
+    const curId = currentUser?.id;
+    const curUserId = currentUser?.userId;
+    if (!curId && !curUserId) return [];
+    return (shops || []).filter(
+      (s) => s && s.type === 'business' && ((curId && s.userId === curId) || (curUserId && s.userId === curUserId))
+    );
+  }, [shops, currentUser]);
 
   return (
     <div className="w-full space-y-4 sm:space-y-5 animate-in fade-in duration-300">

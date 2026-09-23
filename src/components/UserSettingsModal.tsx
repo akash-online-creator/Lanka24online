@@ -268,7 +268,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (savedUsers) {
       try {
         const list: User[] = JSON.parse(savedUsers);
-        localStorage.setItem('sahaya_users', JSON.stringify(list.map(u => u.id === updatedUser.id ? updatedUser : u)));
+        localStorage.setItem(
+          'sahaya_users',
+          JSON.stringify((list || []).map((u) => (u && updatedUser && (u.id === updatedUser.id || u.userId === updatedUser.userId || (u.nicNumber && updatedUser.nicNumber && u.nicNumber === updatedUser.nicNumber)) ? updatedUser : u)))
+        );
       } catch (e) {
         console.warn('Error saving local users:', e);
       }
@@ -303,7 +306,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (savedUsers) {
       try {
         const list: User[] = JSON.parse(savedUsers);
-        localStorage.setItem('sahaya_users', JSON.stringify(list.map(u => u.id === updatedUser.id ? updatedUser : u)));
+        localStorage.setItem(
+          'sahaya_users',
+          JSON.stringify((list || []).map((u) => (u && updatedUser && (u.id === updatedUser.id || u.userId === updatedUser.userId || (u.nicNumber && updatedUser.nicNumber && u.nicNumber === updatedUser.nicNumber)) ? updatedUser : u)))
+        );
       } catch (e) {
         console.warn('Error saving local users:', e);
       }
@@ -356,7 +362,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+        const newUsersList = (usersList || []).map((u) => (u && updatedUser && (u.id === updatedUser.id || u.userId === updatedUser.userId || (u.nicNumber && updatedUser.nicNumber && u.nicNumber === updatedUser.nicNumber)) ? updatedUser : u));
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('User list update notice:', err);
@@ -457,12 +463,13 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.map((u) => {
+        const newUsersList = (usersList || []).map((u) => {
+          if (!u) return u;
           const isMatch =
-            u.id === updatedUser.id ||
-            (u.nicNumber && updatedUser.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
-            (u.userId && updatedUser.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
-            (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+            (updatedUser?.id && u.id === updatedUser.id) ||
+            (u.nicNumber && updatedUser?.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+            (u.userId && updatedUser?.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+            (updatedUser?.userNumericId && u.userNumericId === updatedUser.userNumericId);
           return isMatch ? { ...u, ...updatedUser } : u;
         });
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
@@ -484,8 +491,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: updatedUser.id,
-            nicNumber: updatedUser.nicNumber || updatedUser.userId,
+            userId: updatedUser?.id || updatedUser?.userId || '',
+            nicNumber: updatedUser?.nicNumber || updatedUser?.userId || '',
             newPassword: cleanNewKey,
           }),
         }).catch((e) => console.warn('Server password update notify error:', e));

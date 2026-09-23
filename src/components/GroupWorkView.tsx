@@ -169,12 +169,12 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
   };
 
   // Check if current user is an Admin of any groups that have pending requests
-  const adminGroups = groups.filter(
-    (g) => g.creatorId === currentUserId || g.members.some((m) => m.userId === currentUserId && m.role === 'admin')
+  const adminGroups = (groups || []).filter(
+    (g) => g && (g.creatorId === currentUserId || (g.members || []).some((m) => m && m.userId === currentUserId && m.role === 'admin'))
   );
-  const adminGroupIds = adminGroups.map((g) => g.id);
-  const pendingAdminRequests = allJoinRequests.filter(
-    (r) => adminGroupIds.includes(r.groupId) && r.status === 'pending'
+  const adminGroupIds = adminGroups.map((g) => g?.id).filter(Boolean);
+  const pendingAdminRequests = (allJoinRequests || []).filter(
+    (r) => r && adminGroupIds.includes(r.groupId) && r.status === 'pending'
   );
 
   // Search results calculation
@@ -189,7 +189,8 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
     : [];
 
   // Filter groups for main list
-  const filteredGroups = groups.filter((grp) => {
+  const filteredGroups = (groups || []).filter((grp) => {
+    if (!grp || !grp.id) return false;
     // Category filtering
     if (selectedCategory === 'social_service' && grp.subCategory !== 'social_service') return false;
     if (selectedCategory === 'religious_activity' && grp.subCategory !== 'religious_activity') return false;

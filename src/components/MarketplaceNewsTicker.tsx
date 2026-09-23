@@ -14,9 +14,9 @@ export const MarketplaceNewsTicker: React.FC<MarketplaceNewsTickerProps> = ({
   onSelectItem
 }) => {
   // Filter items that have prices and sort by lowest price
-  const pricedItems = items
-    .filter((it) => it.type === 'seller_item' && typeof it.price === 'number' && it.price > 0)
-    .sort((a, b) => (a.price || 0) - (b.price || 0));
+  const pricedItems = (items || [])
+    .filter((it) => it && it.type === 'seller_item' && typeof it.price === 'number' && it.price > 0)
+    .sort((a, b) => (a?.price || 0) - (b?.price || 0));
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
@@ -33,7 +33,9 @@ export const MarketplaceNewsTicker: React.FC<MarketplaceNewsTickerProps> = ({
 
   if (pricedItems.length === 0) return null;
 
-  const currentItem = pricedItems[currentIndex];
+  const safeIndex = currentIndex < pricedItems.length ? currentIndex : 0;
+  const currentItem = pricedItems[safeIndex];
+  if (!currentItem || !currentItem.id) return null;
 
   const handleTickerClick = (e: React.MouseEvent) => {
     onOpenLowestPrices(currentItem);

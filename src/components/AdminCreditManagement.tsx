@@ -98,8 +98,10 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
   // Filtered Users List by ID, NIC, Name, or Phone
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) => {
+    const list = (users || []).filter(Boolean);
+    if (!q) return list;
+    return list.filter((u) => {
+      if (!u) return false;
       const numericId = extractNumericId(u.nicNumber || u.userId);
       return (
         numericId.includes(q) ||
@@ -233,7 +235,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
       if (isCustomReason) {
         finalRemark = customRemark.trim() || (operationMode === 'add' ? 'වෙනත් හේතුවක් (බැර කිරීම)' : 'වෙනත් හේතුවක් (ඉවත් කිරීම)');
       } else {
-        const matched = currentPresets.find((r) => r.id === selectedReason);
+        const matched = (currentPresets || []).find((r) => r && r.id === selectedReason);
         finalRemark = matched ? matched.label : selectedReason;
         if (customRemark.trim()) {
           finalRemark += ` [සටහන: ${customRemark.trim()}]`;
@@ -403,14 +405,15 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               </p>
             </div>
           ) : (
-            filteredUsers.map((u, idx) => {
+            filteredUsers.filter(Boolean).map((u, idx) => {
+              if (!u) return null;
               const numericId = extractNumericId(u.nicNumber || u.userId);
               const userBal = getUserCreditBalance(u);
-              const isSelected = selectedUserForCredit?.id === u.id;
+              const isSelected = selectedUserForCredit && u && (selectedUserForCredit.id === u.id || selectedUserForCredit.userId === u.userId);
 
               return (
                 <div
-                  key={`credit_user_${u.id || u.nicNumber}_${idx}`}
+                  key={`credit_user_${u.id || u.userId || u.nicNumber || idx}_${idx}`}
                   className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
                     isSelected
                       ? operationMode === 'add'

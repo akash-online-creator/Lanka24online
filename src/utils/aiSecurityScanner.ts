@@ -87,6 +87,7 @@ export async function detectDuplicatePhotos(
   const matches: DuplicatePhotoMatch[] = [];
 
   for (const user of allUsers) {
+    if (!user) continue;
     if (user.id === targetUserId || user.userId === targetUserId) continue;
 
     const userPhotos = [
@@ -125,9 +126,24 @@ export async function detectDuplicatePhotos(
  * and matches with duplicate accounts.
  */
 export async function scanUserNicSecurity(
-  user: User,
+  user: User | null | undefined,
   allUsers: User[] = []
 ): Promise<AiSecurityScanResult> {
+  if (!user) {
+    return {
+      scannedAt: new Date().toISOString(),
+      isAiGenerated: false,
+      aiConfidence: 0,
+      isDocumentAuthentic: false,
+      riskLevel: 'low',
+      riskScore: 0,
+      analysisSummarySi: 'පරිශීලක තොරතුරු නොමැත.',
+      analysisSummaryEn: 'No user data available.',
+      flags: [],
+      duplicateMatches: [],
+    };
+  }
+
   const photoUrl = user.nicFrontPhotoUrl || user.idCardPhotoUrl || user.photoUrl;
   const flags: string[] = [];
 
@@ -147,7 +163,7 @@ export async function scanUserNicSecurity(
   }
 
   // 1. Perform duplicate photo matching across all users
-  const duplicateMatches = await detectDuplicatePhotos(photoUrl, user.id || user.userId, allUsers);
+  const duplicateMatches = await detectDuplicatePhotos(photoUrl, user.id || user.userId || '', allUsers);
   if (duplicateMatches.length > 0) {
     flags.push(`⚠️ සමාන ඡායාරූප සහිත වෙනත් ගිණුම් ${duplicateMatches.length} ක් හමු විය (Duplicate Photo Detected)`);
   }
@@ -159,8 +175,8 @@ export async function scanUserNicSecurity(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         photoUrl,
-        declaredNic: user.nicNumber,
-        userName: user.name,
+        declaredNic: user.nicNumber || '',
+        userName: user.name || '',
       }),
     });
 

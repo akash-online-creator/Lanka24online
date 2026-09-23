@@ -107,10 +107,10 @@ export const AdminTrustManagement: React.FC<AdminTrustManagementProps> = ({
 
   // Compute enriched user list with trust metrics
   const enrichedUsers = useMemo(() => {
-    return users.map((u) => {
+    return (users || []).filter(Boolean).map((u) => {
       const trustData = getUserTrustData(u);
       const trustProfile = calculateTrustProfile(u);
-      const isBlocked = isAuthorBlocked(u) || u.status === 'blocked' || u.isBlocked || trustData.points <= 0;
+      const isBlocked = isAuthorBlocked(u) || u.status === 'blocked' || u.isBlocked || (trustData && trustData.points <= 0);
       return {
         ...u,
         trustData,
@@ -201,7 +201,7 @@ export const AdminTrustManagement: React.FC<AdminTrustManagementProps> = ({
       );
       if (res.isAutoBlocked) {
         setPointsSuccessMsg(`අවවාදයයි: ලකුණු 0 වූ බැවින් ගිණුම ස්වයංක්‍රීයව අත්හිටුවන ලදී (AUTO-BLOCKED)!`);
-        if (onBlockUser) onBlockUser(selectedUser.id, `විශ්වාසනීය ලකුණු 0 වීම: ${finalReason}`);
+        if (onBlockUser && selectedUser) onBlockUser(selectedUser.userId || selectedUser.id || '', `විශ්වාසනීය ලකුණු 0 වීම: ${finalReason}`);
       } else {
         setPointsSuccessMsg(`ලකුණු -${pointsAmount} ක් අඩු කරන ලදි. නව ශේෂය: ${res.newBalance} pts`);
       }
@@ -239,8 +239,8 @@ export const AdminTrustManagement: React.FC<AdminTrustManagementProps> = ({
       'ප්‍රධාන පරිපාලක (Super Admin)'
     );
 
-    if (onUnblockCredential) {
-      onUnblockCredential(selectedUser.id);
+    if (onUnblockCredential && selectedUser) {
+      if (selectedUser.id) onUnblockCredential(selectedUser.id);
       if (selectedUser.userId) onUnblockCredential(selectedUser.userId);
       if (selectedUser.phone) onUnblockCredential(selectedUser.phone);
       if (selectedUser.nicNumber) onUnblockCredential(selectedUser.nicNumber);
@@ -281,8 +281,8 @@ export const AdminTrustManagement: React.FC<AdminTrustManagementProps> = ({
       }
     );
 
-    if (onBlockUser) {
-      onBlockUser(selectedUser.id, reason);
+    if (onBlockUser && selectedUser) {
+      onBlockUser(selectedUser.userId || selectedUser.id || '', reason);
     }
 
     setRefreshKey(prev => prev + 1);
@@ -472,13 +472,13 @@ export const AdminTrustManagement: React.FC<AdminTrustManagementProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((u) => {
-                  const pts = u.trustData.points ?? 100;
+                filteredUsers.filter(Boolean).map((u, idx) => {
+                  const pts = u.trustData?.points ?? 100;
                   const isBlocked = u.isBlockedCalculated || pts <= 0;
-                  const badges = u.trustData.customBadges || [];
+                  const badges = u.trustData?.customBadges || [];
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/80 dark:hover:bg-emerald-950/20 transition-colors">
+                    <tr key={u.id || u.userId || u.nicNumber || idx} className="hover:bg-slate-50/80 dark:hover:bg-emerald-950/20 transition-colors">
                       {/* User Info */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">

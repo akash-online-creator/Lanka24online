@@ -70,7 +70,8 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
   // Check if current phone/user is registered in the system
   const isRegistered = Boolean(
     currentUser ||
-    (userPhone.trim().length >= 9 && users.some(u => {
+    (userPhone.trim().length >= 9 && (users || []).some(u => {
+      if (!u) return false;
       const uDigits = (u.phone || '').replace(/[^0-9]/g, '');
       const inDigits = userPhone.replace(/[^0-9]/g, '');
       return (uDigits.length >= 9 && inDigits.length >= 9 && (uDigits.endsWith(inDigits.slice(-9)) || inDigits.endsWith(uDigits.slice(-9)))) ||

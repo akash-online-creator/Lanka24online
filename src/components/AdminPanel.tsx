@@ -173,6 +173,9 @@ interface AdminPanelProps {
   onReplyIssue: (issueId: string, reply: string, resolve: boolean, replyChannel?: 'inbox' | 'sms' | 'whatsapp') => void;
   onSeedDemoData: () => void;
   language: Language;
+  onNavigate?: (view: any) => void;
+  onSwitchToUserMode?: () => void;
+  onResetUserPassword?: (nicNumber: string) => Promise<any>;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -203,6 +206,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   redAlerts = [],
   onRefreshRedAlerts,
   onViewRedAlertDetail,
+  onNavigate,
+  onSwitchToUserMode,
+  onResetUserPassword,
 }) => {
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
   const t = translations[language];
@@ -238,6 +244,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     user: User,
     activeType: 'face' | 'nicFront' | 'nicBack' = 'nicFront'
   ) => {
+    if (!user) return;
     setInspectorScanResult(user.aiScanResult || null);
     setPhotoInspector({
       user,
@@ -303,30 +310,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Tag Management State
   const [tagItems, setTagItems] = useState<TagItem[]>(() => tags || getStoredTags());
 
-  const pendingUsers = users.filter((u) => u.status === 'pending');
-  const usersWithPendingProfileUpdates = users.filter(
-    (u) => u.pendingProfileUpdate && u.pendingProfileUpdate.status === 'pending'
+  const pendingUsers = (users || []).filter((u) => u && u.status === 'pending');
+  const usersWithPendingProfileUpdates = (users || []).filter(
+    (u) => u && u.pendingProfileUpdate && u.pendingProfileUpdate.status === 'pending'
   );
-  const approvedUsers = users.filter((u) => u.status === 'approved');
-  const blockedUsers = users.filter((u) => u.status === 'blocked');
-  const pendingIssues = issues.filter((i) => i.status !== 'resolved');
+  const approvedUsers = (users || []).filter((u) => u && u.status === 'approved');
+  const blockedUsers = (users || []).filter((u) => u && u.status === 'blocked');
+  const pendingIssues = (issues || []).filter((i) => i && i.status !== 'resolved');
 
   // AI Security Analytics
-  const scannedUsers = users.filter((u) => !!u.aiScanResult);
-  const highRiskUsers = users.filter(
-    (u) => u.aiScanResult && (u.aiScanResult.riskLevel === 'high' || u.aiScanResult.isAiGenerated)
+  const scannedUsers = (users || []).filter((u) => u && !!u.aiScanResult);
+  const highRiskUsers = (users || []).filter(
+    (u) => u && u.aiScanResult && (u.aiScanResult.riskLevel === 'high' || u.aiScanResult.isAiGenerated)
   );
-  const duplicateDetectedUsers = users.filter(
-    (u) => u.aiScanResult && u.aiScanResult.duplicateMatches && u.aiScanResult.duplicateMatches.length > 0
+  const duplicateDetectedUsers = (users || []).filter(
+    (u) => u && u.aiScanResult && u.aiScanResult.duplicateMatches && u.aiScanResult.duplicateMatches.length > 0
   );
-  const aiSyntheticUsers = users.filter(
-    (u) => u.aiScanResult && u.aiScanResult.isAiGenerated
+  const aiSyntheticUsers = (users || []).filter(
+    (u) => u && u.aiScanResult && u.aiScanResult.isAiGenerated
   );
   const totalAiSecurityAlerts = highRiskUsers.length + duplicateDetectedUsers.length;
 
   // AI Scanner Handler for Single User
   const handleScanUserNic = async (user: User): Promise<AiSecurityScanResult | undefined> => {
-    setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+    const uid = user?.id || user?.userId;
+    if (!uid) return;
+    setScanningUsersMap((prev) => ({ ...prev, [uid]: true }));
     try {
       const result = await scanUserNicSecurity(user, users);
       const updatedUser: User = {
@@ -343,18 +352,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       if (savedUsers) {
         try {
           const usersList: User[] = JSON.parse(savedUsers);
-          const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+          const newUsersList = (usersList || []).map((u) => (u && (u.id === updatedUser.id || u.userId === updatedUser.userId) ? updatedUser : u));
           localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
         } catch (err) {
           console.warn('Local storage sync error:', err);
         }
       }
 
-      if (selectedUserForModal && selectedUserForModal.id === user.id) {
+      const curUserId = user?.id || user?.userId;
+      if (selectedUserForModal && curUserId && (selectedUserForModal.id === curUserId || selectedUserForModal.userId === curUserId)) {
         setSelectedUserForModal(updatedUser);
       }
 
-      if (photoInspector && photoInspector.user.id === user.id) {
+      if (photoInspector && curUserId && (photoInspector.user?.id === curUserId || photoInspector.user?.userId === curUserId)) {
         setInspectorScanResult(result);
       }
 
@@ -365,7 +375,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     } catch (err) {
       console.error('AI Scan execution error:', err);
     } finally {
-      setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
+      setScanningUsersMap((prev) => ({ ...prev, [uid]: false }));
     }
   };
 
@@ -377,7 +387,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     let dupCount = 0;
 
     for (const user of pendingUsers) {
-      setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+      if (!user) continue;
+      const uid = user.id || user.userId || '';
+      if (uid) setScanningUsersMap((prev) => ({ ...prev, [uid]: true }));
       try {
         const res = await scanUserNicSecurity(user, users);
         const updatedUser: User = {
@@ -390,7 +402,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       } catch {
         // continue to next
       } finally {
-        setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
+        if (uid) setScanningUsersMap((prev) => ({ ...prev, [uid]: false }));
       }
     }
     setBatchScanning(false);
@@ -408,7 +420,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     let flaggedCount = 0;
 
     for (const user of users) {
-      setScanningUsersMap((prev) => ({ ...prev, [user.id]: true }));
+      if (!user) continue;
+      const uid = user.id || user.userId || '';
+      if (uid) setScanningUsersMap((prev) => ({ ...prev, [uid]: true }));
       try {
         const res = await scanUserNicSecurity(user, users);
         const updatedUser: User = {
@@ -422,7 +436,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       } catch {
         // continue
       } finally {
-        setScanningUsersMap((prev) => ({ ...prev, [user.id]: false }));
+        if (uid) setScanningUsersMap((prev) => ({ ...prev, [uid]: false }));
       }
     }
     setBatchScanning(false);
@@ -430,8 +444,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setAdminActionNotification(null), 8000);
   };
 
-  const emergencyAlerts = useMemo(() => getEmergencyAdminAlerts().filter(a => !a.isResolved), [activeTab]);
-  const emergencyFlagged = useMemo(() => getStoredEmergencyContacts(true).filter(c => c.isInactiveDeactivated), [activeTab]);
+  const emergencyAlerts = useMemo(() => (getEmergencyAdminAlerts() || []).filter(a => a && !a.isResolved), [activeTab]);
+  const emergencyFlagged = useMemo(() => (getStoredEmergencyContacts(true) || []).filter(c => c && c.isInactiveDeactivated), [activeTab]);
   const totalEmergencyBadge = emergencyAlerts.length + emergencyFlagged.length;
 
   // Helper to format Sri Lankan phone number for WhatsApp
@@ -447,8 +461,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Function 1: Reset Password Feature for Admin
-  const handleResetUserPassword = async (user: User) => {
-    const confirmReset = window.confirm(`ඔබට ${user.name} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
+  const handleResetUserPassword = async (user?: User | null) => {
+    if (!user) return;
+    const confirmReset = window.confirm(`ඔබට ${user.name || 'පරිශීලක'} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
     if (!confirmReset) return;
 
     // Generate a secure 6-digit random temporary password
@@ -473,8 +488,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user.id,
-          nicNumber: user.nicNumber || user.userId,
+          userId: user.userId || user.id || '',
+          nicNumber: user.nicNumber || user.userId || user.id,
           newPassword: newTempPassword,
         }),
       });
@@ -499,14 +514,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+        const newUsersList = (usersList || []).map((u) => (u && updatedUser && (u.id === updatedUser.id || u.userId === updatedUser.userId) ? updatedUser : u));
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('User update error:', err);
       }
     }
 
-    if (selectedUserForModal && selectedUserForModal.id === user.id) {
+    if (selectedUserForModal && user && (selectedUserForModal.id === user.id || selectedUserForModal.userId === user.userId)) {
       setSelectedUserForModal(updatedUser);
     }
 
@@ -552,7 +567,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.map((u) => (u.id === updated.id ? updated : u));
+        const newUsersList = (usersList || []).map((u) => (u && updated && (u.id === updated.id || u.userId === updated.userId) ? updated : u));
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('Update error:', err);
@@ -573,11 +588,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     let res;
     if (modalCreditMode === 'add') {
-      const reasonObj = ADMIN_ADD_REASON_PRESETS.find((p) => p.id === modalCreditReason);
+      const reasonObj = ADMIN_ADD_REASON_PRESETS.find((p) => p && p.id === modalCreditReason);
       const title = reasonObj ? reasonObj.label : 'පරිපාලක ගිණුම් බැර කිරීම (Admin Top-Up)';
       res = addCreditByAdmin(selectedUserForModal, numAmount, 'deposit', title, modalCreditRemark);
     } else {
-      const reasonObj = ADMIN_DEDUCT_REASON_PRESETS.find((p) => p.id === modalCreditReason);
+      const reasonObj = ADMIN_DEDUCT_REASON_PRESETS.find((p) => p && p.id === modalCreditReason);
       const title = reasonObj ? reasonObj.label : 'පරිපාලක ගිණුම් අඩු කිරීම (Admin Debit)';
       res = deductCreditByAdmin(selectedUserForModal, numAmount, 'admin_adjustment', title, modalCreditRemark);
     }
@@ -600,7 +615,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       approvedAt: new Date().toISOString(),
     };
     if (onUpdateUser) onUpdateUser(updatedUser);
-    if (onApproveUser) onApproveUser(user.id);
+    const uid = user?.id || user?.userId;
+    if (uid && onApproveUser) onApproveUser(uid);
     setAdminActionNotification(`✅ ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම සාර්ථකව අනුමත (Approve) කරන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
@@ -614,7 +630,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       rejectionReason: reason,
     };
     if (onUpdateUser) onUpdateUser(updatedUser);
-    if (onRejectUser) onRejectUser(user.id, reason);
+    const uid = user?.id || user?.userId;
+    if (uid && onRejectUser) onRejectUser(uid, reason);
     setAdminActionNotification(`❌ ${user.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කරන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
@@ -639,7 +656,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
 
     if (onUpdateUser) onUpdateUser(updatedUser);
-    if (willBlock && onBlockUser) onBlockUser(user.id, reason || 'Blocked by Admin');
+    const uid = user?.id || user?.userId;
+    if (willBlock && onBlockUser && uid) onBlockUser(uid, reason || 'Blocked by Admin');
     setAdminActionNotification(willBlock ? `⛔ ${user.name} ගේ ගිණුම අවහිර (Blocked) කරන ලදී.` : `✅ ${user.name} ගේ ගිණුම නැවත සක්‍රීය (Unblocked) කරන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
@@ -648,10 +666,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     const targetUser = { ...userToDelete };
+    const targetUid = targetUser.id || targetUser.userId;
     
     // 1. Call parent props method to update App state & Firestore
-    if (onDeleteUser) {
-      onDeleteUser(targetUser.id);
+    if (onDeleteUser && targetUid) {
+      onDeleteUser(targetUid);
     }
     
     // 2. Perform direct local storage update
@@ -659,10 +678,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.filter((u) => 
-          u.id !== targetUser.id && 
-          u.userId !== targetUser.userId && 
-          u.nicNumber !== targetUser.nicNumber
+        const newUsersList = (usersList || []).filter((u) => 
+          u &&
+          (!targetUser.id || u.id !== targetUser.id) && 
+          (!targetUser.userId || u.userId !== targetUser.userId) && 
+          (!targetUser.nicNumber || u.nicNumber !== targetUser.nicNumber)
         );
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
@@ -682,7 +702,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setUserToDelete(null); // Close Modal
   };
 
-  const filteredUsers = users.filter((u) => {
+  const filteredUsers = (users || []).filter((u) => {
+    if (!u) return false;
     const q = (searchQuery || '').trim().toLowerCase();
     const matchesSearch =
       !q ||
@@ -717,6 +738,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </p>
             </div>
           </div>
+
+          {(onNavigate || onSwitchToUserMode) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onSwitchToUserMode) {
+                  onSwitchToUserMode();
+                } else if (onNavigate) {
+                  onNavigate('dashboard');
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white text-emerald-900 hover:bg-emerald-50 active:bg-emerald-100 font-black text-xs sm:text-sm shadow-lg border-2 border-emerald-300 cursor-pointer transition-all hover:scale-105 active:scale-95"
+              title={language === 'en' ? 'Switch to User View' : language === 'ta' ? 'பயனர் முறை' : 'පරිශීලක ප්‍රකාරයට මාරුවන්න (User Mode)'}
+            >
+              <Shield className="w-4 h-4 text-emerald-700" />
+              <span>{language === 'en' ? '👤 Switch to User Mode' : language === 'ta' ? '👤 பயனர் முறை' : '👤 පරිශීලක ප්‍රකාරය (User Mode)'}</span>
+            </button>
+          )}
         </div>
 
         {/* Quick Numbers Cards */}
@@ -2113,13 +2152,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         >
                           {modalCreditMode === 'add'
                             ? ADMIN_ADD_REASON_PRESETS.map((p, pIdx) => (
-                                <option key={`preset_add_${p.id}_${pIdx}`} value={p.id}>
-                                  {p.label}
+                                <option key={`preset_add_${p?.id || pIdx}_${pIdx}`} value={p?.id}>
+                                  {p?.label}
                                 </option>
                               ))
                             : ADMIN_DEDUCT_REASON_PRESETS.map((p, pIdx) => (
-                                <option key={`preset_deduct_${p.id}_${pIdx}`} value={p.id}>
-                                  {p.label}
+                                <option key={`preset_deduct_${p?.id || pIdx}_${pIdx}`} value={p?.id}>
+                                  {p?.label}
                                 </option>
                               ))}
                         </select>

@@ -47,10 +47,10 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
         <div className="bg-slate-800/60 border border-white/10 rounded-2xl p-5 mb-6 backdrop-blur-md">
           <div className="flex items-center gap-4 mb-4 pb-4 border-b border-white/10">
             <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-yellow-500/40 shadow-md bg-slate-700 flex-shrink-0 flex items-center justify-center">
-              {user.photoUrl && user.photoUrl.trim() !== '' ? (
+              {user?.photoUrl && user.photoUrl.trim() !== '' ? (
                 <img
                   src={user.photoUrl}
-                  alt={user.name}
+                  alt={user?.name || 'User'}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -59,15 +59,15 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="text-base font-bold text-slate-100 truncate">
-                {user.name}
+                {user?.name || 'පොරොත්තු සාමාජිකයා'}
               </h4>
               <p className="text-xs text-slate-400 font-mono">
-                ID: <span className="text-yellow-400 font-semibold">{user.userId}</span>
+                ID: <span className="text-yellow-400 font-semibold">{user?.userId || '-'}</span>
               </p>
               <p className="text-xs text-slate-400 font-mono">
-                NIC: {user.nicNumber}
+                NIC: {user?.nicNumber || user?.userId || '-'}
               </p>
-              {user.whatsappNumber && (
+              {user?.whatsappNumber && (
                 <p className="text-xs text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
                   <PhoneCall className="w-3 h-3" /> WhatsApp: {user.whatsappNumber}
                 </p>

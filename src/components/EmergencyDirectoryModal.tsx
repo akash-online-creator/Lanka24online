@@ -166,9 +166,9 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
         district: newIsNational ? undefined : newDistrict,
         address: newAddress.trim() || undefined,
         descriptionSi: newDescSi.trim() || undefined,
-        submittedByUserId: currentUser.id || currentUser.userId,
-        submittedByUserName: currentUser.name || 'පරිශීලක',
-        submittedByUserPhone: currentUser.phone || '',
+        submittedByUserId: currentUser?.id || currentUser?.userId || 'usr_unknown',
+        submittedByUserName: currentUser?.name || 'පරිශීලක',
+        submittedByUserPhone: currentUser?.phone || '',
         submittedAt: nowReadable,
         submittedAtMs: Date.now(),
         rewardCreditsAwarded: 2,
@@ -239,7 +239,8 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
     }
 
     // Check if user already reported
-    if (contact.reportedInactiveUserIds?.includes(currentUser.id)) {
+    const currentUid = currentUser?.id || currentUser?.userId;
+    if (currentUid && contact.reportedInactiveUserIds?.includes(currentUid)) {
       setFeedbackNotice({
         type: 'info',
         message: 'ඔබ දැනටමත් මෙම අංකය ක්‍රියා විරහිත බවට වාර්තා කර ඇත.',
@@ -262,9 +263,9 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
       const result = reportEmergencyContactInactive(
         reportTargetContact.id,
         {
-          id: currentUser.id,
-          name: currentUser.name,
-          phone: currentUser.phone,
+          id: currentUser?.id || currentUser?.userId || 'usr_unknown',
+          name: currentUser?.name || 'User',
+          phone: currentUser?.phone || '',
         },
         finalReason
       );
@@ -531,7 +532,8 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
             </div>
           ) : (
             filteredContacts.map((contact, cIdx) => {
-              const hasReportedByMe = currentUser && contact.reportedInactiveUserIds?.includes(currentUser.id);
+              const currentUid = currentUser?.id || currentUser?.userId;
+              const hasReportedByMe = Boolean(currentUid && contact.reportedInactiveUserIds?.includes(currentUid));
               const reportCount = contact.reportedInactiveCount || (contact.reportedInactiveUserIds?.length || 0);
 
               return (

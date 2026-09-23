@@ -75,15 +75,15 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   };
 
   // 1. ආපදාව වාර්තා කළ පුද්ගලයාද යන්න පරීක්ෂා කිරීම
-  const isAuthorOfAlert = Boolean(currentUser && (
-    (alert.reportedByUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
-    (alert.reportedByPhone && alert.reportedByPhone === currentUser.phone) ||
-    (alert.reportedByName && alert.reportedByName === currentUser.name)
+  const isAuthorOfAlert = Boolean(currentUser && alert && (
+    (alert.reportedByUserId && ((currentUser.id && alert.reportedByUserId === currentUser.id) || (currentUser.userId && alert.reportedByUserId === currentUser.userId))) ||
+    (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
+    (alert.reportedByName && currentUser.name && alert.reportedByName === currentUser.name)
   ));
 
   // ඔප්ෂන් 01: "ආපදාව විසඳුනා"
   const handleResolveAlert = async () => {
-    if (!alert) return;
+    if (!alert || !alert.id) return;
     if (window.confirm('මෙම හදිසි ආපදා තත්ත්වය විසඳී ඇති බැවින් එය විසඳුණි (Resolved) ලෙස සලකුණු කිරීමට අවශ්‍ය බව ස්ථිරද?')) {
       setIsSubmitting(true);
       try {
@@ -101,7 +101,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
   // ඔප්ෂන් 02: "අනතුර ඉවත් කරන්න"
   const handleCancelOrDeleteAlert = async () => {
-    if (!alert) return;
+    if (!alert || !alert.id) return;
     if (window.confirm('මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට / මකා දැමීමට අවශ්‍ය බව ස්ථිරද?')) {
       setIsSubmitting(true);
       try {
@@ -125,7 +125,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   // ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න"
   const handleSendReporterUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert || !reporterUpdateText.trim()) return;
+    if (!alert || !alert.id || !reporterUpdateText.trim()) return;
 
     setIsSubmitting(true);
     const text = reporterUpdateText.trim();
@@ -159,7 +159,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   // General Comment Submit
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert || !commentText.trim()) return;
+    if (!alert || !alert.id || !commentText.trim()) return;
 
     setIsSubmitting(true);
     const newComment: RedAlertComment = {

@@ -182,8 +182,9 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
       }, 1000);
 
       startSpeechRecognition();
-    } catch (err) {
-      alert('මයික්‍රෆෝනය සක්‍රිය කළ නොහැකි විය. කරුණාකර අවසර (Microphone Permission) ලබා දෙන්න.');
+    } catch (err: any) {
+      console.warn('Microphone access notice:', err?.name || err?.message || err);
+      alert('මයික්‍රෆෝනය සක්‍රිය කළ නොහැකි විය. කරුණාකර අවසර (Microphone Permission) ලබා දෙන්න හෝ කෙලින්ම සටහන ලියා යොමු කරන්න.');
     }
   };
 

@@ -252,8 +252,12 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
       startSpeechRecognition();
     } catch (err: any) {
-      console.error('Mic access error:', err);
-      setErrorMsg('මයික්‍රෆෝනය භාවිතය සඳහා අවසර ලබා දී නොමැත. කරුණාකර Browser Settings හි Microphone Allow කරන්න.');
+      console.warn('Microphone access notice:', err?.name || err?.message || err);
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || String(err?.message || '').toLowerCase().includes('permission')) {
+        setErrorMsg('මයික්‍රෆෝනය භාවිතය සඳහා අවසර ලබා දී නොමැත. කරුණාකර ඔබගේ Browser Settings හි Microphone Allow කරන්න හෝ පහත කොටුවේ විස්තරය කෙලින්ම ලියා යොමු කරන්න.');
+      } else {
+        setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීමේදී ගැටලුවක් මතු විය. කරුණාකර පහතින් ඔබගේ අවශ්‍යතාවය සටහන් කරන්න.');
+      }
     }
   };
 

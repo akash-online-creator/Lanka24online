@@ -60,11 +60,11 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !user) return null;
 
   const currentBalance = getUserCreditBalance(user);
   const transactions = getUserCreditTransactions(user);
-  const numericId = extractNumericId(user.nicNumber || user.userId);
+  const numericId = extractNumericId(user?.nicNumber || user?.userId);
 
   const handleCopy = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
@@ -206,6 +206,26 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                       <span>Top-Up</span>
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Free Tier Model & Welcome Gift Info Card */}
+              <div className="bg-gradient-to-r from-emerald-900 via-[#005e37] to-teal-900 border border-emerald-500/40 rounded-2xl p-4 text-white shadow-md flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-xl shrink-0 shadow-sm mt-0.5">
+                  🎁
+                </div>
+                <div className="text-xs space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-amber-300">
+                      "රුපියල් 100 නොමිලේ" (Free Tier Model)
+                    </span>
+                    <span className="bg-emerald-500/30 text-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      0% Upfront
+                    </span>
+                  </div>
+                  <p className="text-emerald-100 leading-relaxed">
+                    සෑම නව සාමාජිකයෙකුටම සහ සේවා සපයන්නෙකුටම ආරම්භයේදීම රු. 100 ක ක්‍රෙඩිට් නොමිලේ හිමිවේ. ඇප් එකේ සේවාවන් අත්විඳ වැඩ පහසු කරගත් පසු, ඉදිරි දැන්වීම් සඳහා ඉතා කුඩා ක්ෂුද්‍ර මුදලක් හෝ ස්වේච්ඡා දායකත්වයක් පමණක් අය කෙරේ.
+                  </p>
                 </div>
               </div>
 

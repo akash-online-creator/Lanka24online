@@ -21,11 +21,11 @@ export const InsufficientCreditsModal: React.FC<InsufficientCreditsModalProps> =
   categoryNameSi,
   user,
 }) => {
-  if (!isOpen) return null;
+  if (!isOpen || !user) return null;
 
   const currentBalance = getUserCreditBalance(user);
   const shortfall = requiredFee - currentBalance;
-  const numericId = extractNumericId(user.nicNumber || user.userId);
+  const numericId = extractNumericId(user?.nicNumber || user?.userId);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">

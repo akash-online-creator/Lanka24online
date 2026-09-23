@@ -83,15 +83,15 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
   };
 
   const flaggedContacts = useMemo(() => {
-    return contacts.filter((c) => c.isInactiveDeactivated || (c.reportedInactiveCount && c.reportedInactiveCount > 0));
+    return (contacts || []).filter((c) => c && (c.isInactiveDeactivated || (c.reportedInactiveCount && c.reportedInactiveCount > 0)));
   }, [contacts]);
 
   const communityContacts = useMemo(() => {
-    return contacts.filter((c) => c.submittedByUserId || c.id.startsWith('custom_emg_'));
+    return (contacts || []).filter((c) => c && (c.submittedByUserId || (c.id && c.id.startsWith('custom_emg_'))));
   }, [contacts]);
 
   const pendingAlerts = useMemo(() => {
-    return alerts.filter((a) => !a.isResolved);
+    return (alerts || []).filter((a) => a && !a.isResolved);
   }, [alerts]);
 
   const districtsList = [
@@ -529,9 +529,10 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
               කිසිදු හදිසි අංකයක් හමුවූයේ නැත.
             </div>
           ) : (
-            filteredList.map((contact, cIdx) => {
+            filteredList.filter(Boolean).map((contact, cIdx) => {
+              if (!contact) return null;
               const isFlagged = contact.isInactiveDeactivated || (contact.reportedInactiveCount && contact.reportedInactiveCount > 0);
-              const isCommunity = !!contact.submittedByUserId || contact.id.startsWith('custom_emg_');
+              const isCommunity = Boolean(contact.submittedByUserId || (contact.id && contact.id.startsWith('custom_emg_')));
 
               return (
                 <div
@@ -664,10 +665,10 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                         <Edit className="w-4 h-4" />
                       </button>
 
-                      {contact.id.startsWith('custom_emg_') && (
+                      {Boolean(contact.id && contact.id.startsWith('custom_emg_')) && (
                         <button
                           type="button"
-                          onClick={() => handleDelete(contact.id)}
+                          onClick={() => contact.id && handleDelete(contact.id)}
                           className="p-2.5 rounded-xl bg-red-100 dark:bg-red-950/80 hover:bg-red-200 text-red-600 text-xs transition-all active:scale-95 cursor-pointer"
                           title="ස්ථිරවම ඉවත් කරන්න"
                         >

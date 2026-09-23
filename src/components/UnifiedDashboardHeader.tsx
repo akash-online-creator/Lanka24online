@@ -36,6 +36,7 @@ import {
   ArrowRightLeft
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface UnifiedDashboardHeaderProps {
   user: User;
@@ -118,9 +119,9 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     };
   }, []);
 
-  const creditBalance = getUserCreditBalance(user);
-  const numericId = extractNumericId(user.nicNumber || user.userId);
-  const isVisitor = Boolean(!user || user.isDemo || user.userId === 'user_demo' || user.id === 'demo_user' || user.role === 'guest');
+  const creditBalance = user ? getUserCreditBalance(user) : 0;
+  const numericId = extractNumericId(user?.nicNumber || user?.userId);
+  const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || user?.role === 'guest');
 
   const [isManualLocked, setIsManualLocked] = useState<boolean>(
     () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
@@ -391,22 +392,26 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
 
             {/* Admin Switcher (If Admin user) */}
-            {user.role === 'admin' && setActiveRoleView && onNavigate && (
+            {checkIsAdmin(user) && onNavigate && (
               <button
                 type="button"
                 onClick={() => {
-                  const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
-                  setActiveRoleView(nextRole);
-                  onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
+                  if (setActiveRoleView) {
+                    setActiveRoleView('admin');
+                  }
+                  onNavigate('admin');
                 }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
                   activeRoleView === 'admin'
-                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50'
-                    : 'bg-white dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/70'
                 }`}
+                title={language === 'en' ? 'Switch to Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරයට පිවිසෙන්න'}
               >
-                <Shield className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-[11px]">{activeRoleView === 'admin' ? 'Admin' : 'Admin'}</span>
+                <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="font-extrabold text-xs">
+                  {language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරය'}
+                </span>
               </button>
             )}
           </div>

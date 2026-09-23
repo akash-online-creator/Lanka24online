@@ -68,7 +68,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
 
   // Policy Guard Modal State
-  const userKey = currentUser.userId || currentUser.phone || currentUser.nicNumber || currentUser.name;
+  const userKey = currentUser?.userId || currentUser?.phone || currentUser?.nicNumber || currentUser?.name || 'user';
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [policyStrikes, setPolicyStrikes] = useState<number>(() => getUserStrikes(userKey));
   const [isBlocked, setIsBlocked] = useState<boolean>(() => isUserPolicyBlocked(userKey));
@@ -170,7 +170,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
     }
   }, [messages, isOpen]);
 
-  if (!isOpen || !post) return null;
+  if (!isOpen || !post || !currentUser) return null;
 
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
   const currentUserPhone = normalizePhone(currentUser.phone || currentUser.whatsappNumber);
@@ -178,7 +178,8 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
   const isPostAuthor = Boolean(
     (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
-    (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
+    (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
+    (currentUser.id && post.userId && currentUser.id === post.userId) ||
     (currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
   );
 

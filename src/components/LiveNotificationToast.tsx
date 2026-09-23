@@ -161,8 +161,10 @@ export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ on
           <button
             type="button"
             onClick={() => {
-              markNotificationAsRead(activeToast.id);
-              onOpenNotification(activeToast);
+              if (activeToast && activeToast.id) {
+                markNotificationAsRead(activeToast.id);
+                onOpenNotification(activeToast);
+              }
               setActiveToast(null);
             }}
             className={`px-3 py-1.5 rounded-xl text-xs font-black shadow-md flex items-center gap-1 transition-all cursor-pointer active:scale-95 ${themeStyle.btnBg}`}

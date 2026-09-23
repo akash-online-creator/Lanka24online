@@ -306,7 +306,7 @@ export function handleJoinOrRequestGroup(
     };
 
     const allGroups = getStoredGroups();
-    const newGroups = allGroups.map((g) => (g.id === group.id ? updatedGroup : g));
+    const newGroups = (allGroups || []).map((g) => (g && group && g.id === group.id ? updatedGroup : g));
     saveGroupsToStorage(newGroups);
 
     return {
@@ -387,16 +387,16 @@ export function acceptGroupJoinRequest(
 ): { success: boolean; updatedGroup?: GroupItem } {
   try {
     const allGroups = getStoredGroups();
-    const targetGroup = allGroups.find((g) => g.id === groupId);
+    const targetGroup = (allGroups || []).find((g) => g && g.id === groupId);
     if (!targetGroup) return { success: false };
 
     const allRequests = getStoredGroupJoinRequests();
-    const req = allRequests.find((r) => r.id === requestId);
+    const req = (allRequests || []).find((r) => r && r.id === requestId);
     if (!req) return { success: false };
 
     // Update request status
-    const updatedRequests = allRequests.map((r) => {
-      if (r.id === requestId) {
+    const updatedRequests = (allRequests || []).map((r) => {
+      if (r && r.id === requestId) {
         return {
           ...r,
           status: 'accepted' as const,
@@ -410,8 +410,8 @@ export function acceptGroupJoinRequest(
 
     // Update member status in group to 'active'
     let memberExisted = false;
-    const updatedMembers = targetGroup.members.map((m) => {
-      if (m.userId === req.userId || (req.userPhone && m.phone === req.userPhone)) {
+    const updatedMembers = (targetGroup.members || []).map((m) => {
+      if (m && (m.userId === req.userId || (req.userPhone && m.phone === req.userPhone))) {
         memberExisted = true;
         return {
           ...m,
@@ -436,10 +436,10 @@ export function acceptGroupJoinRequest(
     const updatedGroup: GroupItem = {
       ...targetGroup,
       members: updatedMembers,
-      joinRequests: (targetGroup.joinRequests || []).filter((r) => r.id !== requestId)
+      joinRequests: (targetGroup.joinRequests || []).filter((r) => r && r.id !== requestId)
     };
 
-    const newGroups = allGroups.map((g) => (g.id === groupId ? updatedGroup : g));
+    const newGroups = (allGroups || []).map((g) => (g && g.id === groupId ? updatedGroup : g));
     saveGroupsToStorage(newGroups);
 
     return { success: true, updatedGroup };
@@ -457,16 +457,16 @@ export function rejectGroupJoinRequest(
 ): { success: boolean; updatedGroup?: GroupItem } {
   try {
     const allGroups = getStoredGroups();
-    const targetGroup = allGroups.find((g) => g.id === groupId);
+    const targetGroup = (allGroups || []).find((g) => g && g.id === groupId);
     if (!targetGroup) return { success: false };
 
     const allRequests = getStoredGroupJoinRequests();
-    const req = allRequests.find((r) => r.id === requestId);
+    const req = (allRequests || []).find((r) => r && r.id === requestId);
     if (!req) return { success: false };
 
     // Update request status
-    const updatedRequests = allRequests.map((r) => {
-      if (r.id === requestId) {
+    const updatedRequests = (allRequests || []).map((r) => {
+      if (r && r.id === requestId) {
         return {
           ...r,
           status: 'rejected' as const,
@@ -479,17 +479,17 @@ export function rejectGroupJoinRequest(
     saveGroupJoinRequestsToStorage(updatedRequests);
 
     // Remove member or update to 'removed'
-    const updatedMembers = targetGroup.members.filter(
-      (m) => !(m.userId === req.userId || (req.userPhone && m.phone === req.userPhone))
+    const updatedMembers = (targetGroup.members || []).filter(
+      (m) => !(m && (m.userId === req.userId || (req.userPhone && m.phone === req.userPhone)))
     );
 
     const updatedGroup: GroupItem = {
       ...targetGroup,
       members: updatedMembers,
-      joinRequests: (targetGroup.joinRequests || []).filter((r) => r.id !== requestId)
+      joinRequests: (targetGroup.joinRequests || []).filter((r) => r && r.id !== requestId)
     };
 
-    const newGroups = allGroups.map((g) => (g.id === groupId ? updatedGroup : g));
+    const newGroups = (allGroups || []).map((g) => (g && g.id === groupId ? updatedGroup : g));
     saveGroupsToStorage(newGroups);
 
     return { success: true, updatedGroup };

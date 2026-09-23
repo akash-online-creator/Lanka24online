@@ -55,6 +55,9 @@ export function extractCleanUserKeys(user: Partial<User> | null | undefined): {
  * Intelligently merges multiple user records belonging to the same individual
  */
 export function mergeUserRecords(base: User, incoming: User): User {
+  if (!base) return incoming;
+  if (!incoming) return base;
+
   const baseTime = new Date(base.updatedAt || base.registeredAt || 0).getTime();
   const incTime = new Date(incoming.updatedAt || incoming.registeredAt || 0).getTime();
   const isIncomingNewer = incTime > baseTime;
@@ -176,6 +179,7 @@ export function deduplicateUsers(usersList: User[] | null | undefined): User[] {
 
   for (let i = 0; i < deduplicated.length; i++) {
     const u = deduplicated[i];
+    if (!u) continue;
     let uniqueId = String(u.id || u.nicNumber || u.userId || `usr_${i}`).trim();
 
     if (assignedIds.has(uniqueId)) {
