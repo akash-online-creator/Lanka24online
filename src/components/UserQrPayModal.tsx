@@ -456,7 +456,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                 <div className="flex items-center gap-2 mb-3 bg-white dark:bg-[#122e1e] border border-emerald-300 dark:border-emerald-700/50 px-3.5 py-1.5 rounded-full shadow-xs">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span className="text-xs font-black text-emerald-950 dark:text-emerald-200">
-                    {user.name} • {user.district || 'ශ්‍රී ලංකා'}
+                    {user?.name || 'පරිශීලක'} • {user?.district || 'ශ්‍රී ලංකා'}
                   </span>
                 </div>
 

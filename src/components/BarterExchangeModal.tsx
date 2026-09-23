@@ -84,7 +84,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
   const [wantedCategory, setWantedCategory] = useState('general');
   const [wantedDescription, setWantedDescription] = useState('');
   const [userTown, setUserTown] = useState('');
-  const [userDistrict, setUserDistrict] = useState(user.district || 'කොළඹ');
+  const [userDistrict, setUserDistrict] = useState(user?.district || 'කොළඹ');
 
   // Smart Matchmaker States
   const [selectedMyItemForMatch, setSelectedMyItemForMatch] = useState<string>('');
@@ -202,13 +202,13 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
       const newItem: BarterItem = {
         id: `swap_${Date.now()}`,
         barterCode: `#SWAP-${Math.floor(1000 + Math.random() * 9000)}`,
-        userId: user.id || user.userId || 'usr_me',
-        userNumericId: extractNumericId(user.nicNumber || user.userId),
-        userName: user.name || 'පරිශීලක',
-        userPhone: user.phone || '',
-        userNic: user.nicNumber,
-        userDistrict,
-        userTown: userTown || user.district || '',
+        userId: user?.id || user?.userId || 'usr_me',
+        userNumericId: extractNumericId(user?.nicNumber || user?.userId || '000000000'),
+        userName: user?.name || 'පරිශීලක',
+        userPhone: user?.phone || '',
+        userNic: user?.nicNumber,
+        userDistrict: userDistrict || user?.district || 'කොළඹ',
+        userTown: userTown || user?.district || '',
         offeringTitle: offeringTitle.trim(),
         offeringCategory,
         offeringDescription: offeringDescription.trim(),
@@ -260,10 +260,10 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
       barterItemId: proposingTargetItem.id,
       barterItemTitle: proposingTargetItem.offeringTitle,
       targetUserId: proposingTargetItem.userId,
-      proposerUserId: user.id || user.userId || 'usr_me',
-      proposerName: user.name || 'පරිශීලක',
-      proposerPhone: user.phone || '',
-      proposerDistrict: user.district || 'කොළඹ',
+      proposerUserId: user?.id || user?.userId || 'usr_me',
+      proposerName: user?.name || 'පරිශීලක',
+      proposerPhone: user?.phone || '',
+      proposerDistrict: user?.district || 'කොළඹ',
       offeredItemTitle: proposalOfferTitle.trim(),
       offeredItemCategory: 'general',
       offeredItemDescription: proposalOfferDesc.trim(),

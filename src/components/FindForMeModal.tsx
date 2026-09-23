@@ -190,11 +190,11 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
         if (editPost.lat && editPost.lng) {
           setSelectedLocation({
             id: 'custom_loc',
-            nameSi: editPost.locationName || currentLocation.nameSi,
-            nameEn: editPost.locationName || currentLocation.nameEn,
+            nameSi: editPost.locationName || currentLocation?.nameSi || 'ශ්‍රී ලංකා',
+            nameEn: editPost.locationName || currentLocation?.nameEn || 'Sri Lanka',
             lat: editPost.lat,
             lng: editPost.lng,
-            district: currentLocation.district,
+            district: currentLocation?.district || 'කොළඹ',
           });
         } else {
           setSelectedLocation(currentLocation);
