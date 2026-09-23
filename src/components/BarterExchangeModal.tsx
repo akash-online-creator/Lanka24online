@@ -159,7 +159,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 800, 0.75);
+      const compressed = await compressImageFile(file, { maxWidth: 800, quality: 0.75 });
       setPhotos(prev => [...prev, compressed].slice(0, 4));
     } catch {
       setErrorMessage('පින්තූරය ඇතුළත් කිරීමට නොහැකි විය.');
@@ -171,7 +171,7 @@ export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 800, 0.75);
+      const compressed = await compressImageFile(file, { maxWidth: 800, quality: 0.75 });
       setProposalOfferPhotos(prev => [...prev, compressed].slice(0, 2));
     } catch {
       setErrorMessage('පින්තූරය ඇතුළත් කිරීමට නොහැකි විය.');

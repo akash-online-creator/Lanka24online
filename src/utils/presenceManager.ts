@@ -2,6 +2,8 @@ import { collection, doc, setDoc, onSnapshot, deleteDoc } from 'firebase/firesto
 import { db } from '../lib/firebase';
 import { User, OnlinePresenceUser } from '../types';
 
+export type { OnlinePresenceUser };
+
 const STORAGE_KEY_SESSION_ID = 'sahaya_presence_session_id';
 const STORAGE_KEY_LOCAL_ONLINE = 'sahaya_local_online_users';
 
@@ -40,7 +42,7 @@ export const startPresenceHeartbeat = (
       userName: user?.name || (user?.isDemo ? 'නරඹන්නා (Guest User)' : 'ආගන්තුක පරිශීලක (Visitor)'),
       userPhone: user?.phone || '',
       userRole: user?.role === 'admin' ? 'admin' : (user ? 'user' : 'guest'),
-      district: user?.district || currentDistrict || 'බස්නාහිර',
+      district: (user as any)?.district || (user as any)?.city || currentDistrict || 'බස්නාහිර',
       currentView: currentView || 'dashboard',
       device: getDeviceType(),
       lastPing: Date.now(),

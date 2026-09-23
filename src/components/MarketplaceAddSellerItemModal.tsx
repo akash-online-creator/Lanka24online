@@ -377,21 +377,31 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
               <label className="block text-xs font-bold text-slate-800 dark:text-zinc-200 mb-2">
                 * ඔබ මෙය විකුණන්නේ : (එකක් හෝ කිහිපයක් තෝරන්න)
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { id: 'wholesale' as MarketItemSaleType, label: 'තොග (Wholesale)' },
-                  { id: 'retail' as MarketItemSaleType, label: 'සිල්ලර (Retail)' },
-                  { id: 'exchange' as MarketItemSaleType, label: 'හුවමාරු (Barter)' }
+                  { id: 'wholesale' as MarketItemSaleType, label: '🏭 තොග (Wholesale)' },
+                  { id: 'retail' as MarketItemSaleType, label: '🛍️ සිල්ලර (Retail)' },
+                  { id: 'free_giveaway' as MarketItemSaleType, label: '🎁 නොමිලේ (Free)' },
+                  { id: 'exchange' as MarketItemSaleType, label: '🔄 හුවමාරු (Barter)' }
                 ].map((st, sIdx) => {
                   const isChecked = saleTypes.includes(st.id);
                   return (
                     <button
                       key={`sale_type_${st.id}_${sIdx}`}
                       type="button"
-                      onClick={() => toggleSaleType(st.id)}
+                      onClick={() => {
+                        toggleSaleType(st.id);
+                        if (st.id === 'free_giveaway' && !isChecked) {
+                          setPrice(0);
+                        }
+                      }}
                       className={`p-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          ? st.id === 'free_giveaway'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : st.id === 'wholesale'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-700 hover:bg-slate-100'
                       }`}
                     >

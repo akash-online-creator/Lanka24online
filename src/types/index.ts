@@ -173,6 +173,9 @@ export interface HelpPost {
   boostPaymentMethod?: 'wallet' | 'card_qr' | 'bank_slip' | string;
   boostPaymentReference?: string;
   boostCategory?: string;
+  isPinnedEmergency?: boolean;
+  priorityLevel?: 'emergency' | 'high' | 'normal';
+  emergencyAlertReason?: string;
   // External links & Embedded media (Facebook video, Telegram, YouTube, Website)
   externalLink?: string;
   videoUrl?: string;
@@ -627,10 +630,10 @@ export interface GroupInviteNotification {
 }
 
 // ---------------- Marketplace (වෙළඳපොළ) Types ----------------
-export type MarketItemSaleType = 'wholesale' | 'retail' | 'exchange';
+export type MarketItemSaleType = 'wholesale' | 'retail' | 'free_giveaway' | 'exchange';
 export type MarketDeliveryOption = 'pickup' | 'seller_deliver' | 'free_shipping' | 'paid_shipping';
 export type MarketSection = 'sellers' | 'buyers' | 'shops' | 'businesses';
-export type MarketSellerSubTab = 'all' | 'wholesale' | 'retail' | 'exchange';
+export type MarketSellerSubTab = 'all' | 'wholesale' | 'retail' | 'free_giveaway' | 'exchange';
 
 export interface MarketLocation {
   name: string;

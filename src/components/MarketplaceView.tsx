@@ -504,14 +504,15 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
             </button>
           </div>
 
-          {/* Sub-menu: තොග | සිල්ලර | හුවමාරු (Wholesale / Retail / Barter Exchange) */}
+          {/* Sub-menu: තොග | සිල්ලර | නොමිලේ දෙන දෑ | හුවමාරු (Wholesale / Retail / Free Giveaways / Barter Exchange) */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto">
               {[
-                { id: 'all' as MarketSellerSubTab, label: 'සියල්ල (All)' },
-                { id: 'wholesale' as MarketSellerSubTab, label: 'තොග (Wholesale)' },
-                { id: 'retail' as MarketSellerSubTab, label: 'සිල්ලර (Retail)' },
-                { id: 'exchange' as MarketSellerSubTab, label: 'හුවමාරු (Exchange)' }
+                { id: 'all' as MarketSellerSubTab, label: '📦 සියල්ල (All)' },
+                { id: 'wholesale' as MarketSellerSubTab, label: '🏭 තොග (Wholesale)' },
+                { id: 'retail' as MarketSellerSubTab, label: '🛍️ සිල්ලර (Retail)' },
+                { id: 'free_giveaway' as MarketSellerSubTab, label: '🎁 නොමිලේ දෙන දෑ (Free Sharing)' },
+                { id: 'exchange' as MarketSellerSubTab, label: '🔄 හුවමාරු (Exchange)' }
               ].map((st, stIdx) => (
                 <button
                   key={`sub_tab_${st.id}_${stIdx}`}
@@ -672,9 +673,23 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         {item.saleTypes.map((st) => (
                           <span
                             key={st}
-                            className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                              st === 'wholesale'
+                                ? 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                                : st === 'retail'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                : st === 'free_giveaway'
+                                ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 font-extrabold'
+                                : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                            }`}
                           >
-                            {st === 'wholesale' ? 'තොග' : st === 'retail' ? 'සිල්ලර' : 'හුවමාරු'}
+                            {st === 'wholesale'
+                              ? '🏭 තොග'
+                              : st === 'retail'
+                              ? '🛍️ සිල්ලර'
+                              : st === 'free_giveaway'
+                              ? '🎁 නොමිලේ (Free)'
+                              : '🔄 හුවමාරු'}
                           </span>
                         ))}
                       </div>
@@ -694,8 +709,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase">
                           විකුණුම් මිල
                         </div>
-                        <div className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400">
-                          {item.price ? `රු. ${item.price.toLocaleString()}` : 'හුවමාරුව සඳහා පමණි'}
+                        <div className={`text-base sm:text-lg font-black ${item.saleTypes.includes('free_giveaway') || item.price === 0 ? 'text-purple-600 dark:text-purple-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {item.saleTypes.includes('free_giveaway') || item.price === 0
+                            ? '🎁 නොමිලේ (Free Sharing)'
+                            : item.price
+                            ? `රු. ${item.price.toLocaleString()}`
+                            : 'හුවමාරුව සඳහා පමණි'}
                         </div>
                       </div>
                       <div className="text-right">

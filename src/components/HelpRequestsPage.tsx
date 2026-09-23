@@ -149,8 +149,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   // Boost Modal State
   const [boostingPost, setBoostingPost] = useState<HelpPost | null>(null);
 
-  // Feed Filter Tab: 'all' | 'quick_services' | 'saved'
-  const [activeFeedTab, setActiveFeedTab] = useState<'all' | 'quick_services' | 'saved'>('all');
+  // Feed Filter Tab: 'all' | 'emergency' | 'quick_services' | 'saved'
+  const [activeFeedTab, setActiveFeedTab] = useState<'all' | 'emergency' | 'quick_services' | 'saved'>('all');
   
   // Show / Hide Category Grid toggle (strictly closed by default so user always lands directly on Posts Feed)
   const [showCategoryGrid, setShowCategoryGrid] = useState(false);
@@ -260,6 +260,29 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return si;
   };
 
+  // Helper to determine if a post is a high-priority / emergency community alert
+  const isEmergencyOrHighPriority = (post: HelpPost): boolean => {
+    if (!post) return false;
+    if (post.isPinnedEmergency) return true;
+    if (post.priorityLevel === 'emergency' || post.priorityLevel === 'high') return true;
+    if (post.postCode?.startsWith('#BLD-') || post.postCode?.startsWith('#EMG-')) return true;
+    const text = `${post.whatHappened || ''} ${post.whatIsNeeded || ''} ${post.tagName || ''} ${post.category || ''} ${post.tagCategory || ''}`.toLowerCase();
+    if (
+      text.includes('හදිසි අනතුර') ||
+      text.includes('රුධිර') ||
+      text.includes('blood') ||
+      text.includes('emergency') ||
+      text.includes('ජල ගැලීම්') ||
+      text.includes('ගංවතුර') ||
+      text.includes('නැතිවූ දරුවා') ||
+      text.includes('ආපදා') ||
+      text.includes('icu')
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // Helper to determine if a post is a quick service
   const isQuickService = (post: HelpPost): boolean => {
     if (!post) return false;
@@ -282,32 +305,39 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   };
 
   // Process and sort News Feed posts:
-  // 1. Quick Services ALWAYS come to the top
-  // 2. All other posts are sorted chronologically (newest first)
-  // 3. Tab filter applied (All / Quick Services only / Saved posts only)
+  // 1. Pinned Emergency & High Priority Community Alerts ALWAYS come first
+  // 2. Boosted Top Ads come next
+  // 3. Quick Services come next
+  // 4. All other posts are sorted chronologically (newest first)
+  // 5. Tab filter applied (All / Emergency only / Quick Services only / Saved posts only)
   const newsFeedSortedPosts = useMemo(() => {
     const sourceList = [...(filteredPosts || [])];
 
     let result = sourceList;
 
     // Apply active feed tab filter
-    if (activeFeedTab === 'quick_services') {
+    if (activeFeedTab === 'emergency') {
+      result = result.filter((p) => isEmergencyOrHighPriority(p));
+    } else if (activeFeedTab === 'quick_services') {
       result = result.filter((p) => isQuickService(p));
     } else if (activeFeedTab === 'saved') {
       result = result.filter((p) => savedPostIds.includes(p.id));
     }
 
-    // Sort: Boosted posts first (within category & feed), then Quick Services, then chronological newest first
+    // Sort: Emergency & Pinned first, then Boosted, then Quick Services, then chronological newest first
     return result.sort((a, b) => {
+      const aIsEmerg = isEmergencyOrHighPriority(a);
+      const bIsEmerg = isEmergencyOrHighPriority(b);
+      if (aIsEmerg && !bIsEmerg) return -1;
+      if (!aIsEmerg && bIsEmerg) return 1;
+
       const aIsBoosted = Boolean(a.isBoosted);
       const bIsBoosted = Boolean(b.isBoosted);
-
       if (aIsBoosted && !bIsBoosted) return -1;
       if (!aIsBoosted && bIsBoosted) return 1;
 
       const aIsQuick = isQuickService(a);
       const bIsQuick = isQuickService(b);
-
       if (aIsQuick && !bIsQuick) return -1;
       if (!aIsQuick && bIsQuick) return 1;
 
@@ -349,6 +379,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     const posts = helpPosts || [];
     return {
       all: posts.length,
+      emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length,
       quick_services: posts.filter((p) => isQuickService(p)).length,
       normal_services: posts.filter((p) => !isQuickService(p) && (p.category === 'normal_services' || p.category === 'services' || p.category === 'general' || !p.category || p.serviceType === 'normal_services')).length,
       professional_services: posts.filter((p) => p.category === 'professional_services' || p.serviceType === 'professional_services').length,
@@ -542,6 +573,31 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               !boardCategoryFilter && activeFeedTab === 'all' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
             }`}>
               {categoryCounts.all}
+            </span>
+          </button>
+
+          {/* Tab 1.5: Emergency & Pinned Community Alerts */}
+          <button
+            type="button"
+            onClick={() => {
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency & Pinned Alerts', '🚨 அவசர / முதன்மை'));
+              setActiveFeedTab('emergency');
+            }}
+            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
+              activeFeedTab === 'emergency'
+                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white border-red-400 shadow-md shadow-red-600/30 scale-[1.01] animate-pulse'
+                : 'bg-red-50/70 dark:bg-red-950/30 hover:bg-red-100/80 dark:hover:bg-red-950/50 text-red-950 dark:text-red-200 border-red-200/90 dark:border-red-900/50'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-600 dark:text-red-400 animate-bounce" />
+              <span className="truncate">{getLangText('හදිසි / ප්‍රමුඛතා', 'Emergency / Pinned', 'அவசரம்')}</span>
+            </div>
+            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
+              activeFeedTab === 'emergency' ? 'bg-white/30 text-white' : 'bg-red-200/80 dark:bg-red-900/60 text-red-950 dark:text-red-200'
+            }`}>
+              {categoryCounts.emergency}
             </span>
           </button>
 

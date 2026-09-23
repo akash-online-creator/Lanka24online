@@ -300,6 +300,25 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       <div className="space-y-3.5 pt-1 text-slate-900 dark:text-slate-100 font-sans">
         
+        {/* Pinned Emergency / High Priority Alert Banner */}
+        {(post.isPinnedEmergency || post.priorityLevel === 'emergency' || post.postCode?.startsWith('#BLD-') || post.postCode?.startsWith('#EMG-')) && (
+          <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white text-xs font-black shadow-lg shadow-red-600/30 border-2 border-red-300/80 animate-pulse">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
+              <span className="tracking-wide">
+                {activeCardLang === 'en' 
+                  ? '🚨 PINNED HIGH PRIORITY / EMERGENCY' 
+                  : activeCardLang === 'ta' 
+                  ? '🚨 முதன்மை அவசர அறிவிப்பு' 
+                  : '🚨 ප්‍රමුඛතා හදිසි දැන්වීම (Pinned Emergency Alert)'}
+              </span>
+            </div>
+            <span className="text-[10px] uppercase font-mono font-black tracking-wider bg-black/40 text-yellow-300 px-2.5 py-0.5 rounded-lg border border-yellow-300/50">
+              URGENT 🔥
+            </span>
+          </div>
+        )}
+
         {/* Boosted Top Priority Banner */}
         {post.isBoosted && (
           <div className="flex items-center justify-between gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-black shadow-md border border-amber-300/80">
