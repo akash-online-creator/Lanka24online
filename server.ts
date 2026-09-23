@@ -564,8 +564,23 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   });
 
   // -------------------------------------------------------------
-  // 🌐 6. Frontend Serving (Vite middleware in dev, static dist in prod)
+  // 🌐 6. Static PWA Assets & Frontend Serving
   // -------------------------------------------------------------
+  const publicPath = path.join(process.cwd(), 'public');
+  app.use(express.static(publicPath));
+
+  app.get(['/manifest.json', '/manifest.webmanifest', '/site.webmanifest'], (req, res) => {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.sendFile(path.join(publicPath, 'manifest.json'));
+  });
+
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.sendFile(path.join(publicPath, 'sw.js'));
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

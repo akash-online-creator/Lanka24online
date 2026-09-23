@@ -41,7 +41,10 @@ import {
   BellOff,
   SlidersHorizontal,
   QrCode,
-  Key
+  Key,
+  HelpCircle,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
@@ -151,6 +154,7 @@ interface UserSettingsModalProps {
   language?: Language;
   initialTab?: SettingsTabKey;
   helpPosts?: HelpPost[];
+  onNavigateToIssues?: () => void;
 }
 
 export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
@@ -160,7 +164,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   onUpdateUser,
   language = 'si',
   initialTab = 'profile',
-  helpPosts = []
+  helpPosts = [],
+  onNavigateToIssues
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
   const [isDataSaver, toggleDataSaver] = useDataSaver();
@@ -587,8 +592,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Top Tabs Switcher */}
-        <div className="flex items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-1 sm:gap-1.5 overflow-x-auto">
+        {/* Top Tabs Switcher (Zero-overflow wrap - all buttons visible immediately) */}
+        <div className="flex flex-wrap items-center p-2 bg-slate-100 dark:bg-[#0b2216] border-b border-slate-200 dark:border-[#143d28] shrink-0 gap-1.5">
           {/* Tab 1: Profile Setting */}
           <button
             type="button"
@@ -596,14 +601,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('profile');
               setErrorMsg(null);
             }}
-            className={`flex-1 min-w-[75px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeTab === 'profile'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
             <UserIcon className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{getLang('👤 Profile', '👤 Profile', '👤 சுயவிவரம்')}</span>
+            <span>{getLang('👤 Profile', '👤 Profile', '👤 சுயவிவரம்')}</span>
           </button>
 
           {/* Tab 2: Security & 2FA */}
@@ -613,14 +618,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('security_2fa');
               setErrorMsg(null);
             }}
-            className={`flex-1 min-w-[85px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[110px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeTab === 'security_2fa'
                 ? 'bg-gradient-to-r from-teal-600 to-emerald-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-            <span className="truncate">{getLang('🔐 2FA ආරක්ෂාව', '🔐 2FA Security', '🔐 2FA பாதுகாப்பு')}</span>
+            <span>{getLang('🔐 2FA ආරක්ෂාව', '🔐 2FA Security', '🔐 2FA பாதுகாப்பு')}</span>
             {user?.twoFactorEnabled && (
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             )}
@@ -633,14 +638,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('font_size');
               setErrorMsg(null);
             }}
-            className={`flex-1 min-w-[75px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[90px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeTab === 'font_size'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
             <Type className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{getLang('🔤 Font', '🔤 Font', '🔤 எழுத்து')}</span>
+            <span>{getLang('🔤 Font', '🔤 Font', '🔤 எழுத்து')}</span>
           </button>
 
           {/* Tab 4: Data Saver */}
@@ -650,14 +655,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('data_saver');
               setErrorMsg(null);
             }}
-            className={`flex-1 min-w-[80px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[105px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeTab === 'data_saver'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
             <Zap className="w-3.5 h-3.5 shrink-0 text-amber-300" />
-            <span className="truncate">{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா')}</span>
+            <span>{getLang('⚡ Data Saver', '⚡ Data Saver', '⚡ டேட்டா')}</span>
           </button>
 
           {/* Tab 5: Siren & Emergency Volume Settings */}
@@ -667,14 +672,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               setActiveTab('siren_settings');
               setErrorMsg(null);
             }}
-            className={`flex-1 min-w-[85px] flex items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2 sm:py-2.5 px-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
               activeTab === 'siren_settings'
                 ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-md scale-[1.01]'
                 : 'text-slate-700 dark:text-emerald-300 hover:bg-white/80 dark:hover:bg-emerald-950/60'
             }`}
           >
             <Volume2 className="w-3.5 h-3.5 shrink-0 text-red-400" />
-            <span className="truncate">{getLang('🚨 සයිරන්', '🚨 Siren', '🚨 சைரன்')}</span>
+            <span>{getLang('🚨 සයිරන්', '🚨 Siren', '🚨 சைரன்')}</span>
           </button>
         </div>
 
@@ -885,17 +890,49 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
               </div>
 
               {/* User Read-only Credentials Badge */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs">
-                <div className="flex items-center gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs">
+                {/* 1. User ID */}
+                <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Key className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">{getLang('පරිශීලක ID (User ID):', 'User ID:', 'பயனர் ஐடி:')}</div>
+                      <div className="font-mono font-black text-emerald-950 dark:text-emerald-200 truncate">
+                        {user?.userId || user?.id || user?.nicNumber || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idToCopy = user?.userId || user?.id || user?.nicNumber || '';
+                      if (idToCopy) {
+                        navigator.clipboard.writeText(idToCopy);
+                        setSaveSuccessMsg(getLang('පරිශීලක ID පිටපත් කරගන්නා ලදී!', 'User ID copied!', 'பயனர் ஐடி நகலெடுக்கப்பட்டது!'));
+                        setTimeout(() => setSaveSuccessMsg(null), 2500);
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/80 dark:hover:bg-emerald-800 text-emerald-800 dark:text-emerald-200 cursor-pointer shrink-0 text-[10px] font-black flex items-center gap-1 active:scale-95 transition-all"
+                    title={getLang('පරිශීලක ID එක පිටපත් කරන්න', 'Copy User ID', 'பயனர் ஐடியை நகலெடு')}
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Copy</span>
+                  </button>
+                </div>
+
+                {/* 2. NIC Number */}
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">NIC Number (ජා.හැ. අංකය):</div>
-                    <div className="font-mono font-black text-emerald-950 dark:text-emerald-200">{user?.nicNumber || user?.userId || 'N/A'}</div>
+                    <div className="font-mono font-black text-emerald-950 dark:text-emerald-200 truncate">{user?.nicNumber || user?.userId || 'N/A'}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+
+                {/* 3. User Status */}
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
                   <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">User Status (තත්ත්වය):</div>
                     <div className="font-black text-emerald-700 dark:text-emerald-300 uppercase">{user?.status || 'APPROVED'}</div>
                   </div>
@@ -1103,6 +1140,41 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* 🛠️ App Help & Issues Support Section (Requirement 03: ඉහළින්ම ඇති ඇප් සහය බොත්තම setting තුලට රැගෙනයන්න) */}
+              {onNavigateToIssues && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-900 via-[#005e38] to-teal-900 border-2 border-emerald-400/60 text-white shadow-md flex flex-col sm:flex-row items-center justify-between gap-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-white/15 text-white flex items-center justify-center font-black shadow-inner shrink-0 border border-white/20">
+                      <HelpCircle className="w-5 h-5 text-emerald-300" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
+                        <span>{getLang('ඇප් සහය & තාක්ෂණික ගැටලු (App Help)', 'App Help & Technical Support', 'செயலி உதவி மற்றும் சிக்கல்கள்')}</span>
+                      </h4>
+                      <p className="text-[11px] text-emerald-100 font-medium leading-snug mt-0.5">
+                        {getLang(
+                          'ඇප් එකේ ගැටලුවක් හෝ දෝෂයක් ඇත්නම් සෘජුවම අපගේ කාර්මික කණ්ඩායමට යොමු කරන්න.',
+                          'Report bugs, request technical assistance, or contact support directly.',
+                          'தொழில்நுட்ப சிக்கல்கள் அல்லது உதவிகளுக்கு ஆதரவு குழுவை தொடர்பு கொள்ளவும்.'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onNavigateToIssues();
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-amber-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+                  >
+                    <HelpCircle className="w-4 h-4 text-amber-950" />
+                    <span>{getLang('ඇප් සහය විවෘත කරන්න', 'Open App Help', 'உதவிக்கு செல்க')}</span>
+                    <ExternalLink className="w-3 h-3 text-amber-950/80 ml-0.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="pt-3 flex items-center justify-end gap-2.5">

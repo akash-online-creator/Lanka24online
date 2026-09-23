@@ -2382,6 +2382,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         language={language}
         initialTab={settingsInitialTab}
         helpPosts={helpPosts}
+        onNavigateToIssues={() => {
+          setIsSettingsModalOpen(false);
+          if (onNavigateToIssues) {
+            onNavigateToIssues();
+          } else if (onNavigate) {
+            onNavigate('issues');
+          }
+        }}
       />
 
       {/* Blood Donation & Disaster Relief Hub Modal */}

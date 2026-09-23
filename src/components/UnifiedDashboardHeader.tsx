@@ -347,21 +347,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* AI Assistant & Auto-Translator */}
-            {onOpenAssistant && (
-              <button
-                type="button"
-                onClick={onOpenAssistant}
-                className="relative p-2 sm:px-3 sm:py-2 rounded-xl bg-white hover:bg-emerald-50 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 border border-emerald-300/80 dark:border-emerald-800/80 text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title="සහය මිතුරා & පරිවර්තකය (AI Assistant & Auto-Translator)"
-              >
-                <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500 animate-spin-slow" />
-                <span className="hidden sm:inline text-xs font-bold">
-                  {language === 'en' ? 'AI Assistant' : language === 'ta' ? 'AI உதவியாளர்' : 'සහය මිතුරා'}
-                </span>
-              </button>
-            )}
-
             {/* Dark / Light Theme Toggle */}
             <button
               type="button"
@@ -375,21 +360,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 <Moon className="w-4 h-4 text-slate-700" />
               )}
             </button>
-
-            {/* App Help ("ඇප් සහය") */}
-            {onNavigateToIssues && (
-              <button
-                type="button"
-                onClick={onNavigateToIssues}
-                className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-black bg-white hover:bg-emerald-50 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
-                title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-              >
-                <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
-                <span className="hidden sm:inline font-bold text-xs">
-                  {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-                </span>
-              </button>
-            )}
 
             {/* Admin Switcher (If Admin user) */}
             {checkIsAdmin(user) && onNavigate && (
@@ -598,19 +568,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             >
               <QrCode className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span className="hidden sm:inline">QR Pay</span>
-            </button>
-          )}
-
-          {/* Barter Hub Button */}
-          {!isVisitor && onOpenBarterExchange && (
-            <button
-              type="button"
-              onClick={onOpenBarterExchange}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/70 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="භාණ්ඩ හුවමාරු මධ්‍යස්ථානය (Barter Hub)"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">හුවමාරු (Barter)</span>
             </button>
           )}
 
