@@ -1360,15 +1360,55 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
 
             {/* Media Attachments & Embedded Media (Telegram Photo, Video, Voice Note, External Link) */}
-            {(post.imageUrl || post.videoUrl || post.audioUrl || post.externalLink) && (
+            {(post.imageUrl || post.videoUrl || post.audioUrl || post.externalLink || post.isVoicePost) && (
               <div className="pt-2 space-y-2">
-                {/* Voice Note Player */}
-                {post.audioUrl && (
-                  <div className="p-2 rounded-xl bg-slate-900/60 border border-emerald-500/40">
-                    <AudioVoicePlayer 
-                      audioUrl={post.audioUrl} 
-                      durationSec={post.audioDurationSec || 5} 
-                    />
+                {/* 🎙️ Voice Note Player & AI Stamped Metadata */}
+                {(post.audioUrl || post.isVoicePost) && (
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-teal-950/80 border-2 border-emerald-500/70 shadow-md space-y-2 text-white">
+                    <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                      <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                        <span>🎙️ AI හඬ ඉල්ලීම (Voice Request)</span>
+                      </span>
+                      {post.voiceLanguage && (
+                        <span className="text-[10px] bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase">
+                          {post.voiceLanguage === 'si' ? 'සිංහල' : post.voiceLanguage === 'ta' ? 'தமிழ்' : 'English'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Date, Time & Sent Location Info */}
+                    {(post.voiceSentDate || post.voiceSentTime || post.voiceSentLocation) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-2 rounded-xl bg-black/40 text-[11px] font-semibold text-emerald-100 border border-emerald-500/30">
+                        {post.voiceSentDate && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span className="truncate">{post.voiceSentDate}</span>
+                          </div>
+                        )}
+                        {post.voiceSentTime && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-teal-300 shrink-0" />
+                            <span className="truncate">{post.voiceSentTime}</span>
+                          </div>
+                        )}
+                        {post.voiceSentLocation && (
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+                            <span className="truncate">{post.voiceSentLocation}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {post.audioUrl && (
+                      <div className="pt-1">
+                        <AudioVoicePlayer 
+                          audioUrl={post.audioUrl} 
+                          durationSec={post.audioDurationSec || 5} 
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 

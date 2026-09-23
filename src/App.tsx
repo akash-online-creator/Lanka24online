@@ -956,7 +956,14 @@ export default function App() {
       // 1. Immediately update local state & localStorage
       setUsers((prev) => {
         const nextUsers = deduplicateUsers(
-          (prev || []).map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u))
+          (prev || []).map((u) => {
+            const isMatch =
+              u.id === updatedUser.id ||
+              (u.nicNumber && updatedUser.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+              (u.userId && updatedUser.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+              (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+            return isMatch ? { ...u, ...updatedUser } : u;
+          })
         );
         try {
           localStorage.setItem('sahaya_users', JSON.stringify(nextUsers));
@@ -964,7 +971,14 @@ export default function App() {
         return nextUsers;
       });
 
-      if (currentUser && currentUser.id === updatedUser.id) {
+      const isCurrentMatch =
+        currentUser &&
+        (currentUser.id === updatedUser.id ||
+          (currentUser.nicNumber && updatedUser.nicNumber && currentUser.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+          (currentUser.userId && updatedUser.userId && currentUser.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+          (updatedUser.userNumericId && currentUser.userNumericId === updatedUser.userNumericId));
+
+      if (isCurrentMatch) {
         setCurrentUser(updatedUser);
         try {
           localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
@@ -991,7 +1005,11 @@ export default function App() {
                   if (userCred.user) {
                     await updatePassword(userCred.user, activePassword);
                   }
-                } catch {}
+                } catch {
+                  try {
+                    await createUserWithEmailAndPassword(auth, formattedEmail, activePassword);
+                  } catch {}
+                }
               }
             }
           } catch (pwErr) {
@@ -1017,7 +1035,6 @@ export default function App() {
       console.log("✅ පරිශීලක දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
     } catch (err) {
       console.error("⛔ Save වීමේ දෝෂයක්:", err);
-      alert("අන්තර්ජාල දෝෂයක් නිසා තොරතුරු දත්ත ගබඩාවට සේව් නොවීය.");
     }
   };
 

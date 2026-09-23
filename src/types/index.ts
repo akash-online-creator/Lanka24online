@@ -178,6 +178,13 @@ export interface HelpPost {
   videoUrl?: string;
   audioUrl?: string;
   audioDurationSec?: number;
+  voiceSentDate?: string; // හඬ පණිවිඩය යැවූ දිනය (Date)
+  voiceSentTime?: string; // හඬ පණිවිඩය යැවූ වේලාව (Time)
+  voiceSentLocation?: string; // හඬ පණිවිඩය යැවූ ස්ථානය (Location / GPS Address)
+  voiceCoordinates?: { lat: number; lng: number };
+  isVoicePost?: boolean;
+  voiceTranscript?: string;
+  voiceLanguage?: 'si' | 'ta' | 'en';
   imageUrl?: string;
   images?: string[];
   telegramStorage?: TelegramMediaRecord;
@@ -343,6 +350,9 @@ export interface User {
   twoFactorConfirmedAt?: string;
   pendingProfileUpdate?: PendingProfileUpdate;
   aiScanResult?: AiSecurityScanResult;
+  trustPoints?: number; // 0 to 1000, default 100
+  customBadges?: TrustBadgeType[];
+  trustScoreLogs?: TrustScoreLogItem[];
 }
 
 export interface PendingProfileUpdate {
@@ -815,17 +825,52 @@ export interface EmergencyServiceContact {
   adminReviewedAt?: string;
 }
 
-export type TrustBadgeType = 'bronze' | 'silver' | 'gold' | 'community_hero';
+export type TrustBadgeType = 
+  | 'bronze' 
+  | 'silver' 
+  | 'gold' 
+  | 'community_hero'
+  | 'verified_seller'
+  | 'verified_volunteer'
+  | 'verified_professional'
+  | 'warning'
+  | 'blocked';
+
+export interface TrustScoreLogItem {
+  id: string;
+  userId: string;
+  userName: string;
+  change: number; // e.g. +30, -50
+  balanceAfter: number;
+  reason: string;
+  category: 
+    | 'verification' 
+    | 'help_completed' 
+    | 'aid_verified' 
+    | 'rating' 
+    | 'fraud_penalty' 
+    | 'fake_report' 
+    | 'policy_strike' 
+    | 'admin_manual' 
+    | 'unblock_reset';
+  adminName?: string;
+  timestamp: string;
+  timestampMs: number;
+}
 
 export interface UserTrustProfile {
   completedHelpsCount: number;
   positiveReviewsCount: number;
   karmaPoints: number;
+  trustPoints?: number;
   trustBadge: TrustBadgeType;
+  activeBadges?: TrustBadgeType[];
   badgeTitleSi: string;
   badgeIcon: string;
   verifiedPhone: boolean;
   verifiedNic: boolean;
+  trustLevel?: 'high' | 'good' | 'warning' | 'critical' | 'blocked';
+  isBlockedDueToPoints?: boolean;
 }
 
 export interface ProximityNotificationConfig {
@@ -942,10 +987,264 @@ export interface RedAlertItem {
   status: 'active' | 'resolved' | 'false_alarm';
   severity: 'critical' | 'high' | 'moderate';
 
+  // Voice & Audio SOS Recording
+  audioUrl?: string;
+  audioDurationSec?: number;
+  voiceSentDate?: string;
+  voiceSentTime?: string;
+  voiceSentLocation?: string;
+  voiceCoordinates?: { lat: number; lng: number };
+  isVoiceAlert?: boolean;
+
   // Interactive Elements
   comments: RedAlertComment[];
   fakeReports: RedAlertFakeReport[];
   isFlaggedFake?: boolean;
   adminActionNote?: string;
 }
+
+// ==========================================
+// 🏛️ ආධාර සහ සම්පත් විනිවිදභාවයේ ලෙජරය (Transparent Aid Ledger) Types
+// ==========================================
+
+export type AidCategory = 
+  | 'dry_rations'       // වියළි ආහාර / සලාක
+  | 'cooked_meals'      // පිසූ ආහාර
+  | 'medicine'          // ඖෂධ හා ප්‍රථමාධාර
+  | 'funds'             // මුදල් ආධාර / අරමුදල්
+  | 'drinking_water'    // පිරිසිදු පානීය ජලය
+  | 'clothing_blankets' // ඇඳුම් පැළඳුම් හා උණුසුම් පොරෝන
+  | 'baby_care'         // ළදරු ආහාර හා ඩයපර්ස්
+  | 'hygiene_sanitary'  // සනීපාරක්ෂක ද්‍රව්‍ය
+  | 'shelter_equipment' // කූඩාරම් / ටෙන්ට් / උපකරණ
+  | 'other';            // වෙනත් ආධාර
+
+export type AidCenterType = 
+  | 'camp'              // ආපදා සහන කඳවුර (Relief Camp)
+  | 'temple_church'     // පන්සල / පල්ලිය / ආගමික ස්ථානය
+  | 'school'            // පාසල් ගොඩනැගිල්ල
+  | 'community_center'  // ප්‍රජා ශාලාව / සමිති ශාලාව
+  | 'hospital'          // රෝහල / සෞඛ්‍ය මධ්‍යස්ථානය
+  | 'family_group'      // පීඩාවට පත් පවුල් එකමුතුවක්
+  | 'distribution_hub'; // ප්‍රධාන බෙදාහැරීමේ මධ්‍යස්ථානය
+
+export interface AidRecipientCenter {
+  id: string;
+  centerCode: string;          // 6-digit unique code e.g. "849201"
+  centerName: string;          // e.g. "කැලණිය ගංවතුර විපත සහන කඳවුර"
+  centerType: AidCenterType;
+  coordinatorName: string;     // වගකිවයුතු බාරකරුගේ නම
+  coordinatorPhone: string;    // දුරකථන අංකය
+  coordinatorNic: string;      // හැඳුනුම්පත් අංකය
+  coordinatorUserId?: string;  // Registered User ID if logged in
+  village: string;             // ගම
+  town: string;                // නගරය
+  district: string;            // දිස්ත්‍රික්කය
+  province: string;            // පළාත
+  address: string;             // සම්පූර්ණ ලිපිනය / ස්ථානය
+  peopleCount: number;         // රැඳී සිටින / ප්‍රතිලාභ ලබන පුද්ගලයින් සංඛ්‍යාව
+  familiesCount?: number;      // පවුල් සංඛ්‍යාව
+  urgentNeeds: string[];       // හදිසි අවශ්‍යතා (dry_rations, water, etc.)
+  notes?: string;              // විශේෂ සටහන්
+  fraudWarningAccepted: boolean; // වංචනික ක්‍රියාවලින් වැලකීමේ සහතිකය
+  fraudWarningAcceptedAt: string;
+  createdAt: string;
+  createdAtMs: number;
+  status: 'active' | 'closed' | 'verified';
+  totalDeliveriesCount: number;
+  totalEstimatedValue: number;
+  totalItemsDeliveredSummary?: string;
+  qrCodeData?: string;
+}
+
+export interface AidDeliveryRecord {
+  id: string;
+  recordCode: string;            // e.g. "#AID-LOG-849201-104"
+  centerCode: string;            // The 6-digit center code
+  centerId: string;
+  centerName: string;
+  centerTown: string;
+  centerDistrict: string;
+  
+  // Donor Details
+  donorUserId?: string;
+  donorName: string;
+  donorPhone: string;
+  donorOrganization?: string;    // සමාගම / සංගමය / පෞද්ගලික
+  
+  // Delivered Aid Details
+  aidCategory: AidCategory;
+  categoryTitleSi: string;
+  itemDescription: string;       // ලබාදුන් ආධාර පිළිබඳ විස්තරය
+  quantity: string;              // ප්‍රමාණය (e.g. "සහල් කිලෝ 500, පරිප්පු 100kg, වතුර බෝතල් 200")
+  monetaryValueEstimate?: number;// ඇස්තමේන්තුගත වටිනාකම (රු.) හෝ මුදල් ආධාරය
+  photos?: string[];             // ආධාර භාරදීමේ / රිසිට්පත් පින්තූර
+  
+  // Handover Timestamp
+  deliveryDate: string;          // YYYY-MM-DD
+  deliveryTime: string;          // HH:MM AM/PM
+  donorNotes?: string;
+  
+  // Verification State & Dual-Confirm Workflow
+  status: 'pending_recipient_confirmation' | 'confirmed_received' | 'disputed';
+  submittedAt: string;
+  submittedAtMs: number;
+  
+  // Recipient Confirmation
+  confirmedAt?: string;
+  confirmedAtMs?: number;
+  confirmedByRecipientName?: string;
+  recipientConfirmationNote?: string;
+  recipientConfirmationPhoto?: string;
+  isVerifiedPublic: boolean;
+}
+
+export type BroadcastScope = 'village' | 'town' | 'district' | 'province' | 'country';
+
+export interface AidCommunityBroadcastPost {
+  id: string;
+  postCode: string;              // e.g. "#AID-POST-502"
+  broadcastScope: BroadcastScope;// ගම, නගරය, දිස්ත්‍රික්කය, පළාත, රට
+  scopeName: string;             // e.g. "කැලණිය (නගරය)" or "බස්නාහිර පළාත"
+  title: string;
+  organizerName: string;
+  organizerPhone: string;
+  organizerUserId?: string;
+  collectedSummary: string;      // එකතු කළ මුළු ආධාර සාරාංශය
+  distributedSummary: string;    // බෙදාහැරි ආකාරය සහ ප්‍රතිලාභීන්
+  beneficiaryCenters: string[];  // ආධාර ලැබූ මධ්‍යස්ථාන වල 6-Digit Codes හෝ නම්
+  photos?: string[];
+  totalValueFormatted?: string;
+  createdAt: string;
+  createdAtMs: number;
+  likesCount: number;
+  likedUserIds?: string[];
+  verifiedByLedger: boolean;
+}
+
+// ==============================================================
+// 🔄 BARTER & EXCHANGE HUB TYPES (භාණ්ඩ හුවමාරු ක්‍රමය)
+// ==============================================================
+
+export type BarterCondition = 'brand_new' | 'like_new' | 'good' | 'used';
+export type BarterStatus = 'available' | 'reserved' | 'completed' | 'cancelled';
+export type BarterProposalStatus = 'pending' | 'accepted' | 'declined' | 'completed' | 'cancelled';
+
+export interface BarterItem {
+  id: string;
+  barterCode: string;            // e.g. "#SWAP-8921"
+  userId: string;
+  userNumericId?: string;
+  userName: string;
+  userPhone: string;
+  userNic?: string;
+  userDistrict?: string;
+  userTown?: string;
+
+  // What I Offer (මා සතු අතිරික්ත භාණ්ඩය)
+  offeringTitle: string;
+  offeringCategory: string;      // electronics, agriculture, tools, furniture, vehicles, books, clothing, appliances, general
+  offeringDescription: string;
+  condition: BarterCondition;
+  estimatedValue?: number;       // Fair swap value (රු.)
+  photos: string[];
+
+  // What I Want In Exchange (මට අවශ්‍ය භාණ්ඩය)
+  wantedItem: string;
+  wantedCategory?: string;
+  wantedDescription?: string;
+
+  status: BarterStatus;
+  proposalsCount: number;
+  createdAt: string;
+  createdAtMs: number;
+  updatedAt?: string;
+  completedWithUserId?: string;
+  completedAt?: string;
+}
+
+export interface BarterProposal {
+  id: string;
+  proposalCode: string;          // e.g. "#PROP-4021"
+  barterItemId: string;          // The listing ID
+  barterItemTitle: string;
+  targetUserId: string;          // Owner of the listing
+
+  // Proposer Details
+  proposerUserId: string;
+  proposerName: string;
+  proposerPhone: string;
+  proposerDistrict?: string;
+
+  // What Proposer Offers
+  offeredItemTitle: string;
+  offeredItemCategory?: string;
+  offeredItemDescription: string;
+  offeredCondition?: BarterCondition;
+  offeredPhotos?: string[];
+  proposerNotes?: string;
+
+  status: BarterProposalStatus;
+  createdAt: string;
+  createdAtMs: number;
+  respondedAt?: string;
+}
+
+// ==============================================================
+// 📱 QR CODE & WALLET PAYMENT TYPES (QR ක්‍රමවේදය)
+// ==============================================================
+
+export interface QrTransaction {
+  id: string;
+  referenceNo: string;           // e.g. "#QR-PAY-984210"
+  payerId: string;
+  payerNumericId?: string;
+  payerName: string;
+  payerPhone?: string;
+  
+  payeeId: string;
+  payeeNumericId?: string;
+  payeeName: string;
+  payeePhone?: string;
+  
+  amount: number;
+  purpose: string;               // e.g. "භාණ්ඩ මිලදී ගැනීම (Goods Purchase)", "සේවා ගාස්තු", etc.
+  paymentCode?: string;          // 6-digit dynamic/static verification code
+  timestamp: string;
+  timestampMs: number;
+  status: 'completed' | 'refunded' | 'disputed';
+  payerBalanceAfter: number;
+  payeeBalanceAfter: number;
+}
+
+export interface QrPayPayload {
+  type: 'SAHAYA_PAY';
+  userId: string;
+  numericId: string;
+  name: string;
+  phone: string;
+  fixedAmount?: number;
+  payCode: string;
+  timestamp: number;
+}
+
+// ==============================================================
+// 🟢 LIVE ONLINE PRESENCE TYPES (සජීවී පරිශීලකයින්)
+// ==============================================================
+
+export interface OnlinePresenceUser {
+  sessionId: string;
+  userId: string;
+  userName: string;
+  userPhone?: string;
+  userRole: 'user' | 'admin' | 'guest';
+  district?: string;
+  currentView?: string;
+  device?: string;               // Mobile / Desktop / Tablet
+  lastPing: number;
+  isOnline: boolean;
+  joinedAt: number;
+}
+
+
 

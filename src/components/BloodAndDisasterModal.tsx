@@ -45,6 +45,7 @@ interface BloodAndDisasterModalProps {
   lang?: Language;
   initialTab?: 'blood_requests' | 'volunteer_donors' | 'disaster_relief';
   onRequireRegistration?: () => void;
+  onOpenAidLedger?: () => void;
 }
 
 export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
@@ -54,6 +55,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   lang = 'si',
   initialTab = 'blood_requests',
   onRequireRegistration,
+  onOpenAidLedger,
 }) => {
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>(initialTab);
@@ -379,6 +381,21 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
             <Heart className="w-4 h-4 fill-current" />
             <span>ලේ පරිත්‍යාගශීලීන් ({volunteerDonors.length})</span>
           </button>
+
+          {/* Quick switch to Transparent Aid Ledger */}
+          {onOpenAidLedger && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenAidLedger();
+              }}
+              className="pb-2.5 px-3 font-black text-xs sm:text-sm border-b-2 border-transparent text-emerald-700 dark:text-emerald-400 hover:text-emerald-600 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ml-auto bg-emerald-50 dark:bg-emerald-950/40 rounded-t-xl"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>🏛️ විනිවිදභාවයේ ලෙජරය (Aid Ledger)</span>
+            </button>
+          )}
         </div>
 
         {/* Filter Bar */}

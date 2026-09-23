@@ -13,11 +13,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   Trash2,
-  Loader2
+  Loader2,
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 import { RedAlertItem, RedAlertComment, RedAlertFakeReport, User, LocationOption } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
+import { AudioVoicePlayer } from './AudioVoiceNote';
 import { 
   addCommentToRedAlert, 
   reportRedAlertAsFake, 
@@ -330,6 +333,53 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </div>
 
             </div>
+
+            {/* 🎙️ Voice SOS Audio Note & Stamped Metadata */}
+            {(alert.audioUrl || alert.isVoiceAlert) && (
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-950/90 to-rose-950/90 border-2 border-red-500/70 text-white space-y-2 shadow-lg">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-black text-rose-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                    <span>🚨 හඬ ආපදා වාර්තාව (AI Voice SOS Note)</span>
+                  </span>
+                  <span className="text-[10px] bg-red-600/80 text-white px-2.5 py-0.5 rounded-full font-extrabold uppercase">
+                    VOICE SOS
+                  </span>
+                </div>
+
+                {(alert.voiceSentDate || alert.voiceSentTime || alert.voiceSentLocation) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-2 rounded-xl bg-black/40 text-[11px] font-semibold text-rose-100 border border-red-500/30">
+                    {alert.voiceSentDate && (
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-red-400 shrink-0" />
+                        <span className="truncate">{alert.voiceSentDate}</span>
+                      </div>
+                    )}
+                    {alert.voiceSentTime && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-rose-300 shrink-0" />
+                        <span className="truncate">{alert.voiceSentTime}</span>
+                      </div>
+                    )}
+                    {alert.voiceSentLocation && (
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-red-400 shrink-0" />
+                        <span className="truncate">{alert.voiceSentLocation}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {alert.audioUrl && (
+                  <div className="pt-1">
+                    <AudioVoicePlayer
+                      audioUrl={alert.audioUrl}
+                      durationSec={alert.audioDurationSec || 6}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {alert.description && (
               <div className="p-3.5 mt-2 rounded-xl bg-white dark:bg-black/30 border border-slate-200/80 dark:border-white/10 text-xs">

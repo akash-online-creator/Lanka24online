@@ -61,6 +61,38 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Transparent Aid Ledger Collections
+    match /aid_recipient_centers/{centerId} {
+      allow read, write: if true;
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow read, write: if true;
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow read, write: if true;
+    }
+
+    // Barter & Exchange Collections
+    match /barter_items/{itemId} {
+      allow read, write: if true;
+    }
+
+    match /barter_proposals/{proposalId} {
+      allow read, write: if true;
+    }
+
+    // QR Code Payments & Transactions
+    match /qr_transactions/{txId} {
+      allow read, write: if true;
+    }
+
+    // Live Online Presence Heartbeat
+    match /online_users/{sessionId} {
+      allow read, write: if true;
+    }
+
     // Default fallback
     match /{document=**} {
       allow read, write: if true;

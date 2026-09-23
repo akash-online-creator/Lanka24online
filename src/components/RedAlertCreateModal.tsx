@@ -19,6 +19,7 @@ import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../typ
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
 import { resolveExactLocation } from '../utils/geoUtils';
 import { auth, createRedAlertInFirestore } from '../lib/firebase';
+import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface RedAlertCreateModalProps {
   isOpen: boolean;
@@ -58,6 +59,17 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   // Reporter
   const [reporterName, setReporterName] = useState<string>(currentUser?.name || '');
   const [reporterPhone, setReporterPhone] = useState<string>(currentUser?.phone || currentUser?.whatsappNumber || '');
+
+  // 🎙️ Voice SOS Data
+  const [voiceData, setVoiceData] = useState<{
+    audioUrl?: string;
+    durationSec?: number;
+    transcript?: string;
+    date?: string;
+    time?: string;
+    location?: string;
+    coords?: { lat: number; lng: number };
+  } | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -239,6 +251,13 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         comments: [],
         fakeReports: [],
         isFlaggedFake: false,
+        audioUrl: voiceData?.audioUrl,
+        audioDurationSec: voiceData?.durationSec,
+        voiceSentDate: voiceData?.date || incidentDate,
+        voiceSentTime: voiceData?.time || incidentTime,
+        voiceSentLocation: voiceData?.location || locationName,
+        voiceCoordinates: voiceData?.coords || { lat: latitude, lng: longitude },
+        isVoiceAlert: Boolean(voiceData?.audioUrl),
 
         ...(selectedDisaster === 'other' && customTitle.trim() ? { customDisasterTitle: customTitle.trim() } : {}),
         ...(accuracyMeters !== undefined ? { locationAccuracyMeters: accuracyMeters } : {}),
@@ -324,6 +343,32 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         ) : (
           <form onSubmit={handleOpenPasswordGate} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             
+            {/* 🎙️ AI Voice SOS Recorder Bar */}
+            <AiVoiceInlineBar
+              currentLocation={currentLocation}
+              titlePrompt="🎙️ හදිසි ආපදා AI හඬ සහය (Voice SOS):"
+              onVoiceCaptured={(data) => {
+                setVoiceData(data);
+                if (data.parsedFields?.disasterType && DISASTER_TYPES.some(d => d.id === data.parsedFields.disasterType)) {
+                  setSelectedDisaster(data.parsedFields.disasterType);
+                }
+                if (data.parsedFields?.whatHappened) {
+                  setDescription(data.parsedFields.whatHappened);
+                } else if (data.transcript) {
+                  setDescription(data.transcript);
+                }
+                if (data.location) {
+                  setLocationName(data.location);
+                }
+                if (data.coords) {
+                  setLatitude(data.coords.lat);
+                  setLongitude(data.coords.lng);
+                }
+                if (data.date) setIncidentDate(data.date);
+                if (data.time) setIncidentTime(data.time);
+              }}
+            />
+
             <div className="space-y-2">
               <label className="text-xs font-black uppercase text-red-600 dark:text-red-400 flex items-center gap-1.5 tracking-wider">
                 <AlertTriangle className="w-4 h-4" />

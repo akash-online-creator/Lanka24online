@@ -860,12 +860,7 @@ export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): P
       }
     }
 
-    // Direct doc lookup සාර්ථක නම් වහාම ආපසු ලබා දෙයි (අමතර slow queries 10ක් ධාවනය නොකරයි)
-    if (resultsMap.size > 0) {
-      return Array.from(resultsMap.values());
-    }
-
-    // 2. Direct Doc ID එකක් හමු නොවූයේ නම් පමණක් targeted queries ධාවනය කරයි
+    // 2. Targeted queries across users collection to find any secondary docs
     const colRef = collection(db, 'users');
     const targetedQueries = [
       query(colRef, where('nicNumber', '==', cleanInputUpper)),
@@ -1349,5 +1344,140 @@ export async function seedDemoHelpPostsToFirestore(): Promise<void> {
     console.log('Demo help posts seeded successfully.');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'posts');
+  }
+}
+
+// ==============================================================
+// 🏛️ TRANSPARENT AID LEDGER (ආධාර සහ සම්පත් විනිවිදභාවයේ ලෙජරය)
+// ==============================================================
+
+export async function saveAidCenterToFirestore(center: any): Promise<void> {
+  try {
+    const centerId = center.id || `center_${center.centerCode || Date.now()}`;
+    const docRef = doc(db, 'aid_recipient_centers', centerId);
+    await setDoc(docRef, {
+      ...center,
+      updatedAtServer: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn('saveAidCenterToFirestore notice:', error);
+  }
+}
+
+export async function updateAidCenterInFirestore(centerId: string, data: Record<string, any>): Promise<void> {
+  try {
+    if (!centerId) return;
+    const docRef = doc(db, 'aid_recipient_centers', centerId);
+    await updateDoc(docRef, {
+      ...data,
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('updateAidCenterInFirestore notice:', error);
+  }
+}
+
+export function subscribeToAidCentersFromFirestore(callback: (centers: any[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'aid_recipient_centers');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const centers = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(centers);
+      },
+      (error) => {
+        console.warn('subscribeToAidCenters snapshot notice:', error?.message || error);
+      }
+    );
+  } catch (err) {
+    console.error('subscribeToAidCenters setup error:', err);
+    return () => {};
+  }
+}
+
+export async function saveAidDeliveryToFirestore(delivery: any): Promise<void> {
+  try {
+    const deliveryId = delivery.id || `delivery_${Date.now()}`;
+    const docRef = doc(db, 'aid_deliveries', deliveryId);
+    await setDoc(docRef, {
+      ...delivery,
+      updatedAtServer: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn('saveAidDeliveryToFirestore notice:', error);
+  }
+}
+
+export async function updateAidDeliveryInFirestore(deliveryId: string, data: Record<string, any>): Promise<void> {
+  try {
+    if (!deliveryId) return;
+    const docRef = doc(db, 'aid_deliveries', deliveryId);
+    await updateDoc(docRef, {
+      ...data,
+      updatedAtServer: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('updateAidDeliveryInFirestore notice:', error);
+  }
+}
+
+export function subscribeToAidDeliveriesFromFirestore(callback: (deliveries: any[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'aid_deliveries');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const deliveries = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(deliveries);
+      },
+      (error) => {
+        console.warn('subscribeToAidDeliveries snapshot notice:', error?.message || error);
+      }
+    );
+  } catch (err) {
+    console.error('subscribeToAidDeliveries setup error:', err);
+    return () => {};
+  }
+}
+
+export async function saveAidBroadcastToFirestore(broadcast: any): Promise<void> {
+  try {
+    const broadcastId = broadcast.id || `broadcast_${Date.now()}`;
+    const docRef = doc(db, 'aid_broadcasts', broadcastId);
+    await setDoc(docRef, {
+      ...broadcast,
+      updatedAtServer: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn('saveAidBroadcastToFirestore notice:', error);
+  }
+}
+
+export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'aid_broadcasts');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const broadcasts = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        callback(broadcasts);
+      },
+      (error) => {
+        console.warn('subscribeToAidBroadcasts snapshot notice:', error?.message || error);
+      }
+    );
+  } catch (err) {
+    console.error('subscribeToAidBroadcasts setup error:', err);
+    return () => {};
   }
 }

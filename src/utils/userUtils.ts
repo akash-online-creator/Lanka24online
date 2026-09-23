@@ -55,37 +55,50 @@ export function extractCleanUserKeys(user: Partial<User> | null | undefined): {
  * Intelligently merges multiple user records belonging to the same individual
  */
 export function mergeUserRecords(base: User, incoming: User): User {
+  const baseTime = new Date(base.updatedAt || base.registeredAt || 0).getTime();
+  const incTime = new Date(incoming.updatedAt || incoming.registeredAt || 0).getTime();
+  const isIncomingNewer = incTime > baseTime;
+
   const merged: User = { ...base };
 
   // Prioritize non-empty fields
   for (const [key, val] of Object.entries(incoming)) {
     if (val !== undefined && val !== null && val !== '') {
-      if ((merged as any)[key] === undefined || (merged as any)[key] === null || (merged as any)[key] === '') {
+      if (isIncomingNewer || (merged as any)[key] === undefined || (merged as any)[key] === null || (merged as any)[key] === '') {
         (merged as any)[key] = val;
       }
     }
   }
 
-  // Password / Security flags: favor updated passwords over temporary ones
-  if (incoming.isPasswordChanged || !incoming.isTemporaryPassword) {
-    if (incoming.key && incoming.key !== incoming.tempPassword) {
-      merged.key = incoming.key;
-      merged.password = incoming.password || incoming.key;
-      merged.securityCode = incoming.securityCode || incoming.key;
-      merged.isPasswordChanged = true;
-      merged.isTemporaryPassword = false;
-      merged.tempCode = '';
-      merged.tempPassword = '';
+  // Password / Security flags: favor updated passwords and newer timestamp records
+  if (isIncomingNewer) {
+    if (incoming.isPasswordChanged || !incoming.isTemporaryPassword) {
+      if (incoming.key && incoming.key !== incoming.tempPassword) {
+        merged.key = incoming.key;
+        merged.password = incoming.password || incoming.key;
+        merged.securityCode = incoming.securityCode || incoming.key;
+        merged.isPasswordChanged = true;
+        merged.isTemporaryPassword = false;
+        merged.tempCode = '';
+        merged.tempPassword = '';
+      }
     }
-  }
-
-  // Preserve latest timestamps
-  const baseTime = new Date(base.updatedAt || base.registeredAt || 0).getTime();
-  const incTime = new Date(incoming.updatedAt || incoming.registeredAt || 0).getTime();
-  if (incTime > baseTime) {
     merged.updatedAt = incoming.updatedAt;
     if (incoming.status && incoming.status !== 'pending') {
       merged.status = incoming.status;
+    }
+  } else {
+    // Base is newer, preserve base's password settings
+    if (base.key) {
+      merged.key = base.key;
+      merged.password = base.password || base.key;
+      merged.securityCode = base.securityCode || base.key;
+      merged.isPasswordChanged = base.isPasswordChanged ?? true;
+      merged.isTemporaryPassword = base.isTemporaryPassword ?? false;
+      if (merged.isPasswordChanged) {
+        merged.tempCode = '';
+        merged.tempPassword = '';
+      }
     }
   }
 

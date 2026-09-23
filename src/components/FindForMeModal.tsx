@@ -24,6 +24,7 @@ import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { MapLocationTracker } from './MapLocationTracker';
 import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
+import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface FindForMeModalProps {
   isOpen: boolean;
@@ -112,6 +113,17 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
   // Tags
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
+
+  // 🎙️ Voice Data State
+  const [voiceData, setVoiceData] = useState<{
+    audioUrl?: string;
+    durationSec?: number;
+    transcript?: string;
+    date?: string;
+    time?: string;
+    location?: string;
+    coords?: { lat: number; lng: number };
+  } | null>(null);
 
   // Validation errors
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -427,6 +439,14 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
       otherDeliveryDetails: customDeliveryDetail.trim(),
       otherDetails: otherDetails.trim(),
       feeAgreed: true,
+      audioUrl: voiceData?.audioUrl || editPost?.audioUrl,
+      audioDurationSec: voiceData?.durationSec || editPost?.audioDurationSec,
+      voiceSentDate: voiceData?.date || editPost?.voiceSentDate,
+      voiceSentTime: voiceData?.time || editPost?.voiceSentTime,
+      voiceSentLocation: voiceData?.location || editPost?.voiceSentLocation,
+      voiceCoordinates: voiceData?.coords || editPost?.voiceCoordinates,
+      isVoicePost: Boolean(voiceData?.audioUrl || editPost?.isVoicePost),
+      voiceTranscript: voiceData?.transcript || editPost?.voiceTranscript,
     });
 
     recordPostSubmission(contactPhone.trim() || currentUser?.phone || 'user');
@@ -469,6 +489,27 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
           </div>
 
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 overflow-y-auto max-h-[82vh]">
+
+            {/* 🎙️ AI Voice Inline Recorder Bar */}
+            <AiVoiceInlineBar
+              currentLocation={currentLocation}
+              lang={lang}
+              titlePrompt="🎙️ සොයාදෙන්න AI හඬ සහය (Voice Input):"
+              onVoiceCaptured={(data) => {
+                setVoiceData(data);
+                if (data.parsedFields?.findForMeType) {
+                  setSubType(data.parsedFields.findForMeType);
+                }
+                if (data.parsedFields?.whatHappened) {
+                  setItemName(data.parsedFields.whatHappened);
+                } else if (data.transcript) {
+                  setItemName(data.transcript);
+                }
+                if (data.parsedFields?.whatIsNeeded && !otherDetails) {
+                  setOtherDetails(data.parsedFields.whatIsNeeded);
+                }
+              }}
+            />
 
             {/* Account Owner Badge (Required) */}
             <div className="bg-emerald-50 dark:bg-[#0d2216] border border-emerald-200 dark:border-[#1a442b] p-3.5 rounded-2xl flex items-center justify-between gap-3">

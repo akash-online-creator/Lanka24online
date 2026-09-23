@@ -27,7 +27,9 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
-  CreditCard
+  CreditCard,
+  QrCode,
+  ScanLine
 } from 'lucide-react';
 
 interface UserWalletModalProps {
@@ -36,6 +38,7 @@ interface UserWalletModalProps {
   user: User;
   language?: Language;
   initialTab?: 'summary' | 'topup' | 'rates';
+  onOpenQrPay?: () => void;
 }
 
 export const UserWalletModal: React.FC<UserWalletModalProps> = ({
@@ -44,6 +47,7 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
   user,
   language = 'si',
   initialTab = 'summary',
+  onOpenQrPay,
 }) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'topup' | 'rates'>(initialTab);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -178,14 +182,30 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                     </p>
                   </div>
 
-                  {/* Top-up CTA Button */}
-                  <button
-                    onClick={() => setActiveTab('topup')}
-                    className="px-4 py-2.5 bg-white text-emerald-900 hover:bg-amber-50 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shrink-0"
-                  >
-                    <PlusCircle className="w-4 h-4 text-emerald-600" />
-                    <span>ගිණුමට මුදල් එකතු කිරීමට</span>
-                  </button>
+                  {/* Top-up CTA & QR Pay Buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onOpenQrPay && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onOpenQrPay();
+                        }}
+                        className="px-3.5 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                        title="QR මගින් ගෙවීම් කිරීම හා ලබාගැනීම"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>QR Pay / Receive</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setActiveTab('topup')}
+                      className="px-4 py-2.5 bg-white text-emerald-900 hover:bg-amber-50 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                    >
+                      <PlusCircle className="w-4 h-4 text-emerald-600" />
+                      <span>Top-Up</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

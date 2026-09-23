@@ -29,6 +29,7 @@ import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimit
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
+import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface HelpPostModalProps {
   isOpen: boolean;
@@ -57,6 +58,17 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   const [transport, setTransport] = useState('');
   const [payment, setPayment] = useState('');
   const [externalLink, setExternalLink] = useState('');
+
+  // 🎙️ Voice Data state
+  const [voiceData, setVoiceData] = useState<{
+    audioUrl?: string;
+    durationSec?: number;
+    transcript?: string;
+    date?: string;
+    time?: string;
+    location?: string;
+    coords?: { lat: number; lng: number };
+  } | null>(null);
 
   // Media & Telegram State
   const [uploadedImageUrl, setUploadedImageUrl] = useState('');
@@ -237,10 +249,8 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       externalLink: externalLink.trim(),
       imageUrl: uploadedImageUrl || undefined,
       videoUrl: uploadedVideoUrl || undefined,
-      audioUrl: uploadedAudioUrl || undefined,
-      audioDurationSec: audioDurationSec || undefined,
       telegramStorage: telegramStorage || undefined,
-      mediaType: uploadedVideoUrl ? 'video' : uploadedAudioUrl ? 'voice' : uploadedImageUrl ? 'photo' : undefined,
+      mediaType: uploadedVideoUrl ? 'video' : (voiceData?.audioUrl || uploadedAudioUrl) ? 'voice' : uploadedImageUrl ? 'photo' : undefined,
       locationName: `${currentLocation.nameSi} (${currentLocation.nameEn})`,
       distanceKm: 0.5, // Posted from current location
       lat: currentLocation.lat,
@@ -249,6 +259,14 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
+      audioUrl: voiceData?.audioUrl || uploadedAudioUrl || undefined,
+      audioDurationSec: voiceData?.durationSec || audioDurationSec || undefined,
+      voiceSentDate: voiceData?.date,
+      voiceSentTime: voiceData?.time,
+      voiceSentLocation: voiceData?.location,
+      voiceCoordinates: voiceData?.coords,
+      isVoicePost: Boolean(voiceData?.audioUrl || uploadedAudioUrl),
+      voiceTranscript: voiceData?.transcript,
     });
 
     setIsSuccess(true);
@@ -329,6 +347,31 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
                   <span>{rateLimitError}</span>
                 </div>
               )}
+
+              {/* 🎙️ AI Voice Inline Recorder Bar */}
+              <AiVoiceInlineBar
+                currentLocation={currentLocation}
+                lang={lang}
+                titlePrompt="🎙️ AI හඬ සහය (Voice Input):"
+                onVoiceCaptured={(data) => {
+                  setVoiceData(data);
+                  if (data.parsedFields?.whatHappened) {
+                    setWhatHappened(data.parsedFields.whatHappened);
+                  } else if (data.transcript) {
+                    setWhatHappened(data.transcript);
+                  }
+                  if (data.parsedFields?.whatIsNeeded) {
+                    setWhatIsNeeded(data.parsedFields.whatIsNeeded);
+                  }
+                  if (data.parsedFields?.payment) {
+                    setPayment(data.parsedFields.payment);
+                  }
+                  if (data.audioUrl) {
+                    setUploadedAudioUrl(data.audioUrl);
+                    setAudioDurationSec(data.durationSec);
+                  }
+                }}
+              />
               
               {/* User Name & Phone */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

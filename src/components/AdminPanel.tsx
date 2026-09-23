@@ -61,6 +61,7 @@ import {
 import { 
   Shield, 
   ShieldAlert,
+  ShieldCheck,
   CheckCircle2, 
   XCircle, 
   Clock, 
@@ -129,7 +130,10 @@ import { AdminIssuesManagement } from './AdminIssuesManagement';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
+import { AdminPresenceDashboard } from './AdminPresenceDashboard';
+import { Radio } from 'lucide-react';
 import { AdminRedAlertManagement } from './AdminRedAlertManagement';
+import { AdminTrustManagement } from './AdminTrustManagement';
 import { getEmergencyAdminAlerts, getStoredEmergencyContacts } from '../data/emergencyDirectory';
 import { 
   getUserCreditBalance, 
@@ -203,7 +207,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
-    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security'
+    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'trust_badges' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security' | 'live_presence'
   >('pending');
   
   // AI Security Scanner States
@@ -886,6 +890,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('trust_badges')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'trust_badges'
+              ? 'bg-white border-emerald-600 text-emerald-950 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>🛡️ විශ්වාසනීයත්ව & Badges</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('emergency_directory')}
           className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
             activeTab === 'emergency_directory'
@@ -912,6 +928,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Search className="w-4 h-4 text-indigo-600" />
           <span>🔍 Dictionary</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('live_presence')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'live_presence'
+              ? 'bg-white border-emerald-500 text-emerald-950 shadow-md font-black'
+              : 'bg-emerald-100/90 border-emerald-300 text-emerald-900 hover:bg-emerald-200'
+          }`}
+        >
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
+          </span>
+          <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+          <span>🟢 සජීවී Online පරිශීලකයින් (Live Presence)</span>
         </button>
       </div>
 
@@ -1698,6 +1730,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
+      {/* Tab: User Trust & Verified Badges Management */}
+      {activeTab === 'trust_badges' && (
+        <AdminTrustManagement
+          users={users}
+          language={language}
+          onBlockUser={onBlockUser}
+          onUnblockCredential={onUnblockCredential}
+          onUpdateUser={onUpdateUser}
+        />
+      )}
+
       {/* Tab: Emergency Contacts Directory Management */}
       {activeTab === 'emergency_directory' && (
         <AdminEmergencyDirectoryManagement
@@ -1709,6 +1752,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {activeTab === 'search_dictionary' && (
         <AdminSearchDictionaryManager
           language={language}
+        />
+      )}
+
+      {/* Tab: Live Presence & Online Users Management */}
+      {activeTab === 'live_presence' && (
+        <AdminPresenceDashboard
+          onSendAdminNotice={(msg) => {
+            alert(`පරිශීලකයින් වෙත නිවේදනය සාර්ථකව විකාශනය කෙරිණි: "${msg}"`);
+          }}
         />
       )}
 

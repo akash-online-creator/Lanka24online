@@ -1,5 +1,6 @@
 export type NotificationType = 
   | 'emergency_blood' 
+  | 'aid_ledger'
   | 'quick_service' 
   | 'find_for_me' 
   | 'marketplace_price' 
@@ -18,7 +19,7 @@ export interface AppNotification {
   locationName?: string;
   badgeText?: string;
   targetPostId?: string;
-  targetModal?: 'blood' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail';
+  targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail';
 }
 
 const STORAGE_KEY = 'sahaya_live_notifications';
@@ -226,6 +227,8 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
 
   return newNotif;
 };
+
+export const addAppNotification = broadcastAppNotification;
 
 // Mark single notification as read
 export const markNotificationAsRead = (notifId: string) => {

@@ -58,3 +58,38 @@ export function isAuthorBlocked(
 
   return false;
 }
+
+export function addBlockedCredential(cred: BlockedCredential): void {
+  try {
+    const raw = localStorage.getItem('sahaya_blocked_credentials');
+    const list: BlockedCredential[] = raw ? JSON.parse(raw) : [];
+    const exists = list.some(b => 
+      (cred.userId && b.userId === cred.userId) ||
+      (cred.phone && b.phone === cred.phone) ||
+      (cred.nicNumber && b.nicNumber === cred.nicNumber)
+    );
+    if (!exists) {
+      list.push(cred);
+      localStorage.setItem('sahaya_blocked_credentials', JSON.stringify(list));
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function removeBlockedCredential(targetIdOrKey: string): void {
+  try {
+    const raw = localStorage.getItem('sahaya_blocked_credentials');
+    if (!raw) return;
+    const list: BlockedCredential[] = JSON.parse(raw);
+    const filtered = list.filter(b => 
+      b.id !== targetIdOrKey && 
+      b.userId !== targetIdOrKey && 
+      b.phone !== targetIdOrKey && 
+      b.nicNumber !== targetIdOrKey
+    );
+    localStorage.setItem('sahaya_blocked_credentials', JSON.stringify(filtered));
+  } catch (e) {
+    // ignore
+  }
+}

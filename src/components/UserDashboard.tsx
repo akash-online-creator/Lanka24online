@@ -14,6 +14,7 @@ import { FromMeToYouModal } from './FromMeToYouModal';
 import { QuickServiceDetailModal } from './QuickServiceDetailModal';
 import { QuickServiceChatModal } from './QuickServiceChatModal';
 import { QuickServiceConfirmWorkflow } from './QuickServiceConfirmWorkflow';
+import { AiVoiceHelpModal } from './AiVoiceHelpModal';
 import { CategorySelectionModal } from './CategorySelectionModal';
 import { CategoryGrid } from './CategoryGrid';
 import { TagSearchBar } from './TagSearchBar';
@@ -29,6 +30,7 @@ import { ResolutionPromptModal } from './ResolutionPromptModal';
 import { HelpRequestsPage } from './HelpRequestsPage';
 import { UserSettingsModal } from './UserSettingsModal';
 import { BloodAndDisasterModal } from './BloodAndDisasterModal';
+import { TransparentAidLedgerModal } from './TransparentAidLedgerModal';
 import { EmergencyDirectoryModal } from './EmergencyDirectoryModal';
 import { DemoRegistrationPromptModal } from './DemoRegistrationPromptModal';
 import { ProximityAlertBanner } from './ProximityAlertBanner';
@@ -42,6 +44,8 @@ import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { UserWalletModal } from './UserWalletModal';
+import { BarterExchangeModal } from './BarterExchangeModal';
+import { UserQrPayModal } from './UserQrPayModal';
 import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
 import { LiveNotificationToast } from './LiveNotificationToast';
@@ -97,7 +101,8 @@ import {
   Droplet,
   Radio,
   Award,
-  Heart
+  Heart,
+  Mic
 } from 'lucide-react';
 
 interface UserDashboardProps {
@@ -291,6 +296,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('');
   const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isAiVoiceModalOpen, setIsAiVoiceModalOpen] = useState(false);
   const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
   const [isFindForMeModalOpen, setIsFindForMeModalOpen] = useState(false);
   const [isFromMeToYouModalOpen, setIsFromMeToYouModalOpen] = useState(false);
@@ -309,10 +315,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // New Community Features: Blood & Disaster Hub, Offline Directory, Lowest Market Prices
   const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
   const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>('blood_requests');
+  const [isAidLedgerModalOpen, setIsAidLedgerModalOpen] = useState(false);
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
   const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
+  const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
+  const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
+  const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
+    userId: string;
+    name: string;
+    phone?: string;
+    fixedAmount?: number;
+  } | undefined>(undefined);
 
   // Navigation handler when user clicks a notification toast or modal item
   const handleOpenFromNotification = (notif: AppNotification) => {
@@ -330,6 +345,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     } else if (notif.targetModal === 'blood') {
       setBloodModalInitialTab('blood_requests');
       setIsBloodAndDisasterModalOpen(true);
+    } else if (notif.targetModal === 'aid_ledger') {
+      setIsAidLedgerModalOpen(true);
     } else if (notif.targetModal === 'find_for_me') {
       setBoardCategoryFilter('find_for_me');
       setSelectedCategoryTitle('සොයාදෙන්න (Find For Me)');
@@ -1458,6 +1475,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         autoLoadedNotice={autoLocationMsg}
         onOpenRedAlert={onOpenRedAlert}
         activeRedAlertsCount={activeRedAlertsCount}
+        onOpenBarterExchange={() => setIsBarterModalOpen(true)}
+        onOpenQrPay={() => {
+          setQrPayTargetRecipient(undefined);
+          setIsQrPayModalOpen(true);
+        }}
       />
 
       {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
@@ -1469,7 +1491,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {/* Button 1: Blood & Disaster Relief Hub (Compact Square Card) */}
           <button
             type="button"
@@ -1494,7 +1516,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 2: Offline Emergency Contacts Directory (Compact Square Card) */}
+          {/* Button 2: Transparent Aid Ledger (ආධාර විනිවිදභාවයේ ලෙජරය) */}
+          <button
+            type="button"
+            onClick={() => setIsAidLedgerModalOpen(true)}
+            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-200" />
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-emerald-400 text-emerald-950 shadow-xs">
+                6-DIGIT CODE
+              </span>
+            </div>
+            <div className="min-w-0 mt-1.5">
+              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                {getLangText('ආධාර විනිවිදභාවයේ ලෙජරය', 'Transparent Aid Ledger', 'வெளிப்படையான உதவி')}
+              </h4>
+            </div>
+          </button>
+
+          {/* Button 3: Offline Emergency Contacts Directory (Compact Square Card) */}
           <button
             type="button"
             onClick={() => setIsEmergencyDirectoryModalOpen(true)}
@@ -1511,6 +1554,27 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             <div className="min-w-0 mt-1.5">
               <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
                 {getLangText('නොබැඳි හදිසි සේවා අංක', 'Emergency Directory', 'அவசர உதவி எண்கள்')}
+              </h4>
+            </div>
+          </button>
+
+          {/* Button 4: AI Voice SOS & Help Requests (AI හඬ සහය) */}
+          <button
+            type="button"
+            onClick={() => setIsAiVoiceModalOpen(true)}
+            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 text-white shadow-md hover:shadow-lg shadow-purple-600/20 border-2 border-purple-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <Mic className="w-4 h-4 text-white animate-pulse" />
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-purple-800 shadow-xs flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5 text-amber-500" /> AI VOICE
+              </span>
+            </div>
+            <div className="min-w-0 mt-1.5">
+              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                {getLangText('AI හඬ සහය (Voice SOS & Help)', 'AI Voice SOS & Help', 'AI குரல் உதவி')}
               </h4>
             </div>
           </button>
@@ -2315,6 +2379,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentUser={user}
         initialTab={bloodModalInitialTab}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
+        onOpenAidLedger={() => setIsAidLedgerModalOpen(true)}
+      />
+
+      {/* 🏛️ Transparent Aid & Resource Ledger Modal (ආධාර විනිවිදභාවයේ ලෙජරය) */}
+      <TransparentAidLedgerModal
+        isOpen={isAidLedgerModalOpen}
+        onClose={() => setIsAidLedgerModalOpen(false)}
+        currentUser={user}
+        lang={language}
+        onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
       />
 
       {/* Offline Emergency Services Directory Modal */}
@@ -2345,6 +2419,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsWalletModalOpen(false)}
         user={user}
         language={language}
+        onOpenQrPay={() => {
+          setQrPayTargetRecipient(undefined);
+          setIsQrPayModalOpen(true);
+        }}
       />
 
       {/* Insufficient Credits Alert Modal */}
@@ -2438,6 +2516,53 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={isLowestPricesModalOpen}
         onClose={() => setIsLowestPricesModalOpen(false)}
         items={initialMarketItems}
+      />
+
+      {/* 🎙️ AI Voice Help & SOS Modal */}
+      <AiVoiceHelpModal
+        isOpen={isAiVoiceModalOpen}
+        onClose={() => setIsAiVoiceModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        lang={language}
+        onSubmitHelpPost={handleCreatePost}
+        onOpenQuickServicePrefilled={() => {
+          setIsAiVoiceModalOpen(false);
+          setIsQuickServiceModalOpen(true);
+        }}
+        onOpenFindForMePrefilled={() => {
+          setIsAiVoiceModalOpen(false);
+          setIsFindForMeModalOpen(true);
+        }}
+        onOpenRedAlertPrefilled={() => {
+          setIsAiVoiceModalOpen(false);
+          if (onOpenRedAlert) onOpenRedAlert();
+        }}
+      />
+
+      {/* 🔄 භාණ්ඩ හුවමාරු මධ්‍යස්ථානය (Barter & Exchange Hub) */}
+      <BarterExchangeModal
+        isOpen={isBarterModalOpen}
+        onClose={() => setIsBarterModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        language={language}
+      />
+
+      {/* 📱 QR Code ගෙවීම් & ස්කෑනරය (QR Pay & Receive Modal) */}
+      <UserQrPayModal
+        isOpen={isQrPayModalOpen}
+        onClose={() => {
+          setIsQrPayModalOpen(false);
+          setQrPayTargetRecipient(undefined);
+        }}
+        currentUser={user}
+        language={language}
+        targetRecipient={qrPayTargetRecipient}
+        onPaymentComplete={(tx) => {
+          // Toast alert or refresh wallet
+          console.log('QR Transaction completed:', tx);
+        }}
       />
 
     </div>

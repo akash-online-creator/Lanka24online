@@ -457,7 +457,14 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = usersList.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+        const newUsersList = usersList.map((u) => {
+          const isMatch =
+            u.id === updatedUser.id ||
+            (u.nicNumber && updatedUser.nicNumber && u.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
+            (u.userId && updatedUser.userId && u.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
+            (updatedUser.userNumericId && u.userNumericId === updatedUser.userNumericId);
+          return isMatch ? { ...u, ...updatedUser } : u;
+        });
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('User list update notice:', err);
@@ -468,11 +475,20 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       onUpdateUser(updatedUser);
     }
 
-    // Sync profile and password to Firestore
+    // Sync profile and password to Firestore & Backend
     try {
       await syncUserProfileToFirestore(updatedUser);
       if (changePassword && cleanNewKey) {
         await syncUserPasswordInFirestore(updatedUser, cleanNewKey);
+        fetch('/api/user/update-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: updatedUser.id,
+            nicNumber: updatedUser.nicNumber || updatedUser.userId,
+            newPassword: cleanNewKey,
+          }),
+        }).catch((e) => console.warn('Server password update notify error:', e));
       }
     } catch (syncErr) {
       console.warn('Sync to Firestore notice:', syncErr);

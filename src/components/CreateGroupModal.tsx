@@ -42,6 +42,7 @@ import {
 } from '../data/groupWorkData';
 import { compressImageFile } from '../utils/imageCompressor';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
+import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface CreateGroupModalProps {
   isOpen: boolean;
@@ -368,6 +369,23 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-800 dark:text-zinc-100">
           
+          {/* 🎙️ AI Voice Inline Recorder Bar */}
+          <AiVoiceInlineBar
+            titlePrompt="🎙️ කණ්ඩායම් වැඩ AI හඬ සහය (Voice Input):"
+            onVoiceCaptured={(data) => {
+              if (data.parsedFields?.titleSi) {
+                setName(data.parsedFields.titleSi);
+              } else if (data.transcript) {
+                setName(data.transcript.slice(0, 40));
+              }
+              if (data.parsedFields?.whatHappened) {
+                setDescription(data.parsedFields.whatHappened);
+              } else if (data.transcript) {
+                setDescription(data.transcript);
+              }
+            }}
+          />
+
           {/* Sub-Category Selection */}
           <div className="space-y-1.5">
             <label className="block text-xs font-black uppercase tracking-wider text-indigo-900 dark:text-indigo-300">

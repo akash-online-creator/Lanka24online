@@ -20,6 +20,7 @@ import { HelpPost, Language, LocationOption, User, CategoryItem, TagItem } from 
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
+import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface QuickServiceModalProps {
   isOpen: boolean;
@@ -88,6 +89,17 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   // Tags State
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
+
+  // 🎙️ Voice Data state
+  const [voiceData, setVoiceData] = useState<{
+    audioUrl?: string;
+    durationSec?: number;
+    transcript?: string;
+    date?: string;
+    time?: string;
+    location?: string;
+    coords?: { lat: number; lng: number };
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -259,15 +271,23 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       helpersNeeded: helpersNeeded,
       helpersAccepted: 0,
       feeAgreed: true,
-      locationName: currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක',
+      locationName: voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක'),
       distanceKm: 0.8, // Immediate local radius
-      lat: currentLocation?.lat || 7.1712,
-      lng: currentLocation?.lng || 79.8978,
+      lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
+      lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
       category: selectedCategoryObj?.id || 'quick_services',
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
+      audioUrl: voiceData?.audioUrl || editPost?.audioUrl,
+      audioDurationSec: voiceData?.durationSec || editPost?.audioDurationSec,
+      voiceSentDate: voiceData?.date || editPost?.voiceSentDate,
+      voiceSentTime: voiceData?.time || editPost?.voiceSentTime,
+      voiceSentLocation: voiceData?.location || editPost?.voiceSentLocation,
+      voiceCoordinates: voiceData?.coords || editPost?.voiceCoordinates,
+      isVoicePost: Boolean(voiceData?.audioUrl || editPost?.isVoicePost),
+      voiceTranscript: voiceData?.transcript || editPost?.voiceTranscript,
     });
 
     // Reset and close
@@ -322,6 +342,30 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
           
+          {/* 🎙️ AI Voice Inline Recorder Bar */}
+          <AiVoiceInlineBar
+            currentLocation={currentLocation}
+            lang={lang}
+            titlePrompt="🎙️ ඉක්මන් සේවා AI හඬ සහය (Voice Input):"
+            onVoiceCaptured={(data) => {
+              setVoiceData(data);
+              if (data.parsedFields?.whatHappened) {
+                setWhatHappened(data.parsedFields.whatHappened);
+              } else if (data.transcript) {
+                setWhatHappened(data.transcript);
+              }
+              if (data.parsedFields?.whatIsNeeded) {
+                setWhatIsNeeded(data.parsedFields.whatIsNeeded);
+              } else if (!whatIsNeeded) {
+                setWhatIsNeeded('ක්ෂණික කාර්මික/සේවා සහයක් අවශ්‍යයි');
+              }
+              if (data.parsedFields?.payment && data.parsedFields.payment.includes('රු.')) {
+                setPaymentType('custom');
+                setCustomPaymentAmount(data.parsedFields.payment.replace(/\D/g, ''));
+              }
+            }}
+          />
+
           {/* Top Error Alert Summary if Validation Fails */}
           {hasAttemptedSubmit && errorCount > 0 && (
             <div className="bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 rounded-2xl p-4 text-rose-900 dark:text-rose-200 animate-shake shadow-md">

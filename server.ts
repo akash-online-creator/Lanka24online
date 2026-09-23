@@ -285,6 +285,122 @@ Guidelines:
   });
 
   // -------------------------------------------------------------
+  // 🎙️ 3.5. AI Voice Help & SOS Request Parsing Endpoint
+  // -------------------------------------------------------------
+  app.post('/api/ai/voice-parse', async (req: any, res: any) => {
+    try {
+      const { transcript, language = 'si', locationContext, audioBase64 } = req.body;
+      const cleanText = String(transcript || '').trim();
+
+      const ai = getGenAI();
+      if (!ai && !cleanText) {
+        return res.status(400).json({ error: 'No transcript or AI instance available' });
+      }
+
+      if (ai) {
+        const systemPrompt = `You are the AI Voice-Powered Emergency & Service Dispatcher for "Sahaya Seva" (සහය සේවා) in Sri Lanka.
+Your task is to analyze spoken user input (in Sinhala, Tamil, English, or Singlish) and intelligently extract structured service data.
+
+Supported Services:
+1. "quick_service" (ඉක්මන් සේවා): Urgent plumbing, electrical, carpentry, mechanic, artisan help, immediate repair, vehicle breakdown.
+2. "find_for_me" (සොයාදෙන්න): Lost or stolen items (NIC, purse, phone, vehicle, key), missing pets, or item procurement.
+3. "red_alert" (රතු එළි / SOS): Natural disaster, fire, flood, landslide, sinkhole, high wind, severe public hazard.
+4. "group_work" (කණ්ඩායම් වැඩ / ශ්‍රමදාන): Community work, cleaning campaigns, shramadana, religious events, volunteer group activities.
+5. "help_request" (හදිසි ආධාර / ස්වේච්ඡා සේවා): General financial, medical, food, transport aid, or a volunteer offering assistance.
+
+Output MUST be a valid JSON object matching this exact schema:
+{
+  "serviceType": "quick_service" | "find_for_me" | "red_alert" | "group_work" | "help_request",
+  "titleSi": "කෙටි මාතෘකාව (Sinhala)",
+  "titleEn": "Short Title (English)",
+  "titleTa": "Short Title (Tamil)",
+  "whatHappened": "සිදුවී ඇති දේ / Detailed problem or situation description",
+  "whatIsNeeded": "අවශ්‍ය උපකාරය / Specific help needed or volunteer offer details",
+  "isVolunteerOffer": boolean,
+  "urgency": "critical" | "high" | "medium" | "low",
+  "suggestedCategory": "category name (e.g. විදුලි කාර්මික, ජලනල, හදිසි ආපදා, ශ්‍රමදාන, නැතිවූ ද්‍රව්‍ය, etc.)",
+  "payment": "e.g. නොමිලේ, රු. 1,500, or සාකච්ඡා කරගත හැක",
+  "helpersNeeded": number,
+  "disasterType": "fire" | "flood" | "mountain_collapse" | "landslide" | "sinkhole" | "gale_wind" | "tsunami" | "earthquake" | "other",
+  "findForMeType": "lost" | "stolen" | "find" | "found",
+  "groupSubCategory": "social_service" | "religious_activity" | "friendly_meetup"
+}`;
+
+        const userPrompt = `Spoken Voice Transcript: "${cleanText}"
+User Stated Location: ${JSON.stringify(locationContext || {})}
+Language hint: ${language}
+
+Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
+
+        for (const modelName of GEMINI_MODELS) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: userPrompt,
+              config: {
+                systemInstruction: systemPrompt,
+                responseMimeType: 'application/json',
+                temperature: 0.2,
+              },
+            });
+
+            if (response && response.text) {
+              const parsed = JSON.parse(response.text.trim());
+              return res.json({ success: true, data: parsed, fallback: false });
+            }
+          } catch (e: any) {
+            // try next model
+          }
+        }
+      }
+
+      // Fallback rule-based heuristic parsing if AI model offline or not available
+      const lower = cleanText.toLowerCase();
+      let serviceType: 'quick_service' | 'find_for_me' | 'red_alert' | 'group_work' | 'help_request' = 'quick_service';
+      let disasterType = 'other';
+      let findForMeType = 'lost';
+      let groupSubCategory = 'social_service';
+
+      if (lower.includes('ගින්න') || lower.includes('ගිනි') || lower.includes('වතුර ගල') || lower.includes('ගංවතුර') || lower.includes('නාය') || lower.includes('ආපදා') || lower.includes('fire') || lower.includes('flood') || lower.includes('sos') || lower.includes('danger')) {
+        serviceType = 'red_alert';
+        disasterType = lower.includes('ගින්න') || lower.includes('fire') ? 'fire' : (lower.includes('ගංවතුර') || lower.includes('flood') ? 'flood' : 'other');
+      } else if (lower.includes('නැතිවුණා') || lower.includes('නැතිවී') || lower.includes('සොරාගත්') || lower.includes('හමුවුණා') || lower.includes('lost') || lower.includes('stolen') || lower.includes('found')) {
+        serviceType = 'find_for_me';
+        findForMeType = lower.includes('හමුවුණා') || lower.includes('found') ? 'found' : (lower.includes('සොරාගත්') || lower.includes('stolen') ? 'stolen' : 'lost');
+      } else if (lower.includes('ශ්‍රමදාන') || lower.includes('ප්‍රජා') || lower.includes('කණ්ඩායම') || lower.includes('group') || lower.includes('shramadana') || lower.includes('volunteer')) {
+        serviceType = 'group_work';
+        groupSubCategory = 'social_service';
+      } else if (lower.includes('ආධාර') || lower.includes('ලේ') || lower.includes('කෑම') || lower.includes('බෙහෙත්') || lower.includes('help') || lower.includes('donation')) {
+        serviceType = 'help_request';
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          serviceType,
+          titleSi: cleanText.slice(0, 60),
+          titleEn: cleanText.slice(0, 60),
+          titleTa: cleanText.slice(0, 60),
+          whatHappened: cleanText,
+          whatIsNeeded: 'ක්ෂණික සහය අවශ්‍යයි',
+          isVolunteerOffer: lower.includes('මම උදව් කරන්නම්') || lower.includes('ස්වේච්ඡා'),
+          urgency: serviceType === 'red_alert' ? 'critical' : 'high',
+          suggestedCategory: serviceType === 'red_alert' ? 'හදිසි ආපදා' : 'ක්ෂණික උපකාර',
+          payment: 'නොමිලේ',
+          helpersNeeded: 1,
+          disasterType,
+          findForMeType,
+          groupSubCategory,
+        },
+        fallback: true,
+      });
+    } catch (err: any) {
+      console.warn('Voice Parse Endpoint Error:', err);
+      return res.status(500).json({ error: 'Failed to parse voice request' });
+    }
+  });
+
+  // -------------------------------------------------------------
   // 🌐 4. Multilingual Translation API (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
   app.post('/api/translate', async (req: any, res: any) => {

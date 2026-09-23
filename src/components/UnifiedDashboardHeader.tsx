@@ -31,7 +31,9 @@ import {
   ChevronDown,
   Coins,
   Bell,
-  MessageSquare
+  MessageSquare,
+  QrCode,
+  ArrowRightLeft
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 
@@ -59,6 +61,8 @@ interface UnifiedDashboardHeaderProps {
   autoLoadedNotice?: string | null;
   onOpenRedAlert?: () => void;
   activeRedAlertsCount?: number;
+  onOpenBarterExchange?: () => void;
+  onOpenQrPay?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -85,6 +89,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   autoLoadedNotice = null,
   onOpenRedAlert,
   activeRedAlertsCount = 0,
+  onOpenBarterExchange,
+  onOpenQrPay,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -576,6 +582,32 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </>
             )}
           </button>
+
+          {/* QR Pay Button */}
+          {!isVisitor && onOpenQrPay && (
+            <button
+              type="button"
+              onClick={onOpenQrPay}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/70 text-amber-900 dark:text-amber-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="QR Pay - කේතය ස්කෑන් කර හෝ පෙන්වා ගෙවීම් කරන්න"
+            >
+              <QrCode className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">QR Pay</span>
+            </button>
+          )}
+
+          {/* Barter Hub Button */}
+          {!isVisitor && onOpenBarterExchange && (
+            <button
+              type="button"
+              onClick={onOpenBarterExchange}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/70 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="භාණ්ඩ හුවමාරු මධ්‍යස්ථානය (Barter Hub)"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">හුවමාරු (Barter)</span>
+            </button>
+          )}
 
           {/* Credit Balance Interactive Button */}
           {!isVisitor && (
