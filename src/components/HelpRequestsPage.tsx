@@ -58,7 +58,10 @@ import {
   ArrowRight,
   ShieldAlert,
   Volume2,
-  Navigation
+  Navigation,
+  Camera,
+  Mic,
+  ArrowLeftRight
 } from 'lucide-react';
 
 interface HelpRequestsPageProps {
@@ -545,6 +548,61 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           <Lightbulb className="w-4 h-4 text-amber-950 fill-amber-300 animate-bounce" />
           <span>{getLangText('💡 පිටුව ක්‍රියාත්මක වන ආකාරය (උදාහරණ)', '💡 Guide & Examples', '💡 வழிகாட்டி & உதாரணங்கள்')}</span>
         </button>
+      </div>
+
+      {/* Facebook-style Community Post Composer Bar */}
+      <div className="bg-white/95 dark:bg-[#07130c]/95 border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-4 sm:p-5 shadow-md backdrop-blur-xl space-y-3.5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-sm ring-2 ring-emerald-500/30">
+            {user?.name ? user.name.charAt(0).toUpperCase() : '👤'}
+          </div>
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="flex-1 text-left px-4 py-3 bg-slate-100 dark:bg-slate-800/80 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-300 text-xs sm:text-sm font-semibold rounded-2xl border border-slate-200/80 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs"
+          >
+            {getLangText(
+              'ඔබට අවශ්‍ය සහය, සේවාව, ඡායාරූප හෝ හඬ පණිවිඩය මෙහි සටහන් කරන්න...',
+              'What help, service, photo or voice request do you need? Post here...',
+              'உங்களுக்கு தேவையான உதவி அல்லது சேவையை இங்கே பகிரவும்...'
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/70">
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Camera className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="truncate">{getLangText('ඡායාරූප / වීඩියෝ', 'Photo / Video', 'புகைப்படம்')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Mic className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="truncate">{getLangText('හඬ පණිවිඩය (Voice)', 'Voice Note', 'குரல் பதிவு')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+          >
+            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+            <span className="truncate">{getLangText('හදිසි / ආපදා (SOS)', 'Emergency SOS', 'அவசர உதவி')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl hover:bg-purple-50 dark:hover:bg-purple-950/40 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+          >
+            <ArrowLeftRight className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+            <span className="truncate">{getLangText('භාණ්ඩ හුවමාරු', 'Barter Swap', 'பரிமாற்றம்')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Compact Feed Filter Tabs & Controls */}
