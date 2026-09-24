@@ -73,6 +73,15 @@ export default function App() {
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_current_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u && (u.id || u.userId)) return u;
+      }
+    } catch (e) {
+      console.warn('Failed to restore saved user session:', e);
+    }
     return null;
   });
 
@@ -81,6 +90,24 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
     const hasSavedLocation = Boolean(localStorage.getItem('sahaya_current_location'));
+    
+    // Check if user is already logged in
+    const savedUserStr = localStorage.getItem('sahaya_current_user');
+    if (savedUserStr) {
+      try {
+        const savedUser = JSON.parse(savedUserStr);
+        if (savedUser && checkIsAdmin(savedUser)) {
+          return 'admin';
+        }
+        if (savedUser && savedUser.status === 'pending') {
+          return 'pending';
+        }
+        if (savedUser && (savedUser.status === 'approved' || savedUser.isDemo)) {
+          return 'dashboard';
+        }
+      } catch {}
+    }
+
     if (isGpsVerified && hasSavedLocation) {
       return 'login';
     }
@@ -88,6 +115,13 @@ export default function App() {
   });
 
   const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
+    const savedUserStr = localStorage.getItem('sahaya_current_user');
+    if (savedUserStr) {
+      try {
+        const savedUser = JSON.parse(savedUserStr);
+        if (savedUser && checkIsAdmin(savedUser)) return 'admin';
+      } catch {}
+    }
     return 'user';
   });
 
@@ -173,12 +207,50 @@ export default function App() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // 🔄 20-Second Auto-Sync Engine (Login වූ පසු Logout නොවී සියලුම සේවාවන් තත්පර 20න් 20ට Auto-Sync කර යාවත්කාලීන කිරීම)
   useEffect(() => {
-    const unsubscribe = subscribeToHelpPosts((remotePosts) => {
-      setHelpPosts(remotePosts || []);
-    });
-    return () => unsubscribe();
-  }, []);
+    if (!currentUser) return;
+
+    // Save session continuously
+    try {
+      localStorage.setItem('sahaya_current_user', JSON.stringify(currentUser));
+    } catch {}
+
+    const syncInterval = setInterval(() => {
+      try {
+        // 1. Sync tags
+        const latestTags = getStoredTags();
+        setTags(latestTags);
+
+        // 2. Dispatch global event for child components (Marketplace, Services, Blood Bank, Group Works)
+        window.dispatchEvent(new CustomEvent('sahaya_sync_all_services', {
+          detail: { timestamp: Date.now() }
+        }));
+
+        // 3. Keep current user state synchronized with latest user records
+        setUsers((currentUsers) => {
+          const matched = (currentUsers || []).find(
+            (u) =>
+              u &&
+              (u.id === currentUser.id ||
+                u.userId === currentUser.userId ||
+                (u.nicNumber && currentUser.nicNumber && u.nicNumber === currentUser.nicNumber))
+          );
+          if (matched && (matched.credits !== currentUser.credits || matched.status !== currentUser.status || matched.name !== currentUser.name)) {
+            setCurrentUser(matched);
+            try {
+              localStorage.setItem('sahaya_current_user', JSON.stringify(matched));
+            } catch {}
+          }
+          return currentUsers;
+        });
+      } catch (err) {
+        console.warn('Auto-sync cycle notice:', err);
+      }
+    }, 20000); // exactly 20 seconds
+
+    return () => clearInterval(syncInterval);
+  }, [currentUser]);
 
   useEffect(() => {
     const unsubscribe = subscribeToUsers((remoteUsers) => {

@@ -264,6 +264,21 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return getStoredProfessionalServices();
   });
 
+  // 🔄 20-Second Auto-Sync Listener for all services in UserDashboard
+  useEffect(() => {
+    const handleSync = () => {
+      try {
+        const latestServices = getStoredProfessionalServices();
+        setProfessionalServices(latestServices);
+      } catch (err) {
+        console.warn('Sync handler error:', err);
+      }
+    };
+
+    window.addEventListener('sahaya_sync_all_services', handleSync);
+    return () => window.removeEventListener('sahaya_sync_all_services', handleSync);
+  }, []);
+
   const handleAddProfessionalService = (newService: ProfessionalService) => {
     const updated = [newService, ...professionalServices];
     setProfessionalServices(updated);
