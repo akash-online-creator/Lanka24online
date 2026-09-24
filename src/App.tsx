@@ -56,6 +56,8 @@ import { RedAlertCreateModal } from './components/RedAlertCreateModal';
 import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { PWAInstallModal } from './components/PWAInstallModal';
 import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';

@@ -33,7 +33,8 @@ import {
   Bell,
   MessageSquare,
   QrCode,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Smartphone
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -64,6 +65,7 @@ interface UnifiedDashboardHeaderProps {
   activeRedAlertsCount?: number;
   onOpenBarterExchange?: () => void;
   onOpenQrPay?: () => void;
+  onOpenInstallApp?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -92,6 +94,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   activeRedAlertsCount = 0,
   onOpenBarterExchange,
   onOpenQrPay,
+  onOpenInstallApp,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -360,6 +363,21 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 <Moon className="w-4 h-4 text-slate-700" />
               )}
             </button>
+
+            {/* PWA Mobile App Install / Fullscreen Button */}
+            {onOpenInstallApp && (
+              <button
+                type="button"
+                onClick={onOpenInstallApp}
+                className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 font-black flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-xs text-xs border border-amber-300"
+                title={language === 'en' ? 'Install as App / Fullscreen (Hide URL Bar)' : language === 'ta' ? 'செயலியை நிறுவுக' : '📱 App Install (ලින්ක් එක නොපෙනී App එකක් ලෙස භාවිතය)'}
+              >
+                <Smartphone className="w-3.5 h-3.5 text-amber-950" />
+                <span className="font-black text-xs">
+                  {language === 'en' ? 'App' : language === 'ta' ? 'செயலி' : 'App'}
+                </span>
+              </button>
+            )}
 
             {/* Admin Switcher (If Admin user) */}
             {checkIsAdmin(user) && onNavigate && (

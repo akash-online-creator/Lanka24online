@@ -51,6 +51,8 @@ import { PosterIssueResponseModal } from './PosterIssueResponseModal';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { NotificationCenterModal } from './NotificationCenterModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
+import { PWAInstallModal } from './PWAInstallModal';
+import { PWAInstallBanner } from './PWAInstallBanner';
 import { initialMarketItems } from '../data/marketplaceData';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
@@ -127,6 +129,7 @@ interface UserDashboardProps {
   activeRedAlertsCount?: number;
   redAlerts?: RedAlertItem[];
   onViewRedAlertDetail?: (alert: RedAlertItem) => void;
+  onOpenInstallApp?: () => void;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
@@ -150,6 +153,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   redAlerts = [],
   onViewRedAlertDetail,
   activeRedAlertsCount = 0,
+  onOpenInstallApp,
 }) => {
   const t = translations[language];
 
@@ -338,6 +342,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
+  const [isPwaInstallModalOpen, setIsPwaInstallModalOpen] = useState(false);
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
     userId: string;
     name: string;
@@ -1503,6 +1508,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setQrPayTargetRecipient(undefined);
           setIsQrPayModalOpen(true);
         }}
+        onOpenInstallApp={onOpenInstallApp || (() => setIsPwaInstallModalOpen(true))}
+      />
+
+      {/* 1.05 Standalone Mobile App Install Banner (Hides browser URL bar) */}
+      <PWAInstallBanner 
+        onOpenDetails={() => setIsPwaInstallModalOpen(true)}
+        language={language}
       />
 
       {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
@@ -2598,6 +2610,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           // Toast alert or refresh wallet
           console.log('QR Transaction completed:', tx);
         }}
+      />
+
+      {/* 📲 PWA Standalone Mobile App Install & Fullscreen Modal */}
+      <PWAInstallModal
+        isOpen={isPwaInstallModalOpen}
+        onClose={() => setIsPwaInstallModalOpen(false)}
+        language={language}
       />
 
     </div>

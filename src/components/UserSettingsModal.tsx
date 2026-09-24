@@ -45,7 +45,8 @@ import {
   HelpCircle,
   Copy,
   ExternalLink,
-  Smartphone
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
@@ -55,6 +56,7 @@ import { calculateTrustProfile } from '../utils/trustScore';
 import { GoogleAuthSetupModal } from './GoogleAuthSetupModal';
 import { getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { DevicePinSetupModal } from './DevicePinSetupModal';
+import { PWAInstallModal } from './PWAInstallModal';
 import {
   getSirenVolume,
   setSirenVolume,
@@ -230,6 +232,9 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   // Device Quick PIN State
   const [showPinSetupModal, setShowPinSetupModal] = useState(false);
   const [hasStoredDevicePin, setHasStoredDevicePin] = useState(() => !!getStoredDevicePin());
+
+  // PWA App Install & Fullscreen Modal State
+  const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -1185,6 +1190,36 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                 </div>
               )}
 
+              {/* Standalone Mobile App / Install Helper Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-emerald-500/10 dark:from-amber-950/40 dark:via-amber-900/30 dark:to-emerald-950/40 border border-amber-300 dark:border-amber-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 flex items-center justify-center font-black shadow-xs shrink-0">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <span>{getLang('📱 Mobile App එකක් ලෙස ස්ථාපනය (Install App)', '📱 Install as Mobile App (No URL Bar)', '📱 மொபைல் செயலியாக நிறுவவும்')}</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-600 dark:text-zinc-400">
+                      {getLang(
+                        'උඩින් සබැඳිය (URL/Link) නොපෙන්වා, සම්පූර්ණ තිරයේ (Full Screen) සැබෑ Mobile App එකක් ලෙස ඔබගේ Phone එකට එක් කරගන්න.',
+                        'Run as a full-screen standalone mobile app without browser URL bar or browser address frames.',
+                        'உலாவி URL இல்லாமல் முழுத்திரை செயலியாக நிறுவவும்.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPwaInstallModal(true)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+                >
+                  <Download className="w-4 h-4 text-amber-950" />
+                  <span>{getLang('App එක ගන්න', 'Install App', 'நிறுவவும்')}</span>
+                </button>
+              </div>
+
               {/* Action Buttons */}
               <div className="pt-3 flex items-center justify-end gap-2.5">
                 <button
@@ -2090,6 +2125,13 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
           }}
         />
       )}
+
+      {/* PWA Standalone Mobile App Install & Fullscreen Modal */}
+      <PWAInstallModal
+        isOpen={showPwaInstallModal}
+        onClose={() => setShowPwaInstallModal(false)}
+        language={language}
+      />
     </div>
   );
 };
