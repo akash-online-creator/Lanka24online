@@ -23,6 +23,10 @@ import { findSynonymSuggestionPrompt, getExpandedSearchKeywords } from '../data/
 import { SmartSearchSynonymPrompt } from './SmartSearchSynonymPrompt';
 import { calculateProviderReputation, PROVIDER_LEVELS, ProviderLevelId } from '../utils/reputationSystem';
 import { ProviderReputationModal } from './ProviderReputationModal';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedProServiceId } from '../utils/deletedPostsManager';
+import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
+import { Trash2 } from 'lucide-react';
 
 interface ProfessionalServicesViewProps {
   user: User;
@@ -31,6 +35,7 @@ interface ProfessionalServicesViewProps {
   professionalServices: ProfessionalService[];
   onAddService: (service: ProfessionalService) => void;
   onAddReview: (serviceId: string, review: ServiceReview) => void;
+  onDeleteService?: (serviceId: string) => void;
   onBack: () => void;
 }
 
@@ -41,6 +46,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
   professionalServices,
   onAddService,
   onAddReview,
+  onDeleteService,
   onBack,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'categories'>('all');
@@ -55,6 +61,43 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
   const [showReputationModal, setShowReputationModal] = useState<boolean>(false);
   const [reputationModalService, setReputationModalService] = useState<ProfessionalService | null>(null);
 
+  const [localServices, setLocalServices] = useState<ProfessionalService[]>(professionalServices || []);
+
+  React.useEffect(() => {
+    setLocalServices(professionalServices || []);
+  }, [professionalServices]);
+
+  const isAdmin = checkIsAdmin(user);
+
+  const canDeleteService = (srv: ProfessionalService) => {
+    if (isAdmin) return true;
+    if (!srv || !user) return false;
+    return Boolean(
+      (user.userId && (srv.userId === user.userId || srv.userId === user.id)) ||
+      (user.id && (srv.userId === user.id || srv.userId === user.userId)) ||
+      (user.phone && srv.providerPhone && user.phone.replace(/\D/g, '') === srv.providerPhone.replace(/\D/g, ''))
+    );
+  };
+
+  const handleDeleteService = (serviceId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!serviceId) return;
+    if (!confirm('මෙම සේවාදායක දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const updated = localServices.filter((s) => s.id !== serviceId);
+    setLocalServices(updated);
+    addDeletedProServiceId(serviceId);
+    try {
+      localStorage.setItem('sahaya_professional_services', JSON.stringify(updated));
+    } catch (e) {}
+    deleteProfessionalServiceFromFirestore(serviceId).catch((err) => {
+      console.warn('Professional service delete from firestore notice:', err);
+    });
+    if (onDeleteService) onDeleteService(serviceId);
+    if (selectedServiceForDetail?.id === serviceId) {
+      setSelectedServiceForDetail(null);
+    }
+  };
+
   // Smart Synonym Suggestion Prompt for Pro Services
   const proSynonymPrompt = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -62,14 +105,14 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
 
     return findSynonymSuggestionPrompt<ProfessionalService>(
       searchQuery,
-      professionalServices,
+      localServices,
       (srv: ProfessionalService) => `${srv.serviceTitle} ${srv.categoryName} ${srv.subCategoryName} ${srv.providerName} ${srv.qualifications || ''}`
     );
-  }, [searchQuery, professionalServices, dismissedSynonyms]);
+  }, [searchQuery, localServices, dismissedSynonyms]);
 
   // Filtered Services List
   const filteredServices = useMemo(() => {
-    return (professionalServices || []).filter((srv) => {
+    return (localServices || []).filter((srv) => {
       if (!srv) return false;
 
       // Category filter
@@ -84,7 +127,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
 
       // Level filter
       if (selectedLevel !== 'all') {
-        const rep = calculateProviderReputation(srv.userId, srv, professionalServices);
+        const rep = calculateProviderReputation(srv.userId, srv, localServices);
         if (rep.level !== selectedLevel) return false;
       }
 
@@ -98,7 +141,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
 
       return true;
     });
-  }, [professionalServices, selectedCategoryId, selectedSubCategoryName, selectedLevel, searchQuery]);
+  }, [localServices, selectedCategoryId, selectedSubCategoryName, selectedLevel, searchQuery]);
 
   const activeCategoryObj = professionalServiceCategories.find((c) => c.category_id === selectedCategoryId);
 
@@ -641,9 +684,21 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                       );
                     })()}
 
-                    <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-1 transition-transform">
-                      <span>විස්තර බලන්න</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-2">
+                      {canDeleteService(service) && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteService(service.id, e)}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors"
+                          title={isAdmin ? "පරිපාලක ලෙස ඉවත් කරන්න (Admin Delete)" : "ඉවත් කරන්න (Delete)"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-1 transition-transform">
+                        <span>විස්තර බලන්න</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -662,7 +717,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
         }}
         user={user}
         service={reputationModalService}
-        allServices={professionalServices}
+        allServices={localServices}
         language={language}
         onAddReview={(serviceId, review) => {
           onAddReview(serviceId, review);
@@ -677,6 +732,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
         language={language}
         currentLocationName={currentLocationName}
         onRegisterService={(newSrv) => {
+          setLocalServices((prev) => [newSrv, ...prev]);
           onAddService(newSrv);
         }}
       />
@@ -688,6 +744,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
         service={selectedServiceForDetail}
         currentUser={user}
         language={language}
+        onDeleteService={handleDeleteService}
         onAddReview={(serviceId, review) => {
           onAddReview(serviceId, review);
           if (selectedServiceForDetail && selectedServiceForDetail.id === serviceId) {

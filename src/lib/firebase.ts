@@ -113,15 +113,42 @@ export function handleFirestoreError(error: any, operation: OperationType | stri
   throw new Error(JSON.stringify(errInfo));
 }
 
+/**
+ * Recursively cleans any object to remove `undefined` fields which Firestore rejects with error
+ */
+export function sanitizeForFirestore<T = any>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (obj instanceof Date || ('nanoseconds' in (obj as any)) || ('_methodName' in (obj as any))) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return (obj
+      .filter((item) => item !== undefined)
+      .map((item) => (item !== null && typeof item === 'object' ? sanitizeForFirestore(item) : item)) as unknown) as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj as Record<string, any>)) {
+    if (val === undefined) continue;
+    if (val !== null && typeof val === 'object') {
+      clean[key] = sanitizeForFirestore(val);
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean as T;
+}
+
 // Interface Definitions
 export interface RedAlertComment {
   id?: string;
   authorName?: string;
   userName?: string;
   userId?: string;
+  userPhone?: string;
   text?: string;
   comment?: string;
   createdAt?: string;
+  createdAtDisplay?: string;
   isReporterUpdate?: boolean;
 }
 
@@ -230,10 +257,11 @@ export async function createRedAlertInFirestore(
 
   try {
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
-    await setDoc(docRef, {
+    const sanitizedPayload = sanitizeForFirestore({
       ...newAlertItem,
       createdAtServer: serverTimestamp(),
     });
+    await setDoc(docRef, sanitizedPayload);
     return alertId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, RED_ALERTS_COLLECTION);
@@ -248,15 +276,15 @@ export async function markRedAlertAsResolved(
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     const popupMessage = "✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.";
     
-    await updateDoc(docRef, {
+    await setDoc(docRef, {
       status: 'resolved',
       statusChangeMessage: popupMessage,
       adminActionNote: note || 'Resolved by reporter',
       resolvedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
-    });
+    }, { merge: true });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+    console.warn('markRedAlertAsResolved notice:', error);
   }
 }
 
@@ -268,15 +296,15 @@ export async function cancelRedAlertByReporter(
     const docRef = doc(db, RED_ALERTS_COLLECTION, alertId);
     const popupMessage = "ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.";
 
-    await updateDoc(docRef, {
+    await setDoc(docRef, {
       status: 'cancelled',
       statusChangeMessage: popupMessage,
       adminActionNote: reason || 'Cancelled by reporter',
       cancelledAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
-    });
+    }, { merge: true });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+    console.warn('cancelRedAlertByReporter notice:', error);
   }
 }
 
@@ -291,29 +319,47 @@ export async function addReporterUpdateToRedAlert(
     const timestamp = new Date().toISOString();
 
     const updateObj: RedAlertComment = {
+      id: `rep_up_${Date.now()}`,
       authorName: resolvedName,
       userName: resolvedName,
       userId: reporterInfo?.reporterId || '',
       text: updateText,
       comment: updateText,
       createdAt: timestamp,
+      createdAtDisplay: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isReporterUpdate: true,
     };
 
     const notificationMessage = `💬 වාර්තාකරුගෙන් අලුත් යාවත්කාලීන කිරීමක්: ${updateText}`;
 
-    await updateDoc(docRef, {
-      comments: arrayUnion(updateObj),
-      latestReporterUpdate: {
-        text: updateText,
-        createdAt: timestamp,
-        reporterName: resolvedName,
-        notificationText: notificationMessage,
-      },
-      updatedAtServer: serverTimestamp(),
-    });
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const existing = snap.data();
+      const existingComments = Array.isArray(existing.comments) ? existing.comments : [];
+      await setDoc(docRef, {
+        comments: [...existingComments, updateObj],
+        latestReporterUpdate: {
+          text: updateText,
+          createdAt: timestamp,
+          reporterName: resolvedName,
+          notificationText: notificationMessage,
+        },
+        updatedAtServer: serverTimestamp(),
+      }, { merge: true });
+    } else {
+      await setDoc(docRef, {
+        comments: [updateObj],
+        latestReporterUpdate: {
+          text: updateText,
+          createdAt: timestamp,
+          reporterName: resolvedName,
+          notificationText: notificationMessage,
+        },
+        updatedAtServer: serverTimestamp(),
+      }, { merge: true });
+    }
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${RED_ALERTS_COLLECTION}/${alertId}`);
+    console.warn('addReporterUpdateToRedAlert notice:', error);
   }
 }
 
@@ -540,31 +586,6 @@ export async function restorePostsBackupData(postsData: any): Promise<{ restored
   }
 }
 
-/**
- * Recursively cleans any object to remove `undefined` fields which Firestore rejects with error
- */
-export function sanitizeForFirestore<T = any>(obj: T): T {
-  if (!obj || typeof obj !== 'object') return obj;
-  if (obj instanceof Date || ('nanoseconds' in (obj as any)) || ('_methodName' in (obj as any))) {
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return (obj
-      .filter((item) => item !== undefined)
-      .map((item) => (item !== null && typeof item === 'object' ? sanitizeForFirestore(item) : item)) as unknown) as T;
-  }
-  const clean: Record<string, any> = {};
-  for (const [key, val] of Object.entries(obj as Record<string, any>)) {
-    if (val === undefined) continue;
-    if (val !== null && typeof val === 'object') {
-      clean[key] = sanitizeForFirestore(val);
-    } else {
-      clean[key] = val;
-    }
-  }
-  return clean as T;
-}
-
 export async function syncUserProfileToFirestore(userIdOrData: any, profileData?: any): Promise<void> {
   try {
     let userId = typeof userIdOrData === 'string' ? userIdOrData : userIdOrData?.id || userIdOrData?.userId;
@@ -618,11 +639,11 @@ export async function addHelpPostToFirestore(
 ): Promise<string> {
   try {
     const postsColRef = collection(db, 'posts');
-    const docRef = await addDoc(postsColRef, {
+    const docRef = await addDoc(postsColRef, sanitizeForFirestore({
       ...postData,
       createdAt: new Date().toISOString(),
       createdAtServer: serverTimestamp(),
-    });
+    }));
     return docRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'posts');
@@ -636,11 +657,11 @@ export async function addReplyToFirestore(
 ): Promise<void> {
   try {
     const repliesColRef = collection(db, 'posts', postId, 'replies');
-    await addDoc(repliesColRef, {
+    await addDoc(repliesColRef, sanitizeForFirestore({
       ...replyData,
       createdAt: new Date().toISOString(),
       createdAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/replies`);
   }
@@ -652,10 +673,10 @@ export async function updateHelpPostInFirestore(
 ): Promise<void> {
   try {
     const docRef = doc(db, 'posts', postId);
-    await updateDoc(docRef, {
+    await updateDoc(docRef, sanitizeForFirestore({
       ...updateData,
       updatedAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}`);
   }
@@ -674,11 +695,11 @@ export async function sendChatMessageToFirestore(
 ): Promise<void> {
   try {
     const chatColRef = collection(db, 'posts', postId, 'messages');
-    await addDoc(chatColRef, {
+    await addDoc(chatColRef, sanitizeForFirestore({
       ...messageData,
       createdAt: messageData.createdAt || new Date().toISOString(),
       createdAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `posts/${postId}/messages`);
   }
@@ -746,11 +767,11 @@ export async function addMarketplaceItemToFirestore(
 ): Promise<string> {
   try {
     const colRef = collection(db, MARKETPLACE_COLLECTION);
-    const docRef = await addDoc(colRef, {
+    const docRef = await addDoc(colRef, sanitizeForFirestore({
       ...itemData,
       createdAt: new Date().toISOString(),
       createdAtServer: serverTimestamp(),
-    });
+    }));
     return docRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, MARKETPLACE_COLLECTION);
@@ -1269,12 +1290,12 @@ export async function saveIssueToFirestore(issueData: any): Promise<string> {
     const colRef = collection(db, 'issues');
     const docId = issueData.id || `issue_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const docRef = doc(colRef, docId);
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       ...issueData,
       id: docId,
       createdAtServer: serverTimestamp(),
       updatedAtServer: serverTimestamp(),
-    });
+    }));
     return docId;
   } catch (error) {
     console.warn('saveIssueToFirestore notice:', error);
@@ -1286,10 +1307,10 @@ export async function updateIssueInFirestore(issueId: string, updateData: Record
   try {
     if (!issueId) return;
     const docRef = doc(db, 'issues', issueId);
-    await updateDoc(docRef, {
+    await updateDoc(docRef, sanitizeForFirestore({
       ...updateData,
       updatedAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     console.warn('updateIssueInFirestore notice:', error);
   }
@@ -1355,10 +1376,10 @@ export async function saveAidCenterToFirestore(center: any): Promise<void> {
   try {
     const centerId = center.id || `center_${center.centerCode || Date.now()}`;
     const docRef = doc(db, 'aid_recipient_centers', centerId);
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       ...center,
       updatedAtServer: serverTimestamp(),
-    }, { merge: true });
+    }), { merge: true });
   } catch (error) {
     console.warn('saveAidCenterToFirestore notice:', error);
   }
@@ -1368,10 +1389,10 @@ export async function updateAidCenterInFirestore(centerId: string, data: Record<
   try {
     if (!centerId) return;
     const docRef = doc(db, 'aid_recipient_centers', centerId);
-    await updateDoc(docRef, {
+    await updateDoc(docRef, sanitizeForFirestore({
       ...data,
       updatedAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     console.warn('updateAidCenterInFirestore notice:', error);
   }
@@ -1403,10 +1424,10 @@ export async function saveAidDeliveryToFirestore(delivery: any): Promise<void> {
   try {
     const deliveryId = delivery.id || `delivery_${Date.now()}`;
     const docRef = doc(db, 'aid_deliveries', deliveryId);
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       ...delivery,
       updatedAtServer: serverTimestamp(),
-    }, { merge: true });
+    }), { merge: true });
   } catch (error) {
     console.warn('saveAidDeliveryToFirestore notice:', error);
   }
@@ -1416,10 +1437,10 @@ export async function updateAidDeliveryInFirestore(deliveryId: string, data: Rec
   try {
     if (!deliveryId) return;
     const docRef = doc(db, 'aid_deliveries', deliveryId);
-    await updateDoc(docRef, {
+    await updateDoc(docRef, sanitizeForFirestore({
       ...data,
       updatedAtServer: serverTimestamp(),
-    });
+    }));
   } catch (error) {
     console.warn('updateAidDeliveryInFirestore notice:', error);
   }
@@ -1451,10 +1472,10 @@ export async function saveAidBroadcastToFirestore(broadcast: any): Promise<void>
   try {
     const broadcastId = broadcast.id || `broadcast_${Date.now()}`;
     const docRef = doc(db, 'aid_broadcasts', broadcastId);
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       ...broadcast,
       updatedAtServer: serverTimestamp(),
-    }, { merge: true });
+    }), { merge: true });
   } catch (error) {
     console.warn('saveAidBroadcastToFirestore notice:', error);
   }
@@ -1479,5 +1500,69 @@ export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any
   } catch (err) {
     console.error('subscribeToAidBroadcasts setup error:', err);
     return () => {};
+  }
+}
+
+// ==============================================================
+// 🗑️ GLOBAL DELETION & MODERATION HANDLERS (ADMIN & OWNER)
+// ==============================================================
+
+export async function deleteMarketplaceShopFromFirestore(shopId: string): Promise<void> {
+  try {
+    if (!shopId) return;
+    const docRef = doc(db, 'marketplace_shops', shopId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteMarketplaceShopFromFirestore notice for ${shopId}:`, error);
+  }
+}
+
+export async function deleteProfessionalServiceFromFirestore(serviceId: string): Promise<void> {
+  try {
+    if (!serviceId) return;
+    const docRef = doc(db, 'professional_services', serviceId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteProfessionalServiceFromFirestore notice for ${serviceId}:`, error);
+  }
+}
+
+export async function deleteBloodRequestFromFirestore(requestId: string): Promise<void> {
+  try {
+    if (!requestId) return;
+    const docRef = doc(db, 'blood_requests', requestId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteBloodRequestFromFirestore notice for ${requestId}:`, error);
+  }
+}
+
+export async function deleteVolunteerDonorFromFirestore(donorId: string): Promise<void> {
+  try {
+    if (!donorId) return;
+    const docRef = doc(db, 'volunteer_donors', donorId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteVolunteerDonorFromFirestore notice for ${donorId}:`, error);
+  }
+}
+
+export async function deleteDisasterReliefFromFirestore(itemId: string): Promise<void> {
+  try {
+    if (!itemId) return;
+    const docRef = doc(db, 'disaster_relief_items', itemId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteDisasterReliefFromFirestore notice for ${itemId}:`, error);
+  }
+}
+
+export async function deleteGroupFromFirestore(groupId: string): Promise<void> {
+  try {
+    if (!groupId) return;
+    const docRef = doc(db, 'groups', groupId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn(`deleteGroupFromFirestore notice for ${groupId}:`, error);
   }
 }

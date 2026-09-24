@@ -18,8 +18,11 @@ import {
 import { 
   subscribeToMarketplaceItems, 
   addMarketplaceItemToFirestore, 
-  deleteMarketplaceItemFromFirestore 
+  deleteMarketplaceItemFromFirestore,
+  deleteMarketplaceShopFromFirestore
 } from '../lib/firebase';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedMarketplaceId, addDeletedMarketShopId } from '../utils/deletedPostsManager';
 import { MarketplaceNewsTicker } from './MarketplaceNewsTicker';
 import { MarketplaceAddSellerItemModal } from './MarketplaceAddSellerItemModal';
 import { MarketplaceAddBuyerRequestModal } from './MarketplaceAddBuyerRequestModal';
@@ -133,6 +136,25 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
   const [previewingShop, setPreviewingShop] = useState<MarketShop | null>(null);
   const [shopToDelete, setShopToDelete] = useState<MarketShop | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<MarketItem | null>(null);
+
+  const isAdmin = checkIsAdmin(currentUser);
+
+  const canDeleteItem = (item: MarketItem) => {
+    if (isAdmin) return true;
+    if (!currentUser || currentUser.isDemo) return false;
+    if (item.userId && (item.userId === currentUser.userId || item.userId === currentUser.id)) return true;
+    if (item.userPhone && currentUser.phone && item.userPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) return true;
+    return false;
+  };
+
+  const canDeleteShop = (shop: MarketShop) => {
+    if (isAdmin) return true;
+    if (!currentUser || currentUser.isDemo) return false;
+    if (shop.userId && (shop.userId === currentUser.userId || shop.userId === currentUser.id)) return true;
+    if (shop.userPhone && currentUser.phone && shop.userPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) return true;
+    return false;
+  };
 
   // Map Location Viewer Modal
   const [viewingLocation, setViewingLocation] = useState<{
@@ -203,9 +225,31 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     });
   };
 
+  const handleDeleteItem = (itemId: string) => {
+    if (!itemId) return;
+    setItems((prev) => {
+      const updated = (prev || []).filter((i) => i && i.id !== itemId);
+      saveMarketItemsToStorage(updated);
+      return updated;
+    });
+    addDeletedMarketplaceId(itemId);
+    deleteMarketplaceItemFromFirestore(itemId).catch((err) => {
+      console.warn('Firestore marketplace item delete notice:', err);
+    });
+    setItemToDelete(null);
+  };
+
   const handleDeleteShop = (shopId: string) => {
     if (!shopId) return;
-    setShops((prev) => (prev || []).filter((s) => s && s.id !== shopId));
+    setShops((prev) => {
+      const updated = (prev || []).filter((s) => s && s.id !== shopId);
+      saveMarketShopsToStorage(updated);
+      return updated;
+    });
+    addDeletedMarketShopId(shopId);
+    deleteMarketplaceShopFromFirestore(shopId).catch((err) => {
+      console.warn('Firestore marketplace shop delete notice:', err);
+    });
     setShopToDelete(null);
   };
 
@@ -712,9 +756,21 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         ))}
                       </div>
 
-                      <span className="text-[11px] text-zinc-400 font-medium">
-                        {item.createdAt}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-zinc-400 font-medium">
+                          {item.createdAt}
+                        </span>
+                        {canDeleteItem(item) && (
+                          <button
+                            type="button"
+                            onClick={() => setItemToDelete(item)}
+                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            title={isAdmin ? "පරිපාලක ලෙස දැන්වීම ඉවත් කරන්න (Admin Delete)" : "දැන්වීම ඉවත් කරන්න (Delete)"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
@@ -959,9 +1015,21 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/60">
                         #{req.tagName}
                       </span>
-                      <span className="text-[11px] text-zinc-400 font-medium">
-                        {req.createdAt}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-zinc-400 font-medium">
+                          {req.createdAt}
+                        </span>
+                        {canDeleteItem(req) && (
+                          <button
+                            type="button"
+                            onClick={() => setItemToDelete(req)}
+                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            title={isAdmin ? "පරිපාලක ලෙස ඉල්ලීම ඉවත් කරන්න (Admin Delete)" : "ඉල්ලීම ඉවත් කරන්න (Delete)"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="text-xs text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-wide">
@@ -1252,14 +1320,26 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewingShop(shop)}
-                        className="px-3.5 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-900"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>විස්තර බලන්න (Preview)</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewingShop(shop)}
+                          className="px-3.5 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-900"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>විස්තර (Preview)</span>
+                        </button>
+                        {canDeleteShop(shop) && (
+                          <button
+                            type="button"
+                            onClick={() => setShopToDelete(shop)}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200 dark:border-rose-900"
+                            title={isAdmin ? "පරිපාලක ලෙස වෙළඳසැල ඉවත් කරන්න (Admin Delete)" : "වෙළඳසැල ඉවත් කරන්න (Delete)"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
                       <div className="flex items-center gap-1.5">
                         {checkContactPermission(shop.userId, shop.userPhone, shop.revealContactConsent) ? (
@@ -1482,14 +1562,26 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewingShop(biz)}
-                    className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-amber-200 dark:border-amber-900"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>විස්තර බලන්න (Preview)</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewingShop(biz)}
+                      className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-amber-200 dark:border-amber-900"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>විස්තර (Preview)</span>
+                    </button>
+                    {canDeleteShop(biz) && (
+                      <button
+                        type="button"
+                        onClick={() => setShopToDelete(biz)}
+                        className="p-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200 dark:border-rose-900"
+                        title={isAdmin ? "පරිපාලක ලෙස ව්‍යාපාරය ඉවත් කරන්න (Admin Delete)" : "ව්‍යාපාරය ඉවත් කරන්න (Delete)"}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     {checkContactPermission(biz.userId, biz.userPhone, biz.revealContactConsent) ? (
@@ -1602,6 +1694,39 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleDeleteShop(shopToDelete.id)}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+              >
+                ඔව්, ඉවත් කරන්න (Delete)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5.5 Delete Marketplace Item Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border-2 border-rose-500/40 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 mx-auto flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-zinc-100">
+              දැන්වීම ස්ථිර ලෙසම ඉවත් කරනවාද?
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              "{itemToDelete.title}" {itemToDelete.type === 'seller_item' ? 'විකුණුම් දැන්වීම' : 'ගැණුම්කරු ඉල්ලීම'} පද්ධතියෙන් ස්ථිරවම ඉවත් කරනු ඇත.
+            </p>
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteItem(itemToDelete.id)}
                 className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
               >
                 ඔව්, ඉවත් කරන්න (Delete)

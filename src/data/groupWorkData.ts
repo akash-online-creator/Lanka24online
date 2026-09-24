@@ -1,4 +1,5 @@
 import { GroupItem, GroupInviteNotification, GroupJoinRequest, GroupMessage, GroupPermissions, GroupWorkSubCategory, User } from '../types';
+import { filterNonDeletedGroups } from '../utils/deletedPostsManager';
 
 export const initialGroups: GroupItem[] = [
   {
@@ -187,18 +188,19 @@ export function getStoredGroups(): GroupItem[] {
     const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(initialGroups));
-      return initialGroups;
+      return filterNonDeletedGroups(initialGroups);
     }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return initialGroups;
+    if (!Array.isArray(parsed)) return filterNonDeletedGroups(initialGroups);
     
     // Ensure all groups have a privacy property (fallback to 'public')
-    return parsed.map((g: GroupItem) => ({
+    const mapped = parsed.map((g: GroupItem) => ({
       ...g,
       privacy: g.privacy || 'public'
     }));
+    return filterNonDeletedGroups(mapped);
   } catch {
-    return initialGroups;
+    return filterNonDeletedGroups(initialGroups);
   }
 }
 

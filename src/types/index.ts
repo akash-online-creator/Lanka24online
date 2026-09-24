@@ -351,6 +351,9 @@ export interface User {
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string;
   twoFactorConfirmedAt?: string;
+  activeDeviceId?: string;
+  deviceSessionToken?: string;
+  devicePinUpdatedAt?: string;
   pendingProfileUpdate?: PendingProfileUpdate;
   aiScanResult?: AiSecurityScanResult;
   trustPoints?: number; // 0 to 1000, default 100
@@ -943,10 +946,13 @@ export interface RedAlertComment {
   id: string;
   userId?: string;
   userName: string;
+  authorName?: string;
   userPhone?: string;
   comment: string;
+  text?: string;
   createdAt: string;
-  createdAtDisplay: string;
+  createdAtDisplay?: string;
+  isReporterUpdate?: boolean;
 }
 
 export interface RedAlertFakeReport {
@@ -987,7 +993,7 @@ export interface RedAlertItem {
   reportedByPhone: string;
 
   // Status & Severity
-  status: 'active' | 'resolved' | 'false_alarm';
+  status: 'active' | 'resolved' | 'cancelled' | 'false_alarm';
   severity: 'critical' | 'high' | 'moderate';
 
   // Voice & Audio SOS Recording
@@ -1004,6 +1010,15 @@ export interface RedAlertItem {
   fakeReports: RedAlertFakeReport[];
   isFlaggedFake?: boolean;
   adminActionNote?: string;
+  resolvedAt?: string;
+  cancelledAt?: string;
+  statusChangeMessage?: string;
+  latestReporterUpdate?: {
+    text: string;
+    createdAt: string;
+    reporterName?: string;
+    notificationText?: string;
+  };
 }
 
 // ==========================================

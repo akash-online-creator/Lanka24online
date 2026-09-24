@@ -110,3 +110,85 @@ export function filterNonDeletedDonors(donors: VolunteerDonor[]): VolunteerDonor
   const deletedIds = new Set(getStoredDeletedDonorIds());
   return donors.filter((d) => d && d.id && !deletedIds.has(d.id));
 }
+
+// ----------------- Marketplace Items & Shops -----------------
+const DELETED_MARKETPLACE_IDS_KEY = 'sahaya_deleted_marketplace_ids';
+const DELETED_MARKET_SHOPS_KEY = 'sahaya_deleted_market_shops_ids';
+
+export function getStoredDeletedMarketplaceIds(): string[] {
+  return getStoredIds(DELETED_MARKETPLACE_IDS_KEY);
+}
+
+export function addDeletedMarketplaceId(itemId: string): void {
+  if (!itemId) return;
+  const current = getStoredDeletedMarketplaceIds();
+  if (!current.includes(itemId)) {
+    saveIds(DELETED_MARKETPLACE_IDS_KEY, [...current, itemId]);
+  }
+}
+
+export function filterNonDeletedMarketItems<T extends { id?: string }>(items: T[]): T[] {
+  if (!Array.isArray(items)) return [];
+  const deletedIds = new Set(getStoredDeletedMarketplaceIds());
+  return items.filter((item) => item && item.id && !deletedIds.has(item.id));
+}
+
+export function getStoredDeletedMarketShopIds(): string[] {
+  return getStoredIds(DELETED_MARKET_SHOPS_KEY);
+}
+
+export function addDeletedMarketShopId(shopId: string): void {
+  if (!shopId) return;
+  const current = getStoredDeletedMarketShopIds();
+  if (!current.includes(shopId)) {
+    saveIds(DELETED_MARKET_SHOPS_KEY, [...current, shopId]);
+  }
+}
+
+export function filterNonDeletedMarketShops<T extends { id?: string }>(shops: T[]): T[] {
+  if (!Array.isArray(shops)) return [];
+  const deletedIds = new Set(getStoredDeletedMarketShopIds());
+  return shops.filter((shop) => shop && shop.id && !deletedIds.has(shop.id));
+}
+
+// ----------------- Professional Services -----------------
+const DELETED_PRO_SERVICES_KEY = 'sahaya_deleted_pro_services_ids';
+
+export function getStoredDeletedProServiceIds(): string[] {
+  return getStoredIds(DELETED_PRO_SERVICES_KEY);
+}
+
+export function addDeletedProServiceId(serviceId: string): void {
+  if (!serviceId) return;
+  const current = getStoredDeletedProServiceIds();
+  if (!current.includes(serviceId)) {
+    saveIds(DELETED_PRO_SERVICES_KEY, [...current, serviceId]);
+  }
+}
+
+export function filterNonDeletedProServices<T extends { id?: string }>(services: T[]): T[] {
+  if (!Array.isArray(services)) return [];
+  const deletedIds = new Set(getStoredDeletedProServiceIds());
+  return services.filter((s) => s && s.id && !deletedIds.has(s.id));
+}
+
+// ----------------- Groups & Shramadana -----------------
+const DELETED_GROUP_IDS_KEY = 'sahaya_deleted_group_ids';
+
+export function getStoredDeletedGroupIds(): string[] {
+  return getStoredIds(DELETED_GROUP_IDS_KEY);
+}
+
+export function addDeletedGroupId(groupId: string): void {
+  if (!groupId) return;
+  const current = getStoredDeletedGroupIds();
+  if (!current.includes(groupId)) {
+    saveIds(DELETED_GROUP_IDS_KEY, [...current, groupId]);
+  }
+}
+
+export function filterNonDeletedGroups<T extends { id?: string }>(groups: T[]): T[] {
+  if (!Array.isArray(groups)) return [];
+  const deletedIds = new Set(getStoredDeletedGroupIds());
+  return groups.filter((g) => g && g.id && !deletedIds.has(g.id));
+}

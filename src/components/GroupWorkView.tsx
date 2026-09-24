@@ -44,8 +44,12 @@ import {
   acceptGroupJoinRequest,
   rejectGroupJoinRequest
 } from '../data/groupWorkData';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedGroupId } from '../utils/deletedPostsManager';
+import { deleteGroupFromFirestore } from '../lib/firebase';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupChatModal } from './GroupChatModal';
+import { Trash2 } from 'lucide-react';
 
 interface GroupWorkViewProps {
   currentUser: User;
@@ -221,6 +225,22 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
     }
   };
 
+  const isSystemAdmin = checkIsAdmin(currentUser);
+
+  const handleDeleteGroup = (groupId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!groupId) return;
+    if (!confirm('මෙම කණ්ඩායම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const updated = groups.filter((g) => g.id !== groupId);
+    setGroups(updated);
+    saveGroupsToStorage(updated);
+    addDeletedGroupId(groupId);
+    deleteGroupFromFirestore(groupId).catch((err) => {
+      console.warn('Group delete from firestore notice:', err);
+    });
+    showToast('🗑️ කණ්ඩායම සාර්ථකව ඉවත් කරන ලදී.', 'info');
+  };
+
   // Helper to check user's membership status in group
   const getUserGroupStatus = (group: GroupItem) => {
     const userPhone = currentUser?.phone || currentUser?.whatsappNumber || '';
@@ -228,7 +248,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
       (m) => (m.userId && m.userId === currentUserId) || (userPhone && m.phone === userPhone)
     );
     const isCreator = group.creatorId === currentUserId;
-    const isAdmin = isCreator || mem?.role === 'admin';
+    const isAdmin = isCreator || mem?.role === 'admin' || isSystemAdmin;
     const isActive = mem?.status === 'active';
     const isPending = mem?.status === 'pending_approval' || allJoinRequests.some(
       (r) => r.groupId === group.id && (r.userId === currentUserId || (userPhone && r.userPhone === userPhone)) && r.status === 'pending'
@@ -582,6 +602,16 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                           >
                             <Star className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} />
                           </button>
+                          {(isSystemAdmin || isCreator) && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteGroup(grp.id, e)}
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer shrink-0"
+                              title={isSystemAdmin ? "පරිපාලක ලෙස කණ්ඩායම ඉවත් කරන්න (Admin Delete)" : "කණ්ඩායම ඉවත් කරන්න (Delete)"}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
 
                         {/* Username */}
@@ -861,6 +891,17 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                     >
                       <QrCode className="w-4 h-4" />
                     </button>
+
+                    {(isSystemAdmin || isCreator) && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteGroup(group.id, e)}
+                        className="p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                        title={isSystemAdmin ? "පරිපාලක ලෙස කණ්ඩායම ඉවත් කරන්න (Admin Delete)" : "කණ්ඩායම ඉවත් කරන්න (Delete)"}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

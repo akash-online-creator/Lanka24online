@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Language, Theme } from '../types';
+import React, { useState, useEffect } from 'react';
+import { User, Language, Theme } from '../types';
 import { translations } from '../data/translations';
 import { 
   Moon, 
@@ -11,10 +11,13 @@ import {
   Loader2,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Smartphone
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
+import { StoredDevicePinData, getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
+import { DevicePinLoginView } from './DevicePinLoginView';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -26,6 +29,8 @@ interface LoginFormProps {
   theme?: Theme;
   toggleTheme?: () => void;
   showDemoUserLogin?: boolean;
+  users?: User[];
+  onSuccessfulPinLogin?: (user: User) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
@@ -38,6 +43,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   theme = 'light',
   toggleTheme,
   showDemoUserLogin = true,
+  users = [],
+  onSuccessfulPinLogin,
 }) => {
   const [userId, setUserId] = useState('');
   const [key, setKey] = useState('');
@@ -45,7 +52,46 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Device PIN state
+  const [storedPinData, setStoredPinData] = useState<StoredDevicePinData | null>(() => getStoredDevicePin());
+  const [authMode, setAuthMode] = useState<'pin' | 'password'>(() => {
+    const pinData = getStoredDevicePin();
+    return pinData ? 'pin' : 'password';
+  });
+
+  useEffect(() => {
+    const currentPin = getStoredDevicePin();
+    setStoredPinData(currentPin);
+    if (!currentPin && authMode === 'pin') {
+      setAuthMode('password');
+    }
+  }, [authMode]);
+
+  const handleClearPin = () => {
+    clearDevicePin();
+    setStoredPinData(null);
+    setAuthMode('password');
+  };
+
   const t = (translations[language] || translations.si) as any;
+
+  // If user has a valid PIN stored on this device and is in PIN mode, render DevicePinLoginView
+  if (storedPinData && authMode === 'pin' && onSuccessfulPinLogin) {
+    return (
+      <DevicePinLoginView
+        storedPinData={storedPinData}
+        users={users}
+        onSuccessfulPinLogin={onSuccessfulPinLogin}
+        onSwitchToPasswordLogin={() => setAuthMode('password')}
+        onClearDevicePin={handleClearPin}
+        onNavigateToIssues={onNavigateToIssues}
+        language={language}
+        setLanguage={setLanguage}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
 
   // ශ්‍රී ලාංකික NIC අංක සහ Login Identifier Validation
   const validateIdentifier = (inputVal: string) => {
@@ -178,6 +224,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       {/* Main Login Card */}
       <div className="w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222] backdrop-blur-sm">
         
+        {/* Switch back to PIN button if PIN is configured */}
+        {storedPinData && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setAuthMode('pin')}
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>
+                {language === 'en'
+                  ? `Switch to PIN Unlock (${storedPinData.userName})`
+                  : `🔢 PIN අංකය මඟින් පිවිසෙන්න (${storedPinData.userName})`}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Error Alert Box */}
         {error && (
           <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs rounded-xl flex items-start gap-2">

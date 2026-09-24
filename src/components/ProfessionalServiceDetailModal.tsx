@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Language, ProfessionalService, ServiceReview } from '../types';
 import { getVillageOrTownDisplay } from '../utils/geoUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
   X, 
   MapPin, 
@@ -16,7 +17,8 @@ import {
   Send, 
   Sparkles, 
   Check, 
-  Lock 
+  Lock,
+  Trash2
 } from 'lucide-react';
 import { ProfessionalServiceChatModal } from './ProfessionalServiceChatModal';
 import { calculateProviderReputation } from '../utils/reputationSystem';
@@ -29,6 +31,7 @@ interface ProfessionalServiceDetailModalProps {
   currentUser: User;
   language: Language;
   onAddReview: (serviceId: string, review: ServiceReview) => void;
+  onDeleteService?: (serviceId: string) => void;
 }
 
 export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailModalProps> = ({
@@ -38,6 +41,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
   currentUser,
   language,
   onAddReview,
+  onDeleteService,
 }) => {
   const [rating, setRating] = useState<number>(5);
   const [commentText, setCommentText] = useState('');
@@ -53,7 +57,8 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
       (currentUser.phone && service.providerPhone && currentUser.phone.replace(/\D/g, '') === service.providerPhone.replace(/\D/g, ''))
     )
   );
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = checkIsAdmin(currentUser);
+  const canDelete = isOwner || isAdmin;
   const hasContactPermission = isOwner || isAdmin || service.revealContactConsent !== false;
 
   const getDeliveryMethodLabel = (method: string) => {
@@ -118,13 +123,29 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
             <span>•</span>
             <span>{service.subCategoryName}</span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#162e20] hover:bg-slate-200 dark:hover:bg-[#1f422e] text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {canDelete && onDeleteService && (
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteService(service.id);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-red-500/20"
+                title={isAdmin ? "පරිපාලක ලෙස මෙම සේවාව ඉවත් කරන්න (Admin Delete)" : "සේවාව ඉවත් කරන්න (Delete)"}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#162e20] hover:bg-slate-200 dark:hover:bg-[#1f422e] text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Content Body */}

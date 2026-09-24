@@ -44,7 +44,8 @@ import {
   Key,
   HelpCircle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Smartphone
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
@@ -52,6 +53,8 @@ import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { GoogleAuthSetupModal } from './GoogleAuthSetupModal';
+import { getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
+import { DevicePinSetupModal } from './DevicePinSetupModal';
 import {
   getSirenVolume,
   setSirenVolume,
@@ -224,6 +227,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [showGoogleAuthModal, setShowGoogleAuthModal] = useState(false);
   const [showDisable2FAConfirm, setShowDisable2FAConfirm] = useState(false);
 
+  // Device Quick PIN State
+  const [showPinSetupModal, setShowPinSetupModal] = useState(false);
+  const [hasStoredDevicePin, setHasStoredDevicePin] = useState(() => !!getStoredDevicePin());
+
   useEffect(() => {
     if (isOpen) {
       setName(user?.name || '');
@@ -245,6 +252,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       setIsTestingSiren(false);
       setShowGoogleAuthModal(false);
       setShowDisable2FAConfirm(false);
+      setShowPinSetupModal(false);
+      setHasStoredDevicePin(!!getStoredDevicePin());
     }
   }, [isOpen, user, initialTab]);
 
@@ -1824,10 +1833,85 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB: 2FA GOOGLE AUTHENTICATOR SECURITY */}
+          {/* TAB: 2FA & DEVICE QUICK PIN SECURITY */}
           {activeTab === 'security_2fa' && (
             <div className="space-y-5 animate-in fade-in">
-              {/* Header Overview Card */}
+
+              {/* 1. Device-Specific 4-Digit PIN Card */}
+              <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-900/15 via-teal-900/10 to-amber-950/10 dark:from-emerald-950/50 dark:via-teal-950/40 dark:to-amber-950/30 border-2 border-emerald-500/40 dark:border-emerald-500/50 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 rounded-2xl shadow-sm">
+                      <Smartphone className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>{getLang('📱 Device Quick PIN (අංක 4ක PIN)', '📱 Device Quick PIN', '📱 சாதன விரைவு PIN')}</span>
+                        <span className="text-[10px] bg-amber-400/20 text-amber-700 dark:text-amber-300 border border-amber-400/30 font-black px-2 py-0.5 rounded-full">
+                          {getLang('මෙම Device එකට පමණි', 'This Device Only', 'இந்த சாதனம் மட்டும்')}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-600 dark:text-zinc-300">
+                        {getLang(
+                          'මීළඟ වතාවේදී හැඳුනුම්පත් අංකය හා මුරපදය නැවත නැවත ඇතුළත් නොකර, ඔබ කැමති අංක 4ක PIN එකක් මඟින් ක්ෂණිකව ලොග් වන්න.',
+                          'Log in instantly next time with a 4-digit PIN instead of entering full NIC and password every time.',
+                          'அடுத்த முறை முழு கடவுச்சொல்லை உள்ளிடாமல் 4 இலக்க PIN மூலம் விரைவாக நுழையவும்.'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* PIN Status Badge */}
+                  <div className="self-start sm:self-center">
+                    {hasStoredDevicePin ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/70 border-2 border-emerald-500 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-sm">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{getLang('PIN සක්‍රීයයි (Active)', 'PIN Active', 'PIN செயலில் உள்ளது')}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 text-xs font-black">
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span>{getLang('PIN සකසා නැත', 'No PIN Set', 'PIN அமைக்கப்படவில்லை')}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Device PIN Action Buttons */}
+                <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowPinSetupModal(true)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-95"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span>
+                      {hasStoredDevicePin
+                        ? getLang('🔢 PIN අංකය වෙනස් කරන්න', 'Change 4-Digit PIN', 'PIN மாற்றவும்')
+                        : getLang('✨ නව 4-Digit PIN අංකයක් සකසන්න', 'Set Up 4-Digit PIN', 'PIN அமைக்கவும்')}
+                    </span>
+                  </button>
+
+                  {hasStoredDevicePin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('මෙම Device එකෙන් PIN අංකය ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) {
+                          clearDevicePin();
+                          setHasStoredDevicePin(false);
+                          setSaveSuccessMsg('🗑️ මෙම Device එකෙන් PIN අංකය ඉවත් කරන ලදී.');
+                          setTimeout(() => setSaveSuccessMsg(null), 3000);
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                    >
+                      <span>🗑️ PIN ඉවත් කරන්න (Remove PIN)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Google Authenticator 2FA Card */}
               <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-900/10 via-teal-900/10 to-slate-900/10 dark:from-emerald-950/40 dark:via-teal-950/40 dark:to-slate-950/40 border-2 border-emerald-500/30 dark:border-emerald-500/40 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -1985,6 +2069,25 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
           onEnableSuccess={handleEnable2FASuccess}
           userLabel={user?.nicNumber || user?.phone || user?.name || 'User'}
           language={language}
+        />
+      )}
+
+      {/* Device Quick PIN Setup Modal */}
+      {showPinSetupModal && user && (
+        <DevicePinSetupModal
+          isOpen={showPinSetupModal}
+          onClose={() => setShowPinSetupModal(false)}
+          currentUser={user}
+          language={language}
+          isChangeMode={hasStoredDevicePin}
+          onPinConfigured={(updatedUser) => {
+            setHasStoredDevicePin(true);
+            if (onUpdateUser) {
+              onUpdateUser(updatedUser);
+            }
+            setSaveSuccessMsg('✅ Device Quick PIN අංකය සාර්ථකව යොදන ලදී!');
+            setTimeout(() => setSaveSuccessMsg(null), 3500);
+          }}
         />
       )}
     </div>

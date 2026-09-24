@@ -1,4 +1,5 @@
 import { MarketItem, MarketShop, WeekSchedule } from '../types';
+import { filterNonDeletedMarketItems, filterNonDeletedMarketShops } from '../utils/deletedPostsManager';
 
 const defaultWeekSchedule: WeekSchedule = {
   monday: { isOpen: true, openTime: '08:30', closeTime: '19:00' },
@@ -491,16 +492,16 @@ export function getStoredMarketItems(): MarketItem[] {
         if (missingDefaults.length > 0) {
           const merged = [...parsed.filter(Boolean), ...missingDefaults];
           localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(merged));
-          return merged;
+          return filterNonDeletedMarketItems(merged);
         }
-        return parsed.filter(Boolean);
+        return filterNonDeletedMarketItems(parsed.filter(Boolean));
       }
     }
   } catch (e) {
     console.warn('Error reading market items:', e);
   }
   localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(initialMarketItems));
-  return initialMarketItems;
+  return filterNonDeletedMarketItems(initialMarketItems);
 }
 
 export function saveMarketItemsToStorage(items: MarketItem[]): void {
@@ -513,14 +514,14 @@ export function getStoredMarketShops(): MarketShop[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return filterNonDeletedMarketShops(parsed);
       }
     }
   } catch (e) {
     console.warn('Error reading market shops:', e);
   }
   localStorage.setItem(MARKET_SHOPS_KEY, JSON.stringify(initialMarketShops));
-  return initialMarketShops;
+  return filterNonDeletedMarketShops(initialMarketShops);
 }
 
 export function saveMarketShopsToStorage(shops: MarketShop[]): void {

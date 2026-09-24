@@ -1,4 +1,5 @@
 import { ProfessionalServiceCategory, ProfessionalService } from '../types';
+import { filterNonDeletedProServices } from '../utils/deletedPostsManager';
 
 export const professionalServiceCategories: ProfessionalServiceCategory[] = [
   {
@@ -314,19 +315,19 @@ export const initialProfessionalServices: ProfessionalService[] = [
 ];
 
 export const getStoredProfessionalServices = (): ProfessionalService[] => {
-  if (typeof window === 'undefined') return initialProfessionalServices;
+  if (typeof window === 'undefined') return filterNonDeletedProServices(initialProfessionalServices);
   const saved = localStorage.getItem('sahaya_professional_services');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return filterNonDeletedProServices(parsed);
       }
     } catch {
       // fallback
     }
   }
-  return initialProfessionalServices;
+  return filterNonDeletedProServices(initialProfessionalServices);
 };
 
 export const saveProfessionalServicesToStorage = (services: ProfessionalService[]) => {

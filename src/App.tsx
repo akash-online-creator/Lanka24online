@@ -24,6 +24,8 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UpdateWhatsAppModal } from './components/UpdateWhatsAppModal';
 import { GoogleAuthVerifyModal } from './components/GoogleAuthVerifyModal';
+import { DevicePinSetupModal } from './components/DevicePinSetupModal';
+import { getOrCreateDeviceId, getStoredDevicePin, clearDevicePin } from './utils/devicePinManager';
 import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
 import { 
   auth,
@@ -86,6 +88,7 @@ export default function App() {
   });
 
   const [pending2FAUser, setPending2FAUser] = useState<User | null>(null);
+  const [showDevicePinSetupModal, setShowDevicePinSetupModal] = useState(false);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
@@ -865,6 +868,27 @@ export default function App() {
         normalizedUser.isTemporaryPassword === true;
       if (needsPasswordChange) {
         setShowChangePasswordModal(true);
+      } else if (!checkIsAdmin(normalizedUser) && !normalizedUser.isDemo && userStatus === 'approved') {
+        // Device Quick PIN Setup Prompt
+        const currentDeviceId = getOrCreateDeviceId();
+        const storedPin = getStoredDevicePin();
+        const userIdentifier = normalizedUser.id || normalizedUser.userId || normalizedUser.nicNumber;
+
+        // If user logged in from this new device, update activeDeviceId in remote profile
+        if (normalizedUser.id && normalizedUser.activeDeviceId && normalizedUser.activeDeviceId !== currentDeviceId) {
+          updateUserInFirestore(normalizedUser.id, {
+            activeDeviceId: currentDeviceId,
+            deviceSessionToken: `token_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            devicePinUpdatedAt: new Date().toISOString(),
+          }).catch((e) => console.warn('Active device update notice:', e));
+        }
+
+        // If this device doesn't have a 4-digit PIN setup for this user yet, prompt
+        if (!storedPin || storedPin.userId !== userIdentifier) {
+          setTimeout(() => {
+            setShowDevicePinSetupModal(true);
+          }, 1200);
+        }
       }
     }
   };
@@ -1642,6 +1666,8 @@ export default function App() {
             theme={theme}
             toggleTheme={toggleTheme}
             showDemoUserLogin={registrationConfig?.showDemoUserLogin !== false}
+            users={users}
+            onSuccessfulPinLogin={completeSuccessfulLogin}
           />
         )}
 
@@ -1764,7 +1790,7 @@ export default function App() {
         isOpen={isCreateRedAlertOpen}
         onClose={() => setIsCreateRedAlertOpen(false)}
         currentUser={currentUser}
-        onVerifyPassword={handleVerifyPasswordBeforeRedAlert}
+        onUpdateUser={handleUpdateUser}
         onAlertCreated={(newAlert) => {
           if (newAlert?.id) {
             setMyCreatedAlertIds((prev) => {
@@ -1816,6 +1842,22 @@ export default function App() {
         alert={selectedDetailAlert}
         onClose={() => setSelectedDetailAlert(null)}
         currentUser={currentUser}
+        onAlertUpdated={(updatedAlert) => {
+          if (updatedAlert && updatedAlert.id) {
+            setRedAlerts((prev) =>
+              (prev || []).map((a) => (a && a.id === updatedAlert.id ? updatedAlert : a))
+            );
+            if (selectedDetailAlert?.id === updatedAlert.id) {
+              setSelectedDetailAlert(updatedAlert);
+            }
+          }
+        }}
+        onAlertDeleted={(alertId) => {
+          if (alertId) {
+            setRedAlerts((prev) => (prev || []).filter((a) => a && a.id !== alertId));
+            setSelectedDetailAlert(null);
+          }
+        }}
       />
 
       <WrongLoginModal
@@ -1863,6 +1905,26 @@ export default function App() {
           setUsers((prev) => (prev || []).map((u) => (u && updatedUser && ((u.id && u.id === updatedUser.id) || (u.nicNumber && u.nicNumber === updatedUser.nicNumber)) ? { ...u, ...updatedUser } : u)));
         }}
       />
+
+      {/* Device-Specific 4-Digit Quick PIN Setup Modal */}
+      {showDevicePinSetupModal && currentUser && (
+        <DevicePinSetupModal
+          isOpen={showDevicePinSetupModal}
+          onClose={() => setShowDevicePinSetupModal(false)}
+          currentUser={currentUser}
+          language={language}
+          onPinConfigured={(updatedUser) => {
+            setCurrentUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
+            setUsers((prev) =>
+              (prev || []).map((u) =>
+                u && (u.id === updatedUser.id || (u.nicNumber && updatedUser.nicNumber && u.nicNumber === updatedUser.nicNumber))
+                  ? { ...u, ...updatedUser }
+                  : u
+              )
+            );
+          }}
+        />
+      )}
 
       {viewMode !== 'dashboard' && (
         <OmniAssistantChatBox

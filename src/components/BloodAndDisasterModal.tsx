@@ -21,7 +21,8 @@ import {
   Lock,
   Unlock,
   Users,
-  HeartHandshake
+  HeartHandshake,
+  Trash2
 } from 'lucide-react';
 import { BloodDonationRequest, VolunteerDonor, DisasterReliefItem, BloodGroup, Language, User as UserType } from '../types';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -37,6 +38,13 @@ import {
   getStoredSupportedDisasterIds,
   saveSupportedDisasterIdsToStorage
 } from '../data/bloodAndDisasterData';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedBloodId, addDeletedDonorId, addDeletedDisasterId } from '../utils/deletedPostsManager';
+import { 
+  deleteBloodRequestFromFirestore, 
+  deleteVolunteerDonorFromFirestore, 
+  deleteDisasterReliefFromFirestore 
+} from '../lib/firebase';
 
 interface BloodAndDisasterModalProps {
   isOpen: boolean;
@@ -242,6 +250,44 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       saveBloodRequestsToStorage(updatedRequests);
     }
     alert(`ස්තූතියි! ${req.patientName} වෙනුවෙන් ලේ පරිත්‍යාගයට ඔබ සහය දැක්වීම අගය කරමු.\n\n📞 දුරකථන අංකය: ${req.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා රෝගියාගේ පාර්ශවය හා සම්බන්ධ විය හැක)`);
+  };
+
+  const isAdmin = checkIsAdmin(currentUser);
+
+  const handleDeleteBloodRequest = (id?: string) => {
+    if (!id) return;
+    if (!confirm('මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const updated = bloodRequests.filter((b) => b.id !== id);
+    setBloodRequests(updated);
+    saveBloodRequestsToStorage(updated);
+    addDeletedBloodId(id);
+    deleteBloodRequestFromFirestore(id).catch((err) => {
+      console.warn('Delete blood request notice:', err);
+    });
+  };
+
+  const handleDeleteDonor = (id?: string) => {
+    if (!id) return;
+    if (!confirm('මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const updated = volunteerDonors.filter((d) => d.id !== id);
+    setVolunteerDonors(updated);
+    saveVolunteerDonorsToStorage(updated);
+    addDeletedDonorId(id);
+    deleteVolunteerDonorFromFirestore(id).catch((err) => {
+      console.warn('Delete volunteer donor notice:', err);
+    });
+  };
+
+  const handleDeleteDisaster = (id?: string) => {
+    if (!id) return;
+    if (!confirm('මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const updated = disasterItems.filter((item) => item.id !== id);
+    setDisasterItems(updated);
+    saveDisasterReliefItemsToStorage(updated);
+    addDeletedDisasterId(id);
+    deleteDisasterReliefFromFirestore(id).catch((err) => {
+      console.warn('Delete disaster item notice:', err);
+    });
   };
 
   const handleSupportDisaster = (item: DisasterReliefItem) => {
@@ -541,6 +587,16 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               🚨 හදිසි (Urgent)
                             </span>
                           )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBloodRequest(req.id)}
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                              title="පරිපාලක ලෙස ලේ ඉල්ලීම ඉවත් කරන්න (Admin Delete)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
 
                         <p className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
@@ -648,26 +704,38 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     </div>
                   </div>
 
-                  {isDemo ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onRequireRegistration) onRequireRegistration();
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>විමසන්න</span>
-                    </button>
-                  ) : (
-                    <a
-                      href={`tel:${donor.phone}`}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>විමසන්න</span>
-                    </a>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDonor(donor.id)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                        title="පරිපාලක ලෙස පරිත්‍යාගශීලියා ඉවත් කරන්න (Admin Delete)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {isDemo ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onRequireRegistration) onRequireRegistration();
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>විමසන්න</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={`tel:${donor.phone}`}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>විමසන්න</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -787,6 +855,16 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDisaster(item.id)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            title="පරිපාලක ලෙස ආපදා දැන්වීම ඉවත් කරන්න (Admin Delete)"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                         {!isDemo && isSupported ? (
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-200 shadow-xs">
