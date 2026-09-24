@@ -224,9 +224,33 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                     </span>
                   </div>
                   <p className="text-emerald-100 leading-relaxed">
-                    සෑම නව සාමාජිකයෙකුටම සහ සේවා සපයන්නෙකුටම ආරම්භයේදීම රු. 100 ක ක්‍රෙඩිට් නොමිලේ හිමිවේ. ඇප් එකේ සේවාවන් අත්විඳ වැඩ පහසු කරගත් පසු, ඉදිරි දැන්වීම් සඳහා ඉතා කුඩා ක්ෂුද්‍ර මුදලක් හෝ ස්වේච්ඡා දායකත්වයක් පමණක් අය කෙරේ.
+                    සෑම නව සාමාජිකයෙකුටම සහ සේවා සපයන්නෙකුටම ආරම්භයේදීම රු. 100 ක ක්‍රෙඩිට් නොමිලේ හිමිවේ (Device ආරක්ෂණ නීති යටතේ එක් දුරකථනයකට එකක් බැගින්). ඇප් එකේ සේවාවන් අත්විඳ වැඩ පහසු කරගත් පසු, ඉදිරි දැන්වීම් සඳහා ඉතා කුඩා ක්ෂුද්‍ර මුදලක් හෝ ස්වේච්ඡා දායකත්වයක් පමණක් අය කෙරේ.
                   </p>
                 </div>
+              </div>
+
+              {/* 🤝 Community Social Mission Pledge */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-950/80 via-[#0a2f24] to-emerald-950/90 border border-teal-500/30 text-white text-xs space-y-1.5 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🤝</span>
+                  <span className="font-extrabold text-teal-200">
+                    අපේම ප්‍රජාව වෙනුවෙන් සමාජ සත්කාරක වේදිකාවකි
+                  </span>
+                </div>
+                <p className="text-teal-100/90 text-[11px] leading-relaxed">
+                  "මෙම ඇප් එක නඩත්තු වන්නේ ඔබ භාවිතා කරන සේවාවන්ගෙන් ලැබෙන ඉතා කුඩා දායකත්වයෙන් බැවින්, බලහත්කාරයෙන් මුදල් අය කිරීමක් නොමැත. ඔබ ලබාදෙන සහයෝගයට සහ අවංකත්වයට ස්තූතියි!"
+                </p>
+              </div>
+
+              {/* 🛡️ Trust & Insurance Platform Guarantee Banner */}
+              <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-emerald-500/30 text-emerald-200 text-xs space-y-1">
+                <div className="flex items-center gap-2 text-amber-300 font-bold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>🛡️ Trust & Insurance වේදිකා වගකීම් සහතිකය:</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-snug">
+                  ඇප් එකෙන් බාහිරව සිදුකරන මුදල් ගනුදෙනු සඳහා වේදිකාවේ කිසිදු වගකීමක් හෝ මැදිහත්වීමක් නොමැත. පාරිභෝගික සහ සේවා සපයන්නාගේ ආරක්ෂාව වෙනුවෙන් සැමවිටම ඇප් එක තුළම රැඳී ගනුදෙනු කරන්න.
+                </p>
               </div>
 
               {/* 2. Important Notice Regarding No-Show / Travel Compensation */}

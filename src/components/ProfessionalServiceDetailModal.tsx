@@ -238,6 +238,26 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
             </div>
           )}
 
+          {/* 🛡️ Trust & Insurance Platform Guarantee Card */}
+          <div className="p-4 rounded-3xl bg-gradient-to-br from-emerald-950 via-[#07291a] to-slate-950 border-2 border-emerald-500/50 text-white shadow-md space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-black shrink-0">
+                <ShieldCheck className="w-5 h-5 text-emerald-950" />
+              </div>
+              <div>
+                <h5 className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <span>🛡️ Trust & Insurance වේදිකා වගකීම් සහතිකය</span>
+                </h5>
+                <p className="text-[11px] text-emerald-200 leading-snug">
+                  ඇප් එක හරහා සම්බන්ධ වන ගනුදෙනුවලට පමණක් පාරිභෝගික ආරක්ෂාව සහ මැදිහත්වීම හිමිවේ.
+                </p>
+              </div>
+            </div>
+            <p className="text-[10px] text-emerald-200/90 bg-black/40 p-2.5 rounded-2xl border border-emerald-500/20 leading-relaxed">
+              ⚠️ <strong>අවධාරණය:</strong> ඇප් එකෙන් බාහිරව කරන සෘජු මුදල් ගනුදෙනු, වංචා හෝ සේවා බාලවීම් සඳහා වේදිකාවේ කිසිදු වගකීමක් නොමැත. දෙපාර්ශ්වයේම උපරිම ආරක්ෂාව උදෙසා ඇප් එක තුළම රැඳී ගනුදෙනු කරන්න.
+            </p>
+          </div>
+
           {/* Detailed Info Cards */}
           <div className="space-y-3.5">
             {/* 1. Service Offered */}

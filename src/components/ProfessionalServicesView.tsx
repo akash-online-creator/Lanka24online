@@ -175,6 +175,57 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
         </button>
       </div>
 
+      {/* 🛡️ Trust & Insurance Platform Guarantee & Community Mission Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        {/* Card 1: Platform Guarantee Notice */}
+        <div className="p-4 rounded-3xl bg-gradient-to-br from-emerald-950/90 via-[#072417] to-slate-950 border-2 border-emerald-500/50 text-white shadow-md space-y-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-sm">
+              <ShieldCheck className="w-5 h-5 text-emerald-950" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-black text-amber-300 flex items-center gap-1.5">
+                <span>🛡️ Trust & Insurance වගකීම් සහතිකය</span>
+                <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/30">Platform Protected</span>
+              </h4>
+              <p className="text-[11px] text-emerald-100 font-medium leading-tight mt-0.5">
+                ඇප් එක හරහා සම්බන්ධ වන ගනුදෙනුවලට පමණක් සහය සේවා පාරිභෝගික ආරක්ෂාව සහ සහතිකය හිමිවේ.
+              </p>
+            </div>
+          </div>
+          <div className="p-2.5 rounded-2xl bg-black/40 border border-emerald-500/20 text-[10px] sm:text-[11px] text-emerald-200/90 leading-relaxed space-y-1">
+            <p>
+              ⚠️ <strong>වැදගත් අවධාරණය:</strong> ඇප් එකෙන් බාහිරව කරන සෘජු මුදල් ගනුදෙනු, වංචා හෝ සේවා බාලවීම් සඳහා වේදිකාවේ කිසිදු වගකීමක් හෝ මැදිහත්වීමක් නොමැත.
+            </p>
+            <p className="text-amber-200/90">
+              ✓ යම් සේවයක් බාල වුවහොත් හෝ අනතුරක් සිදුවුවහොත්, ඇප් එක හරහා සිදු වූ ඇණවුම්වලට පමණක් අපගේ පරිපාලන මැදිහත්වීම සහ සහතිකය හිමිවේ.
+            </p>
+          </div>
+        </div>
+
+        {/* Card 2: Community Social Mission Pledge */}
+        <div className="p-4 rounded-3xl bg-gradient-to-br from-teal-950/90 via-[#062920] to-emerald-950 border-2 border-teal-500/40 text-white shadow-md space-y-2 flex flex-col justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-teal-400 text-teal-950 flex items-center justify-center font-black text-lg shrink-0 shadow-sm">
+              🤝
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-black text-teal-200">
+                අපේම ප්‍රජාව වෙනුවෙන් විශ්වාසනීය සමාජ සත්කාරයක්
+              </h4>
+              <p className="text-[11px] text-teal-100/90 font-medium leading-tight mt-0.5">
+                මෙය හුදු ව්‍යාපාරයකට වඩා එකිනෙකාට අත්වැලක් වන සහන සේවා එකමුතුවකි.
+              </p>
+            </div>
+          </div>
+          <div className="p-2.5 rounded-2xl bg-teal-900/30 border border-teal-500/20 text-[10px] sm:text-[11px] text-teal-100/90 leading-relaxed">
+            <p>
+              "මෙම ඇප් එක නඩත්තු වන්නේ ඔබ භාවිතා කරන සේවයෙන් ලැබෙන ඉතා කුඩා ක්ෂුද්‍ර දායකත්වයෙන් බැවින්, බලහත්කාරයෙන් මුදල් අය කිරීමක් නැත. ඔබ ලබාදෙන සහයෝගයට සහ අවංකත්වයට ස්තූතියි!"
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 2. Navigation Tabs (02. සියලුම වෘත්තීය සේවා / වෘත්තීය වර්ග) */}
       <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-100 dark:bg-[#09180f] rounded-2xl border border-slate-200 dark:border-[#132a1d]">
         <button
@@ -396,6 +447,85 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
           </button>
         </div>
       )}
+
+      {/* 4.5 Featured Top Rated & Gold Verified Professionals List (Requirement: ඇප් එකේ ඉදිරියෙන්ම පෙනෙන Featured List කොටසේ ඔවුන්ගේ පැතිකඩ නොමිලේ ප්‍රදර්ශනය කරන්න) */}
+      {(() => {
+        const topRatedProviders = professionalServices
+          .filter(s => {
+            const rep = calculateProviderReputation(s.userId, s, professionalServices);
+            return rep.level >= 4 || (s.reviews && s.reviews.length >= 3 && (s.avgRating || 5) >= 4.7);
+          })
+          .slice(0, 4);
+
+        if (topRatedProviders.length === 0) return null;
+
+        return (
+          <div className="space-y-2.5 p-4 rounded-3xl bg-gradient-to-br from-amber-500/10 via-emerald-500/10 to-teal-500/10 border-2 border-amber-400/40 dark:border-amber-500/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-amber-400 text-amber-950 font-black shadow-xs">
+                  <Star className="w-4 h-4 fill-amber-950" />
+                </span>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span>🌟 ඉහළම ශ්‍රේණිගත ප්‍රවීණයන් (Featured Top Rated)</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400/30 text-amber-800 dark:text-amber-300 text-[10px] font-extrabold border border-amber-400/50">
+                      Gold Verified
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-600 dark:text-[#88ad97] font-medium">
+                    හොඳම Reviews සහ 5-Star Reputation ලබාගත් විශිෂ්ට සේවා ශිල්පීන්
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {topRatedProviders.map((service, idx) => {
+                const rep = calculateProviderReputation(service.userId, service, professionalServices);
+                return (
+                  <div
+                    key={`featured_${service.id || idx}`}
+                    onClick={() => setSelectedServiceForDetail(service)}
+                    className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1811] border-2 border-amber-400/50 hover:border-emerald-500 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-3 active:scale-95 group"
+                  >
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-amber-400 shrink-0 bg-slate-100 dark:bg-slate-800">
+                        {service.providerPhotoUrl ? (
+                          <img src={service.providerPhotoUrl} alt={service.providerName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center font-black text-amber-700 bg-amber-100">
+                            {service.providerName.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-amber-400 text-amber-950 text-[9px] font-black shadow-xs">
+                        ⭐
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                          {service.providerName}
+                        </span>
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      </div>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold truncate">
+                        {service.profession}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                        <span className="text-amber-500 font-bold">★ {service.avgRating?.toFixed(1) || '5.0'}</span>
+                        <span>•</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{rep.points} pts</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 5. Professional Service Providers Grid (Requirement 03) */}
       <div className="space-y-3">

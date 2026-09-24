@@ -737,6 +737,19 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             )}
           </div>
 
+          {/* 🛡️ Trust & Insurance Platform Guarantee Card */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/80 via-[#07291a] to-slate-950 border border-emerald-500/40 text-white space-y-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-extrabold text-amber-300">
+                🛡️ සහය සේවා පාරිභෝගික ආරක්ෂණ වගකීම (Platform Guarantee)
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-100/90 leading-snug">
+              ඇප් එකෙන් බාහිරව කරන සෘජු ගනුදෙනු සඳහා වේදිකාවේ කිසිදු වගකීමක් නොමැත. ඇප් එක හරහා සම්බන්ධ වන ගනුදෙනුවලට පමණක් ගුණාත්මක සහතිකය සහ මැදිහත්වීම ලැබේ.
+            </p>
+          </div>
+
           {/* SUBMIT BUTTON */}
           <div className="pt-3">
             <button
