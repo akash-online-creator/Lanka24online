@@ -13,11 +13,15 @@ export interface TelegramUploadOptions {
 
 export interface TelegramUploadResult {
   success: boolean;
+  engine?: 'cloudflare_r2' | 'telegram' | 'fallback' | string;
+  isR2Stored?: boolean;
   isTelegramStored: boolean;
   isLocalFallback?: boolean;
-  url: string; // The URL to view or play the media (either proxy stream or fallback)
+  url: string; // The URL to view or play the media (either direct CDN, proxy stream or fallback)
+  fileKey?: string;
   telegramFileId?: string;
   filePath?: string;
+  directUrl?: string;
   directTelegramUrl?: string;
   proxyUrl?: string;
   mediaType: 'image' | 'video' | 'voice' | 'audio' | 'document';
@@ -30,27 +34,31 @@ export interface TelegramUploadResult {
   warning?: string;
 }
 
-export interface TelegramStatusResponse {
-  configured: boolean;
-  bot?: {
-    id: number;
-    name: string;
-    username: string;
-    canJoinGroups?: boolean;
-  } | null;
-  chat?: {
-    id: string | number;
-    title: string;
-    type?: string;
-  } | null;
-  totalStoredMedia: number;
-  stats: {
-    videos: number;
-    voices: number;
-    images: number;
+export interface CloudStorageStatusResponse {
+  activeEngine: 'cloudflare_r2' | 'telegram' | 'local_fallback';
+  engines: {
+    cloudflare_r2: {
+      configured: boolean;
+      bucket: string;
+      publicDomain: string;
+      egressCost: string;
+      scaleRating: string;
+    };
+    telegram: {
+      configured: boolean;
+      hasBotToken: boolean;
+      hasChatId: boolean;
+      scaleRating: string;
+    };
+    local_fallback: {
+      available: boolean;
+      type: string;
+    };
   };
   message: string;
 }
+
+export type TelegramStatusResponse = CloudStorageStatusResponse;
 
 /**
  * Convert a File or Blob to Base64 string
@@ -111,7 +119,7 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
       sourceContext: options.sourceContext || 'Sahaya Seva',
     };
 
-    const response = await fetch('/api/telegram/upload', {
+    const response = await fetch('/api/storage/upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -120,10 +128,12 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
     });
 
     if (!response.ok) {
-      console.warn('Telegram upload endpoint returned non-200 status, using local fallback');
+      console.warn('Storage upload endpoint returned non-200 status, using local fallback');
       const fallbackUrl = base64;
       return {
         success: true,
+        engine: 'fallback',
+        isR2Stored: false,
         isTelegramStored: false,
         isLocalFallback: true,
         url: fallbackUrl,
@@ -136,17 +146,17 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
 
     const result = await response.json();
 
-    const finalUrl = result.proxyUrl || base64;
+    const finalUrl = result.url || result.directUrl || result.proxyUrl || base64;
 
     const record: TelegramMediaRecord = {
-      fileId: result.telegramFileId || `local_${Date.now()}`,
+      fileId: result.fileKey || result.fileId || `storage_${Date.now()}`,
       fileType: options.mediaType,
       mimeType: result.mimeType || mime,
       fileSize: result.fileSize || options.file?.size,
       fileName: name,
       messageId: result.messageId,
       proxyUrl: result.proxyUrl,
-      directTelegramUrl: result.directTelegramUrl,
+      directTelegramUrl: result.directUrl || result.directTelegramUrl,
       caption: result.caption,
       createdAt: result.createdAt || new Date().toISOString(),
       senderName: options.senderName,
@@ -154,12 +164,16 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
 
     return {
       success: true,
+      engine: result.engine || (result.isR2Stored ? 'cloudflare_r2' : result.isTelegramStored ? 'telegram' : 'fallback'),
+      isR2Stored: Boolean(result.isR2Stored),
       isTelegramStored: Boolean(result.isTelegramStored),
       isLocalFallback: Boolean(result.isLocalFallback),
       url: finalUrl,
-      telegramFileId: result.telegramFileId,
+      fileKey: result.fileKey,
+      telegramFileId: result.fileId,
       filePath: result.filePath,
-      directTelegramUrl: result.directTelegramUrl,
+      directUrl: result.directUrl,
+      directTelegramUrl: result.directUrl || result.directTelegramUrl,
       proxyUrl: result.proxyUrl,
       mediaType: options.mediaType,
       mimeType: result.mimeType || mime,
@@ -171,11 +185,13 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
       warning: result.warning,
     };
   } catch (error: any) {
-    console.error('Failed to upload media to Telegram:', error);
+    console.error('Failed to upload media:', error);
     // Graceful fallback to provided base64
     const fallbackUrl = options.fileBase64 || '';
     return {
       success: true,
+      engine: 'fallback',
+      isR2Stored: false,
       isTelegramStored: false,
       isLocalFallback: true,
       url: fallbackUrl,
@@ -187,25 +203,52 @@ export async function uploadMediaToTelegram(options: TelegramUploadOptions): Pro
 }
 
 /**
- * Check Telegram Bot connection and stats
+ * Universal Cloud Storage Upload alias (Cloudflare R2, Telegram & Fallback)
  */
-export async function getTelegramStatus(): Promise<TelegramStatusResponse> {
+export const uploadMediaToCloudStorage = uploadMediaToTelegram;
+
+/**
+ * Check Storage engine connection and health status
+ */
+export async function getCloudStorageStatus(): Promise<CloudStorageStatusResponse> {
   try {
-    const response = await fetch('/api/telegram/status');
+    const response = await fetch('/api/storage/status');
     if (!response.ok) {
       throw new Error(`Status check failed: ${response.statusText}`);
     }
     return await response.json();
   } catch (err: any) {
     return {
-      configured: false,
-      bot: null,
-      chat: null,
-      totalStoredMedia: 0,
-      stats: { videos: 0, voices: 0, images: 0 },
-      message: err.message || 'Failed to connect to Telegram service',
+      activeEngine: 'local_fallback',
+      engines: {
+        cloudflare_r2: {
+          configured: false,
+          bucket: '',
+          publicDomain: '',
+          egressCost: '$0.00',
+          scaleRating: 'Million Scale',
+        },
+        telegram: {
+          configured: false,
+          hasBotToken: false,
+          hasChatId: false,
+          scaleRating: 'Up to 50k',
+        },
+        local_fallback: {
+          available: true,
+          type: 'Base64 / Firestore Fallback',
+        },
+      },
+      message: err.message || 'Failed to connect to storage service',
     };
   }
+}
+
+/**
+ * Check Storage Bot connection and stats
+ */
+export async function getTelegramStatus(): Promise<TelegramStatusResponse> {
+  return getCloudStorageStatus();
 }
 
 /**

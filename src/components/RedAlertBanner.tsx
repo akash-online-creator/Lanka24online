@@ -73,6 +73,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
   // 1️⃣ අදාළ පරිශීලකයා Dismiss කළ Alert IDs පමණක් ලබා ගැනීම
   const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -122,6 +123,15 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
     return false;
   });
+
+  // 🔄 Auto-transition carousel effect when multiple alerts exist
+  useEffect(() => {
+    if (activeAlerts.length <= 1 || isHovered) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % activeAlerts.length);
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [activeAlerts.length, isHovered]);
 
   const currentAlert = activeAlerts.length > 0 
     ? activeAlerts[currentIndex % activeAlerts.length] 
@@ -266,7 +276,11 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
-    <div className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg border-b-2 border-red-400/80 relative z-30 animate-fadeIn">
+    <div 
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg border-b-2 border-red-400/80 relative z-30 animate-fadeIn"
+    >
       
       {/* 1. ප්‍රධාන Banner තීරුව */}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs">

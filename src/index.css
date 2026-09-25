@@ -93,7 +93,12 @@ html[data-data-saver="true"] * {
   background: rgba(16, 185, 129, 0.4);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.7);
+@keyframes shrinkWidth {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-shrink-width {
+  animation: shrinkWidth 5.5s linear forwards;
 }
 

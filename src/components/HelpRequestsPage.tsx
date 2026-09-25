@@ -45,6 +45,10 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
   RotateCcw,
   Wrench,
   Store,
@@ -401,6 +405,30 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return (redAlerts || []).filter((a) => a.status === 'active' && !a.isFlaggedFake);
   }, [redAlerts]);
 
+  // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
+  const [activeAlertIndex, setActiveAlertIndex] = useState(0);
+  const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
+
+  // Auto-advance through alerts every 5.5 seconds if multiple exist
+  useEffect(() => {
+    if (activeRedAlerts.length <= 1 || isAlertCarouselPaused) return;
+    const interval = setInterval(() => {
+      setActiveAlertIndex((prev) => (prev + 1) % activeRedAlerts.length);
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [activeRedAlerts.length, isAlertCarouselPaused]);
+
+  // Reset index if out of bounds
+  useEffect(() => {
+    if (activeAlertIndex >= activeRedAlerts.length && activeRedAlerts.length > 0) {
+      setActiveAlertIndex(0);
+    }
+  }, [activeRedAlerts.length, activeAlertIndex]);
+
+  const currentRedAlert = activeRedAlerts.length > 0
+    ? activeRedAlerts[activeAlertIndex % activeRedAlerts.length]
+    : null;
+
   const getAlertDistanceDisplay = useCallback((alert: RedAlertItem) => {
     if (
       !currentLocation ||
@@ -431,85 +459,169 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         </div>
       )}
 
-      {/* 🚨 Emergency Disaster Red Alert Banner at the Very Top of Notice Board */}
-      {activeRedAlerts.length > 0 && (
-        <div className="space-y-3">
-          {activeRedAlerts.map((alert, aIdx) => {
-            const config = getDisasterConfig(alert.disasterType);
-            const distStr = getAlertDistanceDisplay(alert);
-            return (
-              <div
-                key={`top-red-alert-${alert.id || 'alt'}_${aIdx}`}
-                className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/90 relative overflow-hidden animate-fadeIn"
-              >
-                {/* Visual Ambient Light Effect */}
-                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+      {/* 🚨 Emergency Disaster Red Alert Compact Rotating Carousel at the Top of Notice Board */}
+      {currentRedAlert && (
+        <div 
+          onMouseEnter={() => setIsAlertCarouselPaused(true)}
+          onMouseLeave={() => setIsAlertCarouselPaused(false)}
+          className="relative rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-800 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/90 overflow-hidden transition-all duration-300 animate-fadeIn cursor-pointer group"
+          onClick={() => {
+            if (onViewRedAlertDetail && currentRedAlert) {
+              onViewRedAlertDetail(currentRedAlert);
+            }
+          }}
+        >
+          {/* Visual Ambient Light Effect */}
+          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-48 h-48 bg-white/15 rounded-full blur-2xl pointer-events-none" />
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center shrink-0 shadow-lg font-black text-2xl animate-pulse">
-                      {config.icon || '🚨'}
-                    </div>
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white text-red-700 uppercase tracking-wide flex items-center gap-1 shadow-xs">
-                          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-                          <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-black/30 text-yellow-300 font-mono border border-yellow-300/30">
-                          SIREN 2KM ACTIVE
-                        </span>
-                        {alert.alertCode && (
-                          <span className="text-[10px] font-mono text-red-100 font-bold bg-black/20 px-2 py-0.5 rounded-md">
-                            {alert.alertCode}
-                          </span>
-                        )}
-                      </div>
+          {/* Animated Progress Timer Line for active cycling */}
+          {activeRedAlerts.length > 1 && !isAlertCarouselPaused && (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-black/20 overflow-hidden z-20">
+              <div 
+                key={`progress-${activeAlertIndex}`} 
+                className="h-full bg-yellow-300 transition-all"
+                style={{
+                  animation: 'shrinkWidth 5.5s linear forwards'
+                }}
+              />
+            </div>
+          )}
 
-                      <h3 className="text-base sm:text-lg font-black text-white leading-tight flex items-center gap-1.5 flex-wrap">
-                        <span>{alert.disasterTitleSi || config.titleSi}</span>
-                      </h3>
+          <div className="p-4 sm:p-5 relative z-10 space-y-2.5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                {/* 3D Animated Disaster Icon Beacon */}
+                <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center shrink-0 shadow-lg font-black text-2xl animate-pulse group-hover:scale-105 transition-transform">
+                  {getDisasterConfig(currentRedAlert.disasterType).icon || '🚨'}
+                </div>
 
-                      <div className="flex items-center gap-2.5 text-xs text-red-100 flex-wrap font-medium pt-0.5">
-                        <span className="flex items-center gap-1 font-bold text-white bg-black/20 px-2.5 py-1 rounded-lg">
-                          <MapPin className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
-                          <span>{alert.locationName}</span>
-                        </span>
-                        {distStr && (
-                          <span className="bg-white/20 px-2.5 py-1 rounded-lg font-mono font-bold text-white flex items-center gap-1">
-                            <Navigation className="w-3 h-3 text-amber-200" />
-                            <span>{getLangText(`ඔබේ දුර: ${distStr}`, `Distance: ${distStr}`, `தூரம்: ${distStr}`)}</span>
-                          </span>
-                        )}
-                      </div>
+                <div className="space-y-1 min-w-0 flex-1">
+                  {/* Top Badges & Multi-Alert Indicator */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white text-red-700 uppercase tracking-wide flex items-center gap-1 shadow-xs">
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                      <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
+                    </span>
 
-                      {alert.description && (
-                        <p className="text-xs text-red-50 line-clamp-2 mt-1 leading-relaxed bg-black/20 p-2 rounded-xl border border-white/10">
-                          {alert.description}
-                        </p>
-                      )}
-                    </div>
+                    {activeRedAlerts.length > 1 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-black/40 text-yellow-300 font-mono border border-yellow-300/40 flex items-center gap-1">
+                        <span>🚨 {(activeAlertIndex % activeRedAlerts.length) + 1} / {activeRedAlerts.length}</span>
+                        <span className="text-[9px] text-red-200">({getLangText('මාරු වේ', 'Rotating', 'சுழலும்')})</span>
+                      </span>
+                    )}
+
+                    {currentRedAlert.alertCode && (
+                      <span className="text-[10px] font-mono text-red-100 font-bold bg-black/25 px-2 py-0.5 rounded-md">
+                        {currentRedAlert.alertCode}
+                      </span>
+                    )}
                   </div>
 
-                  {/* View Details Button */}
-                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onViewRedAlertDetail) {
-                          onViewRedAlertDetail(alert);
-                        }
-                      }}
-                      className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <span>{getLangText('විස්තර සහ ආරක්ෂිත උපදෙස්', 'View Safety Details', 'பாதுகாப்பு விவரங்கள்')}</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
+                  {/* Incident Title */}
+                  <h3 className="text-base sm:text-lg font-black text-white leading-tight flex items-center gap-1.5 flex-wrap">
+                    <span>{currentRedAlert.disasterTitleSi || getDisasterConfig(currentRedAlert.disasterType).titleSi}</span>
+                  </h3>
+
+                  {/* Location & Distance Pills */}
+                  <div className="flex items-center gap-2 text-xs text-red-100 flex-wrap font-medium pt-0.5">
+                    <span className="flex items-center gap-1 font-bold text-white bg-black/25 px-2.5 py-1 rounded-lg">
+                      <MapPin className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+                      <span>{currentRedAlert.locationName}</span>
+                    </span>
+
+                    {getAlertDistanceDisplay(currentRedAlert) && (
+                      <span className="bg-white/20 px-2.5 py-1 rounded-lg font-mono font-bold text-white flex items-center gap-1">
+                        <Navigation className="w-3 h-3 text-amber-200" />
+                        <span>{getLangText(`ඔබේ දුර: ${getAlertDistanceDisplay(currentRedAlert)}`, `Distance: ${getAlertDistanceDisplay(currentRedAlert)}`, `தூரம்: ${getAlertDistanceDisplay(currentRedAlert)}`)}</span>
+                      </span>
+                    )}
+
+                    {currentRedAlert.incidentTime && (
+                      <span className="bg-black/20 px-2 py-1 rounded-lg font-mono text-[11px] text-red-100 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-yellow-300" />
+                        <span>{currentRedAlert.incidentDate} • {currentRedAlert.incidentTime}</span>
+                      </span>
+                    )}
                   </div>
+
+                  {currentRedAlert.description && (
+                    <p className="text-xs text-red-50 line-clamp-1 mt-1 leading-relaxed bg-black/20 p-1.5 rounded-xl border border-white/10">
+                      {currentRedAlert.description}
+                    </p>
+                  )}
                 </div>
               </div>
-            );
-          })}
+
+              {/* Right Controls: View Details CTA & Carousel Navigation Buttons */}
+              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onViewRedAlertDetail && currentRedAlert) {
+                      onViewRedAlertDetail(currentRedAlert);
+                    }
+                  }}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 hover:shadow-red-500/30"
+                >
+                  <span>{getLangText('විස්තර සහ උපදෙස් බලන්න', 'View Safety Details', 'பாதுகாப்பு விவரங்கள்')}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {/* Carousel Interactive Controls for Multiple Alerts */}
+                {activeRedAlerts.length > 1 && (
+                  <div 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="flex items-center gap-1.5 bg-black/30 backdrop-blur-xs px-2 py-1 rounded-xl border border-white/15"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveAlertIndex((prev) => (prev - 1 + activeRedAlerts.length) % activeRedAlerts.length)}
+                      className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      title="පෙර ආපදාව (Previous Alert)"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    {/* Clickable indicator dots */}
+                    <div className="flex items-center gap-1 px-1">
+                      {activeRedAlerts.map((_, dotIdx) => (
+                        <button
+                          key={`alert-dot-${dotIdx}`}
+                          type="button"
+                          onClick={() => setActiveAlertIndex(dotIdx)}
+                          className={`h-2 rounded-full transition-all cursor-pointer ${
+                            (activeAlertIndex % activeRedAlerts.length) === dotIdx
+                              ? 'w-5 bg-yellow-300 shadow-xs'
+                              : 'w-2 bg-white/40 hover:bg-white/70'
+                          }`}
+                          title={`ආපදා ඇඟවීම ${dotIdx + 1}`}
+                        />
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveAlertIndex((prev) => (prev + 1) % activeRedAlerts.length)}
+                      className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      title="ඊළඟ ආපදාව (Next Alert)"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAlertCarouselPaused(!isAlertCarouselPaused)}
+                      className="p-1 rounded-lg hover:bg-white/20 text-yellow-300 ml-0.5 transition-colors cursor-pointer"
+                      title={isAlertCarouselPaused ? "ස්වයංක්‍රීයව මාරු වීම අරඹන්න (Play)" : "මාරු වීම නවත්වන්න (Pause)"}
+                    >
+                      {isAlertCarouselPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
