@@ -192,9 +192,9 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
             id: 'custom_loc',
             nameSi: editPost.locationName || currentLocation?.nameSi || 'ශ්‍රී ලංකා',
             nameEn: editPost.locationName || currentLocation?.nameEn || 'Sri Lanka',
+            nameTa: editPost.locationName || currentLocation?.nameTa || 'இலங்கை',
             lat: editPost.lat,
             lng: editPost.lng,
-            district: currentLocation?.district || 'කොළඹ',
           });
         } else {
           setSelectedLocation(currentLocation);

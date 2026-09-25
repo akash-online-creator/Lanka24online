@@ -18,6 +18,7 @@ import { TelegramMediaRecord } from '../types';
 
 interface EmbeddedMediaViewerProps {
   url?: string;
+  videoUrl?: string;
   className?: string;
   compact?: boolean;
   mediaType?: 'video' | 'audio' | 'voice' | 'image' | 'auto';
@@ -27,7 +28,8 @@ interface EmbeddedMediaViewerProps {
 }
 
 export const EmbeddedMediaViewer: React.FC<EmbeddedMediaViewerProps> = ({
-  url,
+  url: propUrl,
+  videoUrl,
   className = '',
   compact = false,
   mediaType = 'auto',
@@ -35,6 +37,7 @@ export const EmbeddedMediaViewer: React.FC<EmbeddedMediaViewerProps> = ({
   title,
   onImageClick,
 }) => {
+  const url = propUrl || videoUrl;
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);

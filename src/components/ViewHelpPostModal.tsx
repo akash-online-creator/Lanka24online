@@ -1,7 +1,7 @@
 import React from 'react';
 import { HelpPost, Language, LocationOption, User } from '../types';
 import { PostCard } from './PostCard';
-import { Eye, Sparkles, X, CheckCircle2, MessageCircle, MessageSquare } from 'lucide-react';
+import { Eye, Sparkles, X, CheckCircle2, MessageCircle, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { maskName, maskPhone } from '../utils/demoDataMasker';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 
@@ -247,7 +247,33 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
               {getLangText('සක්‍රීය දැන්වීමකි (Active Ad)', 'Active Ad', 'செயலில் உள்ள விளம்பரம்')}
             </span>
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {(isPostOwner || isAdmin) && onEditPost && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditPost(post);
+                }}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>{getLangText('සංස්කරණය (Edit)', 'Edit', 'திருத்து')}</span>
+              </button>
+            )}
+            {(isPostOwner || isAdmin) && onDeletePost && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDeletePost(post);
+                }}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{getLangText('මකා දමන්න (Delete)', 'Delete', 'நீக்கு')}</span>
+              </button>
+            )}
             {onOpenChat && (
               <button
                 type="button"

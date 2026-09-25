@@ -26,8 +26,10 @@ import {
 } from 'firebase/firestore';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { User } from '../types';
+import { User, RedAlertItem, RedAlertComment, SosLiveSession } from '../types';
 import { deduplicateUsers } from '../utils/userUtils';
+
+export type { RedAlertItem, RedAlertComment, SosLiveSession };
 
 // ==============================================================
 // 🔥 FIREBASE INITIALIZATION & HELPER TYPES
@@ -136,55 +138,6 @@ export function sanitizeForFirestore<T = any>(obj: T): T {
     }
   }
   return clean as T;
-}
-
-// Interface Definitions
-export interface RedAlertComment {
-  id?: string;
-  authorName?: string;
-  userName?: string;
-  userId?: string;
-  userPhone?: string;
-  text?: string;
-  comment?: string;
-  createdAt?: string;
-  createdAtDisplay?: string;
-  isReporterUpdate?: boolean;
-}
-
-export interface RedAlertItem {
-  id: string;
-  alertCode?: string;
-  disasterType?: string;
-  customDisasterTitle?: string;
-  disasterTitleSi?: string;
-  disasterTitleEn?: string;
-  disasterTitleTa?: string;
-  description?: string;
-  latitude?: number;
-  longitude?: number;
-  locationName?: string;
-  locationAccuracyMeters?: number;
-  incidentDate?: string;
-  incidentTime?: string;
-  createdAt?: string;
-  createdAtMs?: number;
-  reportedByUserId?: string;
-  reportedByName?: string;
-  reportedByPhone?: string;
-  status?: 'active' | 'resolved' | 'cancelled' | 'false_alarm';
-  severity?: 'critical' | 'high' | 'medium' | 'low' | 'moderate';
-  comments?: RedAlertComment[];
-  fakeReports?: any[];
-  isFlaggedFake?: boolean;
-  adminActionNote?: string;
-  statusChangeMessage?: string | null;
-  latestReporterUpdate?: {
-    text: string;
-    createdAt: string;
-    reporterName?: string;
-    notificationText?: string;
-  } | null;
 }
 
 // ==============================================================
@@ -1564,5 +1517,107 @@ export async function deleteGroupFromFirestore(groupId: string): Promise<void> {
     await deleteDoc(docRef);
   } catch (error) {
     console.warn(`deleteGroupFromFirestore notice for ${groupId}:`, error);
+  }
+}
+
+// ==============================================================
+// 🚨 SOS LIVE GPS TRACKER (සජීවී SOS ස්ථාන විකාශන) OPERATIONS
+// ==============================================================
+const SOS_SESSIONS_COLLECTION = 'sos_live_sessions';
+
+export async function createOrUpdateSosLiveSession(session: SosLiveSession): Promise<string> {
+  const sessionId = session.id || `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const cleanData = sanitizeForFirestore({
+    ...session,
+    id: sessionId,
+    updatedAt: new Date().toISOString(),
+    updatedAtMs: Date.now(),
+  });
+
+  try {
+    const docRef = doc(db, SOS_SESSIONS_COLLECTION, sessionId);
+    await setDoc(docRef, cleanData, { merge: true });
+    return sessionId;
+  } catch (error) {
+    console.warn(`createOrUpdateSosLiveSession notice for ${sessionId}:`, error);
+    return sessionId;
+  }
+}
+
+export async function updateSosLiveLocation(
+  sessionId: string, 
+  updateData: Partial<SosLiveSession>
+): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const docRef = doc(db, SOS_SESSIONS_COLLECTION, sessionId);
+    const cleanData = sanitizeForFirestore({
+      ...updateData,
+      updatedAt: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+    });
+    await setDoc(docRef, cleanData, { merge: true });
+  } catch (error) {
+    console.warn(`updateSosLiveLocation notice for ${sessionId}:`, error);
+  }
+}
+
+export async function stopSosLiveSession(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const docRef = doc(db, SOS_SESSIONS_COLLECTION, sessionId);
+    const deactivatedPayload = sanitizeForFirestore({
+      isActive: false,
+      deactivatedAt: new Date().toISOString(),
+      deactivatedAtMs: Date.now(),
+      updatedAt: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+    });
+    await setDoc(docRef, deactivatedPayload, { merge: true });
+  } catch (error) {
+    console.warn(`stopSosLiveSession notice for ${sessionId}:`, error);
+  }
+}
+
+export function subscribeToSosLiveSession(
+  sessionId: string,
+  onUpdate: (session: SosLiveSession | null) => void
+): () => void {
+  if (!sessionId) {
+    onUpdate(null);
+    return () => {};
+  }
+  const docRef = doc(db, SOS_SESSIONS_COLLECTION, sessionId);
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        onUpdate({
+          id: snapshot.id,
+          ...data,
+        } as SosLiveSession);
+      } else {
+        onUpdate(null);
+      }
+    },
+    (error) => {
+      console.warn(`subscribeToSosLiveSession snapshot error on ${sessionId}:`, error);
+    }
+  );
+}
+
+export async function getSosLiveSession(sessionId: string): Promise<SosLiveSession | null> {
+  if (!sessionId) return null;
+  try {
+    const docRef = doc(db, SOS_SESSIONS_COLLECTION, sessionId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as SosLiveSession;
+    }
+    return null;
+  } catch (error) {
+    console.warn(`getSosLiveSession error on ${sessionId}:`, error);
+    return null;
   }
 }

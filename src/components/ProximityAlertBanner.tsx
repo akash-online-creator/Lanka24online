@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Radio, AlertCircle, X, Droplet, Bell, Volume2, VolumeX, ShieldAlert, ArrowRight } from 'lucide-react';
-import { HelpPost, BloodDonationRequest, ProximityNotificationConfig } from '../types';
+import { HelpPost, BloodDonationRequest, ProximityNotificationConfig, LocationOption } from '../types';
 
 interface ProximityAlertBannerProps {
-  nearbyUrgentPosts: HelpPost[];
-  nearbyBloodRequests: BloodDonationRequest[];
+  nearbyUrgentPosts?: HelpPost[];
+  nearbyBloodRequests?: BloodDonationRequest[];
+  posts?: HelpPost[];
+  userLocation?: LocationOption;
   userDistanceKm?: number;
   onOpenHelpPost?: (post: HelpPost) => void;
+  onViewPost?: (post: any) => void;
   onOpenBloodHub?: () => void;
   config?: ProximityNotificationConfig;
   onUpdateConfig?: (config: ProximityNotificationConfig) => void;
 }
 
 export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
-  nearbyUrgentPosts = [],
+  nearbyUrgentPosts: propNearbyUrgentPosts,
   nearbyBloodRequests = [],
-  onOpenHelpPost,
+  posts,
+  userLocation,
+  userDistanceKm,
+  onOpenHelpPost: propOnOpenHelpPost,
+  onViewPost,
   onOpenBloodHub,
   config = {
     enabled: true,
@@ -27,6 +34,8 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
   },
   onUpdateConfig,
 }) => {
+  const nearbyUrgentPosts = propNearbyUrgentPosts || (posts ? posts.filter(p => p && (p.distanceKm <= config.radiusKm || (p.priorityLevel === 'emergency' || p.priorityLevel === 'high'))) : []);
+  const onOpenHelpPost = propOnOpenHelpPost || onViewPost;
   const [dismissed, setDismissed] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
 

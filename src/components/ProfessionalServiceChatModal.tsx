@@ -133,9 +133,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
     // Inspect message for policy violations
     const checkResult = inspectAndSanitizeMessage(textToSend);
     if (checkResult.hasViolation) {
-      const newStrikes = recordPolicyViolation(userKey);
-      setPolicyStrikes(newStrikes);
-      setIsBlocked(isUserPolicyBlocked(userKey));
+      const result = recordPolicyViolation(userKey);
+      setPolicyStrikes(result.newStrikes);
+      setIsBlocked(result.isBlocked || isUserPolicyBlocked(userKey));
       setDetectedViolationTypes(checkResult.detectedTypes);
       setShowPolicyModal(true);
       return;

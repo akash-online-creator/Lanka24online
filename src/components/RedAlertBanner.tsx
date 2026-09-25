@@ -40,6 +40,7 @@ export const unlockAudioContext = () => {
 
 interface UserProfile {
   id?: string;
+  userId?: string;
   nic?: string;
   email?: string;
   phone?: string;

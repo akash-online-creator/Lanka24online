@@ -213,14 +213,14 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           </div>
 
           <div className="flex items-center gap-2">
-            {isOwner && onEditPost && (
+            {(isOwner || isAdmin) && onEditPost && (
               <button
                 type="button"
                 onClick={() => {
                   onClose();
                   onEditPost(post);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer border border-emerald-400/40"
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer border border-amber-300/40"
                 title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்து')}
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -228,7 +228,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               </button>
             )}
 
-            {isAdmin && onDeletePost && (
+            {(isOwner || isAdmin) && onDeletePost && (
               <button
                 type="button"
                 onClick={() => {
@@ -236,10 +236,10 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   onClose();
                 }}
                 className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer border border-rose-400/40"
-                title={getLangText('පරිපාලක මඟින් ඉවත් කරන්න (Admin Delete)', 'Admin Delete', 'நிர்வாக நீக்கம்')}
+                title={getLangText('දැන්වීම මකා දමන්න (Delete Post)', 'Delete Post', 'நீக்கு')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Admin Delete</span>
+                <span>{getLangText('මකා දමන්න', 'Delete', 'நீக்கு')}</span>
               </button>
             )}
 

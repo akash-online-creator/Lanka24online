@@ -599,7 +599,9 @@ export const PostCard: React.FC<PostCardProps> = ({
                           <ExternalLink className="w-3 h-3 inline" />
                         </a>
                       ) : (
-                        <Lock className="w-2.5 h-2.5 text-amber-500 inline ml-0.5" title="ලිපිනය ආරක්ෂිතයි" />
+                        <span title="ලිපිනය ආරක්ෂිතයි">
+                          <Lock className="w-2.5 h-2.5 text-amber-500 inline ml-0.5" />
+                        </span>
                       )}
                     </div>
                   </div>
@@ -657,6 +659,36 @@ export const PostCard: React.FC<PostCardProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Edit Post Button for Owner or Admin */}
+                {(ownerCheck || isAdmin) && onEditPost && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleInterceptAction(onEditPost);
+                    }}
+                    className="p-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer active:scale-95"
+                    title={activeCardLang === 'en' ? 'Edit Ad' : activeCardLang === 'ta' ? 'திருத்து' : 'දැන්වීම සංස්කරණය (Edit)'}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Delete Post Button for Owner or Admin */}
+                {(ownerCheck || isAdmin) && onDeletePost && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleInterceptAction(onDeletePost);
+                    }}
+                    className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer active:scale-95"
+                    title={activeCardLang === 'en' ? 'Delete Ad' : activeCardLang === 'ta' ? 'நீக்கு' : 'දැන්වීම මකා දමන්න (Delete)'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  </button>
+                )}
 
                 {/* Admin Report / Moderation Button */}
                 {isAdmin && onAdminModerate && (
@@ -1704,15 +1736,15 @@ export const PostCard: React.FC<PostCardProps> = ({
               )}
 
               {/* Owner Action Row */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {post.replies && post.replies.length > 0 && onOpenSupportOffers && (
                   <button
                     type="button"
                     onClick={() => handleInterceptAction(onOpenSupportOffers)}
-                    className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-orange-400/40"
+                    className="flex-1 min-w-[130px] py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-orange-400/40"
                   >
                     <HeartHandshake className="w-4 h-4 text-white" />
-                    <span>{activeCardLang === 'en' ? 'Support Offers' : activeCardLang === 'ta' ? 'விருப்பங்கள்' : 'කැමැත්ත දැක්වූවන් බලන්න'}</span>
+                    <span>{activeCardLang === 'en' ? 'Support Offers' : activeCardLang === 'ta' ? 'விருப்பங்கள்' : 'කැමැත්ත දැක්වූවන්'}</span>
                   </button>
                 )}
 
@@ -1720,11 +1752,35 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <button
                     type="button"
                     onClick={() => handleInterceptAction(onViewPost)}
-                    className="flex-1 py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 min-w-[90px] py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
                   >
                     <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                    <span>{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර බලන්න'}</span>
+                    <span>{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
+                  </button>
+                )}
+
+                {onEditPost && (
+                  <button
+                    type="button"
+                    onClick={() => handleInterceptAction(onEditPost)}
+                    className="py-3 px-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 font-black text-xs shadow-xs border border-amber-300 dark:border-amber-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title={activeCardLang === 'en' ? 'Edit Post' : activeCardLang === 'ta' ? 'திருத்து' : 'සංස්කරණය කරන්න'}
+                  >
+                    <Pencil className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Edit' : activeCardLang === 'ta' ? 'திருத்து' : 'Edit'}</span>
+                  </button>
+                )}
+
+                {onDeletePost && (
+                  <button
+                    type="button"
+                    onClick={() => handleInterceptAction(onDeletePost)}
+                    className="py-3 px-3.5 rounded-2xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/60 hover:text-white text-rose-700 dark:text-rose-300 font-black text-xs shadow-xs border border-rose-300 dark:border-rose-800 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer group"
+                    title={activeCardLang === 'en' ? 'Delete Post' : activeCardLang === 'ta' ? 'நீக்கு' : 'මකා දමන්න'}
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400 group-hover:text-white" />
+                    <span>{activeCardLang === 'en' ? 'Delete' : activeCardLang === 'ta' ? 'நீக்கு' : 'Delete'}</span>
                   </button>
                 )}
               </div>

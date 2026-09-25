@@ -191,7 +191,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
       }, 2000);
     } catch (err) {
       console.error('Error reporting fake alert:', err);
-      alert('වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
+      window.alert('වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
     } finally {
       setIsReportingFake(false);
     }

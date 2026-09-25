@@ -4,14 +4,17 @@ import { isRunningInStandaloneMode, subscribeToInstallPrompt, triggerNativeInsta
 import { Language } from '../types';
 
 interface PWAInstallBannerProps {
-  onOpenInstallGuide: () => void;
+  onOpenInstallGuide?: () => void;
+  onOpenDetails?: () => void;
   language?: Language;
 }
 
 export const PWAInstallBanner: React.FC<PWAInstallBannerProps> = ({
   onOpenInstallGuide,
+  onOpenDetails,
   language = 'si',
 }) => {
+  const handleOpen = onOpenInstallGuide || onOpenDetails || (() => {});
   const [isStandalone, setIsStandalone] = useState(true);
   const [isDismissed, setIsDismissed] = useState(false);
   const [canDirectInstall, setCanDirectInstall] = useState(false);
@@ -53,7 +56,7 @@ export const PWAInstallBanner: React.FC<PWAInstallBannerProps> = ({
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-2.5">
         
         <div 
-          onClick={onOpenInstallGuide}
+          onClick={handleOpen}
           className="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-90 transition-opacity"
         >
           <div className="w-7 h-7 rounded-xl bg-amber-400 text-amber-950 font-black flex items-center justify-center shrink-0 shadow-xs">
@@ -75,7 +78,7 @@ export const PWAInstallBanner: React.FC<PWAInstallBannerProps> = ({
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={onOpenInstallGuide}
+            onClick={handleOpen}
             className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-[11px] shadow-sm flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
           >
             <Download className="w-3 h-3" />

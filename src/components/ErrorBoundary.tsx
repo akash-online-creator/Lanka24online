@@ -1,8 +1,9 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Trash2, Home } from 'lucide-react';
+import React, { ErrorInfo, ReactNode } from 'react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -10,76 +11,79 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-  };
+export class ErrorBoundary extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error in Sahaya Sewa application:', error, errorInfo);
+    console.error('Uncaught React Error:', error, errorInfo);
   }
 
   private handleReload = () => {
     window.location.reload();
   };
 
-  private handleResetApp = () => {
+  private handleReset = () => {
     try {
-      localStorage.removeItem('sahaya_current_user');
-      localStorage.removeItem('sahaya_my_created_alerts');
-      localStorage.removeItem('sahaya_dismissed_alerts');
-      sessionStorage.clear();
-    } catch (e) {}
-    window.location.href = '/';
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
+    window.location.reload();
   };
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-slate-800/90 border border-slate-700 rounded-3xl p-6 text-center shadow-2xl space-y-4 backdrop-blur-xl">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-inner">
+        <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-md bg-slate-800/90 border-2 border-emerald-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-5">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-400 mx-auto flex items-center justify-center shadow-lg">
               <AlertTriangle className="w-8 h-8" />
             </div>
 
-            <div className="space-y-1">
-              <h2 className="text-xl font-black text-amber-400">
-                යම් දෝෂයක් සිදුවී ඇත
+            <div className="space-y-2">
+              <h2 className="text-lg sm:text-xl font-black text-white">
+                යම් දෝෂයක් සිදු විය (Something went wrong)
               </h2>
-              <p className="text-xs text-slate-300">
-                An unexpected error occurred while loading the application.
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-medium">
+                යෙදුම ක්‍රියාත්මක වීමේදී අපේක්ෂා නොකළ දෝෂයක් හටගෙන ඇත. කරුණාකර නැවත පූරණය කරන්න.
               </p>
             </div>
 
-            {this.state.error?.message && (
-              <div className="p-3 bg-slate-950/60 rounded-xl text-left border border-slate-800 text-[11px] font-mono text-rose-300 overflow-x-auto max-h-24">
+            {this.state.error && (
+              <div className="p-3 rounded-xl bg-black/40 border border-slate-700 text-left overflow-x-auto text-[11px] font-mono text-rose-300">
                 {this.state.error.message}
               </div>
             )}
 
-            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>නැවත පූරණය කරන්න (Reload)</span>
+                <span>නැවත පූරණය (Reload)</span>
               </button>
 
               <button
                 type="button"
-                onClick={this.handleResetApp}
-                className="py-3 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
-                title="Reset local cache"
+                onClick={this.handleReset}
+                className="w-full py-3 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
               >
-                <Trash2 className="w-4 h-4 text-slate-400" />
-                <span>Reset Data</span>
+                <Home className="w-4 h-4" />
+                <span>මුල් තිරයට (Reset)</span>
               </button>
             </div>
           </div>

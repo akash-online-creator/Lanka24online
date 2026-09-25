@@ -58,6 +58,8 @@ import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { SosLiveViewerModal } from './components/SosLiveViewerModal';
+import { SosLiveTrackerModal } from './components/SosLiveTrackerModal';
 import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
@@ -194,15 +196,29 @@ export default function App() {
   const [targetWhatsAppUserIdentifier, setTargetWhatsAppUserIdentifier] = useState<string>('');
   const [serverTime, setServerTime] = useState('');
 
-  // Auto-open WhatsApp update modal if requested via URL param (from SMS link)
+  // SOS Live GPS Tracker Modal States
+  const [isSosViewerModalOpen, setIsSosViewerModalOpen] = useState(false);
+  const [sosViewerSessionId, setSosViewerSessionId] = useState<string>('');
+  const [isSosTrackerModalOpen, setIsSosTrackerModalOpen] = useState(false);
+
+  // Auto-open WhatsApp update modal or SOS Live Viewer if requested via URL param
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && window.location.search) {
         const urlParams = new URLSearchParams(window.location.search);
+        
+        // 1. WhatsApp update param check
         const waParam = urlParams.get('update_whatsapp') || urlParams.get('whatsapp_update') || urlParams.get('wa_update');
         if (waParam) {
           setTargetWhatsAppUserIdentifier(waParam.trim());
           setShowUpdateWhatsAppModal(true);
+        }
+
+        // 2. SOS Live GPS Tracking session link check
+        const sosParam = urlParams.get('sos_session') || urlParams.get('sos') || urlParams.get('live_sos');
+        if (sosParam) {
+          setSosViewerSessionId(sosParam.trim());
+          setIsSosViewerModalOpen(true);
         }
       }
     } catch (e) {
@@ -1416,6 +1432,7 @@ export default function App() {
   };
 
   const handleDeletePost = async (postId: string) => {
+    if (!postId) return;
     addDeletedPostId(postId);
     const deletedPayload: Partial<HelpPost> = {
       isDeleted: true,
@@ -1434,10 +1451,11 @@ export default function App() {
 
     try {
       if (postId) {
-        await updateHelpPostInFirestore(postId, deletedPayload);
+        await updateHelpPostInFirestore(postId, deletedPayload).catch(() => {});
+        await deleteHelpPostFromFirestore(postId).catch(() => {});
       }
     } catch (err) {
-      console.warn(err);
+      console.warn('handleDeletePost notice:', err);
     }
   };
 
@@ -1925,6 +1943,44 @@ export default function App() {
               )
             );
           }}
+        />
+      )}
+
+      {/* 🚨 SOS Live GPS Tracker Recipient Viewer Modal (Opened directly from shared links) */}
+      <SosLiveViewerModal
+        isOpen={isSosViewerModalOpen}
+        onClose={() => {
+          setIsSosViewerModalOpen(false);
+          setSosViewerSessionId('');
+          // Clear query param cleanly without reloading
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, '', cleanUrl);
+          }
+        }}
+        sessionId={sosViewerSessionId}
+        viewerLocation={userCoords ? { id: 'viewer_loc', nameSi: 'ඔබේ ස්ථානය', nameEn: 'Your Location', nameTa: 'உங்கள் இடம்', lat: userCoords.lat, lng: userCoords.lng } : undefined}
+        language={language}
+      />
+
+      {/* 🚨 Global SOS Tracker Trigger Modal */}
+      {isSosTrackerModalOpen && (
+        <SosLiveTrackerModal
+          isOpen={isSosTrackerModalOpen}
+          onClose={() => setIsSosTrackerModalOpen(false)}
+          currentUser={currentUser || {
+            id: 'guest_sos',
+            userId: 'guest_sos',
+            name: 'හදිසි ආපදා පරිශීලක (SOS User)',
+            email: 'sos@sahaya.lk',
+            phone: '',
+            nicNumber: '000000000',
+            role: 'user',
+            status: 'approved',
+            registeredAt: new Date().toISOString()
+          }}
+          currentLocation={userCoords ? { id: 'cur_loc', nameSi: 'වත්මන් ස්ථානය', nameEn: 'Current Location', nameTa: 'தற்போதைய இடம்', lat: userCoords.lat, lng: userCoords.lng } : undefined}
+          language={language}
         />
       )}
 

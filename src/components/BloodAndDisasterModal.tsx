@@ -863,9 +863,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
                             {item.type === 'meals' && '🍲 පිසූ ආහාර'}
                             {item.type === 'dry_rations' && '📦 වියළි සලාක'}
-                            {item.type === 'medicine' && '💊 ඖෂධ'}
-                            {item.type === 'clothes' && '👕 ඇඳුම් පැළඳුම්'}
-                            {item.type === 'rescue' && '🛶 බෝට්ටු / මුදාගැනීම්'}
+                            {item.type === 'water_medicine' && '💊 ජලය / ඖෂධ'}
+                            {item.type === 'clothing_blankets' && '👕 ඇඳුම් / ඇතිරිලි'}
+                            {item.type === 'temporary_shelter' && '⛺ තාවකාලික නවාතැන්'}
                             {item.type === 'other' && '🤝 වෙනත් ආධාර'}
                           </span>
                         </div>

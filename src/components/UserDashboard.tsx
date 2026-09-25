@@ -38,7 +38,7 @@ import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
-import { filterNonDeletedPosts, addDeletedPostId } from '../utils/deletedPostsManager';
+import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -53,6 +53,7 @@ import { NotificationCenterModal } from './NotificationCenterModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { PWAInstallModal } from './PWAInstallModal';
 import { PWAInstallBanner } from './PWAInstallBanner';
+import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { initialMarketItems } from '../data/marketplaceData';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
@@ -66,6 +67,7 @@ import {
   addHelpPostToFirestore, 
   addReplyToFirestore,
   updateHelpPostInFirestore,
+  deleteHelpPostFromFirestore,
   sendChatMessageToFirestore
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
@@ -343,6 +345,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
   const [isPwaInstallModalOpen, setIsPwaInstallModalOpen] = useState(false);
+  const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
     userId: string;
     name: string;
@@ -644,7 +647,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     addDeletedPostId(postId);
     const postToDelete = (helpPosts || []).find((p) => p && p.id === postId);
 
-    // Immediately remove from local state
+    // Immediately remove from local state and update local storage
     setLocalHelpPosts((prev) => {
       const updated = (prev || []).filter((p) => p && p.id !== postId);
       try {
@@ -660,6 +663,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnPermanentDeletePost(postId);
     }
 
+    setDeletingPost(null);
+    setViewingPost(null);
+    setSelectedPostForDetail(null);
+
     try {
       const deletedPayload: Partial<HelpPost> = {
         isDeleted: true,
@@ -667,7 +674,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         deletedBy: checkIsAdmin(user) ? `Admin (${user.name})` : (user.name || postToDelete?.userName || 'User'),
         status: 'deleted',
       };
-      await updateHelpPostInFirestore(postId, deletedPayload);
+      await updateHelpPostInFirestore(postId, deletedPayload).catch(() => {});
+      await deleteHelpPostFromFirestore(postId).catch(() => {});
     } catch (err) {
       console.warn('Deleted locally, cloud notice:', err);
     }
@@ -732,7 +740,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Category & Distance & Tag Filtering Logic
   const filteredPosts = (helpPosts || []).filter((post) => {
-    if (!post || post.isDeleted || post.status === 'deleted') return false;
+    if (!post || !post.id || post.isDeleted || post.status === 'deleted' || isPostPermanentlyDeleted(post.id)) return false;
 
     // Check if post author is blocked or deleted by admin
     if (isAuthorBlocked(post)) {
@@ -1523,6 +1531,37 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         userLocation={currentLocation}
         onViewPost={(post) => setSelectedPostForDetail(post)}
       />
+
+      {/* 1.15 Live SOS GPS Tracker Action Banner */}
+      <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/80 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
+        <div className="flex items-center gap-3 text-center sm:text-left">
+          <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center font-black text-2xl shadow-md shrink-0 animate-pulse">
+            🚨
+          </div>
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-center sm:justify-start gap-2">
+              <h3 className="text-sm sm:text-base font-black tracking-wide">
+                {getLangText('SOS සජීවී GPS ස්ථාන විකාශනය (Live Tracker)', 'SOS Live GPS Tracker & WhatsApp Share', 'SOS நேரலை GPS கண்காணிப்பு')}
+              </h3>
+              <span className="px-2 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black uppercase shadow-xs">
+                NEW
+              </span>
+            </div>
+            <p className="text-xs text-red-100 font-medium">
+              {getLangText('ස්විචය ON කළ සැනින් WhatsApp හරහා ඔබ සිටින ස්ථානය සජීවීව නිරීක්ෂණය කළ හැකි සබැඳියක් ලැබේ.', 'Turn switch ON to track live movement and share link instantly via WhatsApp.', 'WhatsApp வழியாக உங்கள் நேரலை இருப்பிடத்தை அனுப்பவும்.')}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsSosLiveModalOpen(true)}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-white hover:bg-red-50 text-red-700 font-black text-xs sm:text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+        >
+          <Radio className="w-4 h-4 text-red-600 animate-pulse" />
+          <span>{getLangText('SOS Tracker විවෘත කරන්න', 'Open SOS Tracker', 'SOS திறக்கவும்')}</span>
+        </button>
+      </div>
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
@@ -2616,6 +2655,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <PWAInstallModal
         isOpen={isPwaInstallModalOpen}
         onClose={() => setIsPwaInstallModalOpen(false)}
+        language={language}
+      />
+
+      {/* 🚨 SOS Live GPS Tracker Modal */}
+      <SosLiveTrackerModal
+        isOpen={isSosLiveModalOpen}
+        onClose={() => setIsSosLiveModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
         language={language}
       />
 

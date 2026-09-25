@@ -4,7 +4,8 @@ import {
   BarterProposal, 
   BarterCondition, 
   User, 
-  Language 
+  Language,
+  LocationOption
 } from '../types';
 import { 
   BARTER_CATEGORIES, 
@@ -50,7 +51,9 @@ import {
 interface BarterExchangeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User;
+  user?: User;
+  currentUser?: User;
+  currentLocation?: LocationOption;
   language?: Language;
   onOpenQrPayForBarter?: (recipient: { userId: string; name: string; phone?: string; fixedAmount?: number }) => void;
 }
@@ -58,10 +61,13 @@ interface BarterExchangeModalProps {
 export const BarterExchangeModal: React.FC<BarterExchangeModalProps> = ({
   isOpen,
   onClose,
-  user,
+  user: propUser,
+  currentUser,
+  currentLocation,
   language = 'si',
   onOpenQrPayForBarter,
 }) => {
+  const user = (currentUser || propUser)!;
   const [activeTab, setActiveTab] = useState<'browse' | 'smart_match' | 'create' | 'my_swaps'>('browse');
 
   // Listings & Proposals Data

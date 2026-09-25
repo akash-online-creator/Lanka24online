@@ -22,7 +22,8 @@ import { resolveExactLocation, searchSriLankanPlacesAndRoads, PlaceSearchResult,
 interface GroupChatMapPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSendLocation: (loc: GroupMessageLocation) => void;
+  onSendLocation?: (loc: GroupMessageLocation) => void;
+  onSelectLocation?: (loc: GroupMessageLocation) => void;
   initialLat?: number;
   initialLng?: number;
 }
@@ -31,9 +32,11 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
   isOpen,
   onClose,
   onSendLocation,
+  onSelectLocation,
   initialLat = 6.9553, // Kelaniya / Colombo default
   initialLng = 79.9153,
 }) => {
+  const handleLocationEmit = onSendLocation || onSelectLocation || (() => {});
   const [lat, setLat] = useState<number>(initialLat);
   const [lng, setLng] = useState<number>(initialLng);
   const [placeName, setPlaceName] = useState<string>('කැලණිය රජමහා විහාරය අසල');
@@ -261,7 +264,7 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
       return;
     }
 
-    onSendLocation({
+    handleLocationEmit({
       name: placeName.trim(),
       address: placeAddress.trim(),
       lat,

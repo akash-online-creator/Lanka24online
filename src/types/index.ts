@@ -24,6 +24,7 @@ export interface PostReply {
   whatsappSent?: boolean;
   isAccepted?: boolean;
   isConfirmed?: boolean;
+  responderId?: string;
 }
 
 export interface MultilingualText {
@@ -86,7 +87,11 @@ export interface HelpPost {
   id: string;
   postCode: string; // e.g., #POST-7891
   userName: string;
+  userNic?: string;
+  userPhotoUrl?: string;
   userPhone: string; // WhatsApp number
+  serviceType?: string;
+  likeCount?: number;
   whatHappened: string; // සිදුවී ඇති දේ
   whatIsNeeded: string; // වියයුතු දේ
   conditions?: string; // කොන්දේසි
@@ -180,6 +185,7 @@ export interface HelpPost {
   externalLink?: string;
   videoUrl?: string;
   audioUrl?: string;
+  mediaType?: string;
   audioDurationSec?: number;
   voiceSentDate?: string; // හඬ පණිවිඩය යැවූ දිනය (Date)
   voiceSentTime?: string; // හඬ පණිවිඩය යැවූ වේලාව (Time)
@@ -307,6 +313,7 @@ export interface User {
   nicNumber: string;
   phone: string;
   address?: string;
+  district?: string;
   birthDate?: string;
   nearestTown?: string;
   whatsappNumber?: string;
@@ -315,6 +322,7 @@ export interface User {
   tempPassword?: string;
   isTemporaryPassword?: boolean;
   isPasswordChanged?: boolean;
+  devicePinConfigured?: boolean;
   role: Role;
   status: UserStatus;
   isBlocked?: boolean;
@@ -497,6 +505,7 @@ export interface ProfessionalService {
   providerWhatsapp?: string;
   altPhone?: string; // 5. ගිණුමට ලබාදුන් අංකය හැර වෙනත් දුරකථන අංක
   serviceTitle: string; // 1. ඔබට ලබාදිය හැකි සේවය කුමක්ද?
+  profession?: string;
   deliveryMethod: ServiceDeliveryMethod; // 2. සේවය ලබාදෙන්නේ කෙසේද
   deliveryMethodDetails?: string; // ස්ථානය / වෙනත් විස්තර
   locationName?: string;
@@ -799,6 +808,7 @@ export interface InactiveReportDetail {
   userPhone?: string;
   reportedAt: string;
   reportedAtMs: number;
+  timestamp?: string;
   reason?: string;
 }
 
@@ -967,7 +977,7 @@ export interface RedAlertFakeReport {
 
 export interface RedAlertItem {
   id: string;
-  alertCode: string; // e.g., #RED-1042
+  alertCode?: string; // e.g., #RED-1042
   disasterType: RedAlertDisasterType;
   customDisasterTitle?: string;
   disasterTitleSi: string;
@@ -1262,6 +1272,59 @@ export interface OnlinePresenceUser {
   lastPing: number;
   isOnline: boolean;
   joinedAt: number;
+}
+
+// ==============================================================
+// 🚨 SOS LIVE GPS TRACKER TYPES (සජීවී SOS ස්ථාන විකාශන)
+// ==============================================================
+
+export interface SosBreadcrumbPoint {
+  lat: number;
+  lng: number;
+  timestampMs: number;
+  accuracyMeters?: number;
+  speedKmh?: number;
+}
+
+export interface SosLiveSession {
+  id: string;
+  sessionCode: string;           // e.g. #SOS-8924
+  userId: string;
+  userName: string;
+  userPhone: string;
+  userNic?: string;
+  userPhotoUrl?: string;
+  
+  // Realtime Coordinates & Geo
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  speedKmh?: number;
+  headingDegrees?: number;
+  altitudeMeters?: number;
+  locationName?: string;
+  locationAddress?: string;
+  
+  // Emergency Context
+  emergencyNote?: string;
+  batteryPercent?: number;
+  isCharging?: boolean;
+  
+  // Life-cycle
+  isActive: boolean;             // Master switch state (Active when ON, Terminated when OFF)
+  startedAt: string;
+  startedAtMs: number;
+  updatedAt: string;
+  updatedAtMs: number;
+  deactivatedAt?: string;
+  deactivatedAtMs?: number;
+  
+  // Path History
+  breadcrumbTrail?: SosBreadcrumbPoint[];
+  
+  // Emergency Contact Info
+  emergencyHotlineCalled?: string;
+  sirenTriggered?: boolean;
 }
 
 

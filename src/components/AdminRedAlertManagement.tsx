@@ -26,20 +26,29 @@ import { startEmergencySiren, stopEmergencySiren, unlockAudio, persistSirenSetti
 import defaultSirenTone from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 interface AdminRedAlertManagementProps {
-  alerts: RedAlertItem[];
+  alerts?: RedAlertItem[];
+  redAlerts?: RedAlertItem[];
   language?: Language;
   onRefreshAlerts?: () => void;
+  onRefreshRedAlerts?: () => void;
   onViewAlertDetail?: (alert: RedAlertItem) => void;
+  onViewDetail?: (alert: RedAlertItem) => void;
 }
 
 const DEFAULT_SIREN_NAME = 'Custom Fire Alert (WAV)';
 
 export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = ({
-  alerts = [],
+  alerts: propAlerts,
+  redAlerts,
   language = 'si',
   onRefreshAlerts,
+  onRefreshRedAlerts,
   onViewAlertDetail,
+  onViewDetail,
 }) => {
+  const alerts = propAlerts || redAlerts || [];
+  const handleRefresh = onRefreshAlerts || onRefreshRedAlerts;
+  const handleViewDetail = onViewAlertDetail || onViewDetail;
   const [filter, setFilter] = useState<'all' | 'active' | 'flagged_fake' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -95,7 +104,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     setActionLoadingId(alertId);
     try {
       await updateRedAlertStatus(alertId, status, note);
-      if (onRefreshAlerts) onRefreshAlerts();
+      if (handleRefresh) handleRefresh();
     } catch (err) {
       console.error('Error updating alert status:', err);
       alert('තත්ත්වය යාවත්කාලීන කිරීමේදී දෝෂයක් ඇතිවිය.');
@@ -110,7 +119,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     setActionLoadingId(alertId);
     try {
       await deleteRedAlertInFirestore(alertId);
-      if (onRefreshAlerts) onRefreshAlerts();
+      if (handleRefresh) handleRefresh();
     } catch (err) {
       console.error('Error deleting alert:', err);
       alert('මකා දැමීමේදී දෝෂයක් ඇතිවිය.');
@@ -211,10 +220,10 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
               <span>🔄 Reset Siren</span>
             </button>
 
-            {onRefreshAlerts && (
+            {handleRefresh && (
               <button
                 type="button"
-                onClick={onRefreshAlerts}
+                onClick={handleRefresh}
                 className="px-3.5 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />

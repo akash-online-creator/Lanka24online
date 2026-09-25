@@ -6,9 +6,13 @@ import { extractNumericId, getUserCreditBalance } from '../utils/creditManager';
 interface InsufficientCreditsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenTopUp: () => void;
-  requiredFee: number;
-  categoryNameSi: string;
+  onOpenTopUp?: () => void;
+  onOpenWallet?: () => void;
+  requiredFee?: number;
+  requiredAmount?: number;
+  currentBalance?: number;
+  categoryNameSi?: string;
+  categoryName?: string;
   user: User;
   language?: Language;
 }
@@ -17,14 +21,21 @@ export const InsufficientCreditsModal: React.FC<InsufficientCreditsModalProps> =
   isOpen,
   onClose,
   onOpenTopUp,
-  requiredFee,
-  categoryNameSi,
+  onOpenWallet,
+  requiredFee: propFee,
+  requiredAmount,
+  currentBalance: propBalance,
+  categoryNameSi: propCatSi,
+  categoryName,
   user,
 }) => {
   if (!isOpen || !user) return null;
 
-  const currentBalance = getUserCreditBalance(user);
-  const shortfall = requiredFee - currentBalance;
+  const requiredFee = propFee ?? requiredAmount ?? 1;
+  const categoryNameSi = propCatSi || categoryName || 'සේවාව';
+  const handleTopUp = onOpenTopUp || onOpenWallet || (() => {});
+  const currentBalance = propBalance !== undefined ? propBalance : getUserCreditBalance(user);
+  const shortfall = Math.max(0, requiredFee - currentBalance);
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
 
   return (
@@ -86,7 +97,7 @@ export const InsufficientCreditsModal: React.FC<InsufficientCreditsModalProps> =
             <button
               onClick={() => {
                 onClose();
-                onOpenTopUp();
+                handleTopUp();
               }}
               className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-[#007a4b] hover:from-emerald-500 hover:to-emerald-600 text-white font-black text-sm shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >

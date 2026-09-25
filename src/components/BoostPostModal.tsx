@@ -104,7 +104,7 @@ export const BoostPostModal: React.FC<BoostPostModalProps> = ({
       await new Promise((resolve) => setTimeout(resolve, 800));
 
       const result = boostHelpPost(post, currentUser, paymentMethod, {
-        reference: slipReference || (paymentMethod === 'card_qr' ? `CARD-${Date.now().toString().slice(-6)}` : undefined),
+        reference: slipReference || undefined,
         slipName: slipFile?.name,
       });
 

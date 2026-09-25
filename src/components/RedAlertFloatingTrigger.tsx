@@ -1,19 +1,34 @@
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { Radio } from 'lucide-react';
 
 interface RedAlertFloatingTriggerProps {
   onOpenCreate: () => void;
   activeCount?: number;
   onOpenActiveList?: () => void;
+  onOpenSosTracker?: () => void;
 }
 
 export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = ({
   onOpenCreate,
   activeCount = 0,
   onOpenActiveList,
+  onOpenSosTracker,
 }) => {
   return (
     <div className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-2">
+      {/* 🚨 SOS Live GPS Tracker Fast Trigger */}
+      {onOpenSosTracker && (
+        <button
+          type="button"
+          onClick={onOpenSosTracker}
+          className="flex items-center gap-1.5 px-3 py-2.5 sm:px-3.5 sm:py-3 rounded-full bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-xs shadow-lg border border-red-300 active:scale-95 transition-all cursor-pointer hover:shadow-red-500/40"
+          title="SOS Live GPS Tracker & WhatsApp Share"
+        >
+          <Radio className="w-3.5 h-3.5 text-white animate-pulse" />
+          <span className="font-mono font-black">SOS LIVE</span>
+        </button>
+      )}
+
       {activeCount > 0 && onOpenActiveList && (
         <button
           type="button"

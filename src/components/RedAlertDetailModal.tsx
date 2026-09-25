@@ -264,7 +264,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
       setCommentText('');
     } catch (err) {
       console.error('Error submitting comment:', err);
-      alert('අදහස එක් කිරීමට නොහැකි විය.');
+      window.alert('අදහස එක් කිරීමට නොහැකි විය.');
     } finally {
       setIsSubmitting(false);
     }
@@ -294,7 +294,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
       }, 2000);
     } catch (err) {
       console.error('Error reporting fake alert:', err);
-      alert('වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
+      window.alert('වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
     } finally {
       setIsReportingFake(false);
     }

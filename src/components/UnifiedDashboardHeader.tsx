@@ -124,7 +124,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
 
   const creditBalance = user ? getUserCreditBalance(user) : 0;
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
-  const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || user?.role === 'guest');
+  const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
 
   const [isManualLocked, setIsManualLocked] = useState<boolean>(
     () => localStorage.getItem('sahaya_manual_location_locked') === 'true'

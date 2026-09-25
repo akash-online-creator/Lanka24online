@@ -228,6 +228,28 @@
         "device": { "type": "string" }
       },
       "required": ["userId", "lastPing"]
+    },
+    "sos_live_sessions": {
+      "title": "SOS Live GPS Tracking Sessions (හදිසි සජීවී ස්ථාන විකාශන)",
+      "description": "Live GPS location tracking sessions with instant WhatsApp share and dynamic deactivation switch",
+      "type": "object",
+      "properties": {
+        "sessionCode": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "accuracyMeters": { "type": "number" },
+        "speedKmh": { "type": "number" },
+        "locationName": { "type": "string" },
+        "emergencyNote": { "type": "string" },
+        "batteryPercent": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "startedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "userName", "latitude", "longitude", "isActive"]
     }
   },
   "firestore": {
@@ -286,6 +308,10 @@
     "/online_users/{sessionId}": {
       "schema": "online_users",
       "description": "Live active user heartbeat records"
+    },
+    "/sos_live_sessions/{sessionId}": {
+      "schema": "sos_live_sessions",
+      "description": "Real-time SOS live GPS tracking session broadcasts"
     }
   }
 }

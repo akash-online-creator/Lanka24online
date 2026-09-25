@@ -93,6 +93,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // SOS Live GPS Tracking Sessions (හදිසි සජීවී ස්ථාන විකාශන)
+    match /sos_live_sessions/{sessionId} {
+      allow read, write: if true;
+    }
+
     // Default fallback
     match /{document=**} {
       allow read, write: if true;
