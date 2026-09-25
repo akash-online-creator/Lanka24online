@@ -350,6 +350,19 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
+            {/* Sahaya Pay QR Direct Button */}
+            {onOpenQrPay && (
+              <button
+                type="button"
+                onClick={onOpenQrPay}
+                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-emerald-300 dark:border-[#1c402b] flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
+                title={language === 'en' ? 'Sahaya Pay QR (Send & Receive)' : language === 'ta' ? 'QR கட்டணம்' : 'Sahaya Pay QR (ගෙවීම් හා ලැබීම්)'}
+              >
+                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-black text-xs">QR Pay</span>
+              </button>
+            )}
+
             {/* Dark / Light Theme Toggle */}
             <button
               type="button"

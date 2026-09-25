@@ -22,7 +22,9 @@ import {
   Unlock,
   Users,
   HeartHandshake,
-  Trash2
+  Trash2,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 import { BloodDonationRequest, VolunteerDonor, DisasterReliefItem, BloodGroup, Language, User as UserType } from '../types';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -30,13 +32,13 @@ import {
   getStoredBloodRequests, 
   saveBloodRequestsToStorage, 
   getStoredVolunteerDonors, 
-  saveVolunteerDonorsToStorage,
-  getStoredDisasterReliefItems,
-  saveDisasterReliefItemsToStorage,
-  getStoredSupportedBloodIds,
-  saveSupportedBloodIdsToStorage,
-  getStoredSupportedDisasterIds,
-  saveSupportedDisasterIdsToStorage
+  saveVolunteerDonorsToStorage, 
+  getStoredDisasterReliefItems, 
+  saveDisasterReliefItemsToStorage, 
+  getStoredSupportedBloodIds, 
+  saveSupportedBloodIdsToStorage, 
+  getStoredSupportedDisasterIds, 
+  saveSupportedDisasterIdsToStorage 
 } from '../data/bloodAndDisasterData';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedBloodId, addDeletedDonorId, addDeletedDisasterId } from '../utils/deletedPostsManager';
@@ -357,20 +359,20 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn overflow-y-auto">
-      <div className="w-full max-w-3xl bg-white dark:bg-[#071910] border-2 border-emerald-500/60 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.25)] overflow-hidden relative flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-emerald-950/75 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      <div className="w-full max-w-3xl bg-white dark:bg-[#071910] border-2 border-emerald-500/60 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden relative flex flex-col max-h-[94vh]">
         
         {/* Top Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-600 via-emerald-600 to-teal-700 text-white flex items-center justify-between shrink-0 shadow-md">
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-red-600 via-rose-600 to-teal-700 text-white flex items-center justify-between shrink-0 shadow-md">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
-              <Droplet className="w-6 h-6 text-white fill-current" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs shadow-inner shrink-0">
+              <Droplet className="w-6 h-6 text-white fill-current animate-pulse" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
                 <span>හදිසි ලේ පරිත්‍යාග සහ ආපදා සහන කේන්ද්‍රය</span>
               </h3>
-              <p className="text-[11px] text-rose-100 flex items-center gap-1.5">
+              <p className="text-[11px] text-rose-100 flex items-center gap-1.5 font-medium">
                 <span>ජීවිත බේරාගැනීමේ හදිසි සත්කාරක ප්‍රජා ජාලය</span>
               </p>
             </div>
@@ -379,57 +381,108 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center font-bold transition-all cursor-pointer"
+            className="w-9 h-9 rounded-2xl bg-white/20 hover:bg-white/30 text-white flex items-center justify-center font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="වසන්න"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* 3 Main Navigation Tabs: Reordered to Blood Requests | Disaster Relief | Volunteer Donors */}
-        <div className="flex items-center border-b border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-[#05140d] px-4 pt-2 gap-2 overflow-x-auto shrink-0">
-          {/* Tab 1: හදිසි ලේ අවශ්‍යතා */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('blood_requests')}
-            className={`pb-2.5 px-3 font-black text-xs sm:text-sm border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'blood_requests'
-                ? 'border-rose-500 text-rose-600 dark:text-rose-400'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-rose-500'
-            }`}
-          >
-            <Droplet className="w-4 h-4 fill-current" />
-            <span>හදිසි ලේ අවශ්‍යතා ({bloodRequests.length})</span>
-          </button>
+        {/* 🌟 3 LARGE 3D HUB CARDS AT THE TOP (Matching Main Dashboard Hub Style) */}
+        <div className="p-3 sm:p-4 bg-gradient-to-b from-slate-100 to-emerald-50/50 dark:from-[#05140d] dark:to-[#071b12] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-3.5">
+            
+            {/* BIG BUTTON 1: 🩸 හදිසි ලේ අවශ්‍යතා */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('blood_requests')}
+              className={`p-4 sm:p-4.5 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[110px] sm:min-h-[125px] relative overflow-hidden active:scale-98 shadow-md ${
+                activeTab === 'blood_requests'
+                  ? 'bg-gradient-to-br from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/40 border-2 border-white ring-4 ring-rose-400/50 scale-[1.02]'
+                  : 'bg-gradient-to-br from-red-700/90 to-rose-800 text-white/95 border border-red-500/40 hover:scale-[1.02] hover:border-white/70 shadow-lg opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-xs group-hover:scale-110 transition-transform">
+                  <Droplet className="w-6 h-6 fill-white text-white" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black bg-white text-red-700 shadow-md flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                  <span>{bloodRequests.length} ඉල්ලීම්</span>
+                </span>
+              </div>
+              <div className="min-w-0 mt-3">
+                <h4 className="text-sm sm:text-base font-black text-white leading-tight flex items-center gap-1.5">
+                  <span>හදිසි ලේ අවශ්‍යතා</span>
+                  {activeTab === 'blood_requests' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-red-100 font-semibold truncate mt-1">
+                  ලේ ඉල්ලීම් බලන්න / පළකරන්න
+                </p>
+              </div>
+            </button>
 
-          {/* Tab 2: ආපදා සහන */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('disaster_relief')}
-            className={`pb-2.5 px-3 font-black text-xs sm:text-sm border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'disaster_relief'
-                ? 'border-teal-500 text-teal-600 dark:text-teal-400'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-teal-500'
-            }`}
-          >
-            <Waves className="w-4 h-4" />
-            <span>ආපදා සහන ({disasterItems.length})</span>
-          </button>
+            {/* BIG BUTTON 2: 🌊 ආපදා සහන */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('disaster_relief')}
+              className={`p-4 sm:p-4.5 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[110px] sm:min-h-[125px] relative overflow-hidden active:scale-98 shadow-md ${
+                activeTab === 'disaster_relief'
+                  ? 'bg-gradient-to-br from-teal-600 via-emerald-600 to-teal-700 text-white shadow-xl shadow-teal-600/40 border-2 border-white ring-4 ring-teal-400/50 scale-[1.02]'
+                  : 'bg-gradient-to-br from-teal-700/90 to-emerald-800 text-white/95 border border-teal-500/40 hover:scale-[1.02] hover:border-white/70 shadow-lg opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-xs group-hover:scale-110 transition-transform">
+                  <Waves className="w-6 h-6 text-white" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black bg-white text-teal-800 shadow-md">
+                  {disasterItems.length} ආපදා
+                </span>
+              </div>
+              <div className="min-w-0 mt-3">
+                <h4 className="text-sm sm:text-base font-black text-white leading-tight flex items-center gap-1.5">
+                  <span>ආපදා සහනාධාර</span>
+                  {activeTab === 'disaster_relief' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-teal-100 font-semibold truncate mt-1">
+                  සහන මෙහෙයුම් & ආධාර
+                </p>
+              </div>
+            </button>
 
-          {/* Tab 3: ලේ පරිත්‍යාගශීලීන් */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('volunteer_donors')}
-            className={`pb-2.5 px-3 font-black text-xs sm:text-sm border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'volunteer_donors'
-                ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-emerald-500'
-            }`}
-          >
-            <Heart className="w-4 h-4 fill-current" />
-            <span>ලේ පරිත්‍යාගශීලීන් ({volunteerDonors.length})</span>
-          </button>
+            {/* BIG BUTTON 3: 💖 ලේ පරිත්‍යාගශීලීන් */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('volunteer_donors')}
+              className={`p-4 sm:p-4.5 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[110px] sm:min-h-[125px] relative overflow-hidden active:scale-98 shadow-md ${
+                activeTab === 'volunteer_donors'
+                  ? 'bg-gradient-to-br from-pink-600 via-rose-600 to-red-600 text-white shadow-xl shadow-pink-600/40 border-2 border-white ring-4 ring-pink-400/50 scale-[1.02]'
+                  : 'bg-gradient-to-br from-rose-700/90 to-pink-800 text-white/95 border border-pink-500/40 hover:scale-[1.02] hover:border-white/70 shadow-lg opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-xs group-hover:scale-110 transition-transform">
+                  <Heart className="w-6 h-6 fill-white text-white" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black bg-white text-pink-800 shadow-md">
+                  {volunteerDonors.length} දායකයින්
+                </span>
+              </div>
+              <div className="min-w-0 mt-3">
+                <h4 className="text-sm sm:text-base font-black text-white leading-tight flex items-center gap-1.5">
+                  <span>පරිත්‍යාගශීලීන්</span>
+                  {activeTab === 'volunteer_donors' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-pink-100 font-semibold truncate mt-1">
+                  ස්වේච්ඡා දායක නාමාවලිය
+                </p>
+              </div>
+            </button>
 
-          {/* Quick switch to Transparent Aid Ledger */}
+          </div>
+
+          {/* Quick link to Transparent Aid Ledger */}
           {onOpenAidLedger && (
             <button
               type="button"
@@ -437,27 +490,91 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 onClose();
                 onOpenAidLedger();
               }}
-              className="pb-2.5 px-3 font-black text-xs sm:text-sm border-b-2 border-transparent text-emerald-700 dark:text-emerald-400 hover:text-emerald-600 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ml-auto bg-emerald-50 dark:bg-emerald-950/40 rounded-t-xl"
+              className="w-full py-2.5 sm:py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 text-amber-900 dark:text-amber-200 border-2 border-amber-400/60 flex items-center justify-between text-xs sm:text-sm font-black transition-all cursor-pointer shadow-xs active:scale-98"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>🏛️ විනිවිදභාවයේ ලෙජරය (Aid Ledger)</span>
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>🏛️ විනිවිදභාවයේ ආධාර ලෙජරය (Transparent Aid Ledger) විවෘත කරන්න</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             </button>
           )}
         </div>
 
-        {/* Filter Bar */}
-        <div className="p-3 bg-white dark:bg-[#06180f] border-b border-emerald-100 dark:border-emerald-900/60 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Blood group filter if on blood tabs */}
+        {/* 🚀 PROMINENT PRIMARY CTA ACTION BUTTON FOR ACTIVE TAB */}
+        <div className="p-3 sm:p-4 bg-white dark:bg-[#06180f] border-b border-emerald-100 dark:border-emerald-900/60 shrink-0 space-y-3">
+          {activeTab === 'blood_requests' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isDemo) {
+                  if (onRequireRegistration) onRequireRegistration();
+                  return;
+                }
+                setShowAddBloodRequestForm(true);
+              }}
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-xl shadow-red-600/30 hover:shadow-red-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-red-300/80 group"
+            >
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Plus className="w-5 h-5 text-white stroke-[3]" />
+              </div>
+              <span className="tracking-wide">+ හදිසි ලේ අවශ්‍යතාවක් පළකරන්න (Post Blood Request)</span>
+              <Droplet className="w-5 h-5 fill-white text-white animate-bounce" />
+            </button>
+          )}
+
+          {activeTab === 'disaster_relief' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isDemo) {
+                  if (onRequireRegistration) onRequireRegistration();
+                  return;
+                }
+                setShowAddDisasterForm(true);
+              }}
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-sm sm:text-base shadow-xl shadow-teal-600/30 hover:shadow-teal-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-teal-300/80 group"
+            >
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Plus className="w-5 h-5 text-white stroke-[3]" />
+              </div>
+              <span className="tracking-wide">+ නව ආපදා සහනාධාර අවශ්‍යතාවක් එක්කරන්න (Post Relief Request)</span>
+              <Waves className="w-5 h-5 text-white animate-pulse" />
+            </button>
+          )}
+
+          {activeTab === 'volunteer_donors' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isDemo) {
+                  if (onRequireRegistration) onRequireRegistration();
+                  return;
+                }
+                setShowRegisterDonorForm(true);
+              }}
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 hover:from-pink-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-xl shadow-pink-600/30 hover:shadow-pink-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-pink-300/80 group"
+            >
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Heart className="w-5 h-5 fill-white text-white" />
+              </div>
+              <span className="tracking-wide">+ ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස ලියාපදිංචි වන්න (Register as Donor)</span>
+              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+            </button>
+          )}
+
+          {/* Filter Bar (Blood Group & District) */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-emerald-950">
+            {/* Blood group filter */}
             {(activeTab === 'blood_requests' || activeTab === 'volunteer_donors') && (
-              <div className="flex items-center gap-1 overflow-x-auto text-xs">
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs py-1">
                 <button
                   type="button"
                   onClick={() => setSelectedBloodGroup('all')}
-                  className={`px-2.5 py-1 rounded-lg font-bold text-xs cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
                     selectedBloodGroup === 'all'
-                      ? 'bg-rose-600 text-white'
-                      : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300'
+                      ? 'bg-rose-600 text-white shadow-md scale-105'
+                      : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-emerald-900'
                   }`}
                 >
                   සියලු ලේ වර්ග
@@ -467,10 +584,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     key={bg}
                     type="button"
                     onClick={() => setSelectedBloodGroup(bg)}
-                    className={`px-2 py-1 rounded-lg font-black font-mono text-xs cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl font-black font-mono text-xs sm:text-sm cursor-pointer transition-all ${
                       selectedBloodGroup === bg
-                        ? 'bg-rose-600 text-white shadow-xs'
-                        : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300'
+                        ? 'bg-rose-600 text-white shadow-md scale-105 ring-2 ring-rose-400'
+                        : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-emerald-900'
                     }`}
                   >
                     {bg}
@@ -480,75 +597,21 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
             )}
 
             {/* District select */}
-            <div className="flex items-center gap-1 text-xs">
-              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm ml-auto">
+              <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
               <select
                 value={selectedDistrict}
                 onChange={(e) => setSelectedDistrict(e.target.value)}
-                className="px-2 py-1 bg-slate-50 dark:bg-[#0a2618] border border-emerald-300 dark:border-emerald-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200"
+                className="px-3.5 py-2 bg-slate-50 dark:bg-[#0a2618] border-2 border-emerald-400 dark:border-emerald-800 rounded-xl text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="all">සියලු දිස්ත්‍රික්ක</option>
+                <option value="all">📍 සියලු දිස්ත්‍රික්ක</option>
                 {districtsList.filter((d) => d !== 'all').map((dist) => (
                   <option key={dist} value={dist}>
-                    {dist}
+                    📍 {dist}
                   </option>
                 ))}
               </select>
             </div>
-          </div>
-
-          {/* Action Button: Post New */}
-          <div>
-            {activeTab === 'blood_requests' && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDemo) {
-                    if (onRequireRegistration) onRequireRegistration();
-                    return;
-                  }
-                  setShowAddBloodRequestForm(true);
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>ලේ අවශ්‍යතාවක් පලකරන්න</span>
-              </button>
-            )}
-
-            {activeTab === 'volunteer_donors' && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDemo) {
-                    if (onRequireRegistration) onRequireRegistration();
-                    return;
-                  }
-                  setShowRegisterDonorForm(true);
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-              >
-                <Heart className="w-3.5 h-3.5 fill-current" />
-                <span>පරිත්‍යාගශීලියෙකු වන්න</span>
-              </button>
-            )}
-
-            {activeTab === 'disaster_relief' && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDemo) {
-                    if (onRequireRegistration) onRequireRegistration();
-                    return;
-                  }
-                  setShowAddDisasterForm(true);
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>ආපදා සහන අවශ්‍යතාවක්</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -556,8 +619,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         {activeTab === 'blood_requests' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-[#05140d]">
             {filteredBloodRequests.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs">
-                තෝරාගත් ලේ වර්ගය හෝ දිස්ත්‍රික්කය සඳහා දැනට සක්‍රිය ලේ ඉල්ලීම් නොමැත.
+              <div className="text-center py-12 text-slate-400 text-xs space-y-2">
+                <Droplet className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <p>තෝරාගත් ලේ වර්ගය හෝ දිස්ත්‍රික්කය සඳහා දැනට සක්‍රිය ලේ ඉල්ලීම් නොමැත.</p>
               </div>
             ) : (
               filteredBloodRequests.filter(Boolean).map((req, rIdx) => {
@@ -569,14 +633,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   >
                     <div className="flex items-start gap-3">
                       {/* Big Blood Badge */}
-                      <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-rose-600 to-rose-800 text-white flex flex-col items-center justify-center font-mono font-black shrink-0 shadow-md">
-                        <span className="text-base leading-none">{req.bloodGroup}</span>
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-600 to-rose-800 text-white flex flex-col items-center justify-center font-mono font-black shrink-0 shadow-md">
+                        <span className="text-lg leading-none">{req.bloodGroup}</span>
                         <span className="text-[9px] uppercase font-bold opacity-80 mt-0.5">Blood</span>
                       </div>
 
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-black bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800">
+                          <span className="font-mono text-xs font-black bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 px-2.5 py-0.5 rounded-md border border-rose-300 dark:border-rose-800">
                             {req.postCode}
                           </span>
                           <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
@@ -626,23 +690,23 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
                       {!isDemo && isSupported ? (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-200 shadow-xs">
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-emerald-800 dark:text-emerald-200 shadow-xs">
+                            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                             <span className="font-mono font-black">{req.contactPhone}</span>
                           </div>
 
                           <a
                             href={`tel:${req.contactPhone}`}
-                            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer"
                           >
-                            <Phone className="w-3.5 h-3.5" />
+                            <Phone className="w-4 h-4" />
                             <span>අමතන්න</span>
                           </a>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 text-xs text-slate-400">
-                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-slate-500 font-bold">
+                            <Lock className="w-4 h-4 text-slate-400" />
                             <span className="font-mono tracking-widest">{maskPhone(req.contactPhone, true)}</span>
                           </div>
 
@@ -655,9 +719,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               }
                               handleSupportBlood(req);
                             }}
-                            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer border-2 border-rose-300/80 hover:scale-105"
                           >
-                            <HeartHandshake className="w-3.5 h-3.5 text-rose-200" />
+                            <HeartHandshake className="w-4 h-4 text-rose-200" />
                             <span>මම සහය වෙමි</span>
                           </button>
                         </div>
@@ -674,18 +738,19 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         {activeTab === 'volunteer_donors' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-[#05140d]">
             {filteredDonors.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs">
-                තෝරාගත් ලේ වර්ගය සඳහා ලියාපදිංචි පරිත්‍යාගශීලීන් නොමැත. ඔබත් ස්වේච්ඡා පරිත්‍යාගශීලියෙකු ලෙස එක්වන්න!
+              <div className="text-center py-12 text-slate-400 text-xs space-y-2">
+                <Heart className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <p>තෝරාගත් ලේ වර්ගය සඳහා ලියාපදිංචි පරිත්‍යාගශීලීන් නොමැත. ඔබත් ස්වේච්ඡා පරිත්‍යාගශීලියෙකු ලෙස එක්වන්න!</p>
               </div>
             ) : (
               filteredDonors.map((donor, dIdx) => (
                 <div
                   key={`blood_donor_${donor.id || 'd'}_${dIdx}`}
-                  className="p-3.5 bg-white dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/60 rounded-2xl shadow-xs flex items-center justify-between gap-3"
+                  className="p-3.5 sm:p-4 bg-white dark:bg-[#071d12] border-2 border-emerald-200/80 dark:border-emerald-900/60 rounded-2xl shadow-xs flex items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 flex flex-col items-center justify-center font-mono font-black shrink-0">
-                      <span className="text-sm leading-none">{donor.bloodGroup}</span>
+                    <div className="w-13 h-13 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-2 border-emerald-300 dark:border-emerald-800 flex flex-col items-center justify-center font-mono font-black shrink-0 shadow-xs">
+                      <span className="text-lg leading-none">{donor.bloodGroup}</span>
                       <span className="text-[8px] uppercase font-bold text-emerald-600 mt-0.5">Donor</span>
                     </div>
 
@@ -694,12 +759,12 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                         <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
                           {maskName(donor.name, isDemo)}
                         </h4>
-                        <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-300">
+                        <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-300">
                           {donor.district}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        අවසාන වරට ලේ දුන් දිනය: <span className="font-bold text-slate-600 dark:text-slate-300">{donor.lastDonatedDate}</span>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        අවසාන වරට ලේ දුන් දිනය: <span className="font-bold text-slate-700 dark:text-slate-300">{donor.lastDonatedDate}</span>
                       </p>
                     </div>
                   </div>
@@ -709,10 +774,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteDonor(donor.id)}
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                        className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
                         title="පරිපාලක ලෙස පරිත්‍යාගශීලියා ඉවත් කරන්න (Admin Delete)"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                     {isDemo ? (
@@ -721,17 +786,17 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                         onClick={() => {
                           if (onRequireRegistration) onRequireRegistration();
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                        className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
                       >
-                        <Phone className="w-3.5 h-3.5" />
+                        <Phone className="w-4 h-4" />
                         <span>විමසන්න</span>
                       </button>
                     ) : (
                       <a
                         href={`tel:${donor.phone}`}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                        className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
                       >
-                        <Phone className="w-3.5 h-3.5" />
+                        <Phone className="w-4 h-4" />
                         <span>විමසන්න</span>
                       </a>
                     )}
@@ -742,7 +807,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           </div>
         )}
 
-        {/* Tab 3: Disaster Relief Items - Detailed Card Feed (Clean & Clear View) */}
+        {/* Tab 3: Disaster Relief Items - Detailed Card Feed */}
         {activeTab === 'disaster_relief' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 dark:bg-[#05140d]">
             {/* Header info bar */}
@@ -769,17 +834,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     තෝරාගත් සෙවුමට හෝ දිස්ත්‍රික්කයට අදාළ ආපදා වාර්තා වී නොමැත
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    ඔබගේ ප්‍රදේශයේ ආපදාවක් හෝ සහනාධාර අවශ්‍යතාවක් ඇත්නම් පහත බොත්තම මඟින් දැනුම්දෙන්න.
+                    ඔබගේ ප්‍රදේශයේ ආපදාවක් හෝ සහනාධාර අවශ්‍යතාවක් ඇත්නම් ඉහත බොත්තම මඟින් දැනුම්දෙන්න.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddDisasterForm(true)}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs inline-flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>නව ආපදා අවශ්‍යතාවක් එක්කරන්න</span>
-                </button>
               </div>
             ) : (
               filteredDisasterItems.filter(Boolean).map((item, itmIdx) => {
@@ -859,7 +916,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDeleteDisaster(item.id)}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
                             title="පරිපාලක ලෙස ආපදා දැන්වීම ඉවත් කරන්න (Admin Delete)"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -867,23 +924,23 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                         )}
                         {!isDemo && isSupported ? (
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-200 shadow-xs">
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-emerald-800 dark:text-emerald-200 shadow-xs">
+                              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                               <span className="font-mono font-black">{item.contactPhone}</span>
                             </div>
 
                             <a
                               href={`tel:${item.contactPhone}`}
-                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer"
                             >
-                              <Phone className="w-3.5 h-3.5" />
+                              <Phone className="w-4 h-4" />
                               <span>අමතන්න</span>
                             </a>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 text-xs text-slate-400">
-                              <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-slate-500 font-bold">
+                              <Lock className="w-4 h-4 text-slate-400" />
                               <span className="font-mono tracking-widest">{maskPhone(item.contactPhone, true)}</span>
                             </div>
 
@@ -896,9 +953,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                                 }
                                 handleSupportDisaster(item);
                               }}
-                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border-2 border-emerald-400/80 hover:scale-105"
                             >
-                              <HeartHandshake className="w-3.5 h-3.5 text-emerald-200" />
+                              <HeartHandshake className="w-4 h-4 text-emerald-200" />
                               <span>මම සහය වෙමි</span>
                             </button>
                           </div>
@@ -915,7 +972,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
         {/* Modal Sub-forms */}
         {/* 1. Add Blood Request Form */}
         {showAddBloodRequestForm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
             <div className="w-full max-w-md bg-white dark:bg-[#071911] border-2 border-rose-500 rounded-3xl p-5 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-2 border-b border-rose-100 dark:border-rose-900">
                 <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -925,7 +982,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddBloodRequestForm(false)}
-                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold"
+                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -942,7 +999,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={newPatientName}
                     onChange={(e) => setNewPatientName(e.target.value)}
                     placeholder="උදා: සුනිල් පෙරේරා"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
@@ -954,7 +1011,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     <select
                       value={newBloodGroup}
                       onChange={(e) => setNewBloodGroup(e.target.value as BloodGroup)}
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold font-mono"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-black font-mono text-sm"
                     >
                       {bloodGroups.map((bg) => (
                         <option key={bg} value={bg}>{bg}</option>
@@ -972,7 +1029,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       max={10}
                       value={newUnitsNeeded}
                       onChange={(e) => setNewUnitsNeeded(Number(e.target.value))}
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
                     />
                   </div>
                 </div>
@@ -988,7 +1045,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       value={newHospitalName}
                       onChange={(e) => setNewHospitalName(e.target.value)}
                       placeholder="උදා: රාගම ශික්ෂණ රෝහල"
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                     />
                   </div>
 
@@ -1033,7 +1090,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       value={newNeededDate}
                       onChange={(e) => setNewNeededDate(e.target.value)}
                       placeholder="උදා: අද දින"
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                     />
                   </div>
                 </div>
@@ -1062,7 +1119,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       value={newContactPhone}
                       onChange={(e) => setNewContactPhone(e.target.value)}
                       placeholder="07xxxxxxxx"
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-black"
                     />
                   </div>
                 </div>
@@ -1076,13 +1133,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={newNotes}
                     onChange={(e) => setNewNotes(e.target.value)}
                     placeholder="ශල්‍යකර්මය පිළිබඳ හෝ විශේෂ සටහන්..."
-                    className="w-full p-2 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-sm sm:text-base shadow-xl shadow-red-600/30 hover:shadow-red-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer border-2 border-red-300/80"
                 >
                   හදිසි ලේ ඉල්ලීම පලකරන්න (Publish Request)
                 </button>
@@ -1093,17 +1150,17 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
         {/* 2. Register Donor Form */}
         {showRegisterDonorForm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-            <div className="w-full max-w-md bg-white dark:bg-[#071911] border-2 border-emerald-500 rounded-3xl p-5 shadow-2xl space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-emerald-100 dark:border-emerald-900">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
+            <div className="w-full max-w-md bg-white dark:bg-[#071911] border-2 border-pink-500 rounded-3xl p-5 shadow-2xl space-y-3.5">
+              <div className="flex items-center justify-between pb-2 border-b border-pink-100 dark:border-pink-900">
                 <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Heart className="w-4 h-4 text-emerald-600 fill-current" />
+                  <Heart className="w-4 h-4 text-pink-600 fill-current" />
                   <span>ලේ පරිත්‍යාගශීලියෙකු ලෙස ලියාපදිංචිය</span>
                 </h4>
                 <button
                   type="button"
                   onClick={() => setShowRegisterDonorForm(false)}
-                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold"
+                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1120,7 +1177,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={donorName}
                     onChange={(e) => setDonorName(e.target.value)}
                     placeholder="ඔබගේ නම"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
@@ -1132,7 +1189,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     <select
                       value={donorBloodGroup}
                       onChange={(e) => setDonorBloodGroup(e.target.value as BloodGroup)}
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold font-mono"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-black font-mono text-sm"
                     >
                       {bloodGroups.map((bg) => (
                         <option key={bg} value={bg}>{bg}</option>
@@ -1166,7 +1223,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={donorPhone}
                     onChange={(e) => setDonorPhone(e.target.value)}
                     placeholder="07xxxxxxxx"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-black"
                   />
                 </div>
 
@@ -1184,7 +1241,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-600 via-rose-600 to-pink-700 hover:from-pink-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-xl shadow-pink-600/30 hover:shadow-pink-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer border-2 border-pink-300/80"
                 >
                   ස්වේච්ඡා පරිත්‍යාගශීලියෙකු ලෙස එක්වන්න
                 </button>
@@ -1195,7 +1252,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
         {/* 3. Add Disaster Item Form */}
         {showAddDisasterForm && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
             <div className="w-full max-w-md bg-white dark:bg-[#071911] border-2 border-teal-500 rounded-3xl p-5 shadow-2xl space-y-3.5">
               <div className="flex items-center justify-between pb-2 border-b border-teal-100 dark:border-teal-900">
                 <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -1205,7 +1262,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddDisasterForm(false)}
-                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold"
+                  className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1222,7 +1279,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={reliefTitle}
                     onChange={(e) => setReliefTitle(e.target.value)}
                     placeholder="උදා: ගංවතුරින් පීඩාවට පත් පවුල් සඳහා පිසූ ආහාර"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
@@ -1241,6 +1298,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       <option value="water_medicine">💧 පානීය ජලය / බෙහෙත්</option>
                       <option value="clothing_blankets">🧥 ඇඳුම් / පොරෝන</option>
                       <option value="temporary_shelter">🏕️ තාවකාලික නවාතැන්</option>
+                      <option value="other">🤝 වෙනත් ආධාර</option>
                     </select>
                   </div>
 
@@ -1270,7 +1328,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={reliefLocation}
                     onChange={(e) => setReliefLocation(e.target.value)}
                     placeholder="උදා: කැළණිය ප්‍රදේශය"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
@@ -1284,7 +1342,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       value={reliefTargetQty}
                       onChange={(e) => setReliefTargetQty(e.target.value)}
                       placeholder="උදා: ආහාර පැකට් 100"
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
                     />
                   </div>
 
@@ -1298,7 +1356,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       value={reliefContactPhone}
                       onChange={(e) => setReliefContactPhone(e.target.value)}
                       placeholder="07xxxxxxxx"
-                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                      className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-black"
                     />
                   </div>
                 </div>
@@ -1312,13 +1370,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     value={reliefDesc}
                     onChange={(e) => setReliefDesc(e.target.value)}
                     placeholder="ආපදාවට පත්වූවන් සංඛ්‍යාව හා අවශ්‍ය ප්‍රමුඛතා..."
-                    className="w-full p-2 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-800 text-white font-black text-sm sm:text-base shadow-xl shadow-teal-600/30 hover:shadow-teal-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer border-2 border-teal-300/80"
                 >
                   ආපදා සහන අවශ්‍යතාවය පලකරන්න
                 </button>

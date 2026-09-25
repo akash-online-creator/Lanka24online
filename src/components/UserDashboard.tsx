@@ -1526,26 +1526,26 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-          {/* Button 1: Blood & Disaster Relief Hub (Compact Square Card) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+          {/* Button 1: Blood & Disaster Relief Hub */}
           <button
             type="button"
             onClick={() => {
               setBloodModalInitialTab('blood_requests');
               setIsBloodAndDisasterModalOpen(true);
             }}
-            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/20 border border-red-400/70 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-lg hover:shadow-xl shadow-red-600/30 border-2 border-red-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
-                <Droplet className="w-4 h-4 fill-white" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <Droplet className="w-5 h-5 fill-white" />
               </div>
-              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
+              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-red-700 shadow-md animate-pulse">
                 LIVE
               </span>
             </div>
-            <div className="min-w-0 mt-1.5">
-              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+            <div className="min-w-0 mt-2">
+              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('හදිසි ලේ සහ ආපදා සහන', 'Blood & Disaster Hub', 'இரத்ததானம் & பேரிடர்')}
               </h4>
             </div>
@@ -1555,39 +1555,39 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => setIsAidLedgerModalOpen(true)}
-            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-lg hover:shadow-xl shadow-emerald-600/30 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
-                <ShieldCheck className="w-4 h-4 text-emerald-200" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <ShieldCheck className="w-5 h-5 text-emerald-200" />
               </div>
-              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-emerald-400 text-emerald-950 shadow-xs">
+              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-emerald-400 text-emerald-950 shadow-md">
                 6-DIGIT CODE
               </span>
             </div>
-            <div className="min-w-0 mt-1.5">
-              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+            <div className="min-w-0 mt-2">
+              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('ආධාර විනිවිදභාවයේ ලෙජරය', 'Transparent Aid Ledger', 'வெளிப்படையான உதவி')}
               </h4>
             </div>
           </button>
 
-          {/* Button 3: Offline Emergency Contacts Directory (Compact Square Card) */}
+          {/* Button 3: Offline Emergency Contacts Directory */}
           <button
             type="button"
             onClick={() => setIsEmergencyDirectoryModalOpen(true)}
-            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-md hover:shadow-lg shadow-amber-600/20 border border-amber-400/70 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg hover:shadow-xl shadow-amber-600/30 border-2 border-amber-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
                 <PhoneCall className="w-4 h-4 text-white" />
               </div>
-              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-amber-800 shadow-xs">
+              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-amber-800 shadow-md">
                 1990 / 119
               </span>
             </div>
-            <div className="min-w-0 mt-1.5">
-              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+            <div className="min-w-0 mt-2">
+              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('නොබැඳි හදිසි සේවා අංක', 'Emergency Directory', 'அவசர உதவி எண்கள்')}
               </h4>
             </div>
@@ -1597,18 +1597,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => setIsAiVoiceModalOpen(true)}
-            className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 text-white shadow-md hover:shadow-lg shadow-purple-600/20 border-2 border-purple-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[82px] sm:min-h-[92px]"
+            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl shadow-purple-600/30 border-2 border-purple-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
                 <Mic className="w-4 h-4 text-white animate-pulse" />
               </div>
-              <span className="px-1.5 py-0.5 rounded-full font-mono text-[8px] sm:text-[9px] font-black bg-white text-purple-800 shadow-xs flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5 text-amber-500" /> AI VOICE
+              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-purple-800 shadow-md flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-500" /> AI VOICE
               </span>
             </div>
-            <div className="min-w-0 mt-1.5">
-              <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+            <div className="min-w-0 mt-2">
+              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('AI හඬ සහය (Voice SOS & Help)', 'AI Voice SOS & Help', 'AI குரல் உதவி')}
               </h4>
             </div>

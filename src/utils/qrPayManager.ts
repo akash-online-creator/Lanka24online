@@ -7,6 +7,7 @@ import {
   getStoredCreditTransactions, 
   saveCreditTransactions 
 } from './creditManager';
+import { initialUsers } from '../data/initialData';
 
 const STORAGE_KEY_QR_TRANSACTIONS = 'sahaya_qr_transactions';
 const STORAGE_KEY_BALANCES = 'sahaya_user_credit_balances';
@@ -17,11 +18,10 @@ const STORAGE_KEY_BALANCES = 'sahaya_user_credit_balances';
 export const generateUserPayCode = (user?: User | null): string => {
   if (!user) return '123456';
   const numericId = extractNumericId(user.nicNumber || user.userId || '123456');
-  // Seed with digits and modulo to produce stable 6-digit base or dynamic code
-  const last4 = numericId.slice(-4) || '7890';
-  const salt = (Math.floor(Date.now() / (1000 * 60 * 60 * 24)) % 89 + 10).toString(); // Daily salt
-  const combined = (parseInt(last4 + salt, 10) % 900000 + 100000).toString();
-  return combined;
+  // Generate deterministic, recognizable 6-digit pay code based on user's numeric ID
+  const last4 = numericId.slice(-4) || '1234';
+  const first2 = numericId.slice(0, 2) || '98';
+  return `${first2}${last4}`.slice(0, 6).padEnd(6, '0');
 };
 
 /**
@@ -54,11 +54,12 @@ export const createQrPayPayloadString = (
  */
 export const generateQrDataUrl = async (text: string): Promise<string> => {
   try {
+    if (!text) return '';
     const dataUrl = await QRCode.toDataURL(text, {
-      width: 320,
+      width: 360,
       margin: 2,
       color: {
-        dark: '#0f172a',
+        dark: '#004d30',
         light: '#ffffff',
       },
       errorCorrectionLevel: 'M',
@@ -71,10 +72,95 @@ export const generateQrDataUrl = async (text: string): Promise<string> => {
 };
 
 /**
+ * Search and find a user by ID, Numeric ID, NIC, Phone number, or Pay Code
+ */
+export const findUserForQrPayment = (
+  queryText: string,
+  allUsersList: User[] = []
+): User | null => {
+  if (!queryText) return null;
+  const rawQuery = queryText.trim();
+  const lowerQuery = rawQuery.toLowerCase();
+  const digitsOnly = rawQuery.replace(/[^0-9]/g, '');
+
+  // 1. Gather all potential users (provided list + localStorage + initial seed data)
+  let localUsers: User[] = [];
+  try {
+    const raw = localStorage.getItem('sahaya_users');
+    if (raw) {
+      localUsers = JSON.parse(raw);
+    }
+  } catch (e) {}
+
+  const combinedUsers: User[] = [...allUsersList, ...localUsers, ...(initialUsers as User[])];
+  const uniqueUsers: User[] = [];
+  const seenIds = new Set<string>();
+
+  for (const u of combinedUsers) {
+    if (!u) continue;
+    const key = u.id || u.userId || u.nicNumber;
+    if (key && !seenIds.has(key)) {
+      seenIds.add(key);
+      uniqueUsers.push(u);
+    }
+  }
+
+  // 2. Exact match by User ID or Document ID
+  let match = uniqueUsers.find(
+    u => (u.id && u.id.toLowerCase() === lowerQuery) || (u.userId && u.userId.toLowerCase() === lowerQuery)
+  );
+  if (match) return match;
+
+  // 3. Exact match by NIC Number (e.g. 981234567V, 199701815470)
+  match = uniqueUsers.find(
+    u => u.nicNumber && u.nicNumber.trim().toLowerCase() === lowerQuery
+  );
+  if (match) return match;
+
+  // 4. Exact match by Numeric ID (digits only of NIC)
+  if (digitsOnly.length >= 5) {
+    match = uniqueUsers.find(u => {
+      const uNumeric = extractNumericId(u.nicNumber || u.userId);
+      return uNumeric && uNumeric === digitsOnly;
+    });
+    if (match) return match;
+  }
+
+  // 5. Match by Phone Number
+  if (digitsOnly.length >= 9) {
+    match = uniqueUsers.find(u => {
+      const uPhoneDigits = (u.phone || '').replace(/[^0-9]/g, '');
+      return uPhoneDigits && (uPhoneDigits === digitsOnly || uPhoneDigits.endsWith(digitsOnly) || digitsOnly.endsWith(uPhoneDigits));
+    });
+    if (match) return match;
+  }
+
+  // 6. Match by 6-Digit Pay Code
+  if (digitsOnly.length === 6) {
+    match = uniqueUsers.find(u => {
+      const code = generateUserPayCode(u);
+      return code === digitsOnly;
+    });
+    if (match) return match;
+  }
+
+  // 7. Match by Name if unambiguous
+  if (rawQuery.length >= 3) {
+    match = uniqueUsers.find(
+      u => u.name && u.name.trim().toLowerCase() === lowerQuery
+    );
+    if (match) return match;
+  }
+
+  return null;
+};
+
+/**
  * Parse Scanned QR string or text input
  */
 export const parseScannedQrPayload = (
-  scannedText: string
+  scannedText: string,
+  allUsersList: User[] = []
 ): {
   isValid: boolean;
   recipientUserId?: string;
@@ -84,6 +170,7 @@ export const parseScannedQrPayload = (
   fixedAmount?: number;
   payCode?: string;
   rawText: string;
+  matchedUser?: User | null;
   error?: string;
 } => {
   if (!scannedText) {
@@ -92,19 +179,21 @@ export const parseScannedQrPayload = (
 
   const trimmed = scannedText.trim();
 
-  // Case 1: JSON payload
+  // Case 1: JSON payload (Sahaya Pay App format)
   try {
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       const parsed = JSON.parse(trimmed) as QrPayPayload;
-      if (parsed.type === 'SAHAYA_PAY' || parsed.userId) {
+      if (parsed.type === 'SAHAYA_PAY' || parsed.userId || parsed.numericId) {
+        const foundUser = findUserForQrPayment(parsed.userId || parsed.numericId || parsed.phone || '', allUsersList);
         return {
           isValid: true,
-          recipientUserId: parsed.userId,
-          recipientNumericId: parsed.numericId || extractNumericId(parsed.userId),
-          recipientName: parsed.name,
-          recipientPhone: parsed.phone,
+          recipientUserId: foundUser?.id || foundUser?.userId || parsed.userId,
+          recipientNumericId: foundUser ? extractNumericId(foundUser.nicNumber || foundUser.userId) : (parsed.numericId || extractNumericId(parsed.userId)),
+          recipientName: foundUser?.name || parsed.name || 'සහය සාමාජිකයා',
+          recipientPhone: foundUser?.phone || parsed.phone,
           fixedAmount: parsed.fixedAmount,
-          payCode: parsed.payCode,
+          payCode: parsed.payCode || (foundUser ? generateUserPayCode(foundUser) : undefined),
+          matchedUser: foundUser,
           rawText: trimmed,
         };
       }
@@ -116,24 +205,48 @@ export const parseScannedQrPayload = (
   // Case 2: Colon delimited format "SAHAYA_PAY:userId:numericId:phone:name:payCode[:amount]"
   if (trimmed.startsWith('SAHAYA_PAY:')) {
     const parts = trimmed.split(':');
+    const uId = parts[1] || '';
+    const numId = parts[2] || '';
+    const phone = parts[3] || '';
+    const foundUser = findUserForQrPayment(uId || numId || phone, allUsersList);
+
     return {
       isValid: true,
-      recipientUserId: parts[1] || '',
-      recipientNumericId: parts[2] || '',
-      recipientPhone: parts[3] || '',
-      recipientName: decodeURIComponent(parts[4] || 'සහය සාමාජිකයා'),
-      payCode: parts[5] || '',
+      recipientUserId: foundUser?.id || foundUser?.userId || uId,
+      recipientNumericId: foundUser ? extractNumericId(foundUser.nicNumber || foundUser.userId) : numId,
+      recipientPhone: foundUser?.phone || phone,
+      recipientName: foundUser?.name || decodeURIComponent(parts[4] || 'සහය සාමාජිකයා'),
+      payCode: parts[5] || (foundUser ? generateUserPayCode(foundUser) : undefined),
       fixedAmount: parts[6] ? parseFloat(parts[6]) : undefined,
+      matchedUser: foundUser,
       rawText: trimmed,
     };
   }
 
-  // Case 3: 6-Digit Pay Code or Phone number or NIC
-  const cleanDigits = trimmed.replace(/[^0-9]/g, '');
-  if (cleanDigits.length >= 6) {
+  // Case 3: Direct User Search via Pay Code, Phone Number, NIC, or User ID
+  const directFoundUser = findUserForQrPayment(trimmed, allUsersList);
+  if (directFoundUser) {
+    const numId = extractNumericId(directFoundUser.nicNumber || directFoundUser.userId);
     return {
       isValid: true,
+      recipientUserId: directFoundUser.id || directFoundUser.userId || `usr_${numId}`,
+      recipientNumericId: numId,
+      recipientName: directFoundUser.name || 'සහය සාමාජිකයා',
+      recipientPhone: directFoundUser.phone || '',
+      payCode: generateUserPayCode(directFoundUser),
+      matchedUser: directFoundUser,
+      rawText: trimmed,
+    };
+  }
+
+  // Case 4: Digits only (at least 5 digits entered)
+  const cleanDigits = trimmed.replace(/[^0-9]/g, '');
+  if (cleanDigits.length >= 5) {
+    return {
+      isValid: true,
+      recipientUserId: `usr_${cleanDigits}`,
       recipientNumericId: cleanDigits,
+      recipientName: `සාමාජික අංක #${cleanDigits}`,
       recipientPhone: cleanDigits.length === 10 ? cleanDigits : undefined,
       payCode: cleanDigits.length === 6 ? cleanDigits : undefined,
       rawText: trimmed,
@@ -143,7 +256,7 @@ export const parseScannedQrPayload = (
   return {
     isValid: false,
     rawText: trimmed,
-    error: 'වලංගු සහය සේවා QR කේතයක් නොවේ (Invalid Sahaya Pay QR)',
+    error: 'වලංගු සහය සේවා QR කේතයක් හෝ ගෙවීම් අංකයක් හඳුනාගත නොහැකි විය.',
   };
 };
 
@@ -244,7 +357,7 @@ export const executeQrWalletPayment = (
   const payeeCurrentBalance = balancesMap[payeeNumericId] ?? balancesMap[payeeIdKey] ?? 100;
   const payeeNewBalance = Number((payeeCurrentBalance + cleanAmount).toFixed(2));
 
-  // Update Balances
+  // Update Balances in storage
   balancesMap[payerNumericId] = payerNewBalance;
   if (payerIdKey) balancesMap[payerIdKey] = payerNewBalance;
 
@@ -322,7 +435,15 @@ export const executeQrWalletPayment = (
   const allCreditTxs = getStoredCreditTransactions();
   saveCreditTransactions([payerCreditTx, payeeCreditTx, ...allCreditTxs]);
 
-  // Play audio sound if supported
+  // 3. Broadcast real-time update events across components
+  try {
+    window.dispatchEvent(new CustomEvent('sahaya_wallet_updated', {
+      detail: { payerId: payerIdKey, newBalance: payerNewBalance, tx: qrTx }
+    }));
+    window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+  } catch (e) {}
+
+  // Play audio chime sound if supported
   try {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3');
     audio.volume = 0.6;

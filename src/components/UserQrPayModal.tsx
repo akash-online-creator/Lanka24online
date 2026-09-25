@@ -7,6 +7,7 @@ import {
   generateQrDataUrl, 
   parseScannedQrPayload, 
   executeQrWalletPayment, 
+  findUserForQrPayment,
   getStoredQrTransactions 
 } from '../utils/qrPayManager';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
@@ -30,13 +31,19 @@ import {
   Receipt, 
   Sparkles,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Search,
+  Phone,
+  CreditCard,
+  SwitchCamera,
+  Layers
 } from 'lucide-react';
 
 interface UserQrPayModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User;
+  user?: User | null;
+  currentUser?: User | null;
   allUsers?: User[];
   language?: Language;
   initialTab?: 'my_qr' | 'scan_pay';
@@ -48,19 +55,34 @@ interface UserQrPayModalProps {
     fixedAmount?: number;
     purpose?: string;
   };
+  targetRecipient?: {
+    userId: string;
+    numericId?: string;
+    name: string;
+    phone?: string;
+    fixedAmount?: number;
+    purpose?: string;
+  };
   onPaymentSuccess?: (tx: QrTransaction) => void;
+  onPaymentComplete?: (tx: QrTransaction) => void;
 }
 
 export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   isOpen,
   onClose,
-  user,
+  user: propUser,
+  currentUser: propCurrentUser,
   allUsers = [],
   language = 'si',
   initialTab = 'my_qr',
   prefilledRecipient,
+  targetRecipient,
   onPaymentSuccess,
+  onPaymentComplete,
 }) => {
+  const activeUser = propUser || propCurrentUser;
+  const effectiveRecipient = prefilledRecipient || targetRecipient;
+
   const [activeTab, setActiveTab] = useState<'my_qr' | 'scan_pay'>(initialTab);
 
   // My QR Tab States
@@ -72,11 +94,13 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
 
   // Scan & Pay States
   const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState<string>('');
   const [amountInput, setAmountInput] = useState<string>('');
   const [purposeInput, setPurposeInput] = useState<string>('භාණ්ඩ / සේවා ගෙවීම');
   const [customPurpose, setCustomPurpose] = useState<string>('');
+  const [isSearchingManual, setIsSearchingManual] = useState<boolean>(false);
   
   // Recipient Target State
   const [recipient, setRecipient] = useState<{
@@ -101,37 +125,60 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   const scanLoopRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const currentBalance = getUserCreditBalance(user);
-  const userNumericId = extractNumericId(user?.nicNumber || user?.userId);
+  // Live balance listener
+  const [currentBalance, setCurrentBalance] = useState<number>(() => {
+    return activeUser ? getUserCreditBalance(activeUser) : 0;
+  });
+
+  useEffect(() => {
+    if (activeUser) {
+      setCurrentBalance(getUserCreditBalance(activeUser));
+    }
+  }, [activeUser, isOpen]);
+
+  useEffect(() => {
+    const handleWalletUpdated = () => {
+      if (activeUser) {
+        setCurrentBalance(getUserCreditBalance(activeUser));
+      }
+    };
+    window.addEventListener('sahaya_wallet_updated', handleWalletUpdated);
+    return () => window.removeEventListener('sahaya_wallet_updated', handleWalletUpdated);
+  }, [activeUser]);
+
+  const userNumericId = activeUser ? extractNumericId(activeUser.nicNumber || activeUser.userId) : '';
 
   // Initialize My QR
   useEffect(() => {
-    if (isOpen && user) {
-      const code = generateUserPayCode(user);
+    if (isOpen && activeUser) {
+      const code = generateUserPayCode(activeUser);
       setMyPayCode(code);
       const fixedNum = isFixedAmount && fixedAmountInput ? parseFloat(fixedAmountInput) : undefined;
-      const payloadString = createQrPayPayloadString(user, fixedNum);
-      generateQrDataUrl(payloadString).then(url => setQrDataUrl(url));
+      const payloadString = createQrPayPayloadString(activeUser, fixedNum);
+      generateQrDataUrl(payloadString).then((url) => setQrDataUrl(url));
     }
-  }, [isOpen, user, isFixedAmount, fixedAmountInput]);
+  }, [isOpen, activeUser, isFixedAmount, fixedAmountInput]);
 
   // Handle Tab and Pre-filled recipient
   useEffect(() => {
     if (isOpen) {
-      if (prefilledRecipient) {
+      if (effectiveRecipient) {
         setActiveTab('scan_pay');
+        const matched = findUserForQrPayment(effectiveRecipient.userId || effectiveRecipient.numericId || effectiveRecipient.phone || '', allUsers);
         setRecipient({
-          userId: prefilledRecipient.userId,
-          numericId: prefilledRecipient.numericId || extractNumericId(prefilledRecipient.userId),
-          name: prefilledRecipient.name,
-          phone: prefilledRecipient.phone,
-          verified: true,
+          userId: matched?.id || matched?.userId || effectiveRecipient.userId,
+          numericId: matched ? extractNumericId(matched.nicNumber || matched.userId) : (effectiveRecipient.numericId || extractNumericId(effectiveRecipient.userId)),
+          name: matched?.name || effectiveRecipient.name || 'සහය සාමාජිකයා',
+          phone: matched?.phone || effectiveRecipient.phone,
+          payCode: matched ? generateUserPayCode(matched) : undefined,
+          verified: matched ? matched.status === 'approved' : true,
+          photo: matched?.facePhotoUrl || matched?.photoUrl,
         });
-        if (prefilledRecipient.fixedAmount) {
-          setAmountInput(prefilledRecipient.fixedAmount.toString());
+        if (effectiveRecipient.fixedAmount) {
+          setAmountInput(effectiveRecipient.fixedAmount.toString());
         }
-        if (prefilledRecipient.purpose) {
-          setPurposeInput(prefilledRecipient.purpose);
+        if (effectiveRecipient.purpose) {
+          setPurposeInput(effectiveRecipient.purpose);
         }
       } else {
         setActiveTab(initialTab);
@@ -139,7 +186,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
       setCompletedTx(null);
       setErrorMessage(null);
     }
-  }, [isOpen, initialTab, prefilledRecipient]);
+  }, [isOpen, initialTab, effectiveRecipient, allUsers]);
 
   // Stop camera when closing or changing tabs
   useEffect(() => {
@@ -148,29 +195,49 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
   }, [isOpen, activeTab]);
 
-  // Start Camera Stream
-  const startCamera = async () => {
+  // Start Camera Stream with reliable fallbacks
+  const startCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
     setCameraError(null);
+    stopCamera();
+
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
-        });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute('playsinline', 'true');
-          await videoRef.current.play();
-          setCameraActive(true);
-          requestAnimationFrame(scanVideoFrame);
-        }
-      } else {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraError('කැමරාව මෙම බ්‍රවුසරයේ ක්‍රියාත්මක කළ නොහැක. කරුණාකර කේතය අතින් ඇතුළත් කරන්න.');
+        return;
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch (err1) {
+        // Fallback without strict facingMode
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+      }
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.muted = true;
+        await videoRef.current.play();
+        setCameraActive(true);
+        setCameraFacing(facing);
+        requestAnimationFrame(scanVideoFrame);
       }
     } catch (err: any) {
       console.warn('Camera access error:', err);
-      setCameraError('කැමරාවට අවසර ලබාදී නොමැත. කරුණාකර අවසර ලබාදෙන්න හෝ කේතය අතින් ඇතුළත් කරන්න.');
+      setCameraError('කැමරාවට අවසර ලබාදී නොමැත. කරුණාකර අවසර ලබාදෙන්න හෝ කේතය / දුරකථන අංකය අතින් ඇතුළත් කරන්න.');
+      setCameraActive(false);
     }
+  };
+
+  const toggleCameraFacing = () => {
+    const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+    startCamera(nextFacing);
   };
 
   const stopCamera = () => {
@@ -179,15 +246,18 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
       scanLoopRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setCameraActive(false);
   };
 
   // Real-time Video QR Frame Scanner using jsQR
   const scanVideoFrame = () => {
-    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
+    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) {
       scanLoopRef.current = requestAnimationFrame(scanVideoFrame);
       return;
     }
@@ -196,7 +266,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    if (ctx) {
+    if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -218,30 +288,23 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   // Process detected QR String
   const handleQrPayloadDetected = (rawPayload: string) => {
     setErrorMessage(null);
-    const result = parseScannedQrPayload(rawPayload);
+    const result = parseScannedQrPayload(rawPayload, allUsers);
 
     if (!result.isValid) {
       setErrorMessage(result.error || 'වලංගු සහය සේවා QR කේතයක් නොවේ.');
       return;
     }
 
-    // Try finding matching user from allUsers or use payload
-    let matchedUser = (allUsers || []).find(
-      u => u && (
-        (result.recipientUserId && (u.id === result.recipientUserId || u.userId === result.recipientUserId)) ||
-        (result.recipientNumericId && extractNumericId(u.nicNumber || u.userId) === result.recipientNumericId) ||
-        (result.recipientPhone && u.phone === result.recipientPhone)
-      )
-    );
+    const matched = result.matchedUser || findUserForQrPayment(result.recipientUserId || result.recipientNumericId || result.recipientPhone || '', allUsers);
 
     const recipientData = {
-      userId: matchedUser?.id || matchedUser?.userId || result.recipientUserId || `usr_${result.recipientNumericId || 'target'}`,
-      numericId: matchedUser ? extractNumericId(matchedUser.nicNumber || matchedUser.userId) : (result.recipientNumericId || ''),
-      name: matchedUser?.name || result.recipientName || 'සහය සාමාජිකයා',
-      phone: matchedUser?.phone || result.recipientPhone || '',
-      payCode: result.payCode,
-      verified: matchedUser?.status === 'approved',
-      photo: matchedUser?.profilePhotoUrl,
+      userId: matched?.id || matched?.userId || result.recipientUserId || `usr_${result.recipientNumericId || 'target'}`,
+      numericId: matched ? extractNumericId(matched.nicNumber || matched.userId) : (result.recipientNumericId || ''),
+      name: matched?.name || result.recipientName || 'සහය සාමාජිකයා',
+      phone: matched?.phone || result.recipientPhone || '',
+      payCode: result.payCode || (matched ? generateUserPayCode(matched) : undefined),
+      verified: matched ? matched.status === 'approved' : true,
+      photo: matched?.facePhotoUrl || matched?.photoUrl,
     };
 
     setRecipient(recipientData);
@@ -250,7 +313,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
   };
 
-  // Upload QR Image from gallery
+  // Upload QR Image from gallery with downscaling
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -259,18 +322,32 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
+        // Downscale large images for optimal QR detection
+        const maxDim = 800;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const imgData = ctx.getImageData(0, 0, width, height);
           const code = jsQR(imgData.data, imgData.width, imgData.height);
           if (code && code.data) {
             handleQrPayloadDetected(code.data);
           } else {
-            setErrorMessage('පින්තූරයෙන් QR කේතයක් හඳුනාගත නොහැකි විය. කරුණාකර පැහැදිලි පින්තූරයක් තෝරන්න.');
+            setErrorMessage('පින්තූරයෙන් QR කේතයක් හඳුනාගත නොහැකි විය. කරුණාකර පැහැදිලි QR පින්තූරයක් තෝරන්න හෝ කේතය අතින් ඇතුළත් කරන්න.');
           }
         }
       };
@@ -279,17 +356,21 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Lookup manual code
+  // Lookup manual code / phone / NIC
   const handleManualLookup = () => {
-    if (!manualCodeInput.trim()) {
+    const query = manualCodeInput.trim();
+    if (!query) {
       setErrorMessage('කරුණාකර 6-ඉලක්කම් ගෙවීම් කේතය, දුරකථන අංකය හෝ NIC අංකය ඇතුළත් කරන්න.');
       return;
     }
-    handleQrPayloadDetected(manualCodeInput);
+    setIsSearchingManual(true);
+    handleQrPayloadDetected(query);
+    setIsSearchingManual(false);
   };
 
   // Copy Pay Code
   const handleCopyCode = () => {
+    if (!myPayCode) return;
     navigator.clipboard.writeText(myPayCode);
     setCopiedPayCode(true);
     setTimeout(() => setCopiedPayCode(false), 2500);
@@ -308,7 +389,9 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
 
   // Share via WhatsApp
   const handleShareWhatsApp = () => {
-    const text = `*සහය සේවා (Sahaya Pay) QR ගෙවීම් තොරතුරු*\n\nනම: ${user.name}\nසාමාජික ID: ${userNumericId}\nගෙවීම් කේතය (Pay Code): *${myPayCode}*\nදුරකථන: ${user.phone || 'N/A'}\n\nමෙම කේතය හෝ QR එක Sahaya Sewa Wallet Scan & Pay හරහා ගෙවීමට භාවිතා කරන්න.`;
+    if (!activeUser) return;
+    const amountText = isFixedAmount && fixedAmountInput ? `\nඅයවිය යුතු මුදල: *රු. ${parseFloat(fixedAmountInput).toFixed(2)}*` : '';
+    const text = `*සහය සේවා (Sahaya Pay) QR ගෙවීම් තොරතුරු*\n\nනම: ${activeUser.name}\nසාමාජික ID: ${userNumericId}\nගෙවීම් කේතය (Pay Code): *${myPayCode}*\nදුරකථන: ${activeUser.phone || 'N/A'}${amountText}\n\nමෙම කේතය හෝ QR එක Sahaya Sewa Wallet Scan & Pay හරහා ගෙවීමට භාවිතා කරන්න.`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -316,6 +399,11 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   // Execute Payment
   const handleConfirmPayment = () => {
     setErrorMessage(null);
+    if (!activeUser) {
+      setErrorMessage('ඔබගේ ගිණුම හඳුනාගත නොහැක. කරුණාකර නැවත Log in වන්න.');
+      return;
+    }
+
     if (!recipient) {
       setErrorMessage('ගෙවීම ලබන්නාගේ තොරතුරු තහවුරු කර නොමැත.');
       return;
@@ -328,7 +416,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
 
     if (currentBalance < numAmount) {
-      setErrorMessage(`ඔබගේ Wallet ශේෂය ප්‍රමාණවත් නොවේ. අවශ්‍ය මුදල රු. ${numAmount.toFixed(2)} කි. ඔබගේ ශේෂය රු. ${currentBalance.toFixed(2)} කි.`);
+      setErrorMessage(`ඔබගේ Wallet ශේෂය ප්‍රමාණවත් නොවේ. අවශ්‍ය මුදල රු. ${numAmount.toFixed(2)} කි. ඔබගේ දැනට ශේෂය රු. ${currentBalance.toFixed(2)} කි. කරුණාකර Top-Up කරන්න.`);
       return;
     }
 
@@ -337,7 +425,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     try {
       const finalPurpose = purposeInput === 'වෙනත්' ? (customPurpose || 'වෙනත් ගෙවීමක්') : purposeInput;
       const result = executeQrWalletPayment(
-        user,
+        activeUser,
         {
           userId: recipient.userId,
           numericId: recipient.numericId,
@@ -351,9 +439,9 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
 
       if (result.success && result.qrTransaction) {
         setCompletedTx(result.qrTransaction);
-        if (onPaymentSuccess) {
-          onPaymentSuccess(result.qrTransaction);
-        }
+        setCurrentBalance(result.payerNewBalance ?? (currentBalance - numAmount));
+        if (onPaymentSuccess) onPaymentSuccess(result.qrTransaction);
+        if (onPaymentComplete) onPaymentComplete(result.qrTransaction);
       } else {
         setErrorMessage(result.error || 'ගෙවීම සම්පූර්ණ කිරීමේදී දෝෂයක් සිදුවිය.');
       }
@@ -377,8 +465,8 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fadeIn">
-      <div className="bg-white dark:bg-[#0a1b12] border-2 border-emerald-500/40 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl transition-all relative max-h-[94vh] flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fadeIn">
+      <div className="bg-white dark:bg-[#07170e] border-2 border-emerald-500/50 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl transition-all relative max-h-[94vh] flex flex-col">
         
         {/* Top Header */}
         <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 p-4 sm:p-5 text-white flex items-center justify-between shrink-0">
@@ -410,7 +498,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
         </div>
 
         {/* Tab Selection */}
-        <div className="flex items-center border-b border-slate-200 dark:border-[#163a25] bg-slate-50 dark:bg-[#07150d] px-4 pt-2 gap-2 shrink-0">
+        <div className="flex items-center border-b border-slate-200 dark:border-[#163a25] bg-slate-50 dark:bg-[#05110a] px-4 pt-2 gap-2 shrink-0">
           <button
             onClick={() => {
               setActiveTab('my_qr');
@@ -418,7 +506,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
             }}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-extrabold border-b-2 transition-all cursor-pointer ${
               activeTab === 'my_qr'
-                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-[#0a1b12] rounded-t-xl shadow-xs'
+                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-[#07170e] rounded-t-xl shadow-xs'
                 : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -433,7 +521,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
             }}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-extrabold border-b-2 transition-all cursor-pointer ${
               activeTab === 'scan_pay'
-                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-[#0a1b12] rounded-t-xl shadow-xs'
+                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-[#07170e] rounded-t-xl shadow-xs'
                 : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
@@ -458,7 +546,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                 <div className="flex items-center gap-2 mb-3 bg-white dark:bg-[#122e1e] border border-emerald-300 dark:border-emerald-700/50 px-3.5 py-1.5 rounded-full shadow-xs">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span className="text-xs font-black text-emerald-950 dark:text-emerald-200">
-                    {user?.name || 'පරිශීලක'} • {user?.district || 'ශ්‍රී ලංකා'}
+                    {activeUser?.name || 'පරිශීලක'} • ID: {userNumericId}
                   </span>
                 </div>
 
@@ -550,7 +638,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
               <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-3 text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-2.5 w-full max-w-sm">
                 <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>
-                  අනෙක් පාර්ශවය මෙම QR එක ස්කෑන් කර හෝ Pay Code එක ඇතුළත් කර submit කළ පසු ඔවුන්ගේ Wallet එකෙන් ඔබගේ Wallet එකට ක්ෂණිකව මුදල් බැර වේ.
+                  අනෙක් පාර්ශවය මෙම QR එක ස්කෑන් කර හෝ Pay Code එක ඇතුළත් කළ විට ඔවුන්ගේ Wallet එකෙන් ඔබගේ Wallet එකට ක්ෂණිකව මුදල් බැර වේ.
                 </span>
               </div>
             </div>
@@ -697,7 +785,7 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                             </div>
                             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                               <button
-                                onClick={startCamera}
+                                onClick={() => startCamera('environment')}
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                               >
                                 <Camera className="w-4 h-4" />
@@ -726,24 +814,33 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                         )}
 
                         {cameraActive && (
-                          <button
-                            onClick={stopCamera}
-                            className="mt-3 px-3 py-1 bg-slate-800/90 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700 cursor-pointer"
-                          >
-                            කැමරාව නවතන්න
-                          </button>
+                          <div className="flex items-center gap-2 mt-3">
+                            <button
+                              onClick={toggleCameraFacing}
+                              className="px-3 py-1 bg-slate-800/90 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700 cursor-pointer flex items-center gap-1"
+                            >
+                              <SwitchCamera className="w-3.5 h-3.5" />
+                              <span>Camera Switch</span>
+                            </button>
+                            <button
+                              onClick={stopCamera}
+                              className="px-3 py-1 bg-rose-900/80 text-rose-200 rounded-xl text-xs font-bold hover:bg-rose-800 cursor-pointer"
+                            >
+                              නවත්වන්න
+                            </button>
+                          </div>
                         )}
                       </div>
 
-                      {/* Alternative: Enter 6-Digit Pay Code manually */}
+                      {/* Alternative: Enter 6-Digit Pay Code / NIC / Phone manually */}
                       <div className="bg-slate-50 dark:bg-[#0d2317] border border-slate-200 dark:border-emerald-900/60 rounded-2xl p-4 space-y-2">
                         <label className="text-xs font-black text-slate-800 dark:text-slate-200 block">
-                          🔢 හෝ ලබන්නාගේ 6-ඉලක්කම් කේතය / දුරකථන අංකය ඇතුළත් කරන්න:
+                          🔢 හෝ ලබන්නාගේ 6-ඉලක්කම් Pay Code / දුරකථන / NIC අංකය ඇතුළත් කරන්න:
                         </label>
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
-                            placeholder="උදා: 789021 හෝ 0771234567"
+                            placeholder="උදා: 789021 හෝ 0771234567 හෝ 981234567V"
                             value={manualCodeInput}
                             onChange={(e) => setManualCodeInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleManualLookup()}
@@ -751,150 +848,140 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                           />
                           <button
                             onClick={handleManualLookup}
-                            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm"
+                            disabled={isSearchingManual}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0"
                           >
-                            සොයන්න
+                            <Search className="w-4 h-4" />
+                            <span>සොයන්න</span>
                           </button>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    /* STEP 2: Recipient Verified -> Enter Amount and Submit */
+                    /* STEP 2: Recipient Confirmed -> Enter Amount & Purpose */
                     <div className="space-y-4 animate-fadeIn">
                       
-                      {/* Recipient Profile Preview Card */}
-                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-[#0b2417] dark:to-[#081a11] border-2 border-emerald-500/40 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+                      {/* Selected Recipient Card */}
+                      <div className="bg-emerald-50/80 dark:bg-[#0d261a] border-2 border-emerald-500/60 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                          <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-base shadow-sm overflow-hidden shrink-0">
                             {recipient.photo ? (
-                              <img src={recipient.photo} alt={recipient.name} className="w-full h-full rounded-2xl object-cover" />
+                              <img src={recipient.photo} alt={recipient.name} className="w-full h-full object-cover" />
                             ) : (
-                              <UserCheck className="w-6 h-6" />
+                              recipient.name.charAt(0).toUpperCase()
                             )}
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-black text-slate-900 dark:text-white">
+                              <h4 className="text-sm font-black text-slate-900 dark:text-white">
                                 {recipient.name}
-                              </span>
-                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                              </h4>
+                              {recipient.verified && (
+                                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                              )}
                             </div>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">
-                              ID: {recipient.numericId} {recipient.phone ? `• ${recipient.phone}` : ''}
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                              ID: <span className="font-mono font-bold">{recipient.numericId || 'N/A'}</span>
+                              {recipient.phone && ` • ${recipient.phone}`}
                             </p>
                           </div>
                         </div>
 
                         <button
                           onClick={() => setRecipient(null)}
-                          className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+                          className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 bg-white dark:bg-[#081b11] rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer"
                         >
                           වෙනස් කරන්න
                         </button>
                       </div>
 
-                      {/* Amount Input & Suggestions */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-800 dark:text-slate-200 block">
-                          💵 ගෙවිය යුතු මුදල (LKR Amount):
+                      {/* Payment Amount Input */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 block">
+                          ගෙවීමට අවශ්‍ය මුදල (LKR):
                         </label>
                         <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-500 text-base">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">
                             රු.
                           </span>
                           <input
                             type="number"
+                            step="any"
                             placeholder="0.00"
                             value={amountInput}
                             onChange={(e) => setAmountInput(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#081b10] border-2 border-emerald-500/50 rounded-2xl text-xl font-black focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                            className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#07170e] border-2 border-emerald-500/50 rounded-2xl text-lg font-black focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           />
-                        </div>
-
-                        {/* Quick Amount Suggestion Pills */}
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {[100, 250, 500, 1000, 2500].map((amt) => (
-                            <button
-                              key={amt}
-                              type="button"
-                              onClick={() => setAmountInput(amt.toString())}
-                              className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-[#102c1c] text-slate-800 dark:text-slate-200 hover:bg-emerald-100 text-xs font-bold transition-all cursor-pointer"
-                            >
-                              +රු. {amt}
-                            </button>
-                          ))}
                         </div>
                       </div>
 
-                      {/* Purpose Selector */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-800 dark:text-slate-200 block">
-                          📝 ගෙවීමේ හේතුව / විස්තරය (Purpose):
+                      {/* Quick Amount Pills */}
+                      <div className="flex flex-wrap gap-2">
+                        {[100, 250, 500, 1000, 2500].map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setAmountInput(amt.toString())}
+                            className="px-3 py-1 bg-slate-100 hover:bg-emerald-100 dark:bg-slate-800 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
+                          >
+                            + රු. {amt}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Payment Purpose Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300 block">
+                          ගෙවීමේ හේතුව / අරමුණ:
                         </label>
                         <select
                           value={purposeInput}
                           onChange={(e) => setPurposeInput(e.target.value)}
-                          className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#081b10] border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-[#07170e] border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         >
-                          <option value="භාණ්ඩ මිලදී ගැනීම (Goods Purchase)">භාණ්ඩ මිලදී ගැනීම (Goods Purchase)</option>
-                          <option value="සේවා ගාස්තු ගෙවීම (Service Fee)">සේවා ගාස්තු ගෙවීම (Service Fee)</option>
-                          <option value="කුලී / ගමන් ගාස්තු (Travel / Rental Fee)">කුලී / ගමන් ගාස්තු (Travel / Rental Fee)</option>
-                          <option value="මිතුරු මුදල් හුවමාරුව (P2P Transfer)">මිතුරු මුදල් හුවමාරුව (P2P Transfer)</option>
-                          <option value="වෙනත්">වෙනත් (Custom Note)...</option>
+                          <option value="භාණ්ඩ / සේවා ගෙවීම">භාණ්ඩ / සේවා ගෙවීම (Goods/Services)</option>
+                          <option value="වෘත්තීය සේවා කුලිය">වෘත්තීය සේවා කුලිය (Professional Fee)</option>
+                          <option value="ඉක්මන් සහය ගාස්තුව">ඉක්මන් සහය ගාස්තුව (Quick Service Help)</option>
+                          <option value="ප්‍රජා සහන ආධාර">ප්‍රජා සහන ආධාර (Donation/Relief)</option>
+                          <option value="වෙනත්">වෙනත් (Other Purpose)</option>
                         </select>
-
-                        {purposeInput === 'වෙනත්' && (
-                          <input
-                            type="text"
-                            placeholder="විස්තරය ඇතුළත් කරන්න"
-                            value={customPurpose}
-                            onChange={(e) => setCustomPurpose(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#081b10] border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 mt-1"
-                          />
-                        )}
                       </div>
 
-                      {/* Settlement Summary */}
-                      {amountInput && parseFloat(amountInput) > 0 && (
-                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-2xl p-3 text-xs space-y-1">
-                          <div className="flex justify-between font-bold text-amber-950 dark:text-amber-200">
-                            <span>ගෙවීමෙන් පසු ඔබගේ Wallet ශේෂය:</span>
-                            <span className="font-mono">
-                              රු. {Math.max(0, currentBalance - parseFloat(amountInput)).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
+                      {purposeInput === 'වෙනත්' && (
+                        <input
+                          type="text"
+                          placeholder="හේතුව සඳහන් කරන්න..."
+                          value={customPurpose}
+                          onChange={(e) => setCustomPurpose(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-slate-50 dark:bg-[#07170e] border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
                       )}
 
-                      {/* Submit / Pay Button */}
-                      <button
-                        onClick={handleConfirmPayment}
-                        disabled={isProcessing || !amountInput || parseFloat(amountInput) <= 0}
-                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {isProcessing ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            <span>ගෙවීම තහවුරු කරමින්...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-                            <span>රු. {amountInput || '0.00'} ක මුදල ගෙවන්න (Pay Now)</span>
-                          </>
-                        )}
-                      </button>
+                      {/* Final Confirm Payment Button */}
+                      <div className="pt-2">
+                        <button
+                          onClick={handleConfirmPayment}
+                          disabled={isProcessing || !amountInput || parseFloat(amountInput) <= 0}
+                          className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isProcessing ? (
+                            <RefreshCw className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <>
+                              <Zap className="w-5 h-5 text-amber-300" />
+                              <span>ගෙවීම තහවුරු කර මුදල් යවන්න</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
-
                 </div>
               )}
-
             </div>
           )}
-
         </div>
-
       </div>
     </div>
   );
