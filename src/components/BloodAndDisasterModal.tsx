@@ -256,9 +256,45 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
   const isAdmin = checkIsAdmin(currentUser);
 
+  const canDeleteBlood = (req: BloodDonationRequest) => {
+    if (isAdmin) return true;
+    if (!currentUser || !req) return false;
+    const userPhone = (currentUser.phone || currentUser.whatsappNumber || '').replace(/\D/g, '');
+    const reqPhone = (req.contactPhone || '').replace(/\D/g, '');
+    return Boolean(
+      (userPhone && reqPhone && userPhone === reqPhone) ||
+      (currentUser.name && req.contactName && currentUser.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
+      (currentUser.userId && req.userId && currentUser.userId === req.userId)
+    );
+  };
+
+  const canDeleteDonor = (donor: VolunteerDonor) => {
+    if (isAdmin) return true;
+    if (!currentUser || !donor) return false;
+    const userPhone = (currentUser.phone || currentUser.whatsappNumber || '').replace(/\D/g, '');
+    const donorPhone = (donor.phone || '').replace(/\D/g, '');
+    return Boolean(
+      (userPhone && donorPhone && userPhone === donorPhone) ||
+      (currentUser.name && donor.name && currentUser.name.trim().toLowerCase() === donor.name.trim().toLowerCase()) ||
+      (currentUser.userId && donor.userId && currentUser.userId === donor.userId)
+    );
+  };
+
+  const canDeleteDisaster = (item: DisasterReliefItem) => {
+    if (isAdmin) return true;
+    if (!currentUser || !item) return false;
+    const userPhone = (currentUser.phone || currentUser.whatsappNumber || '').replace(/\D/g, '');
+    const itemPhone = (item.contactPhone || '').replace(/\D/g, '');
+    return Boolean(
+      (userPhone && itemPhone && userPhone === itemPhone) ||
+      (currentUser.name && item.contactPerson && currentUser.name.trim().toLowerCase() === item.contactPerson.trim().toLowerCase()) ||
+      (currentUser.userId && item.userId && currentUser.userId === item.userId)
+    );
+  };
+
   const handleDeleteBloodRequest = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    if (!confirm('මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
     const updated = bloodRequests.filter((b) => b.id !== id);
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);
@@ -270,7 +306,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
   const handleDeleteDonor = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    if (!confirm('මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
     const updated = volunteerDonors.filter((d) => d.id !== id);
     setVolunteerDonors(updated);
     saveVolunteerDonorsToStorage(updated);
@@ -282,7 +318,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
   const handleDeleteDisaster = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    if (!confirm('මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
     const updated = disasterItems.filter((item) => item.id !== id);
     setDisasterItems(updated);
     saveDisasterReliefItemsToStorage(updated);
@@ -651,14 +687,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                               🚨 හදිසි (Urgent)
                             </span>
                           )}
-                          {isAdmin && (
+                          {canDeleteBlood(req) && (
                             <button
                               type="button"
                               onClick={() => handleDeleteBloodRequest(req.id)}
-                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                              title="පරිපාලක ලෙස ලේ ඉල්ලීම ඉවත් කරන්න (Admin Delete)"
+                              className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                              title={isAdmin ? "පරිපාලක ලෙස ලේ ඉල්ලීම ඉවත් කරන්න (Admin Delete)" : "ලේ ඉල්ලීම ඉවත් කරන්න (Delete)"}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
+                              <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
                             </button>
                           )}
                         </div>
@@ -770,14 +807,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {isAdmin && (
+                    {canDeleteDonor(donor) && (
                       <button
                         type="button"
                         onClick={() => handleDeleteDonor(donor.id)}
-                        className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                        title="පරිපාලක ලෙස පරිත්‍යාගශීලියා ඉවත් කරන්න (Admin Delete)"
+                        className="px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                        title={isAdmin ? "පරිපාලක ලෙස පරිත්‍යාගශීලියා ඉවත් කරන්න (Admin Delete)" : "පරිත්‍යාගශීලියා ඉවත් කරන්න (Delete)"}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
                       </button>
                     )}
                     {isDemo ? (
@@ -912,14 +950,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        {isAdmin && (
+                        {canDeleteDisaster(item) && (
                           <button
                             type="button"
                             onClick={() => handleDeleteDisaster(item.id)}
-                            className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                            title="පරිපාලක ලෙස ආපදා දැන්වීම ඉවත් කරන්න (Admin Delete)"
+                            className="px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                            title={isAdmin ? "පරිපාලක ලෙස ආපදා දැන්වීම ඉවත් කරන්න (Admin Delete)" : "ආපදා දැන්වීම ඉවත් කරන්න (Delete)"}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
                           </button>
                         )}
                         {!isDemo && isSupported ? (

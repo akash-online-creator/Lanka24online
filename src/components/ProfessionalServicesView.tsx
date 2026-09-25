@@ -67,22 +67,29 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
     setLocalServices(professionalServices || []);
   }, [professionalServices]);
 
-  const isAdmin = checkIsAdmin(user);
+  const isAdmin = checkIsAdmin(user) || user?.role === 'admin' || (user as any)?.isAdmin === true;
 
   const canDeleteService = (srv: ProfessionalService) => {
     if (isAdmin) return true;
     if (!srv || !user) return false;
+    const uPhone = (user.phone || user.whatsappNumber || '').replace(/\D/g, '');
+    const pPhone = (srv.providerPhone || srv.providerWhatsapp || '').replace(/\D/g, '');
     return Boolean(
       (user.userId && (srv.userId === user.userId || srv.userId === user.id)) ||
       (user.id && (srv.userId === user.id || srv.userId === user.userId)) ||
-      (user.phone && srv.providerPhone && user.phone.replace(/\D/g, '') === srv.providerPhone.replace(/\D/g, ''))
+      (user.nicNumber && (srv.userId === user.nicNumber || srv.providerNic === user.nicNumber)) ||
+      (uPhone && pPhone && uPhone === pPhone)
     );
   };
 
   const handleDeleteService = (serviceId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!serviceId) return;
-    if (!confirm('මෙම සේවාදායක දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const confirmMsg = isAdmin
+      ? 'පරිපාලක (Admin) ලෙස මෙම වෘත්තිකයාගේ සේවා දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
+      : 'මෙම සේවාදායක දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?';
+    if (!window.confirm(confirmMsg)) return;
+
     const updated = localServices.filter((s) => s.id !== serviceId);
     setLocalServices(updated);
     addDeletedProServiceId(serviceId);
@@ -96,6 +103,9 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
     if (selectedServiceForDetail?.id === serviceId) {
       setSelectedServiceForDetail(null);
     }
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
   };
 
   // Smart Synonym Suggestion Prompt for Pro Services

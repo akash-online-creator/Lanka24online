@@ -38,7 +38,8 @@ import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
-import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
+import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId } from '../utils/deletedPostsManager';
+import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -289,6 +290,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     const updated = [newService, ...professionalServices];
     setProfessionalServices(updated);
     saveProfessionalServicesToStorage(updated);
+  };
+
+  const handleDeleteProfessionalService = (serviceId: string) => {
+    if (!serviceId) return;
+    const updated = (professionalServices || []).filter((s) => s && s.id !== serviceId);
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+    addDeletedProServiceId(serviceId);
+    deleteProfessionalServiceFromFirestore(serviceId).catch((err) => {
+      console.warn('Professional service delete from firestore notice:', err);
+    });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
   };
 
   const handleAddProfessionalReview = (serviceId: string, review: ServiceReview) => {
@@ -1897,6 +1912,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           professionalServices={professionalServices}
           onAddProfessionalService={handleAddProfessionalService}
           onAddProfessionalReview={handleAddProfessionalReview}
+          onDeleteProfessionalService={handleDeleteProfessionalService}
           registeredUsers={(() => {
             try {
               const saved = localStorage.getItem('sahaya_users');

@@ -106,6 +106,7 @@ interface HelpRequestsPageProps {
   professionalServices?: ProfessionalService[];
   onAddProfessionalService?: (service: ProfessionalService) => void;
   onAddProfessionalReview?: (serviceId: string, review: ServiceReview) => void;
+  onDeleteProfessionalService?: (serviceId: string) => void;
   registeredUsers?: User[];
   redAlerts?: RedAlertItem[];
   onViewRedAlertDetail?: (alert: RedAlertItem) => void;
@@ -149,6 +150,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   professionalServices = [],
   onAddProfessionalService,
   onAddProfessionalReview,
+  onDeleteProfessionalService,
   registeredUsers = [],
   redAlerts = [],
   onViewRedAlertDetail,
@@ -1059,6 +1061,9 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           }}
           onAddReview={(sId, rev) => {
             if (onAddProfessionalReview) onAddProfessionalReview(sId, rev);
+          }}
+          onDeleteService={(sId) => {
+            if (onDeleteProfessionalService) onDeleteProfessionalService(sId);
           }}
           onBack={() => {
             setBoardCategoryFilter('');
