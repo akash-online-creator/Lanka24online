@@ -83,7 +83,14 @@ export default function App() {
       const saved = localStorage.getItem('sahaya_current_user');
       if (saved) {
         const u = JSON.parse(saved);
-        if (u && (u.id || u.userId)) return u;
+        // Security rule: Admin accounts MUST always re-authenticate with password/PIN on app launch
+        if (u && checkIsAdmin(u)) {
+          localStorage.removeItem('sahaya_current_user');
+          return null;
+        }
+        if (u && (u.id || u.userId) && (u.status === 'approved' || u.isDemo)) {
+          return u;
+        }
       }
     } catch (e) {
       console.warn('Failed to restore saved user session:', e);
@@ -98,13 +105,14 @@ export default function App() {
     const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
     const hasSavedLocation = Boolean(localStorage.getItem('sahaya_current_location'));
     
-    // Check if user is already logged in
+    // Check if valid normal approved user is already logged in
     const savedUserStr = localStorage.getItem('sahaya_current_user');
     if (savedUserStr) {
       try {
         const savedUser = JSON.parse(savedUserStr);
+        // Admin accounts must ALWAYS log in explicitly via the login page
         if (savedUser && checkIsAdmin(savedUser)) {
-          return 'admin';
+          return isGpsVerified && hasSavedLocation ? 'login' : 'gps_gate';
         }
         if (savedUser && savedUser.status === 'pending') {
           return 'pending';
@@ -121,16 +129,7 @@ export default function App() {
     return 'gps_gate';
   });
 
-  const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
-    const savedUserStr = localStorage.getItem('sahaya_current_user');
-    if (savedUserStr) {
-      try {
-        const savedUser = JSON.parse(savedUserStr);
-        if (savedUser && checkIsAdmin(savedUser)) return 'admin';
-      } catch {}
-    }
-    return 'user';
-  });
+  const [activeRoleView, setActiveRoleView] = useState<Role>('user');
 
   const [users, setUsers] = useState<User[]>(() => {
     try {
@@ -1002,6 +1001,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    try {
+      localStorage.removeItem('sahaya_current_user');
+      sessionStorage.removeItem('sahaya_current_user');
+    } catch {}
     setCurrentUser(null);
     setActiveRoleView('user');
     setViewMode('login');
