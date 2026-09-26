@@ -291,6 +291,22 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Real-time synchronization of Help Posts from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToHelpPosts((remotePosts) => {
+      if (Array.isArray(remotePosts)) {
+        setHelpPosts((prevLocal) => {
+          const cleanedRemote = filterNonDeletedPosts(remotePosts as HelpPost[]);
+          if (remotePosts.length > 0) {
+            return cleanedRemote;
+          }
+          return filterNonDeletedPosts(prevLocal || []);
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_red_alerts');

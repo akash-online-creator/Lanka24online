@@ -1881,6 +1881,24 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
                   </button>
                 )}
+
+                {/* 4. Admin Delete Post button */}
+                {isAdmin && onDeletePost && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`පරිපාලක ලෙස #${displayPostCode} දැන්වීම පද්ධතියෙන් ස්ථිරවම මකා දැමීමට අවශ්‍ය බව තහවුරු කරන්න ද?`)) {
+                        handleInterceptAction(onDeletePost);
+                      }
+                    }}
+                    className="py-3 px-3.5 rounded-2xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/60 hover:text-white text-rose-700 dark:text-rose-300 font-black text-xs shadow-xs border border-rose-300 dark:border-rose-800 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 group"
+                    title={activeCardLang === 'en' ? 'Delete Post (Admin)' : activeCardLang === 'ta' ? 'நீக்கு (நிர்வாகி)' : 'දැන්වීම මකා දමන්න (Admin)'}
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400 group-hover:text-white" />
+                    <span className="hidden sm:inline">Delete</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

@@ -202,3 +202,5 @@ export function testEmergencySiren(durationSeconds = 15): Promise<void> {
 export function isEmergencySirenPlaying(): boolean {
   return isSirenActive;
 }
+
+export const playSirenSound = startEmergencySiren;

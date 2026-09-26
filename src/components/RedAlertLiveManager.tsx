@@ -5,7 +5,9 @@ import {
   cancelRedAlertByReporter, 
   addReporterUpdateToRedAlert, 
   RedAlertItem 
-} from '../lib/firebase'; // ඔබේ firebase file එක ඇති පථය (path) නිවැරදිව තබන්න
+} from '../lib/firebase';
+import { triggerBrowserNotification } from '../utils/notificationManager';
+import { startEmergencySiren } from '../utils/sirenAudio';
 
 interface Props {
   currentUserId: string; // දැනට App එක පාවිච්චි කරන කෙනාගේ User ID එක
@@ -67,9 +69,18 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
     return () => unsubscribe();
   }, []);
 
-  // Popup එක තත්පර 6ක් පෙන්වීම
+  // Popup එක තත්පර 6ක් පෙන්වීම සහ Push Notification යැවීම
   const triggerPopup = (msg: string) => {
     setPopupMessage(msg);
+    triggerBrowserNotification({
+      id: `alert-update-${Date.now()}`,
+      type: 'emergency_blood',
+      title: '🚨 හදිසි ආපදා යාවත්කාලීනයක්!',
+      message: msg,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      badgeText: 'SOS',
+    });
     setTimeout(() => {
       setPopupMessage(null);
     }, 6000);

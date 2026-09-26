@@ -34,6 +34,7 @@ import {
   updateHelpPostInFirestore,
   sendChatMessageToFirestore,
   deleteUserAccount,
+  deleteHelpPostFromFirestore,
   deleteProfessionalServiceFromFirestore,
   deleteBloodRequestFromFirestore,
   deleteVolunteerDonorFromFirestore,
@@ -136,6 +137,7 @@ import {
   HelpCircle,
   Key,
   Briefcase,
+  Megaphone,
   Radio
 } from 'lucide-react';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
@@ -389,6 +391,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [adminActionNotification, setAdminActionNotification] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+
+  // Help Posts Admin Management States
+  const [postCategoryFilter, setPostCategoryFilter] = useState('all');
+  const [postStatusFilter, setPostStatusFilter] = useState('all');
+  const [postToDelete, setPostToDelete] = useState<HelpPost | null>(null);
+
+  const handleAdminDeleteHelpPost = async (post: HelpPost, permanent: boolean = true) => {
+    if (!post || !post.id) return;
+    addDeletedPostId(post.id);
+    if (permanent) {
+      if (onPermanentDeletePost) {
+        onPermanentDeletePost(post.id);
+      } else if (onDeletePost) {
+        onDeletePost(post.id);
+      }
+    } else {
+      if (onDeletePost) {
+        onDeletePost(post.id);
+      }
+    }
+    deleteHelpPostFromFirestore(post.id).catch(err => console.warn('Delete help post firestore error:', err));
+    setPostToDelete(null);
+    setAdminActionNotification(`🗑️ #${post.postCode || post.id} දැන්වීම සාර්ථකව මකා දමන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
 
   // Tag Management State
   const [tagItems, setTagItems] = useState<TagItem[]>(() => tags || getStoredTags());
@@ -979,6 +1006,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <span>පරිශීලකයන් (Users)</span>
           <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
             {users.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('posts_edit')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'posts_edit'
+              ? 'bg-white border-emerald-600 text-emerald-950 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          <Megaphone className="w-4 h-4 text-emerald-600" />
+          <span>📢 දැන්වීම් (Help Posts)</span>
+          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+            {helpPosts.length}
           </span>
         </button>
 
@@ -2267,6 +2309,213 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Tab: Help Posts & Community Ads Management (සියලුම ප්‍රජා දැන්වීම් කළමනාකරණය) */}
+      {activeTab === 'posts_edit' && (
+        <div className="space-y-4 animate-fadeIn">
+          {/* Top Control Bar & Filters */}
+          <div className="p-4 bg-emerald-50 dark:bg-[#081f14] border-2 border-emerald-300 dark:border-emerald-800 rounded-3xl space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    ප්‍රජා දැන්වීම් සහ ඉල්ලීම් කළමනාකරණය (Community Help Posts Registry)
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-[#88ad97]">
+                    සියලුම සාමාන්‍ය දැන්වීම්, ඉක්මන් සේවා, මගෙන් ඔබට සහ සොයාදෙන්න ඉල්ලීම් පරීක්ෂා කර මකා දැමීම (Delete)
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white dark:bg-[#0c2217] px-3 py-1.5 rounded-2xl border border-emerald-300 dark:border-emerald-900 text-xs font-black text-emerald-800 dark:text-emerald-300">
+                <span>මුළු දැන්වීම් ගණන:</span>
+                <span className="font-mono text-sm">{helpPosts.length}</span>
+              </div>
+            </div>
+
+            {/* Search and Filters Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1 border-t border-emerald-200/60 dark:border-emerald-900/60">
+              {/* Search input */}
+              <div className="sm:col-span-6 relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="කේතය (#HLP), විස්තරය, නම, දුරකථන අංකය හෝ නගරය සොයන්න..."
+                  value={postSearchQuery}
+                  onChange={(e) => setPostSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-emerald-900 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Category Filter */}
+              <div className="sm:col-span-3">
+                <select
+                  value={postCategoryFilter}
+                  onChange={(e) => setPostCategoryFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-emerald-900 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none"
+                >
+                  <option value="all">සියලුම වර්ග (All Categories)</option>
+                  <option value="quick_services">⚡ ඉක්මන් සේවා (Quick)</option>
+                  <option value="normal_services">🛠️ සාමාන්‍ය සේවා (General)</option>
+                  <option value="find_for_me">🔍 සොයාදෙන්න (Find for Me)</option>
+                  <option value="from_me_to_you">🎁 මගෙන් ඔබට (From Me)</option>
+                  <option value="emergency">🚨 හදිසි ආධාර (Emergency)</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="sm:col-span-3">
+                <select
+                  value={postStatusFilter}
+                  onChange={(e) => setPostStatusFilter(e.target.value)}
+                  className="w-full py-2 px-3 bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-emerald-900 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none"
+                >
+                  <option value="all">සියලුම තත්ත්වයන් (All Status)</option>
+                  <option value="active">🟢 සක්‍රීය (Active)</option>
+                  <option value="confirmed">✅ සනාථ වූ (Confirmed)</option>
+                  <option value="deleted">🗑️ මකා දැමූ (Deleted)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Posts Table / Cards View */}
+          {(() => {
+            const filteredPosts = (helpPosts || []).filter((p) => {
+              if (!p) return false;
+              if (postStatusFilter === 'active' && (p.isDeleted || p.status === 'deleted')) return false;
+              if (postStatusFilter === 'confirmed' && (!p.isConfirmed && p.status !== 'confirmed')) return false;
+              if (postStatusFilter === 'deleted' && !p.isDeleted && p.status !== 'deleted') return false;
+
+              if (postCategoryFilter !== 'all' && p.category !== postCategoryFilter) return false;
+
+              if (postSearchQuery.trim()) {
+                const q = postSearchQuery.toLowerCase();
+                const text = `${p.postCode || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''} ${p.userName || ''} ${p.userPhone || ''} ${p.contactWhatsapp || ''} ${p.locationName || ''} ${p.tagName || ''} ${p.donationItem || ''} ${p.itemLostStolenOrSearched || ''}`.toLowerCase();
+                if (!text.includes(q)) return false;
+              }
+              return true;
+            });
+
+            if (filteredPosts.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white dark:bg-[#0c1811] rounded-3xl border border-slate-200 dark:border-emerald-900/60 text-slate-400 text-xs space-y-2">
+                  <Megaphone className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p>කිසිදු ප්‍රජා දැන්වීමක් හමු නොවීය.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-white dark:bg-[#0c1811] rounded-3xl border-2 border-emerald-200 dark:border-[#173222] shadow-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 dark:bg-[#081f14] text-slate-800 dark:text-slate-200 font-black border-b-2 border-slate-200 dark:border-emerald-900/60 uppercase tracking-wider">
+                        <th className="p-3.5">කේතය & වර්ගය</th>
+                        <th className="p-3.5">දැන්වීම් විස්තරය</th>
+                        <th className="p-3.5">දැන්වීම්කරු & දුරකථනය</th>
+                        <th className="p-3.5">ස්ථානය (Location)</th>
+                        <th className="p-3.5">දිනය / කාලය</th>
+                        <th className="p-3.5">තත්ත්වය</th>
+                        <th className="p-3.5 text-center">පරිපාලක පාලනය</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-[#173222]">
+                      {filteredPosts.map((post, idx) => {
+                        const isDel = Boolean(post.isDeleted || post.status === 'deleted');
+                        const isConf = Boolean(post.isConfirmed || post.status === 'confirmed');
+
+                        return (
+                          <tr key={`adm_post_${post.id || idx}`} className="hover:bg-slate-50/80 dark:hover:bg-[#10271c] transition-colors">
+                            <td className="p-3.5">
+                              <span className="font-mono font-black text-xs bg-emerald-100 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-200 px-2 py-0.5 rounded-md">
+                                {post.postCode || `#HLP-${idx + 1}`}
+                              </span>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-1">
+                                {post.tagName || post.category || 'සාමාන්‍ය'}
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 max-w-[280px]">
+                              <div className="font-bold text-slate-900 dark:text-white line-clamp-2">
+                                {post.whatHappened || post.whatIsNeeded || post.donationItem || post.itemLostStolenOrSearched || 'විස්තර නැත'}
+                              </div>
+                              {post.specialNotice && (
+                                <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium italic mt-0.5">
+                                  {post.specialNotice}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 font-mono">
+                              <div className="font-extrabold text-slate-900 dark:text-slate-100">{post.userName || 'නොදනී'}</div>
+                              <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold">
+                                {post.contactWhatsapp || post.userPhone || 'දුරකථනය නැත'}
+                              </div>
+                            </td>
+
+                            <td className="p-3.5">
+                              <div className="font-bold text-slate-700 dark:text-slate-300 text-[11px]">
+                                📍 {post.locationName || 'ශ්‍රී ලංකාව'}
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              {post.createdAt || 'මෑතකදී'}
+                            </td>
+
+                            <td className="p-3.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                isDel
+                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300'
+                                  : isConf
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
+                                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300'
+                              }`}>
+                                {isDel ? 'Deleted' : isConf ? 'Confirmed' : 'Active'}
+                              </span>
+                            </td>
+
+                            <td className="p-3.5 text-center">
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                {isDel && onRestorePost ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRestorePost(post.id)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                                    title="දැන්වීම නැවත ප්‍රතිස්ථාපනය කරන්න"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>Restore</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPostToDelete(post)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-900 hover:text-white border border-rose-300 hover:border-rose-600 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-xs group"
+                                    title="දැන්වීම ස්ථිරවම මකා දමන්න (Delete Post)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-700 group-hover:text-white transition-colors" />
+                                    <span>Delete</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* User Edit / Details / Login History Modal */}
       {selectedUserForModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -3103,6 +3352,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               >
                 <Trash2 className="w-4 h-4" />
                 මකා දමන්න (Delete)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Help Post Confirmation Modal */}
+      {postToDelete && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full border-2 border-rose-400 shadow-2xl p-6 space-y-5 animate-scaleUp">
+            <div className="flex items-center gap-3 text-rose-600">
+              <AlertTriangle className="w-8 h-8" />
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">දැන්වීම මකා දැමීම තහවුරු කරන්න</h3>
+            </div>
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+              පරිපාලක ලෙස <span className="font-black text-rose-600">#{postToDelete.postCode || postToDelete.id}</span> දැන්වීම සම්පූර්ණයෙන්ම පද්ධතියෙන් සහ දත්ත ගබඩාවෙන් ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?
+            </p>
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPostToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-xs cursor-pointer"
+              >
+                අවලංගු කරන්න (Cancel)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdminDeleteHelpPost(postToDelete, true)}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                මකා දමන්න (Delete Post)
               </button>
             </div>
           </div>

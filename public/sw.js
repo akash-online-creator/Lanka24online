@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v2';
+const CACHE_NAME = 'sahaya-sewa-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -24,6 +24,99 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// ==============================================================
+// 🚨 BACKGROUND PUSH & SYSTEM NOTIFICATION HANDLERS
+// ==============================================================
+
+// 1. Push Event (Web Push notifications when app is closed)
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { title: '🚨 සහය සේවා හදිසි දැනුම්දීම', body: event.data.text() };
+    }
+  }
+
+  const title = data.title || '🚨 සහය සේවා (Sahaya Seva)';
+  const options = {
+    body: data.body || data.message || 'හදිසි ආපදාවක් හෝ නව ප්‍රජා ඉල්ලීමක් ඇත.',
+    icon: data.icon || '/logo.jpg',
+    badge: '/logo.jpg',
+    image: data.image || undefined,
+    tag: data.tag || `sahaya-notif-${Date.now()}`,
+    data: data.data || { url: '/', targetModal: data.targetModal, alertId: data.alertId },
+    vibrate: [300, 100, 300, 100, 500],
+    requireInteraction: data.requireInteraction !== false,
+    actions: [
+      { action: 'open', title: '👁️ විස්තර බලන්න (Open App)' },
+      { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' }
+    ]
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// 2. Notification Click Event (Opens / focuses the App on click)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If a window is already open, focus it and dispatch navigation
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          client.postMessage({
+            type: 'NOTIFICATION_CLICKED',
+            payload: event.notification.data
+          });
+          return client.focus();
+        }
+      }
+      // Otherwise open new window
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
+// 3. Post Message handler from web page (for trigger background notification directly via SW)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'TRIGGER_NOTIFICATION') {
+    const { title, options } = event.data;
+    self.registration.showNotification(title || '🚨 සහය සේවා', {
+      icon: '/logo.jpg',
+      badge: '/logo.jpg',
+      vibrate: [300, 100, 300, 100, 500],
+      ...options
+    });
+  }
+});
+
+// 4. Background Sync / Periodic Background Sync for critical alerts
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-emergency-alerts') {
+    event.waitUntil(Promise.resolve());
+  }
+});
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'check-urgent-alerts') {
+    event.waitUntil(Promise.resolve());
+  }
+});
+
+// ==============================================================
+// 🌐 CACHING & OFFLINE ASSETS
+// ==============================================================
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   

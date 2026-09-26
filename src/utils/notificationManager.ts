@@ -103,25 +103,73 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   return false;
 };
 
-// Send Web Push / System Notification if granted
-export const triggerBrowserNotification = (notif: AppNotification) => {
+// Check Notification Permission Status
+export const getNotificationPermissionStatus = (): 'granted' | 'denied' | 'default' | 'unsupported' => {
+  if (!('Notification' in window)) return 'unsupported';
+  return Notification.permission;
+};
+
+// Background Activity & Wake Lock Activation (Keeps siren/critical audio awake when emergency triggers)
+export const activateBackgroundWakeLock = async (): Promise<boolean> => {
+  try {
+    if ('wakeLock' in navigator && (navigator as any).wakeLock) {
+      const lock = await (navigator as any).wakeLock.request('screen');
+      localStorage.setItem('sahaya_wake_lock_enabled', 'true');
+      return true;
+    }
+  } catch (err) {
+    console.debug('Wake lock request status:', err);
+  }
+  localStorage.setItem('sahaya_wake_lock_enabled', 'true');
+  return true;
+};
+
+// Send Web Push / System Notification if granted (Works via Service Worker even when app is minimized/closed)
+export const triggerBrowserNotification = async (notif: AppNotification) => {
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 
-  try {
-    const iconUrl = notif.type === 'emergency_blood' 
-      ? '🩸' 
-      : notif.type === 'quick_service' 
-      ? '⚡' 
-      : notif.type === 'marketplace_price' 
-      ? '🏷️' 
-      : '🔔';
+  const notifBody = `${notif.message}${notif.locationName ? ` • 📍 ${notif.locationName}` : ''}`;
+  const notifTitle = notif.title || '🚨 සහය සේවා (Sahaya Seva)';
 
-    const systemNotif = new Notification(notif.title, {
-      body: `${notif.message}${notif.locationName ? ` • ${notif.locationName}` : ''}`,
+  // Try via Service Worker Registration first (Supports background, vibration, actions & lock screen)
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration && (registration as any).showNotification) {
+        const swOptions: any = {
+          body: notifBody,
+          icon: '/logo.jpg',
+          badge: '/logo.jpg',
+          tag: notif.id || `notif-${Date.now()}`,
+          vibrate: [300, 100, 300, 100, 500],
+          data: {
+            url: '/',
+            targetPostId: notif.targetPostId,
+            targetModal: notif.targetModal,
+            notifId: notif.id
+          },
+          requireInteraction: notif.type === 'emergency_blood' || notif.type === 'aid_ledger',
+          actions: [
+            { action: 'open', title: '👁️ විස්තර බලන්න' },
+            { action: 'dismiss', title: 'ඉවත් කරන්න' }
+          ]
+        };
+        await (registration as any).showNotification(notifTitle, swOptions);
+        return;
+      }
+    } catch (swErr) {
+      console.debug('Service worker notification fallback:', swErr);
+    }
+  }
+
+  // Fallback to standard Window Notification
+  try {
+    const systemNotif = new Notification(notifTitle, {
+      body: notifBody,
       tag: notif.id,
-      badge: '/favicon.ico',
-      icon: '/favicon.ico',
+      badge: '/logo.jpg',
+      icon: '/logo.jpg',
     });
 
     systemNotif.onclick = () => {
