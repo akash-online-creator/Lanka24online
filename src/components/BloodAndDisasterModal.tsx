@@ -45,7 +45,10 @@ import { addDeletedBloodId, addDeletedDonorId, addDeletedDisasterId } from '../u
 import { 
   deleteBloodRequestFromFirestore, 
   deleteVolunteerDonorFromFirestore, 
-  deleteDisasterReliefFromFirestore 
+  deleteDisasterReliefFromFirestore,
+  saveBloodRequestToFirestore,
+  saveVolunteerDonorToFirestore,
+  saveDisasterReliefToFirestore
 } from '../lib/firebase';
 
 interface BloodAndDisasterModalProps {
@@ -172,6 +175,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const updated = [newRequest, ...bloodRequests];
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);
+    saveBloodRequestToFirestore(newRequest).catch((err) => console.warn('saveBloodRequestToFirestore error:', err));
     setShowAddBloodRequestForm(false);
     alert('හදිසි ලේ අවශ්‍යතාවය සාර්ථකව පලකෙරිණි!');
   };
@@ -199,6 +203,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const updated = [newDonor, ...volunteerDonors];
     setVolunteerDonors(updated);
     saveVolunteerDonorsToStorage(updated);
+    saveVolunteerDonorToFirestore(newDonor).catch((err) => console.warn('saveVolunteerDonorToFirestore error:', err));
     setShowRegisterDonorForm(false);
     alert('ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස සාර්ථකව ලියාපදිංචි විය! ඔබගේ සහයට ස්තූතියි.');
   };
@@ -226,11 +231,13 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       collectedQuantity: 'ආරම්භක මට්ටමේ',
       createdAt: 'දැන් (Just now)',
       createdAtMs: Date.now(),
+      userId: currentUser?.userId || currentUser?.id,
     };
 
     const updated = [newItem, ...disasterItems];
     setDisasterItems(updated);
     saveDisasterReliefItemsToStorage(updated);
+    saveDisasterReliefToFirestore(newItem).catch((err) => console.warn('saveDisasterReliefToFirestore error:', err));
     setShowAddDisasterForm(false);
     alert('ආපදා සහන අවශ්‍යතාවය සාර්ථකව පලකෙරිණි!');
   };
@@ -254,7 +261,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     alert(`ස්තූතියි! ${req.patientName} වෙනුවෙන් ලේ පරිත්‍යාගයට ඔබ සහය දැක්වීම අගය කරමු.\n\n📞 දුරකථන අංකය: ${req.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා රෝගියාගේ පාර්ශවය හා සම්බන්ධ විය හැක)`);
   };
 
-  const isAdmin = checkIsAdmin(currentUser);
+  const isAdmin = checkIsAdmin(currentUser) || currentUser?.role === 'admin' || (currentUser as any)?.isAdmin === true;
 
   const canDeleteBlood = (req: BloodDonationRequest) => {
     if (isAdmin) return true;
@@ -264,7 +271,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     return Boolean(
       (userPhone && reqPhone && userPhone === reqPhone) ||
       (currentUser.name && req.contactName && currentUser.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
-      (currentUser.userId && req.userId && currentUser.userId === req.userId)
+      (currentUser.userId && req.userId && (currentUser.userId === req.userId || currentUser.id === req.userId)) ||
+      (currentUser.id && req.userId && (currentUser.id === req.userId || currentUser.userId === req.userId)) ||
+      (currentUser.nicNumber && req.userId && currentUser.nicNumber === req.userId)
     );
   };
 
@@ -276,7 +285,9 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     return Boolean(
       (userPhone && donorPhone && userPhone === donorPhone) ||
       (currentUser.name && donor.name && currentUser.name.trim().toLowerCase() === donor.name.trim().toLowerCase()) ||
-      (currentUser.userId && donor.userId && currentUser.userId === donor.userId)
+      (currentUser.userId && donor.userId && (currentUser.userId === donor.userId || currentUser.id === donor.userId)) ||
+      (currentUser.id && donor.userId && (currentUser.id === donor.userId || currentUser.userId === donor.userId)) ||
+      (currentUser.nicNumber && donor.userId && currentUser.nicNumber === donor.userId)
     );
   };
 
@@ -288,13 +299,18 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     return Boolean(
       (userPhone && itemPhone && userPhone === itemPhone) ||
       (currentUser.name && item.contactPerson && currentUser.name.trim().toLowerCase() === item.contactPerson.trim().toLowerCase()) ||
-      (currentUser.userId && item.userId && currentUser.userId === item.userId)
+      (currentUser.userId && item.userId && (currentUser.userId === item.userId || currentUser.id === item.userId)) ||
+      (currentUser.id && item.userId && (currentUser.id === item.userId || currentUser.userId === item.userId)) ||
+      (currentUser.nicNumber && item.userId && currentUser.nicNumber === item.userId)
     );
   };
 
   const handleDeleteBloodRequest = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const confirmMsg = isAdmin
+      ? 'පරිපාලක (Admin) ලෙස මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
+      : 'මෙම ලේ ඉල්ලීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
+    if (!window.confirm(confirmMsg)) return;
     const updated = bloodRequests.filter((b) => b.id !== id);
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);
@@ -302,11 +318,18 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     deleteBloodRequestFromFirestore(id).catch((err) => {
       console.warn('Delete blood request notice:', err);
     });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    alert('ලේ ඉල්ලීම සාර්ථකව ඉවත් කරන ලදී.');
   };
 
   const handleDeleteDonor = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const confirmMsg = isAdmin
+      ? 'පරිපාලක (Admin) ලෙස මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
+      : 'මෙම ලේ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
+    if (!window.confirm(confirmMsg)) return;
     const updated = volunteerDonors.filter((d) => d.id !== id);
     setVolunteerDonors(updated);
     saveVolunteerDonorsToStorage(updated);
@@ -314,11 +337,18 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     deleteVolunteerDonorFromFirestore(id).catch((err) => {
       console.warn('Delete volunteer donor notice:', err);
     });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    alert('පරිත්‍යාගශීලියා සාර්ථකව ඉවත් කරන ලදී.');
   };
 
   const handleDeleteDisaster = (id?: string) => {
     if (!id) return;
-    if (!confirm('මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?')) return;
+    const confirmMsg = isAdmin
+      ? 'පරිපාලක (Admin) ලෙස මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
+      : 'මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
+    if (!window.confirm(confirmMsg)) return;
     const updated = disasterItems.filter((item) => item.id !== id);
     setDisasterItems(updated);
     saveDisasterReliefItemsToStorage(updated);
@@ -326,6 +356,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     deleteDisasterReliefFromFirestore(id).catch((err) => {
       console.warn('Delete disaster item notice:', err);
     });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    alert('ආපදා සහනාධාර දැන්වීම සාර්ථකව ඉවත් කරන ලදී.');
   };
 
   const handleSupportDisaster = (item: DisasterReliefItem) => {

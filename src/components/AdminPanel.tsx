@@ -16,7 +16,8 @@ import {
   BloodGroup,
   RedAlertItem,
   AiSecurityScanResult,
-  DuplicatePhotoMatch
+  DuplicatePhotoMatch,
+  ProfessionalService
 } from '../types';
 import { translations } from '../data/translations';
 import { initialRegistrationConfig, initialCategories } from '../data/initialData';
@@ -32,7 +33,11 @@ import {
   syncUserPasswordInFirestore,
   updateHelpPostInFirestore,
   sendChatMessageToFirestore,
-  deleteUserAccount
+  deleteUserAccount,
+  deleteProfessionalServiceFromFirestore,
+  deleteBloodRequestFromFirestore,
+  deleteVolunteerDonorFromFirestore,
+  deleteDisasterReliefFromFirestore
 } from '../lib/firebase';
 import { AdminModerationModal } from './AdminModerationModal';
 import { 
@@ -52,11 +57,16 @@ import {
   saveDisasterReliefItemsToStorage
 } from '../data/bloodAndDisasterData';
 import {
+  getStoredProfessionalServices,
+  saveProfessionalServicesToStorage
+} from '../data/professionalServicesData';
+import {
   addDeletedBloodId,
   addDeletedDisasterId,
   addDeletedDonorId,
   addDeletedPostId,
-  removeDeletedPostId
+  removeDeletedPostId,
+  addDeletedProServiceId
 } from '../utils/deletedPostsManager';
 import { 
   Shield, 
@@ -124,14 +134,15 @@ import {
   Share2,
   SlidersHorizontal,
   HelpCircle,
-  Key
+  Key,
+  Briefcase,
+  Radio
 } from 'lucide-react';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminPresenceDashboard } from './AdminPresenceDashboard';
-import { Radio } from 'lucide-react';
 import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { AdminTrustManagement } from './AdminTrustManagement';
 import { getEmergencyAdminAlerts, getStoredEmergencyContacts } from '../data/emergencyDirectory';
@@ -213,7 +224,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
-    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'trust_badges' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security' | 'live_presence'
+    'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'trust_badges' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security' | 'live_presence' | 'professional_services' | 'blood_and_disaster'
   >('pending');
   
   // AI Security Scanner States
@@ -302,6 +313,78 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [bloodRequests, setBloodRequests] = useState<BloodDonationRequest[]>(() => getStoredBloodRequests());
   const [disasterItems, setDisasterItems] = useState<DisasterReliefItem[]>(() => getStoredDisasterReliefItems());
   const [volunteerDonors, setVolunteerDonors] = useState<VolunteerDonor[]>(() => getStoredVolunteerDonors());
+  const [bloodTabSub, setBloodTabSub] = useState<'requests' | 'donors' | 'disaster'>('requests');
+  const [bloodSearchQuery, setBloodSearchQuery] = useState('');
+
+  // Professional Services Data States
+  const [proServices, setProServices] = useState<ProfessionalService[]>(() => getStoredProfessionalServices());
+  const [proSearchQuery, setProSearchQuery] = useState('');
+  const [proCategoryFilter, setProCategoryFilter] = useState('all');
+
+  const handleAdminDeleteProService = (serviceId: string) => {
+    if (!serviceId) return;
+    const target = proServices.find(s => s && s.id === serviceId);
+    if (!window.confirm(`පරිපාලක (Admin) ලෙස "${target?.providerName || 'වෘත්තිකයා'}" ගේ සේවා දැන්වීම පද්ධතියෙන් ස්ථිරවම මකා දැමීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?`)) return;
+    
+    const updated = proServices.filter(s => s && s.id !== serviceId);
+    setProServices(updated);
+    saveProfessionalServicesToStorage(updated);
+    addDeletedProServiceId(serviceId);
+    deleteProfessionalServiceFromFirestore(serviceId).catch(err => console.warn('Delete pro service error:', err));
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    setAdminActionNotification(`🗑️ වෘත්තිකයාගේ සේවා දැන්වීම සාර්ථකව මකා දමන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const handleAdminDeleteBlood = (id: string) => {
+    if (!id) return;
+    const target = bloodRequests.find(b => b && b.id === id);
+    if (!window.confirm(`පරිපාලක ලෙස "${target?.patientName || 'ලේ ඉල්ලීම'}" (${target?.postCode || ''}) පද්ධතියෙන් ස්ථිරවම මකා දැමීමට අවශ්‍ය බව තහවුරු කරන්න ද?`)) return;
+    const updated = bloodRequests.filter(b => b && b.id !== id);
+    setBloodRequests(updated);
+    saveBloodRequestsToStorage(updated);
+    addDeletedBloodId(id);
+    deleteBloodRequestFromFirestore(id).catch(err => console.warn('Delete blood request error:', err));
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    setAdminActionNotification(`🗑️ ලේ ඉල්ලීම සාර්ථකව මකා දමන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const handleAdminDeleteDonor = (id: string) => {
+    if (!id) return;
+    const target = volunteerDonors.find(d => d && d.id === id);
+    if (!window.confirm(`පරිපාලක ලෙස "${target?.name || 'පරිත්‍යාගශීලියා'}" ලැයිස්තුවෙන් ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?`)) return;
+    const updated = volunteerDonors.filter(d => d && d.id !== id);
+    setVolunteerDonors(updated);
+    saveVolunteerDonorsToStorage(updated);
+    addDeletedDonorId(id);
+    deleteVolunteerDonorFromFirestore(id).catch(err => console.warn('Delete donor error:', err));
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    setAdminActionNotification(`🗑️ පරිත්‍යාගශීලියා ලැයිස්තුවෙන් සාර්ථකව ඉවත් කරන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
+
+  const handleAdminDeleteDisaster = (id: string) => {
+    if (!id) return;
+    const target = disasterItems.find(d => d && d.id === id);
+    if (!window.confirm(`පරිපාලක ලෙස "${target?.title || 'ආපදා සහනාධාරය'}" පද්ධතියෙන් ස්ථිරවම මකා දැමීමට අවශ්‍ය බව තහවුරු කරන්න ද?`)) return;
+    const updated = disasterItems.filter(d => d && d.id !== id);
+    setDisasterItems(updated);
+    saveDisasterReliefItemsToStorage(updated);
+    addDeletedDisasterId(id);
+    deleteDisasterReliefFromFirestore(id).catch(err => console.warn('Delete disaster item error:', err));
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    setAdminActionNotification(`🗑️ ආපදා සහනාධාර දැන්වීම සාර්ථකව මකා දමන ලදී.`);
+    setTimeout(() => setAdminActionNotification(null), 6000);
+  };
 
   const [adminActionNotification, setAdminActionNotification] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -967,6 +1050,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Search className="w-4 h-4 text-indigo-600" />
           <span>🔍 Dictionary</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('professional_services')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'professional_services'
+              ? 'bg-white border-emerald-600 text-emerald-950 shadow-md font-black'
+              : 'bg-emerald-50/80 border-slate-200 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          <Briefcase className="w-4 h-4 text-emerald-600" />
+          <span>💼 වෘත්තිකයන් (Pro Services)</span>
+          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+            {proServices.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('blood_and_disaster')}
+          className={`flex items-center gap-2 px-4 py-3 font-extrabold text-xs sm:text-sm rounded-t-2xl border-t-2 border-x-2 transition-all cursor-pointer ${
+            activeTab === 'blood_and_disaster'
+              ? 'bg-white border-rose-600 text-rose-950 shadow-md font-black'
+              : 'bg-rose-50/80 border-slate-200 text-rose-800 hover:bg-rose-100'
+          }`}
+        >
+          <Droplet className="w-4 h-4 text-rose-600 fill-current" />
+          <span>🩸 ලේ & ආපදා සහන (Blood & Disaster)</span>
+          <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+            {bloodRequests.length + disasterItems.length + volunteerDonors.length}
+          </span>
         </button>
 
         <button
@@ -1801,6 +1914,357 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             alert(`පරිශීලකයින් වෙත නිවේදනය සාර්ථකව විකාශනය කෙරිණි: "${msg}"`);
           }}
         />
+      )}
+
+      {/* Tab: Professional Services Management (වෘත්තීය සේවා කළමනාකරණය) */}
+      {activeTab === 'professional_services' && (
+        <div className="space-y-4 animate-fadeIn">
+          {/* Top Banner & Search */}
+          <div className="p-4 bg-emerald-50 dark:bg-[#081f14] border-2 border-emerald-300 dark:border-emerald-800 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  ලියාපදිංචි වෘත්තිකයන් කළමනාකරණය (Professional Services Registry)
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-[#88ad97]">
+                  සේවා වෘත්තිකයන් පරීක්ෂා කිරීම, තොරතුරු සමාලෝචනය සහ පද්ධතියෙන් ඉවත් කිරීම (Delete)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="නම, වෘත්තිය, නගරය සොයන්න..."
+                  value={proSearchQuery}
+                  onChange={(e) => setProSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-emerald-900 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Providers Grid */}
+          {(() => {
+            const filtered = proServices.filter((srv) => {
+              if (!srv) return false;
+              if (proSearchQuery.trim()) {
+                const q = proSearchQuery.toLowerCase();
+                const text = `${srv.providerName || ''} ${srv.profession || ''} ${srv.serviceTitle || ''} ${srv.categoryName || ''} ${srv.locationName || ''} ${srv.providerPhone || ''}`.toLowerCase();
+                if (!text.includes(q)) return false;
+              }
+              return true;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white dark:bg-[#0c1811] rounded-3xl border border-slate-200 dark:border-emerald-900/60 text-slate-400 text-xs space-y-2">
+                  <Briefcase className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p>කිසිදු සේවා වෘත්තිකයෙකු හමු නොවීය.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered.map((srv, idx) => (
+                  <div
+                    key={`adm_pro_${srv.id || idx}`}
+                    className="p-4 bg-white dark:bg-[#0c1811] border-2 border-slate-200 dark:border-[#173222] hover:border-emerald-500 rounded-3xl shadow-sm flex flex-col justify-between gap-3 transition-all"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start gap-3">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-emerald-400/40 overflow-hidden shrink-0">
+                          {srv.providerPhotoUrl ? (
+                            <img src={srv.providerPhotoUrl} alt={srv.providerName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center font-black text-xl text-slate-600 dark:text-slate-300">
+                              {(srv.providerName || 'P').charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                              {srv.providerName}
+                            </h4>
+                            {srv.isVerified && (
+                              <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded-md">
+                                Verified
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 truncate">
+                            {srv.subCategoryIcon} {srv.subCategoryName || srv.profession}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <span>📍 {srv.locationName || 'නොදනී'}</span>
+                            <span>•</span>
+                            <span className="font-mono">{srv.providerPhone}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#071710] border border-slate-100 dark:border-emerald-950 text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
+                        {srv.serviceTitle}
+                      </div>
+
+                      {srv.qualifications && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                          🎓 {srv.qualifications}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-emerald-950 flex items-center justify-between gap-2">
+                      <div className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
+                        <span>★ {srv.avgRating?.toFixed(1) || '5.0'}</span>
+                        <span className="text-slate-400 font-normal">({srv.reviews?.length || 0} reviews)</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminDeleteProService(srv.id)}
+                        className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 hover:border-rose-600 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                        title="පරිපාලක ලෙස මෙම වෘත්තිකයා සම්පූර්ණයෙන්ම ඉවත් කරන්න"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete (ඉවත් කරන්න)</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Tab: Blood Donation & Disaster Relief Center Management */}
+      {activeTab === 'blood_and_disaster' && (
+        <div className="space-y-4 animate-fadeIn">
+          {/* Top Info Banner */}
+          <div className="p-4 bg-gradient-to-r from-red-600 to-rose-700 text-white rounded-3xl shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <Droplet className="w-5 h-5 fill-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-black">
+                  හදිසි ලේ පරිත්‍යාග සහ ආපදා සහනාධාර පාලනය (Blood & Disaster Hub)
+                </h3>
+                <p className="text-xs text-rose-100 font-medium">
+                  පද්ධතියේ ඇති ලේ ඉල්ලීම්, පරිත්‍යාගශීලීන් සහ ආපදා සහනාධාර දැන්වීම් සමාලෝචනය සහ මකා දැමීම (Admin Delete)
+                </p>
+              </div>
+            </div>
+
+            {/* Sub Tabs */}
+            <div className="flex bg-white/20 p-1 rounded-2xl gap-1 text-xs font-bold flex-wrap">
+              <button
+                type="button"
+                onClick={() => setBloodTabSub('requests')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  bloodTabSub === 'requests' ? 'bg-white text-red-900 shadow-sm font-black' : 'text-white hover:bg-white/10'
+                }`}
+              >
+                🩸 ලේ ඉල්ලීම් ({bloodRequests.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBloodTabSub('donors')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  bloodTabSub === 'donors' ? 'bg-white text-red-900 shadow-sm font-black' : 'text-white hover:bg-white/10'
+                }`}
+              >
+                ❤️ පරිත්‍යාගශීලීන් ({volunteerDonors.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBloodTabSub('disaster')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  bloodTabSub === 'disaster' ? 'bg-white text-red-900 shadow-sm font-black' : 'text-white hover:bg-white/10'
+                }`}
+              >
+                📦 ආපදා සහන ({disasterItems.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="රෝගියා, රෝහල, දිස්ත්‍රික්කය, සම්බන්ධීකාරක හෝ දුරකථන අංකය සොයන්න..."
+              value={bloodSearchQuery}
+              onChange={(e) => setBloodSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-[#071910] border border-slate-300 dark:border-emerald-900 rounded-2xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-rose-500"
+            />
+          </div>
+
+          {/* Sub-Tab 1: Blood Requests */}
+          {bloodTabSub === 'requests' && (
+            <div className="space-y-3">
+              {bloodRequests.length === 0 ? (
+                <div className="p-8 text-center bg-white dark:bg-[#071910] rounded-2xl border text-slate-400 text-xs">
+                  ලේ ඉල්ලීම් කිසිවක් නොමැත.
+                </div>
+              ) : (
+                bloodRequests
+                  .filter((b) => {
+                    if (!bloodSearchQuery.trim()) return true;
+                    const q = bloodSearchQuery.toLowerCase();
+                    return `${b.patientName} ${b.hospitalName} ${b.district} ${b.contactPhone} ${b.bloodGroup}`.toLowerCase().includes(q);
+                  })
+                  .map((b) => (
+                    <div
+                      key={`adm_blood_${b.id}`}
+                      className="p-4 bg-white dark:bg-[#071d12] border-2 border-rose-200 dark:border-rose-950 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white flex flex-col items-center justify-center font-mono font-black shrink-0">
+                          <span className="text-base">{b.bloodGroup}</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-black bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-200 px-2 py-0.5 rounded-md">
+                              {b.postCode || '#BLD'}
+                            </span>
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                              {b.patientName} (පයින්ට් {b.unitsNeeded}ක්)
+                            </h4>
+                            <span className="text-[10px] text-slate-500">📍 {b.hospitalName} ({b.district})</span>
+                          </div>
+                          <div className="text-xs text-slate-600 dark:text-slate-400">
+                            📞 සම්බන්ධීකාරක: <strong>{b.contactName}</strong> ({b.contactPhone}) • දිනය: {b.neededDate}
+                          </div>
+                          {b.additionalNotes && (
+                            <p className="text-[11px] text-slate-500 italic mt-1">{b.additionalNotes}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminDeleteBlood(b.id)}
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 hover:border-rose-600 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete (මකා දමන්න)</span>
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+          )}
+
+          {/* Sub-Tab 2: Volunteer Donors */}
+          {bloodTabSub === 'donors' && (
+            <div className="space-y-3">
+              {volunteerDonors.length === 0 ? (
+                <div className="p-8 text-center bg-white dark:bg-[#071910] rounded-2xl border text-slate-400 text-xs">
+                  පරිත්‍යාගශීලීන් කිසිවක් නොමැත.
+                </div>
+              ) : (
+                volunteerDonors
+                  .filter((d) => {
+                    if (!bloodSearchQuery.trim()) return true;
+                    const q = bloodSearchQuery.toLowerCase();
+                    return `${d.name} ${d.district} ${d.phone} ${d.bloodGroup}`.toLowerCase().includes(q);
+                  })
+                  .map((d) => (
+                    <div
+                      key={`adm_donor_${d.id}`}
+                      className="p-3.5 bg-white dark:bg-[#071d12] border-2 border-emerald-200 dark:border-emerald-950 rounded-2xl shadow-xs flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 font-mono font-black flex items-center justify-center shrink-0">
+                          {d.bloodGroup}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">{d.name}</h4>
+                            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md font-bold">
+                              {d.district}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-mono mt-0.5">📞 {d.phone} • අවසන් වරට: {d.lastDonatedDate}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminDeleteDonor(d.id)}
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 hover:border-rose-600 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete (ඉවත් කරන්න)</span>
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+          )}
+
+          {/* Sub-Tab 3: Disaster Relief */}
+          {bloodTabSub === 'disaster' && (
+            <div className="space-y-3">
+              {disasterItems.length === 0 ? (
+                <div className="p-8 text-center bg-white dark:bg-[#071910] rounded-2xl border text-slate-400 text-xs">
+                  ආපදා සහනාධාර දැන්වීම් කිසිවක් නොමැත.
+                </div>
+              ) : (
+                disasterItems
+                  .filter((item) => {
+                    if (!bloodSearchQuery.trim()) return true;
+                    const q = bloodSearchQuery.toLowerCase();
+                    return `${item.title} ${item.district} ${item.locationName} ${item.contactPerson} ${item.contactPhone}`.toLowerCase().includes(q);
+                  })
+                  .map((item) => (
+                    <div
+                      key={`adm_dis_${item.id}`}
+                      className="p-4 bg-white dark:bg-[#071d12] border-2 border-emerald-200 dark:border-emerald-900 rounded-2xl shadow-xs space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-black">
+                              {item.urgency === 'high' ? '🚨 HIGH URGENCY' : 'සහනාධාර'}
+                            </span>
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                              📍 {item.district} ({item.locationName})
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white mt-1">{item.title}</h4>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAdminDeleteDisaster(item.id)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 hover:border-rose-600 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete (මකා දමන්න)</span>
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-600 dark:text-slate-300">{item.description}</p>
+                      <div className="text-[11px] text-slate-500 font-semibold pt-1 border-t border-slate-100 dark:border-emerald-950 flex justify-between items-center flex-wrap gap-2">
+                        <span>📞 සම්බන්ධීකාරක: {item.contactPerson} ({item.contactPhone})</span>
+                        <span className="font-mono font-bold">ඉලක්කය: {item.targetQuantity || 'අවශ්‍ය පරිදි'}</span>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* User Edit / Details / Login History Modal */}

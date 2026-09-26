@@ -1460,6 +1460,58 @@ export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any
 // 🗑️ GLOBAL DELETION & MODERATION HANDLERS (ADMIN & OWNER)
 // ==============================================================
 
+export async function saveProfessionalServiceToFirestore(service: any): Promise<void> {
+  try {
+    if (!service || !service.id) return;
+    const docRef = doc(db, 'professional_services', service.id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...service,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (error) {
+    console.warn(`saveProfessionalServiceToFirestore notice for ${service?.id}:`, error);
+  }
+}
+
+export async function saveBloodRequestToFirestore(request: any): Promise<void> {
+  try {
+    if (!request || !request.id) return;
+    const docRef = doc(db, 'blood_requests', request.id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...request,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (error) {
+    console.warn(`saveBloodRequestToFirestore notice for ${request?.id}:`, error);
+  }
+}
+
+export async function saveVolunteerDonorToFirestore(donor: any): Promise<void> {
+  try {
+    if (!donor || !donor.id) return;
+    const docRef = doc(db, 'volunteer_donors', donor.id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...donor,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (error) {
+    console.warn(`saveVolunteerDonorToFirestore notice for ${donor?.id}:`, error);
+  }
+}
+
+export async function saveDisasterReliefToFirestore(item: any): Promise<void> {
+  try {
+    if (!item || !item.id) return;
+    const docRef = doc(db, 'disaster_relief_items', item.id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...item,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (error) {
+    console.warn(`saveDisasterReliefToFirestore notice for ${item?.id}:`, error);
+  }
+}
+
 export async function deleteMarketplaceShopFromFirestore(shopId: string): Promise<void> {
   try {
     if (!shopId) return;

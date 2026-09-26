@@ -503,6 +503,7 @@ export interface ProfessionalService {
   providerPhotoUrl?: string;
   providerPhone: string;
   providerWhatsapp?: string;
+  providerNic?: string;
   altPhone?: string; // 5. ගිණුමට ලබාදුන් අංකය හැර වෙනත් දුරකථන අංක
   serviceTitle: string; // 1. ඔබට ලබාදිය හැකි සේවය කුමක්ද?
   profession?: string;
@@ -798,6 +799,9 @@ export interface DisasterReliefItem {
   collectedQuantity?: string;
   createdAt: string;
   createdAtMs?: number;
+  userId?: string;
+  userNic?: string;
+  userPhone?: string;
   supportedCount?: number;
   supportedUserIds?: string[];
 }
