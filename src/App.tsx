@@ -1804,6 +1804,48 @@ export default function App() {
             onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
           />
         )}
+
+        {/* Fallback View: If user is required but not authenticated, or unhandled view mode, show LoginForm / GpsActivationGate */}
+        {((viewMode === 'dashboard' || viewMode === 'admin' || viewMode === 'pending') && !currentUser) && (
+          <LoginForm
+            onLogin={handleLogin}
+            onUserDemoLogin={handleUserDemoLogin}
+            onNavigateToRegister={() => setViewMode('register')}
+            onNavigateToIssues={() => setViewMode('issues_help')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            showDemoUserLogin={registrationConfig?.showDemoUserLogin !== false}
+            users={users}
+            onSuccessfulPinLogin={completeSuccessfulLogin}
+          />
+        )}
+
+        {viewMode === 'admin' && currentUser && !checkIsAdmin(currentUser) && (
+          <UserDashboard
+            user={currentUser}
+            onNavigateToIssues={() => setViewMode('issues_help')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            categories={categories}
+            helpPosts={helpPosts}
+            onDeletePost={handleDeletePost}
+            onPermanentDeletePost={handlePermanentDeletePost}
+            onUpdatePost={handleUpdatePost}
+            onUpdateUser={handleUpdateUser}
+            onLogout={handleLogout}
+            activeRoleView={activeRoleView}
+            setActiveRoleView={setActiveRoleView}
+            onNavigate={handleNavigate}
+            onOpenRedAlert={() => setIsCreateRedAlertOpen(true)}
+            activeRedAlertsCount={(redAlerts || []).filter((a) => a && a.status === 'active' && !a.isFlaggedFake).length}
+            redAlerts={redAlerts}
+            onViewRedAlertDetail={(a) => setSelectedDetailAlert(a)}
+          />
+        )}
       </main>
 
       <RedAlertCreateModal
