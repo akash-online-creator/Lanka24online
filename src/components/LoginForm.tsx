@@ -18,6 +18,8 @@ import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 import { StoredDevicePinData, getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { DevicePinLoginView } from './DevicePinLoginView';
+import { NotificationPermissionBanner } from './NotificationPermissionBanner';
+import { requestNotificationPermission } from '../utils/notificationManager';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -134,6 +136,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     setIsLoading(true);
     try {
+      // Auto-trigger notification request on login attempt if not yet asked
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        requestNotificationPermission().catch(() => {});
+      }
       await onLogin(cleanIdentifier, key.trim());
     } catch (err: any) {
       console.error("Login Error:", err);
@@ -219,6 +225,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <p className="text-slate-500 dark:text-[#8ba294] text-[11px] font-medium max-w-xs leading-tight">
           {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}
         </p>
+      </div>
+
+      {/* Notification Permission Card (If not yet enabled) */}
+      <div className="w-full mb-2">
+        <NotificationPermissionBanner language={language} variant="card" />
       </div>
 
       {/* Main Login Card */}

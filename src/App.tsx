@@ -56,6 +56,7 @@ import { RedAlertCreateModal } from './components/RedAlertCreateModal';
 import { RedAlertProximityModal } from './components/RedAlertProximityModal';
 import { RedAlertDetailModal } from './components/RedAlertDetailModal';
 import { RedAlertBanner } from './components/RedAlertBanner';
+import { NotificationPermissionBanner } from './components/NotificationPermissionBanner';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { SosLiveViewerModal } from './components/SosLiveViewerModal';
@@ -1673,7 +1674,8 @@ export default function App() {
       )}
 
       {viewMode !== 'login' && viewMode !== 'gps_gate' && (
-        <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20">
+        <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20 space-y-2 mb-2">
+          <NotificationPermissionBanner language={language} variant="banner" />
           <RedAlertBanner
             alerts={redAlerts}
             currentUser={currentUser}
