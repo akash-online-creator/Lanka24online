@@ -77,8 +77,8 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
 
           {/* Pending Notification Text */}
           <div className="bg-emerald-950/40 border border-emerald-500/30 p-4 rounded-xl space-y-2">
-            <p className="text-xs text-emerald-200 font-bold leading-relaxed">
-              "ඔබගේ තොරතුරු ලියාපදිංචිය සඳහා යොමු කර ඇත. තොරතුරු පරීක්ෂා කිරීමෙන් පසු ඔබ සඳහන් කර ඇති වට්ස්ඇප් අංකයට පණිවිඩයක් එවනු ඇත."
+            <p className="text-xs sm:text-sm text-emerald-200 font-bold leading-relaxed">
+              "ලියාපදිංචිය සාර්ථකයි. Admin වරයා පරික්ෂාකර ඔබගේ වට්සැප් ගිණුමට දැනුම්දෙනතුරු මොහොතක් රෑදිසිටින්න."
             </p>
             <p className="text-[11px] text-emerald-400 font-black pt-1 border-t border-emerald-800/60">
               සහය සේවය සමඟ සම්බන්ධ වූ ඔබට ස්තුතියි....!

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Language, Theme, Role, User } from '../types';
 import { translations } from '../data/translations';
-import { Sun, Moon, Shield, UserCheck, HelpCircle, LogOut, Smartphone } from 'lucide-react';
+import { Sun, Moon, Shield, UserCheck, HelpCircle, LogOut } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -16,7 +16,6 @@ interface HeaderProps {
   setActiveRoleView: (role: Role) => void;
   onNavigate: (view: any) => void;
   onLogout: () => void;
-  onOpenInstallApp?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,7 +28,6 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveRoleView,
   onNavigate,
   onLogout,
-  onOpenInstallApp,
 }) => {
   const t = translations[language];
 
@@ -66,20 +64,6 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Center Navigation Shortcuts */}
       <div className="flex items-center gap-2">
-        {onOpenInstallApp && (
-          <button
-            type="button"
-            onClick={onOpenInstallApp}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 hover:from-amber-300 hover:to-amber-400 transition-all shadow-sm cursor-pointer border border-amber-300 active:scale-95"
-            title="Install as Mobile App / Fullscreen"
-          >
-            <Smartphone className="w-4 h-4 text-amber-950" />
-            <span className="hidden sm:inline font-black">
-              {language === 'en' ? 'Install App' : language === 'ta' ? 'செயலி' : 'App Install'}
-            </span>
-          </button>
-        )}
-
         <button
           onClick={() => onNavigate('issues_help')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all shadow-sm cursor-pointer"

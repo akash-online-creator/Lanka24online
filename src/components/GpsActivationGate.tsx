@@ -14,7 +14,6 @@ import {
   Sun, 
   Moon, 
   Languages, 
-  ArrowRight,
   Sparkles,
   Bell,
   Zap,
@@ -225,20 +224,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
     setIsManualMapOpen(false);
     onProceedToLogin(loc);
-  };
-
-  const handleBypassWithDefault = () => {
-    const defaultLoc: LocationOption = {
-      id: 'loc_default_katunayake',
-      nameSi: 'කෝවින්න, ගංගාරාම පාර, කටුනායක',
-      nameEn: 'Kovinna, Gangarama Road, Katunayake',
-      nameTa: 'Kovinna, Gangarama Road, Katunayake',
-      lat: 7.1585,
-      lng: 79.8825,
-    };
-    localStorage.setItem('sahaya_current_location', JSON.stringify(defaultLoc));
-    localStorage.setItem('sahaya_gps_verified', 'true');
-    onProceedToLogin(defaultLoc);
   };
 
   const handleNextLanguage = () => {
@@ -533,28 +518,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             )}
           </div>
         )}
-
-        {/* Secondary Navigation Options */}
-        <div className="pt-1 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-          <button
-            type="button"
-            onClick={() => setIsManualMapOpen(true)}
-            className="w-full sm:w-1/2 py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-[#132c1c] hover:bg-slate-200 dark:hover:bg-[#1c3f29] text-slate-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-300 dark:border-emerald-800/40 transition-all cursor-pointer"
-          >
-            <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-            <span>📍 සිතියමෙන් තෝරන්න</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleBypassWithDefault}
-            className="w-full sm:w-1/2 py-2.5 px-3 rounded-xl bg-transparent hover:bg-emerald-500/10 text-slate-500 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-1 border border-slate-200 dark:border-emerald-800/30 transition-all cursor-pointer"
-            title="Continue to Login"
-          >
-            <span>ඇතුල් වීමට යන්න</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
       </div>
 
       {/* Manual Map Picker Modal */}

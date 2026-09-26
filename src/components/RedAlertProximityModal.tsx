@@ -403,9 +403,12 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
 
             {alert.description && (
-              <div className="p-3 rounded-xl bg-white dark:bg-black/30 border border-slate-200/80 dark:border-white/10 text-xs">
-                <span className="font-bold text-slate-500 dark:text-slate-400 block mb-1">වැඩි විස්තර:</span>
-                <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-wrap">
+              <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border-2 border-amber-500/40 dark:border-amber-600/40 text-xs sm:text-sm shadow-sm space-y-1.5">
+                <span className="font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5 text-xs sm:text-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>හදිසි පණිවිඩය / විස්තරය (Emergency Note):</span>
+                </span>
+                <p className="text-slate-900 dark:text-slate-100 leading-relaxed font-bold whitespace-pre-wrap break-words text-xs sm:text-sm pl-0.5">
                   {alert.description}
                 </p>
               </div>
