@@ -794,6 +794,12 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     res.sendFile(path.join(publicPath, 'manifest.json'));
   });
 
+  app.get('/.well-known/assetlinks.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.sendFile(path.join(publicPath, '.well-known', 'assetlinks.json'));
+  });
+
   app.get('/sw.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Service-Worker-Allowed', '/');
