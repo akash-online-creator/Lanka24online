@@ -8,6 +8,7 @@ import {
   saveCreditTransactions 
 } from './creditManager';
 import { initialUsers } from '../data/initialData';
+import { filterNonDeletedUsers } from './deletedPostsManager';
 
 const STORAGE_KEY_QR_TRANSACTIONS = 'sahaya_qr_transactions';
 const STORAGE_KEY_BALANCES = 'sahaya_user_credit_balances';
@@ -92,7 +93,7 @@ export const findUserForQrPayment = (
     }
   } catch (e) {}
 
-  const combinedUsers: User[] = [...allUsersList, ...localUsers, ...(initialUsers as User[])];
+  const combinedUsers: User[] = filterNonDeletedUsers([...allUsersList, ...localUsers, ...(initialUsers as User[])]);
   const uniqueUsers: User[] = [];
   const seenIds = new Set<string>();
 
