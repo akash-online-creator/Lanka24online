@@ -1,9 +1,10 @@
-import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor } from '../types';
+import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem } from '../types';
 
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
 const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
 const DELETED_DISASTER_IDS_KEY = 'sahaya_deleted_disaster_ids';
 const DELETED_DONOR_IDS_KEY = 'sahaya_deleted_donor_ids';
+const DELETED_RED_ALERTS_KEY = 'sahaya_deleted_red_alert_ids';
 
 function getStoredIds(key: string): string[] {
   try {
@@ -191,4 +192,36 @@ export function filterNonDeletedGroups<T extends { id?: string }>(groups: T[]): 
   if (!Array.isArray(groups)) return [];
   const deletedIds = new Set(getStoredDeletedGroupIds());
   return groups.filter((g) => g && g.id && !deletedIds.has(g.id));
+}
+
+// ----------------- Red Alerts (රතු එළිය) -----------------
+export function getStoredDeletedRedAlertIds(): string[] {
+  return getStoredIds(DELETED_RED_ALERTS_KEY);
+}
+
+export function addDeletedRedAlertId(alertId: string): void {
+  if (!alertId) return;
+  const current = getStoredDeletedRedAlertIds();
+  if (!current.includes(alertId)) {
+    saveIds(DELETED_RED_ALERTS_KEY, [...current, alertId]);
+  }
+}
+
+export function removeDeletedRedAlertId(alertId: string): void {
+  if (!alertId) return;
+  const current = getStoredDeletedRedAlertIds();
+  saveIds(DELETED_RED_ALERTS_KEY, current.filter((id) => id !== alertId));
+}
+
+export function isRedAlertPermanentlyDeleted(alertId: string): boolean {
+  if (!alertId) return false;
+  return getStoredDeletedRedAlertIds().includes(alertId);
+}
+
+export function filterNonDeletedRedAlerts(alerts: RedAlertItem[]): RedAlertItem[] {
+  if (!Array.isArray(alerts)) return [];
+  const deletedIds = new Set(getStoredDeletedRedAlertIds());
+  return alerts.filter(
+    (a) => a && a.id && !deletedIds.has(a.id) && !(a as any).isDeleted && (a.status as string) !== 'deleted'
+  );
 }

@@ -171,7 +171,7 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
 };
 
 export const saveBloodRequestsToStorage = (requests: BloodDonationRequest[]) => {
-  localStorage.setItem('sahaya_blood_requests', JSON.stringify(requests));
+  localStorage.setItem('sahaya_blood_requests', JSON.stringify(filterNonDeletedBloodRequests(requests)));
 };
 
 export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
@@ -186,7 +186,7 @@ export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
 };
 
 export const saveVolunteerDonorsToStorage = (donors: VolunteerDonor[]) => {
-  localStorage.setItem('sahaya_volunteer_donors', JSON.stringify(donors));
+  localStorage.setItem('sahaya_volunteer_donors', JSON.stringify(filterNonDeletedDonors(donors)));
 };
 
 export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
@@ -201,7 +201,7 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
 };
 
 export const saveDisasterReliefItemsToStorage = (items: DisasterReliefItem[]) => {
-  localStorage.setItem('sahaya_disaster_relief', JSON.stringify(items));
+  localStorage.setItem('sahaya_disaster_relief', JSON.stringify(filterNonDeletedDisasterItems(items)));
 };
 
 export const getStoredSupportedBloodIds = (): string[] => {

@@ -49,7 +49,7 @@ import {
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { grantWelcomeGiftCredit } from './utils/creditManager';
-import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId } from './utils/deletedPostsManager';
+import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId, filterNonDeletedRedAlerts } from './utils/deletedPostsManager';
 import { captureUserLoginLog, appendLoginHistory } from './utils/loginTracker';
 import { broadcastAppNotification } from './utils/notificationManager';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
@@ -295,12 +295,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
       if (Array.isArray(remotePosts)) {
-        setHelpPosts((prevLocal) => {
+        setHelpPosts(() => {
           const cleanedRemote = filterNonDeletedPosts(remotePosts as HelpPost[]);
-          if (remotePosts.length > 0) {
-            return cleanedRemote;
-          }
-          return filterNonDeletedPosts(prevLocal || []);
+          return cleanedRemote;
         });
       }
     });
@@ -312,7 +309,7 @@ export default function App() {
       const saved = localStorage.getItem('sahaya_red_alerts');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return filterNonDeletedRedAlerts(parsed);
       }
     } catch {}
     return [];
@@ -356,7 +353,7 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = subscribeToRedAlerts((remoteAlerts) => {
-      const newAlerts = remoteAlerts || [];
+      const newAlerts = filterNonDeletedRedAlerts(remoteAlerts || []);
       
       if (isInitialAlertsLoadRef.current) {
         newAlerts.forEach((a) => {
@@ -564,8 +561,12 @@ export default function App() {
   }, [issues]);
 
   useEffect(() => {
-    localStorage.setItem('sahaya_help_posts', JSON.stringify(helpPosts));
+    localStorage.setItem('sahaya_help_posts', JSON.stringify(filterNonDeletedPosts(helpPosts)));
   }, [helpPosts]);
+
+  useEffect(() => {
+    localStorage.setItem('sahaya_red_alerts', JSON.stringify(filterNonDeletedRedAlerts(redAlerts)));
+  }, [redAlerts]);
 
   useEffect(() => {
     localStorage.setItem('sahaya_blocked_credentials', JSON.stringify(blockedCredentials));

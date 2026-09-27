@@ -19,6 +19,7 @@ import {
   deleteRedAlertInFirestore, 
   flagRedAlertAsFake 
 } from '../lib/firebase';
+import { filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
 
 // 🚨 Default Tone Import එක
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -89,8 +90,9 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 2 සීමාව සෙවීම
   const uniqueAlertsMap = new Map<string, RedAlertItem>();
 
-  (alerts || []).forEach((alert) => {
-    if (alert && alert.id && alert.status === 'active' && !alert.isFlaggedFake) {
+  const nonDeletedAlerts = filterNonDeletedRedAlerts(alerts || []);
+  nonDeletedAlerts.forEach((alert) => {
+    if (alert && alert.id && alert.status === 'active' && !alert.isFlaggedFake && !(alert as any).isDeleted) {
       if (!uniqueAlertsMap.has(alert.id)) {
         uniqueAlertsMap.set(alert.id, alert);
       }
