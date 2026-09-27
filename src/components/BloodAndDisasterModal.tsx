@@ -50,6 +50,7 @@ import {
   saveVolunteerDonorToFirestore,
   saveDisasterReliefToFirestore
 } from '../lib/firebase';
+import { broadcastAppNotification } from '../utils/notificationManager';
 
 interface BloodAndDisasterModalProps {
   isOpen: boolean;
@@ -176,8 +177,20 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     setBloodRequests(updated);
     saveBloodRequestsToStorage(updated);
     saveBloodRequestToFirestore(newRequest).catch((err) => console.warn('saveBloodRequestToFirestore error:', err));
+    
+    // 🚨 PickMe-style background alert broadcast
+    broadcastAppNotification({
+      type: 'emergency_blood',
+      title: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවයක්!`,
+      message: `${newHospitalName} - ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ ඒකක ${newUnitsNeeded}ක් හදිසියේ අවශ්‍යයි.`,
+      locationName: newDistrict,
+      badgeText: 'හදිසි',
+      targetModal: 'blood',
+      targetPostId: newRequest.id,
+    });
+
     setShowAddBloodRequestForm(false);
-    alert('හදිසි ලේ අවශ්‍යතාවය සාර්ථකව පලකෙරිණි!');
+    alert('හදිසි ලේ අවශ්‍යතාවය සාර්ථකව පලකෙරිණි! (Background Alert මගින් දැනුම්දීම යවන ලදී)');
   };
 
   // Register Donor
@@ -238,8 +251,20 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     setDisasterItems(updated);
     saveDisasterReliefItemsToStorage(updated);
     saveDisasterReliefToFirestore(newItem).catch((err) => console.warn('saveDisasterReliefToFirestore error:', err));
+    
+    // 📦 PickMe-style background alert broadcast
+    broadcastAppNotification({
+      type: 'aid_ledger',
+      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
+      message: `${reliefLocation} (${reliefDistrict}) - ${reliefDesc || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+      locationName: reliefDistrict,
+      badgeText: 'ආපදා සහන',
+      targetModal: 'blood',
+      targetPostId: newItem.id,
+    });
+
     setShowAddDisasterForm(false);
-    alert('ආපදා සහන අවශ්‍යතාවය සාර්ථකව පලකෙරිණි!');
+    alert('ආපදා සහන අවශ්‍යතාවය සාර්ථකව පලකෙරිණි! (Background Alert මගින් දැනුම්දීම යවන ලදී)');
   };
 
   // Support / Unlock Handlers

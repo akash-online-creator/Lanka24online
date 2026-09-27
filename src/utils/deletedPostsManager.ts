@@ -1,10 +1,11 @@
-import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem } from '../types';
+import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem, User } from '../types';
 
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
 const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
 const DELETED_DISASTER_IDS_KEY = 'sahaya_deleted_disaster_ids';
 const DELETED_DONOR_IDS_KEY = 'sahaya_deleted_donor_ids';
 const DELETED_RED_ALERTS_KEY = 'sahaya_deleted_red_alert_ids';
+const DELETED_USERS_KEY = 'sahaya_deleted_user_ids';
 
 function getStoredIds(key: string): string[] {
   try {
@@ -23,6 +24,60 @@ function saveIds(key: string, ids: string[]): void {
   } catch (err) {
     console.warn(`Failed to save deleted IDs to storage key: ${key}`, err);
   }
+}
+
+// ----------------- Users -----------------
+export function getStoredDeletedUserIds(): string[] {
+  return getStoredIds(DELETED_USERS_KEY);
+}
+
+export function addDeletedUserId(identifier: string): void {
+  if (!identifier) return;
+  const clean = identifier.trim();
+  const current = getStoredDeletedUserIds();
+  const toAdd = [clean, clean.toLowerCase(), clean.toUpperCase()];
+  const next = Array.from(new Set([...current, ...toAdd]));
+  saveIds(DELETED_USERS_KEY, next);
+}
+
+export function removeDeletedUserId(identifier: string): void {
+  if (!identifier) return;
+  const clean = identifier.trim();
+  const current = getStoredDeletedUserIds();
+  saveIds(
+    DELETED_USERS_KEY,
+    current.filter(
+      (id) => id !== clean && id !== clean.toLowerCase() && id !== clean.toUpperCase()
+    )
+  );
+}
+
+export function isUserPermanentlyDeleted(userOrId: any): boolean {
+  if (!userOrId) return false;
+  const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
+  if (typeof userOrId === 'string') {
+    return deletedSet.has(userOrId.trim().toLowerCase());
+  }
+  const id = userOrId.id ? String(userOrId.id).trim().toLowerCase() : '';
+  const userId = userOrId.userId ? String(userOrId.userId).trim().toLowerCase() : '';
+  const nic = userOrId.nicNumber ? String(userOrId.nicNumber).trim().toLowerCase() : '';
+  return (id && deletedSet.has(id)) || (userId && deletedSet.has(userId)) || (nic && deletedSet.has(nic));
+}
+
+export function filterNonDeletedUsers(users: User[]): User[] {
+  if (!Array.isArray(users)) return [];
+  const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
+  return users.filter((u) => {
+    if (!u) return false;
+    if ((u.status as string) === 'deleted' || (u as any).isDeleted) return false;
+    const id = u.id ? String(u.id).trim().toLowerCase() : '';
+    const userId = u.userId ? String(u.userId).trim().toLowerCase() : '';
+    const nic = u.nicNumber ? String(u.nicNumber).trim().toLowerCase() : '';
+    if (id && deletedSet.has(id)) return false;
+    if (userId && deletedSet.has(userId)) return false;
+    if (nic && deletedSet.has(nic)) return false;
+    return true;
+  });
 }
 
 // ----------------- Help Posts -----------------

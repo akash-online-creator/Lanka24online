@@ -1,3 +1,5 @@
+import { triggerPickMeAlert } from './backgroundAlertEngine';
+
 export type NotificationType = 
   | 'emergency_blood' 
   | 'aid_ledger'
@@ -264,11 +266,39 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
   const updated = [newNotif, ...current.filter(n => n.id !== newNotif.id)].slice(0, 50);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
-  // Play audio chime
-  playNotificationSound(newNotif.type);
-
-  // Trigger web push
-  triggerBrowserNotification(newNotif);
+  // Trigger PickMe style persistent ringtone & background push if it's quick_service, emergency_blood, or aid_ledger
+  if (newNotif.type === 'quick_service') {
+    triggerPickMeAlert({
+      kind: 'quick_service',
+      title: newNotif.title,
+      message: newNotif.message,
+      locationName: newNotif.locationName,
+      targetModal: 'quick_service',
+      targetPostId: newNotif.targetPostId,
+    });
+  } else if (newNotif.type === 'emergency_blood') {
+    triggerPickMeAlert({
+      kind: 'emergency_blood',
+      title: newNotif.title,
+      message: newNotif.message,
+      locationName: newNotif.locationName,
+      targetModal: 'blood',
+      targetPostId: newNotif.targetPostId,
+    });
+  } else if (newNotif.type === 'aid_ledger') {
+    triggerPickMeAlert({
+      kind: 'disaster_relief',
+      title: newNotif.title,
+      message: newNotif.message,
+      locationName: newNotif.locationName,
+      targetModal: 'aid_ledger',
+      targetPostId: newNotif.targetPostId,
+    });
+  } else {
+    // Standard chime
+    playNotificationSound(newNotif.type);
+    triggerBrowserNotification(newNotif);
+  }
 
   // Trigger local React broadcast event
   window.dispatchEvent(new CustomEvent('sahaya_new_notification', { detail: newNotif }));

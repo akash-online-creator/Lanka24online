@@ -19,7 +19,7 @@ export const translations = {
     forgotCode: 'කේතය වෙනස් කිරීම',
     loginBtn: 'ඇතුළුවන්න',
     orDivider: 'හෝ',
-    registerBtn: 'රෙජිස්ටර්වීමට',
+    registerBtn: 'ලියාපදිංචි වීමට',
     issuesHelpBtn: 'ඇප් සහය',
     wrongLoginHeader: 'තොරතුරු වැරදියි',
     wrongLoginMsg: 'ඔබ ඇතුලත් කල තොරතුරු වැරදි. කරුණාකර නැවත පරීක්ෂා කර බලන්න.',
@@ -136,15 +136,15 @@ export const translations = {
     switchRoleBtn: 'පරිපාලක මාරුව',
   },
   en: {
-    appName: 'Sahaya Sewa',
-    appNameSub: 'Samata Pihita • Support Services',
+    appName: 'Support Services',
+    appNameSub: 'Support Services • Samata Pihita',
     securityLayer: 'Security Layer: Encrypted AES-256',
     adminStatus: 'Admin Status',
     online: 'Online',
     serverTime: 'Server Time',
     
     // Auth & Login
-    loginTitle: 'Sahaya Sewa',
+    loginTitle: 'Support Services',
     loginSubtitle: 'Secured access for registered members',
     userIdLabel: 'User ID (ID / Email)',
     nicLabel: 'Identity Card Number',
@@ -270,7 +270,7 @@ export const translations = {
     switchRoleBtn: 'Admin Switch',
   },
   ta: {
-    appName: 'சகாய சேவா',
+    appName: 'ஆதரவு சேவைகள்',
     appNameSub: 'ஆதரவு சேவைகள்',
     securityLayer: 'பாதுகாப்பு: முழுமையான மறைகுறியாக்கம்',
     adminStatus: 'நிர்வாகி நிலை',
@@ -278,7 +278,7 @@ export const translations = {
     serverTime: 'சர்வர் நேரம்',
     
     // Auth & Login
-    loginTitle: 'சகாய சேவா',
+    loginTitle: 'ஆதரவு சேவைகள்',
     loginSubtitle: 'பதிவுசெய்யப்பட்ட உறுப்பினர்களுக்கான பாதுகாப்பான அணுகல்',
     userIdLabel: 'பயனர் அடையாள எண் (மின்னஞ்சல்)',
     nicLabel: 'அடையாள அட்டை எண்',

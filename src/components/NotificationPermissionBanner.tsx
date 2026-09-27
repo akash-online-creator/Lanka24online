@@ -140,14 +140,14 @@ export const NotificationPermissionBanner: React.FC<NotificationPermissionBanner
             <div className="font-black text-amber-200 flex items-center gap-1.5 text-xs sm:text-sm">
               <span>
                 {language === 'en'
-                  ? '⚠️ Notifications are disabled on this device'
-                  : '⚠️ ඔබගේ දුරකථනයේ Notification අවසරය අක්‍රීයයි'}
+                  ? '🔔 Enable PickMe-Style Background Alerts & Audio'
+                  : '🔔 PickMe පන්නයේ Background Alerts සහ හඬ සක්‍රීය කරන්න'}
               </span>
             </div>
             <p className="text-[11px] text-emerald-100 font-medium truncate">
               {language === 'en'
-                ? 'Allow notifications to receive emergency disaster alerts (Red Alert SOS) and blood requests.'
-                : 'හදිසි ආපදා (Red Alert) සහ ලේ ඉල්ලීම් දුරකථනයට කෙලින්ම ලබාගැනීමට කරුණාකර අවසර දෙන්න.'}
+                ? 'Get instant ringtones and alerts for Quick Services, Red Alert SOS, and Blood Requests even when app is closed.'
+                : 'ඇප් එක Minimize කළද ඉක්මන් සේවා, රතු එළිය ආපදා සහ ලේ ඉල්ලීම් සඳහා හඬ නාද (Ringtone) ලබාගැනීමට අවසර දෙන්න.'}
             </p>
           </div>
         </div>

@@ -51,6 +51,7 @@ import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { NotificationCenterModal } from './NotificationCenterModal';
+import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { initialMarketItems } from '../data/marketplaceData';
@@ -352,6 +353,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
   const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isPickMeAlertModalOpen, setIsPickMeAlertModalOpen] = useState(false);
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
@@ -815,13 +817,31 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         Boolean(tagC && postWhatIsNeeded.includes(tagC));
     }
 
-    // Query Keyword Check (with Smart Synonym / Alias Expansion)
+    // Query Keyword & Ad Code (#HELP-3728) Check (with Smart Synonym / Alias Expansion)
     let matchesQuery = true;
     if (query) {
-      const searchKeywords = getExpandedSearchKeywords(query);
-      const postText = `${post.tagName || ''} ${post.tagCategory || ''} ${post.whatHappened || ''} ${post.whatIsNeeded || ''} ${post.userName || ''} ${post.locationName || ''} ${post.postCode || ''}`.toLowerCase();
-      
-      matchesQuery = searchKeywords.some((kw) => postText.includes(kw));
+      // 1. Direct Ad Number / Post Code matching (e.g. #HELP-3728, HELP-3728, 3728, #3728, #BLD-xxx, post id)
+      const cleanRawQuery = query.replace(/[#\s-]/g, '').toLowerCase();
+      const rawPostCode = (post.postCode || '').replace(/[#\s-]/g, '').toLowerCase();
+      const rawPostId = (post.id || '').replace(/[#\s-]/g, '').toLowerCase();
+      const numericQuery = query.replace(/\D/g, '');
+      const numericPostCode = (post.postCode || '').replace(/\D/g, '');
+
+      const isDirectAdCodeMatch = Boolean(
+        (post.postCode && post.postCode.toLowerCase().includes(query)) ||
+        (post.id && post.id.toLowerCase().includes(query)) ||
+        (cleanRawQuery.length >= 2 && (rawPostCode.includes(cleanRawQuery) || rawPostId.includes(cleanRawQuery))) ||
+        (numericQuery.length >= 3 && numericPostCode.includes(numericQuery))
+      );
+
+      if (isDirectAdCodeMatch) {
+        matchesQuery = true;
+      } else {
+        const searchKeywords = getExpandedSearchKeywords(query);
+        const postText = `${post.tagName || ''} ${post.tagCategory || ''} ${post.whatHappened || ''} ${post.whatIsNeeded || ''} ${post.userName || ''} ${post.locationName || ''} ${post.postCode || ''} ${post.id || ''}`.toLowerCase();
+        
+        matchesQuery = searchKeywords.some((kw) => postText.includes(kw)) || postText.includes(query);
+      }
     }
 
     return matchesDistance && matchesCategory && matchesTagFilter && matchesQuery;
@@ -1510,6 +1530,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
         onOpenWallet={() => setIsWalletModalOpen(true)}
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
+        onOpenPickMeAlertSettings={() => setIsPickMeAlertModalOpen(true)}
         onOpenInbox={() => setIsInboxModalOpen(true)}
         inboxCount={inboxRepliesCount}
         onOpenAssistant={() => setIsAssistantChatOpen(true)}
@@ -2661,6 +2682,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsSosLiveModalOpen(false)}
         currentUser={user}
         currentLocation={currentLocation}
+        language={language}
+      />
+
+      {/* 🔔 PickMe-Style Background Audio & Alert Settings Modal */}
+      <PickMeAlertSettingsModal
+        isOpen={isPickMeAlertModalOpen}
+        onClose={() => setIsPickMeAlertModalOpen(false)}
         language={language}
       />
 

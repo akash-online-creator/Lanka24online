@@ -186,27 +186,25 @@ const SAVED_GROUPS_PREFIX = 'sahaya_saved_group_ids_';
 export function getStoredGroups(): GroupItem[] {
   try {
     const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(initialGroups));
-      return filterNonDeletedGroups(initialGroups);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const mapped = parsed.map((g: GroupItem) => ({
+          ...g,
+          privacy: g.privacy || 'public'
+        }));
+        return filterNonDeletedGroups(mapped);
+      }
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return filterNonDeletedGroups(initialGroups);
-    
-    // Ensure all groups have a privacy property (fallback to 'public')
-    const mapped = parsed.map((g: GroupItem) => ({
-      ...g,
-      privacy: g.privacy || 'public'
-    }));
-    return filterNonDeletedGroups(mapped);
   } catch {
     return filterNonDeletedGroups(initialGroups);
   }
+  return filterNonDeletedGroups(initialGroups);
 }
 
 export function saveGroupsToStorage(groups: GroupItem[]): void {
   try {
-    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(groups));
+    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(filterNonDeletedGroups(groups)));
   } catch (err) {
     console.error('Error saving groups to storage:', err);
   }

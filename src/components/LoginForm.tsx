@@ -361,7 +361,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             onClick={onNavigateToRegister}
             className="w-full bg-white dark:bg-transparent hover:bg-emerald-50/40 dark:hover:bg-[#0d1f14] text-[#00a86b] font-bold py-2 px-4 rounded-xl border border-[#00a86b] transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center disabled:opacity-50"
           >
-            <span>{t.registerBtn || 'රෙජිස්ටර්වීමට'}</span>
+            <span>{t.registerBtn || 'ලියාපදිංචි වීමට'}</span>
           </button>
         </form>
 

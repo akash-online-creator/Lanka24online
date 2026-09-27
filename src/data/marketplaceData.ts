@@ -483,47 +483,37 @@ const MARKET_SHOPS_KEY = 'sahaya_marketplace_shops';
 export function getStoredMarketItems(): MarketItem[] {
   try {
     const saved = localStorage.getItem(MARKET_ITEMS_KEY);
-    if (saved) {
+    if (saved !== null) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Merge missing initial items
-        const existingIds = new Set(parsed.filter((p: MarketItem) => p && p.id).map((p: MarketItem) => p.id));
-        const missingDefaults = initialMarketItems.filter((it) => it && it.id && !existingIds.has(it.id));
-        if (missingDefaults.length > 0) {
-          const merged = [...parsed.filter(Boolean), ...missingDefaults];
-          localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(merged));
-          return filterNonDeletedMarketItems(merged);
-        }
+      if (Array.isArray(parsed)) {
         return filterNonDeletedMarketItems(parsed.filter(Boolean));
       }
     }
   } catch (e) {
     console.warn('Error reading market items:', e);
   }
-  localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(initialMarketItems));
   return filterNonDeletedMarketItems(initialMarketItems);
 }
 
 export function saveMarketItemsToStorage(items: MarketItem[]): void {
-  localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(items));
+  localStorage.setItem(MARKET_ITEMS_KEY, JSON.stringify(filterNonDeletedMarketItems(items)));
 }
 
 export function getStoredMarketShops(): MarketShop[] {
   try {
     const saved = localStorage.getItem(MARKET_SHOPS_KEY);
-    if (saved) {
+    if (saved !== null) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return filterNonDeletedMarketShops(parsed);
+      if (Array.isArray(parsed)) {
+        return filterNonDeletedMarketShops(parsed.filter(Boolean));
       }
     }
   } catch (e) {
     console.warn('Error reading market shops:', e);
   }
-  localStorage.setItem(MARKET_SHOPS_KEY, JSON.stringify(initialMarketShops));
   return filterNonDeletedMarketShops(initialMarketShops);
 }
 
 export function saveMarketShopsToStorage(shops: MarketShop[]): void {
-  localStorage.setItem(MARKET_SHOPS_KEY, JSON.stringify(shops));
+  localStorage.setItem(MARKET_SHOPS_KEY, JSON.stringify(filterNonDeletedMarketShops(shops)));
 }

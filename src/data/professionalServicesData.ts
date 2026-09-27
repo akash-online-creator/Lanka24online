@@ -317,10 +317,10 @@ export const initialProfessionalServices: ProfessionalService[] = [
 export const getStoredProfessionalServices = (): ProfessionalService[] => {
   if (typeof window === 'undefined') return filterNonDeletedProServices(initialProfessionalServices);
   const saved = localStorage.getItem('sahaya_professional_services');
-  if (saved) {
+  if (saved !== null) {
     try {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return filterNonDeletedProServices(parsed);
       }
     } catch {
@@ -332,5 +332,5 @@ export const getStoredProfessionalServices = (): ProfessionalService[] => {
 
 export const saveProfessionalServicesToStorage = (services: ProfessionalService[]) => {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('sahaya_professional_services', JSON.stringify(services));
+  localStorage.setItem('sahaya_professional_services', JSON.stringify(filterNonDeletedProServices(services)));
 };

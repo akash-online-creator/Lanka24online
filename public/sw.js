@@ -58,11 +58,22 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// 2. Notification Click Event (Opens / focuses the App on click)
+// 2. Notification Click Event (Opens / focuses the App on click or stops audio)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'dismiss') {
+  // If user clicked Stop Sound button in notification
+  if (event.action === 'stop' || event.action === 'dismiss') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          client.postMessage({
+            type: 'STOP_ALERT_AUDIO',
+            action: 'stop'
+          });
+        }
+      })
+    );
     return;
   }
 
@@ -76,6 +87,10 @@ self.addEventListener('notificationclick', (event) => {
           client.postMessage({
             type: 'NOTIFICATION_CLICKED',
             payload: event.notification.data
+          });
+          client.postMessage({
+            type: 'STOP_ALERT_AUDIO',
+            action: 'stop'
           });
           return client.focus();
         }

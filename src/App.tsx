@@ -49,7 +49,15 @@ import {
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { grantWelcomeGiftCredit } from './utils/creditManager';
-import { filterNonDeletedPosts, addDeletedPostId, removeDeletedPostId, filterNonDeletedRedAlerts } from './utils/deletedPostsManager';
+import { 
+  filterNonDeletedPosts, 
+  addDeletedPostId, 
+  removeDeletedPostId, 
+  filterNonDeletedRedAlerts,
+  filterNonDeletedUsers,
+  addDeletedUserId,
+  isUserPermanentlyDeleted
+} from './utils/deletedPostsManager';
 import { captureUserLoginLog, appendLoginHistory } from './utils/loginTracker';
 import { broadcastAppNotification } from './utils/notificationManager';
 import { RedAlertCreateModal } from './components/RedAlertCreateModal';
@@ -61,6 +69,8 @@ import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { SosLiveViewerModal } from './components/SosLiveViewerModal';
 import { SosLiveTrackerModal } from './components/SosLiveTrackerModal';
+import { ActiveAlertRingerBanner } from './components/ActiveAlertRingerBanner';
+import { triggerPickMeAlert, stopPickMeAlert } from './utils/backgroundAlertEngine';
 import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
@@ -135,9 +145,9 @@ export default function App() {
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_users');
-      return saved ? deduplicateUsers(JSON.parse(saved)) : deduplicateUsers(initialUsers);
+      return saved ? filterNonDeletedUsers(deduplicateUsers(JSON.parse(saved))) : filterNonDeletedUsers(deduplicateUsers(initialUsers));
     } catch {
-      return deduplicateUsers(initialUsers);
+      return filterNonDeletedUsers(deduplicateUsers(initialUsers));
     }
   });
 
@@ -278,27 +288,53 @@ export default function App() {
       if (remoteUsers && remoteUsers.length > 0) {
         setUsers((prev) => {
           const merged = deduplicateUsers([...(prev || []), ...remoteUsers]);
-          const hasAdmin = merged.some(
+          const filtered = filterNonDeletedUsers(merged);
+          const hasAdmin = filtered.some(
             (u) => u && checkIsAdmin(u)
           );
-          if (!hasAdmin && initialUsers[0]) {
-            return deduplicateUsers([initialUsers[0], ...merged]);
+          if (!hasAdmin && initialUsers[0] && !isUserPermanentlyDeleted(initialUsers[0])) {
+            return filterNonDeletedUsers(deduplicateUsers([initialUsers[0], ...filtered]));
           }
-          return merged;
+          return filtered;
         });
       }
     });
     return () => unsubscribe();
   }, []);
 
+  const knownHelpPostIdsRef = useRef<Set<string>>(new Set());
+  const isInitialHelpPostsLoadRef = useRef<boolean>(true);
+
   // Real-time synchronization of Help Posts from Firestore
   useEffect(() => {
     const unsubscribe = subscribeToHelpPosts((remotePosts) => {
       if (Array.isArray(remotePosts)) {
-        setHelpPosts(() => {
-          const cleanedRemote = filterNonDeletedPosts(remotePosts as HelpPost[]);
-          return cleanedRemote;
-        });
+        const cleanedRemote = filterNonDeletedPosts(remotePosts as HelpPost[]);
+        
+        if (isInitialHelpPostsLoadRef.current) {
+          cleanedRemote.forEach((p) => {
+            if (p && p.id) knownHelpPostIdsRef.current.add(p.id);
+          });
+          isInitialHelpPostsLoadRef.current = false;
+        } else {
+          const brandNewPosts = cleanedRemote.filter((p) => p && p.id && !knownHelpPostIdsRef.current.has(p.id));
+          brandNewPosts.forEach((newPost) => {
+            knownHelpPostIdsRef.current.add(newPost.id);
+            const isQuick = newPost.category === 'quick_services' || newPost.category === 'quick' || newPost.tagCategory === 'ඉක්මන් සේවා';
+            if (isQuick) {
+              triggerPickMeAlert({
+                kind: 'quick_service',
+                title: '⚡ නව ඉක්මන් සේවා ඇමතුමක් (Quick Service)!',
+                message: newPost.whatHappened || newPost.whatIsNeeded || 'නව ඉක්මන් සේවාවක් ඉල්ලා ඇත.',
+                locationName: (newPost as any).district || (newPost as any).locationName || (newPost as any).location?.nameSi,
+                targetModal: 'quick_service',
+                targetPostId: newPost.id,
+              });
+            }
+          });
+        }
+
+        setHelpPosts(cleanedRemote);
       }
     });
     return () => unsubscribe();
@@ -366,27 +402,15 @@ export default function App() {
         brandNewAlerts.forEach((latestAlert) => {
           knownAlertIdsRef.current.add(latestAlert.id);
 
-          if (typeof window !== 'undefined' && 'Notification' in window) {
-            if (Notification.permission === 'granted') {
-              try {
-                new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
-                  body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
-                  tag: latestAlert.id,
-                });
-              } catch (e) {
-                console.warn('Notification trigger error:', e);
-              }
-            } else if (Notification.permission === 'default') {
-              Notification.requestPermission().then((perm) => {
-                if (perm === 'granted') {
-                  new Notification('🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!', {
-                    body: latestAlert.disasterTitleSi || latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
-                    tag: latestAlert.id,
-                  });
-                }
-              }).catch(() => {});
-            }
-          }
+          // 🚨 PickMe-style background audio ringtone + push notification
+          triggerPickMeAlert({
+            kind: 'red_alert',
+            title: latestAlert.disasterTitleSi || '🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!',
+            message: latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
+            locationName: latestAlert.locationName || (latestAlert as any).district || (latestAlert as any).districtName,
+            targetModal: 'red_alert',
+            targetPostId: latestAlert.id,
+          });
 
           setSelectedDetailAlert(latestAlert);
         });
@@ -427,6 +451,24 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Global Notification & Service Worker message router
+  useEffect(() => {
+    const handleNotifClick = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      stopPickMeAlert();
+      if (detail.targetModal === 'red_alert' && detail.targetPostId) {
+        const matched = redAlerts.find((a) => a.id === detail.targetPostId);
+        if (matched) setSelectedDetailAlert(matched);
+      }
+    };
+
+    window.addEventListener('sahaya_notification_clicked', handleNotifClick);
+    return () => {
+      window.removeEventListener('sahaya_notification_clicked', handleNotifClick);
+    };
+  }, [redAlerts]);
 
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
@@ -553,7 +595,7 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('sahaya_users', JSON.stringify(users));
+    localStorage.setItem('sahaya_users', JSON.stringify(filterNonDeletedUsers(users)));
   }, [users]);
 
   useEffect(() => {
@@ -992,10 +1034,14 @@ export default function App() {
         } catch {}
         return next;
       });
-      await saveUserToFirestore(createdUser);
+
+      // Background Firestore save with 3s timeout
+      saveUserToFirestore(createdUser).catch((err) => {
+        console.warn('saveUserToFirestore background notice:', err);
+      });
+
       setCurrentUser(null);
       setViewMode('login');
-      alert('ලියාපදිංචි වීම සාර්ථකයි! දැන් ඔබගේ NIC අංකය සහ මුරපදය යොදා ලොග් වෙන්න.');
     } catch (error: any) {
       console.error("Registration error:", error);
       alert(`⛔ ලියාපදිංචි වීම අසාර්ථක විය: ${error.message || 'නැවත උත්සාහ කරන්න.'}`);
@@ -1067,20 +1113,32 @@ export default function App() {
       (u) => u && (u.id === targetUserId || u.userId === targetUserId || u.nicNumber === targetUserId)
     );
 
-    // 1. React State එකෙන් ඉවත් කිරීම
+    // 1. ස්ථිරවම Deleted ලැයිස්තුවට එක් කිරීම (never reappear)
+    addDeletedUserId(targetUserId);
+    if (targetUser) {
+      if (targetUser.id) addDeletedUserId(targetUser.id);
+      if (targetUser.userId) addDeletedUserId(targetUser.userId);
+      if (targetUser.nicNumber) addDeletedUserId(targetUser.nicNumber);
+    }
+
+    // 2. React State එකෙන් ඉවත් කිරීම
     setUsers((prev) =>
-      (prev || []).filter(
-        (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+      filterNonDeletedUsers(
+        (prev || []).filter(
+          (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+        )
       )
     );
 
-    // 2. Local Storage එකෙන් ඉවත් කිරීම
+    // 3. Local Storage එකෙන් ඉවත් කිරීම
     try {
       const saved = localStorage.getItem('sahaya_users');
       if (saved) {
         const parsed: User[] = JSON.parse(saved);
-        const filtered = (parsed || []).filter(
-          (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+        const filtered = filterNonDeletedUsers(
+          (parsed || []).filter(
+            (u) => u && u.id !== targetUserId && u.userId !== targetUserId && u.nicNumber !== targetUserId
+          )
         );
         localStorage.setItem('sahaya_users', JSON.stringify(filtered));
       }
@@ -1088,7 +1146,7 @@ export default function App() {
       console.warn('Delete user localStorage error:', err);
     }
 
-    // 3. Firestore දත්ත ගබඩාවෙන් ඉවත් කිරීම
+    // 4. Firestore දත්ත ගබඩාවෙන් ඉවත් කිරීම
     try {
       await deleteUserAccount(targetUser || targetUserId, true);
     } catch (err) {
@@ -1644,8 +1702,30 @@ export default function App() {
           : 'bg-[#f2f7f4] text-slate-900'
       }`}
     >
-      <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed top-[-120px] left-[-120px] w-[350px] h-[350px] bg-radial from-emerald-500/10 to-transparent rounded-full pointer-events-none -z-10" />
+      <div className="fixed bottom-[-120px] right-[-120px] w-[350px] h-[350px] bg-radial from-teal-500/10 to-transparent rounded-full pointer-events-none -z-10" />
+
+      {/* 🚨 PickMe-Style Active Alert Audio & Ringer Floating Top Banner */}
+      <ActiveAlertRingerBanner
+        language={language}
+        onOpenModal={(modal, targetId) => {
+          stopPickMeAlert();
+          if (modal === 'red_alert') {
+            const matched = targetId ? redAlerts.find((a) => a.id === targetId) : null;
+            if (matched) {
+              setSelectedDetailAlert(matched);
+            } else if (redAlerts.length > 0) {
+              setSelectedDetailAlert(redAlerts[0]);
+            } else {
+              setIsCreateRedAlertOpen(true);
+            }
+          } else if (modal === 'blood' || modal === 'quick_service') {
+            if (viewMode !== 'dashboard' && currentUser && currentUser.status === 'approved') {
+              setViewMode('dashboard');
+            }
+          }
+        }}
+      />
 
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">

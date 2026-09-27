@@ -33,7 +33,8 @@ import {
   Bell,
   MessageSquare,
   QrCode,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Volume2
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -51,6 +52,7 @@ interface UnifiedDashboardHeaderProps {
   onOpenSettings?: () => void;
   onOpenWallet?: () => void;
   onOpenNotifications?: () => void;
+  onOpenPickMeAlertSettings?: () => void;
   onOpenInbox?: () => void;
   inboxCount?: number;
   onOpenAssistant?: () => void;
@@ -79,6 +81,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenSettings,
   onOpenWallet,
   onOpenNotifications,
+  onOpenPickMeAlertSettings,
   onOpenInbox,
   inboxCount,
   onOpenAssistant,
@@ -280,11 +283,15 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
               <div>
                 <div className="flex items-center gap-1 leading-none">
-                  <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">සහය</span>
-                  <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">සේවා</span>
+                  <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">
+                    {language === 'en' ? 'Support' : language === 'ta' ? 'ஆதரவு' : 'සහය'}
+                  </span>
+                  <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">
+                    {language === 'en' ? 'Services' : language === 'ta' ? 'சேவைகள்' : 'සේවා'}
+                  </span>
                 </div>
                 <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-[#6a9179] tracking-wider uppercase block">
-                  SAHAYA SEWA
+                  {language === 'en' ? 'SUPPORT SERVICES' : language === 'ta' ? 'ஆதரவு சேவைகள்' : 'SAHAYA SEWA'}
                 </span>
               </div>
             </div>
@@ -324,6 +331,18 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                     {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {/* PickMe Background Audio & Alerts Control */}
+            {onOpenPickMeAlertSettings && (
+              <button
+                type="button"
+                onClick={onOpenPickMeAlertSettings}
+                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                title="PickMe පන්නයේ පසුබිම් හඬ සහ දැනුම්දීම් පාලනය (Background Audio Alerts)"
+              >
+                <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </button>
             )}
 

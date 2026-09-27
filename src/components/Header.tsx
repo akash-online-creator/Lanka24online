@@ -50,10 +50,10 @@ export const Header: React.FC<HeaderProps> = ({
         <div>
           <h1 className="text-lg sm:text-xl font-black tracking-wide text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
             <span className="text-[#007a4b] dark:text-[#00a86b]">
-              {language === 'en' ? 'Sahaya' : language === 'ta' ? 'சகாய' : 'සහය'}
+              {language === 'en' ? 'Support' : language === 'ta' ? 'ஆதரவு' : 'සහය'}
             </span>
             <span className="text-amber-600 dark:text-amber-400">
-              {language === 'en' ? 'Sewa' : language === 'ta' ? 'சேவா' : 'සේවා'}
+              {language === 'en' ? 'Services' : language === 'ta' ? 'சேவைகள்' : 'සේවා'}
             </span>
           </h1>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wider">

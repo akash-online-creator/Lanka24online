@@ -67,7 +67,9 @@ import {
   addDeletedDonorId,
   addDeletedPostId,
   removeDeletedPostId,
-  addDeletedProServiceId
+  addDeletedProServiceId,
+  addDeletedUserId,
+  filterNonDeletedUsers
 } from '../utils/deletedPostsManager';
 import { 
   Shield, 
@@ -223,7 +225,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSwitchToUserMode,
   onResetUserPassword,
 }) => {
-  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
+  const users = useMemo(() => filterNonDeletedUsers(deduplicateUsers(rawUsers)), [rawUsers]);
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<
     'pending' | 'profile_updates' | 'issues' | 'all_users' | 'blocked_list' | 'registration_edit' | 'categories_edit' | 'posts_edit' | 'tags_edit' | 'credits' | 'trust_badges' | 'emergency_directory' | 'search_dictionary' | 'red_alerts' | 'ai_security' | 'live_presence' | 'professional_services' | 'blood_and_disaster'
@@ -778,29 +780,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const targetUser = { ...userToDelete };
     const targetUid = targetUser.id || targetUser.userId;
     
-    // 1. Call parent props method to update App state & Firestore
+    // 1. Permanently blacklist deleted user identifier
+    if (targetUid) addDeletedUserId(targetUid);
+    if (targetUser.id) addDeletedUserId(targetUser.id);
+    if (targetUser.userId) addDeletedUserId(targetUser.userId);
+    if (targetUser.nicNumber) addDeletedUserId(targetUser.nicNumber);
+
+    // 2. Call parent props method to update App state & Firestore
     if (onDeleteUser && targetUid) {
       onDeleteUser(targetUid);
     }
     
-    // 2. Perform direct local storage update
+    // 3. Perform direct local storage update
     const savedUsers = localStorage.getItem('sahaya_users');
     if (savedUsers) {
       try {
         const usersList: User[] = JSON.parse(savedUsers);
-        const newUsersList = (usersList || []).filter((u) => 
+        const newUsersList = filterNonDeletedUsers((usersList || []).filter((u) => 
           u &&
           (!targetUser.id || u.id !== targetUser.id) && 
           (!targetUser.userId || u.userId !== targetUser.userId) && 
           (!targetUser.nicNumber || u.nicNumber !== targetUser.nicNumber)
-        );
+        ));
         localStorage.setItem('sahaya_users', JSON.stringify(newUsersList));
       } catch (err) {
         console.warn('Delete user storage error:', err);
       }
     }
 
-    // 3. Fallback direct Firestore deletion to guarantee immediate deletion
+    // 4. Fallback direct Firestore deletion to guarantee immediate deletion
     try {
       await deleteUserAccount(targetUser, true);
     } catch (err) {

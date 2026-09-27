@@ -175,9 +175,9 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
               onChange={handleInputChange}
               onFocus={() => setIsDropdownOpen(true)}
               placeholder={getLangText(
-                '🔍 සිංහලෙන් හෝ Singlish වලින් සොයන්න (e.g. haal, සහල්, beheth, කෑම, mason, taxi)...',
-                '🔍 Search by keywords (e.g. rice, medicine, food, mechanic, taxi)...',
-                '🔍 தேடுங்கள் (உதா. அரிசி, மருந்து, உணவு, மேசன், டாக்ஸி)...'
+                '🔍 දැන්වීම් අංකය (#HELP-3728) හෝ වචන වලින් සොයන්න (e.g. #HELP-3728, haal, සහල්, beheth)...',
+                '🔍 Search by Ad ID (#HELP-3728) or keywords (e.g. #HELP-3728, rice, medicine)...',
+                '🔍 விளம்பர எண் (#HELP-3728) அல்லது சொற்கள் மூலம் தேடுங்கள்...'
               )}
               className="w-full bg-white text-slate-900 dark:bg-[#071d13] dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl py-2.5 pl-10 pr-10 text-xs sm:text-sm font-bold shadow-inner focus:outline-none focus:border-amber-400"
             />

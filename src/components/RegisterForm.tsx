@@ -244,29 +244,30 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         }
       }
 
-      // B. Firestore database duplicate check
+      // B. Firestore database duplicate check (with 2s fast-fail timeout)
       try {
-        const existingInFirestore = await getUserFromFirestore(cleanNic);
+        const firestoreCheckPromise = getUserFromFirestore(cleanNic);
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
+        const existingInFirestore = await Promise.race([firestoreCheckPromise, timeoutPromise]);
         if (existingInFirestore) {
           setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
           setLoading(false);
           return;
         }
       } catch (err) {
-        console.warn('Firestore duplicate check error:', err);
+        console.warn('Firestore duplicate check skipped/timeout:', err);
       }
 
       // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@app.com)
       const userAuthEmail = getAuthEmail(cleanNic);
 
-      // 3. Firebase Auth හි ගිණුම සෑදීම (Gracefully attempt createUserWithEmailAndPassword)
+      // 3. Firebase Auth හි ගිණුම සෑදීම (With 2.5s fast-fail timeout, non-blocking)
       try {
-        await createUserWithEmailAndPassword(auth, userAuthEmail, password);
+        const authPromise = createUserWithEmailAndPassword(auth, userAuthEmail, password);
+        const authTimeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2500));
+        await Promise.race([authPromise, authTimeoutPromise]);
       } catch (authErr: any) {
-        console.warn('Firebase Auth creation notice (continuing with Firestore account):', authErr?.message || authErr);
-        if (authErr?.code === 'auth/email-already-in-use') {
-          // Account already created in auth, allow proceeding to save profile in Firestore
-        }
+        console.warn('Firebase Auth creation notice (proceeding with user account):', authErr?.message || authErr);
       }
 
       const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
@@ -277,7 +278,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const currentLng = trackedLng ?? 79.8612;
       const resolvedLocationName = trackedLocationName || `${nearestTown || 'Sri Lanka'} (GPS: ${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
 
-      // 4. Run AI Security Scan & Perceptual Duplicate Detection on the uploaded NIC photo
+      // 4. Run AI Security Scan with 1.5s timeout
       let aiScanResult = undefined;
       try {
         let localUsers: User[] = [];
@@ -288,7 +289,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             // ignore
           }
         }
-        aiScanResult = await scanUserNicSecurity(
+        const scanPromise = scanUserNicSecurity(
           {
             id: generatedUserId,
             userId: generatedUserId,
@@ -305,8 +306,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           },
           localUsers
         );
+        const scanTimeout = new Promise((resolve) => setTimeout(() => resolve(undefined), 1500));
+        aiScanResult = await Promise.race([scanPromise, scanTimeout]);
       } catch (scanErr) {
-        console.warn('Initial registration AI scan error:', scanErr);
+        console.warn('Initial registration AI scan skipped:', scanErr);
       }
 
       // 5. ඩේටාබේස් එකේ (Firestore) සේව් වන පරිශීලක දත්ත Payload එක සාදා ගැනීම
@@ -790,18 +793,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                   </div>
 
                   {/* Sample NIC Details */}
-                  <div className="col-span-2 space-y-1.5 text-left text-[11px]">
-                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
-                      <div className="text-[8px] font-bold text-slate-500">හැඳුනුම්පත් අංකය (NIC NO)</div>
+                  <div className="col-span-2 space-y-2 text-left text-[11px]">
+                    <div className="bg-white/90 p-2 rounded-xl border border-emerald-200 shadow-2xs">
+                      <div className="text-[9px] font-bold text-slate-500">හැඳුනුම්පත් අංකය (NIC NO)</div>
                       <div className="font-mono font-black text-emerald-950 text-xs tracking-wider">199512345678 / 951234567V</div>
                     </div>
-                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
-                      <div className="text-[8px] font-bold text-slate-500">සම්පූර්ණ නම (FULL NAME)</div>
-                      <div className="font-bold text-slate-800 text-[10px]">නම සහ මුලකුරු පැහැදිලිව</div>
-                    </div>
-                    <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-100">
-                      <div className="text-[8px] font-bold text-slate-500">උපන් දිනය (DOB) / ස්ත්‍රී-පුරුෂ භාවය</div>
-                      <div className="font-bold text-slate-700 text-[10px]">1995.05.12 • M / F</div>
+                    <div className="bg-emerald-100/80 p-2 rounded-xl border border-emerald-300 text-emerald-900 text-[10px] font-bold leading-tight">
+                      ✓ හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය පමණක් ප්‍රමාණවත් වේ
                     </div>
                   </div>
                 </div>
