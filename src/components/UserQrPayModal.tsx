@@ -36,7 +36,8 @@ import {
   Phone,
   CreditCard,
   SwitchCamera,
-  Layers
+  Layers,
+  Flashlight
 } from 'lucide-react';
 
 interface UserQrPayModalProps {
@@ -96,6 +97,8 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
+  const [isTorchSupported, setIsTorchSupported] = useState<boolean>(false);
   const [manualCodeInput, setManualCodeInput] = useState<string>('');
   const [amountInput, setAmountInput] = useState<string>('');
   const [purposeInput, setPurposeInput] = useState<string>('භාණ්ඩ / සේවා ගෙවීම');
@@ -188,12 +191,42 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     }
   }, [isOpen, initialTab, effectiveRecipient, allUsers]);
 
-  // Stop camera when closing or changing tabs
+  // Auto start camera when switching to scan_pay tab (if no recipient is currently set)
   useEffect(() => {
-    if (!isOpen || activeTab !== 'scan_pay') {
+    if (isOpen && activeTab === 'scan_pay' && !recipient && !completedTx) {
+      const timer = setTimeout(() => {
+        startCamera('environment');
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
       stopCamera();
     }
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, recipient, completedTx]);
+
+  // Audio feedback on successful QR scan
+  const playScanSuccessSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+      if (navigator.vibrate) {
+        navigator.vibrate([60, 40, 60]);
+      }
+    } catch (e) {
+      // Audio context might be restricted
+    }
+  };
 
   // Start Camera Stream with reliable fallbacks
   const startCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
@@ -202,35 +235,83 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('කැමරාව මෙම බ්‍රවුසරයේ ක්‍රියාත්මක කළ නොහැක. කරුණාකර කේතය අතින් ඇතුළත් කරන්න.');
+        setCameraError('කැමරාව මෙම බ්‍රවුසරයේ ක්‍රියාත්මක කළ නොහැක. කරුණාකර කේතය අතින් ඇතුළත් කරන්න හෝ QR පින්තූරය Upload කරන්න.');
         return;
       }
 
-      let stream: MediaStream;
+      let stream: MediaStream | null = null;
+      
+      // Attempt 1: Ideal facing mode and resolution
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { 
+            facingMode: { ideal: facing }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          },
+          audio: false,
         });
       } catch (err1) {
-        // Fallback without strict facingMode
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
+        // Attempt 2: Exact/basic facingMode
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing },
+            audio: false,
+          });
+        } catch (err2) {
+          // Attempt 3: Any available video camera fallback
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('කැමරා දත්ත ලබාගත නොහැකි විය.');
       }
 
       streamRef.current = stream;
+      setCameraActive(true);
+      setCameraFacing(facing);
+
+      // Check for torch capability
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        try {
+          const capabilities = (videoTrack.getCapabilities && videoTrack.getCapabilities()) as any;
+          setIsTorchSupported(Boolean(capabilities && capabilities.torch));
+        } catch (e) {
+          setIsTorchSupported(false);
+        }
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
         videoRef.current.muted = true;
-        await videoRef.current.play();
-        setCameraActive(true);
-        setCameraFacing(facing);
-        requestAnimationFrame(scanVideoFrame);
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Video play warning:', playErr);
+        }
       }
+
+      if (scanLoopRef.current) {
+        cancelAnimationFrame(scanLoopRef.current);
+      }
+      scanLoopRef.current = requestAnimationFrame(scanVideoFrame);
     } catch (err: any) {
       console.warn('Camera access error:', err);
-      setCameraError('කැමරාවට අවසර ලබාදී නොමැත. කරුණාකර අවසර ලබාදෙන්න හෝ කේතය / දුරකථන අංකය අතින් ඇතුළත් කරන්න.');
+      let errorMsg = 'කැමරාවට අවසර ලබාදී නොමැත. කරුණාකර බ්‍රවුසර් Address Bar එකෙන් Camera Allow කරන්න හෝ කේතය / දුරකථන අංකය අතින් ඇතුළත් කරන්න.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMsg = 'කැමරා අවසරය (Camera Permission) අක්‍රීය කර ඇත. කරුණාකර Browser Settings වලින් හෝ URL Bar එකේ ඇති 🔒 අයිකනය ක්ලික් කර Camera අවසරය ලබාදෙන්න.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMsg = 'ඔබගේ උපාංගයේ සක්‍රීය කැමරාවක් සොයාගත නොහැකි විය. කරුණාකර QR පින්තූරය Upload කරන්න හෝ කේතය ඇතුළත් කරන්න.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMsg = 'කැමරාව වෙනත් යෙදුමක් මගින් භාවිතා වේ. කරුණාකර වෙනත් apps වසා නැවත උත්සාහ කරන්න.';
+      }
+      setCameraError(errorMsg);
       setCameraActive(false);
     }
   };
@@ -240,45 +321,69 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
     startCamera(nextFacing);
   };
 
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const targetTorch = !isTorchOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: targetTorch }]
+      });
+      setIsTorchOn(targetTorch);
+    } catch (e) {
+      console.warn('Torch toggle error:', e);
+    }
+  };
+
   const stopCamera = () => {
     if (scanLoopRef.current) {
       cancelAnimationFrame(scanLoopRef.current);
       scanLoopRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {}
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setCameraActive(false);
+    setIsTorchOn(false);
+    setIsTorchSupported(false);
   };
 
   // Real-time Video QR Frame Scanner using jsQR
   const scanVideoFrame = () => {
-    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) {
+    if (!videoRef.current || !canvasRef.current) {
       scanLoopRef.current = requestAnimationFrame(scanVideoFrame);
       return;
     }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert',
-      });
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth',
+        });
 
-      if (code && code.data) {
-        handleQrPayloadDetected(code.data);
-        stopCamera();
-        return;
+        if (code && code.data) {
+          playScanSuccessSound();
+          handleQrPayloadDetected(code.data);
+          stopCamera();
+          return;
+        }
       }
     }
 
@@ -747,57 +852,68 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                     <div className="space-y-4">
                       
                       {/* Camera Viewfinder Box */}
-                      <div className="bg-slate-900 border-2 border-emerald-500/50 rounded-3xl overflow-hidden relative min-h-[220px] flex flex-col items-center justify-center p-3 text-white">
-                        {cameraActive ? (
-                          <div className="relative w-full aspect-square max-w-[280px] rounded-2xl overflow-hidden shadow-inner border border-emerald-400/60">
-                            <video
-                              ref={videoRef}
-                              className="w-full h-full object-cover"
-                              autoPlay
-                              playsInline
-                              muted
-                            />
-                            <canvas ref={canvasRef} className="hidden" />
+                      <div className="bg-slate-950 border-2 border-emerald-500/50 rounded-3xl overflow-hidden relative min-h-[260px] flex flex-col items-center justify-center p-3 text-white shadow-xl">
+                        
+                        {/* Always-mounted video element to prevent null ref */}
+                        <div className={`relative w-full aspect-square max-w-[280px] rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-400/60 bg-black ${cameraActive ? 'block' : 'hidden'}`}>
+                          <video
+                            ref={videoRef}
+                            className="w-full h-full object-cover"
+                            autoPlay
+                            playsInline
+                            muted
+                          />
+                          <canvas ref={canvasRef} className="hidden" />
 
-                            {/* Green Target Overlay */}
-                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                              <div className="w-48 h-48 border-2 border-emerald-400 rounded-2xl relative animate-pulse">
-                                <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 -mt-1 -ml-1" />
-                                <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 -mt-1 -mr-1" />
-                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 -mb-1 -ml-1" />
-                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 -mb-1 -mr-1" />
-                                <div className="w-full h-0.5 bg-emerald-400/80 shadow-[0_0_8px_#34d399] absolute top-1/2 -translate-y-1/2 animate-bounce" />
-                              </div>
+                          {/* Green Target Overlay */}
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className="w-48 h-48 border-2 border-emerald-400/80 rounded-2xl relative animate-pulse shadow-[0_0_15px_rgba(52,211,153,0.3)]">
+                              <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400 -mt-1 -ml-1 rounded-tl" />
+                              <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400 -mt-1 -mr-1 rounded-tr" />
+                              <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-emerald-400 -mb-1 -ml-1 rounded-bl" />
+                              <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-emerald-400 -mb-1 -mr-1 rounded-br" />
+                              <div className="w-full h-0.5 bg-emerald-400 shadow-[0_0_12px_#34d399] absolute top-1/2 -translate-y-1/2 animate-bounce" />
                             </div>
                           </div>
-                        ) : (
-                          <div className="text-center p-4 space-y-3">
-                            <div className="w-14 h-14 bg-emerald-950/80 border border-emerald-500/40 rounded-2xl flex items-center justify-center mx-auto text-emerald-400">
-                              <Camera className="w-7 h-7" />
+
+                          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-full text-[10px] font-bold text-emerald-300 flex items-center gap-1.5 border border-emerald-500/30">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                            <span>QR එක කොටුව තුළට යොමු කරන්න</span>
+                          </div>
+                        </div>
+
+                        {/* Inactive or Error state */}
+                        {!cameraActive && (
+                          <div className="text-center p-4 space-y-3 w-full max-w-sm">
+                            <div className="w-16 h-16 bg-emerald-950/80 border-2 border-emerald-500/40 rounded-2xl flex items-center justify-center mx-auto text-emerald-400 shadow-md">
+                              <Camera className="w-8 h-8 animate-pulse" />
                             </div>
                             <div>
-                              <p className="text-xs font-bold text-slate-200">
+                              <p className="text-sm font-extrabold text-white">
                                 කැමරාව ක්‍රියාත්මක කර QR එක Scan කරන්න
                               </p>
-                              <p className="text-[11px] text-slate-400 mt-0.5">
+                              <p className="text-xs text-slate-300 mt-1">
                                 හෝ ගැලරියෙන් QR පින්තූරයක් තෝරන්න
                               </p>
                             </div>
-                            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+
+                            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                               <button
+                                type="button"
                                 onClick={() => startCamera('environment')}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-700/40 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
                               >
                                 <Camera className="w-4 h-4" />
-                                <span>කැමරාව අරඹන්න</span>
+                                <span>කැමරාව අරඹන්න (Start Camera)</span>
                               </button>
 
                               <button
+                                type="button"
                                 onClick={() => fileInputRef.current?.click()}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5"
+                                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 active:scale-95"
                               >
-                                <Upload className="w-4 h-4" />
-                                <span>QR පින්තූරයක් Upload</span>
+                                <Upload className="w-4 h-4 text-emerald-400" />
+                                <span>QR Image Upload</span>
                               </button>
                               <input
                                 ref={fileInputRef}
@@ -807,24 +923,68 @@ export const UserQrPayModal: React.FC<UserQrPayModalProps> = ({
                                 className="hidden"
                               />
                             </div>
+
                             {cameraError && (
-                              <p className="text-[11px] text-rose-400 font-bold">{cameraError}</p>
+                              <div className="bg-rose-950/70 border border-rose-600/70 rounded-2xl p-3 text-left space-y-2 mt-3 animate-fadeIn">
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                                  <p className="text-[11px] text-rose-200 font-bold leading-relaxed">{cameraError}</p>
+                                </div>
+                                <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-800/50">
+                                  <button
+                                    type="button"
+                                    onClick={() => startCamera('environment')}
+                                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    <span>නැවත උත්සාහ කරන්න (Retry)</span>
+                                  </button>
+                                </div>
+                              </div>
                             )}
                           </div>
                         )}
 
+                        {/* Controls Toolbar when camera is active */}
                         {cameraActive && (
-                          <div className="flex items-center gap-2 mt-3">
+                          <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
                             <button
+                              type="button"
                               onClick={toggleCameraFacing}
-                              className="px-3 py-1 bg-slate-800/90 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700 cursor-pointer flex items-center gap-1"
+                              className="px-3 py-1.5 bg-slate-800/90 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-700 cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
                             >
-                              <SwitchCamera className="w-3.5 h-3.5" />
-                              <span>Camera Switch</span>
+                              <SwitchCamera className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>{cameraFacing === 'environment' ? 'Front Camera' : 'Back Camera'}</span>
                             </button>
+
+                            {isTorchSupported && (
+                              <button
+                                type="button"
+                                onClick={toggleTorch}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 border ${
+                                  isTorchOn 
+                                    ? 'bg-amber-400 text-amber-950 border-amber-300 font-black shadow-md' 
+                                    : 'bg-slate-800/90 text-slate-200 border-slate-700 hover:bg-slate-700'
+                                }`}
+                              >
+                                <Flashlight className="w-3.5 h-3.5" />
+                                <span>{isTorchOn ? 'Torch On' : 'Flashlight'}</span>
+                              </button>
+                            )}
+
                             <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="px-3 py-1.5 bg-slate-800/90 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-700 cursor-pointer flex items-center gap-1.5 transition-all"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Upload</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={stopCamera}
-                              className="px-3 py-1 bg-rose-900/80 text-rose-200 rounded-xl text-xs font-bold hover:bg-rose-800 cursor-pointer"
+                              className="px-3 py-1.5 bg-rose-900/80 text-rose-200 border border-rose-800 rounded-xl text-xs font-bold hover:bg-rose-800 cursor-pointer transition-all active:scale-95"
                             >
                               නවත්වන්න
                             </button>
