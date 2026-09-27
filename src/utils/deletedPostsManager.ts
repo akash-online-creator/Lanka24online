@@ -1,4 +1,5 @@
 import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem, User } from '../types';
+import { saveDeletedRecordsToFirestore, subscribeToDeletedRecordsFromFirestore, DeletedRecordsMap } from '../lib/firebase';
 
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
 const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
@@ -6,6 +7,10 @@ const DELETED_DISASTER_IDS_KEY = 'sahaya_deleted_disaster_ids';
 const DELETED_DONOR_IDS_KEY = 'sahaya_deleted_donor_ids';
 const DELETED_RED_ALERTS_KEY = 'sahaya_deleted_red_alert_ids';
 const DELETED_USERS_KEY = 'sahaya_deleted_user_ids';
+const DELETED_MARKETPLACE_IDS_KEY = 'sahaya_deleted_marketplace_ids';
+const DELETED_MARKET_SHOPS_KEY = 'sahaya_deleted_market_shops_ids';
+const DELETED_PRO_SERVICES_KEY = 'sahaya_deleted_pro_services_ids';
+const DELETED_GROUP_IDS_KEY = 'sahaya_deleted_group_ids';
 
 function getStoredIds(key: string): string[] {
   try {
@@ -21,9 +26,82 @@ function getStoredIds(key: string): string[] {
 function saveIds(key: string, ids: string[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
+    // Sync all deletions to Firestore
+    syncAllDeletionsToCloud();
   } catch (err) {
     console.warn(`Failed to save deleted IDs to storage key: ${key}`, err);
   }
+}
+
+let syncTimeout: any = null;
+function syncAllDeletionsToCloud() {
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(() => {
+    try {
+      const payload: DeletedRecordsMap = {
+        deletedPostIds: getStoredDeletedPostIds(),
+        deletedUserIds: getStoredDeletedUserIds(),
+        deletedBloodIds: getStoredDeletedBloodIds(),
+        deletedDisasterIds: getStoredDeletedDisasterIds(),
+        deletedDonorIds: getStoredDeletedDonorIds(),
+        deletedRedAlertIds: getStoredDeletedRedAlertIds(),
+        deletedMarketplaceIds: getStoredDeletedMarketplaceIds(),
+        deletedMarketShopIds: getStoredDeletedMarketShopIds(),
+        deletedProServiceIds: getStoredDeletedProServiceIds(),
+        deletedGroupIds: getStoredDeletedGroupIds(),
+      };
+      saveDeletedRecordsToFirestore(payload).catch(() => {});
+    } catch {}
+  }, 300);
+}
+
+// Subscribe to Cloud Deleted Records once on load
+if (typeof window !== 'undefined') {
+  try {
+    subscribeToDeletedRecordsFromFirestore((cloudRecords) => {
+      if (!cloudRecords) return;
+      if (Array.isArray(cloudRecords.deletedPostIds) && cloudRecords.deletedPostIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedPostIds(), ...cloudRecords.deletedPostIds]));
+        localStorage.setItem(DELETED_POST_IDS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedUserIds) && cloudRecords.deletedUserIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedUserIds(), ...cloudRecords.deletedUserIds]));
+        localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedBloodIds) && cloudRecords.deletedBloodIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedBloodIds(), ...cloudRecords.deletedBloodIds]));
+        localStorage.setItem(DELETED_BLOOD_IDS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedDisasterIds) && cloudRecords.deletedDisasterIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedDisasterIds(), ...cloudRecords.deletedDisasterIds]));
+        localStorage.setItem(DELETED_DISASTER_IDS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedDonorIds) && cloudRecords.deletedDonorIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedDonorIds(), ...cloudRecords.deletedDonorIds]));
+        localStorage.setItem(DELETED_DONOR_IDS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedRedAlertIds) && cloudRecords.deletedRedAlertIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedRedAlertIds(), ...cloudRecords.deletedRedAlertIds]));
+        localStorage.setItem(DELETED_RED_ALERTS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedMarketplaceIds) && cloudRecords.deletedMarketplaceIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedMarketplaceIds(), ...cloudRecords.deletedMarketplaceIds]));
+        localStorage.setItem(DELETED_MARKETPLACE_IDS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedMarketShopIds) && cloudRecords.deletedMarketShopIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedMarketShopIds(), ...cloudRecords.deletedMarketShopIds]));
+        localStorage.setItem(DELETED_MARKET_SHOPS_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedProServiceIds) && cloudRecords.deletedProServiceIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedProServiceIds(), ...cloudRecords.deletedProServiceIds]));
+        localStorage.setItem(DELETED_PRO_SERVICES_KEY, JSON.stringify(merged));
+      }
+      if (Array.isArray(cloudRecords.deletedGroupIds) && cloudRecords.deletedGroupIds.length > 0) {
+        const merged = Array.from(new Set([...getStoredDeletedGroupIds(), ...cloudRecords.deletedGroupIds]));
+        localStorage.setItem(DELETED_GROUP_IDS_KEY, JSON.stringify(merged));
+      }
+    });
+  } catch {}
 }
 
 // ----------------- Users -----------------
@@ -168,9 +246,6 @@ export function filterNonDeletedDonors(donors: VolunteerDonor[]): VolunteerDonor
 }
 
 // ----------------- Marketplace Items & Shops -----------------
-const DELETED_MARKETPLACE_IDS_KEY = 'sahaya_deleted_marketplace_ids';
-const DELETED_MARKET_SHOPS_KEY = 'sahaya_deleted_market_shops_ids';
-
 export function getStoredDeletedMarketplaceIds(): string[] {
   return getStoredIds(DELETED_MARKETPLACE_IDS_KEY);
 }
@@ -208,8 +283,6 @@ export function filterNonDeletedMarketShops<T extends { id?: string }>(shops: T[
 }
 
 // ----------------- Professional Services -----------------
-const DELETED_PRO_SERVICES_KEY = 'sahaya_deleted_pro_services_ids';
-
 export function getStoredDeletedProServiceIds(): string[] {
   return getStoredIds(DELETED_PRO_SERVICES_KEY);
 }
@@ -229,8 +302,6 @@ export function filterNonDeletedProServices<T extends { id?: string }>(services:
 }
 
 // ----------------- Groups & Shramadana -----------------
-const DELETED_GROUP_IDS_KEY = 'sahaya_deleted_group_ids';
-
 export function getStoredDeletedGroupIds(): string[] {
   return getStoredIds(DELETED_GROUP_IDS_KEY);
 }

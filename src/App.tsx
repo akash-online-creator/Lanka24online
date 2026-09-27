@@ -286,9 +286,8 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
-        setUsers((prev) => {
-          const merged = deduplicateUsers([...(prev || []), ...remoteUsers]);
-          const filtered = filterNonDeletedUsers(merged);
+        setUsers(() => {
+          const filtered = filterNonDeletedUsers(remoteUsers);
           const hasAdmin = filtered.some(
             (u) => u && checkIsAdmin(u)
           );

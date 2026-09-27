@@ -410,6 +410,56 @@ export const reportRedAlertAsFake = flagRedAlertAsFake;
 // ==============================================================
 export const SYSTEM_SETTINGS_COLLECTION = 'system_settings';
 export const SIREN_CONFIG_DOC = 'siren_config';
+export const DELETED_RECORDS_DOC = 'deleted_records';
+
+export interface DeletedRecordsMap {
+  deletedPostIds?: string[];
+  deletedUserIds?: string[];
+  deletedBloodIds?: string[];
+  deletedDisasterIds?: string[];
+  deletedDonorIds?: string[];
+  deletedRedAlertIds?: string[];
+  deletedMarketplaceIds?: string[];
+  deletedMarketShopIds?: string[];
+  deletedProServiceIds?: string[];
+  deletedGroupIds?: string[];
+  updatedAt?: string;
+}
+
+export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap): Promise<void> {
+  try {
+    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...records,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('saveDeletedRecordsToFirestore notice:', err);
+  }
+}
+
+export function subscribeToDeletedRecordsFromFirestore(
+  callback: (records: DeletedRecordsMap) => void
+): () => void {
+  try {
+    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    return onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callback(docSnap.data() as DeletedRecordsMap);
+        }
+      },
+      (err) => {
+        console.warn('subscribeToDeletedRecords notice:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('subscribeToDeletedRecords setup notice:', err);
+    return () => {};
+  }
+}
 
 export interface SirenSettingsData {
   audioUrl?: string | null;
@@ -571,10 +621,12 @@ export function subscribeToHelpPosts(
     return onSnapshot(
       q,
       (snapshot) => {
-        const posts = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
+        const posts = snapshot.docs
+          .map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          }))
+          .filter((p: any) => p && !p.isDeleted && p.status !== 'deleted');
         callback(posts);
       },
       (error) => {
@@ -591,13 +643,18 @@ export async function addHelpPostToFirestore(
   postData: Record<string, any>
 ): Promise<string> {
   try {
-    const postsColRef = collection(db, 'posts');
-    const docRef = await addDoc(postsColRef, sanitizeForFirestore({
+    const postId = postData.id || `post_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const docRef = doc(db, 'posts', postId);
+    const sanitized = sanitizeForFirestore({
       ...postData,
-      createdAt: new Date().toISOString(),
+      id: postId,
+      isDeleted: false,
+      status: postData.status || 'active',
+      createdAt: postData.createdAt || new Date().toISOString(),
       createdAtServer: serverTimestamp(),
-    }));
-    return docRef.id;
+    });
+    await setDoc(docRef, sanitized, { merge: true });
+    return postId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'posts');
   }
