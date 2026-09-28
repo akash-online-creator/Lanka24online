@@ -21,7 +21,6 @@ interface GpsPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLocationSuccess: (loc: LocationOption) => void;
-  onOpenMapPicker?: () => void;
   language?: Language;
 }
 
@@ -29,7 +28,6 @@ export const GpsPermissionModal: React.FC<GpsPermissionModalProps> = ({
   isOpen,
   onClose,
   onLocationSuccess,
-  onOpenMapPicker,
   language = 'si',
 }) => {
   const [isScanning, setIsScanning] = useState(false);
@@ -310,23 +308,6 @@ export const GpsPermissionModal: React.FC<GpsPermissionModalProps> = ({
               </div>
             )}
           </div>
-
-          {/* Alternative: Select from Map */}
-          {onOpenMapPicker && (
-            <div className="pt-1 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenMapPicker();
-                }}
-                className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-[#143020] hover:bg-slate-200 dark:hover:bg-[#1c432d] text-slate-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 border border-slate-300 dark:border-emerald-800/50 transition-all cursor-pointer"
-              >
-                <MapPin className="w-4 h-4 text-emerald-500" />
-                <span>📍 සිතියමෙන් ස්ථානය තෝරන්න (Manual Map Picker)</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

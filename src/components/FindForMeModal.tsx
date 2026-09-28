@@ -17,12 +17,12 @@ import {
   Truck, 
   ShieldCheck, 
   Sparkles,
-  Map as MapIcon
+  RefreshCw
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-import { MapLocationTracker } from './MapLocationTracker';
+import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
@@ -101,7 +101,29 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
 
   // Map location state
   const [selectedLocation, setSelectedLocation] = useState<LocationOption>(currentLocation);
-  const [isMapTrackerOpen, setIsMapTrackerOpen] = useState(false);
+  const [isResolvingGps, setIsResolvingGps] = useState(false);
+
+  const handleRefreshAutoGps = () => {
+    if (!navigator.geolocation) return;
+    setIsResolvingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const res = await resolveExactLocation(pos.coords.latitude, pos.coords.longitude);
+          const locOpt = toLocationOption(res);
+          setSelectedLocation(locOpt);
+        } catch {
+          // fallback
+        } finally {
+          setIsResolvingGps(false);
+        }
+      },
+      () => {
+        setIsResolvingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Other details
   const [otherDetails, setOtherDetails] = useState('');
@@ -962,11 +984,11 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
                 </div>
               </div>
 
-              {/* 6. ස්ථානය Map එකෙන් Save කිරීම */}
+              {/* 6. Auto GPS සජීවී ස්ථානය */}
               <div className="space-y-1.5 pt-1">
                 <label className="block text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-emerald-500" />
-                  <span>{getLangText('6. ස්ථානය Map එකෙන් Save කරන්න', '6. Select Location on Map', '6. வரைபடத்தில் இருப்பிடத்தைத் தேர்ந்தெடுக்கவும்')}</span>
+                  <span>{getLangText('6. Auto GPS සජීවී ස්ථානය', '6. Auto GPS Live Location', '6. நேரலை GPS இடம்')}</span>
                 </label>
                 
                 <div className="bg-slate-50 dark:bg-[#09170e] border border-slate-200 dark:border-[#193e27] p-3.5 rounded-2xl flex items-center justify-between gap-3">
@@ -975,17 +997,18 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
                       {lang === 'en' ? selectedLocation.nameEn : lang === 'ta' ? (selectedLocation.nameTa || selectedLocation.nameEn) : selectedLocation.nameSi}
                     </span>
                     <span className="text-[10px] text-slate-500 font-mono">
-                      GPS: {selectedLocation.lat?.toFixed(4)}, {selectedLocation.lng?.toFixed(4)}
+                      📍 Auto GPS: {selectedLocation.lat?.toFixed(4)}, {selectedLocation.lng?.toFixed(4)}
                     </span>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setIsMapTrackerOpen(true)}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform shrink-0"
+                    onClick={handleRefreshAutoGps}
+                    disabled={isResolvingGps}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform shrink-0 disabled:opacity-50"
                   >
-                    <MapIcon className="w-3.5 h-3.5" />
-                    <span>{getLangText('Map එකෙන් තෝරන්න', 'Select from Map', 'வரைபடத்தில் தேர்வு செய்க')}</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResolvingGps ? 'animate-spin' : ''}`} />
+                    <span>{getLangText('Auto GPS Refresh', 'Auto GPS Refresh', 'GPS புதுப்பி')}</span>
                   </button>
                 </div>
               </div>
@@ -1163,21 +1186,6 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
 
         </div>
       </div>
-
-      {/* Map Location Tracker Modal */}
-      {isMapTrackerOpen && (
-        <MapLocationTracker
-          isOpen={isMapTrackerOpen}
-          onClose={() => setIsMapTrackerOpen(false)}
-          currentLocation={selectedLocation}
-          availableLocations={availableLocations}
-          onSaveLocation={(loc) => {
-            setSelectedLocation(loc);
-            setIsMapTrackerOpen(false);
-          }}
-          lang={lang}
-        />
-      )}
     </>
   );
 };

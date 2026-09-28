@@ -286,13 +286,9 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
   // 3. SENT BUTTON (Send / Submit Voice Request with Date, Time & Location)
   const handleSendVoiceRequest = async () => {
-    if (!audioBlob && !transcript.trim()) {
+    if (!audioBlob && !transcript.trim() && !isRecording && audioChunksRef.current.length === 0) {
       setErrorMsg('කරුණාකර හඬ පණිවිඩයක් පටිගත කරන්න හෝ අවශ්‍යතාවය පවසන්න.');
       return;
-    }
-
-    if (isRecording) {
-      handleStopRecording();
     }
 
     setIsProcessingAi(true);
@@ -300,32 +296,65 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     setSubmissionSuccess(null);
 
     try {
-      // 1. Upload audio to Telegram Cloud Vault or generate Data URL
-      let finalAudioUrl = audioUrl || '';
+      // If currently recording, request data and stop cleanly
+      let currentBlob = audioBlob;
+      if (isRecording || (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording')) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          try {
+            mediaRecorderRef.current.requestData();
+          } catch {}
+        }
+        handleStopRecording();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      if (!currentBlob && audioChunksRef.current.length > 0) {
+        currentBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+        setAudioBlob(currentBlob);
+      }
+
+      // Convert audioBlob to Base64 data URL as bulletproof persistent fallback
+      let base64AudioUrl = audioUrl || '';
+      if (currentBlob) {
+        try {
+          const readerPromise = new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(currentBlob!);
+          });
+          base64AudioUrl = await readerPromise;
+        } catch (b64Err) {
+          console.warn('Base64 conversion notice:', b64Err);
+        }
+      }
+
+      // 1. Upload audio to Cloud Storage or use Base64 URL
+      let finalAudioUrl = base64AudioUrl || audioUrl || '';
       let telegramRec: any = undefined;
 
-      if (audioBlob) {
+      if (currentBlob) {
         try {
           const uploadRes = await uploadMediaToTelegram({
-            file: audioBlob,
+            file: currentBlob,
             fileName: `voice_sos_${Date.now()}.webm`,
             mimeType: 'audio/webm',
             mediaType: 'voice',
             senderName: currentUser?.name || 'Voice User',
             sourceContext: 'AI Voice SOS & Help Request',
-            caption: `🎙️ Voice Note (${recordingSeconds}s) - ${locationName}`,
+            caption: `🎙️ Voice Note (${Math.max(1, recordingSeconds)}s) - ${locationName}`,
           });
           if (uploadRes?.url) {
             finalAudioUrl = uploadRes.url;
             telegramRec = uploadRes.record;
           }
         } catch (upErr) {
-          console.warn('Telegram upload notice, fallback to local URL:', upErr);
+          console.warn('Media upload notice, fallback to local Base64 URL:', upErr);
         }
       }
 
       // 2. Call AI Voice Parser Endpoint
-      const fullTextToAnalyze = transcript.trim() || interimTranscript.trim() || 'හදිසි සහයක් අවශ්‍යයි (Voice SOS)';
+      const fullTextToAnalyze = transcript.trim() || interimTranscript.trim() || 'හදිසි හඬ ආධාර ඉල්ලීමකි (Voice Help Request)';
       
       let parsedData: any = null;
       try {
@@ -356,9 +385,9 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       if (!parsedData) {
         parsedData = {
           serviceType: 'quick_service',
-          titleSi: fullTextToAnalyze.slice(0, 50),
+          titleSi: fullTextToAnalyze.length > 5 && fullTextToAnalyze !== 'හදිසි හඬ ආධාර ඉල්ලීමකි (Voice Help Request)' ? fullTextToAnalyze.slice(0, 50) : '🎙️ හදිසි හඬ ආධාර ඉල්ලීම',
           whatHappened: fullTextToAnalyze,
-          whatIsNeeded: 'ක්ෂණික හඬ සහයක් අවශ්‍යයි',
+          whatIsNeeded: 'හඬ පණිවිඩය අසා සහය වන්න (Listen to voice note)',
           urgency: 'high',
           suggestedCategory: 'ක්ෂණික උපකාර',
           payment: 'නොමිලේ',
@@ -368,9 +397,18 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
       setAiAnalysisResult(parsedData);
 
+      // Resolve valid category identifier
+      let resolvedCategory = 'quick_services';
+      if (parsedData.serviceType === 'find_for_me') resolvedCategory = 'find_for_me';
+      else if (parsedData.serviceType === 'group_work') resolvedCategory = 'group_work';
+      else if (parsedData.serviceType === 'from_me_to_you') resolvedCategory = 'from_me_to_you';
+      else if (parsedData.serviceType === 'blood_disaster') resolvedCategory = 'blood_disaster';
+      else if (parsedData.serviceType === 'professional_services') resolvedCategory = 'professional_services';
+      else if (parsedData.serviceType === 'normal_services') resolvedCategory = 'normal_services';
+
       // Common Post metadata with exact Date, Time, and Location
       const basePostMetadata = {
-        title: parsedData.titleSi || fullTextToAnalyze.slice(0, 60),
+        title: parsedData.titleSi || (fullTextToAnalyze.length > 5 ? fullTextToAnalyze.slice(0, 60) : '🎙️ ක්ෂණික හඬ ආධාර ඉල්ලීම'),
         whatHappened: parsedData.whatHappened || fullTextToAnalyze,
         whatIsNeeded: parsedData.whatIsNeeded || 'හඬ පණිවිඩය අසා සහය වන්න',
         conditions: 'හඬ පණිවිඩය අසා තොරතුරු තහවුරු කරගන්න.',
@@ -384,14 +422,15 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         distanceKm: 0,
         lat: coords?.lat || currentLocation?.lat || 6.9271,
         lng: coords?.lng || currentLocation?.lng || 79.8612,
-        category: parsedData.suggestedCategory || 'ක්ෂණික සේවා',
+        category: resolvedCategory,
         tagName: parsedData.suggestedCategory || 'හඬ සහය',
-        tagCategory: 'හදිසි උපකාර',
+        tagCategory: 'ඉක්මන් සේවා',
         userName: currentUser?.name || 'පරිශීලක',
         userPhone: currentUser?.phone || currentUser?.whatsappNumber || '0771234567',
         userEmail: currentUser?.email || '',
         userId: currentUser?.id || currentUser?.userId,
         status: 'active' as const,
+        mediaType: 'voice' as const,
         audioUrl: finalAudioUrl,
         audioDurationSec: Math.max(1, recordingSeconds),
         voiceSentDate: currentDateString,
@@ -445,7 +484,8 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
       setTimeout(() => {
         setIsProcessingAi(false);
-      }, 1500);
+        onClose();
+      }, 1600);
     } catch (err: any) {
       console.error('Send voice request error:', err);
       setIsProcessingAi(false);
@@ -649,19 +689,19 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
               <button
                 type="button"
                 onClick={handleSendVoiceRequest}
-                disabled={(!audioBlob && !transcript.trim()) || isProcessingAi}
+                disabled={(!isRecording && !audioBlob && !transcript.trim() && audioChunksRef.current.length === 0) || isProcessingAi}
                 className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-700 hover:from-amber-600 hover:to-emerald-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-emerald-700/30 active:scale-95 cursor-pointer transition-all disabled:cursor-not-allowed"
-                title="දිනය, වේලාව, ස්ථානය සමඟ පලකරන්න"
+                title="හඬ දැන්වීම දිනය, වේලාව, ස්ථානය සමඟ පළකරන්න"
               >
                 {isProcessingAi ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>AI සකසමින්...</span>
+                    <span>දැන්වීම පළවෙමින්...</span>
                   </>
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    <span>🚀 Sent (යවන්න)</span>
+                    <span>🚀 Sent (දැන්වීමක් ලෙස පළකරන්න)</span>
                   </>
                 )}
               </button>

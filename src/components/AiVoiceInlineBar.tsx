@@ -212,64 +212,99 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
 
   // 3. SENT (Submit & Auto-fill)
   const handleSendVoice = async () => {
-    if (!audioBlob && !transcript.trim()) return;
-    if (isRecording) handleStopRecording();
+    if (!audioBlob && !transcript.trim() && !isRecording && audioChunksRef.current.length === 0) return;
 
     setIsProcessing(true);
-    let finalAudioUrl = audioUrl || '';
 
-    if (audioBlob) {
-      try {
-        const uploadRes = await uploadMediaToTelegram({
-          file: audioBlob,
-          fileName: `voice_note_${Date.now()}.webm`,
-          mimeType: 'audio/webm',
-          mediaType: 'voice',
-          senderName: 'User Voice Input',
-          sourceContext: 'Inline Voice Help Bar',
-          caption: `🎙️ Voice Note (${recordingSeconds}s) - ${locName}`,
-        });
-        if (uploadRes?.url) {
-          finalAudioUrl = uploadRes.url;
-        }
-      } catch (err) {
-        console.warn('Voice upload notice:', err);
-      }
-    }
-
-    const fullTranscript = transcript.trim() || interimTranscript.trim();
-
-    // Call AI Voice Parser
-    let parsedFields: any = null;
     try {
-      const response = await fetch('/api/ai/voice-parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript: fullTranscript,
-          language: selectedLanguage,
-          locationContext: { name: locName, lat: coords?.lat, lng: coords?.lng, date: dateStr, time: timeStr },
-        }),
-      });
-      const resJson = await response.json();
-      if (resJson?.data) {
-        parsedFields = resJson.data;
+      let currentBlob = audioBlob;
+      if (isRecording || (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording')) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          try {
+            mediaRecorderRef.current.requestData();
+          } catch {}
+        }
+        handleStopRecording();
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
-    } catch {}
 
-    onVoiceCaptured({
-      audioUrl: finalAudioUrl,
-      durationSec: Math.max(1, recordingSeconds),
-      transcript: fullTranscript,
-      date: dateStr,
-      time: timeStr,
-      location: locName,
-      coords: coords || undefined,
-      parsedFields,
-    });
+      if (!currentBlob && audioChunksRef.current.length > 0) {
+        currentBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+        setAudioBlob(currentBlob);
+      }
 
-    setIsProcessing(false);
-    setSuccessNotice(true);
+      let finalAudioUrl = audioUrl || '';
+
+      if (currentBlob) {
+        // First ensure base64 fallback is ready
+        try {
+          const b64Promise = new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(currentBlob!);
+          });
+          const b64 = await b64Promise;
+          if (b64) finalAudioUrl = b64;
+        } catch (e) {
+          console.warn('Base64 conversion notice:', e);
+        }
+
+        try {
+          const uploadRes = await uploadMediaToTelegram({
+            file: currentBlob,
+            fileName: `voice_note_${Date.now()}.webm`,
+            mimeType: 'audio/webm',
+            mediaType: 'voice',
+            senderName: 'User Voice Input',
+            sourceContext: 'Inline Voice Help Bar',
+            caption: `🎙️ Voice Note (${recordingSeconds}s) - ${locName}`,
+          });
+          if (uploadRes?.url) {
+            finalAudioUrl = uploadRes.url;
+          }
+        } catch (err) {
+          console.warn('Voice upload notice:', err);
+        }
+      }
+
+      const fullTranscript = transcript.trim() || interimTranscript.trim();
+
+      // Call AI Voice Parser
+      let parsedFields: any = null;
+      try {
+        const response = await fetch('/api/ai/voice-parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: fullTranscript,
+            language: selectedLanguage,
+            locationContext: { name: locName, lat: coords?.lat, lng: coords?.lng, date: dateStr, time: timeStr },
+          }),
+        });
+        const resJson = await response.json();
+        if (resJson?.data) {
+          parsedFields = resJson.data;
+        }
+      } catch {}
+
+      onVoiceCaptured({
+        audioUrl: finalAudioUrl,
+        durationSec: Math.max(1, recordingSeconds),
+        transcript: fullTranscript,
+        date: dateStr,
+        time: timeStr,
+        location: locName,
+        coords: coords || undefined,
+        parsedFields,
+      });
+
+      setSuccessNotice(true);
+    } catch (err) {
+      console.error('Voice send error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -368,7 +403,7 @@ export const AiVoiceInlineBar: React.FC<AiVoiceInlineBarProps> = ({
         <button
           type="button"
           onClick={handleSendVoice}
-          disabled={(!audioBlob && !transcript.trim()) || isProcessing}
+          disabled={(!isRecording && !audioBlob && !transcript.trim() && audioChunksRef.current.length === 0) || isProcessing}
           className="py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:cursor-not-allowed"
           title="තොරතුරු සමඟ ඇතුළත් කරන්න"
         >

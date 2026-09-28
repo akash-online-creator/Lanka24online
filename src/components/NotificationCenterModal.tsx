@@ -141,11 +141,11 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-xl bg-white dark:bg-[#071910] border border-slate-200 dark:border-[#19402a] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-[#153824] bg-slate-50/80 dark:bg-[#0b2417]/80 backdrop-blur-md flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-[#153824] bg-slate-50 dark:bg-[#0b2417] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <Bell className="w-5 h-5" />

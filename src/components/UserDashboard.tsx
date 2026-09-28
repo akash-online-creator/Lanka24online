@@ -213,15 +213,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       );
     };
 
-    const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
-    if (!isManualLocked) {
-      autoFetchLiveLocation();
-    }
+    // Always automatically fetch live GPS location on mount
+    autoFetchLiveLocation();
 
-    const handleModeChange = (e: any) => {
-      if (e.detail?.mode === 'auto') {
-        autoFetchLiveLocation();
-      }
+    const handleModeChange = () => {
+      autoFetchLiveLocation();
     };
 
     window.addEventListener('sahaya_location_mode_changed', handleModeChange);
@@ -962,7 +958,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Handler for adding new help request post (Step 3.1 & Quick Services)
   const handleCreatePost = async (
     newPostData: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>
-  ) => {
+  ): Promise<{ success: boolean; error?: string; postId?: string }> => {
     const categoryToSave = newPostData.category || 'quick_services';
     const postTitle =
       newPostData.whatHappened ||
@@ -973,31 +969,36 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     const tempPostCode = `#POST-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // Rule: "මෙහි ඇති සියලු දැන්විම් පොරම් (form) ක්‍රියාත්මක විය යුත්තේ credit ක්‍රමයක් යටතේය."
-    // Verify user credit balance and deduct posting fee
+    // Verify user credit balance and deduct posting fee (Allow demo users and emergency requests)
     const deduction = deductPostingFee(user, categoryToSave, postTitle, tempPostCode);
 
-    if (!deduction.success) {
+    if (!deduction.success && user && !user.isDemo && user.status === 'approved') {
       setInsufficientCreditsState({
         isOpen: true,
         requiredAmount: deduction.requiredAmount,
         currentBalance: deduction.currentBalance,
         categoryName: selectedCategoryTitle || categoryToSave,
       });
-      return;
+      return { success: false, error: 'insufficient_credits' };
     }
 
     // Update user state with new balance
-    if (onUpdateUser) {
+    if (onUpdateUser && deduction.success) {
       onUpdateUser({
         ...user,
         credits: deduction.newBalance,
       });
     }
 
+    const nowMs = Date.now();
+    const nowIso = new Date().toISOString();
+
     const postToSave = {
       ...newPostData,
-      userId: user?.userId || user?.id || '',
+      userId: user?.userId || user?.id || 'demo_user',
       category: categoryToSave,
+      createdAtMs: nowMs,
+      createdAtIso: nowIso,
     };
 
     // If quick service or normal service, ensure category filter shows it
@@ -1011,21 +1012,26 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       setFeedDistanceTab('local');
     }
 
+    let createdId = `post_${nowMs}`;
     try {
-      await addHelpPostToFirestore(postToSave);
+      createdId = await addHelpPostToFirestore(postToSave);
     } catch (e) {
       console.error('Failed to add post to Firestore, updating local state as fallback', e);
-      const newPost: HelpPost = {
-        ...postToSave,
-        id: `post_${Date.now()}`,
-        postCode: tempPostCode,
-        createdAt: 'මීට සුළු මොහොතකට පෙර',
-        repliesCount: 0,
-        helpersCount: 1,
-        replies: [],
-      };
-      setLocalHelpPosts((prev) => [newPost, ...prev]);
     }
+
+    const newPost: HelpPost = {
+      ...postToSave,
+      id: createdId,
+      postCode: tempPostCode,
+      createdAt: 'මීට සුළු මොහොතකට පෙර',
+      createdAtMs: nowMs,
+      createdAtIso: nowIso,
+      repliesCount: 0,
+      helpersCount: 1,
+      replies: [],
+    };
+    setLocalHelpPosts((prev) => [newPost, ...prev.filter(p => p.id !== createdId)]);
+    window.dispatchEvent(new CustomEvent('sahaya_new_post_published', { detail: { post: newPost } }));
 
     // Broadcast live notification across the app with audio chime & push alert
     try {
@@ -1086,6 +1092,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     } catch (notifErr) {
       console.warn('Error broadcasting post notification:', notifErr);
     }
+
+    return { success: true, postId: createdId };
   };
 
   // Helper function to accept a specific helper offer and reduce count immediately

@@ -224,6 +224,20 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }, 3500);
   };
 
+  // Real-time listener for newly submitted posts across users: Auto scroll and refresh to top
+  useEffect(() => {
+    const handleNewPostEvent = (e: any) => {
+      setVisibleCount((prev) => Math.max(prev, PAGE_SIZE));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('✨ නව දැන්වීමක් දැන්වීම් පුවරුවේ ඉහළින්ම පූරණය විය!');
+    };
+
+    window.addEventListener('sahaya_new_post_published', handleNewPostEvent);
+    return () => {
+      window.removeEventListener('sahaya_new_post_published', handleNewPostEvent);
+    };
+  }, []);
+
   // Toggle Save Post with Firestore sync
   const handleToggleSavePost = (post: HelpPost) => {
     if (!post || !post.id) return;
@@ -305,12 +319,21 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
   // Parse time for accurate chronological sorting
   const getPostTimestamp = (post: HelpPost): number => {
-    if (post.createdAtMs && !isNaN(post.createdAtMs)) {
-      return post.createdAtMs;
+    if (post.createdAtMs && !isNaN(Number(post.createdAtMs)) && Number(post.createdAtMs) > 0) {
+      return Number(post.createdAtMs);
+    }
+    if ((post as any).createdAtIso) {
+      const parsed = new Date((post as any).createdAtIso).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
     }
     if (post.createdAt) {
       const parsed = new Date(post.createdAt).getTime();
       if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    if (post.id && typeof post.id === 'string' && post.id.startsWith('post_')) {
+      const parts = post.id.split('_');
+      const num = parseInt(parts[1]);
+      if (!isNaN(num) && num > 1000000000) return num;
     }
     return 0;
   };

@@ -107,6 +107,7 @@ export interface HelpPost {
   lng?: number;
   createdAt: string;
   createdAtMs?: number;
+  createdAtIso?: string;
   repliesCount: number;
   helpersCount: number;
   replies: PostReply[];

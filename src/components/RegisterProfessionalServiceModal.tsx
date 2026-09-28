@@ -28,7 +28,6 @@ import {
   PlaceSearchResult,
   formatOrderedLocation
 } from '../utils/geoUtils';
-import { MapLocationTracker } from './MapLocationTracker';
 import { initialLocations } from '../data/initialData';
 
 interface RegisterProfessionalServiceModalProps {
@@ -770,30 +769,6 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
             </form>
           )}
         </div>
-
-        {/* Fullscreen Map Location Tracker Modal if invoked */}
-        {isFullMapOpen && (
-          <MapLocationTracker
-            isOpen={isFullMapOpen}
-            onClose={() => setIsFullMapOpen(false)}
-            currentLocation={{
-              id: 'custom_pro_loc',
-              nameSi: locationName,
-              nameEn: locationName,
-              nameTa: locationName,
-              lat: mapLat,
-              lng: mapLng,
-            }}
-            availableLocations={initialLocations}
-            onSaveLocation={(loc: LocationOption) => {
-              setMapLat(loc.lat || 7.1712);
-              setMapLng(loc.lng || 79.8978);
-              setLocationName(loc.nameSi || locationName);
-              setIsFullMapOpen(false);
-            }}
-            lang={language}
-          />
-        )}
       </div>
     </div>
   );

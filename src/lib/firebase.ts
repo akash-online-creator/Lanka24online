@@ -616,17 +616,21 @@ export function subscribeToHelpPosts(
 ): () => void {
   try {
     const postsColRef = collection(db, 'posts');
-    const q = query(postsColRef, orderBy('createdAt', 'desc'));
 
     return onSnapshot(
-      q,
+      postsColRef,
       (snapshot) => {
         const posts = snapshot.docs
           .map((docSnap) => ({
             id: docSnap.id,
             ...docSnap.data(),
           }))
-          .filter((p: any) => p && !p.isDeleted && p.status !== 'deleted');
+          .filter((p: any) => p && !p.isDeleted && p.status !== 'deleted')
+          .sort((a: any, b: any) => {
+            const timeA = Number(a.createdAtMs) || (a.createdAtIso ? new Date(a.createdAtIso).getTime() : 0) || (a.createdAt ? new Date(a.createdAt).getTime() : 0) || (a.id?.startsWith('post_') ? parseInt(a.id.split('_')[1]) : 0);
+            const timeB = Number(b.createdAtMs) || (b.createdAtIso ? new Date(b.createdAtIso).getTime() : 0) || (b.createdAt ? new Date(b.createdAt).getTime() : 0) || (b.id?.startsWith('post_') ? parseInt(b.id.split('_')[1]) : 0);
+            return timeB - timeA;
+          });
         callback(posts);
       },
       (error) => {
@@ -643,14 +647,18 @@ export async function addHelpPostToFirestore(
   postData: Record<string, any>
 ): Promise<string> {
   try {
-    const postId = postData.id || `post_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const nowMs = Date.now();
+    const nowIso = new Date().toISOString();
+    const postId = postData.id || `post_${nowMs}_${Math.random().toString(36).substring(2, 6)}`;
     const docRef = doc(db, 'posts', postId);
     const sanitized = sanitizeForFirestore({
       ...postData,
       id: postId,
       isDeleted: false,
       status: postData.status || 'active',
-      createdAt: postData.createdAt || new Date().toISOString(),
+      createdAt: postData.createdAt || nowIso,
+      createdAtIso: postData.createdAtIso || nowIso,
+      createdAtMs: postData.createdAtMs || nowMs,
       createdAtServer: serverTimestamp(),
     });
     await setDoc(docRef, sanitized, { merge: true });

@@ -6,6 +6,8 @@
 @layer base {
   html {
     transition: font-size 0.2s ease-in-out;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
   }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
@@ -13,6 +15,8 @@
     background-color: #f2f8f4;
     color: #0f172a;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   
   /* Text and element flow protection when font size is increased */
@@ -23,6 +27,28 @@
   p, h1, h2, h3, h4, h5, h6, span, label, button, a {
     overflow-wrap: break-word;
   }
+}
+
+/* ======================================================== */
+/* 🛡️ GPU ANTI-TEARING & BLUR CORRUPTION ELIMINATION FIX    */
+/* Prevents horizontal raster lines & texture tearing bugs  */
+/* ======================================================== */
+
+/* Prevent Mobile GPU buffer tearing on backdrops and modals */
+@media (max-width: 768px), (pointer: coarse) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+/* Modal and fixed overlay hardware stabilization */
+.fixed.inset-0,
+[class*="fixed inset-0"] {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
 }
 
 /* ULTRA DATA SAVER & LAG-FREE TEXT-ONLY MODE */
@@ -101,4 +127,3 @@ html[data-data-saver="true"] * {
 .animate-shrink-width {
   animation: shrinkWidth 5.5s linear forwards;
 }
-

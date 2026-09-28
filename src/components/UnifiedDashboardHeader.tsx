@@ -8,7 +8,6 @@ import {
 } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
-import { MapLocationTracker } from './MapLocationTracker';
 import { GpsPermissionModal } from './GpsPermissionModal';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { getStoredNotifications } from '../utils/notificationManager';
@@ -24,9 +23,7 @@ import {
   Sun, 
   Moon, 
   Shield, 
-  Search, 
   Loader2, 
-  Lock, 
   Check,
   ChevronDown,
   Coins,
@@ -105,7 +102,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
@@ -129,34 +125,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
   const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
 
-  const [isManualLocked, setIsManualLocked] = useState<boolean>(
-    () => localStorage.getItem('sahaya_manual_location_locked') === 'true'
-  );
   const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
-
-  // Synchronize manual lock state on changes
-  useEffect(() => {
-    const handleModeChange = (e: any) => {
-      if (e.detail?.mode === 'auto') {
-        setIsManualLocked(false);
-      } else if (e.detail?.mode === 'manual') {
-        setIsManualLocked(true);
-      } else {
-        setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
-      }
-    };
-
-    window.addEventListener('sahaya_location_mode_changed', handleModeChange);
-    return () => {
-      window.removeEventListener('sahaya_location_mode_changed', handleModeChange);
-    };
-  }, []);
-
-  // Also check whenever currentLocation prop changes
-  useEffect(() => {
-    setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
-  }, [currentLocation]);
 
   const getLocationName = (loc: LocationOption) => {
     if (language === 'si') return loc.nameSi;
@@ -164,15 +134,9 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     return loc.nameEn;
   };
 
-  const handleOpenManualPicker = () => {
-    setIsAutoTracking(false);
-    setIsMapModalOpen(true);
-  };
-
-  const handleSaveLocationFromMap = (loc: LocationOption) => {
+  const handleLocationSuccess = (loc: LocationOption) => {
     onSelectLocation(loc);
-    setIsManualLocked(localStorage.getItem('sahaya_manual_location_locked') === 'true');
-    setToastMsg(`📍 ස්ථානය සුරැකිණි: ${loc.nameSi}`);
+    setToastMsg(`⚡ Auto GPS ස්ථානය සාර්ථකව තහවුරු විය: ${loc.nameSi}`);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
@@ -184,13 +148,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     }
 
     setIsAutoTracking(true);
-    // Instantly unlock manual mode in UI & Storage
-    localStorage.setItem('sahaya_manual_location_locked', 'false');
     localStorage.setItem('sahaya_location_mode', 'auto');
-    setIsManualLocked(false);
+    localStorage.removeItem('sahaya_manual_location_locked');
     window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
 
-    setToastMsg('⚡ සජීවී GPS සංඥාව ලබාගනිමින් පවතී...');
+    setToastMsg('⚡ සජීවී Auto GPS සංඥාව ලබාගනිමින් පවතී...');
 
     const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
       try {
@@ -198,14 +160,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         const locOpt = toLocationOption(geo);
         
         localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-        localStorage.setItem('sahaya_manual_location_locked', 'false');
         localStorage.setItem('sahaya_location_mode', 'auto');
-        setIsManualLocked(false);
+        localStorage.removeItem('sahaya_manual_location_locked');
         
         onSelectLocation(locOpt);
-        setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
-      } catch (err) {
-        console.warn('Reverse geocode error, using coordinates fallback:', err);
+        setToastMsg(`⚡ Auto GPS සක්‍රීයයි - සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+      } catch {
         const fallback: LocationOption = {
           id: `loc_gps_${Date.now()}`,
           nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
@@ -215,24 +175,21 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
           lng: longitude,
         };
         localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
-        localStorage.setItem('sahaya_manual_location_locked', 'false');
-        setIsManualLocked(false);
+        localStorage.setItem('sahaya_location_mode', 'auto');
         onSelectLocation(fallback);
-        setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${fallback.nameSi}`);
+        setToastMsg(`⚡ Auto GPS ස්ථානය: ${fallback.nameSi}`);
       } finally {
         setIsAutoTracking(false);
-        setTimeout(() => setToastMsg(null), 4500);
+        setTimeout(() => setToastMsg(null), 4000);
       }
     };
 
-    // Primary High Accuracy Attempt
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         processCoords(latitude, longitude, accuracy);
       },
-      (err) => {
-        // If high accuracy fails or times out, try standard accuracy fallback
+      () => {
         navigator.geolocation.getCurrentPosition(
           (fallbackPos) => {
             const { latitude, longitude, accuracy } = fallbackPos.coords;
@@ -242,19 +199,13 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             setIsAutoTracking(false);
             setIsGpsPermissionModalOpen(true);
             if (finalErr.code === finalErr.PERMISSION_DENIED) {
-              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Setting වලින් Location Allow කරන්න.');
-            } else if (finalErr.code === finalErr.POSITION_UNAVAILABLE) {
-              setToastMsg('⚠️ GPS සංඥා දුර්වලයි. උපාංගයේ Location සක්‍රීය කරන්න.');
+              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Settings වලින් Location Allow කරන්න.');
             } else {
               setToastMsg('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාදයි. නැවත උත්සාහ කරන්න.');
             }
             setTimeout(() => setToastMsg(null), 5000);
           },
-          {
-            enableHighAccuracy: false,
-            timeout: 10000,
-            maximumAge: 60000,
-          }
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
         );
       },
       {
@@ -524,13 +475,9 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         LAYER 2: Location & Wallet Bar (Dedicated, Clean Status Pill Bar)
       */}
       <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-sm backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-        {/* Left: Active Location with icon and Auto/Manual badges */}
+        {/* Left: Active Location with icon and Auto GPS badge */}
         <div className="flex items-start sm:items-center gap-2.5 min-w-0">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0 ${
-            isManualLocked 
-              ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400' 
-              : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-          }`}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0 bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
             <MapPin className="w-4 h-4 animate-bounce" />
           </div>
 
@@ -541,17 +488,10 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 <span>{t.currentLocationLabel}:</span>
               </span>
 
-              {isManualLocked ? (
-                <span className="bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-[9px] px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5" />
-                  <span>Manual</span>
-                </span>
-              ) : (
-                <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-0.5">
-                  <ShieldCheck className="w-2.5 h-2.5" />
-                  <span>⚡ Auto GPS</span>
-                </span>
-              )}
+              <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-0.5">
+                <ShieldCheck className="w-2.5 h-2.5" />
+                <span>⚡ Auto GPS</span>
+              </span>
 
               {isAutoLoadingLocation && (
                 <span className="bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[9px] px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1 animate-pulse">
@@ -568,40 +508,25 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Controls: Location Picker Buttons & Wallet Balance */}
+        {/* Right Controls: Auto GPS Trigger & Wallet Balance */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap pt-1 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-[#132a1d]">
-          {/* Select Location (Manual Picker) */}
-          <button
-            type="button"
-            onClick={handleOpenManualPicker}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer border border-emerald-400/30"
-            title={getLangText('සිතියමෙන් ස්ථානය තෝරන්න', 'Select Location on Map', 'வரைபடத்தில் இடத்தைத் தேர்ந்தெடு')}
-          >
-            <Search className="w-3.5 h-3.5 text-emerald-200" />
-            <span>{getLangText('ස්ථානය තෝරන්න', 'Select Location', 'இடத்தைத் தேர்ந்தெடு')}</span>
-          </button>
-
           {/* Auto GPS Trigger */}
           <button
             type="button"
             onClick={handleDirectAutoGps}
             disabled={isAutoTracking}
-            className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-60 ${
-              !isManualLocked
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                : 'bg-slate-100 dark:bg-[#12281b] hover:bg-slate-200 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1b3a27]'
-            }`}
-            title={getLangText('සජීවී GPS මගින් ස්ථානය සොයාගන්න', 'Find Location via Live GPS', 'நேரலை GPS மூலம் இடத்தைக் கண்டறி')}
+            className="px-3 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-60 bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white border-emerald-400/30"
+            title={getLangText('සජීවී Auto GPS මගින් ස්ථානය නැවුම් කරන්න', 'Refresh Location via Live Auto GPS', 'நேரலை GPS மூலம் இடத்தைப் புதுப்பி')}
           >
             {isAutoTracking ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
                 <span>GPS...</span>
               </>
             ) : (
               <>
-                <Crosshair className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Auto GPS</span>
+                <Crosshair className="w-3.5 h-3.5 text-emerald-200" />
+                <span>⚡ Auto GPS</span>
               </>
             )}
           </button>
@@ -651,23 +576,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         </div>
       )}
 
-      {/* Map Location Tracker Modal */}
-      <MapLocationTracker
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        currentLocation={currentLocation}
-        availableLocations={availableLocations}
-        onSaveLocation={handleSaveLocationFromMap}
-        lang={language}
-        theme={theme}
-      />
-
       {/* GPS Permission & Direct Activation Guide Modal */}
       <GpsPermissionModal
         isOpen={isGpsPermissionModalOpen}
         onClose={() => setIsGpsPermissionModalOpen(false)}
-        onLocationSuccess={handleSaveLocationFromMap}
-        onOpenMapPicker={() => setIsMapModalOpen(true)}
+        onLocationSuccess={handleLocationSuccess}
         language={language}
       />
 

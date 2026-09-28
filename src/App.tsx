@@ -333,6 +333,9 @@ export default function App() {
           isInitialHelpPostsLoadRef.current = false;
         } else {
           const brandNewPosts = cleanedRemote.filter((p) => p && p.id && !knownHelpPostIdsRef.current.has(p.id));
+          if (brandNewPosts.length > 0) {
+            window.dispatchEvent(new CustomEvent('sahaya_new_post_published', { detail: { post: brandNewPosts[0] } }));
+          }
           brandNewPosts.forEach((newPost) => {
             knownHelpPostIdsRef.current.add(newPost.id);
             const isQuick = newPost.category === 'quick_services' || newPost.category === 'quick' || newPost.tagCategory === 'ඉක්මන් සේවා';

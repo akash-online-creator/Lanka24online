@@ -9,6 +9,8 @@ import {
   HelpCircle,
   Compass,
   Clock,
+  Calendar,
+  Sparkles,
   ExternalLink,
   User,
   Wrench,
@@ -36,6 +38,7 @@ import { translatePostWithGoogle } from '../utils/googleTranslator';
 import { renderTextWithLinks } from '../utils/textUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
+import { AudioVoicePlayer } from './AudioVoiceNote';
 
 interface QuickServiceDetailModalProps {
   post: HelpPost | null;
@@ -609,7 +612,70 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 </div>
               </div>
             );
-          })() : (
+          })() : (post.isVoicePost || post.audioUrl) ? (
+            /* DEDICATED VOICE REQUEST DETAIL PRESENTATION */
+            <div className="space-y-3">
+              {/* 🎙️ Voice Player Header Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-teal-950 to-emerald-950 border-2 border-emerald-500/80 shadow-md space-y-3 text-white">
+                <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                  <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                    <span>🎙️ {getLangText('AI හඬ ආධාර ඉල්ලීම (Voice Request)', 'AI Voice Request', 'AI குரல் உதவி கோரிக்கை')}</span>
+                  </span>
+                  {post.voiceLanguage && (
+                    <span className="text-[10px] bg-emerald-800/80 text-emerald-200 px-2.5 py-0.5 rounded-full font-bold uppercase">
+                      {post.voiceLanguage === 'si' ? 'සිංහල' : post.voiceLanguage === 'ta' ? 'தமிழ்' : 'English'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Auto Stamped Date, Time & Sent Location */}
+                {(post.voiceSentDate || post.voiceSentTime || post.voiceSentLocation) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 text-xs font-semibold text-emerald-100 border border-emerald-500/30">
+                    {post.voiceSentDate && (
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate font-mono">{post.voiceSentDate}</span>
+                      </div>
+                    )}
+                    {post.voiceSentTime && (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-teal-300 shrink-0" />
+                        <span className="truncate font-mono">{post.voiceSentTime}</span>
+                      </div>
+                    )}
+                    {post.voiceSentLocation && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span className="truncate">{post.voiceSentLocation}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {post.audioUrl && (
+                  <div className="pt-1">
+                    <AudioVoicePlayer 
+                      audioUrl={post.audioUrl} 
+                      durationSec={post.audioDurationSec || 5} 
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Spoken transcript note if available */}
+              {(post.voiceTranscript || (safeWhatHappened && !safeWhatHappened.startsWith('🎙️') && safeWhatHappened !== 'හඬ පණිවිඩය අසා සහය වන්න')) && (
+                <div className="p-3.5 bg-emerald-50/70 dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/50 rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="text-emerald-800 dark:text-emerald-300 font-black block mb-1">
+                    📝 {getLangText('හඬින් පැවසූ සටහන (Voice Note Text):', 'Voice Note Text:', 'குரல் குறிப்புரை:')}
+                  </span>
+                  <p className="leading-relaxed font-medium">
+                    {renderTextWithLinks(post.voiceTranscript || safeWhatHappened)}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
             /* STANDARD QUICK SERVICES VIEW */
             <>
               {/* 1. සිදුවී ඇති දේ (What Happened) */}
@@ -701,7 +767,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
           </div>
 
-          {post.category !== 'find_for_me' && (
+          {post.category !== 'find_for_me' && !post.isVoicePost && !post.audioUrl && (
             <>
               {/* 3. කොන්දේසි (Conditions) */}
               <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">

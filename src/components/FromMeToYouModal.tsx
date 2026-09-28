@@ -29,7 +29,6 @@ import {
 import { HelpPost, Language, LocationOption, User, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-import { MapLocationTracker } from './MapLocationTracker';
 import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 
 export type FromMeToYouType = 'donation' | 'giveaway' | 'exchange';
@@ -91,7 +90,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
   // Location save consent & details
   const [saveLocationConsent, setSaveLocationConsent] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<LocationOption>(currentLocation);
-  const [isMapTrackerOpen, setIsMapTrackerOpen] = useState(false);
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsDetectedMsg, setGpsDetectedMsg] = useState('');
 
@@ -850,15 +848,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                     <RefreshCw className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-spin' : ''}`} />
                     <span>Auto GPS Refresh</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsMapTrackerOpen(true)}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Navigation className="w-3.5 h-3.5 text-amber-300" />
-                    <span>සිතියම (Map)</span>
-                  </button>
                 </div>
 
                 {gpsDetectedMsg && (
@@ -1094,27 +1083,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
           </div>
         </form>
       </div>
-
-      {/* Map location picker modal */}
-      {isMapTrackerOpen && (
-        <MapLocationTracker
-          isOpen={isMapTrackerOpen}
-          onClose={() => setIsMapTrackerOpen(false)}
-          initialLat={selectedLocation.lat}
-          initialLng={selectedLocation.lng}
-          onLocationSelected={(lat, lng, locName) => {
-            setSelectedLocation({
-              id: `custom_${Date.now()}`,
-              nameSi: locName || 'සිතියමෙන් තෝරාගත් ස්ථානය',
-              nameEn: locName || 'Selected Location',
-              nameTa: locName || 'தேர்ந்தெடுக்கப்பட்ட இடம்',
-              lat,
-              lng,
-            });
-            setIsMapTrackerOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 };

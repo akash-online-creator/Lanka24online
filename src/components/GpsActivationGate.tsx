@@ -22,7 +22,6 @@ import {
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
-import { MapLocationTracker } from './MapLocationTracker';
 import { requestNotificationPermission, activateBackgroundWakeLock, playNotificationSound } from '../utils/notificationManager';
 
 interface GpsActivationGateProps {
@@ -45,7 +44,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
   const [activeGuideTab, setActiveGuideTab] = useState<'mobile' | 'desktop'>('mobile');
-  const [isManualMapOpen, setIsManualMapOpen] = useState(false);
 
   // Permission statuses
   const [locationGranted, setLocationGranted] = useState(false);
@@ -213,17 +211,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         maximumAge: 0,
       }
     );
-  };
-
-  const handleManualMapSelect = (loc: LocationOption) => {
-    localStorage.setItem('sahaya_current_location', JSON.stringify(loc));
-    localStorage.setItem('sahaya_manual_location_locked', 'true');
-    localStorage.setItem('sahaya_location_mode', 'manual');
-    localStorage.setItem('sahaya_gps_verified', 'true');
-    window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'manual' } }));
-
-    setIsManualMapOpen(false);
-    onProceedToLogin(loc);
   };
 
   const handleNextLanguage = () => {
@@ -519,15 +506,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           </div>
         )}
       </div>
-
-      {/* Manual Map Picker Modal */}
-      <MapLocationTracker
-        isOpen={isManualMapOpen}
-        onClose={() => setIsManualMapOpen(false)}
-        onSelectLocation={handleManualMapSelect}
-        language={language}
-        initialLocation={resolvedLocation || undefined}
-      />
     </div>
   );
 };

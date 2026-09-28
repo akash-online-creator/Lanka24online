@@ -1404,7 +1404,172 @@ export const PostCard: React.FC<PostCardProps> = ({
 
             </div>
           );
-        })() : (
+        })() : (post.isVoicePost || post.audioUrl) ? (
+          /* DEDICATED CLEAN VOICE HELP POST PRESENTATION */
+          <div className="space-y-3">
+            {/* 🎙️ Voice Note Player & AI Stamped Metadata */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-teal-950/90 to-emerald-950/90 border-2 border-emerald-500/80 shadow-md space-y-2.5 text-white">
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                  <span>🎙️ AI හඬ ආධාර ඉල්ලීම (Voice Request)</span>
+                </span>
+                {post.voiceLanguage && (
+                  <span className="text-[10px] bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase">
+                    {post.voiceLanguage === 'si' ? 'සිංහල' : post.voiceLanguage === 'ta' ? 'தமிழ்' : 'English'}
+                  </span>
+                )}
+              </div>
+
+              {/* Date, Time & Sent Location Info */}
+              {(post.voiceSentDate || post.voiceSentTime || post.voiceSentLocation) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-2 rounded-xl bg-black/40 text-[11px] font-semibold text-emerald-100 border border-emerald-500/30">
+                  {post.voiceSentDate && (
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span className="truncate font-mono">{post.voiceSentDate}</span>
+                    </div>
+                  )}
+                  {post.voiceSentTime && (
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-teal-300 shrink-0" />
+                      <span className="truncate font-mono">{post.voiceSentTime}</span>
+                    </div>
+                  )}
+                  {post.voiceSentLocation && (
+                    <div className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+                      <span className="truncate">{post.voiceSentLocation}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {post.audioUrl && (
+                <div className="pt-1">
+                  <AudioVoicePlayer 
+                    audioUrl={post.audioUrl} 
+                    durationSec={post.audioDurationSec || 5} 
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Spoken Voice Transcript Note (if available) without redundant form field headers */}
+            {(post.voiceTranscript || (safeWhatHappened && !safeWhatHappened.startsWith('🎙️') && safeWhatHappened !== 'හඬ පණිවිඩය අසා සහය වන්න')) && (
+              <div className="p-3 bg-emerald-50/70 dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/50 rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-200">
+                <span className="text-emerald-800 dark:text-emerald-300 font-black block mb-1">
+                  📝 හඬින් පැවසූ සටහන (Voice Note Text):
+                </span>
+                <p className="leading-relaxed font-medium">
+                  {renderTextWithLinks(post.voiceTranscript || safeWhatHappened)}
+                </p>
+              </div>
+            )}
+
+            {/* Media Attachments (Photo, Video) */}
+            {(post.imageUrl || post.videoUrl || post.externalLink) && (
+              <div className="pt-1 space-y-2">
+                {post.imageUrl && (
+                  <EmbeddedMediaViewer
+                    url={post.imageUrl}
+                    mediaType="image"
+                    telegramRecord={post.telegramStorage}
+                    compact={true}
+                    onImageClick={() => {
+                      if (onViewPost) onViewPost(post);
+                    }}
+                  />
+                )}
+                {(post.videoUrl || post.externalLink) && (
+                  <EmbeddedMediaViewer
+                    url={post.videoUrl || post.externalLink}
+                    telegramRecord={post.telegramStorage}
+                    compact={true}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Facebook-style Engagement Reaction & Counter Row */}
+            <div className="flex items-center justify-between pt-2 px-1 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-[#132a1d]">
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center -space-x-1">
+                  <span className="w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] shadow-2xs">❤️</span>
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] shadow-2xs">👍</span>
+                </span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {hasLiked ? `ඔබ සහ තවත් ${likesCount - 1} දෙනෙක්` : `${likesCount} දෙනෙකුගේ සහයෝගය`}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 font-semibold">
+                <span>{post.replies?.length || 0} සහායකයින්</span>
+                <span>•</span>
+                <span>{Math.max(12, (likesCount * 3) + 4)} නිරීක්ෂණ</span>
+              </div>
+            </div>
+
+            {/* Facebook-style 4-Button Social Action Bar */}
+            <div className="grid grid-cols-4 gap-1 pt-1 border-t border-slate-100 dark:border-[#132a1d]">
+              {/* 1. Like / Support Button */}
+              <button
+                type="button"
+                onClick={handleToggleLike}
+                className={`py-2 px-1 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                  hasLiked 
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400' 
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <Heart className={`w-4 h-4 ${hasLiked ? 'fill-rose-500 text-rose-500 animate-bounce' : ''}`} />
+                <span className="hidden xs:inline">{hasLiked ? 'සහයෝගය ✓' : 'සහයෝගය'}</span>
+              </button>
+
+              {/* 2. Direct Chat */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onOpenChat) onOpenChat(post);
+                  else onOfferSupport(post);
+                }}
+                className="py-2 px-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 font-bold text-xs text-slate-600 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden xs:inline">චැට්</span>
+              </button>
+
+              {/* 3. Call / WhatsApp Trigger */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (post.contactWhatsapp) {
+                    const cleanPhone = post.contactWhatsapp.replace(/\D/g, '').replace(/^0/, '94');
+                    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Hello regarding #${displayPostCode} on Sahaya Sewa:`)}`, '_blank');
+                  } else {
+                    setShowRequestSmsModal(true);
+                  }
+                }}
+                className="py-2 px-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 font-bold text-xs text-slate-600 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Phone className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span className="hidden xs:inline">අමතන්න</span>
+              </button>
+
+              {/* 4. Share */}
+              <button
+                type="button"
+                onClick={handleSharePost}
+                className="py-2 px-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 font-bold text-xs text-slate-600 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Share2 className="w-4 h-4 text-slate-500" />
+                <span className="hidden xs:inline">බෙදාගන්න</span>
+              </button>
+            </div>
+          </div>
+        ) : (
           /* STANDARD QUICK SERVICES / GENERAL SERVICES VIEW */
           <div className="space-y-3">
             {/* Post Main Text Content (Facebook Style) */}
