@@ -65,6 +65,7 @@ interface UnifiedDashboardHeaderProps {
   onOpenBarterExchange?: () => void;
   onOpenQrPay?: () => void;
   onOpenShortcutHub?: () => void;
+  onOpenInstallApp?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -95,6 +96,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenBarterExchange,
   onOpenQrPay,
   onOpenShortcutHub,
+  onOpenInstallApp,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -385,9 +387,22 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </div>
 
-          {/* Right Action & Account Zone: (1) 🚨 Red Alert Button + (2) Profile + (3) 🚪 Logout Button */}
+          {/* Right Action & Account Zone: (0) 📲 Install App Button + (1) 🚨 Red Alert Button + (2) Profile + (3) 🚪 Logout Button */}
           <div className="flex items-center justify-between lg:justify-end gap-2.5 sm:gap-3 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
             
+            {/* 📲 Install App Dedicated Action */}
+            {onOpenInstallApp && (
+              <button
+                type="button"
+                onClick={onOpenInstallApp}
+                className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/40 shrink-0"
+                title={language === 'en' ? 'Install Sahaya Sewa App to Home Screen' : language === 'ta' ? 'செயலியை நிறுவுக' : 'සහය සේවා App එක ඔබගේ දුරකථනයටම Install කරගන්න'}
+              >
+                <span className="text-sm sm:text-base">📲</span>
+                <span className="font-black tracking-wide hidden xs:inline">{language === 'en' ? 'Install App' : language === 'ta' ? 'நிறுவுக' : 'Install App'}</span>
+              </button>
+            )}
+
             {/* 🚨 රතු එළිය (Red Alert) Dedicated Standalone Emergency Action */}
             {onOpenRedAlert && (
               <button

@@ -12,7 +12,11 @@ import {
   PlusSquare, 
   ShieldCheck,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Check,
+  Globe,
+  Compass
 } from 'lucide-react';
 import { 
   canPromptInstall, 
@@ -42,6 +46,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
   const [isIOS, setIsIOS] = useState(isIOSDevice());
   const [isInstalling, setIsInstalling] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     setIsStandalone(isRunningInStandaloneMode());
@@ -85,6 +90,24 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     setIsFullscreen(active);
   };
 
+  const directUrl = typeof window !== 'undefined' ? window.location.href : 'https://ais-pre-arugkwlbojbp6jxjcd24un-234713481275.asia-southeast1.run.app';
+
+  const handleCopyLink = async () => {
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(directUrl);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 3000);
+      }
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleOpenInBrowser = () => {
+    window.open(directUrl, '_blank');
+  };
+
   const getLang = (si: string, en: string, ta: string) => {
     if (language === 'en') return en;
     if (language === 'ta') return ta;
@@ -93,7 +116,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/80 overflow-y-auto animate-fadeIn"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -110,10 +133,10 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
             </div>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-black tracking-wide truncate">
-                {getLang('ඇප් එකක් ලෙස Install කරගන්න', 'Install as Mobile App', 'செயலியாக நிறுவுக')}
+                {getLang('ඇප් එකක් ලෙස Download / Install කරන්න', 'Install as Mobile App (PWA)', 'செயலியாக பதிவிறக்குக')}
               </h2>
               <p className="text-[11px] sm:text-xs text-emerald-200 font-medium truncate">
-                {getLang('ලින්ක් එක (URL Bar) ඉවත් කර Fullscreen භාවිතා කරන්න', 'Hide browser URL bar & run in full screen', 'முழு திரையில் பயன்பாட்டை இயக்கவும்')}
+                {getLang('තිත් 3 (3-Dots) මෙනුව නැතිව හෝ කෙලින්ම Install කරගන්න', 'Direct install or open in standard browser', 'நேரடி நிறுவல்')}
               </p>
             </div>
           </div>
@@ -129,7 +152,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 text-slate-800 dark:text-slate-100">
 
           {/* Success State */}
           {installSuccess ? (
@@ -150,33 +173,23 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Highlight Explanation Card */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/15 via-emerald-500/10 to-transparent border border-amber-400/40 dark:border-amber-500/30 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-black text-amber-900 dark:text-amber-300">
-                  <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>{getLang('ලින්ක් එක සහ Browser තීරුව ඉවත් කරන්නේ කෙසේද?', 'How to hide the top URL link bar?', 'URL பட்டியை மறைப்பது எப்படி?')}</span>
-                </div>
-                <p className="text-xs text-slate-700 dark:text-zinc-200 leading-relaxed">
-                  {getLang(
-                    'වෙබ් බ්‍රවුසරයකින් (Chrome / Safari) වෙබ් අඩවියක් විවෘත කළ විට ඉහළින් ලින්ක් එක (Domain Name) දිස්වීම සාමාන්‍ය බ්‍රවුසර් ක්‍රියාවලියකි. මෙම පද්ධතිය ඔබගේ දුරකථනයේ App එකක් ලෙස **(Add to Home Screen / Install)** ස්ථාපනය කරගත් පසු, එය **ලින්ක් එකක් හෝ බ්‍රවුසර් තීරුවක් නොමැතිව 100% Fullscreen Native App** එකක් ලෙස ක්‍රියා කරයි.',
-                    'When opened in a regular web browser, the top link bar is shown by default. Installing it as a Mobile App (PWA) on your home screen completely removes the address bar, giving you a full-screen native app experience.',
-                    'உங்கள் தொலைபேசியில் செயலியை நிறுவுவதன் மூலம் முகவரி பட்டி இல்லாமல் முழு திரையில் இயக்கலாம்.'
-                  )}
-                </p>
-              </div>
-
-              {/* 1. Fast One-Click Install Button (When Supported on Chrome / Android / Edge) */}
-              {canInstall && (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white space-y-2 shadow-lg">
+              {/* Solution 1: Direct 1-Click Install Button (When supported) */}
+              {canInstall ? (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white space-y-2.5 shadow-lg">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
-                      {getLang('ක්ෂණික ස්ථාපනය (1-Click Install)', 'Instant Install', 'உடனடி நிறுவல்')}
+                    <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      {getLang('ක්‍රමය 01: ක්ෂණික 1-Click Install', 'Method 01: 1-Click Install', 'உடனடி நிறுவல்')}
                     </span>
-                    <span className="text-xs font-mono">PWA App</span>
+                    <span className="text-xs font-mono font-bold text-amber-300">PWA Native</span>
                   </div>
-                  <h4 className="text-sm sm:text-base font-black">
-                    {getLang('දුරකථනයේ App එකක් ලෙස Install කරන්න', 'Install Directly on Your Phone', 'தொலைபேசியில் நிறுவவும்')}
-                  </h4>
+                  <p className="text-xs text-emerald-100 leading-relaxed">
+                    {getLang(
+                      'බ්‍රවුසරයේ Dot 3 මෙනුව සෙවීම අවශ්‍ය නොවේ. පහත බොත්තම එබූ සැනින් ඔබගේ දුරකථනයටම App එක Install වේ.',
+                      'No need to search for 3 dots. Click below to install directly to your device.',
+                      'கீழே கிளிக் செய்து நேரடியாக நிறுவவும்.'
+                    )}
+                  </p>
                   <button
                     type="button"
                     onClick={handleNativeInstall}
@@ -184,105 +197,115 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
                     className="w-full py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-amber-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer mt-1"
                   >
                     <Download className="w-4 h-4" />
-                    <span>{getLang('📲 දැන්ම App එක Install කරන්න (Install Now)', '📲 Install App Now', '📲 இப்போது நிறுவவும்')}</span>
+                    <span>{isInstalling ? 'Install වෙමින් පවතී...' : getLang('📲 ක්ෂණිකව App එක Install කරන්න (Install Now)', '📲 Install App Now', '📲 இப்போது நிறுவவும்')}</span>
                   </button>
                 </div>
-              )}
+              ) : null}
 
-              {/* 2. Step-by-Step Manual Guidance for Android Chrome */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 text-xs">
-                <div className="flex items-center gap-2 font-black text-slate-900 dark:text-emerald-200">
-                  <span className="text-base">🤖</span>
-                  <span>{getLang('Android / Google Chrome භාවිතා කරන්නන් සඳහා:', 'For Android / Google Chrome Users:', 'Android / Chrome பயனர்களுக்கு:')}</span>
-                </div>
-
-                <div className="space-y-2 text-slate-700 dark:text-zinc-300">
-                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                      1
-                    </div>
-                    <div>
-                      බ්‍රවුසරයේ ඉහළ දකුණු කෙළවරේ ඇති තිත් තුන (<MoreVertical className="w-3.5 h-3.5 inline text-slate-600 dark:text-zinc-400" />) ඔබන්න.
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                      2
-                    </div>
-                    <div>
-                      මෙනුවෙන් <strong>"Install app"</strong> හෝ <strong>"Add to Home screen" (මුල් තිරයට එක් කරන්න)</strong> තෝරන්න.
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                      3
-                    </div>
-                    <div>
-                      දුරකථනයේ මුල් තිරයට ලැබෙන <strong>"සහය සේවා" App Icon එකෙන්</strong> ඇතුල් වන්න. (එවිට ඉහළ ලින්ක් බාර් එක කිසිසේත් නොපෙන්වයි).
-                    </div>
+              {/* Solution 2: Open in Standard Chrome Browser (Takes user outside of preview/fullscreen iframe) */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border-2 border-emerald-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-slate-900 dark:text-emerald-200">
+                    <Globe className="w-4 h-4 text-emerald-500" />
+                    <span>{getLang('ක්‍රමය 02: සෘජු බ්‍රවුසරයෙන් (Chrome) විවෘත කරන්න', 'Method 02: Open in Chrome / Safari', 'Chrome உலாவியில் திறக்கவும்')}</span>
                   </div>
                 </div>
-              </div>
 
-              {/* 3. Step-by-Step for iOS Safari (iPhone / iPad) */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 text-xs">
-                <div className="flex items-center gap-2 font-black text-slate-900 dark:text-emerald-200">
-                  <span className="text-base">🍎</span>
-                  <span>{getLang('iPhone / Apple Safari භාවිතා කරන්නන් සඳහා:', 'For iPhone / Safari Users:', 'iPhone / Safari பயனர்களுக்கு:')}</span>
-                </div>
+                <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+                  {getLang(
+                    'Preview / Full Screen තුළ සිටින විට බ්‍රවුසරයේ තිත් 3 (3-Dots) මෙනුව නොපෙනේ. පහත බොත්තම ඔබා Chrome බ්‍රවුසරයෙන් විවෘත කළ විට, දකුණුපස Dot 3 මෙනුව හා "Install app" විකල්පය දිස්වේ.',
+                    'The 3-dot menu is hidden when inside full screen or preview. Click below to open directly in Chrome/Safari to see the install option.',
+                    'நேரடியாக Chrome இல் திறந்து Dot 3 மெனு மூலம் நிறுவவும்.'
+                  )}
+                </p>
 
-                <div className="space-y-2 text-slate-700 dark:text-zinc-300">
-                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                      1
-                    </div>
-                    <div>
-                      Safari බ්‍රවුසරයේ පහළ ඇති <strong>Share (<Share className="w-3.5 h-3.5 inline text-sky-500" />)</strong> බොත්තම ඔබන්න.
-                    </div>
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenInBrowser}
+                    className="flex-1 py-3 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>{getLang('🌐 Chrome හි විවෘත කරන්න', 'Open in Chrome', 'Chrome இல் திறக்கவும்')}</span>
+                  </button>
 
-                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                      2
-                    </div>
-                    <div>
-                      පහළට scroll කර <strong>"Add to Home Screen" (<PlusSquare className="w-3.5 h-3.5 inline text-emerald-500" />)</strong> තෝරා <strong>Add</strong> ඔබන්න.
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="py-3 px-3.5 rounded-xl bg-white dark:bg-[#133022] hover:bg-slate-100 dark:hover:bg-[#1a402d] text-slate-800 dark:text-emerald-200 border border-slate-300 dark:border-emerald-800 font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-500" />
+                        <span>Link එක Copy විය!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-slate-500 dark:text-emerald-400" />
+                        <span>Link එක Copy කරන්න</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* 4. Instant In-Browser Fullscreen Feature */}
-              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 flex items-center justify-between gap-3">
+              {/* Solution 3: Fullscreen exit / toggle */}
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-[#1a1c0d] border border-amber-300 dark:border-[#3a3d1b] flex items-center justify-between gap-3">
                 <div className="space-y-0.5 min-w-0">
-                  <div className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
-                    <Maximize className="w-4 h-4 text-emerald-600" />
-                    <span>{getLang('පූර්ණ තිර මාදිලිය (Fullscreen Mode)', 'Fullscreen Mode', 'முழுத்திரை பயன்முறை')}</span>
+                  <div className="text-xs font-black text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                    <Maximize className="w-4 h-4 text-amber-600" />
+                    <span>{getLang('Full Screen පාලනය (Toggle Fullscreen)', 'Toggle Fullscreen', 'முழுத்திரை நிலை')}</span>
                   </div>
-                  <p className="text-[11px] text-slate-600 dark:text-zinc-300 truncate">
-                    {getLang('දැනටමත් ඇති තිරය ක්ෂණිකව Fullscreen කරගන්න', 'Toggle instant browser fullscreen', 'முழு திரையை உடனடியாக இயக்குக')}
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 truncate">
+                    {getLang('Full screen ඉවත් කළ විට බ්‍රවුසර් තීරුව දිස්වේ', 'Exit fullscreen to reveal browser UI', 'உலாவியின் பட்டியை காட்ட வெளியேறுக')}
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={handleToggleFullscreen}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-black text-xs shadow-sm transition-all active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
                 >
                   {isFullscreen ? (
                     <>
                       <Minimize className="w-3.5 h-3.5" />
-                      <span>{getLang('සාමාන්‍ය තිරය', 'Exit Fullscreen', 'வெளியேறு')}</span>
+                      <span>{getLang('Fullscreen ඉවත් කරන්න', 'Exit Fullscreen', 'வெளியேறு')}</span>
                     </>
                   ) : (
                     <>
                       <Maximize className="w-3.5 h-3.5" />
-                      <span>{getLang('Fullscreen යන්න', 'Enter Fullscreen', 'முழுத்திரை')}</span>
+                      <span>{getLang('Fullscreen යන්න', 'Fullscreen', 'முழுத்திரை')}</span>
                     </>
                   )}
                 </button>
+              </div>
+
+              {/* 4. Step-by-Step for Android Chrome & iOS */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 text-xs">
+                <div className="flex items-center gap-2 font-black text-slate-900 dark:text-emerald-200">
+                  <span className="text-base">📋</span>
+                  <span>{getLang('Chrome / Safari හි පියවරෙන් පියවර:', 'Step-by-step in Browser:', 'உலாவியில் படிப்படியான வழிகாட்டல்:')}</span>
+                </div>
+
+                <div className="space-y-2 text-slate-700 dark:text-zinc-300">
+                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
+                      1
+                    </div>
+                    <div>
+                      <strong>Android (Chrome):</strong> ඉහළ තිත් තුන (<MoreVertical className="w-3.5 h-3.5 inline text-slate-600 dark:text-zinc-400" />) ඔබා <strong>"Install app"</strong> හෝ <strong>"Add to Home screen"</strong> තෝරන්න.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2 rounded-xl bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#1a4730]">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center shrink-0">
+                      2
+                    </div>
+                    <div>
+                      <strong>iPhone (Safari):</strong> පහළ ඇති <strong>Share (<Share className="w-3.5 h-3.5 inline text-sky-500" />)</strong> ඔබා <strong>"Add to Home Screen" (<PlusSquare className="w-3.5 h-3.5 inline text-emerald-500" />)</strong> ඔබන්න.
+                    </div>
+                  </div>
+                </div>
               </div>
 
             </>

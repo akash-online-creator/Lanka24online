@@ -55,6 +55,7 @@ import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
+import { PWAInstallModal } from './PWAInstallModal';
 import { initialMarketItems } from '../data/marketplaceData';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
@@ -259,6 +260,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [maxDistanceRadius, setMaxDistanceRadius] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDemoRegisterPrompt, setShowDemoRegisterPrompt] = useState(false);
+  const [isPwaInstallModalOpen, setIsPwaInstallModalOpen] = useState(false);
 
   // Professional Services State (Synced with localStorage and initial data)
   const [professionalServices, setProfessionalServices] = useState<ProfessionalService[]>(() => {
@@ -1557,6 +1559,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setQrPayTargetRecipient(undefined);
           setIsQrPayModalOpen(true);
         }}
+        onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
       />
 
       {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
@@ -2727,6 +2730,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <SahayaSewaFeaturesPostModal
         isOpen={isFeaturesPostModalOpen}
         onClose={() => setIsFeaturesPostModalOpen(false)}
+        language={language}
+      />
+
+      {/* 📱 PWA Mobile App Download & Install Modal */}
+      <PWAInstallModal
+        isOpen={isPwaInstallModalOpen}
+        onClose={() => setIsPwaInstallModalOpen(false)}
         language={language}
       />
 
