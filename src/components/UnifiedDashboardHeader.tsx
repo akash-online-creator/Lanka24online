@@ -270,7 +270,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
       {/* 
         LAYER 1: Header Bar (App Logo + Central Quick Utilities + Emergency Red Alert & User Account / Logout Zone)
       */}
-      <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md backdrop-blur-xl transition-all duration-300">
+      <div className="bg-white dark:bg-[#07150d] border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md transition-all duration-300">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Top Bar on Mobile / Left on Desktop: App Brand + Language Switcher */}

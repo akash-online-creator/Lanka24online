@@ -279,7 +279,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       </div>
 
       {/* Main Glassmorphic Card */}
-      <div className="w-full rounded-3xl bg-white/95 dark:bg-[#0a1c12]/95 backdrop-blur-md border-2 border-emerald-500/40 shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
+      <div className="w-full rounded-3xl bg-white dark:bg-[#0a1c12] border-2 border-emerald-500/40 shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
         {/* App Logo & Header */}
         <div className="text-center space-y-1.5">
           <div className="flex justify-center">

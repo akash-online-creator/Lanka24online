@@ -158,7 +158,7 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
   return (
     <div className="w-full space-y-6 animate-fadeIn">
       {/* 1. Header Navigation with Back Button */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white/90 dark:bg-[#07130c]/90 border border-slate-200/80 dark:border-[#132a1d] rounded-3xl p-4 sm:p-5 shadow-sm backdrop-blur-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#07130c] border border-slate-200/80 dark:border-[#132a1d] rounded-3xl p-4 sm:p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <button
             type="button"

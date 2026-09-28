@@ -233,7 +233,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       </div>
 
       {/* Main Login Card */}
-      <div className="w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222] backdrop-blur-sm">
+      <div className="w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222]">
         
         {/* Switch back to PIN button if PIN is configured */}
         {storedPinData && (

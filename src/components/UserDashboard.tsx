@@ -1602,7 +1602,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-lg hover:shadow-xl shadow-red-600/30 border-2 border-red-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
                 <Droplet className="w-5 h-5 fill-white" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-red-700 shadow-md animate-pulse">
@@ -1623,7 +1623,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-lg hover:shadow-xl shadow-emerald-600/30 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
                 <ShieldCheck className="w-5 h-5 text-emerald-200" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-emerald-400 text-emerald-950 shadow-md">
@@ -1644,7 +1644,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg hover:shadow-xl shadow-amber-600/30 border-2 border-amber-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
                 <PhoneCall className="w-4 h-4 text-white" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-amber-800 shadow-md">
@@ -1665,7 +1665,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl shadow-purple-600/30 border-2 border-purple-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
                 <Mic className="w-4 h-4 text-white animate-pulse" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-purple-800 shadow-md flex items-center gap-1">
@@ -1683,10 +1683,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => setIsFeaturesPostModalOpen(true)}
-            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white shadow-lg hover:shadow-xl shadow-teal-600/30 border-2 border-teal-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
+            className="col-span-2 sm:col-span-1 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white shadow-lg hover:shadow-xl shadow-teal-600/30 border-2 border-teal-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
                 <Sparkles className="w-5 h-5 text-yellow-300" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-yellow-400 text-slate-950 shadow-md">
@@ -1703,7 +1703,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       </div>
 
       {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "සහය පුවරුව", "පණිවිඩ & සංවාද", and "සැකසුම්" */}
-      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5 backdrop-blur-md">
+      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {/* Button 1: සේවා ඉල්ලීම් */}
           <button
@@ -1820,7 +1820,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {postsWhereIWasSelected.length > 0 && (
         <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] text-white shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn border-2 border-emerald-400/50">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30">
               <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
             </div>
             <div className="space-y-1 min-w-0">
@@ -1850,7 +1850,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {myFlaggedPosts.length > 0 && (
         <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-rose-800 via-red-800 to-rose-900 text-white shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn border-2 border-rose-400/80">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30">
               <ShieldAlert className="w-6 h-6 text-yellow-300 animate-pulse" />
             </div>
             <div className="space-y-1 min-w-0">
@@ -1994,7 +1994,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
 
                 <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
                     <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
                   </div>
                   <div className="min-w-0 space-y-1">
@@ -2037,7 +2037,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
 
               <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
                   <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
                 </div>
                 <div className="min-w-0 space-y-1">

@@ -628,7 +628,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       )}
 
       {/* Top Header Bar with Back Button & Guide Trigger */}
-      <div className="bg-white/95 dark:bg-[#07130c]/95 border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-4 sm:p-5 shadow-lg backdrop-blur-xl flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white dark:bg-[#07130c] border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-4 sm:p-5 shadow-md flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             onClick={onBackToHome}
@@ -668,9 +668,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       </div>
 
       {/* Compact Feed Filter Tabs & Controls */}
-      <div className="bg-white/95 dark:bg-[#071710]/95 border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-3 sm:p-4 shadow-sm backdrop-blur-md space-y-3">
-        {/* Main Feed Category Buttons Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+      <div className="bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-3.5 sm:p-4 shadow-sm space-y-3">
+        
+        {/* Tier 1: 4 Core Primary Feed Tabs (Clean, High-Contrast 2x2 on Mobile, 4x1 on Tablet/Desktop) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {/* Tab 1: All Posts */}
           <button
             type="button"
@@ -679,49 +680,49 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               setSelectedCategoryTitle('');
               setActiveFeedTab('all');
             }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
+            className={`px-3 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
               !boardCategoryFilter && activeFeedTab === 'all'
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-500 shadow-md shadow-emerald-600/20 scale-[1.01]'
                 : 'bg-slate-50 dark:bg-slate-800/80 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700'
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <Megaphone className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <Megaphone className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <span className="truncate">{getLangText('සියලු දැන්වීම්', 'All Posts', 'அனைத்து')}</span>
             </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
+            <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black shrink-0 ${
               !boardCategoryFilter && activeFeedTab === 'all' ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
             }`}>
               {categoryCounts.all}
             </span>
           </button>
 
-          {/* Tab 1.5: Emergency & Pinned Community Alerts */}
+          {/* Tab 2: Emergency Alerts */}
           <button
             type="button"
             onClick={() => {
               setBoardCategoryFilter('');
-              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency & Pinned Alerts', '🚨 அவசர / முதன்மை'));
+              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency Alerts', '🚨 அவசர அறிவிப்புகள்'));
               setActiveFeedTab('emergency');
             }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
+            className={`px-3 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
               activeFeedTab === 'emergency'
-                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white border-red-400 shadow-md shadow-red-600/30 scale-[1.01] animate-pulse'
+                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white border-red-400 shadow-md shadow-red-600/30 scale-[1.01]'
                 : 'bg-red-50/70 dark:bg-red-950/30 hover:bg-red-100/80 dark:hover:bg-red-950/50 text-red-950 dark:text-red-200 border-red-200/90 dark:border-red-900/50'
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-600 dark:text-red-400 animate-bounce" />
-              <span className="truncate">{getLangText('හදිසි / ප්‍රමුඛතා', 'Emergency / Pinned', 'அவசரம்')}</span>
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400 animate-pulse" />
+              <span className="truncate">{getLangText('හදිසි / ආපදා', 'Emergency', 'அவசரம்')}</span>
             </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
+            <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black shrink-0 ${
               activeFeedTab === 'emergency' ? 'bg-white/30 text-white' : 'bg-red-200/80 dark:bg-red-900/60 text-red-950 dark:text-red-200'
             }`}>
               {categoryCounts.emergency}
             </span>
           </button>
 
-          {/* Tab 2: Quick Services */}
+          {/* Tab 3: Quick Services */}
           <button
             type="button"
             onClick={() => {
@@ -729,174 +730,24 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               setBoardCategoryFilter('quick_services');
               setSelectedCategoryTitle(getLangText('ඉක්මන් සේවා', 'Quick Services', 'விரைவு சேவை'));
             }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
+            className={`px-3 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
               activeFeedTab === 'quick_services' || boardCategoryFilter === 'quick_services'
                 ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-400 shadow-md shadow-amber-500/20 scale-[1.01]'
                 : 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/80 dark:hover:bg-amber-950/50 text-amber-950 dark:text-amber-200 border-amber-200/90 dark:border-amber-900/50'
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <Zap className="w-3.5 h-3.5 fill-current shrink-0 text-amber-500 dark:text-amber-300" />
+              <Zap className="w-4 h-4 fill-current shrink-0 text-amber-500 dark:text-amber-300" />
               <span className="truncate">{getLangText('ඉක්මන් සේවා', 'Quick Services', 'விரைவு')}</span>
             </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
+            <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black shrink-0 ${
               activeFeedTab === 'quick_services' || boardCategoryFilter === 'quick_services' ? 'bg-white/25 text-white' : 'bg-amber-200/80 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200'
             }`}>
               {categoryCounts.quick_services}
             </span>
           </button>
 
-          {/* Tab 3: Normal / General Services */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('normal_services');
-              setSelectedCategoryTitle(getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான சேவைகள்'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'normal_services'
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/20 scale-[1.01]'
-                : 'bg-blue-50/70 dark:bg-blue-950/30 hover:bg-blue-100/80 dark:hover:bg-blue-950/50 text-blue-950 dark:text-blue-200 border-blue-200/90 dark:border-blue-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Wrench className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-              <span className="truncate">{getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'normal_services' ? 'bg-white/25 text-white' : 'bg-blue-200/70 dark:bg-blue-900/60 text-blue-950 dark:text-blue-200'
-            }`}>
-              {categoryCounts.normal_services}
-            </span>
-          </button>
-
-          {/* Tab 4: Professional Services */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('professional_services');
-              setSelectedCategoryTitle(getLangText('වෘත්තීය සේවා', 'Professional Services', 'தொழில்முறை'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'professional_services'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white border-purple-400 shadow-md shadow-purple-500/20 scale-[1.01]'
-                : 'bg-purple-50/70 dark:bg-purple-950/30 hover:bg-purple-100/80 dark:hover:bg-purple-950/50 text-purple-950 dark:text-purple-200 border-purple-200/90 dark:border-purple-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Briefcase className="w-3.5 h-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
-              <span className="truncate">{getLangText('වෘත්තීය සේවා', 'Professional', 'தொழில்முறை')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'professional_services' ? 'bg-white/25 text-white' : 'bg-purple-200/70 dark:bg-purple-900/60 text-purple-950 dark:text-purple-200'
-            }`}>
-              {categoryCounts.professional_services}
-            </span>
-          </button>
-
-          {/* Tab 5: Group Work */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('group_work');
-              setSelectedCategoryTitle(getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'group_work'
-                ? 'bg-gradient-to-r from-teal-600 to-emerald-700 text-white border-teal-400 shadow-md shadow-teal-500/20 scale-[1.01]'
-                : 'bg-teal-50/70 dark:bg-teal-950/30 hover:bg-teal-100/80 dark:hover:bg-teal-950/50 text-teal-950 dark:text-teal-200 border-teal-200/90 dark:border-teal-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Users className="w-3.5 h-3.5 shrink-0 text-teal-500 dark:text-teal-400" />
-              <span className="truncate">{getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'group_work' ? 'bg-white/25 text-white' : 'bg-teal-200/70 dark:bg-teal-900/60 text-teal-950 dark:text-teal-200'
-            }`}>
-              {categoryCounts.group_work}
-            </span>
-          </button>
-
-          {/* Tab 6: Marketplace */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('marketplace');
-              setSelectedCategoryTitle(getLangText('වෙළඳපොල', 'Marketplace', 'சந்தை'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'marketplace'
-                ? 'bg-gradient-to-r from-rose-600 to-orange-600 text-white border-rose-400 shadow-md shadow-rose-500/20 scale-[1.01]'
-                : 'bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-100/80 dark:hover:bg-rose-950/50 text-rose-950 dark:text-rose-200 border-rose-200/90 dark:border-rose-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Store className="w-3.5 h-3.5 shrink-0 text-rose-500 dark:text-rose-400" />
-              <span className="truncate">{getLangText('වෙළඳපොල', 'Marketplace', 'சந்தை')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'marketplace' ? 'bg-white/25 text-white' : 'bg-rose-200/70 dark:bg-rose-900/60 text-rose-950 dark:text-rose-200'
-            }`}>
-              {categoryCounts.marketplace}
-            </span>
-          </button>
-
-          {/* Tab 7: Find For Me */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('find_for_me');
-              setSelectedCategoryTitle(getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடித்துத் தருக'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'find_for_me'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.01]'
-                : 'bg-cyan-50/70 dark:bg-cyan-950/30 hover:bg-cyan-100/80 dark:hover:bg-cyan-950/50 text-cyan-950 dark:text-cyan-200 border-cyan-200/90 dark:border-cyan-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Search className="w-3.5 h-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" />
-              <span className="truncate">{getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடிக்க')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'find_for_me' ? 'bg-white/25 text-white' : 'bg-cyan-200/70 dark:bg-cyan-900/60 text-cyan-950 dark:text-cyan-200'
-            }`}>
-              {categoryCounts.find_for_me}
-            </span>
-          </button>
-
-          {/* Tab 8: From Me To You */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFeedTab('all');
-              setBoardCategoryFilter('from_me_to_you');
-              setSelectedCategoryTitle(getLangText('මගෙන් ඔබට', 'From Me To You', 'என்னிடமிருந்து ನಿಮಗೆ'));
-            }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
-              boardCategoryFilter === 'from_me_to_you'
-                ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white border-pink-400 shadow-md shadow-pink-500/20 scale-[1.01]'
-                : 'bg-pink-50/70 dark:bg-pink-950/30 hover:bg-pink-100/80 dark:hover:bg-pink-950/50 text-pink-950 dark:text-pink-200 border-pink-200/90 dark:border-pink-900/50'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Gift className="w-3.5 h-3.5 shrink-0 text-pink-500 dark:text-pink-400" />
-              <span className="truncate">{getLangText('මගෙන් ඔබට', 'From Me To You', 'பரிසுகள்')}</span>
-            </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
-              boardCategoryFilter === 'from_me_to_you' ? 'bg-white/25 text-white' : 'bg-pink-200/70 dark:bg-pink-900/60 text-pink-950 dark:text-pink-200'
-            }`}>
-              {categoryCounts.from_me_to_you}
-            </span>
-          </button>
-
-          {/* Tab 9: Saved Posts */}
+          {/* Tab 4: Saved Posts */}
           <button
             type="button"
             onClick={() => {
@@ -904,22 +755,167 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               setBoardCategoryFilter('');
               setSelectedCategoryTitle(getLangText('සුරැකි දැන්වීම්', 'Saved Posts', 'சேமித்தவை'));
             }}
-            className={`px-3 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
+            className={`px-3 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all duration-200 cursor-pointer flex items-center justify-between gap-1.5 border shadow-2xs ${
               activeFeedTab === 'saved'
                 ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white border-amber-400 shadow-md shadow-amber-600/20 scale-[1.01]'
                 : 'bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100/80 dark:hover:bg-amber-950/50 text-amber-950 dark:text-amber-200 border-amber-200/80 dark:border-amber-900/50'
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <Bookmark className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <span className="truncate">{getLangText('සුරැකි', 'Saved', 'சேமித்தவை')}</span>
+              <Bookmark className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span className="truncate">{getLangText('සුරැකි දැන්වීම්', 'Saved Posts', 'சேமித்தவை')}</span>
             </div>
-            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] font-black shrink-0 ${
+            <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-black shrink-0 ${
               activeFeedTab === 'saved' ? 'bg-white/25 text-white' : 'bg-amber-200/70 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200'
             }`}>
               {categoryCounts.saved}
             </span>
           </button>
+        </div>
+
+        {/* Tier 2: Horizontal Scrollable Category Pills Ribbon (Smooth, Zero Clipping, High Readability) */}
+        <div className="pt-2 border-t border-slate-100 dark:border-[#132a1d]">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 scroll-smooth no-scrollbar select-none">
+            
+            {/* Pill 1: Normal Services */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'normal_services' ? '' : 'normal_services');
+                setSelectedCategoryTitle(boardCategoryFilter === 'normal_services' ? '' : getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான சேவைகள்'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'normal_services'
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                  : 'bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-900 dark:text-blue-200 border-blue-200/80 dark:border-blue-900/60'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 text-blue-500 dark:text-blue-300" />
+              <span>{getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'normal_services' ? 'bg-white/20 text-white' : 'bg-blue-200/70 dark:bg-blue-900/60 text-blue-950 dark:text-blue-200'
+              }`}>
+                {categoryCounts.normal_services}
+              </span>
+            </button>
+
+            {/* Pill 2: Professional Services */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'professional_services' ? '' : 'professional_services');
+                setSelectedCategoryTitle(boardCategoryFilter === 'professional_services' ? '' : getLangText('වෘත්තීය සේවා', 'Professional Services', 'தொழில்முறை'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'professional_services'
+                  ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
+                  : 'bg-purple-50/80 dark:bg-purple-950/40 hover:bg-purple-100 text-purple-900 dark:text-purple-200 border-purple-200/80 dark:border-purple-900/60'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-purple-500 dark:text-purple-300" />
+              <span>{getLangText('වෘත්තීය සේවා', 'Professional', 'தொழில்முறை')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'professional_services' ? 'bg-white/20 text-white' : 'bg-purple-200/70 dark:bg-purple-900/60 text-purple-950 dark:text-purple-200'
+              }`}>
+                {categoryCounts.professional_services}
+              </span>
+            </button>
+
+            {/* Pill 3: Group Work */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'group_work' ? '' : 'group_work');
+                setSelectedCategoryTitle(boardCategoryFilter === 'group_work' ? '' : getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'group_work'
+                  ? 'bg-teal-600 text-white border-teal-500 shadow-xs'
+                  : 'bg-teal-50/80 dark:bg-teal-950/40 hover:bg-teal-100 text-teal-900 dark:text-teal-200 border-teal-200/80 dark:border-teal-900/60'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-teal-500 dark:text-teal-300" />
+              <span>{getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'group_work' ? 'bg-white/20 text-white' : 'bg-teal-200/70 dark:bg-teal-900/60 text-teal-950 dark:text-teal-200'
+              }`}>
+                {categoryCounts.group_work}
+              </span>
+            </button>
+
+            {/* Pill 4: Marketplace */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'marketplace' ? '' : 'marketplace');
+                setSelectedCategoryTitle(boardCategoryFilter === 'marketplace' ? '' : getLangText('වෙළඳපොල', 'Marketplace', 'சந்தை'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'marketplace'
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-xs'
+                  : 'bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-900 dark:text-rose-200 border-rose-200/80 dark:border-rose-900/60'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5 text-rose-500 dark:text-rose-300" />
+              <span>{getLangText('වෙළඳපොල', 'Marketplace', 'சந்தை')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'marketplace' ? 'bg-white/20 text-white' : 'bg-rose-200/70 dark:bg-rose-900/60 text-rose-950 dark:text-rose-200'
+              }`}>
+                {categoryCounts.marketplace}
+              </span>
+            </button>
+
+            {/* Pill 5: Find For Me */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'find_for_me' ? '' : 'find_for_me');
+                setSelectedCategoryTitle(boardCategoryFilter === 'find_for_me' ? '' : getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடித்துத் தருக'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'find_for_me'
+                  ? 'bg-cyan-600 text-white border-cyan-500 shadow-xs'
+                  : 'bg-cyan-50/80 dark:bg-cyan-950/40 hover:bg-cyan-100 text-cyan-900 dark:text-cyan-200 border-cyan-200/80 dark:border-cyan-900/60'
+              }`}
+            >
+              <Search className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-300" />
+              <span>{getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடிக்க')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'find_for_me' ? 'bg-white/20 text-white' : 'bg-cyan-200/70 dark:bg-cyan-900/60 text-cyan-950 dark:text-cyan-200'
+              }`}>
+                {categoryCounts.find_for_me}
+              </span>
+            </button>
+
+            {/* Pill 6: From Me To You */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFeedTab('all');
+                setBoardCategoryFilter(boardCategoryFilter === 'from_me_to_you' ? '' : 'from_me_to_you');
+                setSelectedCategoryTitle(boardCategoryFilter === 'from_me_to_you' ? '' : getLangText('මගෙන් ඔබට', 'From Me To You', 'என்னிடமிருந்து ನಿಮಗೆ'));
+              }}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs whitespace-nowrap ${
+                boardCategoryFilter === 'from_me_to_you'
+                  ? 'bg-pink-600 text-white border-pink-500 shadow-xs'
+                  : 'bg-pink-50/80 dark:bg-pink-950/40 hover:bg-pink-100 text-pink-900 dark:text-pink-200 border-pink-200/80 dark:border-pink-900/60'
+              }`}
+            >
+              <Gift className="w-3.5 h-3.5 text-pink-500 dark:text-pink-300" />
+              <span>{getLangText('මගෙන් ඔබට', 'From Me To You', 'பரிசுகள்')}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                boardCategoryFilter === 'from_me_to_you' ? 'bg-white/20 text-white' : 'bg-pink-200/70 dark:bg-pink-900/60 text-pink-950 dark:text-pink-200'
+              }`}>
+                {categoryCounts.from_me_to_you}
+              </span>
+            </button>
+
+          </div>
         </div>
 
         {/* Action Toolbar: Category Filter Drawer Trigger & Distance Toggle */}
@@ -935,7 +931,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             }`}
           >
             <Filter className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{getLangText('කාණ්ඩ පෙරහන්', 'Category Filter', 'வகை வடிகட்டி')}</span>
+            <span>{getLangText('සියලු කාණ්ඩ පෙරහන්', 'All Category Filter', 'அனைத்து வகை வடிகட்டி')}</span>
             {showCategoryGrid ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
 

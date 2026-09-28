@@ -56,7 +56,7 @@ export const SmartSearchSynonymPrompt: React.FC<SmartSearchSynonymPromptProps> =
 
   return (
     <div
-      className={`p-3.5 sm:p-4 bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-teal-500/15 border-2 border-amber-400 dark:border-amber-500/80 rounded-2xl shadow-lg backdrop-blur-md animate-fadeIn text-slate-900 dark:text-slate-100 ${className}`}
+      className={`p-3.5 sm:p-4 bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-teal-500/15 border-2 border-amber-400 dark:border-amber-500/80 rounded-2xl shadow-lg animate-fadeIn text-slate-900 dark:text-slate-100 ${className}`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         
