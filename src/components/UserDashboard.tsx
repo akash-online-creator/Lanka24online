@@ -54,6 +54,7 @@ import { NotificationCenterModal } from './NotificationCenterModal';
 import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
+import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
 import { initialMarketItems } from '../data/marketplaceData';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
@@ -358,6 +359,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
   const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
+  const [isFeaturesPostModalOpen, setIsFeaturesPostModalOpen] = useState(false);
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
     userId: string;
     name: string;
@@ -1589,7 +1591,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
           {/* Button 1: Blood & Disaster Relief Hub */}
           <button
             type="button"
@@ -1673,6 +1675,27 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('AI හඬ සහය (Voice SOS & Help)', 'AI Voice SOS & Help', 'AI குரல் உதவி')}
+              </h4>
+            </div>
+          </button>
+
+          {/* Button 5: Sahaya Sewa Features Post (විශේෂ විශේෂාංග සටහන) */}
+          <button
+            type="button"
+            onClick={() => setIsFeaturesPostModalOpen(true)}
+            className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white shadow-lg hover:shadow-xl shadow-teal-600/30 border-2 border-teal-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform backdrop-blur-xs">
+                <Sparkles className="w-5 h-5 text-yellow-300" />
+              </div>
+              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-yellow-400 text-slate-950 shadow-md">
+                POST
+              </span>
+            </div>
+            <div className="min-w-0 mt-2">
+              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
+                {getLangText('විශේෂ විශේෂාංග සටහන', 'Features Guide Post', 'சிறப்பு அம்சங்கள்')}
               </h4>
             </div>
           </button>
@@ -2689,6 +2712,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <PickMeAlertSettingsModal
         isOpen={isPickMeAlertModalOpen}
         onClose={() => setIsPickMeAlertModalOpen(false)}
+        language={language}
+      />
+
+      {/* 🌟 Sahaya Sewa Features Post & Guide Modal */}
+      <SahayaSewaFeaturesPostModal
+        isOpen={isFeaturesPostModalOpen}
+        onClose={() => setIsFeaturesPostModalOpen(false)}
         language={language}
       />
 

@@ -1,15 +1,17 @@
-// 🚨 PickMe-Style Background Audio & Alert Engine for Sahaya Sewa
-// Plays urgent audio ringtones and pushes background notifications even when minimized or app is closed
+// 🚨 24/7 Background Notification & Emergency Alert Engine for Sahaya Sewa
+// Operates 24/7 in background via Service Worker, Web Push, and Background Sync
+// Uses classic emergency siren for Red Alerts and pleasant gentle chimes for general notifications
 
 import { activateBackgroundWakeLock } from './notificationManager';
+import { startEmergencySiren, stopEmergencySiren } from './sirenAudio';
 
 export type AlertKind = 'quick_service' | 'red_alert' | 'emergency_blood' | 'disaster_relief' | 'general';
 
-export interface PickMeAlertSettings {
+export interface BackgroundAlertSettings {
   backgroundAlertsEnabled: boolean;
   volume: number; // 0.0 - 1.0
   vibrationEnabled: boolean;
-  repeatDurationSeconds: number; // 15, 30, 60, 0 (infinite until dismiss)
+  notificationPushEnabled: boolean;
   soundTypes: {
     quick_service: boolean;
     red_alert: boolean;
@@ -17,6 +19,8 @@ export interface PickMeAlertSettings {
     disaster_relief: boolean;
   };
 }
+
+export type PickMeAlertSettings = BackgroundAlertSettings; // Backwards compatibility
 
 export interface ActiveRingtoneState {
   isRinging: boolean;
@@ -29,12 +33,12 @@ export interface ActiveRingtoneState {
   startedAt: number;
 }
 
-const SETTINGS_STORAGE_KEY = 'sahaya_pickme_alert_settings';
-const DEFAULT_SETTINGS: PickMeAlertSettings = {
+const SETTINGS_STORAGE_KEY = 'sahaya_24h_background_alert_settings';
+const DEFAULT_SETTINGS: BackgroundAlertSettings = {
   backgroundAlertsEnabled: true,
-  volume: 0.9,
+  volume: 0.8,
   vibrationEnabled: true,
-  repeatDurationSeconds: 30,
+  notificationPushEnabled: true,
   soundTypes: {
     quick_service: true,
     red_alert: true,
@@ -43,13 +47,12 @@ const DEFAULT_SETTINGS: PickMeAlertSettings = {
   },
 };
 
-// Global audio state
-let audioCtx: AudioContext | null = null;
-let ringInterval: any = null;
-let autoStopTimeout: any = null;
+// Global active alert state
 let currentRingtoneState: ActiveRingtoneState | null = null;
 let originalDocumentTitle = typeof document !== 'undefined' ? document.title : 'සහය සේවා';
 let titleBlinkInterval: any = null;
+let autoDismissTimeout: any = null;
+let audioCtx: AudioContext | null = null;
 
 const stateListeners = new Set<(state: ActiveRingtoneState | null) => void>();
 
@@ -73,9 +76,9 @@ function notifyStateChange() {
 }
 
 // Read settings
-export function getPickMeAlertSettings(): PickMeAlertSettings {
+export function getPickMeAlertSettings(): BackgroundAlertSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY) || localStorage.getItem('sahaya_pickme_alert_settings');
     if (raw) {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_SETTINGS, ...parsed };
@@ -85,165 +88,55 @@ export function getPickMeAlertSettings(): PickMeAlertSettings {
 }
 
 // Save settings
-export function savePickMeAlertSettings(settings: Partial<PickMeAlertSettings>) {
+export function savePickMeAlertSettings(settings: Partial<BackgroundAlertSettings>) {
   try {
     const current = getPickMeAlertSettings();
     const updated = { ...current, ...settings };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem('sahaya_pickme_alert_settings', JSON.stringify(updated));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('sahaya_pickme_settings_updated', { detail: updated }));
     }
   } catch {}
 }
 
-// Initialize Web Audio Context (must be triggered or unlocked by user gesture)
-function getAudioContext(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextClass) return null;
+// Soft pleasant notification chime (single tone, non-annoying)
+function playGentleNotificationChime(vol: number) {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
 
-  if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new AudioContextClass();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
-  return audioCtx;
-}
+    if (!audioCtx || audioCtx.state === 'closed') {
+      audioCtx = new AudioContextClass();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
 
-// Unlock audio on first user touch / click
-if (typeof window !== 'undefined') {
-  const unlock = () => {
-    try {
-      const ctx = getAudioContext();
-      if (ctx && ctx.state === 'suspended') {
-        ctx.resume();
-      }
-    } catch {}
-    window.removeEventListener('click', unlock);
-    window.removeEventListener('touchstart', unlock);
-    window.removeEventListener('keydown', unlock);
-  };
-  window.addEventListener('click', unlock, { once: true });
-  window.addEventListener('touchstart', unlock, { once: true });
-  window.addEventListener('keydown', unlock, { once: true });
-
-  // Listen to ServiceWorker stop command
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data && (event.data.type === 'STOP_ALERT_AUDIO' || event.data.action === 'stop')) {
-        stopPickMeAlert();
-      }
-    });
-  }
-}
-
-// 🎵 Individual Sound Pattern Synthesizers
-function playQuickServiceTone(ctx: AudioContext, vol: number) {
-  const now = ctx.currentTime;
-  // PickMe-like high tempo melodic sequence: C5 -> E5 -> G5 -> C6 -> E6
-  const notes = [
-    { freq: 523.25, time: 0.00, dur: 0.12, type: 'triangle' },
-    { freq: 659.25, time: 0.12, dur: 0.12, type: 'triangle' },
-    { freq: 783.99, time: 0.24, dur: 0.14, type: 'triangle' },
-    { freq: 1046.50, time: 0.38, dur: 0.20, type: 'sine' },
-    { freq: 1318.51, time: 0.58, dur: 0.35, type: 'sine' },
-  ];
-
-  notes.forEach((n) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const start = now + n.time;
-
-    osc.type = n.type as OscillatorType;
-    osc.frequency.setValueAtTime(n.freq, start);
-
-    gain.gain.setValueAtTime(0.001, start);
-    gain.gain.linearRampToValueAtTime(vol * 0.45, start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + n.dur);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(start);
-    osc.stop(start + n.dur + 0.05);
-  });
-}
-
-function playRedAlertSirenTone(ctx: AudioContext, vol: number) {
-  const now = ctx.currentTime;
-  // Siren pitch modulation (wailing emergency tone)
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'sawtooth';
-  // Rapid pitch sweep up and down
-  osc.frequency.setValueAtTime(650, now);
-  osc.frequency.exponentialRampToValueAtTime(1300, now + 0.4);
-  osc.frequency.exponentialRampToValueAtTime(650, now + 0.8);
-
-  gain.gain.setValueAtTime(vol * 0.5, now);
-  gain.gain.linearRampToValueAtTime(vol * 0.55, now + 0.4);
-  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.85);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  osc.start(now);
-  osc.stop(now + 0.9);
-}
-
-function playEmergencyBloodTone(ctx: AudioContext, vol: number) {
-  const now = ctx.currentTime;
-  // Urgent triple medical telemetry beep
-  const beeps = [0, 0.22, 0.44];
-
-  beeps.forEach((offset, idx) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const start = now + offset;
-    const freq = idx === 2 ? 1568 : 1174.66; // High peak at end
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, start);
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.setValueAtTime(880, now + 0.12); // A5
 
-    gain.gain.setValueAtTime(vol * 0.4, start);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.16);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(start);
-    osc.stop(start + 0.18);
-  });
-}
-
-function playDisasterReliefTone(ctx: AudioContext, vol: number) {
-  const now = ctx.currentTime;
-  // Deep multi-tone dispatch chime: A4 -> C#5 -> E5 -> A5
-  const notes = [440, 554.37, 659.25, 880];
-
-  notes.forEach((freq, idx) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const start = now + idx * 0.12;
-
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, start);
-
-    gain.gain.setValueAtTime(0.01, start);
-    gain.gain.linearRampToValueAtTime(vol * 0.38, start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+    const safeVol = Math.max(0.05, Math.min(vol * 0.3, 0.4));
+    gain.gain.setValueAtTime(safeVol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(audioCtx.destination);
 
-    osc.start(start);
-    osc.stop(start + 0.4);
-  });
+    osc.start(now);
+    osc.stop(now + 0.5);
+  } catch (e) {
+    // silently catch if browser policy blocks audio before user interaction
+  }
 }
 
-// 🚨 Main Trigger Function (PickMe Style Looping Background Audio & Notifications)
+// 🚨 Main 24/7 Trigger Function
 export function triggerPickMeAlert(params: {
   kind: AlertKind;
   title: string;
@@ -255,17 +148,16 @@ export function triggerPickMeAlert(params: {
 }): boolean {
   const settings = getPickMeAlertSettings();
 
-  // Check if specific sound is enabled
+  // Check if background notifications are enabled
   if (!settings.backgroundAlertsEnabled && !params.forceRingtone) return false;
   if (params.kind === 'quick_service' && !settings.soundTypes.quick_service && !params.forceRingtone) return false;
   if (params.kind === 'red_alert' && !settings.soundTypes.red_alert && !params.forceRingtone) return false;
   if (params.kind === 'emergency_blood' && !settings.soundTypes.emergency_blood && !params.forceRingtone) return false;
   if (params.kind === 'disaster_relief' && !settings.soundTypes.disaster_relief && !params.forceRingtone) return false;
 
-  // Stop any currently playing ringtone first
+  // Stop any previous state
   stopPickMeAlert();
 
-  // Update State
   currentRingtoneState = {
     isRinging: true,
     kind: params.kind,
@@ -278,81 +170,59 @@ export function triggerPickMeAlert(params: {
   };
   notifyStateChange();
 
-  // 1. Wake Lock to keep processor / audio awake in mobile background
+  // 1. Activate Background Wake Lock
   activateBackgroundWakeLock().catch(() => {});
 
-  // 2. Play initial sound pattern
-  const ctx = getAudioContext();
-  const vol = settings.volume || 0.9;
-
-  const playStep = () => {
-    if (!currentRingtoneState?.isRinging) return;
-    const activeCtx = getAudioContext();
-    if (!activeCtx) return;
-
-    if (params.kind === 'quick_service') {
-      playQuickServiceTone(activeCtx, vol);
-      if (settings.vibrationEnabled && navigator.vibrate) {
-        navigator.vibrate([300, 100, 300, 200, 500]);
-      }
-    } else if (params.kind === 'red_alert') {
-      playRedAlertSirenTone(activeCtx, vol);
-      if (settings.vibrationEnabled && navigator.vibrate) {
-        navigator.vibrate([600, 200, 600, 200, 900]);
-      }
-    } else if (params.kind === 'emergency_blood') {
-      playEmergencyBloodTone(activeCtx, vol);
-      if (settings.vibrationEnabled && navigator.vibrate) {
-        navigator.vibrate([250, 100, 250, 100, 400]);
-      }
-    } else {
-      playDisasterReliefTone(activeCtx, vol);
-      if (settings.vibrationEnabled && navigator.vibrate) {
-        navigator.vibrate([400, 150, 400]);
-      }
-    }
-  };
-
-  if (ctx) {
-    playStep();
+  // 2. Play Audio:
+  // For emergency Red Alerts -> play the classic original siren sound
+  // For normal alerts -> play single gentle chime (no annoying continuous loops)
+  if (params.kind === 'red_alert') {
+    try {
+      startEmergencySiren();
+    } catch {}
+  } else {
+    playGentleNotificationChime(settings.volume);
   }
 
-  // Set recurring loop interval (PickMe style continuous ringtone)
-  const loopIntervalMs = params.kind === 'red_alert' ? 950 : params.kind === 'quick_service' ? 1600 : 1800;
-  ringInterval = setInterval(playStep, loopIntervalMs);
+  // 3. Vibration
+  if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
+    try {
+      if (params.kind === 'red_alert') {
+        navigator.vibrate([600, 200, 600, 200, 900]);
+      } else {
+        navigator.vibrate([200, 100, 200]);
+      }
+    } catch {}
+  }
 
-  // Set auto-stop timer if configured (e.g. 30 seconds)
-  const durationSec = settings.repeatDurationSeconds > 0 ? settings.repeatDurationSeconds : 45;
-  autoStopTimeout = setTimeout(() => {
+  // 4. Auto dismiss banner after 12 seconds
+  if (autoDismissTimeout) clearTimeout(autoDismissTimeout);
+  autoDismissTimeout = setTimeout(() => {
     stopPickMeAlert();
-  }, durationSec * 1000);
+  }, 12000);
 
-  // 3. Document Title Blinking Alert
+  // 5. Document Title Notification
   if (typeof document !== 'undefined') {
     originalDocumentTitle = document.title;
     let isBlink = false;
-    const alertPrefix = params.kind === 'red_alert' 
-      ? '🚨 [හදිසි ආපදාවක්!]' 
-      : params.kind === 'quick_service' 
-      ? '⚡ [නව ඉක්මන් සේවාවක්!]' 
-      : params.kind === 'emergency_blood' 
-      ? '🩸 [හදිසි ලේ ඉල්ලීමක්!]' 
-      : '📢 [නව දැනුම්දීමක්!]';
+    const alertPrefix = params.kind === 'red_alert' ? '🚨 [හදිසි ආපදාවක්!]' : '📢 [නව දැනුම්දීමක්!]';
 
     if (titleBlinkInterval) clearInterval(titleBlinkInterval);
     titleBlinkInterval = setInterval(() => {
       document.title = isBlink ? `${alertPrefix} සහය සේවා` : originalDocumentTitle;
       isBlink = !isBlink;
-    }, 800);
+    }, 1000);
   }
 
-  // 4. Fire System Background Notification via Service Worker
+  // 6. Push System 24/7 OS Notification (works even when tab/screen is closed)
   fireBackgroundPushNotification(params);
 
   return true;
 }
 
-// Helper for Browser & Service Worker Push Notification
+export const triggerBackgroundAlert = triggerPickMeAlert;
+
+// 24/7 Background System OS Push Notification
 async function fireBackgroundPushNotification(params: {
   kind: AlertKind;
   title: string;
@@ -365,7 +235,7 @@ async function fireBackgroundPushNotification(params: {
   if (Notification.permission !== 'granted') return;
 
   const fullBody = `${params.message}${params.locationName ? ` • 📍 ${params.locationName}` : ''}`;
-  const tagId = `pickme-alert-${params.kind}-${Date.now()}`;
+  const tagId = `sahaya-24h-alert-${params.kind}-${Date.now()}`;
 
   if ('serviceWorker' in navigator) {
     try {
@@ -376,8 +246,8 @@ async function fireBackgroundPushNotification(params: {
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: tagId,
-          vibrate: [400, 150, 400, 150, 600],
-          requireInteraction: true,
+          vibrate: [300, 100, 300],
+          requireInteraction: params.kind === 'red_alert',
           data: {
             url: '/',
             targetModal: params.targetModal,
@@ -386,7 +256,7 @@ async function fireBackgroundPushNotification(params: {
           },
           actions: [
             { action: 'open', title: '👁️ විස්තර බලන්න (Open)' },
-            { action: 'stop', title: '⏹️ ශබ්දය නවත්වන්න (Stop Sound)' },
+            { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' },
           ],
         });
         return;
@@ -400,7 +270,6 @@ async function fireBackgroundPushNotification(params: {
       icon: '/logo.jpg',
       badge: '/logo.jpg',
       tag: tagId,
-      requireInteraction: true,
     });
     notif.onclick = () => {
       window.focus();
@@ -418,15 +287,15 @@ async function fireBackgroundPushNotification(params: {
   } catch {}
 }
 
-// ⏹️ Stop Ringtone & Audio Alert immediately
+// ⏹️ Stop Siren & Banner
 export function stopPickMeAlert(): void {
-  if (ringInterval) {
-    clearInterval(ringInterval);
-    ringInterval = null;
-  }
-  if (autoStopTimeout) {
-    clearTimeout(autoStopTimeout);
-    autoStopTimeout = null;
+  try {
+    stopEmergencySiren();
+  } catch {}
+
+  if (autoDismissTimeout) {
+    clearTimeout(autoDismissTimeout);
+    autoDismissTimeout = null;
   }
   if (titleBlinkInterval) {
     clearInterval(titleBlinkInterval);
@@ -446,6 +315,8 @@ export function stopPickMeAlert(): void {
   notifyStateChange();
 }
 
+export const stopAlertAudio = stopPickMeAlert;
+
 export function isPickMeAlertRinging(): boolean {
   return currentRingtoneState !== null && currentRingtoneState.isRinging;
 }
@@ -454,19 +325,13 @@ export function getCurrentRingtoneState(): ActiveRingtoneState | null {
   return currentRingtoneState;
 }
 
-// Test / Preview helper
+// Preview / Test
 export function previewPickMeSound(kind: AlertKind): Promise<void> {
   return new Promise((resolve) => {
     triggerPickMeAlert({
       kind,
-      title: kind === 'quick_service' 
-        ? '⚡ ඉක්මන් සේවා පණිවිඩ නාදය (PickMe Style)' 
-        : kind === 'red_alert' 
-        ? '🚨 රතු එළිය ආපදා සිරන් නාදය' 
-        : kind === 'emergency_blood' 
-        ? '🩸 හදිසි ලේ ඉල්ලීම් නාදය' 
-        : '📦 ආපදා සහන නිවේදන නාදය',
-      message: 'පසුබිමේ නාද වන ශබ්දය නිවැරදිව පරීක්ෂා කෙරේ.',
+      title: kind === 'red_alert' ? '🚨 රතු අනතුරු ඇඟවීමේ නාදය' : '🔔 සහය සේවා පණිවිඩ නාදය',
+      message: '24/7 පසුබිම් දැනුම්දීම් පරීක්ෂාව සාර්ථකයි.',
       locationName: 'කොළඹ / ශ්‍රී ලංකාව',
       forceRingtone: true,
     });
@@ -474,6 +339,6 @@ export function previewPickMeSound(kind: AlertKind): Promise<void> {
     setTimeout(() => {
       stopPickMeAlert();
       resolve();
-    }, 6000);
+    }, 4000);
   });
 }

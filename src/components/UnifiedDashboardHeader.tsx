@@ -34,7 +34,8 @@ import {
   MessageSquare,
   QrCode,
   ArrowRightLeft,
-  Volume2
+  Volume2,
+  Zap
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -66,6 +67,7 @@ interface UnifiedDashboardHeaderProps {
   activeRedAlertsCount?: number;
   onOpenBarterExchange?: () => void;
   onOpenQrPay?: () => void;
+  onOpenShortcutHub?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -95,6 +97,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   activeRedAlertsCount = 0,
   onOpenBarterExchange,
   onOpenQrPay,
+  onOpenShortcutHub,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -334,13 +337,13 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* PickMe Background Audio & Alerts Control */}
+            {/* 24/7 Background Sync & Audio Alerts Control */}
             {onOpenPickMeAlertSettings && (
               <button
                 type="button"
                 onClick={onOpenPickMeAlertSettings}
                 className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
-                title="PickMe පන්නයේ පසුබිම් හඬ සහ දැනුම්දීම් පාලනය (Background Audio Alerts)"
+                title={language === 'en' ? '24/7 Background Sync & Audio Alert Settings' : language === 'ta' ? '24/7 பின்னணி அறிவிப்புகள் & ஒலி' : '24/7 පසුබිම් දැනුම්දීම් හා ශ්‍රව්‍ය පාලනය (24/7 Background Sync)'}
               >
                 <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </button>
@@ -376,6 +379,19 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               >
                 <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="hidden sm:inline font-black text-xs">QR Pay</span>
+              </button>
+            )}
+
+            {/* ⚡ Sahaya Quick Hub Shortcut Button */}
+            {onOpenShortcutHub && (
+              <button
+                type="button"
+                onClick={onOpenShortcutHub}
+                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/80 text-amber-900 dark:text-amber-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
+                title={language === 'en' ? 'Quick Hub (Facebook-Style Shortcut App)' : language === 'ta' ? 'குயிக் ஹப்' : 'Quick Hub (Facebook ආකාරයේ Shortcut ඇප් එක)'}
+              >
+                <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span className="hidden md:inline font-black text-xs">Quick Hub</span>
               </button>
             )}
 

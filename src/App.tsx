@@ -74,6 +74,7 @@ import { triggerPickMeAlert, stopPickMeAlert } from './utils/backgroundAlertEngi
 import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
+import { ShortcutHubView } from './components/ShortcutHubView';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -116,6 +117,21 @@ export default function App() {
     const isGpsVerified = localStorage.getItem('sahaya_gps_verified') === 'true';
     const hasSavedLocation = Boolean(localStorage.getItem('sahaya_current_location'));
     
+    // Check if Direct Shortcut Hub is requested via URL
+    const isHubRequested = typeof window !== 'undefined' && window.location.search && (
+      window.location.search.includes('app=hub') || 
+      window.location.search.includes('mode=hub') || 
+      window.location.search.includes('shortcut=true') ||
+      window.location.search.includes('view=hub') ||
+      window.location.search.includes('app=shortcut')
+    );
+
+    if (isHubRequested) {
+      try {
+        sessionStorage.setItem('sahaya_redirect_hub', 'true');
+      } catch {}
+    }
+
     // Check if valid normal approved user is already logged in
     const savedUserStr = localStorage.getItem('sahaya_current_user');
     if (savedUserStr) {
@@ -129,7 +145,7 @@ export default function App() {
           return 'pending';
         }
         if (savedUser && (savedUser.status === 'approved' || savedUser.isDemo)) {
-          return 'dashboard';
+          return isHubRequested ? 'shortcut_hub' : 'dashboard';
         }
       } catch {}
     }
