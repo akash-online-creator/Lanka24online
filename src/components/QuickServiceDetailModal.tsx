@@ -157,7 +157,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     lang
   );
 
-  const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
+  const displayPostCode = (post?.postCode && typeof post.postCode === 'string') 
+    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`) 
+    : (post?.id ? `#${post.id.slice(-6)}` : '#POST');
   const helpersCount = post.helpersNeeded || post.helpersCount || 1;
 
   const isConfirmed = Boolean(post.isConfirmed);
@@ -400,7 +402,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
             const effectiveIncidentDate = post.incidentDate || (post.createdAt?.includes('මීට') ? 'අද' : post.createdAt) || '';
             const effectiveIncidentTime = post.incidentTime || '';
             const effectiveDelivery = post.deliveryOption || post.transport || 'ගෙනවිත් දෙන්න ඒ සදහා මම ඔබට වෙනම ගෙවන්නම්';
-            const effectiveOtherDetails = post.otherDetails || (post.conditions && !post.conditions.startsWith('ගණුදෙනුව') && !post.conditions.startsWith('සම්බන්ධ') ? post.conditions : '');
+            const effectiveOtherDetails = post.otherDetails || (post.conditions && typeof post.conditions === 'string' && !post.conditions.startsWith('ගණුදෙනුව') && !post.conditions.startsWith('සම්බන්ධ') ? post.conditions : '');
             const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
             const safeIdentifyingInfo = hasContactPermission 
               ? post.identifyingInfo 

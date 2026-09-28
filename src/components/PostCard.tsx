@@ -285,7 +285,9 @@ export const PostCard: React.FC<PostCardProps> = ({
     activeCardLang
   );
 
-  const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
+  const displayPostCode = (post?.postCode && typeof post.postCode === 'string') 
+    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`) 
+    : (post?.id ? `#${post.id.slice(-6)}` : '#POST');
   const helpersCount = post.helpersNeeded || post.helpersCount || 1;
 
   // Extract confirmed helper info if present
@@ -748,7 +750,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             activeCardLang
           );
           const effectiveOtherDetails = translateText(
-            effectivePost.otherDetails || (effectivePost.conditions && !effectivePost.conditions.startsWith('ගණුදෙනුව') && !effectivePost.conditions.startsWith('සම්බන්ධ') && !effectivePost.conditions.startsWith('අයිතිකරු') ? effectivePost.conditions : ''),
+            effectivePost.otherDetails || (effectivePost.conditions && typeof effectivePost.conditions === 'string' && !effectivePost.conditions.startsWith('ගණුදෙනුව') && !effectivePost.conditions.startsWith('සම්බන්ධ') && !effectivePost.conditions.startsWith('අයිතිකරු') ? effectivePost.conditions : ''),
             activeCardLang
           );
           const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
@@ -1141,7 +1143,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           const locName = effectivePost.locationName || (activeCardLang === 'en' ? 'Location Confirmed' : activeCardLang === 'ta' ? 'இடம் உறுதிப்படுத்தப்பட்டது' : 'ස්ථානය තහවුරු කර ඇත');
           const whatsapp = post.contactWhatsapp || post.userPhone || '';
           const details = translateText(
-            effectivePost.otherDetails || (effectivePost.conditions && !effectivePost.conditions.startsWith('ස්ථානය') ? effectivePost.conditions : ''),
+            effectivePost.otherDetails || (effectivePost.conditions && typeof effectivePost.conditions === 'string' && !effectivePost.conditions.startsWith('ස්ථානය') ? effectivePost.conditions : ''),
             activeCardLang
           );
 

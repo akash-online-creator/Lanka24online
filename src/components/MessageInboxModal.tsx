@@ -642,7 +642,9 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                     )}
 
                     <span className="bg-white/20 text-white font-mono text-[11px] px-2 py-1 rounded-lg border border-white/20 font-black">
-                      {activeThread.post.postCode.startsWith('#') ? activeThread.post.postCode : `#${activeThread.post.postCode}`}
+                      {(activeThread.post?.postCode && typeof activeThread.post.postCode === 'string')
+                        ? (activeThread.post.postCode.startsWith('#') ? activeThread.post.postCode : `#${activeThread.post.postCode}`)
+                        : '#POST'}
                     </span>
 
                     <button

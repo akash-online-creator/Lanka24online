@@ -361,7 +361,9 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
                 )}
 
                 <span className="bg-white/20 text-white font-mono text-[11px] px-2 py-1 rounded-lg border border-white/20 font-black">
-                  {post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`}
+                  {(post?.postCode && typeof post.postCode === 'string')
+                    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`)
+                    : '#POST'}
                 </span>
 
                 <button

@@ -128,7 +128,9 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
     lang
   );
 
-  const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
+  const displayPostCode = (post?.postCode && typeof post.postCode === 'string') 
+    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`) 
+    : (post?.id ? `#${post.id.slice(-6)}` : '#POST');
   const helpersCount = post.helpersNeeded || post.helpersCount || 1;
   const repliesCount = post.replies?.length || post.repliesCount || 0;
 

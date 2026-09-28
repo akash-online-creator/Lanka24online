@@ -311,7 +311,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
     return contacts.filter((item) => {
       // Category filter
       if (selectedCategory === 'community') {
-        if (!item.submittedByUserId && !item.id.startsWith('custom_emg_')) {
+        if (!item.submittedByUserId && !(item.id && typeof item.id === 'string' && item.id.startsWith('custom_emg_'))) {
           return false;
         }
       } else if (selectedCategory !== 'all' && item.category !== selectedCategory) {
@@ -589,7 +589,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
 
                     {/* Direct Call & Copy Controls */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isAdmin && contact.id.startsWith('custom_emg_') && (
+                      {isAdmin && contact.id && typeof contact.id === 'string' && contact.id.startsWith('custom_emg_') && (
                         <button
                           type="button"
                           onClick={() => handleDeleteContact(contact.id)}

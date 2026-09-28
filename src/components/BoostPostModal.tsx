@@ -223,7 +223,9 @@ export const BoostPostModal: React.FC<BoostPostModalProps> = ({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-black text-xs sm:text-sm bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-2.5 py-0.5 rounded-lg shadow-xs">
-                      {post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`}
+                      {(post?.postCode && typeof post.postCode === 'string')
+                        ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`)
+                        : '#POST'}
                     </span>
                     <span className="text-xs font-black text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
                       📁 {getCategoryDisplayName()}

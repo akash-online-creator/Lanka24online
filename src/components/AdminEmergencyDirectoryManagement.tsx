@@ -87,7 +87,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
   }, [contacts]);
 
   const communityContacts = useMemo(() => {
-    return (contacts || []).filter((c) => c && (c.submittedByUserId || (c.id && c.id.startsWith('custom_emg_'))));
+    return (contacts || []).filter((c) => c && (c.submittedByUserId || (c.id && typeof c.id === 'string' && c.id.startsWith('custom_emg_'))));
   }, [contacts]);
 
   const pendingAlerts = useMemo(() => {
@@ -532,7 +532,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
             filteredList.filter(Boolean).map((contact, cIdx) => {
               if (!contact) return null;
               const isFlagged = contact.isInactiveDeactivated || (contact.reportedInactiveCount && contact.reportedInactiveCount > 0);
-              const isCommunity = Boolean(contact.submittedByUserId || (contact.id && contact.id.startsWith('custom_emg_')));
+              const isCommunity = Boolean(contact.submittedByUserId || (contact.id && typeof contact.id === 'string' && contact.id.startsWith('custom_emg_')));
 
               return (
                 <div
@@ -665,7 +665,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                         <Edit className="w-4 h-4" />
                       </button>
 
-                      {Boolean(contact.id && contact.id.startsWith('custom_emg_')) && (
+                      {Boolean(contact.id && typeof contact.id === 'string' && contact.id.startsWith('custom_emg_')) && (
                         <button
                           type="button"
                           onClick={() => contact.id && handleDelete(contact.id)}
