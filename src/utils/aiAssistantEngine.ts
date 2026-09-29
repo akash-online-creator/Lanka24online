@@ -219,43 +219,135 @@ function resolveAuthKnowledge(
     }
   }
 
-  // 2. How to register / Registration help
-  if (lower.includes('ලියාපදිංචි') || lower.includes('register') || lower.includes('ගිණුමක්') || lower.includes('signup') || lower.includes('sign up') || lower.includes('பதிவு')) {
+  // 2. Data Safety & Privacy inquiries in Auth Mode (තොරතුරු ආරක්ෂිතද / Privacy)
+  const isSafetyQuery =
+    lower.includes('ආරක්ෂිත') ||
+    lower.includes('ආරක්ෂා') ||
+    lower.includes('safe') ||
+    lower.includes('security') ||
+    lower.includes('privacy') ||
+    lower.includes('රහස්‍ය') ||
+    lower.includes('දත්ත') ||
+    lower.includes('data') ||
+    lower.includes('பாதுகாப்ப');
+
+  if (isSafetyQuery) {
     if (lang === 'en') {
       return {
-        text: '📝 **How to Register a New Account**:\n1. Click the **Register** button.\n2. Enter your Name, User ID (unique username), WhatsApp Phone Number, and District.\n3. Take or upload your Face Photo, NIC Front Photo, and NIC Back Photo clearly.\n4. Set a secure password and submit.\n5. Once verified by our administrators for safety, your account will be activated!',
+        text: `🔒 **Is your data and information safe on Sahaya Sewa?**
+
+**Yes, 100%!** All your personal data, identity documents, and interactions are strictly secured:
+
+1. 🔒 **NIC & Profile Privacy**: Your National Identity Card (NIC) photo and private details are **never published publicly**. They are exclusively accessible to verified system administrators solely for identity authentication and anti-fraud verification.
+2. 🛡️ **Cloud Encryption (SSL/TLS)**: All data transmissions and stored records are secured using enterprise 256-bit SSL encryption and protected by Firestore Security Rules.
+3. 🚫 **No Third-Party Sharing**: We never sell, share, or disclose your phone numbers, addresses, or photos to any advertisers or third-party entities.
+4. 🤝 **Trusted Community**: Identity verification ensures real, authentic community members for mutual aid and safety.`,
         actions: [
-          { type: 'switch_to_register', label: '📝 Open Registration Form' },
-          { type: 'open_issues_help', label: '❓ Help & Support' },
+          { type: 'switch_to_register', label: '📝 Create Secure Account' },
+          { type: 'switch_to_login', label: '🔑 Sign In' },
         ],
-        quickChips: ['How to take NIC photos?', 'How long does approval take?', 'Password requirements'],
+        quickChips: ['How to register?', 'What photos are needed?'],
       };
     } else if (lang === 'ta') {
       return {
-        text: '📝 **புதிய கணக்கை எவ்வாறு பதிவு செய்வது**:\n1. **பதிவு செய்க** பொத்தானைக் கிளிக் செய்யவும்.\n2. பெயர், பயனர் ஐடி, வாட்ஸ்அப் எண் மற்றும் மாவட்டத்தை உள்ளிடவும்.\n3. உங்கள் முகம், அடையாள அட்டையின் முன்பக்கம் மற்றும் பின்பக்கம் புகைப்படங்களை தெளிவாகப் பதிவேற்றவும்.\n4. கடவுச்சொல்லை அமைத்து சமர்ப்பிக்கவும். நிர்வாகி அனுமதித்தவுடன் கணக்கு செயல்படும்.',
+        text: `🔒 **சகாய சேவா தளத்தில் உங்கள் தகவல்கள் பாதுகாப்பானதா?**
+
+**ஆம், 100% பாதுகாப்பானது!**
+
+1. 🔒 **அடையாள அட்டை ரகசியம்**: உங்கள் அடையாள அட்டை (NIC) மற்றும் தனிப்பட்ட விவரங்கள் பொதுமக்களுக்குக் காட்டப்படாது. கணக்குச் சரிபார்ப்புக்கு மட்டுமே நிர்வாகிகளால் பயன்படுத்தப்படும்.
+2. 🛡️ **குறியாக்கம் (Encryption)**: அனைத்து தகவல்களும் உயர் மட்ட SSL பாதுகாப்புடன் சேமிக்கப்படுகின்றன.
+3. 🚫 **மூன்றாம் தரப்பினருக்கு வழங்கப்படாது**: உங்கள் தொலைபேசி எண் அல்லது விவரங்கள் யாருக்கும் விற்கப்படவோ பகிரப்படவோ மாட்டாது.`,
         actions: [
-          { type: 'switch_to_register', label: '📝 பதிவு படிவத்தைத் திறக்கவும்' },
-          { type: 'open_issues_help', label: '❓ உதவி கோரிக்கை' },
+          { type: 'switch_to_register', label: '📝 பாதுகாப்பான கணக்கை உருவாக்கவும்' },
+          { type: 'switch_to_login', label: '🔑 உள்நுழைக' },
         ],
-        quickChips: ['NIC புகைப்படம் எப்படி எடுப்பது?', 'அனுமதி நேரம் எவ்வளவு?'],
+        quickChips: ['பதிவு செய்வது எப்படி?', 'என்ன ஆவணங்கள் தேவை?'],
       };
     } else {
       return {
-        text: '📝 **නව ගිණුමක් ලියාපදිංචි කරගන්නේ කෙසේද?**:\n1. **ලියාපදිංචි වන්න** බොත්තම ඔබන්න.\n2. ඔබගේ නම, කැමති පරිශීලක නාමය (User ID), WhatsApp දුරකථන අංකය, ලිපිනය, දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය ඇතුළත් කරන්න.\n3. ඔබගේ මුහුණේ ඡායාරූපය, ජාතික හැඳුනුම්පතේ (NIC) ඉදිරිපස සහ පසුපස ඡායාරූප පැහැදිලිව ලබාගන්න.\n4. ආරක්ෂිත මුරපදයක් ඇතුළත් කර Submit කරන්න. පරිපාලක අනුමැතියෙන් පසු ගිණුම සක්‍රිය වේ.',
+        text: `🔒 **සහය සේවා පද්ධතිය තුළ ඔබගේ තොරතුරු ආරක්ෂිතද?**
+
+**ඔව්, 100% ක්ම සුරක්ෂිතයි!** ඔබගේ දත්ත සහ පුද්ගලික තොරතුරු පද්ධතිය තුළ ඉහළම ආරක්ෂාවක් සහිතව (Highly Secure & Encrypted) පවත්වාගෙන යනු ලැබේ:
+
+1. 🔒 **හැඳුනුම්පත් (NIC) සහ තොරතුරු රහස්‍යභාවය**: ඔබ ලබාදෙන ජාතික හැඳුනුම්පත් (NIC) ඡායාරූප හෝ පුද්ගලික රහස්‍ය තොරතුරු **කිසිදු සාමාන්‍ය පරිශීලකයෙකුට හෝ ප්‍රසිද්ධියට පත් නොවේ**. ඒවා පරිශීලනය කරන්නේ ගිණුම සත්‍යාපනය (Verification) සඳහා බලයලත් Admin වරුන් විසින් පමණි.
+2. 🛡️ **Cloud Encryption & Security Rules**: සියලුම දත්ත Cloud Firestore සහ ආරක්ෂිත සේවාදායකයන් තුළ SSL/TLS 256-bit Encryption මඟින් සංකේතනය කර ඇත. අනවසර ප්‍රවේශයන් සම්පූර්ණයෙන්ම වළක්වා ඇත.
+3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදීම (No Third-Party Sharing)**: ඔබගේ දුරකථන අංක, ලිපිනයන් හෝ දත්ත කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට හෝ තෙවන පාර්ශ්වයකට කිසිසේත්ම විකුණන්නේ හෝ ලබා දෙන්නේ නැත.
+4. 🤝 **ව්‍යාජ ගිණුම්වලින් තොර සත්‍යාපිත සමාජයක්**: ප්‍රජා උපකාර, ආධාර බෙදාහැරීම් සහ ලේ පරිත්‍යාග විශ්වාසනීයව සිදු කිරීමට පමණක් මෙම සත්‍යාපනය ක්‍රියාත්මක වේ.`,
         actions: [
-          { type: 'switch_to_register', label: '📝 ලියාපදිංචි පෝරමයට යන්න' },
-          { type: 'open_issues_help', label: '❓ ගැටලු සහ උපකාර' },
+          { type: 'switch_to_register', label: '📝 සුරක්ෂිතව ලියාපදිංචි වන්න' },
+          { type: 'switch_to_login', label: '🔑 Login වන්න' },
         ],
-        quickChips: ['NIC ඡායාරූප ගන්නේ කොහොමද?', 'ගිණුම අනුමත වීමට කොපමණ වේලාවක් ගතවේද?', 'මුරපද රීති මොනවාද?'],
+        quickChips: ['ලියාපදිංචි වන්නේ කෙසේද?', 'අවශ්‍ය ඡායාරූප මොනවාද?', 'Login ගැටලුවක්'],
       };
     }
   }
 
-  // 3. Taking NIC / Face Photos
+  // 3. How to register / Registration help (Strictly 2 photos: Face photo + NIC front photo only)
+  if (lower.includes('ලියාපදිංචි') || lower.includes('register') || lower.includes('ගිණුමක්') || lower.includes('signup') || lower.includes('sign up') || lower.includes('பதிவு')) {
+    if (lang === 'en') {
+      return {
+        text: `📝 **How to Register a New Account (Step-by-Step)**:
+
+1. Click the **Register** button on the screen.
+2. Enter your Name, unique User ID, WhatsApp Phone Number, Address, District, and Police Division.
+3. **Upload only 2 photos**:
+   • 📸 **Clear Face Photo** (Profile Selfie).
+   • 🆔 **NIC Front Photo ONLY** (National Identity Card Front).
+   *(NIC back photo or other documents are NOT required).*
+4. Set a secure password and submit.
+5. Once verified by our administrators for safety, your account will be activated!`,
+        actions: [
+          { type: 'switch_to_register', label: '📝 Open Registration Form' },
+          { type: 'open_issues_help', label: '❓ Help & Support' },
+        ],
+        quickChips: ['How to take NIC front photo?', 'Is my data safe?', 'Password requirements'],
+      };
+    } else if (lang === 'ta') {
+      return {
+        text: `📝 **புதிய கணக்கை எவ்வாறு பதிவு செய்வது (படிபடியாக)**:
+
+1. **பதிவு செய்க** பொத்தானைக் கிளிக் செய்யவும்.
+2. பெயர், பயனர் ஐடி, வாட்ஸ்அப் எண், முகவரி, மாவட்டம் ஆகியவற்றை உள்ளிடவும்.
+3. **2 புகைப்படங்கள் மட்டுமே தேவை**:
+   • 📸 **தெளிவான முகப் புகைப்படம்** (Selfie).
+   • 🆔 **அடையாள அட்டையின் முன்பக்க புகைப்படம் மட்டுமே (NIC Front Only)**.
+   *(பின்பக்க புகைப்படம் தேவையில்லை).*
+4. கடவுச்சொல்லை அமைத்து சமர்ப்பிக்கவும். நிர்வாகி அனுமதித்தவுடன் கணக்கு செயல்படும்.`,
+        actions: [
+          { type: 'switch_to_register', label: '📝 பதிவு படிவத்தைத் திறக்கவும்' },
+          { type: 'open_issues_help', label: '❓ உதவி கோரிக்கை' },
+        ],
+        quickChips: ['NIC புகைப்படம் எப்படி எடுப்பது?', 'தகவல் பாதுகாப்பானதா?'],
+      };
+    } else {
+      return {
+        text: `📝 **නව ගිණුමක් ලියාපදිංචි කරගන්නේ කෙසේද? (පියවරෙන් පියවර)**:
+
+1. **ලියාපදිංචි වන්න** බොත්තම ඔබන්න.
+2. ඔබගේ නම, කැමති පරිශීලක නාමය (User ID), WhatsApp දුරකථන අංකය, ලිපිනය, දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය ඇතුළත් කරන්න.
+3. **ලබාගත යුත්තේ ඡායාරූප 2ක් පමණි**:
+   • 📸 **පැහැදිලි මුහුණේ ඡායාරූපයක් (Face Photo / Selfie)**.
+   • 🆔 **ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය පමණි (NIC Front Photo Only)**.
+   *(හැඳුනුම්පතේ පිටුපස (Back) ඡායාරූප හෝ වෙනත් ලිපි ලේඛන අවශ්‍ය නොවේ).*
+4. ආරක්ෂිත මුරපදයක් ඇතුළත් කර Submit කරන්න. පරිපාලක අනුමැතියෙන් පසු ගිණුම සක්‍රිය වේ.`,
+        actions: [
+          { type: 'switch_to_register', label: '📝 ලියාපදිංචි පෝරමයට යන්න' },
+          { type: 'open_issues_help', label: '❓ ගැටලු සහ උපකාර' },
+        ],
+        quickChips: ['NIC ඉදිරිපස ඡායාරූප ගන්නේ කොහොමද?', 'තොරතුරු ආරක්ෂිතද?', 'මුරපද රීති මොනවාද?'],
+      };
+    }
+  }
+
+  // 4. Taking NIC Front / Face Photos
   if (lower.includes('nic') || lower.includes('හැඳුනුම්පත') || lower.includes('photo') || lower.includes('ඡායාරූප') || lower.includes('කාඩ්පත') || lower.includes('புகைப்படம்')) {
     if (lang === 'en') {
       return {
-        text: '🆔 **Guidance for NIC & Face Photos**:\n• **Face Photo**: Ensure good lighting with your entire face clearly visible directly into the camera.\n• **NIC Front & Back**: Place your ID on a flat dark surface. Ensure all text and numbers are sharp and free from light reflections or blur.\n• Both original and new smart NICs are accepted.',
+        text: `🆔 **Guidance for Photo Uploads in Registration**:
+
+• 📸 **Face Photo**: Ensure good lighting with your face clearly visible directly into the camera.
+• 🆔 **NIC Front Photo ONLY**: Place your National Identity Card on a flat surface and capture the **front side only** clearly. Ensure text and numbers are readable.
+• *Note: NIC back side is NOT required.*`,
         actions: [
           { type: 'switch_to_register', label: '📝 Go to Registration' },
         ],
@@ -263,7 +355,10 @@ function resolveAuthKnowledge(
       };
     } else if (lang === 'ta') {
       return {
-        text: '🆔 **அடையாள அட்டை (NIC) மற்றும் புகைப்பட வழிகாட்டல்**:\n• **முகப் புகைப்படம்**: நல்ல வெளிச்சத்தில் உங்கள் முகம் தெளிவாகத் தெரிய வேண்டும்.\n• **அடையாள அட்டை**: எண்களும் எழுத்துக்களும் தெளிவாகத் தெரியும்படி நிழல் விழாமல் புகைப்படம் எடுக்கவும்.',
+        text: `🆔 **அடையாள அட்டை (NIC Front) மற்றும் புகைப்பட வழிகாட்டல்**:
+
+• 📸 **முகப் புகைப்படம்**: நல்ல வெளிச்சத்தில் உங்கள் முகம் தெளிவாகத் தெரிய வேண்டும்.
+• 🆔 **அடையாள அட்டையின் முன்பக்கம் மட்டுமே**: முன்பக்கத்தை மட்டும் நிழல் விழாமல் தெளிவாகப் புகைப்படம் எடுக்கவும். (பின்பக்கம் தேவையில்லை).`,
         actions: [
           { type: 'switch_to_register', label: '📝 பதிவுக்குச் செல்லவும்' },
         ],
@@ -271,7 +366,11 @@ function resolveAuthKnowledge(
       };
     } else {
       return {
-        text: '🆔 **හැඳුනුම්පත් (NIC) සහ මුහුණේ ඡායාරූප ගැනීමේ උපදෙස්**:\n• **මුහුණේ ඡායාරූපය**: හොඳ ආලෝකයක් ඇති ස්ථානයක කෙළින්ම කැමරාව දෙස බලා මුහුණ පැහැදිලිව පෙනෙන සේ ගන්න.\n• **NIC ඉදිරිපස සහ පසුපස**: හැඳුනුම්පත තලයක තබා අකුරු, අංක සහ ඡායාරූපය නොසෙල්වී, ආලෝකය පරාවර්තනය නොවී පැහැදිලිව ලබාගන්න.\n• පැරණි හෝ නව ස්මාර්ට් හැඳුනුම්පත් දෙකම පිළිගැනේ.',
+        text: `🆔 **හැඳුනුම්පත් (NIC Front) සහ මුහුණේ ඡායාරූප ගැනීමේ උපදෙස්**:
+
+• 📸 **මුහුණේ ඡායාරූපය**: හොඳ ආලෝකයක් ඇති ස්ථානයක කෙළින්ම කැමරාව දෙස බලා මුහුණ පැහැදිලිව පෙනෙන සේ ගන්න.
+• 🆔 **ජාතික හැඳුනුම්පතේ ඉදිරිපස පමණි (NIC Front Photo Only)**: හැඳුනුම්පත තලයක තබා ඉදිරිපස අකුරු, අංක සහ ඡායාරූපය ආලෝකය පරාවර්තනය නොවී පැහැදිලිව ලබාගන්න.
+• *සැ.යු: හැඳුනුම්පතේ පසුපස (Back) ඡායාරූප අවශ්‍ය නොවේ.*`,
         actions: [
           { type: 'switch_to_register', label: '📝 ලියාපදිංචි වීමට යන්න' },
         ],
@@ -442,6 +541,76 @@ function resolveLocalKnowledge(
   lower: string,
   lang: Language
 ): { text: string; actions: AssistantAction[]; quickChips: string[] } {
+  // -------------------------------------------------------------
+  // 0. DATA PRIVACY & INFORMATION SECURITY (දත්ත සහ තොරතුරු ආරක්ෂාව)
+  // -------------------------------------------------------------
+  const isSafetyQuery =
+    lower.includes('ආරක්ෂිත') ||
+    lower.includes('ආරක්ෂා') ||
+    lower.includes('safe') ||
+    lower.includes('security') ||
+    lower.includes('privacy') ||
+    lower.includes('රහස්‍ය') ||
+    lower.includes('දත්ත') ||
+    lower.includes('data') ||
+    lower.includes('பாதுகாப்ப') ||
+    lower.includes('තොරතුරු ආරක්ෂිත');
+
+  if (isSafetyQuery) {
+    if (lang === 'en') {
+      return {
+        text: `🔒 **Is your data and information completely secure on Sahaya Sewa?**
+
+**Yes, 100%!** We enforce strict institutional-grade data privacy and protection:
+
+1. 🔒 **Confidentiality & Privacy**: Your National Identity Card (NIC) photo, phone number, and private credentials are **never publicly visible or shared**. Only authorized system administrators inspect registration photos for community safety verification.
+2. 🛡️ **Cloud Encryption (SSL/TLS)**: All database communications are encrypted in transit and at rest using modern SSL protocols and protected with granular Firestore Security Rules.
+3. 🚫 **Zero Third-Party Sharing**: We do NOT sell, lease, or distribute your personal contact details, location logs, or messages to advertisers, external corporations, or commercial entities.
+4. 🤝 **Safe & Fraud-Free Community**: Strict verification safeguards all members against scammers, spam, and identity theft.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 Post a Help Request' },
+          { type: 'open_quick', label: '⚡ Explore Quick Services' },
+        ],
+        quickChips: ['How are helpers verified?', 'How does 5km Red Alert work?', 'How to fill forms?'],
+      };
+    } else if (lang === 'ta') {
+      return {
+        text: `🔒 **சகாய சேவா தளத்தில் உங்கள் தகவல்கள் பாதுகாப்பானதா?**
+
+**ஆம், 100% முற்றிலும் பாதுகாப்பானது!**
+
+1. 🔒 **தகவல் ரகசியம்**: உங்கள் தேசிய அடையாள அட்டை (NIC) மற்றும் தனிப்பட்ட விபரங்கள் பொதுமக்களுக்குக் காட்டப்படாது.
+2. 🛡️ **குறியாக்கம் (SSL Encryption)**: அனைத்து தகவல்களும் குறியாக்கம் செய்யப்பட்டு பாதுகாப்பாக சேமிக்கப்படுகின்றன.
+3. 🚫 **மூன்றாம் தரப்பினருக்கு வழங்கப்படாது**: உங்கள் தொலைபேசி எண்கள் அல்லது விபரங்கள் எவருக்கும் விற்கப்படவோ பகிரப்படவோ மாட்டாது.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 உதவி கோரிக்கை' },
+          { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
+        ],
+        quickChips: ['படிவம் நிரப்புவது எப்படி?', 'தகவல் பாதுகாப்பு விபரங்கள்'],
+      };
+    } else {
+      return {
+        text: `🔒 **සහය සේවා පද්ධතිය තුළ ඔබගේ තොරතුරු ආරක්ෂිතද?**
+
+**ඔව්, 100% ක්ම සුරක්ෂිතයි!** සහය සේවා (Sahaya Sewa) පද්ධතිය තුළ ඔබගේ සියලුම පුද්ගලික දත්ත සහ තොරතුරු ඉහළම ආරක්ෂාවක් සහිතව (Highly Secure & Encrypted) පවත්වාගෙන යනු ලැබේ:
+
+1. 🔒 **හැඳුනුම්පත් (NIC) සහ තොරතුරු රහස්‍යභාවය**: ඔබ ලබාදෙන ජාතික හැඳුනුම්පත් (NIC) ඡායාරූප හෝ පුද්ගලික රහස්‍ය තොරතුරු **කිසිදු සාමාන්‍ය පරිශීලකයෙකුට හෝ ප්‍රසිද්ධියට පත් නොවේ (Never Publicly Visible)**. ඒවා භාවිතා කරන්නේ ගිණුම සත්‍යාපනය (Verification) සඳහා බලයලත් Admin වරුන් විසින් පමණි.
+2. 🛡️ **Cloud Encryption & Security Rules**: සියලුම දත්ත Cloud Firestore සහ ආරක්ෂිත Cloud Server තුළ SSL/TLS 256-bit Encryption මඟින් සංකේතනය කර සුරක්ෂිතව තබා ඇත. අනවසර ප්‍රවේශයන් සම්පූර්ණයෙන්ම වළක්වා ඇත.
+3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදීම (No Third-Party Sharing)**: ඔබගේ දුරකථන අංක, ලිපිනයන් හෝ පුද්ගලික දත්ත කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට හෝ තෙවන පාර්ශ්වයකට කිසිසේත්ම විකුණන්නේ හෝ ලබා දෙන්නේ නැත.
+4. 🤝 **ව්‍යාජ ගිණුම්වලින් තොර සත්‍යාපිත සමාජයක්**: ප්‍රජා උපකාර, ආධාර බෙදාහැරීම් සහ ලේ පරිත්‍යාග විශ්වාසනීයව සිදු කිරීමට සහ වංචනිකයන් වැළැක්වීමට පමණක් මෙම සත්‍යාපනය ක්‍රියාත්මක වේ.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
+          { type: 'open_quick', label: '⚡ ඉක්මන් සේවා විවෘත කරන්න' },
+        ],
+        quickChips: [
+          'පෝරම පුරවන්නේ කොහොමද?',
+          'රතු එළිය 5km රේඩාර් ක්‍රියාකරන්නේ කොහොමද?',
+          'විනිවිදභාවයේ ලෙජරය යනු කුමක්ද?',
+        ],
+      };
+    }
+  }
+
   // -------------------------------------------------------------
   // 1. FORM FILLING GUIDANCE (පෝරම පුරවන ආකාරය - පියවරෙන් පියවර)
   // -------------------------------------------------------------
@@ -727,7 +896,7 @@ function resolveLocalKnowledge(
 2. **📞 Direct WhatsApp & Phone Call**:
    • Verified posts include a direct WhatsApp call/chat button for instant contact.
 3. **🚨 Emergency Radar & Sirens**:
-   • Red Alerts automatically broadcast proximity sirens to all active users within 2km.
+   • Red Alerts automatically broadcast proximity sirens to all active users within 5km.
 4. **📍 GPS & Police Division Location Match**:
    • The system matches you with helpers and artisans located closest to your verified District & Police Division.
 5. **📞 24/7 National Emergency Helplines**:
@@ -746,8 +915,8 @@ function resolveLocalKnowledge(
    • ඕනෑම උපකාර දැන්වීමක, කාර්මිකයෙකුගේ හෝ සාප්පුවක ඇති **Message (පණිවිඩ)** බොත්තම එබූ විට පෞද්ගලිකව කතාබස් කළ හැකි ආරක්ෂිත Chat එකක් විවෘත වේ.
 2. **📞 සෘජු WhatsApp සහ දුරකථන ඇමතුම්**:
    • සත්‍යාපිත සාමාජිකයන්ගේ දැන්වීම්වල ඇති WhatsApp හෝ Call බොත්තමෙන් කෙළින්ම දුරකථනයෙන් සම්බන්ධ විය හැක.
-3. **🚨 හදිසි රතු නිවේදන සයිරන් (Proximity Radar)**:
-   • ඔබ සිටින ස්ථානයේ සිට 2km ඇතුළත හදිසි ආපදාවක් වාර්තා වූ විට ඔබගේ දුරකථනයේ හදිසි අනතුරු ඇඟවීමේ සයිරන් ශබ්දයක් වාදනය වේ.
+3. **🚨 හදිසි රතු නිවේදන සයිරන් (5km Proximity Radar)**:
+   • ඔබ සිටින ස්ථානයේ සිට 5km ඇතුළත හදිසි ආපදාවක් වාර්තා වූ විට ඔබගේ දුරකථනයේ හදිසි අනතුරු ඇඟවීමේ සයිරන් ශබ්දයක් වාදනය වේ.
 4. **📍 GPS සහ දිස්ත්‍රික්ක ස්ථාන ගැලපීම**:
    • ඔබගේ දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය අනුව ළඟම සිටින කාර්මිකයන් සහ උදවුකරුවන් පද්ධතිය විසින් ස්වයංක්‍රීයව පෙන්වයි.
 5. **📞 ජාතික නොබැඳි හදිසි දුරකථන අංක**:

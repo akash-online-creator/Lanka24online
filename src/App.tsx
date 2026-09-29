@@ -564,7 +564,8 @@ export default function App() {
         alert.latitude,
         alert.longitude
       );
-      return dist <= 2.0;
+      // 🚨 Proximity alert radius increased to 5.0 km
+      return dist <= 5.0;
     });
 
     if (nearAlert) {

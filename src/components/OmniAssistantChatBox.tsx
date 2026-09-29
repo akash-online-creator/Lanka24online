@@ -315,6 +315,9 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
 
   // Action Button Click Router
   const handleActionClick = (action: AssistantAction) => {
+    // 🚀 Auto-close the assistant chatbox so the user can immediately see and interact with the target form / page
+    setIsOpen(false);
+
     switch (action.type) {
       case 'open_blood':
         onOpenBloodAndDisaster?.();

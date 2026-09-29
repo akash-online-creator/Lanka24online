@@ -106,7 +106,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
       return false;
     }
 
-    // කිලෝමීටර් 2ක් ඇතුළත සිටින පරිශීලකයන්ට පමණක් පෙන්වීම
+    // කිලෝමීටර් 5ක් ඇතුළත සිටින පරිශීලකයන්ට හෝ අදාළ දිස්ත්‍රික්කයේ පරිශීලකයන්ට පෙන්වීම
     if (
       currentLocation &&
       typeof currentLocation.lat === 'number' &&
@@ -120,7 +120,14 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
         alert.latitude,
         alert.longitude
       );
-      return distanceKm <= 2;
+      return distanceKm <= 5.0;
+    }
+
+    // Fallback if exact GPS is unavailable: match locationName or district if available
+    const alertLoc = (alert.locationName || (alert as any).district || '').toLowerCase();
+    const currentLocName = (currentLocation?.nameSi || currentLocation?.nameEn || '').toLowerCase();
+    if (currentLocName && alertLoc && (currentLocName.includes(alertLoc) || alertLoc.includes(currentLocName))) {
+      return true;
     }
 
     return false;
