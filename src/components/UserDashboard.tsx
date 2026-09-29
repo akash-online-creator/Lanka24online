@@ -1698,7 +1698,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 3: Offline Emergency Contacts Directory */}
+          {/* Button 3: Emergency Contacts Directory */}
           <button
             type="button"
             onClick={() => setIsEmergencyDirectoryModalOpen(true)}
@@ -1714,7 +1714,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('නොබැඳි හදිසි සේවා අංක', 'Emergency Directory', 'அவசர உதவி எண்கள்')}
+                {getLangText('හදිසි සේවා අංක', 'Emergency Directory', 'அவசர உதவி எண்கள்')}
               </h4>
             </div>
           </button>
@@ -2579,12 +2579,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
       />
 
-      {/* Offline Emergency Services Directory Modal */}
+      {/* Emergency Services Directory Modal */}
       <EmergencyDirectoryModal
         isOpen={isEmergencyDirectoryModalOpen}
         onClose={() => setIsEmergencyDirectoryModalOpen(false)}
         currentUser={user}
         lang={language}
+        onUpdateUser={onUpdateUser}
+        onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
+        currentLocation={currentLocation}
       />
 
       {/* Demo Registration Prompt Modal */}

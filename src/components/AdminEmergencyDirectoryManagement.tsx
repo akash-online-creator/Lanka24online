@@ -442,6 +442,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
               <option value="disaster">🌊 ආපදා</option>
               <option value="helpline">🛡️ උපකාරක සේවා</option>
               <option value="utilities">⚡ ජල/විදුලි</option>
+              <option value="other">✨ වෙනත් (Other)</option>
             </select>
 
             <select
@@ -751,6 +752,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                     <option value="disaster">🌊 ආපදා සහන (Disaster)</option>
                     <option value="utilities">⚡ ජල/විදුලි (Utilities)</option>
                     <option value="helpline">🛡️ උපකාරක සේවා (Helpline)</option>
+                    <option value="other">✨ වෙනත් (Other)</option>
                   </select>
                 </div>
 

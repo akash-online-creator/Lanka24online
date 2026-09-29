@@ -821,7 +821,7 @@ export interface EmergencyServiceContact {
   id: string;
   serviceNameSi: string;
   serviceNameEn: string;
-  category: 'police' | 'hospital' | 'ambulance' | 'fire' | 'disaster' | 'helpline' | 'utilities';
+  category: 'police' | 'hospital' | 'ambulance' | 'fire' | 'disaster' | 'helpline' | 'utilities' | 'other';
   phone: string;
   altPhone?: string;
   district?: string;

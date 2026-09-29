@@ -28,7 +28,7 @@ import {
   ThumbsDown,
   Gift
 } from 'lucide-react';
-import { EmergencyServiceContact, Language, User as UserType } from '../types';
+import { EmergencyServiceContact, Language, LocationOption, User as UserType } from '../types';
 import { 
   getStoredEmergencyContacts, 
   saveCustomEmergencyContact, 
@@ -37,6 +37,7 @@ import {
 } from '../data/emergencyDirectory';
 import { rewardEmergencyContactCredit } from '../utils/creditManager';
 import { syncUserProfileToFirestore } from '../lib/firebase';
+import { resolveExactLocation } from '../utils/geoUtils';
 
 interface EmergencyDirectoryModalProps {
   isOpen: boolean;
@@ -45,9 +46,10 @@ interface EmergencyDirectoryModalProps {
   lang?: Language;
   onUpdateUser?: (updatedUser: UserType) => void;
   onRequireRegistration?: () => void;
+  currentLocation?: LocationOption | null;
 }
 
-type FilterCategory = 'all' | 'community' | 'ambulance' | 'police' | 'hospital' | 'fire' | 'disaster' | 'helpline' | 'utilities';
+type FilterCategory = 'all' | 'community' | 'ambulance' | 'police' | 'hospital' | 'fire' | 'disaster' | 'helpline' | 'utilities' | 'other';
 
 export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = ({
   isOpen,
@@ -56,6 +58,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
   lang = 'si',
   onUpdateUser,
   onRequireRegistration,
+  currentLocation,
 }) => {
   const [contacts, setContacts] = useState<EmergencyServiceContact[]>(() => getStoredEmergencyContacts(false));
   const [selectedCategory, setSelectedCategory] = useState<FilterCategory>('all');
@@ -75,6 +78,10 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
   const [newAddress, setNewAddress] = useState('');
   const [newDescSi, setNewDescSi] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Auto location detection state
+  const [isAutoDetectingLocation, setIsAutoDetectingLocation] = useState(false);
+  const [autoLocationStatus, setAutoLocationStatus] = useState<string | null>(null);
 
   // Inactive report modal state
   const [reportTargetContact, setReportTargetContact] = useState<EmergencyServiceContact | null>(null);
@@ -125,6 +132,56 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
     'යාපනය',
   ];
 
+  const detectAndApplyAutoLocation = () => {
+    if (currentLocation?.nameSi) {
+      const locText = currentLocation.nameSi;
+      setNewAddress(locText);
+      const matchedDistrict = districtsList.find((d) => d !== 'all' && locText.includes(d));
+      if (matchedDistrict) {
+        setNewDistrict(matchedDistrict);
+      }
+      setAutoLocationStatus(`📍 ස්ථානය ස්වයංක්‍රීයව හඳුනාගන්නා ලදී: ${locText}`);
+      setTimeout(() => setAutoLocationStatus(null), 4000);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setAutoLocationStatus('⚠️ ඔබගේ උපකරණයේ GPS පහසුකම නොමැත.');
+      return;
+    }
+
+    setIsAutoDetectingLocation(true);
+    setAutoLocationStatus('⚡ සජීවී GPS ස්ථානය ලබාගනිමින් පවතී...');
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const resolved = await resolveExactLocation(latitude, longitude);
+          const locText = resolved.shortDisplaySi || resolved.fullAddressSi || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+          setNewAddress(locText);
+          if (resolved.districtSi) {
+            const matched = districtsList.find((d) => d !== 'all' && (resolved.districtSi.includes(d) || d.includes(resolved.districtSi)));
+            if (matched) setNewDistrict(matched);
+          }
+          setAutoLocationStatus(`📍 Auto GPS මඟින් හඳුනාගන්නා ලදී: ${locText}`);
+        } catch {
+          setNewAddress('වත්මන් ස්ථානය (GPS)');
+          setAutoLocationStatus('📍 Auto GPS ස්ථානය ලබාගන්නා ලදී');
+        } finally {
+          setIsAutoDetectingLocation(false);
+          setTimeout(() => setAutoLocationStatus(null), 4000);
+        }
+      },
+      () => {
+        setIsAutoDetectingLocation(false);
+        setAutoLocationStatus('⚠️ GPS ස්ථානය ලබාගත නොහැකි විය. කරුණාකර ලිපිනය අතින් ඇතුළත් කරන්න.');
+        setTimeout(() => setAutoLocationStatus(null), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const handleOpenAddForm = () => {
     if (!currentUser || currentUser.isDemo || currentUser.status !== 'approved') {
       if (onRequireRegistration) {
@@ -135,6 +192,18 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
       return;
     }
     setShowAddForm(true);
+
+    // Automatically fill auto location into newAddress
+    if (currentLocation?.nameSi) {
+      const locText = currentLocation.nameSi;
+      setNewAddress(locText);
+      const matchedDistrict = districtsList.find((d) => d !== 'all' && locText.includes(d));
+      if (matchedDistrict) {
+        setNewDistrict(matchedDistrict);
+      }
+    } else {
+      detectAndApplyAutoLocation();
+    }
   };
 
   const handleCreateContact = async (e: React.FormEvent) => {
@@ -360,6 +429,8 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
         return <Waves className="w-5 h-5 text-cyan-500" />;
       case 'utilities':
         return <Zap className="w-5 h-5 text-yellow-500" />;
+      case 'other':
+        return <Sparkles className="w-5 h-5 text-teal-500" />;
       case 'helpline':
       default:
         return <HelpCircle className="w-5 h-5 text-purple-500" />;
@@ -390,7 +461,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
               </div>
               <p className="text-[11px] text-emerald-100 flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
-                <span>අන්තර්ජාලය නොමැතිව වුවද (Offline) ක්ෂණිකව ලබාගත හැකි සේවා</span>
+                <span>අත්‍යවශ්‍ය හා හදිසි ආපදා සේවා නාමාවලිය</span>
               </p>
             </div>
           </div>
@@ -475,6 +546,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
               { id: 'disaster', label: '🌊 ආපදා (117)' },
               { id: 'helpline', label: '🛡️ උපකාරක සේවා' },
               { id: 'utilities', label: '⚡ ජල/විදුලි' },
+              { id: 'other', label: '✨ වෙනත් (Other)' },
             ].map((cat, cIdx) => (
               <button
                 key={`emg_cat_${cat.id}_${cIdx}`}
@@ -734,6 +806,7 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
                       <option value="disaster">🌊 ආපදා සහන (Disaster)</option>
                       <option value="utilities">⚡ ජල/විදුලි (Utilities)</option>
                       <option value="helpline">🛡️ උපකාරක සේවා (Helpline)</option>
+                      <option value="other">✨ වෙනත් (Other)</option>
                     </select>
                   </div>
 
@@ -791,24 +864,53 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
                     id="isNationalCheckUser"
                     checked={newIsNational}
                     onChange={(e) => setNewIsNational(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded"
+                    className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
                   />
                   <label htmlFor="isNationalCheckUser" className="font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
                     මෙය දිවයින පුරා ක්‍රියාත්මක ජාතික සේවාවකි (All-Island Service)
                   </label>
                 </div>
 
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    ලිපිනය / ස්ථානය
-                  </label>
+                {/* Location / Address with Auto Location & Manual Override */}
+                <div className="space-y-1.5 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-300/80 dark:border-emerald-800">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>ස්ථානය / ලිපිනය</span>
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-200/70 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded-md">
+                        Auto GPS / Manual Edit
+                      </span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={detectAndApplyAutoLocation}
+                      disabled={isAutoDetectingLocation}
+                      className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all active:scale-95 disabled:opacity-50 shadow-xs"
+                      title="සජීවී GPS ස්ථානය නැවත ලබාගන්න"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isAutoDetectingLocation ? 'animate-spin' : ''}`} />
+                      <span>{isAutoDetectingLocation ? 'GPS ලබාගනිමින්...' : '⚡ Auto GPS ලබාගන්න'}</span>
+                    </button>
+                  </div>
+
                   <input
                     type="text"
                     value={newAddress}
                     onChange={(e) => setNewAddress(e.target.value)}
-                    placeholder="උදා: රෝහල් පාර, හෝමාගම"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                    placeholder="ස්ථානය හෝ ලිපිනය (ස්වයංක්‍රීයව පෙන්වයි - අවශ්‍යනම් අතින් වෙනස් කළ හැක)..."
+                    className="w-full p-2.5 bg-white dark:bg-[#05140d] border border-emerald-300 dark:border-slate-700 rounded-xl font-medium"
                   />
+
+                  {autoLocationStatus && (
+                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 animate-fadeIn">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      <span>{autoLocationStatus}</span>
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    ස්ථානය GPS මඟින් ස්වයංක්‍රීයව හඳුනාගෙන ඇති අතර, අවශ්‍ය නම් ඉහත කොටුවෙන් වෙනස් කර ඇතුළත් කළ හැක.
+                  </p>
                 </div>
 
                 <div>
