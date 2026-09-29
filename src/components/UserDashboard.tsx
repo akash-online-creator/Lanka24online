@@ -1537,25 +1537,63 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         toggleTheme={toggleTheme || (() => {})}
         onNavigateToIssues={onNavigateToIssues}
         onOpenSettings={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
           setSettingsInitialTab('profile');
           setIsSettingsModalOpen(true);
         }}
-        onOpenWallet={() => setIsWalletModalOpen(true)}
+        onOpenWallet={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsWalletModalOpen(true);
+        }}
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onOpenPickMeAlertSettings={() => setIsPickMeAlertModalOpen(true)}
-        onOpenInbox={() => setIsInboxModalOpen(true)}
+        onOpenInbox={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsInboxModalOpen(true);
+        }}
         inboxCount={inboxRepliesCount}
-        onOpenAssistant={() => setIsAssistantChatOpen(true)}
+        onOpenAssistant={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsAssistantChatOpen(true);
+        }}
         onLogout={onLogout}
         activeRoleView={activeRoleView}
         setActiveRoleView={setActiveRoleView}
         onNavigate={onNavigate}
         isAutoLoadingLocation={isAutoLoadingLocation}
         autoLoadedNotice={autoLocationMsg}
-        onOpenRedAlert={onOpenRedAlert}
+        onOpenRedAlert={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          if (onOpenRedAlert) onOpenRedAlert();
+        }}
         activeRedAlertsCount={activeRedAlertsCount}
-        onOpenBarterExchange={() => setIsBarterModalOpen(true)}
+        onOpenBarterExchange={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsBarterModalOpen(true);
+        }}
         onOpenQrPay={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
           setQrPayTargetRecipient(undefined);
           setIsQrPayModalOpen(true);
         }}
@@ -1592,7 +1630,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
         <button
           type="button"
-          onClick={() => setIsSosLiveModalOpen(true)}
+          onClick={() => {
+            if (user?.isDemo) {
+              setShowDemoRegisterPrompt(true);
+              return;
+            }
+            setIsSosLiveModalOpen(true);
+          }}
           className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-white hover:bg-red-50 text-red-700 font-black text-xs sm:text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
         >
           <Radio className="w-4 h-4 text-red-600 animate-pulse" />
@@ -1602,7 +1646,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {/* Button 1: Blood & Disaster Relief Hub */}
           <button
             type="button"
@@ -1630,7 +1674,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           {/* Button 2: Transparent Aid Ledger (ආධාර විනිවිදභාවයේ ලෙජරය) */}
           <button
             type="button"
-            onClick={() => setIsAidLedgerModalOpen(true)}
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsAidLedgerModalOpen(true);
+            }}
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-lg hover:shadow-xl shadow-emerald-600/30 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
@@ -1672,7 +1722,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           {/* Button 4: AI Voice SOS & Help Requests (AI හඬ සහය) */}
           <button
             type="button"
-            onClick={() => setIsAiVoiceModalOpen(true)}
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsAiVoiceModalOpen(true);
+            }}
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl shadow-purple-600/30 border-2 border-purple-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
           >
             <div className="flex items-center justify-between w-full">
@@ -1689,27 +1745,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </h4>
             </div>
           </button>
-
-          {/* Button 5: Sahaya Sewa Features Post (විශේෂ විශේෂාංග සටහන) */}
-          <button
-            type="button"
-            onClick={() => setIsFeaturesPostModalOpen(true)}
-            className="col-span-2 sm:col-span-1 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white shadow-lg hover:shadow-xl shadow-teal-600/30 border-2 border-teal-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
-          >
-            <div className="flex items-center justify-between w-full">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
-                <Sparkles className="w-5 h-5 text-yellow-300" />
-              </div>
-              <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-yellow-400 text-slate-950 shadow-md">
-                POST
-              </span>
-            </div>
-            <div className="min-w-0 mt-2">
-              <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('විශේෂ විශේෂාංග සටහන', 'Features Guide Post', 'சிறப்பு அம்சங்கள்')}
-              </h4>
-            </div>
-          </button>
         </div>
       </div>
 
@@ -1720,6 +1755,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
               setIsCategoryModalOpen(true);
             }}
             className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
@@ -1807,6 +1846,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
               setSettingsInitialTab('profile');
               setIsSettingsModalOpen(true);
             }}

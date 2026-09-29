@@ -169,16 +169,23 @@ export const PostCard: React.FC<PostCardProps> = ({
       return {
         ...displayPost,
         ...googlePost,
-        whatHappened: translateText(googlePost.whatHappened || displayPost?.whatHappened || '', activeCardLang),
-        whatIsNeeded: translateText(googlePost.whatIsNeeded || displayPost?.whatIsNeeded || '', activeCardLang),
-        conditions: translateText(googlePost.conditions || displayPost?.conditions || '', activeCardLang),
-        specialNotice: translateText(googlePost.specialNotice || displayPost?.specialNotice || '', activeCardLang),
-        transport: translateText(googlePost.transport || displayPost?.transport || '', activeCardLang),
-        payment: translateText(googlePost.payment || displayPost?.payment || '', activeCardLang),
+        whatHappened: googlePost.whatHappened || displayPost?.whatHappened || post.whatHappened,
+        whatIsNeeded: googlePost.whatIsNeeded || displayPost?.whatIsNeeded || post.whatIsNeeded,
+        conditions: googlePost.conditions || displayPost?.conditions || post.conditions,
+        specialNotice: googlePost.specialNotice || displayPost?.specialNotice || post.specialNotice,
+        transport: googlePost.transport || displayPost?.transport || post.transport,
+        payment: googlePost.payment || displayPost?.payment || post.payment,
+        itemLostStolenOrSearched: googlePost.itemLostStolenOrSearched || displayPost?.itemLostStolenOrSearched || post.itemLostStolenOrSearched,
+        otherDetails: googlePost.otherDetails || displayPost?.otherDetails || post.otherDetails,
+        rewardDetails: googlePost.rewardDetails || displayPost?.rewardDetails || post.rewardDetails,
+        donationItem: googlePost.donationItem || displayPost?.donationItem || post.donationItem,
+        donationRecipient: googlePost.donationRecipient || displayPost?.donationRecipient || post.donationRecipient,
+        exchangeHaveItem: googlePost.exchangeHaveItem || displayPost?.exchangeHaveItem || post.exchangeHaveItem,
+        exchangeWantItem: googlePost.exchangeWantItem || displayPost?.exchangeWantItem || post.exchangeWantItem,
       };
     }
     return displayPost || post;
-  }, [translationMode, googlePost, displayPost, post, activeCardLang]);
+  }, [translationMode, googlePost, displayPost, post]);
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -632,6 +639,10 @@ export const PostCard: React.FC<PostCardProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (currentUser?.isDemo) {
+                        if (onRequireRegistration) onRequireRegistration();
+                        return;
+                      }
                       onToggleSave(post);
                     }}
                     className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center justify-center border ${

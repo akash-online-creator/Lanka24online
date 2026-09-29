@@ -34,6 +34,7 @@ import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
 import { getVillageOrTownDisplay } from '../utils/geoUtils';
 import { findSynonymSuggestionPrompt, getExpandedSearchKeywords } from '../data/searchDictionary';
 import { SmartSearchSynonymPrompt } from './SmartSearchSynonymPrompt';
+import { DemoRegistrationPromptModal } from './DemoRegistrationPromptModal';
 import { 
   Search, 
   Store, 
@@ -76,6 +77,7 @@ interface MarketplaceViewProps {
   onBackToBoard: () => void;
   onAddNewTag?: (tag: TagItem) => void;
   onStartDirectChat?: (targetUserId: string, targetUserName: string, targetPhone: string) => void;
+  onRequireRegistration?: () => void;
 }
 
 export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
@@ -85,7 +87,8 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   currentLocationName = 'කඩවත',
   onBackToBoard,
   onAddNewTag,
-  onStartDirectChat
+  onStartDirectChat,
+  onRequireRegistration
 }) => {
   // 1. Data States
   const [items, setItems] = useState<MarketItem[]>(() => getStoredMarketItems());
@@ -137,6 +140,17 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [previewingShop, setPreviewingShop] = useState<MarketShop | null>(null);
   const [shopToDelete, setShopToDelete] = useState<MarketShop | null>(null);
   const [itemToDelete, setItemToDelete] = useState<MarketItem | null>(null);
+  const [showDemoRegisterPrompt, setShowDemoRegisterPrompt] = useState(false);
+
+  const isDemo = Boolean(currentUser?.isDemo);
+
+  const handleGatedAction = (action: () => void) => {
+    if (isDemo) {
+      setShowDemoRegisterPrompt(true);
+      return;
+    }
+    action();
+  };
 
   const isAdmin = checkIsAdmin(currentUser);
 
@@ -608,7 +622,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsAddSellerModalOpen(true)}
+                onClick={() => handleGatedAction(() => setIsAddSellerModalOpen(true))}
                 className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
               >
                 <Plus className="w-4 h-4" />
@@ -850,7 +864,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       {item.pickupLocation && (
                         <button
                           type="button"
-                          onClick={() => setViewingLocation(item.pickupLocation!)}
+                          onClick={() => handleGatedAction(() => setViewingLocation(item.pickupLocation!))}
                           className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <MapPin className="w-3 h-3" />
@@ -879,7 +893,17 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {checkContactPermission(item.userId, item.userPhone, item.revealContactConsent) ? (
+                      {isDemo ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowDemoRegisterPrompt(true)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-black hover:bg-emerald-100 cursor-pointer active:scale-95 transition-all shadow-xs"
+                          title="වැඩි විස්තර සහ සබඳතා බැලීමට ලියාපදිංචි වන්න"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>🔒 විස්තර බලන්න</span>
+                        </button>
+                      ) : checkContactPermission(item.userId, item.userPhone, item.revealContactConsent) ? (
                         <>
                           {item.showWhatsapp && item.whatsappNumber && (
                             <button
@@ -953,7 +977,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsAddBuyerModalOpen(true)}
+                onClick={() => handleGatedAction(() => setIsAddBuyerModalOpen(true))}
                 className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center gap-2 active:scale-95 shrink-0"
               >
                 <Plus className="w-4 h-4" />
@@ -1072,7 +1096,17 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {checkContactPermission(req.userId, req.userPhone, req.revealContactConsent) ? (
+                      {isDemo ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowDemoRegisterPrompt(true)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-300 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 text-xs font-black hover:bg-indigo-100 cursor-pointer active:scale-95 transition-all shadow-xs"
+                          title="වැඩි විස්තර සහ සබඳතා බැලීමට ලියාපදිංචි වන්න"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>🔒 විස්තර බලන්න</span>
+                        </button>
+                      ) : checkContactPermission(req.userId, req.userPhone, req.revealContactConsent) ? (
                         <>
                           {req.showWhatsapp && req.whatsappNumber && (
                             <button
@@ -1152,9 +1186,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setEditingShop(null);
-                  setShopModalType('shop');
-                  setIsAddShopModalOpen(true);
+                  handleGatedAction(() => {
+                    setEditingShop(null);
+                    setShopModalType('shop');
+                    setIsAddShopModalOpen(true);
+                  });
                 }}
                 className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
               >
@@ -1323,7 +1359,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setPreviewingShop(shop)}
+                          onClick={() => handleGatedAction(() => setPreviewingShop(shop))}
                           className="px-3.5 py-1.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-900"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -1342,7 +1378,17 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        {checkContactPermission(shop.userId, shop.userPhone, shop.revealContactConsent) ? (
+                        {isDemo ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowDemoRegisterPrompt(true)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-300 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs font-black hover:bg-teal-100 cursor-pointer active:scale-95 transition-all shadow-xs"
+                            title="වැඩි විස්තර සහ සබඳතා බැලීමට ලියාපදිංචි වන්න"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                            <span>🔒 විස්තර බලන්න</span>
+                          </button>
+                        ) : checkContactPermission(shop.userId, shop.userPhone, shop.revealContactConsent) ? (
                           <>
                             {shop.showWhatsapp && shop.whatsappNumber && (
                               <button
@@ -1415,9 +1461,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setEditingShop(null);
-                  setShopModalType('business');
-                  setIsAddShopModalOpen(true);
+                  handleGatedAction(() => {
+                    setEditingShop(null);
+                    setShopModalType('business');
+                    setIsAddShopModalOpen(true);
+                  });
                 }}
                 className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-700 hover:to-orange-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center gap-2 active:scale-95 shrink-0"
               >
@@ -1769,6 +1817,19 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         onClose={() => setIsGuideModalOpen(false)}
         initialSection={guideModalInitialSection}
         onNavigateSection={(sec) => setActiveSection(sec)}
+      />
+
+      {/* 9. Demo Registration Gate Modal */}
+      <DemoRegistrationPromptModal
+        isOpen={showDemoRegisterPrompt}
+        onClose={() => setShowDemoRegisterPrompt(false)}
+        language={language}
+        onRegister={() => {
+          setShowDemoRegisterPrompt(false);
+          if (onRequireRegistration) {
+            onRequireRegistration();
+          }
+        }}
       />
     </div>
   );

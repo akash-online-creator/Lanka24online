@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Smartphone
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
@@ -20,6 +21,7 @@ import { StoredDevicePinData, getStoredDevicePin, clearDevicePin } from '../util
 import { DevicePinLoginView } from './DevicePinLoginView';
 import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { requestNotificationPermission } from '../utils/notificationManager';
+import { PWAInstallModal } from './PWAInstallModal';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -53,6 +55,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
 
   // Device PIN state
   const [storedPinData, setStoredPinData] = useState<StoredDevicePinData | null>(() => getStoredDevicePin());
@@ -391,6 +394,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </button>
           </div>
         )}
+
+        {/* 📲 App Download Button on Login Screen */}
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-[#173222]">
+          <button
+            type="button"
+            onClick={() => setIsPWAInstallOpen(true)}
+            className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-slate-800 dark:text-zinc-200 text-xs font-black transition-all border border-slate-300/80 dark:border-zinc-700 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+          >
+            <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>
+              {language === 'en'
+                ? '📲 Download & Install Mobile App'
+                : language === 'ta'
+                ? '📲 செயலியை பதிவிறக்கம் செய்க (App Download)'
+                : '📲 ඇප් එක ඩවුන්ලෝඩ් කරගන්න (App Download)'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Footer link for Issues/Help */}
@@ -404,6 +425,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           <span>{t.issuesHelpBtn || 'ගැටලු සඳහා'}</span>
         </button>
       </div>
+
+      {/* PWA Install Modal */}
+      <PWAInstallModal
+        isOpen={isPWAInstallOpen}
+        onClose={() => setIsPWAInstallOpen(false)}
+        language={language}
+      />
     </div>
   );
 };

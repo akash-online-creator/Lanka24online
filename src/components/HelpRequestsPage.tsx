@@ -241,6 +241,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   // Toggle Save Post with Firestore sync
   const handleToggleSavePost = (post: HelpPost) => {
     if (!post || !post.id) return;
+    if (user?.isDemo) {
+      if (onRequireRegistration) onRequireRegistration();
+      return;
+    }
     const isAlreadySaved = savedPostIds.includes(post.id);
     const nextSavedState = !isAlreadySaved;
 
@@ -765,6 +769,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           <button
             type="button"
             onClick={() => {
+              if (user?.isDemo) {
+                if (onRequireRegistration) onRequireRegistration();
+                return;
+              }
               setActiveFeedTab('all');
               setBoardCategoryFilter('group_work');
               setSelectedCategoryTitle(getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை'));
@@ -996,6 +1004,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  if (user?.isDemo) {
+                    if (onRequireRegistration) onRequireRegistration();
+                    return;
+                  }
                   setActiveFeedTab('all');
                   setBoardCategoryFilter('from_me_to_you');
                   setSelectedCategoryTitle(getLangText('මගෙන් ඔබට', 'From Me To You', 'என்னிடமிருந்து உங்களுக்கு'));
@@ -1020,6 +1032,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  if (user?.isDemo) {
+                    if (onRequireRegistration) onRequireRegistration();
+                    return;
+                  }
                   setActiveFeedTab('saved');
                   setBoardCategoryFilter('');
                   setSelectedCategoryTitle(getLangText('සුරැකි දැන්වීම්', 'Saved Posts', 'சேமித்தவை'));
@@ -1127,6 +1143,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             setBoardCategoryFilter('');
             setSelectedCategoryTitle('');
           }}
+          onRequireRegistration={onRequireRegistration}
         />
       ) : (
         /* The Facebook-Style News Feed Stream */
