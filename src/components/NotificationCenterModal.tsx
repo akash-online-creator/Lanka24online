@@ -17,6 +17,9 @@ import {
   Clock, 
   ExternalLink,
   ShieldAlert,
+  Shield,
+  Megaphone,
+  CheckCircle2,
   Sparkles
 } from 'lucide-react';
 import { 
@@ -49,7 +52,9 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   onSelectNotification,
 }) => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'emergency_blood' | 'quick_service' | 'marketplace_price' | 'find_for_me'>('all');
+  const [activeFilter, setActiveFilter] = useState<
+    'all' | 'red_alert_resolved' | 'admin_broadcast' | 'emergency_blood' | 'quick_service' | 'marketplace_price' | 'find_for_me'
+  >('all');
   const [pushStatus, setPushStatus] = useState<NotificationPermission | 'unsupported'>('default');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
@@ -124,6 +129,10 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
   const renderTypeIcon = (type: string) => {
     switch (type) {
+      case 'red_alert_resolved':
+        return <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+      case 'admin_broadcast':
+        return <Megaphone className="w-4 h-4 text-amber-500 fill-amber-500/20" />;
       case 'emergency_blood':
         return <Droplet className="w-4 h-4 text-red-600 dark:text-red-400 fill-current" />;
       case 'quick_service':
@@ -272,6 +281,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         <div className="px-4 py-2 border-b border-slate-200 dark:border-[#153824] flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           {[
             { id: 'all', label: getLang('සියල්ල', 'All', 'அனைத்தும்'), count: notifications.length },
+            { id: 'red_alert_resolved', label: getLang('✅ ආපදා ඉවත්කිරීම්', '✅ Resolved Hazards', '✅ தீர்க்கப்பட்டவை'), count: notifications.filter(n => n.type === 'red_alert_resolved').length },
+            { id: 'admin_broadcast', label: getLang('📢 Admin දැනුම්දීම්', '📢 Admin Notices', '📢 நிர்வாகி அறிவிப்பு'), count: notifications.filter(n => n.type === 'admin_broadcast').length },
             { id: 'emergency_blood', label: getLang('🩸 හදිසි ලේ', '🩸 Emergency Blood', '🩸 இரத்தம்'), count: notifications.filter(n => n.type === 'emergency_blood').length },
             { id: 'quick_service', label: getLang('⚡ ඉක්මන් සේවා', '⚡ Quick Services', '⚡ அவசர சேவை'), count: notifications.filter(n => n.type === 'quick_service').length },
             { id: 'marketplace_price', label: getLang('🏷️ අඩුම මිල', '🏷️ Lowest Prices', '🏷️ குறைந்த விலை'), count: notifications.filter(n => n.type === 'marketplace_price').length },
@@ -310,12 +321,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 {getLang('දැනට මෙම කාණ්ඩයේ නව දැනුම්දීම් නොමැත.', 'No notifications in this category yet.', 'இந்த பிரிவில் அறிவிப்புகள் எதுவும் இல்லை.')}
               </p>
               <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs">
-                {getLang('නව සේවා ඉල්ලීමක්, ලේ අවශ්‍යතාවක් හෝ මිල ගණන් පළ වූ වහාම මෙහි පෙන්වනු ඇත.', 'New requests, blood needs, or price updates will appear here automatically in real time.', 'புதிய கோரிக்கைகள் அல்லது விலை புதுப்பிப்புகள் இங்கே தோன்றும்.')}
+                {getLang('ආපදා ඉවත්කිරීම්, Admin නිවේදන, ලේ අවශ්‍යතා හෝ මිල ගණන් පළ වූ වහාම මෙහි පෙන්වනු ඇත.', 'Resolved hazards, admin announcements, blood needs, or price updates will appear here automatically in real time.', 'தீர்க்கப்பட்ட அபாயங்கள் மற்றும் நிர்வாக அறிவிப்புகள் இங்கே தோன்றும்.')}
               </p>
             </div>
           ) : (
             filteredNotifs.map((notif, nIdx) => {
               const isUrgent = notif.type === 'emergency_blood';
+              const isResolved = notif.type === 'red_alert_resolved';
+              const isAdminNotice = notif.type === 'admin_broadcast';
 
               return (
                 <div
@@ -330,19 +343,35 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                     !notif.isRead
                       ? isUrgent
                         ? 'bg-red-500/10 dark:bg-red-950/40 border-red-400/80 shadow-xs'
+                        : isResolved
+                        ? 'bg-emerald-500/15 dark:bg-emerald-950/40 border-emerald-400 shadow-xs'
+                        : isAdminNotice
+                        ? 'bg-amber-500/15 dark:bg-amber-950/40 border-amber-400 shadow-xs'
                         : 'bg-emerald-500/10 dark:bg-emerald-950/40 border-emerald-400/70 shadow-xs'
                       : 'bg-white dark:bg-[#0c2417] border-slate-200 dark:border-[#153b26] opacity-90'
                   }`}
                 >
                   {/* Left accent indicator for unread */}
                   {!notif.isRead && (
-                    <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${isUrgent ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${
+                      isUrgent 
+                        ? 'bg-red-500 animate-pulse' 
+                        : isResolved 
+                        ? 'bg-emerald-500' 
+                        : isAdminNotice 
+                        ? 'bg-amber-500' 
+                        : 'bg-emerald-500'
+                    }`} />
                   )}
 
                   <div className="flex items-start gap-3 pl-1">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
                       isUrgent 
                         ? 'bg-red-100 dark:bg-red-900/60' 
+                        : isResolved
+                        ? 'bg-emerald-100 dark:bg-emerald-900/60'
+                        : isAdminNotice
+                        ? 'bg-amber-100 dark:bg-amber-900/60'
                         : 'bg-slate-100 dark:bg-[#143522]'
                     }`}>
                       {renderTypeIcon(notif.type)}
@@ -355,6 +384,10 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                             <span className={`px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black uppercase ${
                               isUrgent 
                                 ? 'bg-red-600 text-white' 
+                                : isResolved
+                                ? 'bg-emerald-600 text-white'
+                                : isAdminNotice
+                                ? 'bg-amber-600 text-white'
                                 : 'bg-emerald-600 text-white'
                             }`}>
                               {notif.badgeText}
@@ -369,12 +402,48 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed mt-1">
-                        {notif.message}
-                      </p>
+                      {/* 🌟 Structured Display for Red Alert Resolved Notifications */}
+                      {isResolved && notif.meta ? (
+                        <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-[#072416] border border-emerald-200 dark:border-emerald-800/60 text-xs space-y-1">
+                          <div className="flex items-start gap-1 font-bold text-slate-900 dark:text-emerald-100">
+                            <span className="text-red-500 shrink-0">🚨</span>
+                            <span><strong>අවදානම:</strong> {notif.meta.hazardName || notif.title} {notif.meta.alertCode ? `(${notif.meta.alertCode})` : ''}</span>
+                          </div>
+                          {notif.locationName && (
+                            <div className="flex items-center gap-1 text-slate-700 dark:text-emerald-200 font-medium">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              <span><strong>ස්ථානය:</strong> {notif.locationName}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1 text-slate-700 dark:text-emerald-200 font-medium">
+                            <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            <span><strong>ඉවත් කළ වේලාව:</strong> {notif.meta.resolvedTime || formatRelativeTime(notif.timestamp)}</span>
+                          </div>
+                          <div className="flex items-start gap-1 text-slate-800 dark:text-emerald-200 font-semibold">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                            <span><strong>ඉවත් කළ හේතුව:</strong> {notif.meta.resolvedReason || 'ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.'}</span>
+                          </div>
+                        </div>
+                      ) : isAdminNotice ? (
+                        /* 🌟 Structured Display for Admin Announcements */
+                        <div className="mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-[#201807] border border-amber-200 dark:border-amber-800/60 text-xs space-y-1">
+                          <div className="flex items-center gap-1 text-[11px] font-black text-amber-900 dark:text-amber-300">
+                            <Shield className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{notif.meta?.adminSender || 'පරිපාලක මණ්ඩලය (Admin Panel)'}</span>
+                          </div>
+                          <p className="text-slate-800 dark:text-slate-200 font-medium whitespace-pre-wrap leading-relaxed">
+                            {notif.message}
+                          </p>
+                        </div>
+                      ) : (
+                        /* Standard notification body */
+                        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed mt-1 whitespace-pre-wrap">
+                          {notif.message}
+                        </p>
+                      )}
 
                       <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100 dark:border-white/5">
-                        {notif.locationName ? (
+                        {notif.locationName && !isResolved ? (
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
                             <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                             <span className="truncate max-w-[200px]">{notif.locationName}</span>

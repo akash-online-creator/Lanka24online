@@ -24,6 +24,7 @@ import { getDisasterConfig } from '../data/redAlertData';
 import { updateRedAlertStatus, deleteRedAlertInFirestore, subscribeToSirenSettings } from '../lib/firebase';
 import { startEmergencySiren, stopEmergencySiren, unlockAudio, persistSirenSettings, getSirenFileName } from '../utils/sirenAudio';
 import { addDeletedRedAlertId, filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
+import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 
 // 🎵 Default Siren Audio File Path
 import defaultSirenTone from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -107,8 +108,26 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     note?: string
   ) => {
     setActionLoadingId(alertId);
+    const targetAlert = alerts.find((a) => a.id === alertId);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+    const reasonText = note || (status === 'resolved' ? 'පරිපාලක විසින් ආපදා තත්ත්වය සාර්ථකව විසඳුණු බව තහවුරු කරන ලදී.' : 'පරිපාලක විසින් මෙම නිවේදනය අසත්‍ය / දෝෂ සහිත බව තහවුරු කර ඉවත් කරන ලදී.');
+
     try {
-      await updateRedAlertStatus(alertId, status, note);
+      await updateRedAlertStatus(alertId, status, reasonText);
+
+      // 🔔 Dispatch rich notification
+      if (targetAlert && (status === 'resolved' || status === 'false_alarm')) {
+        broadcastRedAlertResolvedNotification({
+          alertId: targetAlert.id,
+          alertCode: targetAlert.alertCode,
+          disasterTitle: targetAlert.disasterTitleSi || targetAlert.disasterTitleEn || 'හදිසි ආපදා අනතුර',
+          locationName: targetAlert.locationName || 'ශ්‍රී ලංකාව',
+          resolvedTime: timeStr,
+          resolvedReason: reasonText,
+          resolvedBy: 'පරිපාලක (Admin)',
+        });
+      }
+
       if (handleRefresh) handleRefresh();
     } catch (err) {
       console.error('Error updating alert status:', err);
@@ -122,9 +141,25 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     if (!confirm('මෙම ආපදා ඇඟවීම ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) return;
 
     setActionLoadingId(alertId);
+    const targetAlert = alerts.find((a) => a.id === alertId);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
     addDeletedRedAlertId(alertId);
+
     try {
       await deleteRedAlertInFirestore(alertId);
+
+      if (targetAlert) {
+        broadcastRedAlertResolvedNotification({
+          alertId: targetAlert.id,
+          alertCode: targetAlert.alertCode,
+          disasterTitle: targetAlert.disasterTitleSi || targetAlert.disasterTitleEn || 'හදිසි ආපදා අනතුර',
+          locationName: targetAlert.locationName || 'ශ්‍රී ලංකාව',
+          resolvedTime: timeStr,
+          resolvedReason: 'පරිපාලක විසින් පද්ධතියෙන් මෙම ආපදා ඇඟවීම ඉවත් කරන ලදී.',
+          resolvedBy: 'පරිපාලක (Admin)',
+        });
+      }
+
       if (handleRefresh) handleRefresh();
     } catch (err) {
       console.error('Error deleting alert:', err);

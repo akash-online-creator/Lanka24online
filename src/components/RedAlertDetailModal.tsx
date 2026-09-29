@@ -31,6 +31,7 @@ import {
   cancelRedAlertByReporter,
   addReporterUpdateToRedAlert
 } from '../lib/firebase';
+import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 
 interface RedAlertDetailModalProps {
   alert: RedAlertItem | null;
@@ -61,6 +62,10 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
   // In-app confirmation state instead of blocking window.confirm
   const [confirmDialog, setConfirmDialog] = useState<'resolve' | 'cancel_delete' | null>(null);
+  const [selectedResolveReason, setSelectedResolveReason] = useState('ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.');
+  const [customResolveReason, setCustomResolveReason] = useState('');
+  const [selectedCancelReason, setSelectedCancelReason] = useState('ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.');
+  const [customCancelReason, setCustomCancelReason] = useState('');
 
   // Fake reporting state
   const [showFakeReportModal, setShowFakeReportModal] = useState(false);
@@ -118,21 +123,37 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   const handleConfirmResolveAlert = async () => {
     if (!alert || !alert.id) return;
     setIsSubmitting(true);
+    const finalReason = customResolveReason.trim() || selectedResolveReason;
+    const resolvedTimeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+    const actorName = currentUser?.name || alert.reportedByName || (isAdmin ? 'පරිපාලක (Admin)' : 'වාර්තාකරු');
+
     try {
-      await markRedAlertAsResolved(alert.id, 'වාර්තාකරු විසින් විසඳන ලදී');
+      await markRedAlertAsResolved(alert.id, finalReason);
       
       const updatedItem: RedAlertItem = {
         ...alert,
         status: 'resolved',
-        statusChangeMessage: '✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.',
+        statusChangeMessage: `✅ ආපදාව විසඳුනු බව සටහන් කළේය: ${finalReason}`,
         resolvedAt: new Date().toISOString(),
+        adminActionNote: finalReason,
       };
+
+      // 🔔 Dispatch rich notification with: අවදානම කුමක්ද, ඉවත් කළේ කීයටද, ඉවත් කළේ ඇයි
+      broadcastRedAlertResolvedNotification({
+        alertId: alert.id,
+        alertCode: alert.alertCode,
+        disasterTitle: alert.disasterTitleSi || alert.disasterTitleEn || 'හදිසි ආපදා අවදානම',
+        locationName: alert.locationName || 'ශ්‍රී ලංකාව',
+        resolvedTime: resolvedTimeFormatted,
+        resolvedReason: finalReason,
+        resolvedBy: actorName,
+      });
 
       if (onAlertUpdated) {
         onAlertUpdated(updatedItem);
       }
 
-      setActionSuccessMsg('✅ ආපදාව විසඳුණි (Resolved) ලෙස සාර්ථකව සටහන් විය!');
+      setActionSuccessMsg('✅ ආපදාව විසඳුණි (Resolved) ලෙස සටහන් කර දැනුම්දීම් (Notifications) නිකුත් කරන ලදී!');
       setConfirmDialog(null);
 
       setTimeout(() => {
@@ -150,15 +171,31 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   const handleConfirmCancelAlert = async () => {
     if (!alert || !alert.id) return;
     setIsSubmitting(true);
+    const finalReason = customCancelReason.trim() || selectedCancelReason;
+    const resolvedTimeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+    const actorName = currentUser?.name || alert.reportedByName || (isAdmin ? 'පරිපාලක (Admin)' : 'වාර්තාකරු');
+
     try {
-      await cancelRedAlertByReporter(alert.id, 'වාර්තාකරු විසින් ඉවත් කරගන්නා ලදී');
+      await cancelRedAlertByReporter(alert.id, finalReason);
       
       const updatedItem: RedAlertItem = {
         ...alert,
         status: 'cancelled',
-        statusChangeMessage: 'ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.',
+        statusChangeMessage: `ℹ️ ආපදා නිවේදනය ඉවත් කරගන්නා ලදී: ${finalReason}`,
         cancelledAt: new Date().toISOString(),
+        adminActionNote: finalReason,
       };
+
+      // 🔔 Dispatch rich notification with: අවදානම කුමක්ද, ඉවත් කළේ කීයටද, ඉවත් කළේ ඇයි
+      broadcastRedAlertResolvedNotification({
+        alertId: alert.id,
+        alertCode: alert.alertCode,
+        disasterTitle: alert.disasterTitleSi || alert.disasterTitleEn || 'හදිසි ආපදා අවදානම',
+        locationName: alert.locationName || 'ශ්‍රී ලංකාව',
+        resolvedTime: resolvedTimeFormatted,
+        resolvedReason: finalReason,
+        resolvedBy: actorName,
+      });
 
       if (onAlertUpdated) {
         onAlertUpdated(updatedItem);
@@ -167,7 +204,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         onAlertDeleted(alert.id);
       }
 
-      setActionSuccessMsg('🗑️ ආපදා නිවේදනය සාර්ථකව ඉවත් කරන ලදී.');
+      setActionSuccessMsg('🗑️ ආපදා නිවේදනය ඉවත් කර දැනුම්දීම් (Notifications) නිකුත් කරන ලදී.');
       setConfirmDialog(null);
 
       setTimeout(() => {
@@ -540,14 +577,43 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
               {/* ⬆️ In-App Confirmation Card: Option 01 (Resolve) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
               {confirmDialog === 'resolve' && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-2.5 animate-fadeIn shadow-lg">
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-3 animate-fadeIn shadow-lg">
                   <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් පද්ධතියේ සියලු දෙනාට ආපදාව විසඳුණු බව (Resolved) සටහන් වේ.
+                    මෙමගින් පද්ධතියේ සියලු දෙනාගේ Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> සවිස්තරාත්මකව යැවෙනු ඇත.
                   </p>
+
+                  {/* 💡 Reason selector */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[11px] font-black text-emerald-900 dark:text-emerald-200">
+                      💡 ආපදාව ඉවත් කළ හේතුව තෝරන්න (Reason):
+                    </label>
+                    <select
+                      value={selectedResolveReason}
+                      onChange={(e) => setSelectedResolveReason(e.target.value)}
+                      className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-emerald-400 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.">ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.</option>
+                      <option value="මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.">මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.</option>
+                      <option value="හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.">හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.</option>
+                      <option value="ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.">ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.</option>
+                      <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
+                    </select>
+
+                    {selectedResolveReason === 'custom' && (
+                      <input
+                        type="text"
+                        placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
+                        value={customResolveReason}
+                        onChange={(e) => setCustomResolveReason(e.target.value)}
+                        className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-emerald-400 text-slate-900 dark:text-slate-100 mt-1"
+                      />
+                    )}
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"
@@ -564,7 +630,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                       className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                     >
                       {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      <span>ඔව්, ආපදාව විසඳුණි</span>
+                      <span>ඔව්, විසඳුණු බව දැනුම්දෙන්න</span>
                     </button>
                   </div>
                 </div>
@@ -572,14 +638,42 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
               {/* ⬆️ In-App Confirmation Card: Option 02 (Cancel / Delete) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
               {confirmDialog === 'cancel_delete' && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-2.5 animate-fadeIn shadow-lg">
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-3 animate-fadeIn shadow-lg">
                   <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
                     <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
                     <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් ආපදා අනතුරු ඇඟවීම ක්‍රියා විරහිත කර පද්ධතියෙන් ඉවත් කරනු ලැබේ.
+                    මෙමගින් ආපදා අනතුරු ඇඟවීම ක්‍රියා විරහිත කර පද්ධතියේ සියලු දෙනාගේ Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> යවනු ලැබේ.
                   </p>
+
+                  {/* 💡 Cancel Reason selector */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[11px] font-black text-rose-900 dark:text-rose-200">
+                      💡 අනතුර ඉවත් කළ හේතුව තෝරන්න (Reason):
+                    </label>
+                    <select
+                      value={selectedCancelReason}
+                      onChange={(e) => setSelectedCancelReason(e.target.value)}
+                      className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-rose-400 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.">ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.</option>
+                      <option value="අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.">අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.</option>
+                      <option value="හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.">හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.</option>
+                      <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
+                    </select>
+
+                    {selectedCancelReason === 'custom' && (
+                      <input
+                        type="text"
+                        placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
+                        value={customCancelReason}
+                        onChange={(e) => setCustomCancelReason(e.target.value)}
+                        className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-rose-400 text-slate-900 dark:text-slate-100 mt-1"
+                      />
+                    )}
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"

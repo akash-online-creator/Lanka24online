@@ -71,6 +71,7 @@ import {
   addDeletedUserId,
   filterNonDeletedUsers
 } from '../utils/deletedPostsManager';
+import { broadcastAdminNotification } from '../utils/notificationManager';
 import { 
   Shield, 
   ShieldAlert,
@@ -324,6 +325,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [proServices, setProServices] = useState<ProfessionalService[]>(() => getStoredProfessionalServices());
   const [proSearchQuery, setProSearchQuery] = useState('');
   const [proCategoryFilter, setProCategoryFilter] = useState('all');
+
+  // 📢 Admin Announcement Broadcast Modal State
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastBody, setBroadcastBody] = useState('');
+  const [broadcastBadge, setBroadcastBadge] = useState('ADMIN');
+  const [isPublishingBroadcast, setIsPublishingBroadcast] = useState(false);
+
+  const handlePublishAdminAnnouncement = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) {
+      alert('කරුණාකර නිවේදනයේ මාතෘකාව සහ විස්තරය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    setIsPublishingBroadcast(true);
+    try {
+      broadcastAdminNotification({
+        title: broadcastTitle.trim(),
+        message: broadcastBody.trim(),
+        badgeText: broadcastBadge.trim() || 'ADMIN',
+        adminSender: 'පරිපාලක මණ්ඩලය (Admin Panel)',
+      });
+
+      setAdminActionNotification(`📢 "${broadcastTitle}" නිවේදනය සියලුම පරිශීලකයන්ගේ Notification වෙත සාර්ථකව විකාශනය කරන ලදී!`);
+      setBroadcastTitle('');
+      setBroadcastBody('');
+      setIsBroadcastModalOpen(false);
+      setTimeout(() => setAdminActionNotification(null), 7000);
+    } catch (err) {
+      console.error('Error broadcasting announcement:', err);
+      alert('නිවේදනය නිකුත් කිරීමට නොහැකි විය.');
+    } finally {
+      setIsPublishingBroadcast(false);
+    }
+  };
 
   const handleAdminDeleteProService = (serviceId: string) => {
     if (!serviceId) return;
@@ -730,6 +767,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const uid = user?.id || user?.userId;
     if (uid && onApproveUser) onApproveUser(uid);
     setAdminActionNotification(`✅ ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම සාර්ථකව අනුමත (Approve) කරන ලදී.`);
+
+    // 📢 Broadcast Admin Notification
+    broadcastAdminNotification({
+      title: `සාමාජික ගිණුමක් සත්‍යාපනය විය: ${user.name}`,
+      message: `${user.name} (${user.district || 'ශ්‍රී ලංකාව'}) සාමාජික ගිණුම පරිපාලක මණ්ඩලය විසින් සත්‍යාපනය කර අනුමත කරන ලදී.`,
+      badgeText: 'VERIFIED',
+      adminSender: 'පරිපාලක මණ්ඩලය (Admin Panel)',
+      locationName: user.district,
+    });
+
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
 
@@ -874,6 +921,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <span>{language === 'en' ? '👤 Switch to User Mode' : language === 'ta' ? '👤 பயனர் முறை' : '👤 පරිශීලක ප්‍රකාරය (User Mode)'}</span>
             </button>
           )}
+
+          {/* 📢 Admin Announcement Broadcast Button */}
+          <button
+            type="button"
+            onClick={() => setIsBroadcastModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm shadow-lg border-2 border-amber-300 cursor-pointer transition-all hover:scale-105 active:scale-95"
+            title="සියලුම පරිශීලකයන්ගේ Notification වලට නිල Admin නිවේදනයක් නිකුත් කරන්න"
+          >
+            <Megaphone className="w-4 h-4 text-slate-950" />
+            <span>📢 Admin නිවේදනයක් නිකුත් කරන්න</span>
+          </button>
         </div>
 
         {/* Quick Numbers Cards */}
@@ -3394,6 +3452,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 මකා දමන්න (Delete Post)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📢 Admin Announcement Broadcast Modal */}
+      {isBroadcastModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-[120] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border-2 border-amber-400 shadow-2xl p-6 space-y-4 animate-scaleUp text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-600">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black">
+                    📢 නිල Admin නිවේදනයක් විකාශනය කරන්න
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    සියලුම සාමාජිකයන්ගේ Notifications වෙත සජීවීව යැවේ
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePublishAdminAnnouncement} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1">
+                  නිවේදන මාතෘකාව (Announcement Title):
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="උදා: 📢 පද්ධති නඩත්තු දැනුම්දීමක් / 🛡️ නව ආරක්ෂක උපදෙස්..."
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1">
+                  ලාංඡනය / Badge Text:
+                </label>
+                <div className="flex items-center gap-2">
+                  {['ADMIN', 'NOTICE', 'SECURITY', 'UPDATE', 'IMPORTANT'].map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setBroadcastBadge(b)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-black border transition-all ${
+                        broadcastBadge === b 
+                          ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-xs' 
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1">
+                  සම්පූර්ණ පණිවිඩය (Detailed Message):
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="පරිශීලකයන්ට දැනුම්දිය යුතු කරුණු මෙහි පැහැදිලිව සටහන් කරන්න..."
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-medium outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsBroadcastModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-xs cursor-pointer"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPublishingBroadcast}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+                >
+                  {isPublishingBroadcast ? <Loader2 className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />}
+                  <span>දැන්ම විකාශනය කරන්න (Broadcast Now)</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

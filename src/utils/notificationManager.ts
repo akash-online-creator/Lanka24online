@@ -2,6 +2,8 @@ import { triggerPickMeAlert } from './backgroundAlertEngine';
 
 export type NotificationType = 
   | 'emergency_blood' 
+  | 'red_alert_resolved'
+  | 'admin_broadcast'
   | 'aid_ledger'
   | 'quick_service' 
   | 'find_for_me' 
@@ -21,7 +23,16 @@ export interface AppNotification {
   locationName?: string;
   badgeText?: string;
   targetPostId?: string;
-  targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail';
+  targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert' | 'admin';
+  meta?: {
+    hazardName?: string;
+    hazardType?: string;
+    resolvedTime?: string;
+    resolvedReason?: string;
+    resolvedBy?: string;
+    alertCode?: string;
+    adminSender?: string;
+  };
 }
 
 const STORAGE_KEY = 'sahaya_live_notifications';
@@ -297,6 +308,7 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
     badgeText: notifData.badgeText,
     targetPostId: notifData.targetPostId,
     targetModal: notifData.targetModal,
+    meta: notifData.meta,
     timestamp: new Date().toISOString(),
     isRead: false,
   };
@@ -342,6 +354,63 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
   window.dispatchEvent(new CustomEvent('sahaya_new_notification', { detail: newNotif }));
 
   return newNotif;
+};
+
+// 🚨 Red Alert Resolved / Cleared Notification Broadcaster
+export const broadcastRedAlertResolvedNotification = (params: {
+  alertId?: string;
+  alertCode?: string;
+  disasterTitle: string;
+  locationName: string;
+  resolvedTime?: string;
+  resolvedReason: string;
+  resolvedBy?: string;
+}) => {
+  const timeStr = params.resolvedTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+  const alertCodeTag = params.alertCode ? ` (${params.alertCode})` : '';
+
+  const fullMessage = `🚨 අවදානම: ${params.disasterTitle}${alertCodeTag}\n📍 ස්ථානය: ${params.locationName}\n🕒 ඉවත් කළ වේලාව: ${timeStr}\n💡 ඉවත් කළ හේතුව: ${params.resolvedReason}${params.resolvedBy ? ` (${params.resolvedBy} විසින් තහවුරු කළේය)` : ''}`;
+
+  return broadcastAppNotification({
+    id: `notif-red-res-${params.alertId || Date.now()}`,
+    type: 'red_alert_resolved',
+    title: `✅ ආපදා අනතුර ඉවත් කරන ලදී (Hazard Resolved)`,
+    message: fullMessage,
+    locationName: params.locationName,
+    badgeText: 'විසඳුණි',
+    targetPostId: params.alertId,
+    targetModal: 'red_alert',
+    meta: {
+      hazardName: params.disasterTitle,
+      alertCode: params.alertCode,
+      resolvedTime: timeStr,
+      resolvedReason: params.resolvedReason,
+      resolvedBy: params.resolvedBy,
+    },
+  });
+};
+
+// 📢 Admin Announcement / Broadcast Notification Broadcaster
+export const broadcastAdminNotification = (params: {
+  id?: string;
+  title: string;
+  message: string;
+  badgeText?: string;
+  adminSender?: string;
+  locationName?: string;
+}) => {
+  return broadcastAppNotification({
+    id: params.id || `notif-admin-${Date.now()}`,
+    type: 'admin_broadcast',
+    title: params.title.startsWith('📢') ? params.title : `📢 ${params.title}`,
+    message: params.message,
+    badgeText: params.badgeText || 'ADMIN',
+    locationName: params.locationName,
+    targetModal: 'admin',
+    meta: {
+      adminSender: params.adminSender || 'පරිපාලක (Admin)',
+    },
+  });
 };
 
 export const addAppNotification = broadcastAppNotification;
