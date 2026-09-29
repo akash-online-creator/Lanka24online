@@ -144,10 +144,10 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         sender: 'assistant',
         text:
           chatLanguage === 'en'
-            ? '👋 Hello! I am **Sahaya Mithura (AI Assistant)**.\nYou can ask me **any question on any topic** (general knowledge, science, education, advice, daily life) or get step-by-step guidance for any **Sahaya Seva** community service.\n\nWhat would you like to ask or explore today?'
+            ? '👋 Hello! I am **Sahaya Mithura (AI Companion & Interactive Guide)**.\nI am trained to guide you step-by-step through every feature:\n\n• 📝 **How to Fill Forms**: Step-by-step guidance for Help Requests, Aid Ledger centers, Blood Requests, and Quick Services.\n• 🛠️ **Troubleshoot Issues**: Fix GPS locations, photo uploads, password resets, and account queries.\n• 🔄 **Interactive Workflows**: Learn how each page works and how to connect with community members.\n• 🧠 **General Knowledge**: Ask me any question on science, math, health, daily advice, or living.\n\nHow can I guide or help you today?'
             : chatLanguage === 'ta'
-            ? '👋 வணக்கம்! நான் உங்கள் **சகாய AI உதவியாளர்**.\nபொது அறிவு, அறிவியல், கல்வி, அன்றாட வாழ்க்கை ஆலோசனை அல்லது **சகாய சேவை** தளத்தின் சேவைகள் உட்பட **எந்தவொரு கேள்வியையும்** என்னிடம் கேட்கலாம்.\n\nஇன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?'
-            : '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Assistant)**.\nසාමාන්‍ය දැනුම, අධ්‍යාපනය, විද්‍යාව, එදිනෙදා උපදෙස් ඇතුළු **ඕනෑම විෂයයක ඕනෑම ප්‍රශ්නයක්** මෙන්ම **සහය සේවා පද්ධතියේ සියලුම සේවාවන්** පිළිබඳව මගෙන් විමසිය හැක.\n\nඔබට අද මගෙන් දැනගැනීමට අවශ්‍ය කුමක්ද?',
+            ? '👋 வணக்கம்! நான் உங்கள் **சகாய AI வழிகாட்டி (Sahaya Mithura)**.\nதளத்தின் அனைத்து அம்சங்களையும் படிபடியாக உங்களுக்கு கற்றுத்தர நான் தயாராக உள்ளேன்:\n\n• 📝 **படிவங்களை நிரப்புவது எப்படி**: உதவி கோரிக்கைகள், இரத்த தானம், நிவாரண மையங்கள் படிவ வழிகாட்டல்.\n• 🛠️ **சிக்கல்களைத் தீர்ப்பது**: GPS, புகைப்பட பதிவேற்றம் மற்றும் கணக்கு சிக்கல்கள்.\n• 🔄 **பக்கங்களை பயன்படுத்துவது எப்படி**.\n• 🧠 **பொது அறிவு**: எந்தவொரு கேள்வியையும் கேட்கலாம்.\n\nஇன்று உங்களுக்கு என்ன உதவி தேவை?'
+            : '👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya AI Guide & Companion)**.\nපද්ධතියේ සෑම අංශයක් පිළිබඳවම ඔබට පියවරෙන් පියවර මඟපෙන්වීමට මම පුහුණු වී සිටිමි:\n\n• 📝 **පෝරම නිවැරදිව පුරවන ආකාරය**: උපකාර ඉල්ලීම්, ආධාර ලෙජරයේ ස්ථාන ලියාපදිංචිය, හදිසි ලේ, සහ ඉක්මන් සේවා පෝරම පිරවීම.\n• 🛠️ **ගැටලු විසඳා ගැනීම (Troubleshooting)**: GPS පිහිටීම, ඡායාරූප Upload ගැටලු, මුරපද සහ තාක්ෂණික ගැටලු නිරාකරණය.\n• 🔄 **පිටු සමඟ ක්‍රියාකරන ආකාරය**: එක් එක් සේවාව ක්‍රියාත්මක වන ආකාරය සහ සාමාජිකයන් හා සම්බන්ධ වීම.\n• 🧠 **ඕනෑම විෂයයක ප්‍රශ්න**: සාමාන්‍ය දැනුම, විද්‍යාව, අධ්‍යාපනය හෝ එදිනෙදා ජීවිතයේ ඕනෑම දෙයක් විමසන්න.\n\nඔබට අද මාගෙන් අවශ්‍ය මඟපෙන්වීම කුමක්ද?',
         detectedLang: chatLanguage,
         timestamp: 'දැන්',
         actions: [
@@ -155,9 +155,9 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
             type: 'open_help_post',
             label:
               chatLanguage === 'en'
-                ? '📝 Post Help'
+                ? '📝 Help Request Form'
                 : chatLanguage === 'ta'
-                ? '📝 உதவி கோரிக்கை'
+                ? '📝 உதவி படிவம்'
                 : '📝 උපකාර ඉල්ලුම් පෝරමය',
           },
           {
@@ -170,6 +170,15 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
                 : '⚡ ඉක්මන් සේවා',
           },
           {
+            type: 'open_blood',
+            label:
+              chatLanguage === 'en'
+                ? '🩸 Blood & Aid Ledger'
+                : chatLanguage === 'ta'
+                ? '🩸 இரத்தம் & லெட்ஜர்'
+                : '🩸 ලේ & ආධාර ලෙජරය',
+          },
+          {
             type: 'open_market',
             label:
               chatLanguage === 'en'
@@ -178,22 +187,13 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
                 ? '🛒 சந்தை விலைகள்'
                 : '🛒 අඩුම මිල ගණන්',
           },
-          {
-            type: 'open_blood',
-            label:
-              chatLanguage === 'en'
-                ? '🩸 Blood & Disaster'
-                : chatLanguage === 'ta'
-                ? '🩸 இரத்த தானம்'
-                : '🩸 හදිසි ලේ කේන්ද්‍රය',
-          },
         ],
         quickChips:
           chatLanguage === 'en'
-            ? ['Ask any question', 'How to fill Help Form?', 'Check Market Prices', 'Emergency Blood']
+            ? ['How to fill a Form?', 'How to solve an App issue?', 'How to connect with helpers?', 'Ask any question']
             : chatLanguage === 'ta'
-            ? ['எந்த கேள்வியையும் கேளுங்கள்', 'படிவம் நிரப்புவது எப்படி?', 'சந்தை விலைகள்', 'இரத்தம் தேவை']
-            : ['ඕනෑම ප්‍රශ්නයක් අසන්න', 'පෝරම පුරවන්නේ කොහොමද?', 'අඩුම මිල ගණන් බලන්න', 'හදිසි ලේ අවශ්‍යයි'],
+            ? ['படிவம் நிரப்புவது எப்படி?', 'சிக்கலைத் தீர்ப்பது எப்படி?', 'தொடர்புகொள்வது எப்படி?', 'பொது அறிவு']
+            : ['පෝරම පුරවන්නේ කොහොමද?', 'ගැටලුවක් විසඳාගන්නේ කොහොමද?', 'පිටු ක්‍රියාකරන්නේ කොහොමද?', 'ඕනෑම ප්‍රශ්නයක් අසන්න'],
       },
     ];
   });

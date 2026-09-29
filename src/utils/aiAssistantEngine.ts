@@ -451,7 +451,59 @@ function resolveLocalKnowledge(
     lower.includes('පුරව') ||
     lower.includes('fill') ||
     lower.includes('ලියන්නේ කොහොමද') ||
+    lower.includes('ලියාපදිංචි කරන්නේ') ||
     lower.includes('படிவம்');
+
+  // 1.0 Aid Ledger / Relief Center Registration & Delivery Forms (ආධාර ලෙජරය සහ ස්ථාන ලියාපදිංචිය)
+  if (isFormFillingQuery && (lower.includes('ස්ථාන') || lower.includes('center') || lower.includes('ලෙජර') || lower.includes('ledger') || lower.includes('ආධාර සටහන්') || lower.includes('aid') || lower.includes('බෙදාහැරීම'))) {
+    if (lang === 'en') {
+      return {
+        text: `🏢 **How to Register a Center & Log Aid on the Transparent Aid Ledger (Step-by-Step)**:
+
+1. **🏢 Center Registration Form (ස්ථානයක් ලියාපදිංචි කිරීම)**:
+   • **Center Name & Type**: Enter the location (e.g. *"Vidyaloka Maha Vidyalaya Relief Camp"*, *"St. Mary's Community Hall"*).
+   • **6-Digit Security PIN (අංක 6ක රහස් PIN අංකය)**: Choose a secure 6-digit PIN known only to the center head/Gramasewaka. This is required later to confirm incoming deliveries.
+   • **Location**: Choose District, DS Division, GPS location, and sheltered people/family count.
+   • **Contact Person**: Verified mobile number of the responsible officer.
+
+2. **🚚 Aid Delivery Logging Form (ආධාර සටහන් කිරීම)**:
+   • Select the verified Center ID from the list.
+   • Choose Category (Dry Rations, Drinking Water, Cooked Meals, Medicine, Clothes).
+   • Enter Quantity & Unit (packs, kg, liters, boxes), Donor Name, and Vehicle Number.
+   • Upload 1-2 handover photos as proof.
+
+3. **📥 Aid Recipient Confirmation (ආධාර ලැබීම තහවුරු කිරීම)**:
+   • Center officials enter their 6-digit secret PIN to verify and lock the record permanently on the immutable public ledger.`,
+        actions: [
+          { type: 'open_blood', label: '📊 Open Aid & Disaster Ledger' },
+        ],
+        quickChips: ['How does 6-digit PIN work?', 'How to confirm aid received?', 'Is the Aid Ledger public?'],
+      };
+    } else {
+      return {
+        text: `🏢 **ආධාර සහ සම්පත් විනිවිදභාවයේ ලෙජරයේ පෝරම පුරවන ආකාරය (පියවරෙන් පියවර)**:
+
+1. **🏢 ස්ථානයක් ලියාපදිංචි කිරීමේ පෝරමය (Register Relief Center)**:
+   • **ස්ථානයේ නම සහ වර්ගය**: පාසල, පන්සල, පල්ලිය, ප්‍රජා ශාලාව හෝ සහන කඳවුරේ නම ඇතුළත් කරන්න (උදා: *"විද්‍යාලෝක මහා විද්‍යාලයීය සහන කඳවුර"*).
+   • **අංක 6ක රහස් PIN අංකය**: ස්ථාන භාරකරුට/ග්‍රාම නිලධාරීට පමණක් හිමි රහස් අංක 6ක් සකසන්න. ආධාර ලැබීම තහවුරු කිරීමට මෙය අත්‍යවශ්‍ය වේ.
+   • **ස්ථාන විස්තර**: දිස්ත්‍රික්කය, ප්‍රාදේශීය ලේකම් කොට්ඨාසය, GPS පිහිටීම සහ රැඳී සිටින පවුල්/පුද්ගල ගණන සඳහන් කරන්න.
+   • **භාරකරුගේ දුරකථන අංකය**: සත්‍යාපිත දුරකථන අංකයක් ඇතුළත් කරන්න.
+
+2. **🚚 ආධාර ලබාදුන් පසු සටහන් කිරීමේ පෝරමය (Log Delivery)**:
+   • ලැයිස්තුවෙන් අදාළ ස්ථානය (Center ID) තෝරන්න.
+   • කාණ්ඩය තෝරන්න (වියලි ආහාර, පානීය ජලය, පිසූ ආහාර, බෙහෙත්, ඇඳුම්).
+   • ප්‍රමාණය සහ ඒකකය (පැකට්, කිලෝ, ලීටර්, පෙට්ටි), පරිත්‍යාගකරුගේ නම සහ ප්‍රවාහන රථ අංකය ඇතුළත් කරන්න.
+   • භාරදුන් අවස්ථාවේ ඡායාරූප 1-2ක් සාක්ෂි ලෙස එක්කරන්න.
+
+3. **📥 ආධාර ලැබීම තහවුරු කිරීම (Recipient Confirmation)**:
+   • ස්ථාන භාරකරු විසින් අංක 6ක රහස් PIN අංකය ඇතුළත් කර භාණ්ඩ නිවැරදිව ලැබුණු බව තහවුරු කරයි. ඉන්පසු එම සටහන පොදු ලෙජරයේ ස්ථිරව සටහන් වේ.`,
+        actions: [
+          { type: 'open_blood', label: '📊 විනිවිදභාවයේ ලෙජරය විවෘත කරන්න' },
+        ],
+        quickChips: ['අංක 6ක PIN එක ක්‍රියාකරන්නේ කොහොමද?', 'ආධාර ලැබීම තහවුරු කරන්නේ කෙසේද?', 'පොදු ලෙජරය යනු කුමක්ද?'],
+      };
+    }
+  }
 
   // 1.1 Help Post Request Form (උපකාර ඉල්ලුම් පෝරමය)
   if (isFormFillingQuery && (lower.includes('උපකාර') || lower.includes('help') || lower.includes('දැන්වීම') || lower.includes('post') || lower.includes('request'))) {
@@ -852,6 +904,89 @@ function resolveLocalKnowledge(
 • **Credits ලබාගැනීම**: නව ලියාපදිංචියේදී නොමිලේ Welcome Credits හිමිවන අතර Wallet එකෙන් Top-up කළ හැක.`,
       actions: [{ type: 'open_wallet', label: '💳 Wallet එක විවෘත කර ශේෂය බලන්න' }],
       quickChips: ['පෝරම පුරවන්නේ කොහොමද?', 'ණය මුදල් තැන්පත් කරන්නේ කෙසේද?'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 5. IN-APP TROUBLESHOOTING & ISSUE RESOLUTION (ගැටලු විසඳා ගැනීම)
+  // -------------------------------------------------------------
+  const isTroubleQuery =
+    lower.includes('ගැටලු') ||
+    lower.includes('problem') ||
+    lower.includes('issue') ||
+    lower.includes('error') ||
+    lower.includes('බැහැ') ||
+    lower.includes('නොහැක') ||
+    lower.includes('වැඩ කරන්නේ නැහැ') ||
+    lower.includes('gps') ||
+    lower.includes('ස්ථානය') ||
+    lower.includes('upload') ||
+    lower.includes('photo') ||
+    lower.includes('චැට්') ||
+    lower.includes('මුරපද') ||
+    lower.includes('password') ||
+    lower.includes('ප්‍රශ්න');
+
+  if (isTroubleQuery) {
+    if (lower.includes('gps') || lower.includes('ස්ථාන') || lower.includes('location')) {
+      return {
+        text: `📍 **GPS සහ ස්ථානය හඳුනාගැනීමේ ගැටලුව විසඳා ගැනීම (Troubleshooting)**:
+
+1. **ස්ථාන අවසරය (Location Permission)**: ඔබගේ Browser එකේ (Chrome/Safari) URL තීරුවේ ඇති අගුලේ සලකුණ (Lock icon) ඔබා **Location: Allow** කර Reload කරන්න.
+2. **Device GPS සක්‍රිය කිරීම**: ඔබගේ දුරකථනයේ හෝ පරිගණකයේ Location / GPS සක්‍රිය කර ඇත්දැයි බලන්න.
+3. **ස්වයංක්‍රීයව වෙනුවට අතින් තේරීම**: GPS සංඥා දුර්වල නම්, ඉහළ ඇති Location තීරුවෙන් ඔබගේ **දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය** සෘජුවම තෝරාගත හැක.`,
+        actions: [
+          { type: 'open_issues_help', label: '❓ තාක්ෂණික ගැටලු වාර්තා කරන්න' },
+        ],
+        quickChips: ['GPS හරිගස්සන්නේ කොහොමද?', 'පෝරම පුරවන්නේ කොහොමද?', 'පරිපාලකට පණිවිඩයක් යවන්න'],
+      };
+    }
+
+    if (lower.includes('photo') || lower.includes('upload') || lower.includes('ඡායාරූප')) {
+      return {
+        text: `📷 **ඡායාරූප Upload වීමේ ගැටලු විසඳා ගැනීම**:
+
+1. **කැමරා අවසර (Camera Permission)**: Browser එකෙන් කැමරාව සහ Gallery සඳහා අවසර (Allow) ලබාදී ඇත්දැයි පරීක්ෂා කරන්න.
+2. **ස්වයංක්‍රීය සම්පීඩනය (Auto Compress)**: අපගේ පද්ධතිය ඡායාරූප ස්වයංක්‍රීයව සුළු ප්‍රමාණයකට සම්පීඩනය (Compress) කරයි. ඔබගේ අන්තර්ජාලය දුර්වල අවස්ථාවකදී තත්පර කිහිපයක් රැඳී සිටින්න.
+3. **ආලෝකය සහ ගුණාත්මකභාවය**: ඡායාරූපය නොසෙල්වී, පැහැදිලි ආලෝකයකින් ලබාගන්න.`,
+        actions: [{ type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' }],
+        quickChips: ['NIC ඡායාරූප ගන්නේ කොහොමද?', 'පෝරම පුරවන්නේ කොහොමද?'],
+      };
+    }
+
+    if (lower.includes('credit') || lower.includes('ණය') || lower.includes('ශේෂ')) {
+      return {
+        text: `💳 **Wallet Credits සහ ශේෂ ගැටලු විසඳා ගැනීම**:
+
+1. **නොමිලේ සේවාවන්**: **සහය මිතුරා (AI Assistant)**, හදිසි ලේ ඉල්ලීම් සහ ආපදා සයිරන් සඳහා කිසිදු Credit මුදලක් වැය නොවේ (100% නොමිලේ).
+2. **Credits ඉපයීම**: අන් අයට උදවු කිරීමෙන් සහ ප්‍රජා සේවාවන් සම්පූර්ණ කිරීමෙන් නොමිලේ Credits උපයාගත හැක.
+3. **Top-Up කිරීම**: අවශ්‍ය නම් Wallet Modal එකෙන් Credits ලබාගැනීමට ඉල්ලුම් කළ හැක.`,
+        actions: [{ type: 'open_wallet', label: '💳 Wallet ශේෂය පරීක්ෂා කරන්න' }],
+        quickChips: ['Credits උපයන්නේ කොහොමද?', 'Wallet ශේෂය බලන්න'],
+      };
+    }
+
+    // General Troubleshooting Guide
+    return {
+      text: `🛠️ **ඇප් එකේ ගැටලු විසඳාගැනීමේ මඟපෙන්වීම (Troubleshooting Hub)**:
+
+ඔබ මුහුණදෙන ගැටලුව තෝරන්න. එය විසඳාගන්නා ආකාරය පියවරෙන් පියවර කියාදීමට මම සූදානම්:
+
+1. **📍 GPS සහ ස්ථාන අවසර ගැටලු**: Location සක්‍රිය කිරීම සහ දිස්ත්‍රික්කය අතින් තේරීම.
+2. **📷 ඡායාරූප Upload ගැටලු**: පැහැදිලි ඡායාරූප ගැනීම සහ Camera permissions.
+3. **🔑 Login සහ මුරපද ගැටලු**: තාවකාලික මුරපදය ස්ථිර මුරපදයක් බවට පත්කිරීම.
+4. **📢 දැන්වීම් වලට ප්‍රතිචාර නොලැබීම**: මාතෘකාව, විස්තරය සහ ඡායාරූප නිවැරදි කර Boost කිරීම.
+5. **❓ පරිපාලක සහය ලබාගැනීම**: තාක්ෂණික සහය සඳහා Issues Help Desk වෙත පණිවිඩයක් යැවීම.`,
+      actions: [
+        { type: 'open_issues_help', label: '❓ ගැටලු & තාක්ෂණික උපකාර' },
+        { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
+      ],
+      quickChips: [
+        'GPS ගැටලුවක් විසඳන්නේ කොහොමද?',
+        'ඡායාරූප Upload වෙන්නේ නැහැ',
+        'මුරපදය මාරු කරන්නේ කොහොමද?',
+        'පෝරම පුරවන්නේ කොහොමද?',
+      ],
     };
   }
 
