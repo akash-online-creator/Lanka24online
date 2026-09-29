@@ -1607,43 +1607,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onViewPost={(post) => setSelectedPostForDetail(post)}
       />
 
-      {/* 1.15 Live SOS GPS Tracker Action Banner */}
-      <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/30 border-2 border-red-400/80 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
-        <div className="flex items-center gap-3 text-center sm:text-left">
-          <div className="w-12 h-12 rounded-2xl bg-white text-red-600 flex items-center justify-center font-black text-2xl shadow-md shrink-0 animate-pulse">
-            🚨
-          </div>
-          <div className="space-y-0.5">
-            <div className="flex items-center justify-center sm:justify-start gap-2">
-              <h3 className="text-sm sm:text-base font-black tracking-wide">
-                {getLangText('SOS සජීවී GPS ස්ථාන විකාශනය (Live Tracker)', 'SOS Live GPS Tracker & WhatsApp Share', 'SOS நேரலை GPS கண்காணிப்பு')}
-              </h3>
-              <span className="px-2 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black uppercase shadow-xs">
-                NEW
-              </span>
-            </div>
-            <p className="text-xs text-red-100 font-medium">
-              {getLangText('ස්විචය ON කළ සැනින් WhatsApp හරහා ඔබ සිටින ස්ථානය සජීවීව නිරීක්ෂණය කළ හැකි සබැඳියක් ලැබේ.', 'Turn switch ON to track live movement and share link instantly via WhatsApp.', 'WhatsApp வழியாக உங்கள் நேரலை இருப்பிடத்தை அனுப்பவும்.')}
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (user?.isDemo) {
-              setShowDemoRegisterPrompt(true);
-              return;
-            }
-            setIsSosLiveModalOpen(true);
-          }}
-          className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-white hover:bg-red-50 text-red-700 font-black text-xs sm:text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
-        >
-          <Radio className="w-4 h-4 text-red-600 animate-pulse" />
-          <span>{getLangText('SOS Tracker විවෘත කරන්න', 'Open SOS Tracker', 'SOS திறக்கவும்')}</span>
-        </button>
-      </div>
-
       {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards */}
       <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
@@ -1842,7 +1805,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 4: Settings (සැකසුම්) */}
+          {/* Button 4: Sos Tracker (Live GPS Tracking) */}
           <button
             type="button"
             onClick={() => {
@@ -1850,20 +1813,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 setShowDemoRegisterPrompt(true);
                 return;
               }
-              setSettingsInitialTab('profile');
-              setIsSettingsModalOpen(true);
+              setIsSosLiveModalOpen(true);
             }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-[#132a1e] dark:to-[#0f281d] text-emerald-950 dark:text-emerald-100 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 border-2 border-emerald-300/80 dark:border-emerald-700/60 shadow-xs hover:shadow-md hover:scale-[1.01]"
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/30 border-2 border-red-400/80 active:scale-[0.99]"
           >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-xs">
-              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
             </div>
             <div className="text-left min-w-0">
               <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                <span>{getLangText('සැකසුම්', 'Settings', 'அமைப்புகள்')}</span>
+                <span>Sos Tracker</span>
+                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
+                  LIVE
+                </span>
               </div>
-              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-700 dark:text-emerald-300">
-                {getLangText('පැතිකඩ • අකුරු ප්‍රමාණය', 'Profile • Font Size', 'சுயவிவரம் • எழுத்துரு அளவு')}
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-red-100">
+                {getLangText('සජීවී GPS ස්ථානය බෙදාගන්න', 'Live GPS Tracking & Share', 'நேரலை இருப்பிடம்')}
               </div>
             </div>
           </button>

@@ -32,7 +32,8 @@ import {
   QrCode,
   ArrowRightLeft,
   Volume2,
-  Zap
+  Zap,
+  Settings
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -224,10 +225,10 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         LAYER 1: Header Bar (App Logo + Central Quick Utilities + Emergency Red Alert & User Account / Logout Zone)
       */}
       <div className="bg-white dark:bg-[#07150d] border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md transition-all duration-300">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3">
           
-          {/* Top Bar on Mobile / Left on Desktop: App Brand + Language Switcher */}
-          <div className="flex items-center justify-between gap-3 shrink-0">
+          {/* Top Bar Left: App Brand + Settings Quick Button + Language Switcher */}
+          <div className="flex items-center justify-between lg:justify-start gap-2 sm:gap-2.5 flex-wrap shrink-0">
             {/* 1. App Logo & Brand */}
             <div 
               onClick={() => {
@@ -252,6 +253,21 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </div>
             </div>
 
+            {/* ⚙️ Dedicated Top Bar Settings Button (Moved from bottom switcher to top bar!) */}
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold active:scale-95"
+                title={getLangText('පැතිකඩ සහ සැකසුම් (Settings)', 'Settings & Profile', 'அமைப்புகள்')}
+              >
+                <Settings className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-black text-xs">
+                  {getLangText('සැකසුම්', 'Settings', 'அமைப்புகள்')}
+                </span>
+              </button>
+            )}
+
             {/* Language Selector */}
             <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-[#1c402b] shrink-0">
               {(['si', 'en', 'ta'] as Language[]).map((langKey) => (
@@ -271,14 +287,45 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             </div>
           </div>
 
-          {/* Center Utilities Group: Clean interactive quick tools */}
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
+          {/* Center Utilities Group: Clean, organized quick tools */}
+          <div className="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
+            {/* 🚨 Red Alert Button */}
+            {onOpenRedAlert && (
+              <button
+                type="button"
+                onClick={onOpenRedAlert}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer border border-red-300/80 shrink-0"
+                title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
+              >
+                <span className="text-xs animate-pulse">🚨</span>
+                <span className="font-black tracking-wide">රතු එළිය</span>
+                {activeRedAlertsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black font-mono shadow-xs">
+                    {activeRedAlertsCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* 📲 Install App Button */}
+            {onOpenInstallApp && (
+              <button
+                type="button"
+                onClick={onOpenInstallApp}
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/40 shrink-0"
+                title={language === 'en' ? 'Install Sahaya Sewa App' : language === 'ta' ? 'செயலியை நிறுவுக' : 'App එක Install කරගන්න'}
+              >
+                <span className="text-xs">📲</span>
+                <span className="font-black text-xs hidden sm:inline">Install</span>
+              </button>
+            )}
+
             {/* Live Notifications Bell */}
             {onOpenNotifications && (
               <button
                 type="button"
                 onClick={onOpenNotifications}
-                className="relative p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                className="relative p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
                 title="සජීවී දැනුම්දීම් (Live Notifications)"
               >
                 <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -295,8 +342,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenPickMeAlertSettings}
-                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
-                title={language === 'en' ? '24/7 Background Sync & Audio Alert Settings' : language === 'ta' ? '24/7 பின்னணி அறிவிப்புகள் & ஒலி' : '24/7 පසුබිම් දැනුම්දීම් හා ශ්‍රව්‍ය පාලනය (24/7 Background Sync)'}
+                className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                title={language === 'en' ? '24/7 Audio Alert Settings' : language === 'ta' ? '24/7 ஒலி அமைப்புகள்' : '24/7 ශ්‍රව්‍ය පාලනය'}
               >
                 <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </button>
@@ -307,11 +354,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenInbox}
-                className="relative p-2 sm:px-3 sm:py-2 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ සහ සංවාද (Messages)'}
+                className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ (Messages)'}
               >
                 <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline text-xs font-bold">
+                <span className="hidden md:inline text-xs font-bold">
                   {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
                 </span>
                 {typeof inboxCount === 'number' && inboxCount > 0 && (
@@ -327,11 +374,11 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenQrPay}
-                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-emerald-300 dark:border-[#1c402b] flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
-                title={language === 'en' ? 'Sahaya Pay QR (Send & Receive)' : language === 'ta' ? 'QR கட்டணம்' : 'Sahaya Pay QR (ගෙවීම් හා ලැබීම්)'}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-emerald-300 dark:border-[#1c402b] flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
+                title={language === 'en' ? 'QR Pay' : language === 'ta' ? 'QR கட்டணம்' : 'QR Pay'}
               >
                 <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline font-black text-xs">QR Pay</span>
+                <span className="hidden md:inline font-black text-xs">QR Pay</span>
               </button>
             )}
 
@@ -340,8 +387,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenShortcutHub}
-                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/80 text-amber-900 dark:text-amber-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
-                title={language === 'en' ? 'Quick Hub (Facebook-Style Shortcut App)' : language === 'ta' ? 'குயிக் ஹப்' : 'Quick Hub (Facebook ආකාරයේ Shortcut ඇප් එක)'}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/80 text-amber-900 dark:text-amber-300 flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
+                title={language === 'en' ? 'Quick Hub' : language === 'ta' ? 'குயிக் ஹப்' : 'Quick Hub'}
               >
                 <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
                 <span className="hidden md:inline font-black text-xs">Quick Hub</span>
@@ -352,7 +399,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+              className="p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
               title="තේමාව මාරු කරන්න (Light / Dark Mode)"
             >
               {theme === 'dark' ? (
@@ -372,116 +419,75 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   }
                   onNavigate('admin');
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
                   activeRoleView === 'admin'
                     ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
                     : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/70'
                 }`}
-                title={language === 'en' ? 'Switch to Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරයට පිවිසෙන්න'}
+                title={language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරය'}
               >
                 <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span className="font-extrabold text-xs">
-                  {language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරය'}
-                </span>
+                <span className="font-extrabold text-xs">Admin</span>
               </button>
             )}
           </div>
 
-          {/* Right Action & Account Zone: (0) 📲 Install App Button + (1) 🚨 Red Alert Button + (2) Profile + (3) 🚪 Logout Button */}
-          <div className="flex items-center justify-between lg:justify-end gap-2.5 sm:gap-3 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
-            
-            {/* 📲 Install App Dedicated Action */}
-            {onOpenInstallApp && (
-              <button
-                type="button"
-                onClick={onOpenInstallApp}
-                className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/40 shrink-0"
-                title={language === 'en' ? 'Install Sahaya Sewa App to Home Screen' : language === 'ta' ? 'செயலியை நிறுவுக' : 'සහය සේවා App එක ඔබගේ දුරකථනයටම Install කරගන්න'}
-              >
-                <span className="text-sm sm:text-base">📲</span>
-                <span className="font-black tracking-wide hidden xs:inline">{language === 'en' ? 'Install App' : language === 'ta' ? 'நிறுவுக' : 'Install App'}</span>
-              </button>
-            )}
-
-            {/* 🚨 රතු එළිය (Red Alert) Dedicated Standalone Emergency Action */}
-            {onOpenRedAlert && (
-              <button
-                type="button"
-                onClick={onOpenRedAlert}
-                className="relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs sm:text-sm shadow-[0_0_18px_rgba(239,68,68,0.5)] hover:shadow-[0_0_24px_rgba(239,68,68,0.8)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-red-300/80 shrink-0"
-                title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
-              >
-                <span className="text-base animate-pulse">🚨</span>
-                <span className="font-black tracking-wide">රතු එළිය</span>
-                {activeRedAlertsCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-white text-red-700 text-[11px] font-black font-mono shadow-xs">
-                    {activeRedAlertsCount}
+          {/* Right Action & Account Zone: User Profile + 🚪 Exit Button (Always within viewport!) */}
+          <div className="flex items-center justify-between lg:justify-end gap-2 sm:gap-2.5 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
+            {/* User Profile Card Trigger */}
+            <div 
+              onClick={onOpenSettings}
+              className={`flex items-center gap-2 p-1 rounded-xl transition-all ${
+                onOpenSettings ? 'cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15' : ''
+              }`}
+              title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
+            >
+              <div className="text-right min-w-0">
+                <div className="flex items-center justify-end gap-1">
+                  <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[90px] sm:max-w-[130px]">
+                    {user.name}
+                  </h2>
+                  <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
+                    <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
+                    <span>VERIFIED</span>
                   </span>
-                )}
-              </button>
-            )}
-
-            {/* Subtle Divider between Emergency & Account */}
-            <div className="hidden sm:block h-8 w-px bg-slate-200 dark:bg-[#183926] shrink-0" />
-
-            {/* User Profile & Logout Group */}
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Profile Card Trigger */}
-              <div 
-                onClick={onOpenSettings}
-                className={`flex items-center gap-2 p-1 rounded-xl transition-all ${
-                  onOpenSettings ? 'cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15' : ''
-                }`}
-                title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
-              >
-                <div className="text-right min-w-0">
-                  <div className="flex items-center justify-end gap-1">
-                    <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[110px] sm:max-w-[140px]">
-                      {user.name}
-                    </h2>
-                    <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
-                      <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
-                      <span>VERIFIED</span>
-                    </span>
-                  </div>
-                  <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                    ID: {numericId || user.userId}
-                  </p>
                 </div>
-
-                <div className="relative shrink-0">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-sm">
-                    {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
-                      <img 
-                        src={user.facePhotoUrl || user.photoUrl} 
-                        alt={user.name || 'User'} 
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover" 
-                      />
-                    ) : (
-                      (user?.name || 'U').charAt(0).toUpperCase()
-                    )}
-                  </div>
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
-                </div>
+                <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
+                  ID: {numericId || user.userId}
+                </p>
               </div>
 
-              {/* 🚪 Safe Dedicated Logout Button */}
-              {onLogout && (
-                <button
-                  type="button"
-                  onClick={() => setIsLogoutConfirmOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-900/60 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 hover:scale-105 shrink-0"
-                  title={getLangText('පද්ධතියෙන් ඉවත් වන්න (Logout)', 'Log out of system', 'கணக்கிலிருந்து வெளியேறு')}
-                >
-                  <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                  <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Log Out', 'வெளியேறு')}</span>
-                </button>
-              )}
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm">
+                  {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                    <img 
+                      src={user.facePhotoUrl || user.photoUrl} 
+                      alt={user.name || 'User'} 
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    (user?.name || 'U').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
+              </div>
             </div>
 
+            {/* 🚪 Safe Dedicated Exit / Logout Button - Guaranteed Visibility, Never Overflows */}
+            {onLogout && (
+              <button
+                type="button"
+                onClick={() => setIsLogoutConfirmOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 hover:scale-105 shrink-0 whitespace-nowrap"
+                title={getLangText('පද්ධතියෙන් ඉවත් වන්න (Logout)', 'Log out of system', 'கணக்கிலிருந்து வெளியேறு')}
+              >
+                <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியேறு')}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
