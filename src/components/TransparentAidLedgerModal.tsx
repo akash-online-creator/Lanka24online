@@ -569,72 +569,106 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           </div>
         )}
 
-        {/* Navigation Tabs Bar */}
-        <div className="flex items-center gap-1.5 p-2 px-3 sm:px-6 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar shrink-0 text-xs font-bold">
-          <button
-            onClick={() => { setActiveTab('public_ledger'); setSuccessMessage(null); }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'public_ledger'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>📊 පොදු ලෙජරය (Ledger)</span>
-          </button>
+        {/* Navigation Sub-Buttons (Clean, High-Visibility Responsive Grid / Layout) */}
+        <div className="p-2.5 sm:p-3.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
+            {/* Button 1: පොදු ලෙජරය */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('public_ledger'); setSuccessMessage(null); }}
+              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+                activeTab === 'public_ledger'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                activeTab === 'public_ledger' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+              }`}>
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <span className="leading-tight truncate">📊 පොදු ලෙජරය</span>
+            </button>
 
-          <button
-            onClick={() => { setActiveTab('register_center'); setSuccessMessage(null); }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'register_center'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Building className="w-4 h-4" />
-            <span>🏢 අංක 6ක ස්ථානයක් ලියාපදිංචිය</span>
-          </button>
+            {/* Button 2: ස්ථානයක් ලියාපදිංචි කිරිම */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('register_center'); setSuccessMessage(null); }}
+              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+                activeTab === 'register_center'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                activeTab === 'register_center' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+              }`}>
+                <Building className="w-4 h-4" />
+              </div>
+              <span className="leading-tight truncate">🏢 ස්ථානයක් ලියාපදිංචි කිරිම</span>
+            </button>
 
-          <button
-            onClick={() => { setActiveTab('log_delivery'); setSuccessMessage(null); }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'log_delivery'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Truck className="w-4 h-4" />
-            <span>🚚 ආධාර ලබාදුන් පසු සටහන් කිරීම</span>
-          </button>
+            {/* Button 3: ආධාර ලබාදුන් පසු සටහන් කිරීම */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('log_delivery'); setSuccessMessage(null); }}
+              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+                activeTab === 'log_delivery'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                activeTab === 'log_delivery' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+              }`}>
+                <Truck className="w-4 h-4" />
+              </div>
+              <span className="leading-tight truncate">🚚 ආධාර සටහන් කිරීම</span>
+            </button>
 
-          <button
-            onClick={() => { setActiveTab('recipient_confirm'); setSuccessMessage(null); }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'recipient_confirm'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>📥 ආධාර ලැබීම තහවුරු කිරීම</span>
-            {pendingDeliveries.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-black animate-pulse">
-                {pendingDeliveries.length}
-              </span>
-            )}
-          </button>
+            {/* Button 4: ආධාර ලැබීම තහවුරු කිරීම */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('recipient_confirm'); setSuccessMessage(null); }}
+              className={`p-2.5 sm:p-3 rounded-2xl flex items-center justify-between gap-1.5 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+                activeTab === 'recipient_confirm'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'recipient_confirm' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+                }`}>
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <span className="leading-tight truncate">📥 ආධාර ලැබීම තහවුරුව</span>
+              </div>
+              {pendingDeliveries.length > 0 && (
+                <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-black animate-pulse shrink-0">
+                  {pendingDeliveries.length}
+                </span>
+              )}
+            </button>
 
-          <button
-            onClick={() => { setActiveTab('broadcasts'); setSuccessMessage(null); }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'broadcasts'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Radio className="w-4 h-4" />
-            <span>📢 ප්‍රජා නිවේදන (Broadcasts)</span>
-          </button>
+            {/* Button 5: ප්‍රජා නිවේදන */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('broadcasts'); setSuccessMessage(null); }}
+              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] col-span-2 sm:col-span-1 ${
+                activeTab === 'broadcasts'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                activeTab === 'broadcasts' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+              }`}>
+                <Radio className="w-4 h-4" />
+              </div>
+              <span className="leading-tight truncate">📢 ප්‍රජා නිවේදන</span>
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
