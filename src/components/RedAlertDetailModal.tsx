@@ -15,7 +15,8 @@ import {
   Trash2,
   Loader2,
   Sparkles,
-  Calendar
+  Calendar,
+  Navigation
 } from 'lucide-react';
 import { RedAlertItem, RedAlertComment, RedAlertFakeReport, User, LocationOption } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
@@ -414,11 +415,11 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                <div>
+                <div className="w-full">
                   <span className="font-bold text-slate-500 dark:text-slate-400 block mb-0.5">ස්ථානය:</span>
                   <p className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{alert.locationName}</p>
                   {alert.latitude && alert.longitude && (
-                    <p className="text-[11px] sm:text-xs text-slate-400 font-mono mt-1">📍 Lat: {alert.latitude.toFixed(4)}, Lng: {alert.longitude.toFixed(4)}</p>
+                    <p className="text-[11px] sm:text-xs text-slate-400 font-mono mt-0.5">📍 Lat: {alert.latitude.toFixed(4)}, Lng: {alert.longitude.toFixed(4)}</p>
                   )}
                 </div>
               </div>
@@ -436,6 +437,19 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </div>
               </div>
 
+            </div>
+
+            {/* 🗺️ Google Maps Directions & Navigation Button */}
+            <div className="pt-1">
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${alert.latitude && alert.longitude ? `${alert.latitude},${alert.longitude}` : encodeURIComponent(alert.locationName)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer"
+              >
+                <Navigation className="w-4 h-4 text-white animate-pulse shrink-0" />
+                <span>🗺️ Google Maps Navigation (ස්ථානයට මඟ පෙන්වන්න)</span>
+              </a>
             </div>
 
             {/* 🎙️ Voice SOS Audio Note & Stamped Metadata */}
@@ -497,22 +511,19 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </div>
             )}
 
-            {/* Reported By Info */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-white/60 dark:bg-black/20 border border-slate-200/60 dark:border-white/5 text-xs">
-              <div className="flex items-center gap-2">
-                <UserIcon className="w-4 h-4 text-slate-500" />
-                <div>
-                  <span className="text-[10px] text-slate-400 block">වාර්තා කළේ:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{alert.reportedByName || 'හදිසි සාමාජිකයෙක්'}</span>
-                </div>
-              </div>
-              {alert.reportedByPhone && (
+            {/* Emergency Hotline Contact if available */}
+            {alert.reportedByPhone && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-xs">
+                <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                  <span>හදිසි දුරකථන සබඳතාව:</span>
+                </span>
                 <a href={`tel:${alert.reportedByPhone}`} className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs active:scale-95 transition-all">
                   <Phone className="w-3.5 h-3.5" />
-                  <span>අමතන්න</span>
+                  <span>අමතන්න ({alert.reportedByPhone})</span>
                 </a>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* =========================================================================
@@ -526,6 +537,70 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   🛠️ {isAdmin ? 'පරිපාලක පාලන පුවරුව (Admin Actions):' : 'ඔබ මෙම ආපදාව වාර්තා කළ පුද්ගලයායි (Reporter Actions):'}
                 </span>
               </div>
+
+              {/* ⬆️ In-App Confirmation Card: Option 01 (Resolve) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
+              {confirmDialog === 'resolve' && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-2.5 animate-fadeIn shadow-lg">
+                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
+                    මෙමගින් පද්ධතියේ සියලු දෙනාට ආපදාව විසඳුණු බව (Resolved) සටහන් වේ.
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDialog(null)}
+                      disabled={isSubmitting}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmResolveAlert}
+                      disabled={isSubmitting}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                      <span>ඔව්, ආපදාව විසඳුණි</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ⬆️ In-App Confirmation Card: Option 02 (Cancel / Delete) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
+              {confirmDialog === 'cancel_delete' && (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-2.5 animate-fadeIn shadow-lg">
+                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
+                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
+                    මෙමගින් ආපදා අනතුරු ඇඟවීම ක්‍රියා විරහිත කර පද්ධතියෙන් ඉවත් කරනු ලැබේ.
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDialog(null)}
+                      disabled={isSubmitting}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmCancelAlert}
+                      disabled={isSubmitting}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      <span>ඔව්, අනතුර ඉවත් කරන්න</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <p className="text-xs text-amber-800 dark:text-amber-400 font-medium">
                 මෙම ආපදා නිවේදනය සඳහා පහත පියවර ගන්න:
@@ -575,70 +650,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* In-App Confirmation Card: Option 01 (Resolve) */}
-              {confirmDialog === 'resolve' && (
-                <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-2.5 animate-fadeIn mt-2">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                    <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් පද්ධතියේ සියලු දෙනාට ආපදාව විසඳුණු බව (Resolved) සටහන් වේ.
-                  </p>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmResolveAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      <span>ඔව්, ආපදාව විසඳුණි</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* In-App Confirmation Card: Option 02 (Cancel / Delete) */}
-              {confirmDialog === 'cancel_delete' && (
-                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/70 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-2.5 animate-fadeIn mt-2">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
-                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-                    <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් ආපදා අනතුරු ඇඟවීම ක්‍රියා විරහිත කර පද්ධතියෙන් ඉවත් කරනු ලැබේ.
-                  </p>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmCancelAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      <span>ඔව්, අනතුර ඉවත් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Option 03 Reporter Update Input Box */}
               {showReporterUpdateInput && (
                 <form onSubmit={handleSendReporterUpdate} className="pt-3 space-y-2 border-t border-amber-300 dark:border-amber-800/60 animate-fadeIn">
@@ -675,6 +686,64 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               <span className="text-xs font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
                 🛡️ Admin Management
               </span>
+
+              {/* ⬆️ Admin Confirmation Card (Displayed Above Admin Action Buttons) */}
+              {confirmDialog === 'resolve' && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-2.5 animate-fadeIn shadow-lg">
+                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>පරිපාලක ලෙස මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDialog(null)}
+                      disabled={isSubmitting}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmResolveAlert}
+                      disabled={isSubmitting}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                      <span>ඔව්, ආපදාව විසඳුණි</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {confirmDialog === 'cancel_delete' && (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-2.5 animate-fadeIn shadow-lg">
+                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
+                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span>පරිපාලක ලෙස මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDialog(null)}
+                      disabled={isSubmitting}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmCancelAlert}
+                      disabled={isSubmitting}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      <span>ඔව්, අනතුර ඉවත් කරන්න</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2 flex-wrap pt-1">
                 <button
                   type="button"

@@ -111,19 +111,57 @@ export const getNotificationPermissionStatus = (): 'granted' | 'denied' | 'defau
   return Notification.permission;
 };
 
-// Background Activity & Wake Lock Activation (Keeps siren/critical audio awake when emergency triggers)
+let activeWakeLockSentinel: any = null;
+
+// Check if 24/7 Background Wake Lock is enabled (default true)
+export const isBackgroundWakeLockEnabled = (): boolean => {
+  if (typeof localStorage === 'undefined') return true;
+  const val = localStorage.getItem('sahaya_wake_lock_enabled');
+  return val !== 'false'; // default enabled
+};
+
+// Toggle 24/7 Background Wake Lock
+export const setBackgroundWakeLockEnabled = (enabled: boolean) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('sahaya_wake_lock_enabled', enabled ? 'true' : 'false');
+    window.dispatchEvent(new CustomEvent('sahaya_wakelock_changed', { detail: { enabled } }));
+  }
+  if (enabled) {
+    activateBackgroundWakeLock();
+  } else {
+    releaseBackgroundWakeLock();
+  }
+};
+
+// Background Activity & Wake Lock Activation (Keeps app awake 24/7 for emergency alerts)
 export const activateBackgroundWakeLock = async (): Promise<boolean> => {
+  if (!isBackgroundWakeLockEnabled()) return false;
   try {
-    if ('wakeLock' in navigator && (navigator as any).wakeLock) {
-      const lock = await (navigator as any).wakeLock.request('screen');
-      localStorage.setItem('sahaya_wake_lock_enabled', 'true');
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && (navigator as any).wakeLock) {
+      if (!activeWakeLockSentinel || activeWakeLockSentinel.released) {
+        activeWakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        activeWakeLockSentinel.addEventListener('release', () => {
+          if (isBackgroundWakeLockEnabled() && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+            activateBackgroundWakeLock().catch(() => {});
+          }
+        });
+      }
       return true;
     }
   } catch (err) {
     console.debug('Wake lock request status:', err);
   }
-  localStorage.setItem('sahaya_wake_lock_enabled', 'true');
   return true;
+};
+
+// Release Wake Lock if user toggled OFF
+export const releaseBackgroundWakeLock = async () => {
+  try {
+    if (activeWakeLockSentinel && !activeWakeLockSentinel.released) {
+      await activeWakeLockSentinel.release();
+      activeWakeLockSentinel = null;
+    }
+  } catch {}
 };
 
 // Send Web Push / System Notification if granted (Works via Service Worker even when app is minimized/closed)

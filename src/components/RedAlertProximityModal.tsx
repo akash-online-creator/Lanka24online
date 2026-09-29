@@ -414,12 +414,23 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
-              <div className="flex items-center gap-1.5">
-                <UserIcon className="w-3.5 h-3.5" />
-                <span>දැනුම්දුන්නේ: <strong className="text-slate-700 dark:text-slate-300">{alert.reportedByName}</strong></span>
-              </div>
-              {alert.reportedByPhone && (
+            {/* 🗺️ Google Maps Directions & Navigation Button */}
+            <div className="pt-1">
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${alert.latitude && alert.longitude ? `${alert.latitude},${alert.longitude}` : encodeURIComponent(alert.locationName)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer"
+              >
+                <Navigation className="w-4 h-4 text-white animate-pulse shrink-0" />
+                <span>🗺️ Google Maps Navigation (ස්ථානයට මඟ පෙන්වන්න)</span>
+              </a>
+            </div>
+
+            {/* Emergency hotline call if available */}
+            {alert.reportedByPhone && (
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">හදිසි දුරකථන අංකය:</span>
                 <a
                   href={`tel:${alert.reportedByPhone}`}
                   className="flex items-center gap-1 text-red-600 dark:text-red-400 font-bold hover:underline"
@@ -427,8 +438,8 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                   <Phone className="w-3.5 h-3.5" />
                   <span>{alert.reportedByPhone}</span>
                 </a>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

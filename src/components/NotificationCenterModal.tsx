@@ -31,6 +31,7 @@ import {
   setNotificationSoundEnabled,
   broadcastAppNotification
 } from '../utils/notificationManager';
+import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
 import { formatRelativeTime } from '../utils/dateUtils';
 import { Language } from '../types';
 
@@ -199,6 +200,25 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 <span>{getLang('🔔 Push Notifications සක්‍රීය කරන්න', '🔔 Enable Web Push Alerts', '🔔 விழிப்பூட்டல்களை இயக்கு')}</span>
               </button>
             )}
+
+            {/* Quick Test Alert Sound Button */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerPickMeAlert({
+                  kind: 'red_alert',
+                  title: '🚨 පරීක්ෂණ රතු අනතුරු ඇඟවීම (Test Alert)',
+                  message: 'ශබ්දය සහ පද්ධති දැනුම්දීම් (Notifications) සාර්ථකව ක්‍රියාත්මක වේ.',
+                  locationName: 'කොළඹ (Colombo)',
+                  forceRingtone: true,
+                });
+              }}
+              className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer"
+              title="නාදය හා Alert පරීක්ෂා කරන්න"
+            >
+              <Volume2 className="w-3 h-3 text-amber-500" />
+              <span>{getLang('පරීක්ෂා කරන්න (Test)', 'Test Alert', 'சோதிக்கவும்')}</span>
+            </button>
           </div>
 
           {/* Sound Mute/Unmute toggle & Clear Actions */}

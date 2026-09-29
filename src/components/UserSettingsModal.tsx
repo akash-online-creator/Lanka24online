@@ -69,6 +69,10 @@ import {
   persistSirenSettings,
   subscribeToLocalSirenChanges
 } from '../utils/sirenAudio';
+import {
+  isBackgroundWakeLockEnabled,
+  setBackgroundWakeLockEnabled
+} from '../utils/notificationManager';
 
 export type FontSizeKey = 'small' | 'normal' | 'medium' | 'large' | 'extra_large';
 export type SettingsTabKey = 'profile' | 'security_2fa' | 'font_size' | 'data_saver' | 'siren_settings';
@@ -202,6 +206,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [isSirenMuted, setIsSirenMuted] = useState<boolean>(() => isDeviceSirenMuted());
   const [sirenTone, setSirenTone] = useState<string>(() => getSirenFileName());
   const [isTestingSiren, setIsTestingSiren] = useState<boolean>(false);
+  const [is24hWakeLockActive, setIs24hWakeLockActive] = useState<boolean>(() => isBackgroundWakeLockEnabled());
 
   useEffect(() => {
     const unsub = subscribeToLocalSirenChanges(() => {
@@ -1644,6 +1649,77 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       }`}
                     >
                       {isSirenMuted ? 'MUTE' : 'ON'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* 24/7 Keep-Awake / Always Active Background Service Toggle */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#07170e] border-2 border-amber-300 dark:border-amber-700/60 flex items-center justify-between gap-4 shadow-sm mt-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${
+                        is24hWakeLockActive
+                          ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'
+                      }`}
+                    >
+                      <Zap className={`w-6 h-6 ${is24hWakeLockActive ? 'fill-current animate-pulse' : ''}`} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>{getLang('පැය 24ම සජීවීව තබා ගැනීම (24/7 Always Active):', '24/7 Always Active Mode:', '24/7 செயலில் பயன்முறை:')}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-lg text-xs font-black ${
+                            is24hWakeLockActive
+                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-400'
+                              : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          {is24hWakeLockActive
+                            ? getLang('ක්‍රියාත්මකයි (24/7 Active)', 'ACTIVE (24/7 Awake)', 'செயலில் (ON)')
+                            : getLang('අක්‍රියයි (Battery Saver)', 'OFF (Battery Saver)', 'முடக்கப்பட்டது (OFF)')}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {is24hWakeLockActive
+                          ? getLang('ඇප් එක Close නොවී පැය 24 පුරා සජීවීව ක්‍රියාත්මකව තබයි • ආපදා අනතුරු නාද ක්ෂණිකව ලැබේ', 'Screen wake lock active 24/7 for instant disaster alerts', 'அவசர விழிப்பூட்டல்கள் உடனடியாக கிடைக்கும்')
+                          : getLang('පසුබිම් සජීවී ක්‍රියාකාරීත්වය අක්‍රියයි • බැටරි සංරක්ෂණ මාදිලිය', 'Standard mode • Battery optimization enabled', 'பேட்டரி சேமிப்பு பயன்முறை')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVal = !is24hWakeLockActive;
+                      setIs24hWakeLockActive(nextVal);
+                      setBackgroundWakeLockEnabled(nextVal);
+                      setSaveSuccessMsg(
+                        nextVal
+                          ? getLang(
+                              '⚡ පැය 24 පුරා සජීවීව තබා ගැනීම (24/7 Always Active) සක්‍රීය කරන ලදී!',
+                              '⚡ 24/7 Always Active Keep-Awake mode enabled!',
+                              '⚡ 24/7 பயன்முறை செயல்படுத்தப்பட்டது!'
+                            )
+                          : getLang(
+                              '✨ පැය 24 පුරා සජීවීව තබා ගැනීම අක්‍රිය කරන ලදී (Battery Saver Enabled).',
+                              '✨ 24/7 Always Active mode disabled (Battery Saver ON).',
+                              '✨ 24/7 பயன்முறை முடக்கப்பட்டது.'
+                            )
+                      );
+                      setTimeout(() => setSaveSuccessMsg(null), 3000);
+                    }}
+                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
+                      is24hWakeLockActive ? 'bg-amber-500' : 'bg-slate-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
+                        is24hWakeLockActive ? 'translate-x-8 text-amber-600' : 'translate-x-0 text-slate-400'
+                      }`}
+                    >
+                      {is24hWakeLockActive ? 'ON' : 'OFF'}
                     </span>
                   </button>
                 </div>

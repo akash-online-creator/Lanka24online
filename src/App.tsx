@@ -49,6 +49,7 @@ import {
 } from './lib/firebase';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { grantWelcomeGiftCredit } from './utils/creditManager';
+import { activateBackgroundWakeLock } from './utils/notificationManager';
 import { 
   filterNonDeletedPosts, 
   addDeletedPostId, 
@@ -250,6 +251,25 @@ export default function App() {
     } catch (e) {
       console.warn('URL param parse notice:', e);
     }
+  }, []);
+
+  // 🚨 24/7 Keep-Alive Wake Lock initialization (prevents app & screen sleep for emergency notifications)
+  useEffect(() => {
+    activateBackgroundWakeLock().catch(() => {});
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        activateBackgroundWakeLock().catch(() => {});
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
   }, []);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
