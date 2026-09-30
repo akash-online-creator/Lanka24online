@@ -2200,8 +2200,7 @@ export default function App() {
       {/* 🚨 24/7 Draggable Floating Overlay SOS & Red Alert Control Bubble */}
       {currentUser && 
        viewMode !== 'pending' && 
-       viewMode !== 'gps_gate' && 
-       (!isFloatingOverlayDismissed || (proximityAlertInfo && proximityAlertInfo.distanceKm <= 5)) && (
+       viewMode !== 'gps_gate' && (
         <FloatingOverlayWidget
           onOpenCreateRedAlert={() => setIsCreateRedAlertOpen(true)}
           onOpenSosTracker={() => setIsSosTrackerModalOpen(true)}
@@ -2211,12 +2210,6 @@ export default function App() {
             } else {
               setIsCreateRedAlertOpen(true);
             }
-          }}
-          onDismiss={() => {
-            setIsFloatingOverlayDismissed(true);
-            try {
-              localStorage.setItem('sahaya_hide_floating_overlay', 'true');
-            } catch {}
           }}
           activeHazardsCount={redAlerts.filter((a) => a && a.status === 'active').length}
           userCoords={userCoords}

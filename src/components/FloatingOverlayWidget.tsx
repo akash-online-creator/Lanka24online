@@ -404,23 +404,6 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
                 </a>
               </div>
             </div>
-
-            {/* Hide / Dismiss in-app widget option */}
-            {onDismiss && (
-              <div className="pt-2 border-t border-white/10 flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsOpen(false);
-                    onDismiss();
-                  }}
-                  className="text-[10px] text-slate-400 hover:text-slate-200 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                  <span>{getLang('Overlay බොත්තම සඟවන්න (Hide In-App)', 'Hide Floating Button', 'பொத்தானை மறை')}</span>
-                </button>
-              </div>
-            )}
           </div>
         )}
 
@@ -471,21 +454,6 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
             {/* Mini GPS Beacon Indicator */}
             <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border border-slate-900 animate-pulse" />
           </div>
-
-          {/* Mini X button to dismiss floating bubble directly */}
-          {onDismiss && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDismiss();
-              }}
-              className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-rose-600 text-white flex items-center justify-center border border-slate-700 shadow-md cursor-pointer transition-colors"
-              title="Overlay බොත්තම සඟවන්න"
-            >
-              <X className="w-2.5 h-2.5" />
-            </button>
-          )}
         </div>
       </div>
     </>

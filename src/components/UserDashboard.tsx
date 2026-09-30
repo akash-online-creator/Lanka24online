@@ -1807,38 +1807,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </div>
       </div>
 
-      {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "සහය පුවරුව", "පණිවිඩ & සංවාද", and "Sos Tracker" */}
+      {/* 2. Top Quick Navigation Switcher: "සහය පුවරුව" and "පණිවිඩ & සංවාද" */}
       <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-          {/* Button 1: සේවා ඉල්ලීම් */}
-          <button
-            type="button"
-            onClick={() => {
-              if (user?.isDemo) {
-                setShowDemoRegisterPrompt(true);
-                return;
-              }
-              setIsCategoryModalOpen(true);
-            }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
-          >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-              <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-            <div className="text-left min-w-0">
-              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                <span>{getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}</span>
-                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white/20 text-white">
-                  + {getLangText('නව', 'New', 'புதிய')}
-                </span>
-              </div>
-              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-blue-100">
-                {getLangText('මට උදව් අවශ්‍යයි', 'I Need Help', 'எனக்கு உதவி தேவை')}
-              </div>
-            </div>
-          </button>
-
-          {/* Button 2: සහය පුවරුව (Scrolls to Notice Board) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+          {/* Button 1: සහය පුවරුව (Scrolls to Notice Board) */}
           <button
             type="button"
             onClick={() => {
@@ -1870,7 +1842,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
 
-          {/* Button 3: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
+          {/* Button 2: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
           <button
             type="button"
             onClick={() => {
@@ -1896,34 +1868,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </div>
               <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-sky-100">
                 {getLangText('සියලු පිළිතුරු / Chats', 'All Replies / Live Chat', 'அனைத்து பதில்கள்')}
-              </div>
-            </div>
-          </button>
-
-          {/* Button 4: Sos Tracker (Live GPS Tracking) */}
-          <button
-            type="button"
-            onClick={() => {
-              if (user?.isDemo) {
-                setShowDemoRegisterPrompt(true);
-                return;
-              }
-              setIsSosLiveModalOpen(true);
-            }}
-            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/30 border-2 border-red-400/80 active:scale-[0.99]"
-          >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-              <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
-            </div>
-            <div className="text-left min-w-0">
-              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                <span>Sos Tracker</span>
-                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
-                  LIVE
-                </span>
-              </div>
-              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-red-100">
-                {getLangText('සජීවී GPS ස්ථානය බෙදාගන්න', 'Live GPS Tracking & Share', 'நேරலை இருப்பிடம்')}
               </div>
             </div>
           </button>
