@@ -76,6 +76,7 @@ import { calculateDistanceKm } from './data/redAlertData';
 import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { ShortcutHubView } from './components/ShortcutHubView';
+import { FloatingOverlayWidget } from './components/FloatingOverlayWidget';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -2177,6 +2178,25 @@ export default function App() {
           onOpenIssuesHelp={() => setViewMode('issues_help')}
           onDemoLogin={handleUserDemoLogin}
           onOpenEmergencyDirectory={() => setViewMode('issues_help')}
+        />
+      )}
+
+      {/* 🚨 24/7 Draggable Floating Overlay SOS & Red Alert Control Bubble */}
+      {viewMode !== 'gps_gate' && (
+        <FloatingOverlayWidget
+          onOpenCreateRedAlert={() => setIsCreateRedAlertOpen(true)}
+          onOpenSosTracker={() => setIsSosTrackerModalOpen(true)}
+          onOpenActiveHazards={() => {
+            if (redAlerts.length > 0) {
+              setSelectedDetailAlert(redAlerts[0]);
+            } else {
+              setIsCreateRedAlertOpen(true);
+            }
+          }}
+          activeHazardsCount={redAlerts.filter((a) => a && a.status === 'active').length}
+          userCoords={userCoords}
+          nearestHazardDistanceKm={proximityAlertInfo?.distanceKm ?? null}
+          language={language}
         />
       )}
     </div>
