@@ -24,6 +24,7 @@ interface FloatingOverlayWidgetProps {
   onOpenCreateRedAlert: () => void;
   onOpenSosTracker?: () => void;
   onOpenActiveHazards?: () => void;
+  onDismiss?: () => void;
   activeHazardsCount?: number;
   userCoords?: { lat: number; lng: number } | null;
   nearestHazardDistanceKm?: number | null;
@@ -34,6 +35,7 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
   onOpenCreateRedAlert,
   onOpenSosTracker,
   onOpenActiveHazards,
+  onDismiss,
   activeHazardsCount = 0,
   userCoords,
   nearestHazardDistanceKm,
@@ -247,7 +249,21 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
       >
         {/* Expanded Quick Action Popover Card */}
         {isOpen && (
-          <div className="absolute bottom-16 right-0 sm:right-auto sm:left-0 w-72 sm:w-80 bg-slate-900/95 text-white border-2 border-red-500 rounded-3xl shadow-2xl p-4 backdrop-blur-xl space-y-3.5 mb-2 animate-scaleUp">
+          <div 
+            style={{
+              maxWidth: 'calc(100vw - 24px)',
+              width: '320px',
+            }}
+            className={`absolute z-[10000] bg-slate-900/95 text-white border-2 border-red-500 rounded-3xl shadow-2xl p-4 backdrop-blur-xl space-y-3.5 animate-scaleUp ${
+              position.x < (typeof window !== 'undefined' ? window.innerWidth / 2 : 200)
+                ? 'left-0'
+                : 'right-0'
+            } ${
+              position.y < (typeof window !== 'undefined' ? window.innerHeight / 2 : 300)
+                ? 'top-16'
+                : 'bottom-16'
+            }`}
+          >
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-xs">
@@ -264,8 +280,11 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
-                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                }}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -385,54 +404,88 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
                 </a>
               </div>
             </div>
+
+            {/* Hide / Dismiss in-app widget option */}
+            {onDismiss && (
+              <div className="pt-2 border-t border-white/10 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onDismiss();
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-slate-200 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                  <span>{getLang('Overlay බොත්තම සඟවන්න (Hide In-App)', 'Hide Floating Button', 'பொத்தானை மறை')}</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         {/* Floating Draggable Head Trigger */}
-        <div
-          onMouseDown={(e) => handleStartDrag(e.clientX, e.clientY)}
-          onMouseMove={(e) => handleMoveDrag(e.clientX, e.clientY)}
-          onMouseUp={handleEndDrag}
-          onTouchStart={(e) => {
-            const t = e.touches[0];
-            if (t) handleStartDrag(t.clientX, t.clientY);
-          }}
-          onTouchMove={(e) => {
-            const t = e.touches[0];
-            if (t) handleMoveDrag(t.clientX, t.clientY);
-          }}
-          onTouchEnd={handleEndDrag}
-          onClick={() => {
-            if (!hasMovedRef.current) {
-              setIsOpen((prev) => !prev);
-            }
-          }}
-          className={`group relative flex items-center justify-center rounded-full cursor-grab active:cursor-grabbing select-none transition-transform duration-150 ${
-            isDragging ? 'scale-110 shadow-2xl ring-4 ring-red-400/50' : 'hover:scale-105 shadow-xl'
-          } ${
-            isMinimized 
-              ? 'w-12 h-12 bg-slate-900 border-2 border-red-500 text-white' 
-              : 'w-14 h-14 bg-gradient-to-tr from-red-600 via-rose-600 to-red-700 text-white border-2 border-red-400 shadow-[0_0_25px_rgba(239,68,68,0.7)]'
-          }`}
-          title="Drag to reposition / Click to open Floating Red Alert & SOS Control"
-        >
-          {/* Pulsing Beacon Ripple Ring */}
-          <span className="absolute -inset-1 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
+        <div className="relative">
+          <div
+            onMouseDown={(e) => handleStartDrag(e.clientX, e.clientY)}
+            onMouseMove={(e) => handleMoveDrag(e.clientX, e.clientY)}
+            onMouseUp={handleEndDrag}
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              if (t) handleStartDrag(t.clientX, t.clientY);
+            }}
+            onTouchMove={(e) => {
+              const t = e.touches[0];
+              if (t) handleMoveDrag(t.clientX, t.clientY);
+            }}
+            onTouchEnd={handleEndDrag}
+            onClick={() => {
+              if (!hasMovedRef.current) {
+                setIsOpen((prev) => !prev);
+              }
+            }}
+            className={`group relative flex items-center justify-center rounded-full cursor-grab active:cursor-grabbing select-none transition-transform duration-150 ${
+              isDragging ? 'scale-110 shadow-2xl ring-4 ring-red-400/50' : 'hover:scale-105 shadow-xl'
+            } ${
+              isMinimized 
+                ? 'w-12 h-12 bg-slate-900 border-2 border-red-500 text-white' 
+                : 'w-14 h-14 bg-gradient-to-tr from-red-600 via-rose-600 to-red-700 text-white border-2 border-red-400 shadow-[0_0_25px_rgba(239,68,68,0.7)]'
+            }`}
+            title="Drag to reposition / Click to open Floating Red Alert & SOS Control"
+          >
+            {/* Pulsing Beacon Ripple Ring */}
+            <span className="absolute -inset-1 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
 
-          <div className="relative flex flex-col items-center justify-center leading-none">
-            <span className="text-xl">🚨</span>
-            <span className="text-[8px] font-black uppercase tracking-tighter mt-0.5">SOS</span>
+            <div className="relative flex flex-col items-center justify-center leading-none">
+              <span className="text-xl">🚨</span>
+              <span className="text-[8px] font-black uppercase tracking-tighter mt-0.5">SOS</span>
+            </div>
+
+            {/* Active Hazard Badge */}
+            {activeHazardsCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-mono text-[10px] font-black flex items-center justify-center border-2 border-slate-950 shadow-md animate-bounce">
+                {activeHazardsCount}
+              </span>
+            )}
+
+            {/* Mini GPS Beacon Indicator */}
+            <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border border-slate-900 animate-pulse" />
           </div>
 
-          {/* Active Hazard Badge */}
-          {activeHazardsCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-mono text-[10px] font-black flex items-center justify-center border-2 border-slate-950 shadow-md animate-bounce">
-              {activeHazardsCount}
-            </span>
+          {/* Mini X button to dismiss floating bubble directly */}
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismiss();
+              }}
+              className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-rose-600 text-white flex items-center justify-center border border-slate-700 shadow-md cursor-pointer transition-colors"
+              title="Overlay බොත්තම සඟවන්න"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
           )}
-
-          {/* Mini GPS Beacon Indicator */}
-          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border border-slate-900 animate-pulse" />
         </div>
       </div>
     </>

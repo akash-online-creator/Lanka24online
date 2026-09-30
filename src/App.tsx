@@ -410,6 +410,13 @@ export default function App() {
     }
   });
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isFloatingOverlayDismissed, setIsFloatingOverlayDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sahaya_hide_floating_overlay') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPlayedAlertIdRef = useRef<string | null>(null);
@@ -2182,7 +2189,10 @@ export default function App() {
       )}
 
       {/* 🚨 24/7 Draggable Floating Overlay SOS & Red Alert Control Bubble */}
-      {viewMode !== 'gps_gate' && (
+      {currentUser && 
+       viewMode !== 'pending' && 
+       viewMode !== 'gps_gate' && 
+       (!isFloatingOverlayDismissed || (proximityAlertInfo && proximityAlertInfo.distanceKm <= 5)) && (
         <FloatingOverlayWidget
           onOpenCreateRedAlert={() => setIsCreateRedAlertOpen(true)}
           onOpenSosTracker={() => setIsSosTrackerModalOpen(true)}
@@ -2192,6 +2202,12 @@ export default function App() {
             } else {
               setIsCreateRedAlertOpen(true);
             }
+          }}
+          onDismiss={() => {
+            setIsFloatingOverlayDismissed(true);
+            try {
+              localStorage.setItem('sahaya_hide_floating_overlay', 'true');
+            } catch {}
           }}
           activeHazardsCount={redAlerts.filter((a) => a && a.status === 'active').length}
           userCoords={userCoords}
