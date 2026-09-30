@@ -399,16 +399,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <div className="mt-2 pt-2 border-t border-slate-100 dark:border-[#173222]">
           <button
             type="button"
-            onClick={() => setIsPWAInstallOpen(true)}
-            className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-slate-800 dark:text-zinc-200 text-xs font-black transition-all border border-slate-300/80 dark:border-zinc-700 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+            onClick={async () => {
+              try {
+                const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
+                const res = await triggerNativeInstallPrompt();
+                if (res.outcome !== 'accepted') {
+                  setIsPWAInstallOpen(true);
+                }
+              } catch {
+                setIsPWAInstallOpen(true);
+              }
+            }}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all animate-pulse"
           >
-            <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <Download className="w-4 h-4 text-amber-300" />
             <span>
               {language === 'en'
                 ? '📲 Download & Install Mobile App'
                 : language === 'ta'
-                ? '📲 செயலியை பதிவிறக்கம் செய்க (App Download)'
-                : '📲 ඇප් එක ඩවුන්ලෝඩ් කරගන්න (App Download)'}
+                ? '📲 செயலியை பதிவிறக்கம் செய்க (Download App)'
+                : '📲 සහය සේවා App එක Phone එකට Download කරගන්න'}
             </span>
           </button>
         </div>

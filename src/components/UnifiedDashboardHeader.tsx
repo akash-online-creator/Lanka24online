@@ -307,16 +307,28 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* 📲 Install App Button */}
+            {/* 📲 Install / Download App Button */}
             {onOpenInstallApp && (
               <button
                 type="button"
-                onClick={onOpenInstallApp}
-                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/40 shrink-0"
-                title={language === 'en' ? 'Install Sahaya Sewa App' : language === 'ta' ? 'செயலியை நிறுவுக' : 'App එක Install කරගන්න'}
+                onClick={async () => {
+                  try {
+                    const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
+                    const res = await triggerNativeInstallPrompt();
+                    if (res.outcome !== 'accepted') {
+                      onOpenInstallApp();
+                    }
+                  } catch {
+                    onOpenInstallApp();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
+                title={language === 'en' ? 'Download Sahaya Sewa App' : language === 'ta' ? 'செயலியை நிறுவுக' : 'සහය සේවා App එක Phone එකට Download කරගන්න'}
               >
                 <span className="text-xs">📲</span>
-                <span className="font-black text-xs hidden sm:inline">Install</span>
+                <span className="font-black text-xs">
+                  {language === 'en' ? 'Download' : language === 'ta' ? 'Download' : 'Download'}
+                </span>
               </button>
             )}
 

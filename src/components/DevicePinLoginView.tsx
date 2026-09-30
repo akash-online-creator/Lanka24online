@@ -21,6 +21,9 @@ import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 import { StoredDevicePinData, verifyDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { getUserFromFirestore } from '../lib/firebase';
+import { PWAInstallModal } from './PWAInstallModal';
+import { triggerNativeInstallPrompt } from '../utils/pwaHelper';
+import { Download } from 'lucide-react';
 
 interface DevicePinLoginViewProps {
   storedPinData: StoredDevicePinData;
@@ -51,6 +54,7 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isShake, setIsShake] = useState(false);
+  const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
 
   const t = (translations[language] || translations.si) as any;
 
@@ -349,8 +353,32 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
               PIN අංකය අමතකද?
             </button>
           </div>
+
+          {/* 📲 Download & Install App Direct Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await triggerNativeInstallPrompt();
+              if (res.outcome !== 'accepted') {
+                setIsPWAInstallOpen(true);
+              }
+            }}
+            className="w-full mt-2 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-900/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all animate-pulse"
+          >
+            <Download className="w-4 h-4 text-amber-300" />
+            <span>📲 {language === 'en' ? 'Download Sahaya App' : 'සහය සේවා App එක Phone එකට Download කරගන්න'}</span>
+          </button>
         </div>
       </div>
+
+      {/* PWA Install Modal */}
+      {isPWAInstallOpen && (
+        <PWAInstallModal
+          isOpen={isPWAInstallOpen}
+          onClose={() => setIsPWAInstallOpen(false)}
+          language={language}
+        />
+      )}
     </div>
   );
 };
