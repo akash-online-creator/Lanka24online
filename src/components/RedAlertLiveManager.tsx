@@ -165,7 +165,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUse
 
           <div className="mt-2 text-[11px] text-red-100 flex flex-wrap gap-x-4 gap-y-1">
             <span>📍 ස්ථානය: {activeAlert.locationName}</span>
-            <span>👤 දැනුම්දුන්නේ: {activeAlert.reportedByName}</span>
           </div>
 
           {/* 💬 කමෙන්ට්ස් සහ යාවත්කාලීන කිරීම් (Live Updates inside banner) */}

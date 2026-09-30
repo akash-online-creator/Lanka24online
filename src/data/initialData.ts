@@ -1,18 +1,17 @@
 import { User, Issue, LocationOption, HelpPost, RegistrationConfig, CategoryItem, TagItem } from '../types';
 
 export const donationCategoriesList = [
-  { id: 'biological', name: 'ශරීර අවයව සහ ජීව විද්‍යාත්මක ද්‍රව්‍ය', icon: 'HeartPulse' },
   { id: 'financial', name: 'මූල්‍යමය සහ ආර්ථික පරිත්‍යාග', icon: 'HandCoins' },
   { id: 'material', name: 'භෞතික ද්‍රව්‍ය සහ සම්පත් පරිත්‍යාග', icon: 'PackageOpen' },
   { id: 'time', name: 'කාලය සහ ශ්‍රමය පරිත්‍යාග කිරීම', icon: 'Clock' },
   { id: 'intellectual', name: 'බුද්ධිමය සහ නිර්මාණාත්මක ද්‍රව්‍ය', icon: 'Lightbulb' },
   { id: 'animal_env', name: 'සත්ව සහ පරිසර පරිත්‍යාග', icon: 'Sprout' },
   { id: 'digital', name: 'ඩිජිටල් වත්කම් සහ තාක්ෂණික දත්ත', icon: 'Laptop' },
-  { id: 'other', name: 'වෙනත් විශේෂිත පරිත්‍යාග', icon: 'Gift' }
+  { id: 'other', name: 'වෙනත් විශේෂිත පරිත්‍යාග', icon: 'Gift' },
+  { id: 'biological', name: 'ශරීර අවයව සහ ජීව විද්‍යාත්මක ද්‍රව්‍ය', icon: 'HeartPulse' }
 ];
 
 export const initialTags: TagItem[] = [
-  { id: 'tag_biological', tagName: 'ශරීර අවයව සහ ජීව විද්‍යාත්මක ද්‍රව්‍ය', category: 'පරිත්‍යාග' },
   { id: 'tag_financial_don', tagName: 'මූල්‍යමය සහ ආර්ථික පරිත්‍යාග', category: 'පරිත්‍යාග' },
   { id: 'tag_material', tagName: 'භෞතික ද්‍රව්‍ය සහ සම්පත් පරිත්‍යාග', category: 'පරිත්‍යාග' },
   { id: 'tag_time', tagName: 'කාලය සහ ශ්‍රමය පරිත්‍යාග කිරීම', category: 'පරිත්‍යාග' },
@@ -32,6 +31,7 @@ export const initialTags: TagItem[] = [
   { id: 'tag_food', tagName: 'කෑම / බීම', category: 'ආහාර, පෝෂණ' },
   { id: 'tag_2', tagName: 'Vehicle Repair', category: 'වාහන අලුත්වැඩියාව' },
   { id: 'tag_8', tagName: 'Roof Repair', category: 'වහල හා ගෘහ නඩත්තුව' },
+  { id: 'tag_biological', tagName: 'ශරීර අවයව සහ ජීව විද්‍යාත්මක ද්‍රව්‍ය', category: 'පරිත්‍යාග' },
 ];
 
 export const initialRegistrationConfig: RegistrationConfig = {

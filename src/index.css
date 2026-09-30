@@ -5,6 +5,7 @@
 
 @layer base {
   html {
+    font-size: 87.5%;
     transition: font-size 0.2s ease-in-out;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;

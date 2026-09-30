@@ -356,6 +356,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
+  const [qrPayInitialTab, setQrPayInitialTab] = useState<'my_qr' | 'scan_pay'>('scan_pay');
   const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
   const [isFeaturesPostModalOpen, setIsFeaturesPostModalOpen] = useState(false);
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
@@ -1589,12 +1590,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           }
           setIsBarterModalOpen(true);
         }}
-        onOpenQrPay={() => {
+        onOpenQrPay={(tab: 'my_qr' | 'scan_pay' = 'scan_pay') => {
           if (user?.isDemo) {
             setShowDemoRegisterPrompt(true);
             return;
           }
           setQrPayTargetRecipient(undefined);
+          setQrPayInitialTab(tab);
           setIsQrPayModalOpen(true);
         }}
         onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
@@ -2575,8 +2577,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsWalletModalOpen(false)}
         user={user}
         language={language}
-        onOpenQrPay={() => {
+        onOpenQrPay={(tab = 'scan_pay') => {
           setQrPayTargetRecipient(undefined);
+          setQrPayInitialTab(tab);
           setIsQrPayModalOpen(true);
         }}
       />
@@ -2714,6 +2717,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
         currentUser={user}
         language={language}
+        initialTab={qrPayInitialTab}
         targetRecipient={qrPayTargetRecipient}
         onPaymentComplete={(tx) => {
           // Toast alert or refresh wallet

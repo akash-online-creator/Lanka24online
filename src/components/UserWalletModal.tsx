@@ -38,7 +38,7 @@ interface UserWalletModalProps {
   user: User;
   language?: Language;
   initialTab?: 'summary' | 'topup' | 'rates';
-  onOpenQrPay?: () => void;
+  onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
 }
 
 export const UserWalletModal: React.FC<UserWalletModalProps> = ({
@@ -185,17 +185,31 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                   {/* Top-up CTA & QR Pay Buttons */}
                   <div className="flex flex-wrap items-center gap-2">
                     {onOpenQrPay && (
-                      <button
-                        onClick={() => {
-                          onClose();
-                          onOpenQrPay();
-                        }}
-                        className="px-3.5 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-                        title="QR මගින් ගෙවීම් කිරීම හා ලබාගැනීම"
-                      >
-                        <QrCode className="w-4 h-4" />
-                        <span>QR Pay / Receive</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenQrPay('scan_pay');
+                          }}
+                          className="px-3.5 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                          title="QR ස්කෑන් කර හෝ කේතය ලබාදී මුදල් ගෙවන්න"
+                        >
+                          <ScanLine className="w-4 h-4 text-amber-950" />
+                          <span>Scan & Pay (මුදල් ගෙවීමට)</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenQrPay('my_qr');
+                          }}
+                          className="px-3.5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-emerald-100 border border-emerald-400/40 font-black rounded-2xl text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                          title="මගේ QR කේතය සහ Pay Code පෙන්වන්න"
+                        >
+                          <QrCode className="w-4 h-4 text-emerald-300" />
+                          <span>මගේ QR (ලබාගැනීමට)</span>
+                        </button>
+                      </>
                     )}
 
                     <button

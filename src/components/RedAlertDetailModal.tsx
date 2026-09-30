@@ -548,17 +548,25 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </div>
             )}
 
-            {/* Emergency Hotline Contact if available */}
-            {alert.reportedByPhone && (
-              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-xs">
-                <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <Phone className="w-4 h-4 text-emerald-600" />
-                  <span>හදිසි දුරකථන සබඳතාව:</span>
-                </span>
-                <a href={`tel:${alert.reportedByPhone}`} className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs active:scale-95 transition-all">
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>අමතන්න ({alert.reportedByPhone})</span>
-                </a>
+            {/* Reporter Contact Info - ONLY visible to Admin for privacy */}
+            {isAdmin && (alert.reportedByName || alert.reportedByPhone) && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800 text-xs">
+                <div className="min-w-0">
+                  <span className="font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-purple-600" />
+                    <span>වාර්තාකරුගේ තොරතුරු (Admin Only):</span>
+                  </span>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                    {alert.reportedByName && <span className="font-bold mr-2">නම: {alert.reportedByName}</span>}
+                    {alert.reportedByPhone && <span>දුරකථන: {alert.reportedByPhone}</span>}
+                  </div>
+                </div>
+                {alert.reportedByPhone && (
+                  <a href={`tel:${alert.reportedByPhone}`} className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-xs active:scale-95 transition-all shrink-0">
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>අමතන්න</span>
+                  </a>
+                )}
               </div>
             )}
           </div>

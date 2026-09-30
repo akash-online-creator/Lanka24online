@@ -8,11 +8,11 @@ interface FontSizeControllerProps {
 }
 
 const FONT_PRESETS = [
-  { scale: 85, labelSi: 'කුඩා', labelEn: 'Small', labelTa: 'சிறியது', desc: '85%' },
-  { scale: 100, labelSi: 'සාමාන්‍ය', labelEn: 'Normal', labelTa: 'இயல்பு', desc: '100%' },
-  { scale: 115, labelSi: 'මධ්‍යම ලොකු', labelEn: 'Medium', labelTa: 'நடுத்தரம்', desc: '115%' },
-  { scale: 130, labelSi: 'ලොකු', labelEn: 'Large', labelTa: 'பெரியது', desc: '130%' },
-  { scale: 145, labelSi: 'ඉතා ලොකු', labelEn: 'Extra Large', labelTa: 'மிகப் பெரியது', desc: '145%' },
+  { scale: 87.5, labelSi: 'පෙරනිමි කුඩා', labelEn: 'Default (14px)', labelTa: 'இயல்பு (14px)', desc: '87.5%' },
+  { scale: 100, labelSi: 'සාමාන්‍ය', labelEn: 'Normal (16px)', labelTa: 'இயல்பு', desc: '100%' },
+  { scale: 112.5, labelSi: 'මධ්‍යම', labelEn: 'Medium (18px)', labelTa: 'நடுத்தரம்', desc: '112.5%' },
+  { scale: 125, labelSi: 'ලොකු', labelEn: 'Large (20px)', labelTa: 'பெரியது', desc: '125%' },
+  { scale: 137.5, labelSi: 'ඉතා ලොකු', labelEn: 'Extra Large (22px)', labelTa: 'மிகப் பெரியது', desc: '137.5%' },
 ];
 
 export const FontSizeController: React.FC<FontSizeControllerProps> = ({
@@ -23,7 +23,7 @@ export const FontSizeController: React.FC<FontSizeControllerProps> = ({
     try {
       const saved = localStorage.getItem('sahaya_font_scale');
       if (saved) {
-        const parsed = parseInt(saved, 10);
+        const parsed = parseFloat(saved);
         if (!isNaN(parsed) && parsed >= 75 && parsed <= 160) {
           return parsed;
         }
@@ -31,7 +31,7 @@ export const FontSizeController: React.FC<FontSizeControllerProps> = ({
     } catch {
       // ignore
     }
-    return 100;
+    return 87.5;
   });
 
   const [isOpen, setIsOpen] = useState(false);

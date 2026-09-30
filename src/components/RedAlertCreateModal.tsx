@@ -98,6 +98,9 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       scanGpsLocation();
+      setDescription('');
+      setCustomTitle('');
+      setVoiceData(null);
       setIncidentDate(new Date().toISOString().split('T')[0]);
       setIncidentTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }));
       setSubmitSuccess(false);

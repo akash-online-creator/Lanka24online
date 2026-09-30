@@ -64,7 +64,7 @@ interface UnifiedDashboardHeaderProps {
   onOpenRedAlert?: () => void;
   activeRedAlertsCount?: number;
   onOpenBarterExchange?: () => void;
-  onOpenQrPay?: () => void;
+  onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
   onOpenShortcutHub?: () => void;
   onOpenInstallApp?: () => void;
 }
@@ -385,7 +385,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             {onOpenQrPay && (
               <button
                 type="button"
-                onClick={onOpenQrPay}
+                onClick={() => onOpenQrPay('scan_pay')}
                 className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-emerald-300 dark:border-[#1c402b] flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
                 title={language === 'en' ? 'QR Pay' : language === 'ta' ? 'QR கட்டணம்' : 'QR Pay'}
               >
@@ -568,7 +568,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
           {!isVisitor && onOpenQrPay && (
             <button
               type="button"
-              onClick={onOpenQrPay}
+              onClick={() => onOpenQrPay('scan_pay')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/70 text-amber-900 dark:text-amber-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="QR Pay - කේතය ස්කෑන් කර හෝ පෙන්වා ගෙවීම් කරන්න"
             >

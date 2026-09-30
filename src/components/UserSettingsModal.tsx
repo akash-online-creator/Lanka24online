@@ -91,58 +91,58 @@ export interface FontSizeOption {
 export const FONT_SIZE_OPTIONS: FontSizeOption[] = [
   {
     key: 'small',
-    labelSi: 'කුඩා (Small)',
-    labelEn: 'Small',
-    labelTa: 'சிறியது',
+    labelSi: 'පෙරනිමි කුඩා (Default - 87.5%)',
+    labelEn: 'Default Compact (87.5%)',
+    labelTa: 'இயல்பு சிறியது (87.5%)',
     px: 14,
     scale: '87.5%',
-    descSi: 'වැඩි තොරතුරු ප්‍රමාණයක් එකවර බැලීමට',
-    descEn: 'Compact view to see more content'
+    descSi: 'පෙරනිමි සම්මත අකුරු ප්‍රමාණය (14px)',
+    descEn: 'Default compact size (14px)'
   },
   {
     key: 'normal',
-    labelSi: 'සාමාන්‍ය (Normal - පෙරනිමි)',
-    labelEn: 'Normal (Default)',
-    labelTa: 'வழக்கமானது',
+    labelSi: 'සාමාන්‍ය (Normal - 100%)',
+    labelEn: 'Normal (100%)',
+    labelTa: 'வழக்கமானது (100%)',
     px: 16,
     scale: '100%',
-    descSi: 'පෙරනිමි සම්මත අකුරු ප්‍රමාණය',
-    descEn: 'Standard default readable size'
+    descSi: 'සම්මත අකුරු ප්‍රමාණය (16px)',
+    descEn: 'Standard size (16px)'
   },
   {
     key: 'medium',
-    labelSi: 'මධ්‍යම (Medium)',
-    labelEn: 'Medium',
-    labelTa: 'நடுத்தர',
+    labelSi: 'මධ්‍යම (Medium - 112.5%)',
+    labelEn: 'Medium (112.5%)',
+    labelTa: 'நடுத்தர (112.5%)',
     px: 18,
     scale: '112.5%',
-    descSi: 'පැහැදිලිව පහසුවෙන් කියවීමට',
-    descEn: 'Enhanced readability for comfortable reading'
+    descSi: 'පැහැදිලිව පහසුවෙන් කියවීමට (18px)',
+    descEn: 'Enhanced readability (18px)'
   },
   {
     key: 'large',
-    labelSi: 'විශාල (Large)',
-    labelEn: 'Large',
-    labelTa: 'பெரியது',
+    labelSi: 'විශාල (Large - 125%)',
+    labelEn: 'Large (125%)',
+    labelTa: 'பெரியது (125%)',
     px: 20,
     scale: '125%',
-    descSi: 'පහසු දෘශ්‍යතාව සඳහා විශාල කළ අකුරු',
-    descEn: 'Large and clear text for high visibility'
+    descSi: 'පහසු දෘශ්‍යතාව සඳහා විශාල කළ අකුරු (20px)',
+    descEn: 'Large and clear text (20px)'
   },
   {
     key: 'extra_large',
-    labelSi: 'ඉතා විශාල (Extra Large)',
-    labelEn: 'Extra Large',
-    labelTa: 'மிகப் பெரியது',
+    labelSi: 'ඉතා විශාල (Extra Large - 137.5%)',
+    labelEn: 'Extra Large (137.5%)',
+    labelTa: 'மிகப் பெரியது (137.5%)',
     px: 22,
     scale: '137.5%',
-    descSi: 'වැඩිහිටියන්ට හා පහසු කියවීමට උපරිම විශාලත්වය',
-    descEn: 'Maximum size for senior-friendly readability'
+    descSi: 'වැඩිහිටියන්ට හා පහසු කියවීමට උපරිම විශාලත්වය (22px)',
+    descEn: 'Maximum size for senior-friendly readability (22px)'
   }
 ];
 
 export const applyAppFontSize = (sizeKey: FontSizeKey) => {
-  const option = FONT_SIZE_OPTIONS.find((opt) => opt.key === sizeKey) || FONT_SIZE_OPTIONS[1];
+  const option = FONT_SIZE_OPTIONS.find((opt) => opt.key === sizeKey) || FONT_SIZE_OPTIONS[0];
   document.documentElement.style.fontSize = `${option.px}px`;
   localStorage.setItem('sahaya_font_size', sizeKey);
 };
@@ -152,7 +152,7 @@ export const getStoredFontSize = (): FontSizeKey => {
   if (saved && FONT_SIZE_OPTIONS.some((o) => o.key === saved)) {
     return saved;
   }
-  return 'normal';
+  return 'small';
 };
 
 interface UserSettingsModalProps {
@@ -1796,138 +1796,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Siren Test Button */}
-                <div className="pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="text-xs text-slate-600 dark:text-zinc-300 font-medium flex items-center gap-1.5">
-                    <span>💡</span>
-                    <span>{getLang('වර්තමාන ශබ්දය පරීක්ෂා කර බැලීමට බොත්තම ඔබන්න:', 'Test your selected loudness right now:', 'ஒலியை சோதிக்கவும்:')}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      unlockAudio();
-                      if (isTestingSiren) {
-                        stopEmergencySiren();
-                        setIsTestingSiren(false);
-                      } else {
-                        if (isSirenMuted) {
-                          setIsSirenMuted(false);
-                          setDeviceSirenMuted(false);
-                        }
-                        startEmergencySiren();
-                        setIsTestingSiren(true);
-                        // Auto stop test after 6 seconds
-                        setTimeout(() => {
-                          stopEmergencySiren();
-                          setIsTestingSiren(false);
-                        }, 6000);
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-md transition-all cursor-pointer active:scale-95 ${
-                      isTestingSiren
-                        ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-2 border-amber-600 animate-pulse'
-                        : 'bg-red-600 hover:bg-red-700 text-white border border-red-500'
-                    }`}
-                  >
-                    {isTestingSiren ? (
-                      <>
-                        <Square className="w-4 h-4 fill-current text-slate-950" />
-                        <span>{getLang('⏹️ ශබ්දය නවත්වන්න (Stop)', '⏹️ Stop Siren', '⏹️ நிறுத்து')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4 fill-current" />
-                        <span>{getLang('🔊 සයිරන් ශබ්දය පරීක්ෂා කරන්න (Test Siren)', '🔊 Test Siren Alarm', '🔊 சைரனை சோதிக்கவும்')}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Siren Tone Presets Selection */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#0c2419] border border-slate-200 dark:border-[#143d28] space-y-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Radio className="w-5 h-5 text-red-600 dark:text-red-400" />
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100">
-                      {getLang('සයිරන් නාද රටාව තෝරන්න (Siren Tone Preset)', 'Emergency Tone Preset', 'சைரன் தொனி')}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                      {getLang('ඔබ කැමති සයිරන් ශබ්ද රටාව තෝරාගන්න', 'Select which emergency alarm wail tone to use', 'தொனியைத் தேர்ந்தெடுக்கவும்')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    {
-                      name: 'Air Raid Siren (Preset)',
-                      titleSi: '🚨 ගුවන් ප්‍රහාරක සයිරන් (Air Raid)',
-                      descSi: 'ක්‍රමයෙන් වැඩිවන හා අඩුවන සාම්ප්‍රදායික ගුවන් අනතුරු ඇඟවීම',
-                      icon: '🚨'
-                    },
-                    {
-                      name: 'Police Siren (Preset)',
-                      titleSi: '🚓 පොලිස් / හදිසි රථ නාදය (Police Hi-Lo)',
-                      descSi: 'වේගයෙන් මාරුවන තියුණු හදිසි ප්‍රතිචාර සයිරන් නාදය',
-                      icon: '🚓'
-                    },
-                    {
-                      name: 'Tsunami Alarm (Preset)',
-                      titleSi: '🌊 සුනාමි හා ගැඹුරු ආපදා නාදය (Tsunami Horn)',
-                      descSi: 'ගැඹුරු ස්පන්දන ඉලෙක්ට්‍රොනික හදිසි අනතුරු ඇඟවීම',
-                      icon: '🌊'
-                    },
-                    {
-                      name: 'Fire & Disaster Horn (Preset)',
-                      titleSi: '🚒 ගිනි නිවන හා ආපදා හෝන් (Disaster Horn)',
-                      descSi: 'ඉක්මන් තියුණු හදිසි අනතුරු ඇඟවීමේ ශබ්දය',
-                      icon: '🚒'
-                    }
-                  ].map((preset) => {
-                    const isSelected = sirenTone.includes(preset.name.split(' ')[0]);
-                    return (
-                      <button
-                        key={preset.name}
-                        type="button"
-                        onClick={() => {
-                          setSirenTone(preset.name);
-                          persistSirenSettings(null, preset.name, preset.name);
-                          if (isTestingSiren) {
-                            stopEmergencySiren();
-                            startEmergencySiren();
-                          }
-                          setSaveSuccessMsg(
-                            getLang(
-                              `✅ ${preset.titleSi} නාද රටාව යොදන ලදී!`,
-                              `✅ Applied ${preset.name}!`,
-                              `✅ ${preset.name} அமைக்கப்பட்டது!`
-                            )
-                          );
-                          setTimeout(() => setSaveSuccessMsg(null), 2500);
-                        }}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-red-50 dark:bg-red-950/60 border-2 border-red-600 text-red-950 dark:text-red-200 shadow-sm'
-                            : 'bg-slate-50 dark:bg-zinc-800/60 border-slate-200 dark:border-zinc-700 hover:border-red-400 text-slate-800 dark:text-zinc-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black flex items-center gap-1.5">
-                            <span>{preset.icon}</span>
-                            <span>{preset.titleSi}</span>
-                          </span>
-                          {isSelected && <Check className="w-4 h-4 text-red-600" />}
-                        </div>
-                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">
-                          {preset.descSi}
-                        </p>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 
