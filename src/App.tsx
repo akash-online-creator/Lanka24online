@@ -77,6 +77,7 @@ import { deduplicateUsers } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { ShortcutHubView } from './components/ShortcutHubView';
 import { FloatingOverlayWidget } from './components/FloatingOverlayWidget';
+import { AndroidBackgroundServiceModal } from './components/AndroidBackgroundServiceModal';
 
 // Custom Siren Audio file import
 import sirenSoundFile from './assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -417,6 +418,14 @@ export default function App() {
       return false;
     }
   });
+  const [isAndroidBgModalOpen, setIsAndroidBgModalOpen] = useState(false);
+
+  // Global event listener to open Android Background & Overlay Setup
+  useEffect(() => {
+    const handleOpenAndroidModal = () => setIsAndroidBgModalOpen(true);
+    window.addEventListener('sahaya_open_android_bg_modal', handleOpenAndroidModal);
+    return () => window.removeEventListener('sahaya_open_android_bg_modal', handleOpenAndroidModal);
+  }, []);
 
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPlayedAlertIdRef = useRef<string | null>(null);
@@ -2213,6 +2222,17 @@ export default function App() {
           userCoords={userCoords}
           nearestHazardDistanceKm={proximityAlertInfo?.distanceKm ?? null}
           language={language}
+        />
+      )}
+
+      {/* 📱 24/7 Android Background & Floating Overlay Modal */}
+      {isAndroidBgModalOpen && (
+        <AndroidBackgroundServiceModal
+          isOpen={isAndroidBgModalOpen}
+          onClose={() => setIsAndroidBgModalOpen(false)}
+          language={language}
+          userCoords={userCoords}
+          activeHazardsCount={redAlerts.filter((a) => a && a.status === 'active').length}
         />
       )}
     </div>
