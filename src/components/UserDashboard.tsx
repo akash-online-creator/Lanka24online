@@ -253,6 +253,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return () => unsubscribe();
   }, [propHelpPosts]);
 
+  // Auto-focus / Auto-scroll to Notice Board section on initial page view so users immediately see help notices on landing
+  useEffect(() => {
+    const scrollToNotices = () => {
+      const el = document.getElementById('help-notices-feed');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    const timer = setTimeout(scrollToNotices, 350);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Active Feed Tab: 'local' (<15km) vs 'all_sl' (>15km or all)
   const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('requests');
   const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('all_sl');
@@ -1691,88 +1703,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </div>
       )}
 
-      {/* 📢 2. ප්‍රධාන දැන්වීම් සහ සහය පුවරුව (Main Notices & Community Board Feed - Shown Immediately at Top) */}
-      <HelpRequestsPage
-        user={user}
-        language={language}
-        helpPosts={helpPosts}
-        filteredPosts={filteredPosts}
-        currentLocation={currentLocation}
-        feedDistanceTab={feedDistanceTab}
-        setFeedDistanceTab={setFeedDistanceTab}
-        boardCategoryFilter={boardCategoryFilter}
-        setBoardCategoryFilter={setBoardCategoryFilter}
-        selectedCategoryTitle={selectedCategoryTitle}
-        setSelectedCategoryTitle={setSelectedCategoryTitle}
-        maxDistanceRadius={maxDistanceRadius}
-        setMaxDistanceRadius={setMaxDistanceRadius}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        allTags={allTags}
-        selectedTagFilter={selectedTagFilter}
-        setSelectedTagFilter={setSelectedTagFilter}
-        getPostDistance={getPostDistance}
-        onOfferSupport={(p) => setSelectedPostForDetail(p)}
-        onEditPost={(p) => handleEditPost(p)}
-        onViewPost={(p) => setViewingPost(p)}
-        onDeletePost={(p) => setDeletingPost(p)}
-        onOpenChat={(p) => setSelectedPostForChat(p)}
-        onOpenConfirm={(p) => setSelectedPostForConfirm(p)}
-        onOpenSupportOffers={(p) => {
-          setTargetPostForOffers(p);
-          setIsSupportOffersModalOpen(true);
-        }}
-        onOpenCreateModal={() => {
-          if (user?.isDemo) {
-            setShowDemoRegisterPrompt(true);
-            return;
-          }
-          setIsCategoryModalOpen(true);
-        }}
-        onBackToHome={() => {
-          const serviceSection = document.getElementById('services-scroll-section');
-          if (serviceSection) {
-            serviceSection.scrollIntoView({ behavior: 'smooth' });
-          }
-        }}
-        onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
-        onUpdatePost={propOnUpdatePost}
-        onAdminModerate={(p) => setModeratingPost(p)}
-        onPosterRespondIssue={(p) => setPosterRespondingPost(p)}
-        professionalServices={professionalServices}
-        onAddProfessionalService={handleAddProfessionalService}
-        onAddProfessionalReview={handleAddProfessionalReview}
-        onDeleteProfessionalService={handleDeleteProfessionalService}
-        registeredUsers={(() => {
-          try {
-            const saved = localStorage.getItem('sahaya_users');
-            return saved ? deduplicateUsers(JSON.parse(saved)) : deduplicateUsers(initialUsers);
-          } catch {
-            return deduplicateUsers(initialUsers);
-          }
-        })()}
-        redAlerts={redAlerts}
-        onViewRedAlertDetail={onViewRedAlertDetail}
-        onOpenRedAlert={onOpenRedAlert}
-      />
-
-      {/* 🧭 3. සේවා බොත්තම් සහ අනෙකුත් විශේෂාංග (Community Hubs, Actions & Services - Scrollable Below Notices) */}
-      <div id="services-scroll-section" className="space-y-4 sm:space-y-6 pt-6 border-t-2 border-slate-200 dark:border-slate-800">
-        
-        {/* Section Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span>{getLangText('සේවා සහ හදිසි සහන කේන්ද්‍ර', 'Services & Community Action Hubs', 'சேவைகள் மற்றும் அவசர மையங்கள்')}</span>
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {getLangText('පහසුවෙන් සේවා ලබාගැනීමට හා ආධාර ක්‍රියාකාරකම් සඳහා පහත බොත්තම් භාවිතා කරන්න', 'Use the hubs and tools below to request services or access emergency hubs', 'சேவைகளைப் பெற கீழே உள்ள கருவிகளைப் பயன்படுத்தவும்')}
-            </p>
-          </div>
-        </div>
-
-        {/* 3.1 Community Hubs: Fast Emergency & Community Action Cards */}
+      {/* 1.2 Community Hubs: Fast Emergency & Community Action Cards (Top Section) */}
+      <div className="space-y-2">
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {/* Button 1: Blood & Disaster Relief Hub */}
           <button
@@ -1873,295 +1805,363 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
           </button>
         </div>
+      </div>
 
-        {/* 3.2 Quick Navigation Switcher */}
-        <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {/* Button 1: සේවා ඉල්ලීම් */}
-            <button
-              type="button"
-              onClick={() => {
-                if (user?.isDemo) {
-                  setShowDemoRegisterPrompt(true);
-                  return;
-                }
-                setIsCategoryModalOpen(true);
-              }}
-              className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-                <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
+      {/* 2. Top Quick Navigation Switcher: "සේවා ඉල්ලීම්", "සහය පුවරුව", "පණිවිඩ & සංවාද", and "Sos Tracker" */}
+      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+          {/* Button 1: සේවා ඉල්ලීම් */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsCategoryModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg shadow-blue-600/20 border-2 border-blue-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}</span>
+                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white/20 text-white">
+                  + {getLangText('නව', 'New', 'புதிய')}
+                </span>
               </div>
-              <div className="text-left min-w-0">
-                <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                  <span>{getLangText('සේවා ඉල්ලීම්', 'Service Requests', 'சேவை கோரிக்கைகள்')}</span>
-                  <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white/20 text-white">
-                    + {getLangText('නව', 'New', 'புதிய')}
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-blue-100">
+                {getLangText('මට උදව් අවශ්‍යයි', 'I Need Help', 'எனக்கு உதவி தேவை')}
+              </div>
+            </div>
+          </button>
+
+          {/* Button 2: සහය පුවරුව (Scrolls to Notice Board) */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('help-notices-feed');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle('');
+              setSelectedTagFilter(null);
+              setSearchQuery('');
+              setFeedDistanceTab('all_sl');
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('සහය පුවරුව', 'Support Board', 'உதவி பலகை')}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white/20 text-white">
+                  {helpPosts.length}
+                </span>
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-100">
+                {getLangText('සියලු උපකාර දැන්වීම්', 'All Help Notices', 'அனைத்து உதவி அறிவிப்புகள்')}
+              </div>
+            </div>
+          </button>
+
+          {/* Button 3: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsInboxModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-700 hover:from-cyan-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg shadow-sky-600/20 border-2 border-sky-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-sky-200" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('පණිවිඩ & චැට්', 'Messages & Inbox', 'செய்திகள் & அரட்டை')}</span>
+                {inboxRepliesCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white text-blue-900 shadow-xs">
+                    {inboxRepliesCount}
                   </span>
-                </div>
-                <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-blue-100">
-                  {getLangText('මට උදව් අවශ්‍යයි', 'I Need Help', 'எனக்கு உதவி தேவை')}
-                </div>
+                )}
               </div>
-            </button>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-sky-100">
+                {getLangText('සියලු පිළිතුරු / Chats', 'All Replies / Live Chat', 'அனைத்து பதில்கள்')}
+              </div>
+            </div>
+          </button>
 
-            {/* Button 2: සහය පුවරුව (Scroll up to Notice Board) */}
-            <button
-              type="button"
-              onClick={() => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                setBoardCategoryFilter('');
-                setSelectedCategoryTitle('');
-                setSelectedTagFilter(null);
-                setSearchQuery('');
-                setFeedDistanceTab('all_sl');
-              }}
-              className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-                <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+          {/* Button 4: Sos Tracker (Live GPS Tracking) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsSosLiveModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/30 border-2 border-red-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>Sos Tracker</span>
+                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
+                  LIVE
+                </span>
               </div>
-              <div className="text-left min-w-0">
-                <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                  <span>{getLangText('සහය පුවරුව', 'Support Board', 'உதவி பலகை')}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white/20 text-white">
-                    {helpPosts.length}
-                  </span>
-                </div>
-                <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-100">
-                  {getLangText('දැන්වීම් ඉහලට (Top)', 'Top of Board', 'மேலே')}
-                </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-red-100">
+                {getLangText('සජීවී GPS ස්ථානය බෙදාගන්න', 'Live GPS Tracking & Share', 'நேරலை இருப்பிடம்')}
               </div>
-            </button>
+            </div>
+          </button>
+        </div>
+      </div>
 
-            {/* Button 3: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (user?.isDemo) {
-                  setShowDemoRegisterPrompt(true);
-                  return;
-                }
-                setIsInboxModalOpen(true);
-              }}
-              className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-700 hover:from-cyan-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg shadow-sky-600/20 border-2 border-sky-400/80 active:scale-[0.99]"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-                <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-sky-200" />
+      {/* Central Glowing "I Need Help" Button */}
+      <GlowingNeedHelpBtn
+        onClick={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsCategoryModalOpen(true);
+        }}
+        lang={language}
+        topRightElement={
+          <MessageInboxBubble
+            user={user}
+            helpPosts={helpPosts}
+            onClick={() => setIsInboxModalOpen(true)}
+          />
+        }
+      />
+
+      {/* Prominent Action Buttons: 'කැමැත්ත දැක්වූවන්' & 'සහය වන්න' */}
+      <div className={`grid ${checkIsAdmin(user) || myPosts.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-4`}>
+        {/* Button 1: කැමැත්ත දැක්වූවන් */}
+        {Boolean(checkIsAdmin(user) || myPosts.length > 0) && (
+          <button
+            type="button"
+            onClick={() => {
+              setTargetPostForOffers(null);
+              setIsSupportOffersModalOpen(true);
+            }}
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-orange-400/50 flex items-center justify-between cursor-pointer"
+            title="සහය වීමට කැමැත්ත පළකළ අය"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+            <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+                <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
               </div>
-              <div className="text-left min-w-0">
-                <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                  <span>{getLangText('පණිවිඩ & චැට්', 'Messages & Inbox', 'செய்திகள் & அரட்டை')}</span>
-                  {inboxRepliesCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white text-blue-900 shadow-xs">
-                      {inboxRepliesCount}
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-100 transition-colors">
+                    {language === 'en' ? 'Support Offers' : language === 'ta' ? 'விருப்பம் தெரிவித்தோர்' : 'කැමැත්ත දැක්වූවන්'}
+                  </h3>
+                  {totalUserReplies > 0 && (
+                    <span className="bg-white text-orange-700 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
+                      {totalUserReplies} {language === 'en' ? 'New' : language === 'ta' ? 'புதிய' : 'නව'}
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-sky-100">
-                  {getLangText('සියලු පිළිතුරු / Chats', 'All Replies / Live Chat', 'அனைத்து பதில்கள்')}
-                </div>
+                <p className="text-xs text-orange-100/90 font-medium truncate">
+                  {language === 'en' 
+                    ? 'People willing to help your requests' 
+                    : language === 'ta' 
+                    ? 'உங்கள் கோரிக்கைகளுக்கு உதவ முன்வந்தோர்' 
+                    : 'ඔබේ ඉල්ලීම් සඳහා සහය වීමට ඉදිරිපත් වූ අය'}
+                </p>
               </div>
-            </button>
+            </div>
 
-            {/* Button 4: Sos Tracker (Live GPS Tracking) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (user?.isDemo) {
-                  setShowDemoRegisterPrompt(true);
-                  return;
-                }
-                setIsSosLiveModalOpen(true);
-              }}
-              className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-lg shadow-red-600/30 border-2 border-red-400/80 active:scale-[0.99]"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
-                <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
+            <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-orange-600 font-black flex items-center justify-center shadow-md group-hover:bg-amber-100 transition-colors">
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
               </div>
-              <div className="text-left min-w-0">
-                <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
-                  <span>Sos Tracker</span>
-                  <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] font-black bg-white text-red-700 shadow-xs animate-pulse">
-                    LIVE
+            </div>
+          </button>
+        )}
+
+        {/* Button 2: සහය වන්න */}
+        <button
+          id="volunteer-support-btn"
+          type="button"
+          onClick={() => setIsVolunteerSupportModalOpen(true)}
+          className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-emerald-400/50 flex items-center justify-between cursor-pointer"
+          title="අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+          <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
+              <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-200 transition-colors">
+                  {language === 'en' ? 'Lend Support / Help' : language === 'ta' ? 'உதவி செய்யுங்கள்' : 'සහය වන්න'}
+                </h3>
+                {selectedAsHelperCount > 0 && (
+                  <span className="bg-amber-300 text-slate-950 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
+                    {selectedAsHelperCount} {language === 'en' ? 'Selected' : language === 'ta' ? 'தேர்வு' : 'තේරී ඇත'}
                   </span>
-                </div>
-                <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-red-100">
-                  {getLangText('සජීවී GPS ස්ථානය බෙදාගන්න', 'Live GPS Tracking & Share', 'நேரலை இருப்பிடம்')}
-                </div>
+                )}
               </div>
-            </button>
+              <p className="text-xs text-emerald-100/90 font-medium truncate">
+                {language === 'en' 
+                  ? 'Help others & view requests where you are selected' 
+                  : language === 'ta' 
+                  ? 'மற்றவர்களுக்கு உதவுங்கள் மற்றும் தேர்ந்தெடுக்கப்பட்ட கோரிக்கைகள்' 
+                  : 'අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්'}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* 3.3 Central Glowing "I Need Help" Button */}
-        <GlowingNeedHelpBtn
-          onClick={() => {
+          <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#007a4b] font-black flex items-center justify-center shadow-md group-hover:bg-amber-300 group-hover:text-slate-950 transition-colors">
+              <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* 📢 3. ප්‍රධාන දැන්වීම් සහ සහය පුවරුව (Main Notices & Community Board Feed - Viewport Starts Here Automatically) */}
+      <div id="help-notices-feed" className="scroll-mt-4 pt-1">
+        <HelpRequestsPage
+          user={user}
+          language={language}
+          helpPosts={helpPosts}
+          filteredPosts={filteredPosts}
+          currentLocation={currentLocation}
+          feedDistanceTab={feedDistanceTab}
+          setFeedDistanceTab={setFeedDistanceTab}
+          boardCategoryFilter={boardCategoryFilter}
+          setBoardCategoryFilter={setBoardCategoryFilter}
+          selectedCategoryTitle={selectedCategoryTitle}
+          setSelectedCategoryTitle={setSelectedCategoryTitle}
+          maxDistanceRadius={maxDistanceRadius}
+          setMaxDistanceRadius={setMaxDistanceRadius}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          allTags={allTags}
+          selectedTagFilter={selectedTagFilter}
+          setSelectedTagFilter={setSelectedTagFilter}
+          getPostDistance={getPostDistance}
+          onOfferSupport={(p) => setSelectedPostForDetail(p)}
+          onEditPost={(p) => handleEditPost(p)}
+          onViewPost={(p) => setViewingPost(p)}
+          onDeletePost={(p) => setDeletingPost(p)}
+          onOpenChat={(p) => setSelectedPostForChat(p)}
+          onOpenConfirm={(p) => setSelectedPostForConfirm(p)}
+          onOpenSupportOffers={(p) => {
+            setTargetPostForOffers(p);
+            setIsSupportOffersModalOpen(true);
+          }}
+          onOpenCreateModal={() => {
             if (user?.isDemo) {
               setShowDemoRegisterPrompt(true);
               return;
             }
             setIsCategoryModalOpen(true);
           }}
-          lang={language}
-          topRightElement={
-            <MessageInboxBubble
-              user={user}
-              helpPosts={helpPosts}
-              onClick={() => setIsInboxModalOpen(true)}
-            />
-          }
+          onBackToHome={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
+          onUpdatePost={propOnUpdatePost}
+          onAdminModerate={(p) => setModeratingPost(p)}
+          onPosterRespondIssue={(p) => setPosterRespondingPost(p)}
+          professionalServices={professionalServices}
+          onAddProfessionalService={handleAddProfessionalService}
+          onAddProfessionalReview={handleAddProfessionalReview}
+          onDeleteProfessionalService={handleDeleteProfessionalService}
+          registeredUsers={(() => {
+            try {
+              const saved = localStorage.getItem('sahaya_users');
+              return saved ? deduplicateUsers(JSON.parse(saved)) : deduplicateUsers(initialUsers);
+            } catch {
+              return deduplicateUsers(initialUsers);
+            }
+          })()}
+          redAlerts={redAlerts}
+          onViewRedAlertDetail={onViewRedAlertDetail}
+          onOpenRedAlert={onOpenRedAlert}
         />
+      </div>
 
-        {/* 3.4 Prominent Action Buttons: 'කැමැත්ත දැක්වූවන්' & 'සහය වන්න' */}
-        <div className={`grid ${checkIsAdmin(user) || myPosts.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 sm:gap-4`}>
-          {/* Button 1: කැමැත්ත දැක්වූවන් */}
-          {Boolean(checkIsAdmin(user) || myPosts.length > 0) && (
-            <button
-              type="button"
-              onClick={() => {
-                setTargetPostForOffers(null);
-                setIsSupportOffersModalOpen(true);
-              }}
-              className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-orange-400/50 flex items-center justify-between cursor-pointer"
-              title="සහය වීමට කැමැත්ත පළකළ අය"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
-
-              <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
-                  <HeartHandshake className="w-6 h-6 text-white animate-pulse" />
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-100 transition-colors">
-                      {language === 'en' ? 'Support Offers' : language === 'ta' ? 'விருப்பம் தெரிவித்தோர்' : 'කැමැත්ත දැක්වූවන්'}
-                    </h3>
-                    {totalUserReplies > 0 && (
-                      <span className="bg-white text-orange-700 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
-                        {totalUserReplies} {language === 'en' ? 'New' : language === 'ta' ? 'புதிய' : 'නව'}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-orange-100/90 font-medium truncate">
-                    {language === 'en' 
-                      ? 'People willing to help your requests' 
-                      : language === 'ta' 
-                      ? 'உங்கள் கோரிக்கைகளுக்கு உதவ முன்வந்தோர்' 
-                      : 'ඔබේ ඉල්ලීම් සඳහා සහය වීමට ඉදිරිපත් වූ අය'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-orange-600 font-black flex items-center justify-center shadow-md group-hover:bg-amber-100 transition-colors">
-                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
-                </div>
-              </div>
-            </button>
-          )}
-
-          {/* Button 2: සහය වන්න */}
-          <button
-            id="volunteer-support-btn"
-            type="button"
-            onClick={() => setIsVolunteerSupportModalOpen(true)}
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.99] border-2 border-emerald-400/50 flex items-center justify-between cursor-pointer"
-            title="අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
-
-            <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0 text-left">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30 shadow-inner group-hover:scale-110 transition-transform">
-                <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-tight group-hover:text-amber-200 transition-colors">
-                    {language === 'en' ? 'Lend Support / Help' : language === 'ta' ? 'உதவி செய்யுங்கள்' : 'සහය වන්න'}
-                  </h3>
-                  {selectedAsHelperCount > 0 && (
-                    <span className="bg-amber-300 text-slate-950 text-xs font-black px-2 py-0.5 rounded-full shadow-md font-mono animate-bounce">
-                      {selectedAsHelperCount} {language === 'en' ? 'Selected' : language === 'ta' ? 'தேர்வு' : 'තේරී ඇත'}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-emerald-100/90 font-medium truncate">
-                  {language === 'en' 
-                    ? 'Help others & view requests where you are selected' 
-                    : language === 'ta' 
-                    ? 'மற்றவர்களுக்கு உதவுங்கள் மற்றும் தேர்ந்தெடுக்கப்பட்ட கோரிக்கைகள்' 
-                    : 'අන් අයට සහය වීම සහ ඔබව තෝරාගත් ඉල්ලීම්'}
-                </p>
-              </div>
-            </div>
-
-            <div className="relative z-10 flex items-center gap-2 pl-2 shrink-0">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white text-[#007a4b] font-black flex items-center justify-center shadow-md group-hover:bg-amber-300 group-hover:text-slate-950 transition-colors">
-                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </div>
-          </button>
+      {/* 🧭 4. සේවා ජාලය (Services Grid Section - Scrollable Below Notices) */}
+      <div id="services-scroll-section" className="space-y-4 pt-6 border-t-2 border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <span>{t.servicesTitle}</span>
+          </h3>
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+            {language === 'en' ? 'Quick & Direct Services' : language === 'ta' ? 'விரைவு சேவைகள்' : 'ක්ෂණික හා සෘජු සේවා'}
+          </span>
         </div>
 
-        {/* 3.5 Services Grid Section */}
-        <div className="space-y-4 pt-4 sm:pt-6 border-t border-slate-200 dark:border-[#132a1d]">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span>{t.servicesTitle}</span>
-            </h3>
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-              {language === 'en' ? 'Quick & Direct Services' : language === 'ta' ? 'விரைவு சேவைகள்' : 'ක්ෂණික හා සෘජු සේවා'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {services.map((srv, srvIdx) => {
-              const Icon = srv.icon;
-              return (
-                <div
-                  key={`srv_${srv.id}_${srvIdx}`}
-                  onClick={() => {
-                    if (srv.id === 'professional_services') {
-                      setBoardCategoryFilter('professional_services');
-                      setSelectedCategoryTitle('වෘත්තීය සේවා');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    } else if (srv.id === 'from_me_to_you') {
-                      setIsFromMeToYouModalOpen(true);
-                    } else if (srv.id === 'find_for_me') {
-                      setIsFindForMeModalOpen(true);
-                    } else {
-                      setSelectedService(srv.title);
-                    }
-                  }}
-                  className="bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] hover:border-emerald-500/50 dark:hover:border-emerald-500/50 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer group flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex justify-between items-start mb-3">
-                      <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${srv.color} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform`}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <span className="text-[10px] uppercase font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-800">
-                        {srv.badge}
-                      </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {services.map((srv, srvIdx) => {
+            const Icon = srv.icon;
+            return (
+              <div
+                key={`srv_${srv.id}_${srvIdx}`}
+                onClick={() => {
+                  if (srv.id === 'professional_services') {
+                    setBoardCategoryFilter('professional_services');
+                    setSelectedCategoryTitle('වෘත්තීය සේවා');
+                    const el = document.getElementById('help-notices-feed');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  } else if (srv.id === 'from_me_to_you') {
+                    setIsFromMeToYouModalOpen(true);
+                  } else if (srv.id === 'find_for_me') {
+                    setIsFindForMeModalOpen(true);
+                  } else {
+                    setSelectedService(srv.title);
+                  }
+                }}
+                className="bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] hover:border-emerald-500/50 dark:hover:border-emerald-500/50 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${srv.color} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform`}>
+                      <Icon className="w-5 h-5" />
                     </div>
-
-                    <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                      {srv.title}
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                      {srv.desc}
-                    </p>
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-800">
+                      {srv.badge}
+                    </span>
                   </div>
 
-                  <button className="w-full bg-slate-100 dark:bg-slate-900/80 group-hover:bg-emerald-600 text-slate-700 dark:text-slate-300 group-hover:text-white font-bold py-2 rounded-xl border border-slate-200 dark:border-slate-800 transition-all text-xs flex items-center justify-center gap-2 cursor-pointer">
-                    <span>{t.requestServiceBtn}</span>
-                  </button>
+                  <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                    {srv.title}
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                    {srv.desc}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+
+                <button className="w-full bg-slate-100 dark:bg-slate-900/80 group-hover:bg-emerald-600 text-slate-700 dark:text-slate-300 group-hover:text-white font-bold py-2 rounded-xl border border-slate-200 dark:border-slate-800 transition-all text-xs flex items-center justify-center gap-2 cursor-pointer">
+                  <span>{t.requestServiceBtn}</span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
