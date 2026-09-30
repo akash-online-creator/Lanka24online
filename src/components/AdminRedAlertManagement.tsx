@@ -22,7 +22,7 @@ import {
 import { RedAlertItem, Language } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { updateRedAlertStatus, deleteRedAlertInFirestore, subscribeToSirenSettings } from '../lib/firebase';
-import { startEmergencySiren, stopEmergencySiren, unlockAudio, persistSirenSettings, getSirenFileName } from '../utils/sirenAudio';
+import { persistSirenSettings, getSirenFileName } from '../utils/sirenAudio';
 import { addDeletedRedAlertId, filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
 import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 
@@ -57,7 +57,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
   const [filter, setFilter] = useState<'all' | 'active' | 'flagged_fake' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [isPlayingSiren, setIsPlayingSiren] = useState(false);
   const [uploadedSirenFileName, setUploadedSirenFileName] = useState<string>(
     () => getSirenFileName() || DEFAULT_SIREN_NAME
   );
@@ -70,20 +69,8 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
 
     return () => {
       unsubscribe();
-      stopEmergencySiren();
     };
   }, []);
-
-  const handleToggleSiren = () => {
-    unlockAudio();
-    if (isPlayingSiren) {
-      stopEmergencySiren();
-      setIsPlayingSiren(false);
-    } else {
-      startEmergencySiren();
-      setIsPlayingSiren(true);
-    }
-  };
 
   const filteredAlerts = (alerts || []).filter((alert) => {
     if (!alert) return false;
@@ -193,29 +180,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleToggleSiren}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
-                isPlayingSiren
-                  ? 'bg-amber-300 text-slate-950 border-2 border-amber-500 animate-pulse'
-                  : 'bg-white text-red-700 hover:bg-red-50'
-              }`}
-              title="Test Emergency Siren Alarm"
-            >
-              {isPlayingSiren ? (
-                <>
-                  <Volume2 className="w-4 h-4 text-red-600 animate-bounce" />
-                  <span>Siren නවත්වන්න</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-4 h-4 text-red-600" />
-                  <span>🔊 Siren පරීක්ෂා කරන්න</span>
-                </>
-              )}
-            </button>
-
             {/* Admin Custom Siren Audio Upload Button */}
             <label 
               className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-300"
@@ -236,8 +200,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                         await persistSirenSettings(dataUri, file.name);
                         setUploadedSirenFileName(file.name);
                         alert(`✅ සාර්ථකයි! "${file.name}" Siren Tone එක Cloud Database හි ස්ථිරවම ගබඩා කරන ලදී.`);
-                        startEmergencySiren();
-                        setIsPlayingSiren(true);
                       }
                     };
                     reader.readAsDataURL(file);
@@ -292,8 +254,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                   await persistSirenSettings(url, url);
                   setUploadedSirenFileName(url);
                   alert('✅ සාර්ථකයි! Audio URL එක Cloud Database හි ස්ථිරවම සුරකින ලදී.');
-                  startEmergencySiren();
-                  setIsPlayingSiren(true);
                   inputEl.value = '';
                 } else {
                   alert('⚠️ කරුණාකර නිවැරදි Direct Audio / MP3 සබැඳියක් ඇතුළත් කරන්න.');

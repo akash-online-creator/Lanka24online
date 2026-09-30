@@ -3,7 +3,6 @@ import {
   Radio, 
   X, 
   Volume2, 
-  VolumeX, 
   MapPin, 
   Maximize2, 
   ShieldAlert, 
@@ -14,11 +13,11 @@ import {
   ChevronDown,
   Layers,
   Zap,
-  ExternalLink
+  ExternalLink,
+  Flame
 } from 'lucide-react';
 import { RedAlertItem, Language } from '../types';
 import { activateBackgroundWakeLock } from '../utils/notificationManager';
-import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
 
 interface FloatingOverlayWidgetProps {
   onOpenCreateRedAlert: () => void;
@@ -72,7 +71,6 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
   const [isPipActive, setIsPipActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isSirenActive, setIsSirenActive] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
   // Enable wake lock on mount
@@ -347,33 +345,11 @@ export const FloatingOverlayWidget: React.FC<FloatingOverlayWidgetProps> = ({
               <button
                 type="button"
                 onClick={handleTogglePictureInPicture}
-                className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-black text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
+                className="col-span-2 p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
                 title="Screen එක උඩ වෙනත් Apps භාවිතයේදීත් පාවෙන Window එකක් විවෘත කරන්න"
               >
                 <Maximize2 className="w-4 h-4 text-cyan-400" />
-                <span>{isPipActive ? getLang('PiP නවත්වන්න', 'Close PiP', 'PiP மூடு') : getLang('Floating Window (PiP)', 'Floating Window', 'மிதக்கும் சாளரம்')}</span>
-              </button>
-
-              {/* Siren Alarm Trigger */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (isSirenActive) {
-                    stopEmergencySiren();
-                    setIsSirenActive(false);
-                  } else {
-                    startEmergencySiren();
-                    setIsSirenActive(true);
-                  }
-                }}
-                className={`p-2.5 rounded-2xl border font-black text-xs flex flex-col items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer ${
-                  isSirenActive
-                    ? 'bg-rose-600 border-rose-400 text-white animate-pulse'
-                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
-                }`}
-              >
-                {isSirenActive ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-amber-400" />}
-                <span>{isSirenActive ? getLang('Siren නවත්වන්න', 'Stop Siren', 'நிறுத்துக') : getLang('🔊 Siren නාදය', '🔊 Play Siren', '🔊 சைரன்')}</span>
+                <span>{isPipActive ? getLang('PiP නවත්වන්න', 'Close PiP', 'PiP மூடு') : getLang('Floating Window (PiP)', 'Floating Window (PiP)', 'මිතக்கும் சாளரம்')}</span>
               </button>
             </div>
 

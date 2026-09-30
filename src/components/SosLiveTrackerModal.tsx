@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
-import { startEmergencySiren, stopEmergencySiren, unlockAudio } from '../utils/sirenAudio';
 
 interface SosLiveTrackerModalProps {
   isOpen: boolean;
@@ -82,7 +81,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
   // UI States
   const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [isPlayingSiren, setIsPlayingSiren] = useState<boolean>(false);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
@@ -234,7 +232,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
   // Turn ON SOS Live Tracking
   const handleStartSos = async () => {
-    unlockAudio();
     setIsLocating(true);
     setGpsError(null);
 
@@ -324,8 +321,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
-    stopEmergencySiren();
-    setIsPlayingSiren(false);
     await stopSosLiveSession(sessionId);
     setIsActive(false);
   };
@@ -428,17 +423,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       navigator.clipboard.writeText(trackingLink);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2500);
-    }
-  };
-
-  const handleToggleSiren = () => {
-    unlockAudio();
-    if (isPlayingSiren) {
-      stopEmergencySiren();
-      setIsPlayingSiren(false);
-    } else {
-      startEmergencySiren();
-      setIsPlayingSiren(true);
     }
   };
 
@@ -698,45 +682,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 ))}
               </div>
             </div>
-          </div>
-
-          {/* 🔊 Siren Audio Alarm Button */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/40">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
-                <Volume2 className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-black text-amber-950 dark:text-amber-200 block">
-                  හදිසි අනතුරු සයිරන් නාදය (Emergency Siren)
-                </span>
-                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-                  අවට සිටින පුද්ගලයින්ගේ අවධානය ලබාගැනීමට හඬ නිකුත් කරන්න
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleToggleSiren}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
-                isPlayingSiren
-                  ? 'bg-rose-600 text-white animate-bounce'
-                  : 'bg-amber-400 hover:bg-amber-500 text-slate-950'
-              }`}
-            >
-              {isPlayingSiren ? (
-                <>
-                  <VolumeX className="w-3.5 h-3.5" />
-                  <span>Siren Stop</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-3.5 h-3.5" />
-                  <span>Play Siren</span>
-                </>
-              )}
-            </button>
           </div>
 
           {/* 📞 Sri Lanka Emergency Hotline Fast Dial Grid */}

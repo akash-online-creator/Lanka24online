@@ -18,7 +18,6 @@ import {
 import { Language } from '../types';
 import { activateBackgroundWakeLock } from '../utils/notificationManager';
 import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
-import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
 
 interface AndroidBackgroundServiceModalProps {
   isOpen: boolean;
@@ -40,7 +39,6 @@ export const AndroidBackgroundServiceModal: React.FC<AndroidBackgroundServiceMod
   const [activeTab, setActiveTab] = useState<'pip' | 'android_native' | 'permissions'>('pip');
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [isTestingSiren, setIsTestingSiren] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -195,38 +193,6 @@ export const AndroidBackgroundServiceModal: React.FC<AndroidBackgroundServiceMod
                     5.0 KM RADIUS
                   </div>
                 </div>
-              </div>
-
-              {/* Siren Test Button */}
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-black text-amber-800 dark:text-amber-300">
-                    {getLang('හදිසි Siren නාදය පරීක්ෂාව', 'Test Emergency Siren Audio', 'அவசர சைரன் ஒலி சோதனை')}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {getLang('Screen Lock වී තිබුණද ඇසෙන පරිදි සකසා ඇත', 'Configured to sound even when screen is locked', 'திரை பூட்டப்பட்டிருந்தாலும் ஒலிக்கும்')}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isTestingSiren) {
-                      stopEmergencySiren();
-                      setIsTestingSiren(false);
-                    } else {
-                      startEmergencySiren();
-                      setIsTestingSiren(true);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isTestingSiren 
-                      ? 'bg-rose-600 text-white animate-pulse' 
-                      : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
-                  }`}
-                >
-                  <Volume2 className="w-3.5 h-3.5" />
-                  <span>{isTestingSiren ? 'නවත්වන්න' : '🔊 Play Siren'}</span>
-                </button>
               </div>
             </div>
           )}

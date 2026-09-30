@@ -205,7 +205,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [sirenVolume, setLocalSirenVolume] = useState<number>(() => getSirenVolume());
   const [isSirenMuted, setIsSirenMuted] = useState<boolean>(() => isDeviceSirenMuted());
   const [sirenTone, setSirenTone] = useState<string>(() => getSirenFileName());
-  const [isTestingSiren, setIsTestingSiren] = useState<boolean>(false);
   const [is24hWakeLockActive, setIs24hWakeLockActive] = useState<boolean>(() => isBackgroundWakeLockEnabled());
 
   useEffect(() => {
@@ -216,15 +215,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     });
     return () => unsub();
   }, []);
-
-  // Stop testing siren if modal unmounts or closes
-  useEffect(() => {
-    return () => {
-      if (isTestingSiren) {
-        stopEmergencySiren();
-      }
-    };
-  }, [isTestingSiren]);
   
   // Feedback
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -259,7 +249,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       setLocalSirenVolume(getSirenVolume());
       setIsSirenMuted(isDeviceSirenMuted());
       setSirenTone(getSirenFileName());
-      setIsTestingSiren(false);
       setShowGoogleAuthModal(false);
       setShowDisable2FAConfirm(false);
       setShowPinSetupModal(false);
@@ -1620,10 +1609,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                       const nextMute = !isSirenMuted;
                       setIsSirenMuted(nextMute);
                       setDeviceSirenMuted(nextMute);
-                      if (nextMute && isTestingSiren) {
-                        stopEmergencySiren();
-                        setIsTestingSiren(false);
-                      }
                       setSaveSuccessMsg(
                         nextMute
                           ? getLang(

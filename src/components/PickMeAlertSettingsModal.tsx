@@ -28,7 +28,6 @@ import {
   requestNotificationPermission, 
   getNotificationPermissionStatus 
 } from '../utils/notificationManager';
-import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
 import { Language } from '../types';
 
 interface PickMeAlertSettingsModalProps {
@@ -52,7 +51,6 @@ export const PickMeAlertSettingsModal: React.FC<PickMeAlertSettingsModalProps> =
       setPermStatus(getNotificationPermissionStatus());
     } else {
       stopPickMeAlert();
-      stopEmergencySiren();
       setPlayingKind(null);
     }
   }, [isOpen]);
@@ -69,20 +67,6 @@ export const PickMeAlertSettingsModal: React.FC<PickMeAlertSettingsModalProps> =
     const updated = { ...settings, volume: vol };
     setSettings(updated);
     savePickMeAlertSettings(updated);
-  };
-
-  const handleTestClassicSiren = () => {
-    if (playingKind === 'classic_siren') {
-      stopEmergencySiren();
-      setPlayingKind(null);
-      return;
-    }
-    setPlayingKind('classic_siren');
-    startEmergencySiren();
-    setTimeout(() => {
-      stopEmergencySiren();
-      setPlayingKind((prev) => (prev === 'classic_siren' ? null : prev));
-    }, 4000);
   };
 
   const handleTestGentleChime = async () => {
@@ -182,44 +166,12 @@ export const PickMeAlertSettingsModal: React.FC<PickMeAlertSettingsModalProps> =
             </button>
           </div>
 
-          {/* 2. Sound Channels & Siren Preview */}
+          {/* 2. Notification Chime & Sound */}
           <div className="space-y-2.5">
             <h4 className="text-xs font-black uppercase text-slate-500 dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
               <Volume2 className="w-3.5 h-3.5" />
-              <span>ශ්‍රව්‍ය නාද සහ පරීක්ෂණ (Audio & Siren Test)</span>
+              <span>ශ්‍රව්‍ය නාද පරීක්ෂාව (Notification Chime Preview)</span>
             </h4>
-
-            {/* Classic Red Alert Siren */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0c1f15] border border-slate-200 dark:border-emerald-900/60 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-black shrink-0">
-                  <AlertTriangle className="w-4 h-4 fill-rose-500" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-black text-slate-900 dark:text-white truncate">
-                    1. හදිසි රතු එළිය ආපදා සිරන් හඬ (Classic Fire Siren)
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    ආපදා, ගංවතුර සහ හදිසි අනතුරු වලදී නාද වන නියම සිරන් හඬ
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleTestClassicSiren}
-                  className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95 ${
-                    playingKind === 'classic_siren'
-                      ? 'bg-rose-600 text-white animate-pulse'
-                      : 'bg-rose-600 hover:bg-rose-500 text-white'
-                  }`}
-                >
-                  {playingKind === 'classic_siren' ? <Square className="w-3.5 h-3.5 fill-white" /> : <Play className="w-3.5 h-3.5 fill-white" />}
-                  <span>{playingKind === 'classic_siren' ? 'නවත්වන්න' : 'සිරන් හඬ'}</span>
-                </button>
-              </div>
-            </div>
 
             {/* Gentle Message Chime */}
             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0c1f15] border border-slate-200 dark:border-emerald-900/60 flex items-center justify-between gap-3">
@@ -229,7 +181,7 @@ export const PickMeAlertSettingsModal: React.FC<PickMeAlertSettingsModalProps> =
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-black text-slate-900 dark:text-white truncate">
-                    2. මෘදු පණිවිඩ නාදය (Gentle Notification Chime)
+                    මෘදු පණිවිඩ නාදය (Gentle Notification Chime)
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                     සාමාන්‍ය සහය ඉල්ලීම් සහ පණිවිඩ සඳහා නිකුත් වන සුමට නාදය

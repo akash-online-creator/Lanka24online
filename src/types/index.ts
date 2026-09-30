@@ -575,6 +575,8 @@ export interface GroupMessage {
   createdAtMs: number;
   isPinned?: boolean;
   isKept?: boolean;
+  audioUrl?: string;
+  audioDurationSec?: number;
   location?: GroupMessageLocation;
   reactions?: Record<string, string[]>; // emoji -> array of userIds
   replyTo?: {

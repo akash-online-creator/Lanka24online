@@ -28,7 +28,8 @@ import {
   ShieldAlert,
   MapPin,
   Compass,
-  Navigation
+  Navigation,
+  Mic
 } from 'lucide-react';
 import { 
   GroupItem, 
@@ -38,11 +39,13 @@ import {
   Language, 
   User,
   GroupJoinRequest,
-  GroupMessageLocation
+  GroupMessageLocation,
+  TelegramMediaRecord
 } from '../types';
 import { GroupChatMapPickerModal } from './GroupChatMapPickerModal';
 import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
 import { ChatLocationCard } from './ChatLocationCard';
+import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 import { 
   getStoredGroupMessages, 
   saveGroupMessageToStorage, 
@@ -78,6 +81,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   const [group, setGroup] = useState<GroupItem>(initialGroup);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -191,6 +195,33 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
+  };
+
+  // Send Voice Note Audio Message
+  const handleSendVoiceAudio = (audioUrl: string, durationSec: number) => {
+    if (!canSendMessages) {
+      alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
+      return;
+    }
+
+    const newMessage: GroupMessage = {
+      id: `gmsg_voice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      groupId: group.id,
+      senderId: currentUserId,
+      senderName: currentUser?.name || 'පරිශීලක',
+      senderPhone: currentUser?.phone || '',
+      senderPhotoUrl: currentUser?.photoUrl || '',
+      senderRole: isAdmin ? 'admin' : 'member',
+      text: '🎙️ [හඬ පණිවිඩය / Voice Note]',
+      audioUrl,
+      audioDurationSec: durationSec,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAtMs: Date.now()
+    };
+
+    const updated = saveGroupMessageToStorage(group.id, newMessage);
+    setMessages(updated);
+    setIsRecordingVoice(false);
   };
 
   const handleTogglePin = (msgId: string) => {
@@ -514,8 +545,19 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                           />
                         )}
 
+                        {/* Audio Voice Note Player */}
+                        {msg.audioUrl && (
+                          <div className="space-y-1">
+                            <AudioVoicePlayer
+                              audioUrl={msg.audioUrl}
+                              durationSec={msg.audioDurationSec || 5}
+                              isMe={isMe}
+                            />
+                          </div>
+                        )}
+
                         {/* Message Bubble */}
-                        {(!msg.location || (msg.text && msg.text !== `📍 ස්ථානය: ${msg.location.name}` && msg.text !== `📍 ${msg.location.name} - ${msg.location.note}`)) && (
+                        {!msg.audioUrl && (!msg.location || (msg.text && msg.text !== `📍 ස්ථානය: ${msg.location.name}` && msg.text !== `📍 ${msg.location.name} - ${msg.location.note}`)) && (
                           <div
                             className={`p-3 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-xs relative group ${
                               isMe
@@ -566,34 +608,53 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             {/* Message Input & Send */}
             <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
               {canSendMessages ? (
-                <form onSubmit={handleSend} className="flex items-center gap-2">
-                  {/* Share Location on Map Button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsMapPickerOpen(true)}
-                    className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
-                    title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
-                  >
-                    <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-xs font-bold hidden sm:inline">ස්ථානය (Map)</span>
-                  </button>
-
-                  <input
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."
-                    className="flex-1 px-4 py-2.5 rounded-2xl border-2 border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-medium text-xs sm:text-sm outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100"
+                isRecordingVoice ? (
+                  <AudioVoiceRecorder
+                    senderName={currentUser?.name || 'User'}
+                    sourceContext="Group Chat"
+                    onSendAudio={handleSendVoiceAudio}
+                    onCancel={() => setIsRecordingVoice(false)}
                   />
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim()}
-                    className="p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                    title="යවන්න"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
+                ) : (
+                  <form onSubmit={handleSend} className="flex items-center gap-2">
+                    {/* Share Location on Map Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsMapPickerOpen(true)}
+                      className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                      title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
+                    >
+                      <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span className="text-xs font-bold hidden sm:inline">ස්ථානය</span>
+                    </button>
+
+                    {/* Voice Note Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsRecordingVoice(true)}
+                      className="p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                      title="හඬ පණිවිඩයක් පටිගත කරන්න (Voice Note)"
+                    >
+                      <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </button>
+
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."
+                      className="flex-1 px-4 py-2.5 rounded-2xl border-2 border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-medium text-xs sm:text-sm outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim()}
+                      className="p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      title="යවන්න"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                )
               ) : (
                 <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-center text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-amber-600" />

@@ -14,9 +14,10 @@ import {
   ShieldAlert,
   Sparkles,
   ArrowRightLeft,
-  Globe
+  Globe,
+  Mic
 } from 'lucide-react';
-import { HelpPost, PostReply, User as UserType, Language, ChatMessage } from '../types';
+import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
 import { translations } from '../data/translations';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
 import { parseTimeToMs, getAccurateElapsedTime, formatMessageClockTime } from '../utils/dateUtils';
@@ -33,6 +34,7 @@ import {
   getLanguageDisplayInfo 
 } from '../utils/chatTranslator';
 import { PolicyViolationModal } from './PolicyViolationModal';
+import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 
 interface MessageInboxModalProps {
   isOpen: boolean;
@@ -77,6 +79,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Dual-party language states
@@ -378,6 +381,49 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
       await sendChatMessageToFirestore(currentPost.id, newMsg);
     } catch (err) {
       console.error('Failed to send message to Firestore:', err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleSendVoiceAudio = async (audioBase64: string, durationSec: number, tgRecord?: TelegramMediaRecord) => {
+    if (!activeThread) return;
+    const currentPost = activeThread.post;
+
+    if (isUserPolicyBlocked(userKey)) {
+      setIsBlocked(true);
+      setShowPolicyModal(true);
+      return;
+    }
+
+    const nowMs = Date.now();
+    const newMsg: Omit<ChatMessage, 'id'> = {
+      senderName: user.name || 'පරිශීලක',
+      senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
+      text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
+      timestamp: formatMessageClockTime(undefined, nowMs),
+      createdAtMs: nowMs,
+      senderPhone: user.phone || user.whatsappNumber || '',
+      audioUrl: audioBase64,
+      audioDurationSec: durationSec,
+      senderLang: userLang,
+      telegramStorage: tgRecord,
+    };
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        ...newMsg,
+        id: `local_audio_${nowMs}`,
+      },
+    ]);
+
+    setIsRecordingVoice(false);
+    setIsSending(true);
+    try {
+      await sendChatMessageToFirestore(currentPost.id, newMsg);
+    } catch (err) {
+      console.error('Failed to send voice note to Firestore:', err);
     } finally {
       setIsSending(false);
     }
@@ -801,36 +847,48 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
                             : 'bg-white dark:bg-[#0c2217] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#19422d] rounded-tl-none'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words font-medium">
-                          {primaryText}
-                        </p>
+                        {msg.audioUrl ? (
+                          <div className="space-y-1">
+                            <AudioVoicePlayer
+                              audioUrl={msg.audioUrl}
+                              durationSec={msg.audioDurationSec || 5}
+                              isMe={isMe}
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="whitespace-pre-wrap break-words font-medium">
+                              {primaryText}
+                            </p>
 
-                        {/* Translation status & toggle UI */}
-                        {isAutoTranslated && (
-                          <div className={`mt-2 pt-1.5 border-t text-[10px] flex items-center justify-between gap-2 ${
-                            isMe ? 'border-white/20 text-emerald-100' : 'border-slate-200 dark:border-emerald-900/40 text-slate-500 dark:text-slate-400'
-                          }`}>
-                            <div className="flex items-center gap-1 min-w-0">
-                              <Globe className="w-3 h-3 text-amber-300 shrink-0" />
-                              <span className="truncate">
-                                {isMe 
-                                  ? `Auto-translated to ${otherLangInfo.nativeName}: "${secondaryTranslationText}"` 
-                                  : showOriginal 
-                                    ? `Showing original text (${msg.detectedLang || 'Sinhala/Singlish'})` 
-                                    : `Auto-translated into ${userLangInfo.nativeName}`}
-                              </span>
-                            </div>
+                            {/* Translation status & toggle UI */}
+                            {isAutoTranslated && (
+                              <div className={`mt-2 pt-1.5 border-t text-[10px] flex items-center justify-between gap-2 ${
+                                isMe ? 'border-white/20 text-emerald-100' : 'border-slate-200 dark:border-emerald-900/40 text-slate-500 dark:text-slate-400'
+                              }`}>
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <Globe className="w-3 h-3 text-amber-300 shrink-0" />
+                                  <span className="truncate">
+                                    {isMe 
+                                      ? `Auto-translated to ${otherLangInfo.nativeName}: "${secondaryTranslationText}"` 
+                                      : showOriginal 
+                                        ? `Showing original text (${msg.detectedLang || 'Sinhala/Singlish'})` 
+                                        : `Auto-translated into ${userLangInfo.nativeName}`}
+                                  </span>
+                                </div>
 
-                            {!isMe && (
-                              <button
-                                type="button"
-                                onClick={() => toggleShowOriginal(msg.id)}
-                                className={`font-bold hover:underline shrink-0 cursor-pointer ml-1 ${
-                                  isMe ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'
-                                }`}
-                              >
-                                {showOriginal ? 'පරිවර්තනය' : 'මුල් පණිවිඩය'}
-                              </button>
+                                {!isMe && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleShowOriginal(msg.id)}
+                                    className={`font-bold hover:underline shrink-0 cursor-pointer ml-1 ${
+                                      isMe ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'
+                                    }`}
+                                  >
+                                    {showOriginal ? 'පරිවර්තනය' : 'මුල් පණිවිඩය'}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -860,39 +918,57 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
               {/* Bottom: ( Chat type box ) "යවන්න" (button එක) */}
               <div className="p-3 bg-white dark:bg-[#06180f] border-t border-emerald-200 dark:border-[#0e3a24] shrink-0">
-                <form onSubmit={handleSend} className="flex items-center gap-2">
-                  <div className="flex-1 relative">
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      placeholder={
-                        activeThread.post.isConfirmed 
-                          ? userLang === 'en'
-                            ? "Type your message in English / Singlish / Sinhala..."
-                            : userLang === 'ta'
-                            ? "உங்கள் செய்தியை தட்டச்சு செய்யவும்..."
-                            : "සිංහලෙන් හෝ Singlish වලින් පණිවිඩය ලියන්න (Auto translate වේ)..." 
-                          : userLang === 'en'
-                          ? "Type message (contact details allowed after confirm)..."
-                          : "පණිවිඩය ලියන්න (දුරකථන/ලිපින Confirm කළ පසු හුවමාරු වේ)..."
-                      }
-                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#040e08] border-2 border-emerald-300 dark:border-emerald-800/80 rounded-2xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium pr-8"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold pointer-events-none hidden sm:block">
-                      {userLangInfo.flag}
-                    </div>
-                  </div>
+                {isRecordingVoice ? (
+                  <AudioVoiceRecorder
+                    senderName={user.name || 'User'}
+                    sourceContext="Direct Chat"
+                    onSendAudio={handleSendVoiceAudio}
+                    onCancel={() => setIsRecordingVoice(false)}
+                  />
+                ) : (
+                  <form onSubmit={handleSend} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsRecordingVoice(true)}
+                      className="p-2.5 rounded-2xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0 transition-all active:scale-95 cursor-pointer"
+                      title="හඬ පණිවිඩයක් (Voice Note)"
+                    >
+                      <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </button>
 
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim() || isSending}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0"
-                  >
-                    <span>{userLang === 'en' ? 'Send' : userLang === 'ta' ? 'அனுப்புக' : 'යවන්න'}</span>
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        placeholder={
+                          activeThread.post.isConfirmed 
+                            ? userLang === 'en'
+                              ? "Type your message in English / Singlish / Sinhala..."
+                              : userLang === 'ta'
+                              ? "உங்கள் செய்தியை தட்டச்சு செய்யவும்..."
+                              : "සිංහලෙන් හෝ Singlish වලින් පණිවිඩය ලියන්න (Auto translate වේ)..." 
+                            : userLang === 'en'
+                            ? "Type message (contact details allowed after confirm)..."
+                            : "පණිවිඩය ලියන්න (දුරකථන/ලිපින Confirm කළ පසු හුවමාරු වේ)..."
+                        }
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#040e08] border-2 border-emerald-300 dark:border-emerald-800/80 rounded-2xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium pr-8"
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold pointer-events-none hidden sm:block">
+                        {userLangInfo.flag}
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim() || isSending}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0"
+                    >
+                      <span>{userLang === 'en' ? 'Send' : userLang === 'ta' ? 'அனுப்புக' : 'යවන්න'}</span>
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
           )}
