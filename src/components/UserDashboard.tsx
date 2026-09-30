@@ -2048,67 +2048,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         />
       </div>
 
-      {/* 🧭 4. සේවා ජාලය (Services Grid Section - Scrollable Below Notices) */}
-      <div id="services-scroll-section" className="space-y-4 pt-6 border-t-2 border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <span>{t.servicesTitle}</span>
-          </h3>
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-            {language === 'en' ? 'Quick & Direct Services' : language === 'ta' ? 'விரைவு சேவைகள்' : 'ක්ෂණික හා සෘජු සේවා'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {services.map((srv, srvIdx) => {
-            const Icon = srv.icon;
-            return (
-              <div
-                key={`srv_${srv.id}_${srvIdx}`}
-                onClick={() => {
-                  if (srv.id === 'professional_services') {
-                    setBoardCategoryFilter('professional_services');
-                    setSelectedCategoryTitle('වෘත්තීය සේවා');
-                    const el = document.getElementById('help-notices-feed');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  } else if (srv.id === 'from_me_to_you') {
-                    setIsFromMeToYouModalOpen(true);
-                  } else if (srv.id === 'find_for_me') {
-                    setIsFindForMeModalOpen(true);
-                  } else {
-                    setSelectedService(srv.title);
-                  }
-                }}
-                className="bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] hover:border-emerald-500/50 dark:hover:border-emerald-500/50 rounded-3xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer group flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className={`w-10 h-10 rounded-2xl bg-gradient-to-tr ${srv.color} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-800">
-                      {srv.badge}
-                    </span>
-                  </div>
-
-                  <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white mb-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                    {srv.title}
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    {srv.desc}
-                  </p>
-                </div>
-
-                <button className="w-full bg-slate-100 dark:bg-slate-900/80 group-hover:bg-emerald-600 text-slate-700 dark:text-slate-300 group-hover:text-white font-bold py-2 rounded-xl border border-slate-200 dark:border-slate-800 transition-all text-xs flex items-center justify-center gap-2 cursor-pointer">
-                  <span>{t.requestServiceBtn}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* MODALS implementation matching PDF flow */}
       
       {/* 0. Category Selection Modal (Step 2.1 - 2.2) */}
