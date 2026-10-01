@@ -53,6 +53,7 @@ import { renderTextWithLinks } from '../utils/textUtils';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 import { AudioVoicePlayer } from './AudioVoiceNote';
 import { RequestWhatsAppSmsModal } from './RequestWhatsAppSmsModal';
+import { getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 
 interface PostCardProps {
   post: HelpPost;
@@ -617,10 +618,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                 </div>
               </div>
 
-              {/* Right: Help ID, Category Tag, Bookmark, Share */}
+              {/* Right: Help ID, @ Serial Tag, Category Tag, Bookmark, Share */}
               <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                <span className="font-mono text-xs sm:text-sm font-black tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700/60">
-                  {displayPostCode}
+                <span className="font-mono text-xs sm:text-sm font-black tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1">
+                  <span>{displayPostCode}</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-950/90 px-1 py-0.2 rounded border border-amber-300 dark:border-amber-700/60">
+                    @{getEntitySerialNumber(post, 'post')}
+                  </span>
                 </span>
 
                 {post.tagName && (

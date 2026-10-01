@@ -23,6 +23,8 @@ import {
 } from '../lib/firebase';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedMarketplaceId, addDeletedMarketShopId } from '../utils/deletedPostsManager';
+import { validate100mGeoFencePermission } from '../utils/geoFenceValidator';
+import { getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { MarketplaceNewsTicker } from './MarketplaceNewsTicker';
 import { MarketplaceAddSellerItemModal } from './MarketplaceAddSellerItemModal';
 import { MarketplaceAddBuyerRequestModal } from './MarketplaceAddBuyerRequestModal';
@@ -255,6 +257,33 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
   const handleDeleteShop = (shopId: string) => {
     if (!shopId) return;
+
+    const targetShop = shops.find((s) => s && s.id === shopId);
+    const uPhone = (currentUser?.phone || currentUser?.whatsappNumber || '').replace(/\D/g, '');
+    const sPhone = (targetShop?.userPhone || targetShop?.whatsappNumber || '').replace(/\D/g, '');
+    const isRegOwner = Boolean(
+      currentUser && targetShop && (
+        (currentUser.userId && (targetShop.userId === currentUser.userId || targetShop.userId === currentUser.id)) ||
+        (currentUser.id && (targetShop.userId === currentUser.id || targetShop.userId === currentUser.userId)) ||
+        (uPhone && sPhone && uPhone === sPhone)
+      )
+    );
+
+    const geoCheck = validate100mGeoFencePermission(
+      targetShop?.location?.lat,
+      targetShop?.location?.lng,
+      (currentUser as any)?.registrationLat || (currentUser as any)?.lat || 7.1710,
+      (currentUser as any)?.registrationLng || (currentUser as any)?.lng || 79.8986,
+      isAdmin,
+      isRegOwner
+    );
+
+    if (!geoCheck.allowed) {
+      alert(language === 'en' ? geoCheck.messageEn : language === 'ta' ? geoCheck.messageTa : geoCheck.messageSi);
+      setShopToDelete(null);
+      return;
+    }
+
     setShops((prev) => {
       const updated = (prev || []).filter((s) => s && s.id !== shopId);
       saveMarketShopsToStorage(updated);
@@ -1316,9 +1345,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                         <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-900/60">
                           {shop.mode === 'online' ? '🌐 Online Shop' : '🏪 Physical Store'}
                         </span>
-                        <span className="text-[11px] font-bold text-zinc-400">
-                          #{shop.categoryTag}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] font-black text-teal-700 dark:text-teal-300 bg-teal-100 dark:bg-teal-950 px-2 py-0.5 rounded-md border border-teal-300 dark:border-teal-800">
+                            @{getEntitySerialNumber(shop, 'shop')}
+                          </span>
+                          <span className="text-[11px] font-bold text-zinc-400">
+                            #{shop.categoryTag}
+                          </span>
+                        </div>
                       </div>
 
                       <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
@@ -1571,9 +1605,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
                       🏢 Business Place
                     </span>
-                    <span className="text-[11px] font-bold text-zinc-400">
-                      #{biz.categoryTag}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
+                        @{getEntitySerialNumber(biz, 'business')}
+                      </span>
+                      <span className="text-[11px] font-bold text-zinc-400">
+                        #{biz.categoryTag}
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">

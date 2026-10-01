@@ -26,6 +26,8 @@ import { ProviderReputationModal } from './ProviderReputationModal';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedProServiceId } from '../utils/deletedPostsManager';
 import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
+import { validate100mGeoFencePermission } from '../utils/geoFenceValidator';
+import { getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { Trash2 } from 'lucide-react';
 
 interface ProfessionalServicesViewProps {
@@ -85,6 +87,33 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
   const handleDeleteService = (serviceId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!serviceId) return;
+
+    const targetService = localServices.find((s) => s.id === serviceId);
+    const uPhone = (user?.phone || user?.whatsappNumber || '').replace(/\D/g, '');
+    const pPhone = (targetService?.providerPhone || targetService?.providerWhatsapp || '').replace(/\D/g, '');
+    const isRegOwner = Boolean(
+      user && targetService && (
+        (user.userId && (targetService.userId === user.userId || targetService.userId === user.id)) ||
+        (user.id && (targetService.userId === user.id || targetService.userId === user.userId)) ||
+        (user.nicNumber && (targetService.userId === user.nicNumber || targetService.providerNic === user.nicNumber)) ||
+        (uPhone && pPhone && uPhone === pPhone)
+      )
+    );
+
+    const geoCheck = validate100mGeoFencePermission(
+      targetService?.lat,
+      targetService?.lng,
+      (user as any)?.registrationLat || (user as any)?.lat || 7.1710,
+      (user as any)?.registrationLng || (user as any)?.lng || 79.8986,
+      isAdmin,
+      isRegOwner
+    );
+
+    if (!geoCheck.allowed) {
+      alert(language === 'en' ? geoCheck.messageEn : language === 'ta' ? geoCheck.messageTa : geoCheck.messageSi);
+      return;
+    }
+
     const confirmMsg = isAdmin
       ? 'පරිපාලක (Admin) ලෙස මෙම වෘත්තිකයාගේ සේවා දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
       : 'මෙම සේවාදායක දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?';
@@ -642,10 +671,13 @@ export const ProfessionalServicesView: React.FC<ProfessionalServicesViewProps> =
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                           <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                             {service.providerName}
                           </h4>
+                          <span className="font-mono text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-700">
+                            @{getEntitySerialNumber(service, 'professional')}
+                          </span>
                           {service.isVerified && (
                             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
                           )}

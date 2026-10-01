@@ -67,6 +67,8 @@ interface UnifiedDashboardHeaderProps {
   onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
   onOpenShortcutHub?: () => void;
   onOpenInstallApp?: () => void;
+  onOpenQuickRegisterHub?: () => void;
+  onOpenAppQr?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -98,6 +100,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenQrPay,
   onOpenShortcutHub,
   onOpenInstallApp,
+  onOpenQuickRegisterHub,
+  onOpenAppQr,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -378,6 +382,34 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                     {inboxCount > 9 ? '9+' : inboxCount}
                   </span>
                 )}
+              </button>
+            )}
+
+            {/* ✨ Quick Multi-Category Registration Hub Button */}
+            {onOpenQuickRegisterHub && (
+              <button
+                type="button"
+                onClick={onOpenQuickRegisterHub}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
+                title={getLangText('ලියාපදිංචි වන්න (පරිශීලක, වෘත්තීය, ව්‍යාපාර, අලෙවිසැල්)', 'Register (User, Professional, Business, Shop)', 'பதிவு செய்க')}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                <span className="font-black text-xs">
+                  {getLangText('ලියාපදිංචි වන්න', 'Register', 'பதிவு செய்க')}
+                </span>
+              </button>
+            )}
+
+            {/* 📱 Web App QR Code Direct Trigger */}
+            {onOpenAppQr && (
+              <button
+                type="button"
+                onClick={onOpenAppQr}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title={getLangText('📱 Web QR Code එක පෙන්වන්න (Scan to Open)', 'Show Web QR Code', 'Web QR குறியீடு')}
+              >
+                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-extrabold text-xs">QR Code</span>
               </button>
             )}
 

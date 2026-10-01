@@ -56,7 +56,13 @@ import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
 import { PWAInstallModal } from './PWAInstallModal';
-import { initialMarketItems } from '../data/marketplaceData';
+import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
+import { AppQrShareModal } from './AppQrShareModal';
+import { RegisterProfessionalServiceModal } from './RegisterProfessionalServiceModal';
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
+import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
+import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
 import { 
@@ -371,6 +377,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [qrPayInitialTab, setQrPayInitialTab] = useState<'my_qr' | 'scan_pay'>('scan_pay');
   const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
   const [isFeaturesPostModalOpen, setIsFeaturesPostModalOpen] = useState(false);
+  
+  // 🌟 Universal Quick Registration Hub & Web QR Modals
+  const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
+  const [isAppQrModalOpen, setIsAppQrModalOpen] = useState(false);
+  const [isRegisterProfessionalModalOpen, setIsRegisterProfessionalModalOpen] = useState(false);
+  const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
+  const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'shop' | 'business'>('shop');
+
+  // Market shops state
+  const [marketShops, setMarketShops] = useState<MarketShop[]>(() => {
+    return getStoredMarketShops();
+  });
+
+  const handleSaveMarketShop = (newShop: MarketShop) => {
+    const updated = [newShop, ...marketShops.filter((s) => s && s.id !== newShop.id)];
+    setMarketShops(updated);
+    saveMarketShopsToStorage(updated);
+  };
+
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
     userId: string;
     name: string;
@@ -833,18 +858,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     // Query Keyword & Ad Code (#HELP-3728) Check (with Smart Synonym / Alias Expansion)
     let matchesQuery = true;
     if (query) {
-      // 1. Direct Ad Number / Post Code matching (e.g. #HELP-3728, HELP-3728, 3728, #3728, #BLD-xxx, post id)
-      const cleanRawQuery = query.replace(/[#\s-]/g, '').toLowerCase();
-      const rawPostCode = (post.postCode || '').replace(/[#\s-]/g, '').toLowerCase();
-      const rawPostId = (post.id || '').replace(/[#\s-]/g, '').toLowerCase();
+      // 1. Direct @ Serial / Ad Number / Post Code matching (e.g. @555, @3728, #HELP-3728, 3728, #3728, #BLD-xxx, post id)
+      const cleanRawQuery = query.replace(/[@#\s-]/g, '').toLowerCase();
+      const rawPostCode = (post.postCode || '').replace(/[@#\s-]/g, '').toLowerCase();
+      const rawPostId = (post.id || '').replace(/[@#\s-]/g, '').toLowerCase();
       const numericQuery = query.replace(/\D/g, '');
       const numericPostCode = (post.postCode || '').replace(/\D/g, '');
+      const entitySerial = getEntitySerialNumber(post, 'post');
 
       const isDirectAdCodeMatch = Boolean(
+        (query.startsWith('@') && (entitySerial.includes(numericQuery) || rawPostCode.includes(cleanRawQuery))) ||
         (post.postCode && post.postCode.toLowerCase().includes(query)) ||
         (post.id && post.id.toLowerCase().includes(query)) ||
-        (cleanRawQuery.length >= 2 && (rawPostCode.includes(cleanRawQuery) || rawPostId.includes(cleanRawQuery))) ||
-        (numericQuery.length >= 3 && numericPostCode.includes(numericQuery))
+        (cleanRawQuery.length >= 2 && (rawPostCode.includes(cleanRawQuery) || rawPostId.includes(cleanRawQuery) || entitySerial.includes(cleanRawQuery))) ||
+        (numericQuery.length >= 2 && (numericPostCode.includes(numericQuery) || entitySerial.includes(numericQuery)))
       );
 
       if (isDirectAdCodeMatch) {
@@ -1612,6 +1639,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsQrPayModalOpen(true);
         }}
         onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
+        onOpenQuickRegisterHub={() => setIsQuickRegistrationHubOpen(true)}
+        onOpenAppQr={() => setIsAppQrModalOpen(true)}
       />
 
       {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
@@ -2648,6 +2677,65 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={isPwaInstallModalOpen}
         onClose={() => setIsPwaInstallModalOpen(false)}
         language={language}
+      />
+
+      {/* ✨ Universal Multi-Category Registration Hub Modal */}
+      <QuickRegistrationHubModal
+        isOpen={isQuickRegistrationHubOpen}
+        onClose={() => setIsQuickRegistrationHubOpen(false)}
+        language={language}
+        onSelectUserRegistration={() => {
+          if (onNavigate) {
+            onNavigate('register');
+          } else {
+            setShowDemoRegisterPrompt(true);
+          }
+        }}
+        onSelectProfessionalRegistration={() => {
+          setIsRegisterProfessionalModalOpen(true);
+        }}
+        onSelectBusinessRegistration={() => {
+          setMarketplaceShopModalType('business');
+          setIsMarketplaceAddShopModalOpen(true);
+        }}
+        onSelectShopRegistration={() => {
+          setMarketplaceShopModalType('shop');
+          setIsMarketplaceAddShopModalOpen(true);
+        }}
+      />
+
+      {/* 📱 Direct Web Application QR Share & Fullscreen Standee Modal */}
+      <AppQrShareModal
+        isOpen={isAppQrModalOpen}
+        onClose={() => setIsAppQrModalOpen(false)}
+        language={language}
+        title={getLangText('📱 Sahaya Sewa Web QR Code', '📱 Sahaya Sewa Web QR Code', '📱 Sahaya Sewa QR குறியீடு')}
+      />
+
+      {/* 🛠️ Direct Professional Service Provider Registration Modal */}
+      <RegisterProfessionalServiceModal
+        isOpen={isRegisterProfessionalModalOpen}
+        onClose={() => setIsRegisterProfessionalModalOpen(false)}
+        user={user}
+        language={language}
+        currentLocationName={currentLocation.nameSi}
+        onRegisterService={(srv) => {
+          handleAddProfessionalService(srv);
+          setIsRegisterProfessionalModalOpen(false);
+        }}
+      />
+
+      {/* 🏪 / 🏢 Direct Business & Shop Registration Modal */}
+      <MarketplaceAddShopModal
+        isOpen={isMarketplaceAddShopModalOpen}
+        onClose={() => setIsMarketplaceAddShopModalOpen(false)}
+        currentUser={user}
+        allTags={allTags}
+        defaultType={marketplaceShopModalType}
+        onSaveShop={(shop) => {
+          handleSaveMarketShop(shop);
+          setIsMarketplaceAddShopModalOpen(false);
+        }}
       />
 
     </div>
