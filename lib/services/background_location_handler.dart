@@ -1,4 +1,3 @@
-import 'dart:isolate';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -8,16 +7,13 @@ void startLocationCallback() {
 }
 
 class LocationTaskHandler extends TaskHandler {
-  SendPort? _sendPort;
   int _eventCount = 0;
 
   @override
-  Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
-    _sendPort = sendPort;
-  }
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
 
   @override
-  Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
+  void onRepeatEvent(DateTime timestamp) async {
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -32,7 +28,7 @@ class LocationTaskHandler extends TaskHandler {
             'GPS: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)} (Updates: $_eventCount)',
       );
 
-      sendPort?.send({
+      FlutterForegroundTask.sendDataToMain({
         'latitude': position.latitude,
         'longitude': position.longitude,
         'accuracy': position.accuracy,
@@ -47,7 +43,7 @@ class LocationTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {}
+  Future<void> onDestroy(DateTime timestamp) async {}
 
   @override
   void onNotificationButtonPressed(String id) {

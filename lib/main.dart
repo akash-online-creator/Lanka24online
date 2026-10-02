@@ -1,4 +1,3 @@
-import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart' hide NotificationVisibility;
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -38,7 +37,6 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen> {
   late final WebViewController _webViewController;
-  ReceivePort? _receivePort;
   bool _isServiceRunning = false;
   bool _isOverlayActive = false;
 
@@ -65,11 +63,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
         channelDescription: 'Maintains background safety & disaster awareness',
         channelImportance: NotificationChannelImportance.HIGH,
         priority: NotificationPriority.HIGH,
-        iconData: const NotificationIconData(
-          resType: ResourceType.mipmap,
-          resPrefix: ResourcePrefix.ic,
-          name: 'launcher',
-        ),
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
@@ -91,9 +84,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
       await Permission.notification.request();
 
       if (!await FlutterForegroundTask.isRunningService) {
-        final receivePort = FlutterForegroundTask.receivePort;
-        _receivePort = receivePort;
-        _receivePort?.listen((data) {
+        FlutterForegroundTask.addTaskDataCallback((data) {
           if (data is Map) {
             FlutterOverlayWindow.shareData(data);
           }
