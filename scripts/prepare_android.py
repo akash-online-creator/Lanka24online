@@ -1,5 +1,6 @@
 import os
 import shutil
+import glob
 
 try:
     from PIL import Image
@@ -11,6 +12,26 @@ def setup_branding():
     src_logo = "src/assets/images/sahana_sewa_logo_1785907235127.jpg"
     res_dir = "android/app/src/main/res"
     
+    # 1. Clean all existing launcher icons (XMLs, PNGs, foreground/background duplicates)
+    for root, dirs, files in os.walk(res_dir):
+        for file in files:
+            if file.startswith("ic_launcher"):
+                file_path = os.path.join(root, file)
+                try:
+                    os.remove(file_path)
+                    print(f"Removed conflicting icon resource: {file_path}")
+                except Exception as e:
+                    print(f"Error removing {file_path}: {e}")
+
+    # Remove anydpi directories if they only held ic_launcher.xml to prevent merger clash
+    for anydpi_dir in glob.glob(os.path.join(res_dir, "mipmap-anydpi*")):
+        try:
+            shutil.rmtree(anydpi_dir)
+            print(f"Removed anydpi directory: {anydpi_dir}")
+        except Exception as e:
+            print(f"Error removing {anydpi_dir}: {e}")
+
+    # 2. Generate clean PNG launcher icons across all standard density buckets
     densities = {
         "mipmap-mdpi": 48,
         "mipmap-hdpi": 72,
@@ -39,7 +60,7 @@ def setup_branding():
             shutil.copyfile(src_logo, target_file)
             print(f"Copied icon to {target_file}")
             
-    # Create strings.xml
+    # 3. Create or update strings.xml
     values_dir = os.path.join(res_dir, "values")
     os.makedirs(values_dir, exist_ok=True)
     strings_xml_path = os.path.join(values_dir, "strings.xml")
