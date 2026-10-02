@@ -25,7 +25,7 @@ jobs:
       - name: Build Web Application Bundle
         run: |
           echo "Building production React SPA assets..."
-          npm install --no-audit --prefer-offline || npm install
+          npm install --legacy-peer-deps
           npx vite build --base=./
           mkdir -p assets/web
           cp -r dist/* assets/web/
