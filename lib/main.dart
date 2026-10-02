@@ -75,9 +75,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
         showNotification: true,
         playSound: false,
       ),
-      foregroundTaskOptions: const ForegroundTaskOptions(
-        interval: 10000,
-        isOnceEvent: false,
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(10000),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
