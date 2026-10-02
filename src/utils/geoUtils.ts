@@ -1253,94 +1253,65 @@ export async function resolveExactLocation(lat: number, lng: number): Promise<Ge
   let rawDistrict = '';
   let rawState = '';
 
-  // 1. Primary: Try OpenStreetMap Nominatim with zoom=18 & full addressdetails
+  // 0. Primary: High-speed server-side reverse geocoding proxy
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    const timeoutId = setTimeout(() => controller.abort(), 2800);
 
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1&namedetails=1`,
-      { 
-        headers: { 'Accept-Language': 'si,en' },
-        signal: controller.signal
-      }
-    );
+    const res = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`, {
+      signal: controller.signal,
+    });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      const addr = data.address || {};
-
-      rawVillage = addr.village || addr.hamlet || addr.neighbourhood || addr.suburb || addr.residential || addr.quarter || addr.allotments || '';
-      rawRoad = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || addr.highway || '';
-      rawTown = addr.town || addr.city || addr.suburb || addr.municipality || '';
-      rawDistrict = addr.state_district || addr.county || addr.district || '';
-      rawState = addr.state || '';
+      if (data && data.success) {
+        if (data.rawVillage) rawVillage = data.rawVillage;
+        if (data.rawRoad) rawRoad = data.rawRoad;
+        if (data.rawTown) rawTown = data.rawTown;
+        if (data.rawDistrict) rawDistrict = data.rawDistrict;
+        if (data.rawState) rawState = data.rawState;
+      }
     }
   } catch (err) {
-    // Nominatim timeout or network error, proceed to fallback APIs
+    // Server proxy failed or offline, cascade to direct client APIs
   }
 
-  // 2. Secondary: If rawRoad is missing, query Overpass API to find named street/highway within 150m radius
-  if (!rawRoad) {
+  // 1. Secondary: Try OpenStreetMap Nominatim with zoom=18 if still missing road/village
+  if (!rawRoad || !rawVillage) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-      const opRes = await fetch(
-        `https://overpass-api.de/api/interpreter?data=[out:json][timeout:3];way(around:150,${lat},${lng})["highway"]["name"];out tags 5;`,
-        { signal: controller.signal }
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1&namedetails=1`,
+        { 
+          headers: { 'Accept-Language': 'si,en' },
+          signal: controller.signal
+        }
       );
       clearTimeout(timeoutId);
 
-      if (opRes.ok) {
-        const opData = await opRes.json();
-        if (opData.elements && opData.elements.length > 0) {
-          const el = opData.elements.find((e: any) => e.tags?.name || e.tags?.['name:en'] || e.tags?.['name:si']);
-          if (el?.tags) {
-            rawRoad = el.tags['name:si'] || el.tags.name || el.tags['name:en'] || '';
-          }
-        }
+      if (res.ok) {
+        const data = await res.json();
+        const addr = data.address || {};
+
+        if (!rawVillage) rawVillage = addr.village || addr.hamlet || addr.neighbourhood || addr.suburb || addr.residential || addr.quarter || addr.allotments || '';
+        if (!rawRoad) rawRoad = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || addr.highway || '';
+        if (!rawTown) rawTown = addr.town || addr.city || addr.suburb || addr.municipality || '';
+        if (!rawDistrict) rawDistrict = addr.state_district || addr.county || addr.district || '';
+        if (!rawState) rawState = addr.state || '';
       }
-    } catch (e) {
-      // Ignore Overpass error
+    } catch (err) {
+      // Nominatim timeout or network error, proceed to fallback APIs
     }
   }
 
-  // 3. Tertiary: If road or village missing, query Photon Reverse Geocoder
+  // 2. Tertiary: If road or village missing, query BigDataCloud Reverse Geocoder
   if (!rawRoad || !rawVillage) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-      const pRes = await fetch(
-        `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-
-      if (pRes.ok) {
-        const pData = await pRes.json();
-        const feat = pData.features?.[0]?.properties;
-        if (feat) {
-          if (!rawRoad && feat.street) rawRoad = feat.street;
-          if (!rawRoad && feat.name && feat.osm_key === 'highway') rawRoad = feat.name;
-          if (!rawVillage && (feat.locality || feat.district || feat.suburb)) {
-            rawVillage = feat.locality || feat.suburb || feat.district;
-          }
-          if (!rawTown && feat.city) rawTown = feat.city;
-        }
-      }
-    } catch (e) {
-      // Ignore Photon error
-    }
-  }
-
-  // 4. Quaternary: If still missing, query BigDataCloud Reverse Geocoder
-  if (!rawRoad || !rawVillage) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       const bdcRes = await fetch(
         `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
@@ -1363,6 +1334,35 @@ export async function resolveExactLocation(lat: number, lng: number): Promise<Ge
       }
     } catch (e) {
       // Ignore fallback error
+    }
+  }
+
+  // 3. Quaternary: Query Photon Reverse Geocoder
+  if (!rawRoad || !rawVillage) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const pRes = await fetch(
+        `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const feat = pData.features?.[0]?.properties;
+        if (feat) {
+          if (!rawRoad && feat.street) rawRoad = feat.street;
+          if (!rawRoad && feat.name && feat.osm_key === 'highway') rawRoad = feat.name;
+          if (!rawVillage && (feat.locality || feat.district || feat.suburb)) {
+            rawVillage = feat.locality || feat.suburb || feat.district;
+          }
+          if (!rawTown && feat.city) rawTown = feat.city;
+        }
+      }
+    } catch (e) {
+      // Ignore Photon error
     }
   }
 

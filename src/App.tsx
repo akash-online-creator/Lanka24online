@@ -8,7 +8,8 @@ import {
   sendPasswordResetEmail, 
   updatePassword 
 } from 'firebase/auth';
-import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem, RedAlertItem } from './types';
+import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem, RedAlertItem, LocationOption } from './types';
+import { resolveExactLocation, toLocationOption } from './utils/geoUtils';
 import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
 import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
 import { translations } from './data/translations';
@@ -111,6 +112,15 @@ export default function App() {
       console.warn('Failed to restore saved user session:', e);
     }
     return null;
+  });
+
+  const [currentLocation, setCurrentLocation] = useState<LocationOption | null>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_current_location');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [pending2FAUser, setPending2FAUser] = useState<User | null>(null);
@@ -526,13 +536,72 @@ export default function App() {
   }, [redAlerts]);
 
   useEffect(() => {
+    // 1. Check if Native Flutter Android GPS is already available on launch
+    const checkNativeGps = () => {
+      const nativeGps = (window as any).__sahaya_native_gps;
+      if (nativeGps && typeof nativeGps.lat === 'number' && typeof nativeGps.lng === 'number' && nativeGps.lat !== 0) {
+        setUserCoords({
+          lat: nativeGps.lat,
+          lng: nativeGps.lng,
+        });
+        resolveExactLocation(nativeGps.lat, nativeGps.lng).then((res) => {
+          if (res) {
+            const locOption = toLocationOption(res);
+            setCurrentLocation(locOption);
+            try {
+              localStorage.setItem('sahaya_current_location', JSON.stringify(locOption));
+              localStorage.setItem('sahaya_gps_verified', 'true');
+            } catch {}
+          }
+        }).catch(() => {});
+      }
+    };
+
+    checkNativeGps();
+
+    // 2. Listen to custom Flutter native event 'sahaya_native_gps'
+    const handleNativeGpsEvent = (e: any) => {
+      const detail = e.detail;
+      if (detail && typeof detail.lat === 'number' && typeof detail.lng === 'number' && detail.lat !== 0) {
+        setUserCoords({
+          lat: detail.lat,
+          lng: detail.lng,
+        });
+        resolveExactLocation(detail.lat, detail.lng).then((res) => {
+          if (res) {
+            const locOption = toLocationOption(res);
+            setCurrentLocation(locOption);
+            try {
+              localStorage.setItem('sahaya_current_location', JSON.stringify(locOption));
+              localStorage.setItem('sahaya_gps_verified', 'true');
+            } catch {}
+          }
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('sahaya_native_gps', handleNativeGpsEvent);
+
+    // 3. Browser / WebView Geolocation Watcher
+    let geoWatchId: number | null = null;
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      const geoWatchId = navigator.geolocation.watchPosition(
+      geoWatchId = navigator.geolocation.watchPosition(
         (pos) => {
-          setUserCoords({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUserCoords({ lat, lng });
+
+          // Also resolve location name for app state if not already set or moved
+          resolveExactLocation(lat, lng).then((res) => {
+            if (res) {
+              const locOption = toLocationOption(res);
+              setCurrentLocation(locOption);
+              try {
+                localStorage.setItem('sahaya_current_location', JSON.stringify(locOption));
+                localStorage.setItem('sahaya_gps_verified', 'true');
+              } catch {}
+            }
+          }).catch(() => {});
         },
         (err) => {
           console.warn('Geolocation access fallback:', err.message);
@@ -540,13 +609,16 @@ export default function App() {
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
       );
-
-      return () => {
-        navigator.geolocation.clearWatch(geoWatchId);
-      };
     } else {
-      setUserCoords({ lat: 6.9972, lng: 79.9535 });
+      setUserCoords((prev) => prev || { lat: 6.9972, lng: 79.9535 });
     }
+
+    return () => {
+      window.removeEventListener('sahaya_native_gps', handleNativeGpsEvent);
+      if (geoWatchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchId);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -2010,6 +2082,7 @@ export default function App() {
         isOpen={isCreateRedAlertOpen}
         onClose={() => setIsCreateRedAlertOpen(false)}
         currentUser={currentUser}
+        currentLocation={currentLocation || undefined}
         onUpdateUser={handleUpdateUser}
         onAlertCreated={(newAlert) => {
           if (newAlert?.id) {

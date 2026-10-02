@@ -354,7 +354,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             <span className="text-2xl mt-0.5">⚠️</span>
             <div className="space-y-0.5">
               <h3 className="text-xs sm:text-sm font-black text-red-700 dark:text-red-400">
-                අවධානය යොමු කරන්න: ඔබ මෙම ආපදාව සිදුවූ ස්ථානයේ සිට කි.මී. 2 සීමාව තුළ සිටී!
+                අවධානය යොමු කරන්න: ඔබ මෙම ආපදාව සිදුවූ ස්ථානයේ සිට කි.මී. 5 සීමාව තුළ සිටී!
               </h3>
               <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
                 ආරක්ෂිත පියවර අනුගමනය කරන්න. ඔබ අවට සිටින පිරිස් දැනුවත් කරන්න. හදිසි ගලවාගැනීම් අවශ්‍ය නම් වහාම 119, 110 හෝ 117 ආපදා අංක අමතන්න.

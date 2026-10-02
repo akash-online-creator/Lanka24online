@@ -401,6 +401,121 @@ async function startServer() {
   app.get('/api/telegram/status', getStorageStatus);
 
   // -------------------------------------------------------------
+  // 📍 4. High-Precision Reverse Geocoding Proxy (Sri Lanka Locator)
+  // -------------------------------------------------------------
+  const geoCache = new Map<string, { data: any; expiresAt: number }>();
+
+  app.get('/api/reverse-geocode', async (req: any, res: any) => {
+    try {
+      const lat = parseFloat(req.query.lat as string);
+      const lng = parseFloat(req.query.lng as string);
+
+      if (isNaN(lat) || isNaN(lng)) {
+        return res.status(400).json({ error: 'Valid lat and lng query parameters are required' });
+      }
+
+      const cacheKey = `${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = geoCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json({ ...cached.data, cached: true });
+      }
+
+      let rawVillage = '';
+      let rawRoad = '';
+      let rawTown = '';
+      let rawDistrict = '';
+      let rawState = '';
+      let displayName = '';
+
+      // 1. Primary: Nominatim with server-side User-Agent (Zero CORS, 100% compliant)
+      try {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&extratags=1&namedetails=1`,
+          {
+            headers: {
+              'User-Agent': 'SahayaSewa-SriLanka-Emergency-Radar/1.0 (contact: info@sahayasewa.lk)',
+              'Accept-Language': 'si,en',
+            },
+            timeout: 3500,
+          } as any
+        );
+
+        if (nomRes.ok) {
+          const nomData: any = await nomRes.json();
+          displayName = nomData.display_name || '';
+          const addr = nomData.address || {};
+          rawVillage = addr.village || addr.hamlet || addr.neighbourhood || addr.suburb || addr.residential || addr.quarter || addr.allotments || '';
+          rawRoad = addr.road || addr.street || addr.pedestrian || addr.footway || addr.path || addr.highway || '';
+          rawTown = addr.town || addr.city || addr.suburb || addr.municipality || '';
+          rawDistrict = addr.state_district || addr.county || addr.district || '';
+          rawState = addr.state || '';
+        }
+      } catch (err: any) {
+        // Nominatim timeout, proceed to secondary
+      }
+
+      // 2. Secondary: BigDataCloud fallback if road or village is missing
+      if (!rawRoad || !rawVillage) {
+        try {
+          const bdcRes = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+            { timeout: 2500 } as any
+          );
+          if (bdcRes.ok) {
+            const bdc: any = await bdcRes.json();
+            if (!rawRoad && bdc.localityInfo?.informative) {
+              const roadObj = bdc.localityInfo.informative.find(
+                (i: any) => i.description?.includes('road') || i.description?.includes('street') || i.order >= 9
+              );
+              if (roadObj?.name) rawRoad = roadObj.name;
+            }
+            if (!rawVillage && bdc.locality) rawVillage = bdc.locality;
+            if (!rawTown && bdc.city) rawTown = bdc.city;
+            if (!rawDistrict && bdc.principalSubdivision) rawDistrict = bdc.principalSubdivision;
+          }
+        } catch (e) {}
+      }
+
+      // 3. Tertiary: Photon fallback
+      if (!rawRoad || !rawVillage) {
+        try {
+          const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`, { timeout: 2000 } as any);
+          if (pRes.ok) {
+            const pData: any = await pRes.json();
+            const feat = pData.features?.[0]?.properties;
+            if (feat) {
+              if (!rawRoad && feat.street) rawRoad = feat.street;
+              if (!rawRoad && feat.name && feat.osm_key === 'highway') rawRoad = feat.name;
+              if (!rawVillage && (feat.locality || feat.district || feat.suburb)) {
+                rawVillage = feat.locality || feat.suburb || feat.district;
+              }
+              if (!rawTown && feat.city) rawTown = feat.city;
+            }
+          }
+        } catch (e) {}
+      }
+
+      const result = {
+        success: true,
+        lat,
+        lng,
+        rawVillage,
+        rawRoad,
+        rawTown,
+        rawDistrict,
+        rawState,
+        displayName,
+      };
+
+      geoCache.set(cacheKey, { data: result, expiresAt: Date.now() + 1000 * 60 * 30 }); // cache 30 mins
+      return res.json(result);
+    } catch (error: any) {
+      console.warn('Reverse Geocoding Proxy Error:', error.message);
+      return res.status(500).json({ error: error.message, success: false });
+    }
+  });
+
+  // -------------------------------------------------------------
   // 🤖 3. AI Smart Assistant Proxy (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
   const GEMINI_MODELS = [

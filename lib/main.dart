@@ -59,6 +59,22 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF07130C))
+      ..addJavaScriptChannel(
+        'SahayaGpsChannel',
+        onMessageReceived: (JavaScriptMessage message) async {
+          if (message.message == 'GET_GPS' || message.message == 'FORCE_REFRESH') {
+            try {
+              Position pos = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 10),
+              );
+              _injectLocationIntoWebView(pos.latitude, pos.longitude, pos.accuracy);
+            } catch (e) {
+              debugPrint('Manual GPS refresh error: $e');
+            }
+          }
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (NavigationRequest request) async {
@@ -147,22 +163,22 @@ class _MainAppScreenState extends State<MainAppScreen> {
       }
       await Permission.notification.request();
 
-      // 1. Fetch immediate initial coordinate
+      // 1. Fetch immediate initial coordinate with high accuracy
       try {
         Position initialPos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 8),
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
         );
         _injectLocationIntoWebView(initialPos.latitude, initialPos.longitude, initialPos.accuracy);
       } catch (e) {
         debugPrint('Initial silent GPS error: $e');
       }
 
-      // 2. Power-efficient 24/7 background location streaming (no annoying status bar spam)
+      // 2. Continuous location streaming with high precision
       _positionSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          distanceFilter: 20, // Only triggers when moved 20 meters (conserves battery)
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10, // Updates when moved 10 meters
         ),
       ).listen((Position position) {
         _injectLocationIntoWebView(position.latitude, position.longitude, position.accuracy);

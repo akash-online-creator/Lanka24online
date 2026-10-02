@@ -8,16 +8,16 @@ import {
   Navigation, 
   Loader2, 
   CheckCircle2, 
-  FileText,
-  User as UserIcon,
-  Phone,
-  Lock,
-  ShieldAlert,
-  Smartphone,
-  Eye,
-  EyeOff,
-  KeyRound,
-  RotateCcw
+  FileText, 
+  User as UserIcon, 
+  Phone, 
+  Lock, 
+  ShieldAlert, 
+  Smartphone, 
+  Eye, 
+  EyeOff, 
+  KeyRound, 
+  RotateCcw 
 } from 'lucide-react';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
@@ -94,9 +94,16 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [showPinDigits, setShowPinDigits] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
 
-  // Auto scan GPS when modal opens
+  // Auto scan GPS when modal opens & listen for Native GPS
   useEffect(() => {
     if (isOpen) {
+      if (currentLocation?.lat && currentLocation?.lng) {
+        setLatitude(currentLocation.lat);
+        setLongitude(currentLocation.lng);
+        if (currentLocation.nameSi) {
+          setLocationName(currentLocation.nameSi);
+        }
+      }
       scanGpsLocation();
       setDescription('');
       setCustomTitle('');
@@ -123,15 +130,77 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         setIsSettingNewPin(!stored);
       }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, currentLocation]);
+
+  // Listen to background native GPS updates while modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleNativeGps = async (e: any) => {
+      const detail = e.detail;
+      if (detail && typeof detail.lat === 'number' && typeof detail.lng === 'number' && detail.lat !== 0) {
+        setLatitude(detail.lat);
+        setLongitude(detail.lng);
+        setAccuracyMeters(Math.round(detail.accuracy || 10));
+        try {
+          const resolved = await resolveExactLocation(detail.lat, detail.lng);
+          if (resolved) {
+            setLocationName(resolved.shortDisplaySi || resolved.townSi || resolved.villageSi || `${detail.lat.toFixed(4)}, ${detail.lng.toFixed(4)}`);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('sahaya_native_gps', handleNativeGps);
+    return () => window.removeEventListener('sahaya_native_gps', handleNativeGps);
+  }, [isOpen]);
 
   const scanGpsLocation = () => {
     setIsScanningGps(true);
     setGpsError(null);
 
+    // 0. Trigger Flutter Android Native GPS refresh if available in WebView
+    try {
+      if ((window as any).SahayaGpsChannel) {
+        (window as any).SahayaGpsChannel.postMessage('GET_GPS');
+      }
+    } catch (e) {}
+
+    // 1. High Priority: Check Native Flutter Android GPS bridge
+    const nativeGps = (window as any).__sahaya_native_gps;
+    if (nativeGps && typeof nativeGps.lat === 'number' && typeof nativeGps.lng === 'number' && nativeGps.lat !== 0) {
+      const lat = nativeGps.lat;
+      const lng = nativeGps.lng;
+      const acc = Math.round(nativeGps.accuracy || 10);
+
+      setLatitude(lat);
+      setLongitude(lng);
+      setAccuracyMeters(acc);
+
+      resolveExactLocation(lat, lng).then((resolved) => {
+        if (resolved) {
+          setLocationName(resolved.shortDisplaySi || resolved.townSi || resolved.villageSi || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        } else {
+          setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
+        }
+        setIsScanningGps(false);
+      }).catch(() => {
+        setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
+        setIsScanningGps(false);
+      });
+      return;
+    }
+
+    // 2. Standard Web Geolocation with fallback
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setIsScanningGps(false);
-      setGpsError('GPS පහසුකම ඔබගේ බ්‍රවුසරයේ නොමැත. කරුණාකර ස්ථානය අතින් සටහන් කරන්න.');
+      if (currentLocation?.nameSi) {
+        setLocationName(currentLocation.nameSi);
+        setLatitude(currentLocation.lat || 6.9271);
+        setLongitude(currentLocation.lng || 79.8612);
+      } else {
+        setGpsError('GPS පහසුකම ලබාගත නොහැකි විය. කරුණාකර ස්ථානය අතින් සටහන් කරන්න.');
+      }
       return;
     }
 
@@ -159,15 +228,37 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         }
       },
       (_err) => {
-        setIsScanningGps(false);
-        setGpsError('GPS ස්ථානය ලබාගත නොහැකි විය. ස්ථාන නාමය අතින් ඇතුළත් කරන්න.');
-        if (currentLocation?.nameSi) {
-          setLocationName(currentLocation.nameSi);
-          setLatitude(currentLocation?.lat || 6.9271);
-          setLongitude(currentLocation?.lng || 79.8612);
-        }
+        // Fallback with low accuracy (WiFi / Cellular tower)
+        navigator.geolocation.getCurrentPosition(
+          async (fallbackPos) => {
+            const lat = fallbackPos.coords.latitude;
+            const lng = fallbackPos.coords.longitude;
+            setLatitude(lat);
+            setLongitude(lng);
+            setAccuracyMeters(Math.round(fallbackPos.coords.accuracy));
+            try {
+              const resolved = await resolveExactLocation(lat, lng);
+              setLocationName(resolved?.shortDisplaySi || `${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
+            } catch {
+              setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
+            } finally {
+              setIsScanningGps(false);
+            }
+          },
+          () => {
+            setIsScanningGps(false);
+            if (currentLocation?.nameSi) {
+              setLocationName(currentLocation.nameSi);
+              setLatitude(currentLocation.lat || 6.9271);
+              setLongitude(currentLocation.lng || 79.8612);
+            } else {
+              setGpsError('GPS ස්ථානය ලබාගත නොහැකි විය. කරුණාකර ස්ථාන නාමය අතින් ඇතුළත් කරන්න.');
+            }
+          },
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
     );
   };
 
@@ -368,7 +459,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 </span>
               </h2>
               <p className="text-[11px] sm:text-xs text-red-100 font-medium truncate">
-                ස්ථානයේ සිට කි.මී. 2 ක් ඇතුළත සියලු දෙනාට Siren ශබ්දය සමග ක්ෂණිකව අනතුරු අඟවයි
+                ස්ථානයේ සිට කි.මී. 5 ක් ඇතුළත සියලු දෙනාට Siren ශබ්දය සමග ක්ෂණිකව අනතුරු අඟවයි
               </p>
             </div>
           </div>
@@ -394,7 +485,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 ආපදා දැනුම්දීම සාර්ථකව විකාශය විය!
               </h3>
               <p className="text-sm font-bold text-red-600 dark:text-red-400">
-                🚨 කි.මී. 2 ක් ඇතුළත සිටින සියලු දෙනාගේ දුරකථනවලට Siren නලා හඬ සමග අනතුරු ඇඟවීම යවන ලදි.
+                🚨 කි.මී. 5 ක් ඇතුළත සිටින සියලු දෙනාගේ දුරකථනවලට Siren නලා හඬ සමග අනතුරු ඇඟවීම යවන ලදි.
               </p>
             </div>
           </div>
@@ -514,12 +605,24 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               />
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-slate-300 font-mono">
-                <span className="bg-white/80 dark:bg-black/40 px-2 py-0.5 rounded-md border border-slate-200 dark:border-white/10">
-                  📍 Lat: {latitude.toFixed(5)}, Lng: {longitude.toFixed(5)}
+                <span className="bg-white/80 dark:bg-black/40 px-2 py-0.5 rounded-md border border-slate-200 dark:border-white/10 flex items-center gap-1">
+                  <span>📍 Lat: {latitude.toFixed(5)}, Lng: {longitude.toFixed(5)}</span>
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-red-600 dark:text-red-400 hover:underline font-sans font-bold ml-1"
+                  >
+                    (සිතියම ↗)
+                  </a>
                 </span>
-                {accuracyMeters !== undefined && (
-                  <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                {accuracyMeters !== undefined ? (
+                  <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30 font-sans font-bold">
                     🎯 නිරවද්‍යතාව: මීටර් {accuracyMeters}
+                  </span>
+                ) : (
+                  <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30 font-sans font-bold">
+                    ✓ GPS සක්‍රීයයි
                   </span>
                 )}
               </div>
@@ -620,7 +723,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
                 ) : (
                   <>
                     <span className="text-xl">🚨</span>
-                    <span>රතු එළිය Submit කරන්න (කි.මී. 2 තුළ Siren දැනුම්දෙන්න)</span>
+                    <span>රතු එළිය Submit කරන්න (කි.මී. 5 තුළ Siren දැනුම්දෙන්න)</span>
                   </>
                 )}
               </button>
