@@ -6,6 +6,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'services/background_location_handler.dart';
 import 'overlay/floating_overlay_widget.dart';
 
+const String kAppLiveUrl = 'https://ais-dev-arugkwlbojbp6jxjcd24un-234713481275.asia-southeast1.run.app';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const SahayaSewaApp());
@@ -40,6 +42,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
   bool _isServiceRunning = false;
   bool _isOverlayActive = false;
   bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
@@ -53,22 +57,38 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF07130C))
+      ..setUserAgent('Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SahayaSewaApp/1.0')
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            setState(() => _isLoading = true);
+            if (mounted) {
+              setState(() {
+                _isLoading = true;
+                _hasError = false;
+              });
+            }
           },
           onPageFinished: (String url) {
-            setState(() => _isLoading = false);
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _hasError = false;
+              });
+            }
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('WebView Error: ${error.description}');
-            // If any remote load fails, instantly fall back to local assets
-            _webViewController.loadFlutterAsset('assets/web/index.html');
+            if (mounted && error.isForMainFrame == true) {
+              setState(() {
+                _isLoading = false;
+                _hasError = true;
+                _errorMessage = error.description;
+              });
+            }
           },
         ),
       )
-      ..loadFlutterAsset('assets/web/index.html');
+      ..loadRequest(Uri.parse(kAppLiveUrl));
   }
 
   void _initForegroundTask() {
@@ -153,9 +173,64 @@ class _MainAppScreenState extends State<MainAppScreen> {
           children: [
             WebViewWidget(controller: _webViewController),
             if (_isLoading)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF007A4B),
+              Container(
+                color: const Color(0xFF07130C),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF007A4B)),
+                      SizedBox(height: 16),
+                      Text(
+                        'සහය සේවා පූරණය වෙමින් පවතී...',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (_hasError)
+              Container(
+                color: const Color(0xFF07130C),
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.wifi_off_rounded, color: Colors.amber, size: 56),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කරන්න',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage,
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF007A4B),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isLoading = true;
+                            _hasError = false;
+                          });
+                          _webViewController.reload();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('නැවත උත්සාහ කරන්න (Retry)'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             Positioned(
