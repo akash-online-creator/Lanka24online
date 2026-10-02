@@ -32,21 +32,15 @@ jobs:
       - name: Ensure Android Project Scaffolding
         run: |
           echo "Verifying Flutter Android project files..."
-          flutter create --platforms=android --org com.sahayasewa . || true
           mkdir -p android
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties || true
           flutter doctor -v
 
       - name: Get Dependencies
-        run: |
-          sed -i 's/flutter_overlay_window: \^0.4.6/flutter_overlay_window: \^0.5.0/g' pubspec.yaml || true
-          sed -i 's/\^0.4.6/\^0.5.0/g' pubspec.yaml || true
-          flutter pub add flutter_overlay_window:^0.5.0 || true
-          flutter pub get
+        run: flutter pub get
 
       - name: Build APK Release
-        run: |
-          flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
