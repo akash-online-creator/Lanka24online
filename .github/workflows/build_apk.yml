@@ -102,6 +102,13 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
+      - name: Patch Third-Party Plugins for Gradle 8 Compatibility
+        run: |
+          echo "Patching pub-cache plugins for Gradle 8 & SDK 35..."
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/35/g' {} + || true
+
       - name: Build APK Release
         run: flutter build apk --release --no-tree-shake-icons
 
