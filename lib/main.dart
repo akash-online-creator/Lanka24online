@@ -5,7 +5,6 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'services/background_location_handler.dart';
 import 'overlay/floating_overlay_widget.dart';
 
@@ -74,13 +73,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
           },
         ),
       );
-
-    if (_webViewController.platform is AndroidWebViewController) {
-      final androidController = _webViewController.platform as AndroidWebViewController;
-      androidController.setGeolocationPermissionsPromptCallback((request) async {
-        return const GeolocationPermissionsResponse(allow: true, retain: true);
-      });
-    }
 
     try {
       final String htmlContent = await rootBundle.loadString('assets/web/index.html');
