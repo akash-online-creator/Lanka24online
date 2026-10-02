@@ -73,7 +73,7 @@ def setup_branding():
 ''')
     print("Updated strings.xml with සහය සේවා")
 
-    # 4. Inject Android Permissions & App Config into AndroidManifest.xml
+    # 4. Inject Android Permissions, Queries & App Config into AndroidManifest.xml
     manifest_path = "android/app/src/main/AndroidManifest.xml"
     if os.path.exists(manifest_path):
         manifest_content = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -86,6 +86,35 @@ def setup_branding():
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="whatsapp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
 
     <application
         android:label="@string/app_name"
@@ -117,7 +146,7 @@ def setup_branding():
 '''
         with open(manifest_path, "w", encoding="utf-8") as f:
             f.write(manifest_content)
-        print("Updated AndroidManifest.xml with background permissions and app title")
+        print("Updated AndroidManifest.xml with package queries, background permissions and app title")
 
 if __name__ == "__main__":
     setup_branding()

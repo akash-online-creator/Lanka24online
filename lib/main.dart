@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
@@ -60,6 +61,41 @@ class _MainAppScreenState extends State<MainAppScreen> {
       ..setBackgroundColor(const Color(0xFF07130C))
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) async {
+            final String url = request.url;
+            final Uri? uri = Uri.tryParse(url);
+            
+            if (uri == null) return NavigationDecision.navigate;
+
+            // Handle WhatsApp, Telephone, SMS, Mail, and Intent links externally
+            if (uri.scheme == 'whatsapp' ||
+                uri.scheme == 'tel' ||
+                uri.scheme == 'sms' ||
+                uri.scheme == 'mailto' ||
+                uri.scheme == 'intent' ||
+                uri.host.contains('wa.me') ||
+                uri.host.contains('api.whatsapp.com') ||
+                uri.host.contains('whatsapp.com')) {
+              try {
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  // Fallback for custom schemes like whatsapp://
+                  await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+                }
+              } catch (e) {
+                debugPrint('Could not launch external URL: $url ($e)');
+                // If it was wa.me and failed, fallback to browser
+                if (uri.host.contains('wa.me') || uri.host.contains('whatsapp.com')) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+              return NavigationDecision.prevent;
+            }
+
+            // Allow normal in-app HTML navigation
+            return NavigationDecision.navigate;
+          },
           onPageStarted: (String url) {
             if (mounted) setState(() => _isLoading = true);
           },
