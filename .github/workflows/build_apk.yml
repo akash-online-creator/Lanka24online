@@ -44,7 +44,7 @@ jobs:
           cp -r /tmp/scaffold/android ./android
           rm -rf /tmp/scaffold
 
-          # Configure root android/build.gradle with universal plugin compatibility hooks
+          # Clean standard root android/build.gradle
           cat << 'EOF' > android/build.gradle
           allprojects {
               repositories {
@@ -62,24 +62,6 @@ jobs:
           }
           subprojects {
               project.evaluationDependsOn(':app')
-          }
-
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          if (namespace == null) {
-                              namespace project.group
-                          }
-                          compileSdkVersion 34
-                          buildToolsVersion "34.0.0"
-                          defaultConfig {
-                              minSdkVersion 21
-                              targetSdkVersion 34
-                          }
-                      }
-                  }
-              }
           }
 
           tasks.register("clean", Delete) {
@@ -143,6 +125,14 @@ jobs:
       - name: Install Flutter Dependencies
         run: |
           flutter pub get
+
+      - name: Patch Third-Party Plugins for SDK 34 & AGP 8 Compatibility
+        run: |
+          echo "Patching pub-cache plugins..."
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/34/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/34/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} + || true
 
       - name: Build Android Release APK
         run: |
