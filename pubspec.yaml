@@ -9,17 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_foreground_task: any
-  flutter_overlay_window: any
+  flutter_foreground_task: ^8.18.0
+  flutter_overlay_window: ^0.5.0
   geolocator: ^13.0.2
-  permission_handler: any
-  shared_preferences: any
-  webview_flutter: any
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.2
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: any
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true

@@ -29,17 +29,23 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Generate Canonical Flutter Android Project
+      - name: Generate Android Scaffolding with SDK 35
         run: |
-          echo "Generating canonical native Android scaffolding via Flutter SDK..."
-          mkdir -p /tmp/backup_res
-          cp -r android/app/src/main/res/* /tmp/backup_res/ 2>/dev/null || true
-          
-          rm -rf android
-          flutter create --platforms=android --project-name sahayasewa_mobile --org com.sahayasewa .
-          
-          cp -r /tmp/backup_res/* android/app/src/main/res/ 2>/dev/null || true
-          
+          echo "Generating pristine Android container..."
+          rm -rf /tmp/temp_app android
+          flutter create --platforms=android --project-name sahayasewa_mobile --org com.sahayasewa /tmp/temp_app
+          cp -r /tmp/temp_app/android ./android
+          rm -rf /tmp/temp_app
+
+          # Set compileSdk and targetSdk to 35 for modern plugins
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdk flutter.targetSdkVersion/targetSdk 35/g' android/app/build.gradle || true
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
+          sed -i 's/minSdk flutter.minSdkVersion/minSdk 21/g' android/app/build.gradle || true
+
+          # Create custom production AndroidManifest.xml
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="com.sahayasewa.app">
