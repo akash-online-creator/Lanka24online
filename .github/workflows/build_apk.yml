@@ -38,11 +38,13 @@ jobs:
 
       - name: Scaffold Pristine Flutter Android Platform
         run: |
-          echo "Regenerating 100% official Android platform binding for Flutter 3.24.5..."
-          rm -rf android
-          flutter create . --platforms=android --org=com.sahayasewa
+          echo "Generating official Android platform binding with explicit project name..."
+          rm -rf /tmp/scaffold android
+          flutter create --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa /tmp/scaffold
+          cp -r /tmp/scaffold/android ./android
+          rm -rf /tmp/scaffold
 
-          # Set minSdk to 21 and enable multiDex
+          # Configure minSdk to 21 and multiDexEnabled
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdk flutter.minSdkVersion/minSdk 21/g' android/app/build.gradle || true
           sed -i '/defaultConfig {/a \        multiDexEnabled true' android/app/build.gradle || true
