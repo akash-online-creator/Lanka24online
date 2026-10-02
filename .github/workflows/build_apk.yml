@@ -24,7 +24,7 @@ jobs:
 
       - name: Build Standalone Web Application Bundle
         run: |
-          echo "Building singlefile production React SPA assets..."
+          echo "Building production React SPA assets..."
           npm install --legacy-peer-deps
           npx vite build
           mkdir -p assets/web
@@ -49,45 +49,18 @@ jobs:
           yes | flutter doctor --android-licenses || true
           flutter doctor -v
 
-      - name: Scaffold Pristine Flutter Android Platform & Sahaya Sewa Branding
+      - name: Scaffold Flutter Android Platform & Branding
         run: |
           echo "Generating official Android platform binding..."
-          rm -rf /tmp/scaffold android
+          rm -rf /tmp/scaffold
           flutter create --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa /tmp/scaffold
           cp -r /tmp/scaffold/android ./android
           rm -rf /tmp/scaffold
+          python3 scripts/prepare_android.py
 
-          # Inject Sahaya Sewa Emblem Logo into Android App Launcher Icons across all densities
-          python3 -c "
-from PIL import Image
-import os
-
-src_path = 'src/assets/images/sahana_sewa_logo_1785907235127.jpg'
-if os.path.exists(src_path):
-    img = Image.open(src_path)
-    sizes = {
-        'mipmap-mdpi': 48,
-        'mipmap-hdpi': 72,
-        'mipmap-xhdpi': 96,
-        'mipmap-xxhdpi': 144,
-        'mipmap-xxxhdpi': 192
-    }
-    for folder, size in sizes.items():
-        dir_path = os.path.join('android/app/src/main/res', folder)
-        os.makedirs(dir_path, exist_ok=True)
-        resized = img.resize((size, size), Image.Resampling.LANCZOS)
-        resized.save(os.path.join(dir_path, 'ic_launcher.png'), 'PNG')
-    print('Generated official Sahaya Sewa Android App Launcher Icons successfully!')
-" || (
-  mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
-  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-)
-
-          # Clean standard root android/build.gradle
+      - name: Configure Android Build & Manifest Permissions
+        run: |
+          # 1. Clean root android/build.gradle
           cat << 'EOF' > android/build.gradle
           allprojects {
               repositories {
@@ -112,21 +85,12 @@ if os.path.exists(src_path):
           }
           EOF
 
-          # Configure app/build.gradle
+          # 2. Configure app/build.gradle
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdk flutter.minSdkVersion/minSdk 21/g' android/app/build.gradle || true
           sed -i '/defaultConfig {/a \        multiDexEnabled true' android/app/build.gradle || true
 
-          # Create Sinhala string resources
-          mkdir -p android/app/src/main/res/values
-          cat << 'EOF' > android/app/src/main/res/values/strings.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string name="app_name">සහය සේවා</string>
-          </resources>
-          EOF
-
-          # Inject Google Find Hub style 24/7 Background & System Permissions into AndroidManifest.xml
+          # 3. Inject Google Find Hub style 24/7 Background & System Permissions into AndroidManifest.xml
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -167,6 +131,9 @@ if os.path.exists(src_path):
               </application>
           </manifest>
           EOF
+
+          # Re-apply branding icons and string resources
+          python3 scripts/prepare_android.py
 
       - name: Install Flutter Dependencies
         run: |
