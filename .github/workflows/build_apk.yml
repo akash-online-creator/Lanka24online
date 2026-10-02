@@ -29,12 +29,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Ensure Android Project Scaffolding & Gradle Wrapper
+      - name: Setup Android Environment
         run: |
-          echo "Verifying Flutter Android project files & Gradle 8.4 wrapper..."
-          flutter create --platforms=android --org com.sahayasewa . || true
           mkdir -p android/gradle/wrapper
-          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties || true
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           cat << 'EOF' > android/gradle/wrapper/gradle-wrapper.properties
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
