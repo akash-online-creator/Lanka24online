@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart' hide NotificationVisibility;
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'services/background_location_handler.dart';
 import 'overlay/floating_overlay_widget.dart';
 
@@ -41,6 +43,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
   bool _isServiceRunning = false;
   bool _isOverlayActive = false;
   bool _isLoading = true;
+  double? _lastLat;
+  double? _lastLng;
 
   @override
   void initState() {
@@ -61,6 +65,9 @@ class _MainAppScreenState extends State<MainAppScreen> {
           },
           onPageFinished: (String url) {
             if (mounted) setState(() => _isLoading = false);
+            if (_lastLat != null && _lastLng != null) {
+              _injectLocationIntoWebView(_lastLat!, _lastLng!, 10.0);
+            }
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('WebView Error: ${error.description}');
@@ -68,12 +75,36 @@ class _MainAppScreenState extends State<MainAppScreen> {
         ),
       );
 
+    if (_webViewController.platform is AndroidWebViewController) {
+      final androidController = _webViewController.platform as AndroidWebViewController;
+      androidController.setGeolocationPermissionsPromptCallback((request) async {
+        return const GeolocationPermissionsResponse(allow: true, retain: true);
+      });
+    }
+
     try {
       final String htmlContent = await rootBundle.loadString('assets/web/index.html');
       await _webViewController.loadHtmlString(htmlContent, baseUrl: 'https://sahayasewa.app');
     } catch (e) {
       debugPrint('Fallback loading: $e');
       await _webViewController.loadFlutterAsset('assets/web/index.html');
+    }
+  }
+
+  void _injectLocationIntoWebView(double lat, double lng, double accuracy) {
+    _lastLat = lat;
+    _lastLng = lng;
+    try {
+      _webViewController.runJavaScript("""
+        (function() {
+          var payload = { lat: $lat, lng: $lng, accuracy: $accuracy };
+          window.__sahaya_native_gps = payload;
+          window.dispatchEvent(new CustomEvent('sahaya_native_gps', { detail: payload }));
+          window.postMessage({ type: 'SAHAYA_NATIVE_GPS', lat: $lat, lng: $lng, accuracy: $accuracy }, '*');
+        })();
+      """);
+    } catch (e) {
+      debugPrint('JS location bridge error: $e');
     }
   }
 
@@ -105,10 +136,27 @@ class _MainAppScreenState extends State<MainAppScreen> {
       await Permission.locationAlways.request();
       await Permission.notification.request();
 
+      try {
+        Position initialPos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 8),
+        );
+        _injectLocationIntoWebView(initialPos.latitude, initialPos.longitude, initialPos.accuracy);
+      } catch (e) {
+        debugPrint('Initial pos notice: $e');
+      }
+
       if (!await FlutterForegroundTask.isRunningService) {
         FlutterForegroundTask.addTaskDataCallback((data) {
           if (data is Map) {
             FlutterOverlayWindow.shareData(data);
+            if (data.containsKey('latitude') && data.containsKey('longitude')) {
+              _injectLocationIntoWebView(
+                data['latitude'] as double,
+                data['longitude'] as double,
+                (data['accuracy'] ?? 10.0) as double,
+              );
+            }
           }
         });
 

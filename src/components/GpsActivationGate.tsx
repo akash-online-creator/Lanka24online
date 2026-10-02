@@ -50,6 +50,57 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [notifGranted, setNotifGranted] = useState(false);
   const [bgGranted, setBgGranted] = useState(false);
 
+  const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
+    try {
+      const geo = await resolveExactLocation(latitude, longitude);
+      const locOpt = toLocationOption(geo);
+
+      setResolvedLocation(locOpt);
+      setLocationGranted(true);
+      localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+      localStorage.setItem('sahaya_manual_location_locked', 'false');
+      localStorage.setItem('sahaya_location_mode', 'auto');
+      localStorage.setItem('sahaya_gps_verified', 'true');
+      window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
+
+      setStatusState('success');
+      setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+      setIsScanning(false);
+
+      // Play welcome/ready tone
+      playNotificationSound('general');
+
+      // Transition to login after a short delay
+      setTimeout(() => {
+        onProceedToLogin(locOpt);
+      }, 1200);
+    } catch (err) {
+      const fallback: LocationOption = {
+        id: `loc_gps_${Date.now()}`,
+        nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
+        nameEn: `Kovinna, Gangarama Road, Katunayake`,
+        nameTa: `Kovinna, Gangarama Road, Katunayake`,
+        lat: latitude,
+        lng: longitude,
+      };
+      setResolvedLocation(fallback);
+      setLocationGranted(true);
+      localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
+      localStorage.setItem('sahaya_manual_location_locked', 'false');
+      localStorage.setItem('sahaya_location_mode', 'auto');
+      localStorage.setItem('sahaya_gps_verified', 'true');
+      window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
+
+      setStatusState('success');
+      setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! ස්ථානය: ${fallback.nameSi}`);
+      setIsScanning(false);
+
+      setTimeout(() => {
+        onProceedToLogin(fallback);
+      }, 1200);
+    }
+  };
+
   // Check initial permissions on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -64,6 +115,29 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }
     }
 
+    // 1. Check if Flutter native GPS is already available
+    if (typeof window !== 'undefined' && (window as any).__sahaya_native_gps) {
+      const { lat, lng, accuracy } = (window as any).__sahaya_native_gps;
+      if (lat && lng) {
+        processCoords(lat, lng, accuracy || 10);
+      }
+    }
+
+    // 2. Listen for native GPS broadcast events from Flutter wrapper
+    const handleNativeGps = (e: any) => {
+      const data = e.detail || e.data;
+      if (data && data.lat && data.lng) {
+        processCoords(data.lat, data.lng, data.accuracy || 10);
+      }
+    };
+
+    window.addEventListener('sahaya_native_gps', handleNativeGps);
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'SAHAYA_NATIVE_GPS') {
+        processCoords(e.data.lat, e.data.lng, e.data.accuracy || 10);
+      }
+    });
+
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((permissionStatus) => {
         if (permissionStatus.state === 'granted') {
@@ -72,6 +146,10 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         }
       }).catch(() => {});
     }
+
+    return () => {
+      window.removeEventListener('sahaya_native_gps', handleNativeGps);
+    };
   }, []);
 
   const handleAllowNotifications = async () => {
@@ -113,6 +191,15 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   };
 
   const handleStartGpsScan = (isSilent = false) => {
+    // If native GPS is already provided by Flutter, use it directly
+    if (typeof window !== 'undefined' && (window as any).__sahaya_native_gps) {
+      const { lat, lng, accuracy } = (window as any).__sahaya_native_gps;
+      if (lat && lng) {
+        processCoords(lat, lng, accuracy || 10);
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
       setStatusState('error');
       setStatusMessage('ඔබගේ උපාංගය හෝ බ්‍රවුසරය GPS ස්ථාන සේවා සඳහා සහාය නොදක්වයි.');
@@ -125,57 +212,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     if (!isSilent) {
       setStatusMessage('🛰️ සජීවී GPS චන්ද්‍රිකා සංඥාව පරීක්ෂා කරමින් පවතී... (කරුණාකර "Allow" ඔබන්න)');
     }
-
-    const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
-      try {
-        const geo = await resolveExactLocation(latitude, longitude);
-        const locOpt = toLocationOption(geo);
-
-        setResolvedLocation(locOpt);
-        setLocationGranted(true);
-        localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-        localStorage.setItem('sahaya_manual_location_locked', 'false');
-        localStorage.setItem('sahaya_location_mode', 'auto');
-        localStorage.setItem('sahaya_gps_verified', 'true');
-        window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
-
-        setStatusState('success');
-        setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
-        setIsScanning(false);
-
-        // Play welcome/ready tone
-        playNotificationSound('general');
-
-        // Transition to login after a short delay
-        setTimeout(() => {
-          onProceedToLogin(locOpt);
-        }, 1200);
-      } catch (err) {
-        const fallback: LocationOption = {
-          id: `loc_gps_${Date.now()}`,
-          nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
-          nameEn: `Kovinna, Gangarama Road, Katunayake`,
-          nameTa: `Kovinna, Gangarama Road, Katunayake`,
-          lat: latitude,
-          lng: longitude,
-        };
-        setResolvedLocation(fallback);
-        setLocationGranted(true);
-        localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
-        localStorage.setItem('sahaya_manual_location_locked', 'false');
-        localStorage.setItem('sahaya_location_mode', 'auto');
-        localStorage.setItem('sahaya_gps_verified', 'true');
-        window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
-
-        setStatusState('success');
-        setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! ස්ථානය: ${fallback.nameSi}`);
-        setIsScanning(false);
-
-        setTimeout(() => {
-          onProceedToLogin(fallback);
-        }, 1200);
-      }
-    };
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
