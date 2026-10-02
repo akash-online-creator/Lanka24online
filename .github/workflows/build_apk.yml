@@ -36,7 +36,7 @@ jobs:
           cp -r android/app/src/main/res/* /tmp/backup_res/ 2>/dev/null || true
           
           rm -rf android
-          flutter create --platforms=android --org com.sahayasewa .
+          flutter create --platforms=android --project-name sahayasewa_mobile --org com.sahayasewa .
           
           cp -r /tmp/backup_res/* android/app/src/main/res/ 2>/dev/null || true
           
