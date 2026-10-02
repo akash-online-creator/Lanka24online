@@ -13,23 +13,24 @@ def setup_branding():
     res_dir = "android/app/src/main/res"
     
     # 1. Clean all existing launcher icons (XMLs, PNGs, foreground/background duplicates)
-    for root, dirs, files in os.walk(res_dir):
-        for file in files:
-            if file.startswith("ic_launcher"):
-                file_path = os.path.join(root, file)
-                try:
-                    os.remove(file_path)
-                    print(f"Removed conflicting icon resource: {file_path}")
-                except Exception as e:
-                    print(f"Error removing {file_path}: {e}")
+    if os.path.exists(res_dir):
+        for root, dirs, files in os.walk(res_dir):
+            for file in files:
+                if file.startswith("ic_launcher"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.remove(file_path)
+                        print(f"Removed conflicting icon resource: {file_path}")
+                    except Exception as e:
+                        print(f"Error removing {file_path}: {e}")
 
-    # Remove anydpi directories if they only held ic_launcher.xml to prevent merger clash
-    for anydpi_dir in glob.glob(os.path.join(res_dir, "mipmap-anydpi*")):
-        try:
-            shutil.rmtree(anydpi_dir)
-            print(f"Removed anydpi directory: {anydpi_dir}")
-        except Exception as e:
-            print(f"Error removing {anydpi_dir}: {e}")
+        # Remove anydpi directories if they only held ic_launcher.xml to prevent merger clash
+        for anydpi_dir in glob.glob(os.path.join(res_dir, "mipmap-anydpi*")):
+            try:
+                shutil.rmtree(anydpi_dir)
+                print(f"Removed anydpi directory: {anydpi_dir}")
+            except Exception as e:
+                print(f"Error removing {anydpi_dir}: {e}")
 
     # 2. Generate clean PNG launcher icons across all standard density buckets
     densities = {
@@ -60,7 +61,7 @@ def setup_branding():
             shutil.copyfile(src_logo, target_file)
             print(f"Copied icon to {target_file}")
             
-    # 3. Create or update strings.xml
+    # 3. Create strings.xml
     values_dir = os.path.join(res_dir, "values")
     os.makedirs(values_dir, exist_ok=True)
     strings_xml_path = os.path.join(values_dir, "strings.xml")
@@ -71,6 +72,52 @@ def setup_branding():
 </resources>
 ''')
     print("Updated strings.xml with සහය සේවා")
+
+    # 4. Inject Android Permissions & App Config into AndroidManifest.xml
+    manifest_path = "android/app/src/main/AndroidManifest.xml"
+    if os.path.exists(manifest_path):
+        manifest_content = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:label="@string/app_name"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>
+'''
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            f.write(manifest_content)
+        print("Updated AndroidManifest.xml with background permissions and app title")
 
 if __name__ == "__main__":
     setup_branding()
