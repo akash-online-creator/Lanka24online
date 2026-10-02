@@ -38,13 +38,56 @@ jobs:
 
       - name: Scaffold Pristine Flutter Android Platform
         run: |
-          echo "Generating official Android platform binding with explicit project name..."
+          echo "Generating official Android platform binding..."
           rm -rf /tmp/scaffold android
           flutter create --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa /tmp/scaffold
           cp -r /tmp/scaffold/android ./android
           rm -rf /tmp/scaffold
 
-          # Configure minSdk to 21 and multiDexEnabled
+          # Configure root android/build.gradle with universal plugin compatibility hooks
+          cat << 'EOF' > android/build.gradle
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven {
+                      url 'https://storage.googleapis.com/download.flutter.io'
+                  }
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          if (namespace == null) {
+                              namespace project.group
+                          }
+                          compileSdkVersion 34
+                          buildToolsVersion "34.0.0"
+                          defaultConfig {
+                              minSdkVersion 21
+                              targetSdkVersion 34
+                          }
+                      }
+                  }
+              }
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          # Configure app/build.gradle
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdk flutter.minSdkVersion/minSdk 21/g' android/app/build.gradle || true
           sed -i '/defaultConfig {/a \        multiDexEnabled true' android/app/build.gradle || true
