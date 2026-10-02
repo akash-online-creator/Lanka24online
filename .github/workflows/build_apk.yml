@@ -21,12 +21,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Build Web Application Bundle
         run: |
           echo "Building production React SPA assets..."
-          npm ci || npm install
+          npm install --no-audit --prefer-offline || npm install
           npx vite build --base=./
           mkdir -p assets/web
           cp -r dist/* assets/web/
@@ -37,7 +36,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Set up Flutter 3.24.5
         uses: subosito/flutter-action@v2
