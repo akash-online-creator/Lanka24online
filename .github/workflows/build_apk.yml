@@ -57,7 +57,7 @@ jobs:
         run: |
           echo "Generating official Android platform scaffolding..."
           rm -rf android
-          flutter create . --platforms=android --org=com.sahayasewa -a java
+          flutter create . --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa -a java
           
           # Configure minSdk & multiDex in app/build.gradle
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
