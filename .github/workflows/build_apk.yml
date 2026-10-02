@@ -49,13 +49,43 @@ jobs:
           yes | flutter doctor --android-licenses || true
           flutter doctor -v
 
-      - name: Scaffold Pristine Flutter Android Platform
+      - name: Scaffold Pristine Flutter Android Platform & Sahaya Sewa Branding
         run: |
           echo "Generating official Android platform binding..."
           rm -rf /tmp/scaffold android
           flutter create --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa /tmp/scaffold
           cp -r /tmp/scaffold/android ./android
           rm -rf /tmp/scaffold
+
+          # Inject Sahaya Sewa Emblem Logo into Android App Launcher Icons across all densities
+          python3 -c "
+from PIL import Image
+import os
+
+src_path = 'src/assets/images/sahana_sewa_logo_1785907235127.jpg'
+if os.path.exists(src_path):
+    img = Image.open(src_path)
+    sizes = {
+        'mipmap-mdpi': 48,
+        'mipmap-hdpi': 72,
+        'mipmap-xhdpi': 96,
+        'mipmap-xxhdpi': 144,
+        'mipmap-xxxhdpi': 192
+    }
+    for folder, size in sizes.items():
+        dir_path = os.path.join('android/app/src/main/res', folder)
+        os.makedirs(dir_path, exist_ok=True)
+        resized = img.resize((size, size), Image.Resampling.LANCZOS)
+        resized.save(os.path.join(dir_path, 'ic_launcher.png'), 'PNG')
+    print('Generated official Sahaya Sewa Android App Launcher Icons successfully!')
+" || (
+  mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
+  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+  cp src/assets/images/sahana_sewa_logo_1785907235127.jpg android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+)
 
           # Clean standard root android/build.gradle
           cat << 'EOF' > android/build.gradle
@@ -96,7 +126,7 @@ jobs:
           </resources>
           EOF
 
-          # Inject Production Permissions & Background Service into AndroidManifest.xml
+          # Inject Google Find Hub style 24/7 Background & System Permissions into AndroidManifest.xml
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -104,13 +134,10 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-              <uses-permission android:name="android.permission.WAKE_LOCK" />
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
               <uses-permission android:name="android.permission.VIBRATE" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
               <application
                   android:label="@string/app_name"
@@ -134,10 +161,6 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
-                  <service
-                      android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-                      android:foregroundServiceType="location"
-                      android:exported="false" />
                   <meta-data
                       android:name="flutterEmbedding"
                       android:value="2" />

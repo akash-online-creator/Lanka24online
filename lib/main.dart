@@ -1,12 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter_foreground_task/flutter_foreground_task.dart' hide NotificationVisibility;
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'services/background_location_handler.dart';
-import 'overlay/floating_overlay_widget.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,9 +36,8 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen> {
   late final WebViewController _webViewController;
-  bool _isServiceRunning = false;
-  bool _isOverlayActive = false;
   bool _isLoading = true;
+  StreamSubscription<Position>? _positionSubscription;
   double? _lastLat;
   double? _lastLng;
 
@@ -49,8 +45,13 @@ class _MainAppScreenState extends State<MainAppScreen> {
   void initState() {
     super.initState();
     _initWebview();
-    _initForegroundTask();
-    _autoStartBackgroundServices();
+    _startSilentBackgroundRadar();
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
   }
 
   void _initWebview() async {
@@ -100,93 +101,40 @@ class _MainAppScreenState extends State<MainAppScreen> {
     }
   }
 
-  void _initForegroundTask() {
-    FlutterForegroundTask.init(
-      androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'sahaya_location_channel',
-        channelName: 'සහය සේවා 24/7 Location Service',
-        channelDescription: 'Maintains background safety & disaster awareness',
-        channelImportance: NotificationChannelImportance.HIGH,
-        priority: NotificationPriority.HIGH,
-      ),
-      iosNotificationOptions: const IOSNotificationOptions(
-        showNotification: true,
-        playSound: false,
-      ),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(10000),
-        autoRunOnBoot: true,
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
-    );
-  }
-
-  Future<void> _autoStartBackgroundServices() async {
+  /// 24/7 Silent Background Guard (Google Find Hub style)
+  Future<void> _startSilentBackgroundRadar() async {
     try {
+      // Request location and background location permissions
       await Permission.location.request();
-      await Permission.locationAlways.request();
+      if (await Permission.location.isGranted) {
+        await Permission.locationAlways.request();
+      }
       await Permission.notification.request();
 
+      // 1. Fetch immediate initial coordinate
       try {
         Position initialPos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
+          desiredAccuracy: LocationAccuracy.medium,
           timeLimit: const Duration(seconds: 8),
         );
         _injectLocationIntoWebView(initialPos.latitude, initialPos.longitude, initialPos.accuracy);
       } catch (e) {
-        debugPrint('Initial pos notice: $e');
+        debugPrint('Initial silent GPS error: $e');
       }
 
-      if (!await FlutterForegroundTask.isRunningService) {
-        FlutterForegroundTask.addTaskDataCallback((data) {
-          if (data is Map) {
-            FlutterOverlayWindow.shareData(data);
-            if (data.containsKey('latitude') && data.containsKey('longitude')) {
-              _injectLocationIntoWebView(
-                data['latitude'] as double,
-                data['longitude'] as double,
-                (data['accuracy'] ?? 10.0) as double,
-              );
-            }
-          }
-        });
-
-        await FlutterForegroundTask.startService(
-          notificationTitle: '🚨 සහය සේවා Live Guard සක්‍රීයයි',
-          notificationText: 'පසුබිමේ සජීවී ස්ථාන දත්ත සහ ආරක්ෂණ පද්ධතිය ක්‍රියාත්මකයි...',
-          callback: startLocationCallback,
-        );
-        setState(() => _isServiceRunning = true);
-      }
+      // 2. Power-efficient 24/7 background location streaming (no annoying status bar spam)
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          distanceFilter: 20, // Only triggers when moved 20 meters (conserves battery)
+        ),
+      ).listen((Position position) {
+        _injectLocationIntoWebView(position.latitude, position.longitude, position.accuracy);
+      }, onError: (e) {
+        debugPrint('Silent location stream notice: $e');
+      });
     } catch (e) {
-      debugPrint('Background init notice: $e');
-    }
-  }
-
-  Future<void> _toggleFloatingOverlay() async {
-    bool hasPermission = await FlutterOverlayWindow.isPermissionGranted();
-    if (!hasPermission) {
-      await FlutterOverlayWindow.requestPermission();
-      return;
-    }
-
-    if (await FlutterOverlayWindow.isActive()) {
-      await FlutterOverlayWindow.closeOverlay();
-      setState(() => _isOverlayActive = false);
-    } else {
-      await FlutterOverlayWindow.showOverlay(
-        enableDrag: true,
-        overlayTitle: "සහය සේවා Floating Radar",
-        overlayContent: "විස්තර බැලීමට ඔබන්න",
-        flag: OverlayFlag.defaultFlag,
-        alignment: OverlayAlignment.centerRight,
-        visibility: NotificationVisibility.visibilityPublic,
-        positionGravity: PositionGravity.auto,
-        width: 70,
-        height: 70,
-      );
-      setState(() => _isOverlayActive = true);
+      debugPrint('Silent background radar error: $e');
     }
   }
 
@@ -215,17 +163,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              bottom: 20,
-              right: 20,
-              child: FloatingActionButton.extended(
-                backgroundColor: const Color(0xFF007A4B),
-                foregroundColor: Colors.white,
-                onPressed: _toggleFloatingOverlay,
-                icon: const Icon(Icons.picture_in_picture_alt),
-                label: Text(_isOverlayActive ? "Radar සඟවන්න" : "Floating Radar"),
-              ),
-            ),
           ],
         ),
       ),
