@@ -29,11 +29,19 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Ensure Android Project Scaffolding
+      - name: Ensure Android Project Scaffolding & Gradle Wrapper
         run: |
-          echo "Verifying Flutter Android project files..."
-          mkdir -p android
+          echo "Verifying Flutter Android project files & Gradle 8.4 wrapper..."
+          flutter create --platforms=android --org com.sahayasewa . || true
+          mkdir -p android/gradle/wrapper
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties || true
+          cat << 'EOF' > android/gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip
+          EOF
           flutter doctor -v
 
       - name: Get Dependencies
