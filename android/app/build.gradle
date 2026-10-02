@@ -27,8 +27,7 @@ apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.sahayasewa.app"
-    compileSdk 34
-    ndkVersion flutter.ndkVersion
+    compileSdkVersion 34
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -45,8 +44,8 @@ android {
 
     defaultConfig {
         applicationId "com.sahayasewa.app"
-        minSdk 21
-        targetSdk 34
+        minSdkVersion 21
+        targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
