@@ -17,7 +17,7 @@ class SahayaSewaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sahaya Sewa',
+      title: 'සහය සේවා',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007A4B)),
@@ -39,6 +39,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
   late final WebViewController _webViewController;
   bool _isServiceRunning = false;
   bool _isOverlayActive = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -52,14 +53,29 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF07130C))
-      ..loadRequest(Uri.parse('https://ais-pre-arugkwlbojbp6jxjcd24un-234713481275.asia-southeast1.run.app'));
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() => _isLoading = true);
+          },
+          onPageFinished: (String url) {
+            setState(() => _isLoading = false);
+          },
+          onWebResourceError: (WebResourceError error) {
+            debugPrint('WebView Error: ${error.description}');
+            // If any remote load fails, instantly fall back to local assets
+            _webViewController.loadFlutterAsset('assets/web/index.html');
+          },
+        ),
+      )
+      ..loadFlutterAsset('assets/web/index.html');
   }
 
   void _initForegroundTask() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'sahaya_location_channel',
-        channelName: 'Sahaya 24/7 Location Service',
+        channelName: 'සහය සේවා 24/7 Location Service',
         channelDescription: 'Maintains background safety & disaster awareness',
         channelImportance: NotificationChannelImportance.HIGH,
         priority: NotificationPriority.HIGH,
@@ -91,8 +107,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
         });
 
         await FlutterForegroundTask.startService(
-          notificationTitle: '🚨 Sahaya Sewa Live Guard Active',
-          notificationText: 'Tracking real-time location in background...',
+          notificationTitle: '🚨 සහය සේවා Live Guard සක්‍රීයයි',
+          notificationText: 'පසුබිමේ සජීවී ස්ථාන දත්ත සහ ආරක්ෂණ පද්ධතිය ක්‍රියාත්මකයි...',
           callback: startLocationCallback,
         );
         setState(() => _isServiceRunning = true);
@@ -115,8 +131,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
     } else {
       await FlutterOverlayWindow.showOverlay(
         enableDrag: true,
-        overlayTitle: "Sahaya Sewa Floating Radar",
-        overlayContent: "Tap to expand",
+        overlayTitle: "සහය සේවා Floating Radar",
+        overlayContent: "විස්තර බැලීමට ඔබන්න",
         flag: OverlayFlag.defaultFlag,
         alignment: OverlayAlignment.centerRight,
         visibility: NotificationVisibility.visibilityPublic,
@@ -131,10 +147,17 @@ class _MainAppScreenState extends State<MainAppScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF07130C),
       body: SafeArea(
         child: Stack(
           children: [
             WebViewWidget(controller: _webViewController),
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF007A4B),
+                ),
+              ),
             Positioned(
               bottom: 20,
               right: 20,
@@ -143,7 +166,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
                 foregroundColor: Colors.white,
                 onPressed: _toggleFloatingOverlay,
                 icon: const Icon(Icons.picture_in_picture_alt),
-                label: Text(_isOverlayActive ? "Hide Floating Overlay" : "Floating Overlay"),
+                label: Text(_isOverlayActive ? "Radar සඟවන්න" : "Floating Radar"),
               ),
             ),
           ],
