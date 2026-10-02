@@ -370,12 +370,47 @@ flutter:
             </div>
           )}
 
-          {/* TAB 4: Permissions Code Snippet */}
+          {/* TAB 4: Essential Android Permissions & Manifest */}
           {activeTab === 'permissions' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="space-y-4">
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                <div className="text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600" />
+                  <span>24/7 හදිසි ආපදා දැනුම්දීම් සඳහා අත්‍යවශ්‍ය අවසර 3 (Essential Android Permissions):</span>
+                </div>
+                <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-200">
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-amber-300/40">
+                    <strong className="text-red-600 dark:text-red-400 font-black block">
+                      1. 🚨 Allow Display over other apps (වෙනත් යෙදුම් මත පෙන්වීමට අවසරය)
+                    </strong>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block">
+                      Screen එක Lock වී තිබුණත් හෝ ඔබ YouTube, WhatsApp, Games භාවිතා කරමින් සිටියත්, කි.මී. 5ක් ඇතුළත හදිසි ආපදාවක් වූ විට Screen එක උඩින් ක්ෂණිකව Siren අනතුරු ඇඟවීමේ Popup එක මතුවීමට මෙය අවශ්‍ය වේ.
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-amber-300/40">
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-black block">
+                      2. ⏰ Allow Setting Alarms & Reminders (අනතුරු ඇඟවීම් හා මතක්කිරීම්)
+                    </strong>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block">
+                      Android OS හි Doze Mode එක නොසලකා, කිසිදු තත්පරයක ප්‍රමාදයකින් තොරව සයිරන් නලා හඬ සහ Alarm එක ශබ්ද නගා නාද වීමට මෙය අවශ්‍ය වේ.
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-amber-300/40">
+                    <strong className="text-blue-600 dark:text-blue-400 font-black block">
+                      3. 🔋 Unrestricted Battery (සීමාවකින් තොර බැටරි භාවිතය)
+                    </strong>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 block">
+                      ඔබ App එක Close කළද පසුබිමින් (Background) නිහඬ රේඩාර් සේවාව (Google Find Hub මෙන්) 24/7 ක්‍රියාත්මකව තැබීමට මෙය අවශ්‍ය වේ.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
                 <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-                  AndroidManifest.xml (All Required Permissions):
+                  AndroidManifest.xml (All Configured Permissions):
                 </span>
                 <button
                   type="button"

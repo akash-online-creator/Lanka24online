@@ -94,7 +94,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [showPinDigits, setShowPinDigits] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
 
-  // Auto scan GPS when modal opens & listen for Native GPS
+  // Auto scan GPS ONCE when modal opens
   useEffect(() => {
     if (isOpen) {
       if (currentLocation?.lat && currentLocation?.lng) {
@@ -130,29 +130,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         setIsSettingNewPin(!stored);
       }
     }
-  }, [isOpen, currentUser, currentLocation]);
-
-  // Listen to background native GPS updates while modal is open
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleNativeGps = async (e: any) => {
-      const detail = e.detail;
-      if (detail && typeof detail.lat === 'number' && typeof detail.lng === 'number' && detail.lat !== 0) {
-        setLatitude(detail.lat);
-        setLongitude(detail.lng);
-        setAccuracyMeters(Math.round(detail.accuracy || 10));
-        try {
-          const resolved = await resolveExactLocation(detail.lat, detail.lng);
-          if (resolved) {
-            setLocationName(resolved.shortDisplaySi || resolved.townSi || resolved.villageSi || `${detail.lat.toFixed(4)}, ${detail.lng.toFixed(4)}`);
-          }
-        } catch {}
-      }
-    };
-
-    window.addEventListener('sahaya_native_gps', handleNativeGps);
-    return () => window.removeEventListener('sahaya_native_gps', handleNativeGps);
   }, [isOpen]);
 
   const scanGpsLocation = () => {
