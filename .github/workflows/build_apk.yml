@@ -38,10 +38,15 @@ jobs:
           flutter doctor -v
 
       - name: Get Dependencies
-        run: flutter pub get
+        run: |
+          sed -i 's/flutter_overlay_window: \^0.4.6/flutter_overlay_window: \^0.5.0/g' pubspec.yaml || true
+          sed -i 's/\^0.4.6/\^0.5.0/g' pubspec.yaml || true
+          flutter pub add flutter_overlay_window:^0.5.0 || true
+          flutter pub get
 
       - name: Build APK Release
-        run: flutter build apk --release --no-tree-shake-icons
+        run: |
+          flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
