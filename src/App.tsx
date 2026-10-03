@@ -1725,6 +1725,17 @@ export default function App() {
     }
   };
 
+  const handleAddPost = (newPost: HelpPost) => {
+    if (!newPost || !newPost.id) return;
+    setHelpPosts((prev) => {
+      const next = [newPost, ...(prev || []).filter((p) => p && p.id !== newPost.id)];
+      try {
+        localStorage.setItem('sahaya_help_posts', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const handleUpdatePost = async (updatedPost: HelpPost) => {
     if (!updatedPost || !updatedPost.id) return;
     setHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
@@ -1856,28 +1867,6 @@ export default function App() {
       <div className="fixed top-[-120px] left-[-120px] w-[350px] h-[350px] bg-radial from-emerald-500/10 to-transparent rounded-full pointer-events-none -z-10" />
       <div className="fixed bottom-[-120px] right-[-120px] w-[350px] h-[350px] bg-radial from-teal-500/10 to-transparent rounded-full pointer-events-none -z-10" />
 
-      {/* 🚨 PickMe-Style Active Alert Audio & Ringer Floating Top Banner */}
-      <ActiveAlertRingerBanner
-        language={language}
-        onOpenModal={(modal, targetId) => {
-          stopPickMeAlert();
-          if (modal === 'red_alert') {
-            const matched = targetId ? redAlerts.find((a) => a.id === targetId) : null;
-            if (matched) {
-              setSelectedDetailAlert(matched);
-            } else if (redAlerts.length > 0) {
-              setSelectedDetailAlert(redAlerts[0]);
-            } else {
-              setIsCreateRedAlertOpen(true);
-            }
-          } else if (modal === 'blood' || modal === 'quick_service') {
-            if (viewMode !== 'dashboard' && currentUser && currentUser.status === 'approved') {
-              setViewMode('dashboard');
-            }
-          }
-        }}
-      />
-
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
           <p className="text-xs sm:text-sm font-bold leading-relaxed">{toastMessage}</p>
@@ -1903,18 +1892,6 @@ export default function App() {
           onNavigate={handleNavigate}
           onLogout={handleLogout}
         />
-      )}
-
-      {viewMode !== 'login' && viewMode !== 'gps_gate' && (
-        <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 z-20 space-y-2 mb-2">
-          <NotificationPermissionBanner language={language} variant="banner" />
-          <RedAlertBanner
-            alerts={redAlerts}
-            currentUser={currentUser}
-            onOpenAlertDetail={(a) => setSelectedDetailAlert(a)}
-            onOpenCreate={() => setIsCreateRedAlertOpen(true)}
-          />
-        </div>
       )}
 
       <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
@@ -2043,6 +2020,7 @@ export default function App() {
             toggleTheme={toggleTheme}
             categories={categories}
             helpPosts={helpPosts}
+            onAddPost={handleAddPost}
             onDeletePost={handleDeletePost}
             onPermanentDeletePost={handlePermanentDeletePost}
             onUpdatePost={handleUpdatePost}
@@ -2085,6 +2063,7 @@ export default function App() {
             toggleTheme={toggleTheme}
             categories={categories}
             helpPosts={helpPosts}
+            onAddPost={handleAddPost}
             onDeletePost={handleDeletePost}
             onPermanentDeletePost={handlePermanentDeletePost}
             onUpdatePost={handleUpdatePost}
@@ -2109,6 +2088,13 @@ export default function App() {
         onUpdateUser={handleUpdateUser}
         onAlertCreated={(newAlert) => {
           if (newAlert?.id) {
+            setRedAlerts((prev) => {
+              const next = [newAlert, ...(prev || []).filter((a) => a && a.id !== newAlert.id)];
+              try {
+                localStorage.setItem('sahaya_red_alerts', JSON.stringify(next));
+              } catch (e) {}
+              return next;
+            });
             setMyCreatedAlertIds((prev) => {
               const next = Array.from(new Set([...prev, newAlert.id]));
               try {

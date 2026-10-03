@@ -126,6 +126,7 @@ interface UserDashboardProps {
   toggleTheme?: () => void;
   categories?: CategoryItem[];
   helpPosts?: HelpPost[];
+  onAddPost?: (newPost: HelpPost) => void;
   onDeletePost?: (postId: string) => void;
   onPermanentDeletePost?: (postId: string) => void;
   onUpdatePost?: (updatedPost: HelpPost) => void;
@@ -149,6 +150,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   toggleTheme,
   categories,
   helpPosts: propHelpPosts,
+  onAddPost,
   onDeletePost: propOnDeletePost,
   onPermanentDeletePost: propOnPermanentDeletePost,
   onUpdatePost: propOnUpdatePost,
@@ -246,8 +248,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return filterNonDeletedPosts(initialHelpPosts);
   });
 
-  // Effective help posts list
-  const helpPosts = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
+  // Effective synchronized help posts list
+  const helpPosts = useMemo(() => {
+    const base = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
+    const map = new Map<string, HelpPost>();
+    (localHelpPosts || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
+    (base || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
+    return filterNonDeletedPosts(Array.from(map.values()));
+  }, [propHelpPosts, localHelpPosts]);
 
   // Real-time Firestore subscription if not provided by parent
   useEffect(() => {
@@ -1032,6 +1040,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       helpersCount: 1,
       replies: [],
     };
+    if (onAddPost) {
+      onAddPost(newPost);
+    }
     setLocalHelpPosts((prev) => [newPost, ...prev.filter(p => p.id !== createdId)]);
     window.dispatchEvent(new CustomEvent('sahaya_new_post_published', { detail: { post: newPost } }));
 

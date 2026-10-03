@@ -1209,7 +1209,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                                   <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
                                 </span>
                                 <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-black/30 text-yellow-300 font-mono border border-yellow-300/30">
-                                  SIREN 2KM ACTIVE
+                                  SIREN 5KM ACTIVE
                                 </span>
                                 {alert.alertCode && (
                                   <span className="text-[10px] font-mono text-red-100 font-bold bg-black/20 px-2 py-0.5 rounded-md">

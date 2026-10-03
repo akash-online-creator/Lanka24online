@@ -331,7 +331,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
                   {locationGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  2km හදිසි ආපදා Proximity Siren සහ ළඟම සේවාවන්ට
+                  5km හදිසි ආපදා Proximity Siren සහ ළඟම සේවාවන්ට
                 </div>
               </div>
             </div>

@@ -10,26 +10,13 @@ import {
   CheckCircle2, 
   FileText, 
   User as UserIcon, 
-  Phone, 
-  Lock, 
-  ShieldAlert, 
-  Smartphone, 
-  Eye, 
-  EyeOff, 
-  KeyRound, 
+  Phone,
   RotateCcw 
 } from 'lucide-react';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
 import { resolveExactLocation } from '../utils/geoUtils';
-import { createRedAlertInFirestore, syncUserProfileToFirestore, updateUserInFirestore } from '../lib/firebase';
-import { 
-  getStoredDevicePin, 
-  saveDevicePin, 
-  verifyCurrentUserPin, 
-  clearDevicePin,
-  getOrCreateDeviceId 
-} from '../utils/devicePinManager';
+import { createRedAlertInFirestore } from '../lib/firebase';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface RedAlertCreateModalProps {
@@ -85,15 +72,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  // 🔒 4-Digit Device PIN Security Popup State
-  const [showPinPopup, setShowPinPopup] = useState(false);
-  const [hasStoredPin, setHasStoredPin] = useState(false);
-  const [enteredPin, setEnteredPin] = useState('');
-  const [confirmNewPin, setConfirmNewPin] = useState('');
-  const [isSettingNewPin, setIsSettingNewPin] = useState(false);
-  const [showPinDigits, setShowPinDigits] = useState(false);
-  const [pinError, setPinError] = useState<string | null>(null);
-
   // Auto scan GPS ONCE when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -112,23 +90,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       setIncidentTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }));
       setSubmitSuccess(false);
       setIsSubmitting(false);
-      setShowPinPopup(false);
-      setEnteredPin('');
-      setConfirmNewPin('');
-      setPinError(null);
-      setShowPinDigits(false);
-
-      const stored = getStoredDevicePin();
-      const currentDeviceId = getOrCreateDeviceId();
-      const isMismatch = currentUser?.activeDeviceId && currentUser.activeDeviceId !== currentDeviceId;
-      if (isMismatch) {
-        clearDevicePin();
-        setHasStoredPin(false);
-        setIsSettingNewPin(true);
-      } else {
-        setHasStoredPin(Boolean(stored));
-        setIsSettingNewPin(!stored);
-      }
     }
   }, [isOpen]);
 
@@ -239,7 +200,8 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
     );
   };
 
-  const handleOpenPinGate = (e: React.FormEvent) => {
+  // Directly submit and publish the Red Alert to Firestore
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!locationName.trim()) {
@@ -252,98 +214,9 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       return;
     }
 
-    const stored = getStoredDevicePin();
-    const currentDeviceId = getOrCreateDeviceId();
-    const isMismatch = currentUser?.activeDeviceId && currentUser.activeDeviceId !== currentDeviceId;
-    
-    if (isMismatch || !stored) {
-      if (isMismatch) clearDevicePin();
-      setHasStoredPin(false);
-      setIsSettingNewPin(true);
-    } else {
-      setHasStoredPin(true);
-      setIsSettingNewPin(false);
-    }
-
-    setPinError(null);
-    setEnteredPin('');
-    setConfirmNewPin('');
-    setShowPinPopup(true);
-  };
-
-  // 🔒 අංක 4ක Device PIN අංකය මඟින් Red Alert තහවුරු කිරීම හා විකාශය කිරීම
-  const handleFinalConfirmWithPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinError(null);
-
-    const cleanPin = enteredPin.trim();
-    if (!cleanPin || !/^\d{4}$/.test(cleanPin)) {
-      setPinError('⚠️ කරුණාකර අංක 4ක PIN අංකයක් ඇතුළත් කරන්න (Must be 4 digits).');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      // අවස්ථාව A: මෙම Device එකට නව PIN අංකයක් සකසමින් තහවුරු කිරීම
-      if (isSettingNewPin || !hasStoredPin) {
-        const cleanConfirm = confirmNewPin.trim();
-        if (cleanPin !== cleanConfirm) {
-          setPinError('⚠️ ඇතුළත් කළ PIN අංක දෙක එකිනෙකට නොගැලපේ. කරුණාකර නැවත පරීක්ෂා කරන්න.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        if (!currentUser) {
-          setPinError('⚠️ පරිශීලක තොරතුරු හමු නොවීය.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        // Save PIN to this device
-        const { deviceId, deviceSessionToken } = await saveDevicePin(currentUser, cleanPin);
-        
-        // Update user state and database
-        const updatedUser: User = {
-          ...currentUser,
-          activeDeviceId: deviceId,
-          deviceSessionToken,
-          devicePinConfigured: true,
-          devicePinUpdatedAt: new Date().toISOString(),
-        };
-
-        if (onUpdateUser) {
-          onUpdateUser(updatedUser);
-        }
-        if (updatedUser.id) {
-          updateUserInFirestore(updatedUser.id, {
-            activeDeviceId: deviceId,
-            deviceSessionToken,
-            devicePinConfigured: true,
-            devicePinUpdatedAt: new Date().toISOString(),
-          }).catch((err) => console.warn('Sync PIN config to Firestore error:', err));
-        }
-
-        setHasStoredPin(true);
-      } else {
-        // අවස්ථාව B: දැනටමත් ඇති PIN අංකය තහවුරු කිරීම
-        const verifyRes = await verifyCurrentUserPin(cleanPin, currentUser || null);
-        if (!verifyRes.success) {
-          if (verifyRes.deviceMismatch || verifyRes.needsSetup) {
-            setHasStoredPin(false);
-            setIsSettingNewPin(true);
-            setPinError(verifyRes.message || 'කරුණාකර මෙම Device එක සඳහා නව PIN අංකයක් සකසන්න.');
-          } else {
-            setPinError(verifyRes.message || 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
-          }
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // PIN අංකය නිවැරදි නම් Popup එක වසා දමා Red Alert වාර්තාව පළ කිරීම
-      setShowPinPopup(false);
-
       const config = getDisasterConfig(selectedDisaster);
       const titleSi = selectedDisaster === 'other' ? customTitle.trim() : config.titleSi;
       const titleEn = selectedDisaster === 'other' ? customTitle.trim() : config.titleEn;
@@ -422,10 +295,10 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      }, 1500);
+      }, 1200);
     } catch (err: any) {
       console.error('Submission Error:', err);
-      setPinError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
+      alert('⚠️ වාර්තා කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -485,7 +358,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleOpenPinGate} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
+          <form onSubmit={handleSubmit} className="p-3.5 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
             
             {/* 🎙️ AI Voice SOS Recorder Bar */}
             <AiVoiceInlineBar
@@ -728,179 +601,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         )}
 
       </div>
-
-      {/* 🔒 4-Digit Device PIN Security Gate Popup Modal */}
-      {showPinPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-md bg-white dark:bg-[#0f1d18] border-2 border-red-500 rounded-3xl shadow-[0_0_60px_rgba(239,68,68,0.6)] p-5 sm:p-6 space-y-4 my-auto">
-            
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-red-100 dark:bg-red-950/80 text-red-600 flex items-center justify-center">
-                  <Smartphone className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                    {isSettingNewPin || !hasStoredPin
-                      ? 'අංක 4ක Device PIN එකක් සකසන්න'
-                      : 'ආරක්ෂිත 4-Digit PIN තහවුරු කිරීම'}
-                  </h3>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    මෙම Device එක සඳහා පමණක් වලංගු වේ
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPinPopup(false)}
-                disabled={isSubmitting}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200 bg-red-500/10 border border-red-500/30 p-3.5 rounded-2xl">
-              <p className="font-black text-emerald-600 dark:text-emerald-400 text-center text-xs">
-                මෙය සියලු සත්වයන්ගේ ජීවිතය රැකීමට ඔබට ලැබෙන වටිනා අවස්ථාවකි.
-              </p>
-              <p className="font-bold text-slate-800 dark:text-slate-100 pt-1">
-                ⚠️ <strong className="text-red-600 dark:text-red-400">අවධානයයි:</strong> කුඩා ළමුන් හා අසත්‍ය ආපදා පළකිරීම් වැළැක්වීමට {isSettingNewPin || !hasStoredPin ? 'ඔබ කැමති අංක 4ක PIN අංකයක් මෙහිදී සකසා' : 'ඔබගේ මෙම Device එකෙහි අංක 4ක PIN අංකය ඇතුළත් කර'} ආපදාව තහවුරු කරන්න.
-              </p>
-            </div>
-
-            <form onSubmit={handleFinalConfirmWithPin} className="space-y-3 pt-1">
-              
-              {/* Primary 4-Digit PIN Input */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-red-500" />
-                    <span>
-                      {isSettingNewPin || !hasStoredPin
-                        ? 'අලුත් PIN අංකය (අංක 4ක්):'
-                        : 'ඔබගේ අංක 4ක PIN අංකය ඇතුළත් කරන්න:'}
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPinDigits(!showPinDigits)}
-                    className="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-red-600 flex items-center gap-1 cursor-pointer"
-                  >
-                    {showPinDigits ? (
-                      <>
-                        <EyeOff className="w-3 h-3" />
-                        <span>සඟවන්න</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3 h-3" />
-                        <span>පෙන්වන්න</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <input
-                  type={showPinDigits ? 'text' : 'password'}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={4}
-                  value={enteredPin}
-                  onChange={(e) => {
-                    const clean = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    setEnteredPin(clean);
-                    setPinError(null);
-                  }}
-                  placeholder="• • • •"
-                  className="w-full p-3.5 rounded-2xl border-2 border-red-400 dark:border-red-600 bg-white dark:bg-black/50 text-slate-900 dark:text-white font-mono text-center text-2xl tracking-[0.6em] font-black focus:ring-2 focus:ring-red-500 outline-none shadow-inner"
-                  autoFocus
-                  disabled={isSubmitting}
-                  required
-                />
-              </div>
-
-              {/* Confirm PIN Input when setting up new PIN */}
-              {(isSettingNewPin || !hasStoredPin) && (
-                <div className="space-y-1.5 animate-fadeIn">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-red-500" />
-                    <span>PIN අංකය නැවත තහවුරු කරන්න:</span>
-                  </label>
-                  <input
-                    type={showPinDigits ? 'text' : 'password'}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={4}
-                    value={confirmNewPin}
-                    onChange={(e) => {
-                      const clean = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setConfirmNewPin(clean);
-                      setPinError(null);
-                    }}
-                    placeholder="• • • •"
-                    className="w-full p-3.5 rounded-2xl border-2 border-red-300 dark:border-red-700/80 bg-white dark:bg-black/50 text-slate-900 dark:text-white font-mono text-center text-2xl tracking-[0.6em] font-black focus:ring-2 focus:ring-red-500 outline-none shadow-inner"
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-              )}
-
-              {pinError && (
-                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-xl">
-                  {pinError}
-                </p>
-              )}
-
-              {/* Option to change / reset PIN if user forgot */}
-              {hasStoredPin && !isSettingNewPin && (
-                <div className="flex justify-center pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSettingNewPin(true);
-                      setEnteredPin('');
-                      setConfirmNewPin('');
-                      setPinError(null);
-                    }}
-                    className="text-[11px] font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>PIN අංකය වෙනස් කිරීමට හෝ අලුත් PIN එකක් සැකසීමට අවශ්‍යද?</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="flex gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPinPopup(false)}
-                  disabled={isSubmitting}
-                  className="flex-1 py-3 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer transition-all disabled:opacity-50"
-                >
-                  අවලංගු කරන්න
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || enteredPin.length !== 4 || ((isSettingNewPin || !hasStoredPin) && confirmNewPin.length !== 4)}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>තහවුරු වෙමින්...</span>
-                    </>
-                  ) : (
-                    <span>🚨 තහවුරු කර විකාශය කරන්න</span>
-                  )}
-                </button>
-              </div>
-            </form>
-
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };
