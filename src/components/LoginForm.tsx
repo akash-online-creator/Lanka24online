@@ -212,20 +212,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       </div>
 
       {/* App Branding Header */}
-      <div className="text-center mb-2 flex flex-col items-center">
-        <div className="mb-1 transform hover:scale-105 transition-transform duration-300">
-          <AppLogo size="md" showGlow animated />
+      <div className="text-center mb-3 flex flex-col items-center">
+        <div className="mb-2 transform hover:scale-105 transition-transform duration-300">
+          <AppLogo size="2xl" showGlow animated />
         </div>
 
-        <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight mb-0.5 flex items-center justify-center gap-1">
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-1 flex items-center justify-center gap-1.5">
           <span className="text-[#007a4b] dark:text-[#00c880]">සහය</span>
           <span className="text-amber-600 dark:text-amber-400">සේවා</span>
         </h1>
-        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-black mb-0.5">
-          <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black mb-1">
+          <Sparkles className="w-3 h-3 text-amber-500" />
           <span>සැමට පිහිට • SAHAYA SEWA</span>
         </div>
-        <p className="text-slate-500 dark:text-[#8ba294] text-[11px] font-medium max-w-xs leading-tight">
+        <p className="text-slate-500 dark:text-[#8ba294] text-xs font-medium max-w-xs leading-tight">
           {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}
         </p>
       </div>

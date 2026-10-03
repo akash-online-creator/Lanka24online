@@ -392,6 +392,18 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       // Firestore එකට Red Alert එක පළ කිරීම
       const docId = await createRedAlertInFirestore(newAlertData);
 
+      // Record this alert ID locally so that this browser doesn't alarm itself
+      try {
+        const rawMyAlerts = localStorage.getItem('sahaya_my_created_alerts');
+        const myAlerts = rawMyAlerts ? JSON.parse(rawMyAlerts) : [];
+        const nextAlerts = Array.from(new Set([...myAlerts, docId]));
+        localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(nextAlerts));
+        
+        const rawDismissed = localStorage.getItem('sahaya_dismissed_alerts');
+        const dismissedAlerts = rawDismissed ? JSON.parse(rawDismissed) : [];
+        localStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(Array.from(new Set([...dismissedAlerts, docId]))));
+      } catch (e) {}
+
       const createdItem: RedAlertItem = {
         ...newAlertData,
         id: docId,
@@ -404,7 +416,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       setTimeout(() => {
         onClose();
-      }, 2500);
+      }, 2000);
     } catch (err: any) {
       console.error('Submission Error:', err);
       setPinError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));

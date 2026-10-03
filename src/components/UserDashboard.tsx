@@ -965,38 +965,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return acc + pendingReplies.length;
   }, 0);
 
-  // Play a pleasant notification tone when support offers arrive or upon login when offers exist
-  const prevRepliesCountRef = useRef<number>(0);
-  useEffect(() => {
-    if (totalUserReplies > 0) {
-      if (prevRepliesCountRef.current === 0 || totalUserReplies > prevRepliesCountRef.current) {
-        try {
-          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-          if (AudioCtx) {
-            const ctx = new AudioCtx();
-            const now = ctx.currentTime;
-            
-            // Pleasant chime: D5 then A5
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(587.33, now); // D5
-            osc.frequency.setValueAtTime(880, now + 0.12); // A5
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(now);
-            osc.stop(now + 0.4);
-          }
-        } catch (e) {
-          // Audio context policy restriction handled silently
-        }
-      }
-    }
-    prevRepliesCountRef.current = totalUserReplies;
-  }, [totalUserReplies]);
-
   // Handler for adding new help request post (Step 3.1 & Quick Services)
   const handleCreatePost = async (
     newPostData: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>

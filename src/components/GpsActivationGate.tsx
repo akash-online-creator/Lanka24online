@@ -67,9 +67,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
       setIsScanning(false);
 
-      // Play welcome/ready tone
-      playNotificationSound('general');
-
       // Transition to login after a short delay
       setTimeout(() => {
         onProceedToLogin(locOpt);
@@ -304,9 +301,9 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       {/* Main Glassmorphic Card */}
       <div className="w-full rounded-3xl bg-white dark:bg-[#0a1c12] border-2 border-emerald-500/40 shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
         {/* App Logo & Header */}
-        <div className="text-center space-y-1.5">
-          <div className="flex justify-center">
-            <AppLogo size="lg" showGlow={true} />
+        <div className="text-center space-y-2">
+          <div className="flex justify-center my-1 transform hover:scale-105 transition-transform duration-300">
+            <AppLogo size="xl" showGlow={true} animated={true} />
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
             සහය සේවා (Sahaya Sewa)

@@ -99,11 +99,6 @@ export default function App() {
       const saved = localStorage.getItem('sahaya_current_user');
       if (saved) {
         const u = JSON.parse(saved);
-        // Security rule: Admin accounts MUST always re-authenticate with password/PIN on app launch
-        if (u && checkIsAdmin(u)) {
-          localStorage.removeItem('sahaya_current_user');
-          return null;
-        }
         if (u && (u.id || u.userId) && (u.status === 'approved' || u.isDemo)) {
           return u;
         }
@@ -370,8 +365,9 @@ export default function App() {
           }
           brandNewPosts.forEach((newPost) => {
             knownHelpPostIdsRef.current.add(newPost.id);
+            const isRecent = newPost.createdAtMs && (Date.now() - newPost.createdAtMs) < 30000;
             const isQuick = newPost.category === 'quick_services' || newPost.category === 'quick' || newPost.tagCategory === 'ඉක්මන් සේවා';
-            if (isQuick) {
+            if (isQuick && isRecent) {
               triggerPickMeAlert({
                 kind: 'quick_service',
                 title: '⚡ නව ඉක්මන් සේවා ඇමතුමක් (Quick Service)!',
@@ -437,6 +433,16 @@ export default function App() {
     return () => window.removeEventListener('sahaya_open_android_bg_modal', handleOpenAndroidModal);
   }, []);
 
+  const currentUserRef = useRef<User | null>(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const myCreatedAlertIdsRef = useRef<string[]>(myCreatedAlertIds);
+  useEffect(() => {
+    myCreatedAlertIdsRef.current = myCreatedAlertIds;
+  }, [myCreatedAlertIds]);
+
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPlayedAlertIdRef = useRef<string | null>(null);
 
@@ -464,20 +470,36 @@ export default function App() {
       } else {
         const brandNewAlerts = newAlerts.filter((a) => a && a.id && !knownAlertIdsRef.current.has(a.id) && a.status === 'active');
         
+        let storedMyCreated: string[] = [];
+        try {
+          storedMyCreated = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+        } catch {}
+
         brandNewAlerts.forEach((latestAlert) => {
           knownAlertIdsRef.current.add(latestAlert.id);
 
-          // 🚨 PickMe-style background audio ringtone + push notification
-          triggerPickMeAlert({
-            kind: 'red_alert',
-            title: latestAlert.disasterTitleSi || '🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!',
-            message: latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
-            locationName: latestAlert.locationName || (latestAlert as any).district || (latestAlert as any).districtName,
-            targetModal: 'red_alert',
-            targetPostId: latestAlert.id,
-          });
+          const activeUser = currentUserRef.current;
+          const isCreatedByMe = 
+            (activeUser && (
+              (latestAlert.reportedByUserId && (latestAlert.reportedByUserId === activeUser.id || latestAlert.reportedByUserId === activeUser.userId || latestAlert.reportedByUserId === activeUser.nicNumber)) ||
+              (latestAlert.reportedByPhone && activeUser.phone && latestAlert.reportedByPhone.replace(/\D/g, '') === activeUser.phone.replace(/\D/g, ''))
+            )) ||
+            myCreatedAlertIdsRef.current.includes(latestAlert.id) ||
+            storedMyCreated.includes(latestAlert.id);
 
-          setSelectedDetailAlert(latestAlert);
+          if (!isCreatedByMe) {
+            // 🚨 PickMe-style background audio ringtone + push notification
+            triggerPickMeAlert({
+              kind: 'red_alert',
+              title: latestAlert.disasterTitleSi || '🚨 හදිසි ආපදා අනතුරු ඇඟවීමක් (Red Alert)!',
+              message: latestAlert.description || 'නව හදිසි අනතුරක් වාර්තා වී ඇත.',
+              locationName: latestAlert.locationName || (latestAlert as any).district || (latestAlert as any).districtName,
+              targetModal: 'red_alert',
+              targetPostId: latestAlert.id,
+            });
+
+            setSelectedDetailAlert(latestAlert);
+          }
         });
 
         if (previousRedAlertsRef.current.length > 0) {
@@ -705,11 +727,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('sahaya_lang', language);
   }, [language]);
-
-  useEffect(() => {
-    localStorage.removeItem('sahaya_current_user');
-    localStorage.removeItem('sahaya_view_mode');
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('sahaya_theme', theme);
@@ -1320,48 +1337,50 @@ export default function App() {
 
       if (!updatedUser) return;
 
-      // 2. If password/securityCode was changed in UserSettingsModal, sync to Firestore and Auth
-      const activePassword = (updatedUser.key || (updatedUser as any).password || updatedUser.securityCode || '').trim();
-      if (activePassword) {
-        await syncUserPasswordInFirestore(updatedUser, activePassword);
+      // 2. If password/securityCode was changed explicitly, sync to Firestore and Auth
+      if (updatedUser.isPasswordChanged) {
+        const activePassword = (updatedUser.key || (updatedUser as any).password || updatedUser.securityCode || '').trim();
+        if (activePassword) {
+          await syncUserPasswordInFirestore(updatedUser, activePassword);
 
-        // Sync to Firebase Auth in background
-        (async () => {
-          try {
-            const activeAuth = auth.currentUser;
-            if (activeAuth) {
-              await updatePassword(activeAuth, activePassword);
-            } else {
-              const cleanNic = (updatedUser.nicNumber || updatedUser.userId || '').trim().toLowerCase();
-              if (cleanNic) {
-                const formattedEmail = `${cleanNic}@app.com`;
-                try {
-                  const userCred = await signInWithEmailAndPassword(auth, formattedEmail, activePassword);
-                  if (userCred.user) {
-                    await updatePassword(userCred.user, activePassword);
-                  }
-                } catch {
+          // Sync to Firebase Auth in background
+          (async () => {
+            try {
+              const activeAuth = auth.currentUser;
+              if (activeAuth) {
+                await updatePassword(activeAuth, activePassword);
+              } else {
+                const cleanNic = (updatedUser.nicNumber || updatedUser.userId || '').trim().toLowerCase();
+                if (cleanNic) {
+                  const formattedEmail = `${cleanNic}@app.com`;
                   try {
-                    await createUserWithEmailAndPassword(auth, formattedEmail, activePassword);
-                  } catch {}
+                    const userCred = await signInWithEmailAndPassword(auth, formattedEmail, activePassword);
+                    if (userCred.user) {
+                      await updatePassword(userCred.user, activePassword);
+                    }
+                  } catch {
+                    try {
+                      await createUserWithEmailAndPassword(auth, formattedEmail, activePassword);
+                    } catch {}
+                  }
                 }
               }
+            } catch (pwErr) {
+              console.warn("Auth password update notice:", pwErr);
             }
-          } catch (pwErr) {
-            console.warn("Auth password update notice:", pwErr);
-          }
-        })();
+          })();
 
-        // Sync to backend server
-        fetch('/api/user/update-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: updatedUser.id || updatedUser.userId || '',
-            nicNumber: updatedUser.nicNumber || updatedUser.userId,
-            newPassword: activePassword,
-          }),
-        }).catch((e) => console.warn('Server password update notify error:', e));
+          // Sync to backend server
+          fetch('/api/user/update-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: updatedUser.id || updatedUser.userId || '',
+              nicNumber: updatedUser.nicNumber || updatedUser.userId,
+              newPassword: activePassword,
+            }),
+          }).catch((e) => console.warn('Server password update notify error:', e));
+        }
       }
 
       // 3. Save profile document to Firestore
