@@ -59,9 +59,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF07130C))
-      ..setOnPlatformPermissionRequest((PlatformWebViewPermissionRequest request) {
-        request.grant();
-      })
       ..addJavaScriptChannel(
         'SahayaGpsChannel',
         onMessageReceived: (JavaScriptMessage message) async {
