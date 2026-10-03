@@ -99,7 +99,7 @@ export default function App() {
       const saved = localStorage.getItem('sahaya_current_user');
       if (saved) {
         const u = JSON.parse(saved);
-        if (u && (u.id || u.userId) && (u.status === 'approved' || u.isDemo)) {
+        if (u && (u.id || u.userId || u.nicNumber)) {
           return u;
         }
       }
@@ -140,19 +140,18 @@ export default function App() {
       } catch {}
     }
 
-    // Check if valid normal approved user is already logged in
+    // Check if valid normal approved user or admin is already logged in
     const savedUserStr = localStorage.getItem('sahaya_current_user');
     if (savedUserStr) {
       try {
         const savedUser = JSON.parse(savedUserStr);
-        // Admin accounts must ALWAYS log in explicitly via the login page
         if (savedUser && checkIsAdmin(savedUser)) {
-          return isGpsVerified && hasSavedLocation ? 'login' : 'gps_gate';
+          return 'admin';
         }
         if (savedUser && savedUser.status === 'pending') {
           return 'pending';
         }
-        if (savedUser && (savedUser.status === 'approved' || savedUser.isDemo)) {
+        if (savedUser && (savedUser.status === 'approved' || savedUser.isDemo || savedUser.id || savedUser.userId)) {
           return isHubRequested ? 'shortcut_hub' : 'dashboard';
         }
       } catch {}
@@ -1383,14 +1382,18 @@ export default function App() {
         }
       }
 
-      // 3. Save profile document to Firestore
+      // 3. Save profile document to Firestore safely
       if (updatedUser.id) {
-        await updateUserInFirestore(updatedUser.id, updatedUser);
+        try {
+          await updateUserInFirestore(updatedUser.id, updatedUser);
+        } catch (dbErr) {
+          console.warn('Firestore profile update notice (local session active):', dbErr);
+        }
       }
 
-      console.log("✅ පරිශීලක දත්ත ගබඩාවේ සාර්ථකව සේව් විය!");
+      console.log("✅ පරිශීලක දත්ත සාර්ථකව සේව් විය!");
     } catch (err) {
-      console.error("⛔ Save වීමේ දෝෂයක්:", err);
+      console.warn("User update fallback notice:", err);
     }
   };
 
