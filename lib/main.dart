@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,6 +127,22 @@ class _MainAppScreenState extends State<MainAppScreen> {
           },
         ),
       );
+
+    // Platform-specific configuration for Android WebView (Crucial for localStorage, WebAudio, Geolocation, IndexedDB)
+    if (_webViewController.platform is AndroidWebViewController) {
+      final androidController = _webViewController.platform as AndroidWebViewController;
+      AndroidWebViewController.enableDebugging(false);
+      androidController.setDomStorageEnabled(true);
+      androidController.setMediaPlaybackRequiresUserGesture(false);
+      androidController.setGeolocationPermissionsPromptCallbacks(
+        onShowPrompt: (request) async {
+          return const GeolocationPermissionsResponse(allow: true, retain: true);
+        },
+      );
+      androidController.setOnPlatformPermissionRequest((request) {
+        request.grant();
+      });
+    }
 
     try {
       await _webViewController.loadFlutterAsset('assets/web/index.html');
