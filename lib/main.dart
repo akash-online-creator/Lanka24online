@@ -1,11 +1,66 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+
+@pragma('vm:entry-point')
+void startCallback() {
+  FlutterForegroundTask.setTaskHandler(SahayaForegroundTaskHandler());
+}
+
+class SahayaForegroundTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    debugPrint('🚨 24/7 Sahaya Sewa Silent Radar Service Started in Background');
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) async {
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
+      );
+      FlutterForegroundTask.sendDataToMain({
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'accuracy': pos.accuracy,
+      });
+    } catch (e) {
+      debugPrint('24/7 Background GPS scan notice: $e');
+    }
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp) async {
+    debugPrint('Sahaya Sewa Foreground Service stopped');
+  }
+
+  @override
+  void onReceiveData(Object data) {
+    debugPrint('Foreground Service received message: $data');
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == 'open_app') {
+      FlutterForegroundTask.launchApp();
+    }
+  }
+
+  @override
+  void onNotificationPressed() {
+    FlutterForegroundTask.launchApp();
+  }
+
+  @override
+  void onNotificationDismissed() {}
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,13 +102,59 @@ class _MainAppScreenState extends State<MainAppScreen> {
   void initState() {
     super.initState();
     _initWebview();
+    _initForegroundTask();
     _startSilentBackgroundRadar();
   }
 
   @override
   void dispose() {
     _positionSubscription?.cancel();
+    FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     super.dispose();
+  }
+
+  void _onReceiveTaskData(Object data) {
+    if (data is Map) {
+      final lat = (data['lat'] as num?)?.toDouble();
+      final lng = (data['lng'] as num?)?.toDouble();
+      final acc = (data['accuracy'] as num?)?.toDouble() ?? 10.0;
+      if (lat != null && lng != null) {
+        _injectLocationIntoWebView(lat, lng, acc);
+      }
+    }
+  }
+
+  void _initForegroundTask() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'sahaya_24x7_radar',
+        channelName: 'සහය සේවා 24/7 ආරක්ෂක සේවය',
+        channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ළඟම පිහිටි සේවාවන් පැය 24 පුරා අධීක්ෂණය කරයි.',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        iconData: const NotificationIconData(
+          resType: ResourceType.mipmap,
+          resPrefix: ResourcePrefix.ic,
+          name: 'launcher',
+        ),
+        buttons: [
+          const NotificationButton(id: 'open_app', title: 'විවෘත කරන්න'),
+        ],
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(15000), // Poll every 15 seconds
+        autoRunOnBoot: true,
+        autoRunOnMyPackageReplaced: true,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+
+    FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
   }
 
   void _initWebview() async {
@@ -176,14 +277,29 @@ class _MainAppScreenState extends State<MainAppScreen> {
   /// 24/7 Silent Background Guard (Google Find Hub style)
   Future<void> _startSilentBackgroundRadar() async {
     try {
-      // Request location and background location permissions
+      // 1. Request all critical Android permissions
       await Permission.location.request();
       if (await Permission.location.isGranted) {
         await Permission.locationAlways.request();
       }
       await Permission.notification.request();
 
-      // 1. Fetch immediate initial coordinate with high accuracy
+      // 2. Request Battery Optimization Exemption so Android never kills the 24/7 service
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+
+      // 3. Start 24/7 Persistent Foreground Service
+      if (!await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.startService(
+          serviceId: 256,
+          notificationTitle: '🚨 සහය සේවා 24/7 ආරක්ෂක සේවය සක්‍රීයයි',
+          notificationText: 'ආපදා හා හදිසි අනතුරු ඇඟවීම් පසුබිමින් නිරීක්ෂණය වේ',
+          callback: startCallback,
+        );
+      }
+
+      // 4. Fetch immediate initial coordinate with high accuracy
       try {
         Position initialPos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
@@ -194,7 +310,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
         debugPrint('Initial silent GPS error: $e');
       }
 
-      // 2. Continuous location streaming with high precision
+      // 5. Continuous location streaming with high precision
       _positionSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -212,32 +328,35 @@ class _MainAppScreenState extends State<MainAppScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF07130C),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            WebViewWidget(controller: _webViewController),
-            if (_isLoading)
-              Container(
-                color: const Color(0xFF07130C),
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: Color(0xFF007A4B)),
-                      SizedBox(height: 16),
-                      Text(
-                        'සහය සේවා පූරණය වෙමින් පවතී...',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                    ],
+    return WithForegroundTask(
+      child: Scaffold(
+        backgroundColor: const Color(0xFF07130C),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              WebViewWidget(controller: _webViewController),
+              if (_isLoading)
+                Container(
+                  color: const Color(0xFF07130C),
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Color(0xFF007A4B)),
+                        SizedBox(height: 16),
+                        Text(
+                          'සහය සේවා පූරණය වෙමින් පවතී...',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
