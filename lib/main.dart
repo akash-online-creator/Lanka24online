@@ -59,6 +59,9 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF07130C))
+      ..setOnPlatformPermissionRequest((PlatformWebViewPermissionRequest request) {
+        request.grant();
+      })
       ..addJavaScriptChannel(
         'SahayaGpsChannel',
         onMessageReceived: (JavaScriptMessage message) async {
@@ -128,11 +131,15 @@ class _MainAppScreenState extends State<MainAppScreen> {
       );
 
     try {
-      final String htmlContent = await rootBundle.loadString('assets/web/index.html');
-      await _webViewController.loadHtmlString(htmlContent, baseUrl: 'https://sahayasewa.app');
-    } catch (e) {
-      debugPrint('Fallback loading: $e');
       await _webViewController.loadFlutterAsset('assets/web/index.html');
+    } catch (e) {
+      debugPrint('Primary asset loading notice: $e');
+      try {
+        final String htmlContent = await rootBundle.loadString('assets/web/index.html');
+        await _webViewController.loadHtmlString(htmlContent);
+      } catch (err) {
+        debugPrint('Fallback loading error: $err');
+      }
     }
   }
 
