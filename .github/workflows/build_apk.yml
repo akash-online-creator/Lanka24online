@@ -59,7 +59,11 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa -a java
           
-          # Configure minSdk & multiDex in app/build.gradle
+          # Configure compileSdk 35, minSdk 21 & multiDex in app/build.gradle
+          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
@@ -73,11 +77,11 @@ jobs:
         run: |
           flutter pub get
 
-      - name: Patch Third-Party Plugins for SDK 34 & AGP 8 Compatibility
+      - name: Patch Third-Party Plugins for SDK 35 & AGP 8 Compatibility
         run: |
           echo "Patching pub-cache plugins..."
-          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/34/g' {} + || true
-          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/34/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/35/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} + || true
 
