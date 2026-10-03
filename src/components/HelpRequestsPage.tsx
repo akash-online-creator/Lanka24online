@@ -224,11 +224,14 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }, 3500);
   };
 
-  // Real-time listener for newly submitted posts across users: Auto scroll and refresh to top
+  // Real-time listener for newly submitted posts across users: Auto focus directly to Notice Board
   useEffect(() => {
     const handleNewPostEvent = (e: any) => {
       setVisibleCount((prev) => Math.max(prev, PAGE_SIZE));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const el = document.getElementById('help-notices-feed');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       showToast('✨ නව දැන්වීමක් දැන්වීම් පුවරුවේ ඉහළින්ම පූරණය විය!');
     };
 
