@@ -153,7 +153,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     const granted = await requestNotificationPermission();
     if (granted) {
       setNotifGranted(true);
-      playNotificationSound('general');
     }
     return granted;
   };
@@ -302,14 +301,15 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       <div className="w-full rounded-3xl bg-white dark:bg-[#0a1c12] border-2 border-emerald-500/40 shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
         {/* App Logo & Header */}
         <div className="text-center space-y-2">
-          <div className="flex justify-center my-1 transform hover:scale-105 transition-transform duration-300">
-            <AppLogo size="xl" showGlow={true} animated={true} />
+          <div className="flex justify-center my-2 transform hover:scale-105 transition-transform duration-300">
+            <AppLogo size="2xl" showGlow={true} animated={true} />
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-            සහය සේවා (Sahaya Sewa)
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            <span className="text-[#007a4b] dark:text-[#00c880]">සහය </span>
+            <span className="text-amber-600 dark:text-amber-400">සේවා</span>
           </h1>
-          <p className="text-xs text-slate-600 dark:text-emerald-200/80 font-medium">
-            සැමට පිහිට ප්‍රජා සහන හා හදිසි ආපදා සේවා ජාලය
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-emerald-200/80 font-semibold">
+            සැමට පිහිට • SAHAYA SEWA
           </p>
         </div>
 

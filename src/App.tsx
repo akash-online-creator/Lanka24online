@@ -1320,19 +1320,20 @@ export default function App() {
         return nextUsers;
       });
 
-      const isCurrentMatch =
-        currentUser &&
-        ((updatedUser?.id && currentUser.id && currentUser.id === updatedUser.id) ||
-          (currentUser.nicNumber && updatedUser?.nicNumber && currentUser.nicNumber.toLowerCase() === updatedUser.nicNumber.toLowerCase()) ||
-          (currentUser.userId && updatedUser?.userId && currentUser.userId.toLowerCase() === updatedUser.userId.toLowerCase()) ||
-          (updatedUser?.userNumericId && currentUser.userNumericId && currentUser.userNumericId === updatedUser.userNumericId));
-
-      if (isCurrentMatch && updatedUser) {
-        setCurrentUser(updatedUser);
+      // Maintain and update currentUser session reliably
+      setCurrentUser((prev) => {
+        if (!prev) return updatedUser;
+        const merged: User = {
+          ...prev,
+          ...updatedUser,
+          status: updatedUser.status || prev.status || 'approved',
+          role: updatedUser.role || prev.role || 'user',
+        };
         try {
-          localStorage.setItem('sahaya_current_user', JSON.stringify(updatedUser));
+          localStorage.setItem('sahaya_current_user', JSON.stringify(merged));
         } catch {}
-      }
+        return merged;
+      });
 
       if (!updatedUser) return;
 
