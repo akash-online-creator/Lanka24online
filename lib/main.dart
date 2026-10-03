@@ -128,11 +128,10 @@ class _MainAppScreenState extends State<MainAppScreen> {
         ),
       );
 
-    // Platform-specific configuration for Android WebView (Crucial for localStorage, WebAudio, Geolocation, IndexedDB)
+    // Platform-specific configuration for Android WebView (Audio, Geolocation, Permissions)
     if (_webViewController.platform is AndroidWebViewController) {
       final androidController = _webViewController.platform as AndroidWebViewController;
       AndroidWebViewController.enableDebugging(false);
-      androidController.setDomStorageEnabled(true);
       androidController.setMediaPlaybackRequiresUserGesture(false);
       androidController.setGeolocationPermissionsPromptCallbacks(
         onShowPrompt: (request) async {
