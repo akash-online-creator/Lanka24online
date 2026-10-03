@@ -60,6 +60,7 @@ interface BloodAndDisasterModalProps {
   initialTab?: 'blood_requests' | 'volunteer_donors' | 'disaster_relief';
   onRequireRegistration?: () => void;
   onOpenAidLedger?: () => void;
+  onSubmitHelpPost?: (post: any) => Promise<any>;
 }
 
 export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
@@ -70,6 +71,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   initialTab = 'blood_requests',
   onRequireRegistration,
   onOpenAidLedger,
+  onSubmitHelpPost,
 }) => {
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>(initialTab);
@@ -190,7 +192,31 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     });
 
     setShowAddBloodRequestForm(false);
-    alert('හදිසි ලේ අවශ්‍යතාවය සාර්ථකව පලකෙරිණි! (Background Alert මගින් දැනුම්දීම යවන ලදී)');
+    
+    // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag
+    if (onSubmitHelpPost) {
+      onSubmitHelpPost({
+        category: 'emergency',
+        tagCategory: 'හදිසි / ආපදා',
+        tagName: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවය`,
+        whatHappened: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
+        whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
+        locationName: `${newHospitalName}, ${newDistrict}`,
+        district: newDistrict,
+        priorityLevel: 'emergency',
+        isPinnedEmergency: true,
+        contactNumber: newContactPhone,
+        contactPersonName: newContactName || 'සම්බන්ධීකාරක',
+        status: 'open',
+        postCode: newRequest.postCode,
+      }).catch((e) => console.warn('Sync blood to help posts notice:', e));
+    }
+
+    onClose();
+    setTimeout(() => {
+      const el = document.getElementById('help-notices-feed');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
   };
 
   // Register Donor
@@ -264,7 +290,31 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     });
 
     setShowAddDisasterForm(false);
-    alert('ආපදා සහන අවශ්‍යතාවය සාර්ථකව පලකෙරිණි! (Background Alert මගින් දැනුම්දීම යවන ලදී)');
+    
+    // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag
+    if (onSubmitHelpPost) {
+      onSubmitHelpPost({
+        category: 'emergency',
+        tagCategory: 'හදිසි / ආපදා',
+        tagName: `📦 හදිසි ආපදා සහන: ${reliefType}`,
+        whatHappened: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
+        whatIsNeeded: `ආපදා වර්ගය: ${reliefType} • ස්ථානය: ${reliefLocation} • දිස්ත්‍රික්කය: ${reliefDistrict} • අවශ්‍ය ප්‍රමාණය: ${reliefTargetQty || 'අවශ්‍ය පරිදි'} • විස්තර: ${reliefDesc} • සම්බන්ධීකාරක: ${reliefContactName || 'ආපදා කමිටුව'} (${reliefContactPhone})`,
+        locationName: `${reliefLocation}, ${reliefDistrict}`,
+        district: reliefDistrict,
+        priorityLevel: 'emergency',
+        isPinnedEmergency: true,
+        contactNumber: reliefContactPhone,
+        contactPersonName: reliefContactName || 'ආපදා කමිටුව',
+        status: 'open',
+        postCode: `#EMG-${Math.floor(1000 + Math.random() * 9000)}`,
+      }).catch((e) => console.warn('Sync disaster to help posts notice:', e));
+    }
+
+    onClose();
+    setTimeout(() => {
+      const el = document.getElementById('help-notices-feed');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
   };
 
   // Support / Unlock Handlers

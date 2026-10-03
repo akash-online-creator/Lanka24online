@@ -49,7 +49,6 @@ import { BarterExchangeModal } from './BarterExchangeModal';
 import { UserQrPayModal } from './UserQrPayModal';
 import { AdminModerationModal } from './AdminModerationModal';
 import { PosterIssueResponseModal } from './PosterIssueResponseModal';
-import { LiveNotificationToast } from './LiveNotificationToast';
 import { NotificationCenterModal } from './NotificationCenterModal';
 import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
@@ -834,7 +833,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     }
 
     if (boardCategoryFilter !== 'by_distance' && feedDistanceTab === 'local') {
-      matchesDistance = dist <= 15;
+      matchesDistance = dist <= 15 || Boolean(post.isPinnedEmergency || post.priorityLevel === 'emergency' || post.postCode?.startsWith('#BLD-') || post.postCode?.startsWith('#EMG-'));
     }
 
     const query = searchQuery.toLowerCase().trim();
@@ -1011,16 +1010,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       createdAtIso: nowIso,
     };
 
-    // If quick service or normal service, ensure category filter shows it
-    if (categoryToSave === 'quick_services' || categoryToSave === 'normal_services') {
-      setBoardCategoryFilter(categoryToSave);
-      setSelectedCategoryTitle(
-        categoryToSave === 'normal_services' 
-          ? 'සාමාන්‍ය සේවා (General Services)' 
-          : 'ඉක්මන් සේවා (Quick Services)'
-      );
-      setFeedDistanceTab('local');
-    }
+    // Reset category filter so the newly created post is instantly visible in the main Notice Board feed
+    setBoardCategoryFilter('');
+    setSelectedCategoryTitle('');
 
     let createdId = `post_${nowMs}`;
     try {
@@ -1042,6 +1034,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     };
     setLocalHelpPosts((prev) => [newPost, ...prev.filter(p => p.id !== createdId)]);
     window.dispatchEvent(new CustomEvent('sahaya_new_post_published', { detail: { post: newPost } }));
+
+    // Scroll directly to the Notice Board (දැන්වීම් පුවරුව) so user sees their new post immediately
+    setTimeout(() => {
+      const el = document.getElementById('help-notices-feed');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 250);
 
     // Broadcast live notification across the app with audio chime & push alert
     try {
@@ -2427,6 +2427,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         initialTab={bloodModalInitialTab}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
         onOpenAidLedger={() => setIsAidLedgerModalOpen(true)}
+        onSubmitHelpPost={handleCreatePost}
       />
 
       {/* 🏛️ Transparent Aid & Resource Ledger Modal (ආධාර විනිවිදභාවයේ ලෙජරය) */}
@@ -2512,9 +2513,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onOpenEditPost={handleEditPost}
         language={language}
       />
-
-      {/* Live Push & In-App Notification Toast */}
-      <LiveNotificationToast onOpenNotification={handleOpenFromNotification} />
 
       {/* Centralized Notification Center Modal */}
       <NotificationCenterModal

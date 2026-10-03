@@ -295,10 +295,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     if (post.isPinnedEmergency) return true;
     if (post.priorityLevel === 'emergency' || post.priorityLevel === 'high') return true;
     if (post.postCode?.startsWith('#BLD-') || post.postCode?.startsWith('#EMG-')) return true;
+    if (post.category === 'emergency' || post.category === 'blood_disaster' || post.tagCategory === 'හදිසි / ආපදා') return true;
     const text = `${post.whatHappened || ''} ${post.whatIsNeeded || ''} ${post.tagName || ''} ${post.category || ''} ${post.tagCategory || ''}`.toLowerCase();
     if (
       text.includes('හදිසි අනතුර') ||
       text.includes('රුධිර') ||
+      text.includes('ලේ') ||
       text.includes('blood') ||
       text.includes('emergency') ||
       text.includes('ජල ගැලීම්') ||

@@ -414,9 +414,15 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         onAlertCreated(createdItem);
       }
 
+      window.dispatchEvent(new CustomEvent('sahaya_new_post_published', { detail: { alert: createdItem } }));
+
       setTimeout(() => {
         onClose();
-      }, 2000);
+        const el = document.getElementById('help-notices-feed');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 1500);
     } catch (err: any) {
       console.error('Submission Error:', err);
       setPinError('⚠️ තහවුරු කිරීමේදී දෝෂයක් සිදුවිය: ' + (err.message || 'නැවත උත්සාහ කරන්න.'));
