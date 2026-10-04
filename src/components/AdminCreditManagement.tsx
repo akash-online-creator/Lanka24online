@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User, CreditTransaction, CreditTransactionType, Language } from '../types';
+import type { User, CreditTransaction, CreditTransactionType, Language } from '../types';
 import { deduplicateUsers } from '../utils/userUtils';
 import { 
   extractNumericId, 
