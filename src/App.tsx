@@ -26,6 +26,7 @@ import { RegistrationModal } from './components/RegistrationModal';
 import { CreateBulletinModal } from './components/CreateBulletinModal';
 import { SOSBeaconModal } from './components/SOSBeaconModal';
 import { BulletinPost, UserRegistration } from './types';
+import { safeStorage } from './utils/storage';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'all' | 'bulletin' | 'radar' | 'mesh' | 'directory'>('all');
@@ -34,14 +35,14 @@ export const App: React.FC = () => {
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [hasAllPermissions, setHasAllPermissions] = useState<boolean>(() => {
-    const saved = localStorage.getItem('sahaya_permissions_granted');
-    if (saved) {
-      try {
+    try {
+      const saved = safeStorage.getItem('sahaya_permissions_granted');
+      if (saved) {
         const parsed: PermissionState = JSON.parse(saved);
-        return parsed.location && parsed.bluetoothMesh && parsed.notifications && parsed.backgroundRadar;
-      } catch (e) {
-        return false;
+        return !!(parsed.location && parsed.bluetoothMesh && parsed.notifications && parsed.backgroundRadar);
       }
+    } catch (e) {
+      console.warn('safeStorage check note:', e);
     }
     return false;
   });

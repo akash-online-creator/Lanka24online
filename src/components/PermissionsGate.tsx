@@ -14,6 +14,7 @@ import {
   Info,
   Radio
 } from 'lucide-react';
+import { safeStorage } from '../utils/storage';
 
 interface PermissionsGateProps {
   onAllPermissionsGranted: () => void;
@@ -36,13 +37,13 @@ export const PermissionsGate: React.FC<PermissionsGateProps> = ({
   forceMandatory = true
 }) => {
   const [permissions, setPermissions] = useState<PermissionState>(() => {
-    const saved = localStorage.getItem('sahaya_permissions_granted');
-    if (saved) {
-      try {
+    try {
+      const saved = safeStorage.getItem('sahaya_permissions_granted');
+      if (saved) {
         return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.warn('Permissions parse note:', e);
     }
     return {
       location: false,
@@ -214,7 +215,7 @@ export const PermissionsGate: React.FC<PermissionsGateProps> = ({
   };
 
   const saveState = (state: PermissionState) => {
-    localStorage.setItem('sahaya_permissions_granted', JSON.stringify(state));
+    safeStorage.setItem('sahaya_permissions_granted', JSON.stringify(state));
   };
 
   const handleConfirmAndProceed = () => {
