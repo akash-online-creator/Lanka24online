@@ -1,110 +1,160 @@
-#!/usr/bin/env python3
 import os
-import sys
+import shutil
+import glob
 
-print("Configuring Android scaffold, manifest, gradle, and assets for Sahaya Seva 24/7...")
+try:
+    from PIL import Image
+    has_pil = True
+except ImportError:
+    has_pil = False
 
-# 1. Update AndroidManifest.xml
-manifest_path = "android/app/src/main/AndroidManifest.xml"
-if os.path.exists(manifest_path):
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        content = f.read()
+def setup_branding():
+    src_logo = "src/assets/images/sahana_sewa_logo_1785907235127.jpg"
+    res_dir = "android/app/src/main/res"
+    
+    # 1. Clean all existing launcher icons (XMLs, PNGs, foreground/background duplicates)
+    if os.path.exists(res_dir):
+        for root, dirs, files in os.walk(res_dir):
+            for file in files:
+                if file.startswith("ic_launcher"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.remove(file_path)
+                        print(f"Removed conflicting icon resource: {file_path}")
+                    except Exception as e:
+                        print(f"Error removing {file_path}: {e}")
 
-    permissions = """
+        # Remove anydpi directories if they only held ic_launcher.xml to prevent merger clash
+        for anydpi_dir in glob.glob(os.path.join(res_dir, "mipmap-anydpi*")):
+            try:
+                shutil.rmtree(anydpi_dir)
+                print(f"Removed anydpi directory: {anydpi_dir}")
+            except Exception as e:
+                print(f"Error removing {anydpi_dir}: {e}")
+
+    # 2. Generate clean PNG launcher icons across all standard density buckets
+    densities = {
+        "mipmap-mdpi": 48,
+        "mipmap-hdpi": 72,
+        "mipmap-xhdpi": 96,
+        "mipmap-xxhdpi": 144,
+        "mipmap-xxxhdpi": 192
+    }
+    
+    if os.path.exists(src_logo):
+        for folder, size in densities.items():
+            target_folder = os.path.join(res_dir, folder)
+            os.makedirs(target_folder, exist_ok=True)
+            target_file = os.path.join(target_folder, "ic_launcher.png")
+            
+            if has_pil:
+                try:
+                    img = Image.open(src_logo)
+                    resized = img.resize((size, size), Image.Resampling.LANCZOS)
+                    resized.save(target_file, "PNG")
+                    print(f"Generated {target_file} ({size}x{size})")
+                    continue
+                except Exception as e:
+                    print(f"PIL resize warning: {e}")
+            
+            # Fallback direct copy
+            shutil.copyfile(src_logo, target_file)
+            print(f"Copied icon to {target_file}")
+            
+    # 3. Create strings.xml
+    values_dir = os.path.join(res_dir, "values")
+    os.makedirs(values_dir, exist_ok=True)
+    strings_xml_path = os.path.join(values_dir, "strings.xml")
+    with open(strings_xml_path, "w", encoding="utf-8") as f:
+        f.write('''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">සහය සේවා</string>
+</resources>
+''')
+    print("Updated strings.xml with සහය සේවා")
+
+    # 4. Inject Android Permissions, Queries & App Config into AndroidManifest.xml
+    manifest_path = "android/app/src/main/AndroidManifest.xml"
+    if os.path.exists(manifest_path):
+        manifest_content = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    """
 
-    if "<uses-permission" not in content:
-        content = content.replace("<application", permissions + "\n    <application")
-    
-    # Add usesCleartextTraffic and hardwareAccelerated to application tag if missing
-    if 'android:usesCleartextTraffic="true"' not in content:
-        content = content.replace('<application', '<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"')
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="whatsapp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
 
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("Updated AndroidManifest.xml with permissions & cleartext traffic settings.")
+    <application
+        android:label="@string/app_name"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>
+'''
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            f.write(manifest_content)
+        print("Updated AndroidManifest.xml with package queries, background permissions and app title")
 
-# 2. Update android/app/build.gradle
-gradle_path = "android/app/build.gradle"
-if os.path.exists(gradle_path):
-    with open(gradle_path, "r", encoding="utf-8") as f:
-        g_content = f.read()
-
-    # Enable multidex and adjust compileSdk / minSdk
-    if "multiDexEnabled" not in g_content:
-        g_content = g_content.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true")
-    
-    with open(gradle_path, "w", encoding="utf-8") as f:
-        f.write(g_content)
-    print("Updated android/app/build.gradle with multiDex.")
-
-# 3. Ensure pubspec.yaml has all dependencies & asset configuration
-pubspec_path = "pubspec.yaml"
-pubspec_content = """name: sahayasewa_mobile
-description: "සහය සේවා (Sahaya Seva) - 24/7 Mobile Disaster & Community Relief Network"
-publish_to: 'none'
-version: 1.0.0+1
-
-environment:
-  sdk: '>=3.2.0 <4.0.0'
-
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_foreground_task: ^9.2.2
-  geolocator: ^13.0.2
-  permission_handler: ^11.3.1
-  url_launcher: ^6.3.0
-  webview_flutter: ^4.10.0
-  webview_flutter_android: ^4.3.2
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^3.0.0
-
-flutter:
-  uses-material-design: true
-  assets:
-    - assets/web/
-    - assets/web/index.html
-"""
-
-with open(pubspec_path, "w", encoding="utf-8") as f:
-    f.write(pubspec_content)
-print("Ensured pubspec.yaml with assets/web/ bindings.")
-
-# 4. Mirror assets/web into android/app/src/main/assets/web if directory exists
-android_assets_dir = "android/app/src/main/assets/web"
-if os.path.exists("android/app/src/main"):
-    os.makedirs(android_assets_dir, exist_ok=True)
-    if os.path.exists("assets/web/index.html"):
-        with open("assets/web/index.html", "r", encoding="utf-8") as src_f:
-            web_html = src_f.read()
-        with open(os.path.join(android_assets_dir, "index.html"), "w", encoding="utf-8") as dst_f:
-            dst_f.write(web_html)
-        print("Mirrored assets/web/index.html to android/app/src/main/assets/web/index.html")
-
-print("Preparation complete.")
+if __name__ == "__main__":
+    setup_branding()

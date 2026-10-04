@@ -26,11 +26,9 @@ jobs:
         run: |
           echo "Building production React SPA assets..."
           npm install --legacy-peer-deps
-          npm run build || npx vite build
+          npx vite build
           mkdir -p assets/web
-          mkdir -p dist
-          node scripts/patch_singlefile.js || true
-          cp -r dist/* assets/web/ 2>/dev/null || true
+          cp -r dist/* assets/web/
           ls -lh assets/web/
 
       - name: Set up Python & Pillow for Image Processing
@@ -61,11 +59,7 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa -a java
           
-          # Configure compileSdk 35, minSdk 21 & multiDex in app/build.gradle
-          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/g' android/app/build.gradle || true
+          # Configure minSdk & multiDex in app/build.gradle
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
@@ -79,11 +73,11 @@ jobs:
         run: |
           flutter pub get
 
-      - name: Patch Third-Party Plugins for SDK 35 & AGP 8 Compatibility
+      - name: Patch Third-Party Plugins for SDK 34 & AGP 8 Compatibility
         run: |
           echo "Patching pub-cache plugins..."
-          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} + || true
-          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/35/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/34/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/34/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} + || true
 
