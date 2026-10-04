@@ -528,17 +528,131 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         )}
 
-        {/* Facebook-style Feed Header: Author, Avatar, Verification, Elapsed Time & Actions */}
+        {/* Clean Feed Header: 2-Row Structured Layout preventing mobile text squashing */}
         {(() => {
           const TagIconComp = getTagIconComponent(post.tagName, post.tagCategory, post.category);
           const displayAuthorName = maskName(translateName(effectivePost.userName || post.userName || 'පරිශීලකයා', activeCardLang), isDemo, activeCardLang);
           const userInitial = displayAuthorName ? displayAuthorName.trim().charAt(0).toUpperCase() : '👤';
 
           return (
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#132a1d]">
-              {/* Left: Avatar + Author Info + Meta */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                {/* Facebook-style Round Avatar */}
+            <div className="space-y-2.5 pb-3 border-b border-slate-100 dark:border-[#132a1d]">
+              {/* Row 1: Post Identifier + Category Badge + Right Quick Actions (Bookmark, Share, Edit, Delete) */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                  <span className="font-mono text-xs sm:text-sm font-black tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 shrink-0">
+                    <span>{displayPostCode}</span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-950/90 px-1 py-0.2 rounded border border-amber-300 dark:border-amber-700/60">
+                      @{getEntitySerialNumber(post, 'post')}
+                    </span>
+                  </span>
+
+                  {post.tagName && (
+                    <span 
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/60 font-extrabold text-xs shadow-2xs truncate"
+                      title={post.tagName}
+                    >
+                      {TagIconComp && <TagIconComp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                      <span className="truncate max-w-[140px] sm:max-w-none">{translateText(post.tagName, activeCardLang)}</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Right Quick Action Toolbar */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Bookmark / Save Post */}
+                  {onToggleSave && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (currentUser?.isDemo) {
+                          if (onRequireRegistration) onRequireRegistration();
+                          return;
+                        }
+                        onToggleSave(post);
+                      }}
+                      className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center justify-center border ${
+                        isSaved
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 border-slate-200 dark:border-slate-700'
+                      }`}
+                      title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න'}
+                    >
+                      {isSaved ? <BookmarkCheck className="w-3.5 h-3.5 text-white fill-white" /> : <Bookmark className="w-3.5 h-3.5 text-slate-500" />}
+                    </button>
+                  )}
+
+                  {/* Share Button */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={handleSharePost}
+                      className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
+                      title="දැන්වීම බෙදාගන්න (Share / Copy link)"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                    {showCopiedToast && (
+                      <div className="absolute right-0 top-full mt-1 z-30 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap shadow-md animate-fade-in">
+                        Link Copied! ✓
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Edit Post Button for Owner or Admin */}
+                  {(ownerCheck || isAdmin) && onEditPost && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInterceptAction(onEditPost);
+                      }}
+                      className="p-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer active:scale-95"
+                      title={activeCardLang === 'en' ? 'Edit Ad' : activeCardLang === 'ta' ? 'திருத்து' : 'දැන්වීම සංස්කරණය (Edit)'}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Delete Post Button for Owner or Admin */}
+                  {(ownerCheck || isAdmin) && onDeletePost && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInterceptAction(onDeletePost);
+                      }}
+                      className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer active:scale-95"
+                      title={activeCardLang === 'en' ? 'Delete Ad' : activeCardLang === 'ta' ? 'நீக்கு' : 'දැන්වීම මකා දමන්න (Delete)'}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    </button>
+                  )}
+
+                  {/* Admin Moderation Button */}
+                  {isAdmin && onAdminModerate && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInterceptAction(() => onAdminModerate(post));
+                      }}
+                      className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 border ${
+                        post.adminFlagged
+                          ? 'bg-rose-600 text-white border-rose-700 shadow-xs animate-pulse'
+                          : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                      }`}
+                      title="පරිපාලක පාලනය (Admin Moderate)"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Author Avatar + Name + Badges + Subline (Full Width Clean Flow) */}
+              <div className="flex items-center gap-3">
+                {/* Round Avatar */}
                 <div className="relative shrink-0">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-700 text-white font-black text-base sm:text-lg flex items-center justify-center shadow-sm ring-2 ring-emerald-500/30">
                     {post.userPhotoUrl ? (
@@ -551,48 +665,47 @@ export const PostCard: React.FC<PostCardProps> = ({
                       <span>{userInitial}</span>
                     )}
                   </div>
-                  {/* Verified Online Active Indicator */}
                   <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#07130c] rounded-full shadow-2xs" />
                 </div>
 
-                {/* Name, Verification Shield & Metadata */}
-                <div className="min-w-0 flex-1">
+                {/* Name, Badges and Location Subline */}
+                <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-black text-sm sm:text-base text-slate-900 dark:text-white leading-tight truncate">
+                    <span className="font-black text-sm sm:text-base text-slate-900 dark:text-white leading-tight">
                       {displayAuthorName}
                     </span>
-                    <span className="inline-flex items-center gap-0.5 text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-md border border-emerald-300 dark:border-emerald-700 shrink-0">
+                    <span className="inline-flex items-center gap-0.5 text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700 shrink-0">
                       <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                       <span>{cardLabels.accountHolder}</span>
                     </span>
                     {ownerCheck && (
-                      <span className="text-[10px] bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-black px-1.5 py-0.2 rounded-md border border-amber-300 dark:border-amber-700 shrink-0">
+                      <span className="text-[10px] bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-black px-1.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shrink-0">
                         {activeCardLang === 'en' ? 'My Ad' : activeCardLang === 'ta' ? 'எனது விளம்பரம்' : 'මගේ දැන්වීම'}
                       </span>
                     )}
                     {isConfirmed && (
-                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black px-1.5 py-0.2 rounded-md border border-emerald-300 dark:border-emerald-700 shrink-0 flex items-center gap-0.5">
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black px-1.5 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700 shrink-0 flex items-center gap-0.5">
                         <CheckCircle className="w-3 h-3 text-emerald-600" />
                         <span>{cardLabels.confirmed}</span>
                       </span>
                     )}
                   </div>
 
-                  {/* Subline: Elapsed time · Location · Motorcycle Distance */}
+                  {/* Subline: Elapsed time · Location · Motorcycle Distance (No vertical text breaking) */}
                   <div className="flex items-center gap-1.5 sm:gap-2 pt-0.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap font-medium">
-                    <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold">
+                    <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
                       <Clock className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span>{elapsedTimeLabel}</span>
                     </span>
                     <span className="text-slate-300 dark:text-slate-700">•</span>
-                    <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                    <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                       <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
-                      <span className="truncate max-w-[120px] sm:max-w-[180px]">
+                      <span className="truncate max-w-[130px] sm:max-w-[200px]">
                         {getVillageOrTownDisplay(effectivePost.locationName || '') || 'ශ්‍රී ලංකාව'}
                       </span>
                     </span>
                     <span className="text-slate-300 dark:text-slate-700">•</span>
-                    <div className="inline-flex items-center gap-1 font-bold text-slate-900 dark:text-emerald-300 bg-emerald-50 dark:bg-[#0d281a] px-2 py-0.2 rounded-md border border-emerald-200 dark:border-emerald-800/80">
+                    <div className="inline-flex items-center gap-1 font-bold text-slate-900 dark:text-emerald-300 bg-emerald-50 dark:bg-[#0d281a] px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/80 whitespace-nowrap">
                       <span className="text-xs">🏍️</span>
                       <span>{motorcycleRoute.formattedRoadDistance}</span>
                       <span className="text-slate-400">~</span>
@@ -616,115 +729,6 @@ export const PostCard: React.FC<PostCardProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Right: Help ID, @ Serial Tag, Category Tag, Bookmark, Share */}
-              <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                <span className="font-mono text-xs sm:text-sm font-black tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1">
-                  <span>{displayPostCode}</span>
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-950/90 px-1 py-0.2 rounded border border-amber-300 dark:border-amber-700/60">
-                    @{getEntitySerialNumber(post, 'post')}
-                  </span>
-                </span>
-
-                {post.tagName && (
-                  <span 
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/60 font-extrabold text-xs shadow-2xs"
-                    title={post.tagName}
-                  >
-                    {TagIconComp && <TagIconComp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />}
-                    <span className="hidden sm:inline">{translateText(post.tagName, activeCardLang)}</span>
-                  </span>
-                )}
-
-                {/* Bookmark / Save Post */}
-                {onToggleSave && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (currentUser?.isDemo) {
-                        if (onRequireRegistration) onRequireRegistration();
-                        return;
-                      }
-                      onToggleSave(post);
-                    }}
-                    className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center justify-center border ${
-                      isSaved
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 border-slate-200 dark:border-slate-700'
-                    }`}
-                    title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න'}
-                  >
-                    {isSaved ? <BookmarkCheck className="w-3.5 h-3.5 text-white fill-white" /> : <Bookmark className="w-3.5 h-3.5 text-slate-500" />}
-                  </button>
-                )}
-
-                {/* Share Button with Copied Toast */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={handleSharePost}
-                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
-                    title="දැන්වීම බෙදාගන්න (Share / Copy link)"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                  </button>
-                  {showCopiedToast && (
-                    <div className="absolute right-0 top-full mt-1 z-30 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap shadow-md animate-fade-in">
-                      Link Copied! ✓
-                    </div>
-                  )}
-                </div>
-
-                {/* Edit Post Button for Owner or Admin */}
-                {(ownerCheck || isAdmin) && onEditPost && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleInterceptAction(onEditPost);
-                    }}
-                    className="p-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-all cursor-pointer active:scale-95"
-                    title={activeCardLang === 'en' ? 'Edit Ad' : activeCardLang === 'ta' ? 'திருத்து' : 'දැන්වීම සංස්කරණය (Edit)'}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-
-                {/* Delete Post Button for Owner or Admin */}
-                {(ownerCheck || isAdmin) && onDeletePost && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleInterceptAction(onDeletePost);
-                    }}
-                    className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer active:scale-95"
-                    title={activeCardLang === 'en' ? 'Delete Ad' : activeCardLang === 'ta' ? 'நீக்கு' : 'දැන්වීම මකා දමන්න (Delete)'}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  </button>
-                )}
-
-                {/* Admin Report / Moderation Button */}
-                {isAdmin && onAdminModerate && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleInterceptAction(() => onAdminModerate(post));
-                    }}
-                    className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 border ${
-                      post.adminFlagged
-                        ? 'bg-rose-600 text-white border-rose-700 shadow-xs animate-pulse'
-                        : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                    }`}
-                    title="පරිපාලක පාලනය (Admin Moderate)"
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  </button>
-                )}
               </div>
             </div>
           );
@@ -1626,30 +1630,32 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
 
             {/* Quick Context Metadata Chips (Helpers, Transport, Payment, Notice) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 rounded-2xl bg-slate-50 dark:bg-[#081810] border border-emerald-100 dark:border-emerald-900/50 text-xs font-semibold">
-              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">👥 {cardLabels.helpersNeeded}:</span>
-                <span className="font-black text-emerald-800 dark:text-emerald-300">{helpersCount}</span>
-              </div>
+            <div className="space-y-2 p-3 rounded-2xl bg-slate-50 dark:bg-[#081810] border border-emerald-100 dark:border-emerald-900/50 text-xs font-semibold">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold whitespace-nowrap">👥 {cardLabels.helpersNeeded}:</span>
+                  <span className="font-black text-emerald-800 dark:text-emerald-300">{helpersCount}</span>
+                </div>
 
-              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">🛵 {cardLabels.transport}:</span>
-                <span className="truncate font-bold text-slate-900 dark:text-white">
-                  {translateText(displayPost.transport || (activeCardLang === 'en' ? 'Visit needed' : 'පැමිණිය යුතුයි'), activeCardLang)}
-                </span>
-              </div>
+                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold whitespace-nowrap">🛵 {cardLabels.transport}:</span>
+                  <span className="truncate font-bold text-slate-900 dark:text-white">
+                    {translateText(displayPost.transport || (activeCardLang === 'en' ? 'Visit needed' : 'පැමිණිය යුතුයි'), activeCardLang)}
+                  </span>
+                </div>
 
-              <div className="col-span-2 sm:col-span-1 flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">💵 {cardLabels.payment}:</span>
-                <span className="truncate font-bold text-slate-900 dark:text-white">
-                  {translateText(displayPost.payment || (activeCardLang === 'en' ? 'Fee agreed' : 'ගාස්තුවට එකඟයි'), activeCardLang)}
-                </span>
+                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold whitespace-nowrap">💵 {cardLabels.payment}:</span>
+                  <span className="truncate font-bold text-slate-900 dark:text-white">
+                    {translateText(displayPost.payment || (activeCardLang === 'en' ? 'Fee agreed' : 'ගාස්තුවට එකඟයි'), activeCardLang)}
+                  </span>
+                </div>
               </div>
 
               {safeConditions && (
-                <div className="col-span-2 sm:col-span-3 text-[11px] text-slate-600 dark:text-slate-400 pt-0.5 border-t border-slate-200/60 dark:border-emerald-900/30">
-                  <span className="font-extrabold text-amber-600 dark:text-amber-400">⚠️ {cardLabels.conditions}: </span>
-                  <span>{renderTextWithLinks(safeConditions)}</span>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 pt-1.5 border-t border-slate-200/60 dark:border-emerald-900/30">
+                  <span className="font-bold text-amber-700 dark:text-amber-400">⚠️ {cardLabels.conditions}: </span>
+                  <span className="font-medium">{renderTextWithLinks(safeConditions)}</span>
                 </div>
               )}
             </div>
@@ -1931,7 +1937,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               )}
 
               {/* Viewers Primary Action Buttons: CHAT, CONFIRM, and DETAILS */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-12 gap-2">
                 {/* 1. Chat Button */}
                 <button
                   type="button"
@@ -1942,18 +1948,18 @@ export const PostCard: React.FC<PostCardProps> = ({
                       handleInterceptAction(onOfferSupport);
                     }
                   }}
-                  className="flex-1 min-w-[130px] py-3 px-4 rounded-2xl bg-white dark:bg-[#071a12] hover:bg-emerald-50 dark:hover:bg-[#0d2a1b] text-emerald-700 dark:text-emerald-300 font-black text-xs sm:text-sm border-2 border-emerald-500/70 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="col-span-5 sm:col-span-5 py-3 px-3 rounded-2xl bg-white dark:bg-[#071a12] hover:bg-emerald-50 dark:hover:bg-[#0d2a1b] text-emerald-700 dark:text-emerald-300 font-black text-xs sm:text-sm border-2 border-emerald-500/70 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   title={activeCardLang === 'en' ? 'Open Chat' : activeCardLang === 'ta' ? 'அரட்டை திற' : 'සංවාදය විවෘත කරන්න'}
                 >
-                  <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>{activeCardLang === 'en' ? 'CHAT' : activeCardLang === 'ta' ? 'CHAT (அரட்டை)' : 'CHAT (සංවාදය)'}</span>
+                  <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">{activeCardLang === 'en' ? 'CHAT' : activeCardLang === 'ta' ? 'CHAT (அரட்டை)' : 'CHAT (සංවාදය)'}</span>
                 </button>
 
                 {/* 2. Confirm Button / Confirmed Badge */}
                 {isConfirmed ? (
-                  <div className="flex-1 min-w-[140px] py-3 px-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-400 text-emerald-800 dark:text-emerald-300 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm text-center">
+                  <div className="col-span-5 sm:col-span-5 py-3 px-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-400 text-emerald-800 dark:text-emerald-300 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm text-center">
                     <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>{activeCardLang === 'en' ? 'CONFIRMED' : activeCardLang === 'ta' ? 'உறுதியானது' : 'තහවුරු කර ඇත'}</span>
+                    <span className="truncate">{activeCardLang === 'en' ? 'CONFIRMED' : activeCardLang === 'ta' ? 'உறுதியானது' : 'තහවුරු කර ඇත'}</span>
                   </div>
                 ) : (
                   <button
@@ -1965,11 +1971,11 @@ export const PostCard: React.FC<PostCardProps> = ({
                         handleInterceptAction(onOfferSupport);
                       }
                     }}
-                    className="flex-1 min-w-[140px] py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
+                    className="col-span-5 sm:col-span-5 py-3 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-emerald-400/40"
                     title={activeCardLang === 'en' ? 'Confirm Service' : activeCardLang === 'ta' ? 'சேவை உறுதிப்படுத்தல்' : 'සේවාව තහවුරු කරන්න'}
                   >
-                    <CheckCircle className="w-4 h-4 text-white" />
-                    <span>{activeCardLang === 'en' ? 'CONFIRM' : activeCardLang === 'ta' ? 'CONFIRM (உறுதி)' : 'CONFIRM (තහවුරු)'}</span>
+                    <CheckCircle className="w-4 h-4 text-white shrink-0" />
+                    <span className="truncate">{activeCardLang === 'en' ? 'CONFIRM' : activeCardLang === 'ta' ? 'CONFIRM (உறுதி)' : 'CONFIRM (තහවුරු)'}</span>
                   </button>
                 )}
 
@@ -1978,11 +1984,10 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <button
                     type="button"
                     onClick={() => handleInterceptAction(onViewPost)}
-                    className="py-3 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    className={`${isAdmin && onDeletePost ? 'col-span-1 sm:col-span-1' : 'col-span-2 sm:col-span-2'} py-3 px-2 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281e] dark:hover:bg-[#1a382b] text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-emerald-800/60 active:scale-95 transition-all flex items-center justify-center gap-1 cursor-pointer`}
                     title={activeCardLang === 'en' ? 'View Details' : activeCardLang === 'ta' ? 'விவரங்கள்' : 'සම්පූර්ණ විස්තර'}
                   >
-                    <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                    <span className="hidden sm:inline">{activeCardLang === 'en' ? 'Details' : activeCardLang === 'ta' ? 'விவரம்' : 'විස්තර'}</span>
+                    <Eye className="w-4 h-4 text-slate-600 dark:text-slate-300 shrink-0" />
                   </button>
                 )}
 
@@ -1996,11 +2001,10 @@ export const PostCard: React.FC<PostCardProps> = ({
                         handleInterceptAction(onDeletePost);
                       }
                     }}
-                    className="py-3 px-3.5 rounded-2xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/60 hover:text-white text-rose-700 dark:text-rose-300 font-black text-xs shadow-xs border border-rose-300 dark:border-rose-800 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 group"
+                    className="col-span-1 sm:col-span-1 py-3 px-2 rounded-2xl bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/60 hover:text-white text-rose-700 dark:text-rose-300 font-black text-xs shadow-xs border border-rose-300 dark:border-rose-800 active:scale-95 transition-all flex items-center justify-center cursor-pointer group"
                     title={activeCardLang === 'en' ? 'Delete Post (Admin)' : activeCardLang === 'ta' ? 'நீக்கு (நிர்வாகி)' : 'දැන්වීම මකා දමන්න (Admin)'}
                   >
-                    <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400 group-hover:text-white" />
-                    <span className="hidden sm:inline">Delete</span>
+                    <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400 group-hover:text-white shrink-0" />
                   </button>
                 )}
               </div>
