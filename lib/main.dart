@@ -216,9 +216,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ළඟම පිහිටි සේවාවන් පැය 24 පුරා අධීක්ෂණය කරයි.',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
-        buttons: [
-          const NotificationButton(id: 'open_app', text: 'විවෘත කරන්න'),
-        ],
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
