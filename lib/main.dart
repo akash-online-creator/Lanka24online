@@ -25,7 +25,6 @@ class SahayaForegroundTaskHandler extends TaskHandler {
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
     _counter++;
-    // Perform silent background radar check every 15 seconds
     try {
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -35,7 +34,6 @@ class SahayaForegroundTaskHandler extends TaskHandler {
       );
       debugPrint('24/7 Radar Silent GPS Sync #$_counter: ${position.latitude}, ${position.longitude}');
 
-      // Update background notification status
       FlutterForegroundTask.updateService(
         notificationTitle: '🚨 සහය සේවා 24/7 ආරක්ෂක සේවය සක්‍රීයයි',
         notificationText: 'GPS ස්ථානය යාවත්කාලීනයි (${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}) - ආපදා නිරීක්ෂණය වේ',
@@ -101,26 +99,21 @@ class _MainAppScreenState extends State<MainAppScreen> {
 
   Future<void> _requestAllMobilePermissions() async {
     try {
-      // Request essential mobile permissions safely
+      // Request permissions safely
       await [
         Permission.location,
         Permission.notification,
         Permission.bluetooth,
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.bluetoothAdvertise,
       ].request();
 
-      // Battery Optimization Exemption for 24/7 Background Persistence
       try {
         if (await Permission.ignoreBatteryOptimizations.isDenied) {
           await FlutterForegroundTask.requestIgnoreBatteryOptimization();
         }
       } catch (be) {
-        debugPrint('Battery optimization request note: $be');
+        debugPrint('Battery optimization note: $be');
       }
 
-      // Start 24/7 Foreground Service
       _startForegroundService();
     } catch (e) {
       debugPrint('Error requesting permissions: $e');
@@ -141,7 +134,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(15000), // 15 seconds interval
+        eventAction: ForegroundTaskEventAction.repeat(15000),
         autoRunOnBoot: true,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
@@ -170,10 +163,13 @@ class _MainAppScreenState extends State<MainAppScreen> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF020617))
+      ..setOnConsoleMessage((JavaScriptConsoleMessage msg) {
+        debugPrint('[JS Console] ${msg.message}');
+      })
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            debugPrint('WebView started: $url');
+            debugPrint('WebView started loading: $url');
           },
           onPageFinished: (String url) {
             debugPrint('WebView finished loading: $url');
@@ -197,7 +193,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
         ),
       );
 
-    // Platform-specific configuration for Android WebView
     if (_webViewController.platform is AndroidWebViewController) {
       final androidController = _webViewController.platform as AndroidWebViewController;
       androidController.setMediaPlaybackRequiresUserGesture(false);
@@ -212,8 +207,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
       });
     }
 
-    // Safety timer to remove loading screen in 1.8 seconds max
-    Timer(const Duration(milliseconds: 1800), () {
+    Timer(const Duration(milliseconds: 2000), () {
       if (mounted && _isLoading) {
         setState(() {
           _isLoading = false;
@@ -226,14 +220,16 @@ class _MainAppScreenState extends State<MainAppScreen> {
 
   Future<void> _loadWebApp() async {
     try {
-      // First attempt: Load Flutter packaged asset directly
-      await _webViewController.loadFlutterAsset('assets/web/index.html');
+      // Primary: load raw HTML string with secure localhost baseUrl for full DOM Storage support
+      final htmlContent = await rootBundle.loadString('assets/web/index.html');
+      await _webViewController.loadHtmlString(htmlContent, baseUrl: 'https://localhost/');
+      debugPrint('Loaded web bundle via loadHtmlString');
     } catch (e) {
-      debugPrint('loadFlutterAsset note: $e. Attempting loadHtmlString fallback...');
+      debugPrint('loadHtmlString note: $e. Falling back to loadFlutterAsset...');
       try {
-        final htmlContent = await rootBundle.loadString('assets/web/index.html');
-        await _webViewController.loadHtmlString(htmlContent);
+        await _webViewController.loadFlutterAsset('assets/web/index.html');
       } catch (fallbackError) {
+        debugPrint('loadFlutterAsset error: $fallbackError');
         if (mounted) {
           setState(() {
             _errorMessage = 'යෙදුම පූරණය කිරීමේදී ගැටලුවක් ඇතිවිය: $fallbackError';

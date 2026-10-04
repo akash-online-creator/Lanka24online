@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node scripts/patch_singlefile.js",
+    "build": "tsc && vite build --mode production && node scripts/patch_singlefile.js",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "start": "node server.ts"
