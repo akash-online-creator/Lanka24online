@@ -212,8 +212,17 @@ class _MainAppScreenState extends State<MainAppScreen> {
 
   Future<void> _loadWebApp() async {
     try {
-      // Load offline bundled React Single Page Application from assets/web/index.html
-      await _webViewController.loadFlutterAsset('assets/web/index.html');
+      // Load bundled single-file HTML directly with https://localhost baseUrl to prevent Android WebView file:// CORS restrictions
+      try {
+        final htmlContent = await rootBundle.loadString('assets/web/index.html');
+        await _webViewController.loadHtmlString(
+          htmlContent,
+          baseUrl: 'https://localhost/',
+        );
+      } catch (bundleError) {
+        debugPrint('Direct string load note, falling back to asset loader: $bundleError');
+        await _webViewController.loadFlutterAsset('assets/web/index.html');
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'යෙදුම පූරණය කිරීමේදී ගැටලුවක් ඇතිවිය: $e';
