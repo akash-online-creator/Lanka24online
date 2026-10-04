@@ -37,8 +37,8 @@ class SahayaForegroundTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp) async {
-    debugPrint('Sahaya Sewa Foreground Service stopped');
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    debugPrint('Sahaya Sewa Foreground Service stopped (timeout: $isTimeout)');
   }
 
   @override
@@ -216,13 +216,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ළඟම පිහිටි සේවාවන් පැය 24 පුරා අධීක්ෂණය කරයි.',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
-        iconData: const NotificationIconData(
-          resType: ResourceType.mipmap,
-          resPrefix: ResourcePrefix.ic,
-          name: 'launcher',
-        ),
         buttons: [
-          const NotificationButton(id: 'open_app', title: 'විවෘත කරන්න'),
+          const NotificationButton(id: 'open_app', text: 'විවෘත කරන්න'),
         ],
       ),
       iosNotificationOptions: const IOSNotificationOptions(
