@@ -67,10 +67,10 @@ class SahayaSewaApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF020617),
-        colorScheme: ColorScheme.dark(
-          primary: const Color(0xFFDC2626),
-          secondary: const Color(0xFFF59E0B),
-          surface: const Color(0xFF0F172A),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFDC2626),
+          secondary: Color(0xFFF59E0B),
+          surface: Color(0xFF0F172A),
         ),
         useMaterial3: true,
       ),
@@ -94,25 +94,30 @@ class _MainAppScreenState extends State<MainAppScreen> {
   @override
   void initState() {
     super.initState();
-    _requestAllMobilePermissions();
     _initForegroundTask();
     _initWebView();
+    _requestAllMobilePermissions();
   }
 
   Future<void> _requestAllMobilePermissions() async {
     try {
-      // Request all required mobile permissions
+      // Request essential mobile permissions safely
       await [
         Permission.location,
-        Permission.locationAlways,
         Permission.notification,
-        Permission.microphone,
-        Permission.ignoreBatteryOptimizations,
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.bluetoothAdvertise,
       ].request();
 
       // Battery Optimization Exemption for 24/7 Background Persistence
-      if (await Permission.ignoreBatteryOptimizations.isDenied) {
-        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      try {
+        if (await Permission.ignoreBatteryOptimizations.isDenied) {
+          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+        }
+      } catch (be) {
+        debugPrint('Battery optimization request note: $be');
       }
 
       // Start 24/7 Foreground Service
@@ -168,19 +173,19 @@ class _MainAppScreenState extends State<MainAppScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            setState(() {
-              _isLoading = true;
-              _errorMessage = null;
-            });
+            debugPrint('WebView started: $url');
           },
           onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
+            debugPrint('WebView finished loading: $url');
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _errorMessage = null;
+              });
+            }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint('Web resource error: ${error.description}');
-            // If local asset loads, ignore minor network resource warnings
+            debugPrint('Web resource note: ${error.errorCode} - ${error.description}');
           },
           onNavigationRequest: (NavigationRequest request) {
             if (request.url.startsWith('tel:') || request.url.startsWith('mailto:')) {
@@ -192,7 +197,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
         ),
       );
 
-    // Platform-specific configuration for Android WebView (Audio, Geolocation, Permissions)
+    // Platform-specific configuration for Android WebView
     if (_webViewController.platform is AndroidWebViewController) {
       final androidController = _webViewController.platform as AndroidWebViewController;
       androidController.setMediaPlaybackRequiresUserGesture(false);
@@ -207,27 +212,35 @@ class _MainAppScreenState extends State<MainAppScreen> {
       });
     }
 
+    // Safety timer to remove loading screen in 1.8 seconds max
+    Timer(const Duration(milliseconds: 1800), () {
+      if (mounted && _isLoading) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
+
     _loadWebApp();
   }
 
   Future<void> _loadWebApp() async {
     try {
-      // Load bundled single-file HTML directly with https://localhost baseUrl to prevent Android WebView file:// CORS restrictions
+      // First attempt: Load Flutter packaged asset directly
+      await _webViewController.loadFlutterAsset('assets/web/index.html');
+    } catch (e) {
+      debugPrint('loadFlutterAsset note: $e. Attempting loadHtmlString fallback...');
       try {
         final htmlContent = await rootBundle.loadString('assets/web/index.html');
-        await _webViewController.loadHtmlString(
-          htmlContent,
-          baseUrl: 'https://localhost/',
-        );
-      } catch (bundleError) {
-        debugPrint('Direct string load note, falling back to asset loader: $bundleError');
-        await _webViewController.loadFlutterAsset('assets/web/index.html');
+        await _webViewController.loadHtmlString(htmlContent);
+      } catch (fallbackError) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'යෙදුම පූරණය කිරීමේදී ගැටලුවක් ඇතිවිය: $fallbackError';
+            _isLoading = false;
+          });
+        }
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'යෙදුම පූරණය කිරීමේදී ගැටලුවක් ඇතිවිය: $e';
-        _isLoading = false;
-      });
     }
   }
 
@@ -240,24 +253,26 @@ class _MainAppScreenState extends State<MainAppScreen> {
           children: [
             WebViewWidget(controller: _webViewController),
             if (_isLoading)
-              Container(
-                color: const Color(0xFF020617),
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(
-                        color: Color(0xFFDC2626),
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'සහය සේවා පූරණය වෙමින් පවතී...',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
+              IgnorePointer(
+                child: Container(
+                  color: const Color(0xFF020617),
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: Color(0xFFDC2626),
                         ),
-                      ),
-                    ],
+                        SizedBox(height: 16),
+                        Text(
+                          'සහය සේවා පූරණය වෙමින් පවතී...',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -278,7 +293,13 @@ class _MainAppScreenState extends State<MainAppScreen> {
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: _loadWebApp,
+                        onPressed: () {
+                          setState(() {
+                            _isLoading = true;
+                            _errorMessage = null;
+                          });
+                          _loadWebApp();
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFDC2626),
                         ),
