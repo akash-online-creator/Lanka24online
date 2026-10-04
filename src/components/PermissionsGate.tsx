@@ -12,7 +12,8 @@ import {
   ShieldCheck,
   RefreshCw,
   Info,
-  Radio
+  Radio,
+  X
 } from 'lucide-react';
 import { safeStorage } from '../utils/storage';
 
@@ -235,6 +236,17 @@ export const PermissionsGate: React.FC<PermissionsGateProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 sm:p-6 overflow-y-auto">
       <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border-2 border-red-500/50 shadow-2xl shadow-red-950/80 p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in duration-200">
         
+        {/* Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="වසන්න"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+
         {/* Urgent Header */}
         <div className="text-center space-y-2.5">
           <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 flex items-center justify-center shadow-xl shadow-red-950 ring-4 ring-red-500/20 animate-pulse">

@@ -20,8 +20,7 @@ import {
 import { DisasterRadar } from './components/DisasterRadar';
 import { LiveBulletin } from './components/LiveBulletin';
 import { EmergencyDirectory } from './components/EmergencyDirectory';
-import { MeshBeaconNetwork } from './components/MeshBeaconNetwork';
-import { PermissionsGate, PermissionState } from './components/PermissionsGate';
+import { PermissionsGate } from './components/PermissionsGate';
 import { RegistrationModal } from './components/RegistrationModal';
 import { CreateBulletinModal } from './components/CreateBulletinModal';
 import { SOSBeaconModal } from './components/SOSBeaconModal';
@@ -29,23 +28,12 @@ import { BulletinPost, UserRegistration } from './types';
 import { safeStorage } from './utils/storage';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'all' | 'bulletin' | 'radar' | 'mesh' | 'directory'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'radar' | 'bulletin' | 'directory'>('all');
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isCreateBulletinOpen, setIsCreateBulletinOpen] = useState(false);
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
-  const [hasAllPermissions, setHasAllPermissions] = useState<boolean>(() => {
-    try {
-      const saved = safeStorage.getItem('sahaya_permissions_granted');
-      if (saved) {
-        const parsed: PermissionState = JSON.parse(saved);
-        return !!(parsed.location && parsed.bluetoothMesh && parsed.notifications && parsed.backgroundRadar);
-      }
-    } catch (e) {
-      console.warn('safeStorage check note:', e);
-    }
-    return false;
-  });
+  const [hasAllPermissions, setHasAllPermissions] = useState<boolean>(true);
   const [registeredUser, setRegisteredUser] = useState<UserRegistration | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -182,12 +170,12 @@ export const App: React.FC = () => {
             🌟 සියල්ල (All)
           </button>
           <button
-            onClick={() => setActiveTab('mesh')}
+            onClick={() => setActiveTab('radar')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
-              activeTab === 'mesh' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              activeTab === 'radar' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            📡 Mesh අනතුරු ජාලය (Find Hub)
+            🛰️ 24/7 Radar
           </button>
           <button
             onClick={() => setActiveTab('bulletin')}
@@ -198,20 +186,12 @@ export const App: React.FC = () => {
             📢 ආපදා පුවරුව
           </button>
           <button
-            onClick={() => setActiveTab('radar')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
-              activeTab === 'radar' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            🛰️ 24/7 Radar
-          </button>
-          <button
             onClick={() => setActiveTab('directory')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
               activeTab === 'directory' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            ☎️ 119/1990
+            ☎️ 119/1990 නාමාවලිය
           </button>
         </nav>
 
@@ -316,10 +296,6 @@ export const App: React.FC = () => {
         </div>
 
         {/* Main Sections Based on Active Tab */}
-        {(activeTab === 'all' || activeTab === 'mesh') && (
-          <MeshBeaconNetwork />
-        )}
-
         {(activeTab === 'all' || activeTab === 'radar') && (
           <DisasterRadar userLocation={userLocation} />
         )}
@@ -362,11 +338,11 @@ export const App: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('mesh')}
-          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'mesh' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
+          onClick={() => setActiveTab('radar')}
+          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'radar' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
         >
-          <Radio className="w-4 h-4" />
-          <span className="text-[9px] font-sinhala mt-0.5">Mesh ජාලය</span>
+          <Sparkles className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">Radar</span>
         </button>
 
         <button
@@ -380,11 +356,11 @@ export const App: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('radar')}
-          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'radar' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
+          onClick={() => setActiveTab('bulletin')}
+          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'bulletin' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
         >
-          <Sparkles className="w-4 h-4" />
-          <span className="text-[9px] font-sinhala mt-0.5">Radar</span>
+          <Radio className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">පුවරුව</span>
         </button>
 
         <button
@@ -398,7 +374,7 @@ export const App: React.FC = () => {
 
       {/* Modals */}
       <PermissionsGate
-        isOpen={!hasAllPermissions || isPermissionsModalOpen}
+        isOpen={isPermissionsModalOpen}
         onAllPermissionsGranted={() => {
           setHasAllPermissions(true);
           setIsPermissionsModalOpen(false);
@@ -406,7 +382,7 @@ export const App: React.FC = () => {
           setTimeout(() => setToastMessage(null), 4000);
         }}
         onClose={() => setIsPermissionsModalOpen(false)}
-        forceMandatory={!hasAllPermissions}
+        forceMandatory={false}
       />
 
       <RegistrationModal
