@@ -2,7 +2,7 @@
 import os
 import re
 
-print("Configuring Android scaffold, permissions, and 24/7 background service for Sahaya Seva...")
+print("Configuring Android scaffold and permissions for Sahaya Seva 24/7...")
 
 manifest_path = "android/app/src/main/AndroidManifest.xml"
 if os.path.exists(manifest_path):
@@ -30,21 +30,10 @@ if os.path.exists(manifest_path):
 
     if "<uses-permission" not in content:
         content = content.replace("<application", permissions + "\n    <application")
-
-    # Add foreground service tag with stopWithTask=false so Android does not kill it on swipe-close
-    service_tag = """
-        <service
-            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="location|dataSync|specialUse"
-            android:stopWithTask="false"
-            android:exported="false" />
-    """
-
-    if "com.pravera.flutter_foreground_task.service.ForegroundService" not in content:
-        content = content.replace("</application>", service_tag + "\n    </application>")
-
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("Updated AndroidManifest.xml with permissions and 24/7 foreground service tags.")
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print("Updated AndroidManifest.xml with all permissions.")
+    else:
+        print("Permissions already present in AndroidManifest.xml.")
 
 print("Preparation complete.")
