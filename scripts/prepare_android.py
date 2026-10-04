@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import os
-import re
+import sys
 
-print("Configuring Android scaffold and permissions for Sahaya Seva 24/7...")
+print("Configuring Android scaffold, manifest, gradle, and assets for Sahaya Seva 24/7...")
 
+# 1. Update AndroidManifest.xml
 manifest_path = "android/app/src/main/AndroidManifest.xml"
 if os.path.exists(manifest_path):
     with open(manifest_path, "r", encoding="utf-8") as f:
@@ -36,10 +37,74 @@ if os.path.exists(manifest_path):
 
     if "<uses-permission" not in content:
         content = content.replace("<application", permissions + "\n    <application")
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        print("Updated AndroidManifest.xml with all permissions.")
-    else:
-        print("Permissions already present in AndroidManifest.xml.")
+    
+    # Add usesCleartextTraffic and hardwareAccelerated to application tag if missing
+    if 'android:usesCleartextTraffic="true"' not in content:
+        content = content.replace('<application', '<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"')
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("Updated AndroidManifest.xml with permissions & cleartext traffic settings.")
+
+# 2. Update android/app/build.gradle
+gradle_path = "android/app/build.gradle"
+if os.path.exists(gradle_path):
+    with open(gradle_path, "r", encoding="utf-8") as f:
+        g_content = f.read()
+
+    # Enable multidex and adjust compileSdk / minSdk
+    if "multiDexEnabled" not in g_content:
+        g_content = g_content.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true")
+    
+    with open(gradle_path, "w", encoding="utf-8") as f:
+        f.write(g_content)
+    print("Updated android/app/build.gradle with multiDex.")
+
+# 3. Ensure pubspec.yaml has all dependencies & asset configuration
+pubspec_path = "pubspec.yaml"
+pubspec_content = """name: sahayasewa_mobile
+description: "සහය සේවා (Sahaya Seva) - 24/7 Mobile Disaster & Community Relief Network"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_foreground_task: ^9.2.2
+  geolocator: ^13.0.2
+  permission_handler: ^11.3.1
+  url_launcher: ^6.3.0
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/web/
+    - assets/web/index.html
+"""
+
+with open(pubspec_path, "w", encoding="utf-8") as f:
+    f.write(pubspec_content)
+print("Ensured pubspec.yaml with assets/web/ bindings.")
+
+# 4. Mirror assets/web into android/app/src/main/assets/web if directory exists
+android_assets_dir = "android/app/src/main/assets/web"
+if os.path.exists("android/app/src/main"):
+    os.makedirs(android_assets_dir, exist_ok=True)
+    if os.path.exists("assets/web/index.html"):
+        with open("assets/web/index.html", "r", encoding="utf-8") as src_f:
+            web_html = src_f.read()
+        with open(os.path.join(android_assets_dir, "index.html"), "w", encoding="utf-8") as dst_f:
+            dst_f.write(web_html)
+        print("Mirrored assets/web/index.html to android/app/src/main/assets/web/index.html")
 
 print("Preparation complete.")
