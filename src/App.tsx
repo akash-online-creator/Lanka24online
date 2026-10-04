@@ -19,13 +19,14 @@ import {
 import { DisasterRadar } from './components/DisasterRadar';
 import { LiveBulletin } from './components/LiveBulletin';
 import { EmergencyDirectory } from './components/EmergencyDirectory';
+import { MeshBeaconNetwork } from './components/MeshBeaconNetwork';
 import { RegistrationModal } from './components/RegistrationModal';
 import { CreateBulletinModal } from './components/CreateBulletinModal';
 import { SOSBeaconModal } from './components/SOSBeaconModal';
 import { BulletinPost, UserRegistration } from './types';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'bulletin' | 'radar' | 'directory'>('bulletin');
+  const [activeTab, setActiveTab] = useState<'all' | 'bulletin' | 'radar' | 'mesh' | 'directory'>('all');
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isCreateBulletinOpen, setIsCreateBulletinOpen] = useState(false);
   const [isSOSOpen, setIsSOSOpen] = useState(false);
@@ -157,28 +158,44 @@ export const App: React.FC = () => {
         {/* Zone 2: Navigation Tabs */}
         <nav className="hidden md:flex items-center gap-1 bg-slate-900/90 p-1 rounded-2xl border border-slate-800">
           <button
+            onClick={() => setActiveTab('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
+              activeTab === 'all' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🌟 සියල්ල (All)
+          </button>
+          <button
+            onClick={() => setActiveTab('mesh')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
+              activeTab === 'mesh' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            📡 Mesh අනතුරු ජාලය (Find Hub)
+          </button>
+          <button
             onClick={() => setActiveTab('bulletin')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
               activeTab === 'bulletin' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            📢 ආපදා දැන්වීම් පුවරුව
+            📢 ආපදා පුවරුව
           </button>
           <button
             onClick={() => setActiveTab('radar')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
               activeTab === 'radar' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            🛰️ 24/7 GPS Radar
+            🛰️ 24/7 Radar
           </button>
           <button
             onClick={() => setActiveTab('directory')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-sinhala transition-colors ${
               activeTab === 'directory' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            ☎️ හදිසි අංක (119/1990)
+            ☎️ 119/1990
           </button>
         </nav>
 
@@ -257,50 +274,58 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 24/7 GPS Radar Section */}
-        <DisasterRadar userLocation={userLocation} />
+        {/* Main Sections Based on Active Tab */}
+        {(activeTab === 'all' || activeTab === 'mesh') && (
+          <MeshBeaconNetwork />
+        )}
 
-        {/* Live Interactive Bulletin Board */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-white font-sinhala">
-                සජීවී ආපදා හා සහන දැන්වීම් පුවරුව (Live Bulletin)
-              </h3>
-              <p className="text-xs text-slate-400 font-sinhala">
-                තොරතුරු ලබා ගැනීමට සහ දුරකථන අංක බැලීමට කාඩ්පත මත ක්ලික් කරන්න (3D Flip View)
-              </p>
+        {(activeTab === 'all' || activeTab === 'radar') && (
+          <DisasterRadar userLocation={userLocation} />
+        )}
+
+        {(activeTab === 'all' || activeTab === 'bulletin') && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white font-sinhala">
+                  සජීවී ආපදා හා සහන දැන්වීම් පුවරුව (Live Bulletin)
+                </h3>
+                <p className="text-xs text-slate-400 font-sinhala">
+                  තොරතුරු ලබා ගැනීමට සහ දුරකථන අංක බැලීමට කාඩ්පත මත ක්ලික් කරන්න (3D Flip View)
+                </p>
+              </div>
             </div>
-          </div>
 
-          <LiveBulletin
-            posts={bulletinPosts}
-            onOpenCreateModal={() => setIsCreateBulletinOpen(true)}
-            onOpenRegistration={() => setIsRegistrationOpen(true)}
-          />
-        </section>
+            <LiveBulletin
+              posts={bulletinPosts}
+              onOpenCreateModal={() => setIsCreateBulletinOpen(true)}
+              onOpenRegistration={() => setIsRegistrationOpen(true)}
+            />
+          </section>
+        )}
 
-        {/* National Emergency Directory */}
-        <EmergencyDirectory />
+        {(activeTab === 'all' || activeTab === 'directory') && (
+          <EmergencyDirectory />
+        )}
 
       </main>
 
       {/* Mobile Fixed Bottom Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 grid grid-cols-4 items-center h-16 px-2">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 grid grid-cols-5 items-center h-16 px-1">
         <button
-          onClick={() => setActiveTab('bulletin')}
-          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'bulletin' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
+          onClick={() => setActiveTab('all')}
+          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'all' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
         >
-          <ListFilter className="w-5 h-5" />
-          <span className="text-[10px] font-sinhala mt-0.5">දැන්වීම්</span>
+          <ListFilter className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">ප්‍රධාන</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('radar')}
-          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'radar' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
+          onClick={() => setActiveTab('mesh')}
+          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'mesh' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
         >
-          <Radio className="w-5 h-5" />
-          <span className="text-[10px] font-sinhala mt-0.5">24/7 Radar</span>
+          <Radio className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">Mesh ජාලය</span>
         </button>
 
         <button
@@ -310,15 +335,23 @@ export const App: React.FC = () => {
           <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white shadow-md">
             <AlertOctagon className="w-4 h-4" />
           </div>
-          <span className="text-[9px] font-sinhala font-bold text-red-400 mt-0.5">SOS</span>
+          <span className="text-[8px] font-sinhala font-bold text-red-400 mt-0.5">SOS</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('radar')}
+          className={`flex flex-col items-center justify-center py-1 ${activeTab === 'radar' ? 'text-red-500 font-bold' : 'text-slate-400'}`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">Radar</span>
         </button>
 
         <button
           onClick={() => setIsRegistrationOpen(true)}
           className="flex flex-col items-center justify-center py-1 text-slate-400 hover:text-white"
         >
-          <UserPlus className="w-5 h-5" />
-          <span className="text-[10px] font-sinhala mt-0.5">ලියාපදිංචිය</span>
+          <UserPlus className="w-4 h-4" />
+          <span className="text-[9px] font-sinhala mt-0.5">ලියාපදිංචිය</span>
         </button>
       </div>
 
