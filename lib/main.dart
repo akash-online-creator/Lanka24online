@@ -8,45 +8,58 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
-// Top-level entry point required for flutter_foreground_task 9.x background execution
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(SahayaForegroundTaskHandler());
 }
 
 class SahayaForegroundTaskHandler extends TaskHandler {
-  int _counter = 0;
-
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    debugPrint('Sahaya Sewa 24/7 Foreground Service started at: $timestamp (starter: $starter)');
+    debugPrint('🚨 24/7 Sahaya Sewa Silent Radar Service Started in Background');
   }
 
   @override
-  Future<void> onRepeatEvent(DateTime timestamp) async {
-    _counter++;
+  void onRepeatEvent(DateTime timestamp) async {
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 10),
-        ),
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
       );
-      debugPrint('24/7 Radar Silent GPS Sync #$_counter: ${position.latitude}, ${position.longitude}');
-
-      FlutterForegroundTask.updateService(
-        notificationTitle: '🚨 සහය සේවා 24/7 ආරක්ෂක සේවය සක්‍රීයයි',
-        notificationText: 'GPS ස්ථානය යාවත්කාලීනයි (${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}) - ආපදා නිරීක්ෂණය වේ',
-      );
+      FlutterForegroundTask.sendDataToMain({
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'accuracy': pos.accuracy,
+      });
     } catch (e) {
-      debugPrint('Background location check error: $e');
+      debugPrint('24/7 Background GPS scan notice: $e');
     }
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    debugPrint('Sahaya Sewa Foreground Service stopped (isTimeout: $isTimeout)');
+  Future<void> onDestroy(DateTime timestamp) async {
+    debugPrint('Sahaya Sewa Foreground Service stopped');
   }
+
+  @override
+  void onReceiveData(Object data) {
+    debugPrint('Foreground Service received message: $data');
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == 'open_app') {
+      FlutterForegroundTask.launchApp();
+    }
+  }
+
+  @override
+  void onNotificationPressed() {
+    FlutterForegroundTask.launchApp();
+  }
+
+  @override
+  void onNotificationDismissed() {}
 }
 
 void main() {
@@ -60,16 +73,10 @@ class SahayaSewaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'සහය සේවා (Sahaya Seva)',
+      title: 'සහය සේවා',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF020617),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFDC2626),
-          secondary: Color(0xFFF59E0B),
-          surface: Color(0xFF0F172A),
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007A4B)),
         useMaterial3: true,
       ),
       home: const MainAppScreen(),
@@ -84,39 +91,120 @@ class MainAppScreen extends StatefulWidget {
   State<MainAppScreen> createState() => _MainAppScreenState();
 }
 
-class _MainAppScreenState extends State<MainAppScreen> {
-  late final WebViewController _webViewController;
+class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
+  WebViewController? _webViewController;
   bool _isLoading = true;
-  String? _errorMessage;
+  StreamSubscription<Position>? _positionSubscription;
+  double? _lastLat;
+  double? _lastLng;
+
+  // Mandatory Permission States
+  bool _isCheckingPermissions = true;
+  bool _hasRequiredPermissions = false;
+  bool _isLocationGranted = false;
+  bool _isNotificationGranted = false;
+  bool _isGpsHardwareEnabled = true;
+  bool _isPermanentlyDenied = false;
 
   @override
   void initState() {
     super.initState();
-    _initForegroundTask();
-    _initWebView();
-    _requestAllMobilePermissions();
+    WidgetsBinding.instance.addObserver(this);
+    _checkCurrentPermissions();
   }
 
-  Future<void> _requestAllMobilePermissions() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _positionSubscription?.cancel();
+    FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_hasRequiredPermissions) {
+      _checkCurrentPermissions();
+    }
+  }
+
+  Future<void> _checkCurrentPermissions() async {
     try {
-      // Request permissions safely
-      await [
-        Permission.location,
-        Permission.notification,
-        Permission.bluetooth,
-      ].request();
+      final locStatus = await Permission.location.status;
+      final notifStatus = await Permission.notification.status;
+      final gpsEnabled = await Geolocator.isLocationServiceEnabled();
 
-      try {
-        if (await Permission.ignoreBatteryOptimizations.isDenied) {
-          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      final locGranted = locStatus.isGranted || locStatus.isLimited;
+      final notifGranted = notifStatus.isGranted;
+      final permanentlyDenied = locStatus.isPermanentlyDenied || notifStatus.isPermanentlyDenied;
+
+      final allGranted = locGranted && notifGranted && gpsEnabled;
+
+      if (mounted) {
+        setState(() {
+          _isLocationGranted = locGranted;
+          _isNotificationGranted = notifGranted;
+          _isGpsHardwareEnabled = gpsEnabled;
+          _isPermanentlyDenied = permanentlyDenied;
+          _hasRequiredPermissions = allGranted;
+          _isCheckingPermissions = false;
+        });
+
+        if (allGranted && _webViewController == null) {
+          _initializeActiveApp();
         }
-      } catch (be) {
-        debugPrint('Battery optimization note: $be');
       }
-
-      _startForegroundService();
     } catch (e) {
-      debugPrint('Error requesting permissions: $e');
+      debugPrint('Permission verification notice: $e');
+      if (mounted) {
+        setState(() => _isCheckingPermissions = false);
+      }
+    }
+  }
+
+  Future<void> _requestMandatoryPermissions() async {
+    // 1. If device GPS toggle is turned off, guide to device location settings
+    final gpsEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!gpsEnabled) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+
+    // 2. Request Location Permission
+    final locStatus = await Permission.location.request();
+    if (locStatus.isGranted) {
+      try {
+        await Permission.locationAlways.request();
+      } catch (_) {}
+    }
+
+    // 3. Request Notification Permission
+    await Permission.notification.request();
+
+    // 4. Request Battery Optimization Exemption for 24/7 radar
+    try {
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+    } catch (_) {}
+
+    await _checkCurrentPermissions();
+  }
+
+  void _initializeActiveApp() {
+    _initWebview();
+    _initForegroundTask();
+    _startSilentBackgroundRadar();
+  }
+
+  void _onReceiveTaskData(Object data) {
+    if (data is Map) {
+      final lat = (data['lat'] as num?)?.toDouble();
+      final lng = (data['lng'] as num?)?.toDouble();
+      final acc = (data['accuracy'] as num?)?.toDouble() ?? 10.0;
+      if (lat != null && lng != null) {
+        _injectLocationIntoWebView(lat, lng, acc);
+      }
     }
   }
 
@@ -125,189 +213,482 @@ class _MainAppScreenState extends State<MainAppScreen> {
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'sahaya_24x7_radar',
         channelName: 'සහය සේවා 24/7 ආරක්ෂක සේවය',
-        channelDescription: 'හදිසි ආපදා හා අනතුරු ඇඟවීම් පසුබිමින් 24/7 නිරීක්ෂණය කරන සේවාව',
-        channelImportance: NotificationChannelImportance.HIGH,
-        priority: NotificationPriority.HIGH,
+        channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ළඟම පිහිටි සේවාවන් පැය 24 පුරා අධීක්ෂණය කරයි.',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        iconData: const NotificationIconData(
+          resType: ResourceType.mipmap,
+          resPrefix: ResourcePrefix.ic,
+          name: 'launcher',
+        ),
+        buttons: [
+          const NotificationButton(id: 'open_app', title: 'විවෘත කරන්න'),
+        ],
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(15000),
+        eventAction: ForegroundTaskEventAction.repeat(15000), // Poll every 15 seconds
         autoRunOnBoot: true,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
         allowWifiLock: true,
       ),
     );
+
+    FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
   }
 
-  Future<void> _startForegroundService() async {
-    try {
-      if (await FlutterForegroundTask.isRunningService) {
-        return;
-      }
-      await FlutterForegroundTask.startService(
-        serviceId: 256,
-        notificationTitle: '🚨 සහය සේවා 24/7 ආරක්ෂක සේවය සක්‍රීයයි',
-        notificationText: 'ආපදා හා හදිසි අනතුරු ඇඟවීම් පසුබිමින් නිරීක්ෂණය වේ',
-        callback: startCallback,
-      );
-    } catch (e) {
-      debugPrint('Error starting foreground service: $e');
-    }
-  }
-
-  void _initWebView() {
-    _webViewController = WebViewController()
+  void _initWebview() async {
+    final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF020617))
-      ..setOnConsoleMessage((JavaScriptConsoleMessage msg) {
-        debugPrint('[JS Console] ${msg.message}');
-      })
+      ..setBackgroundColor(const Color(0xFF07130C))
+      ..addJavaScriptChannel(
+        'SahayaGpsChannel',
+        onMessageReceived: (JavaScriptMessage message) async {
+          if (message.message == 'GET_GPS' || message.message == 'FORCE_REFRESH') {
+            try {
+              Position pos = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 10),
+              );
+              _injectLocationIntoWebView(pos.latitude, pos.longitude, pos.accuracy);
+            } catch (e) {
+              debugPrint('Manual GPS refresh error: $e');
+            }
+          }
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) async {
+            final String url = request.url;
+            final Uri? uri = Uri.tryParse(url);
+            
+            if (uri == null) return NavigationDecision.navigate;
+
+            // Handle WhatsApp, Telephone, SMS, Mail, and Intent links externally
+            if (uri.scheme == 'whatsapp' ||
+                uri.scheme == 'tel' ||
+                uri.scheme == 'sms' ||
+                uri.scheme == 'mailto' ||
+                uri.scheme == 'intent' ||
+                uri.host.contains('wa.me') ||
+                uri.host.contains('api.whatsapp.com') ||
+                uri.host.contains('whatsapp.com')) {
+              try {
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+                }
+              } catch (e) {
+                debugPrint('Could not launch external URL: $url ($e)');
+                if (uri.host.contains('wa.me') || uri.host.contains('whatsapp.com')) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+              return NavigationDecision.prevent;
+            }
+
+            return NavigationDecision.navigate;
+          },
           onPageStarted: (String url) {
-            debugPrint('WebView started loading: $url');
+            if (mounted) setState(() => _isLoading = true);
           },
           onPageFinished: (String url) {
-            debugPrint('WebView finished loading: $url');
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-                _errorMessage = null;
-              });
+            if (mounted) setState(() => _isLoading = false);
+            if (_lastLat != null && _lastLng != null) {
+              _injectLocationIntoWebView(_lastLat!, _lastLng!, 10.0);
             }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint('Web resource note: ${error.errorCode} - ${error.description}');
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            if (request.url.startsWith('tel:') || request.url.startsWith('mailto:')) {
-              launchUrl(Uri.parse(request.url));
-              return NavigationDecision.prevent;
+            debugPrint('WebView Error: ${error.description}');
+            if (error.isForMainFrame ?? true) {
+              _webViewController?.loadFlutterAsset('assets/web/index.html');
             }
-            return NavigationDecision.navigate;
           },
         ),
       );
 
-    if (_webViewController.platform is AndroidWebViewController) {
-      final androidController = _webViewController.platform as AndroidWebViewController;
+    if (controller.platform is AndroidWebViewController) {
+      final androidController = controller.platform as AndroidWebViewController;
+      AndroidWebViewController.enableDebugging(false);
       androidController.setMediaPlaybackRequiresUserGesture(false);
       androidController.setGeolocationPermissionsPromptCallbacks(
-        onShowPrompt: (request) async => const GeolocationPermissionsResponse(
-          allow: true,
-          retain: true,
-        ),
+        onShowPrompt: (request) async {
+          return const GeolocationPermissionsResponse(allow: true, retain: true);
+        },
       );
       androidController.setOnPlatformPermissionRequest((request) {
         request.grant();
       });
     }
 
-    Timer(const Duration(milliseconds: 2000), () {
-      if (mounted && _isLoading) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    setState(() {
+      _webViewController = controller;
     });
 
-    _loadWebApp();
+    try {
+      await controller.loadRequest(Uri.parse('https://supporservice.online/'));
+    } catch (e) {
+      debugPrint('Primary online URL loading notice: $e');
+      try {
+        await controller.loadFlutterAsset('assets/web/index.html');
+      } catch (err) {
+        debugPrint('Fallback loading error: $err');
+      }
+    }
   }
 
-  Future<void> _loadWebApp() async {
+  void _injectLocationIntoWebView(double lat, double lng, double accuracy) {
+    _lastLat = lat;
+    _lastLng = lng;
+    if (_webViewController == null) return;
     try {
-      // Primary: load raw HTML string with secure localhost baseUrl for full DOM Storage support
-      final htmlContent = await rootBundle.loadString('assets/web/index.html');
-      await _webViewController.loadHtmlString(htmlContent, baseUrl: 'https://localhost/');
-      debugPrint('Loaded web bundle via loadHtmlString');
+      _webViewController!.runJavaScript("""
+        (function() {
+          var payload = { lat: $lat, lng: $lng, accuracy: $accuracy };
+          window.__sahaya_native_gps = payload;
+          window.dispatchEvent(new CustomEvent('sahaya_native_gps', { detail: payload }));
+          window.postMessage({ type: 'SAHAYA_NATIVE_GPS', lat: $lat, lng: $lng, accuracy: $accuracy }, '*');
+        })();
+      """);
     } catch (e) {
-      debugPrint('loadHtmlString note: $e. Falling back to loadFlutterAsset...');
-      try {
-        await _webViewController.loadFlutterAsset('assets/web/index.html');
-      } catch (fallbackError) {
-        debugPrint('loadFlutterAsset error: $fallbackError');
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'යෙදුම පූරණය කිරීමේදී ගැටලුවක් ඇතිවිය: $fallbackError';
-            _isLoading = false;
-          });
-        }
+      debugPrint('JS location bridge error: $e');
+    }
+  }
+
+  Future<void> _startSilentBackgroundRadar() async {
+    try {
+      if (!await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.startService(
+          serviceId: 256,
+          notificationTitle: '🚨 සහය සේවා 24/7 ආරක්ෂක සේවය සක්‍රීයයි',
+          notificationText: 'ආපදා හා හදිසි අනතුරු ඇඟවීම් පසුබිමින් නිරීක්ෂණය වේ',
+          callback: startCallback,
+        );
       }
+
+      try {
+        Position initialPos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+        _injectLocationIntoWebView(initialPos.latitude, initialPos.longitude, initialPos.accuracy);
+      } catch (e) {
+        debugPrint('Initial silent GPS error: $e');
+      }
+
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      ).listen((Position position) {
+        _injectLocationIntoWebView(position.latitude, position.longitude, position.accuracy);
+      }, onError: (e) {
+        debugPrint('Silent location stream notice: $e');
+      });
+    } catch (e) {
+      debugPrint('Silent background radar error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        top: false,
-        child: Stack(
-          children: [
-            WebViewWidget(controller: _webViewController),
-            if (_isLoading)
-              IgnorePointer(
-                child: Container(
-                  color: const Color(0xFF020617),
+    if (_isCheckingPermissions) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF07130C),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CircularProgressIndicator(color: Color(0xFF007A4B)),
+              SizedBox(height: 20),
+              Text(
+                'ආරක්ෂක අවසර පරීක්ෂා වෙමින් පවතී...',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // MANDATORY PERMISSION GATE SCREEN
+    if (!_hasRequiredPermissions) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF07130C),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Spacer(flex: 1),
+                
+                // Shield / Logo Icon
+                Center(
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      gradient: const RadialGradient(
+                        colors: [Color(0xFF007A4B), Color(0xFF032616)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF007A4B).withOpacity(0.4),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.security_rounded,
+                      size: 46,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Title
+                const Text(
+                  'සහය සේවා - Sahaya Sewa',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF00A86B),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'ආරක්ෂක අවසර ලබාදීම අනිවාර්යයි',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'හදිසි ආපදා අනතුරු ඇඟවීම් (Red Alerts) සහ ආසන්නතම හදිසි සේවාවන් ඔබ වෙත නිවැරදිව ලබා දීමට පහත අවසර සක්‍රීය කිරීම අනිවාර්ය වේ.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Card 1: GPS Location Permission
+                _buildPermissionCard(
+                  icon: Icons.location_on_rounded,
+                  title: 'GPS ස්ථානගත කිරීම (Location)',
+                  desc: 'ඔබ සිටින ස්ථානයට අදාළ හදිසි ආපදා කලාප හඳුනා ගැනීමට සහ ආසන්නතම සේවා සෙවීමට.',
+                  isGranted: _isLocationGranted && _isGpsHardwareEnabled,
+                ),
+                const SizedBox(height: 14),
+
+                // Card 2: Notifications Permission
+                _buildPermissionCard(
+                  icon: Icons.notifications_active_rounded,
+                  title: 'ක්ෂණික අනතුරු ඇඟවීම් (Notifications)',
+                  desc: 'අවට ආපදාවකදී හෝ හදිසි අවස්ථාවකදී සයිරන් සහ ආරක්ෂක දැනුම්දීම් ලැබීමට.',
+                  isGranted: _isNotificationGranted,
+                ),
+
+                const Spacer(flex: 2),
+
+                // Action Button
+                if (!_isGpsHardwareEnabled)
+                  ElevatedButton.icon(
+                    onPressed: () async => await Geolocator.openLocationSettings(),
+                    icon: const Icon(Icons.gps_fixed, color: Colors.white),
+                    label: const Text(
+                      'දුරකථනයේ GPS (Location) On කරන්න',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber[800],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                    ),
+                  )
+                else if (_isPermanentlyDenied)
+                  ElevatedButton.icon(
+                    onPressed: () async => await openAppSettings(),
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    label: const Text(
+                      'Settings වෙත ගොස් අවසර සක්‍රීය කරන්න',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF007A4B),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _requestMandatoryPermissions,
+                    icon: const Icon(Icons.verified_user_rounded, color: Colors.white),
+                    label: const Text(
+                      'අවසර ලබා දී ඉදිරියට යන්න',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF007A4B),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                    ),
+                  ),
+
+                const SizedBox(height: 16),
+                const Center(
+                  child: Text(
+                    '🔒 ඔබගේ පුද්ගලික තොරතුරු සහ ස්ථානය ආරක්ෂිතව තබා ගැනේ.',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // MAIN APP WEBVIEW
+    return WithForegroundTask(
+      child: Scaffold(
+        backgroundColor: const Color(0xFF07130C),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              if (_webViewController != null)
+                WebViewWidget(controller: _webViewController!),
+              if (_isLoading)
+                Container(
+                  color: const Color(0xFF07130C),
                   child: const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(
-                          color: Color(0xFFDC2626),
-                        ),
+                        CircularProgressIndicator(color: Color(0xFF007A4B)),
                         SizedBox(height: 16),
                         Text(
                           'සහය සේවා පූරණය වෙමින් පවතී...',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ),
-            if (_errorMessage != null)
-              Container(
-                color: const Color(0xFF020617),
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _isLoading = true;
-                            _errorMessage = null;
-                          });
-                          _loadWebApp();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFDC2626),
-                        ),
-                        child: const Text('නැවත උත්සාහ කරන්න', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _buildPermissionCard({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required bool isGranted,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF102619),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isGranted ? const Color(0xFF00A86B).withOpacity(0.6) : Colors.white12,
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isGranted ? const Color(0xFF007A4B).withOpacity(0.25) : Colors.white10,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: isGranted ? const Color(0xFF00E676) : Colors.white70,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isGranted
+                            ? const Color(0xFF00E676).withOpacity(0.15)
+                            : Colors.amber.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        isGranted ? '✓ සක්‍රීයයි' : 'අනිවාර්යයි',
+                        style: TextStyle(
+                          color: isGranted ? const Color(0xFF00E676) : Colors.amber[300],
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  desc,
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+
