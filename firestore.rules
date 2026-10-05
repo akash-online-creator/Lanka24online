@@ -1,106 +1,185 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global helper functions
+
+    // ==============================================================
+    // 🛡️ SECURITY HELPER FUNCTIONS
+    // ==============================================================
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Help posts and community notices
-    match /help_posts/{postId} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if true;
-
-      // Realtime subcollection for chat messages
-      match /chat_messages/{messageId} {
-        allow read: if true;
-        allow create: if true;
-        allow update, delete: if true;
-      }
-    }
-
-    // Community marketplace items
-    match /marketplace_items/{itemId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
-    // Registered user profiles
+    // ==============================================================
+    // 👤 REGISTERED USER PROFILES (/users/{userId})
+    // ==============================================================
     match /users/{userId} {
+      // 1. Reading profiles allowed for user discovery & helper directory
       allow read: if true;
-      allow create, update, delete: if true;
+
+      // 2. New User Registration:
+      // Prevent privilege escalation (cannot register directly as 'admin' or pre-'approved')
+      allow create: if request.resource.data.role != 'admin'
+                    && request.resource.data.status != 'approved';
+
+      // 3. User Updates:
+      // - Prevent normal users from escalating themselves to admin role
+      // - Prevent changing immutable identity (NIC number & User ID)
+      allow update: if (resource.data.role == 'admin' || request.resource.data.role != 'admin')
+                    && (!('nicNumber' in resource.data) || request.resource.data.nicNumber == resource.data.nicNumber)
+                    && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId);
+
+      // 4. Deletion Strictly Prohibited:
+      // Prevent malicious or unauthorized deletion of user accounts
+      allow delete: if false;
     }
 
-    // User reviews & ratings
-    match /reviews/{reviewId} {
+    // ==============================================================
+    // ⚙️ SYSTEM SETTINGS (/system_settings/{settingId})
+    // Protect emergency siren, disaster presets & global configuration
+    // ==============================================================
+    match /system_settings/{settingId} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow write: if false; // System configuration can only be altered by system backend
     }
 
-    // Bookmarked/saved posts per user
-    match /saved_posts/{saveId} {
-      allow read, write: if true;
-    }
-
-    // Red Alerts (රතු එළිය) - Real-time disaster broadcasts & community emergency updates
+    // ==============================================================
+    // 🚨 RED ALERTS (රතු එළිය) (/red_alerts/{alertId})
+    // Real-time disaster broadcasts & community emergency updates
+    // ==============================================================
     match /red_alerts/{alertId} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow create, update: if true;
+      allow delete: if false; // Prohibit deletion of historical emergency alerts
 
-      // Subcollections if any
       match /{allSubcollections=**} {
         allow read, write: if true;
       }
     }
 
-    // System Settings - Global siren and emergency alert configurations
-    match /system_settings/{settingId} {
+    // ==============================================================
+    // 🤝 HELP POSTS & COMMUNITY NOTICES (/help_posts/{postId})
+    // ==============================================================
+    match /help_posts/{postId} {
       allow read: if true;
-      allow write: if true;
+      allow create, update: if true;
+      allow delete: if false; // Prohibit destructive wiping of help requests
+
+      // Realtime subcollection for chat messages
+      match /chat_messages/{messageId} {
+        allow read, create, update: if true;
+        allow delete: if false;
+      }
+
+      match /{subcollection=**} {
+        allow read, create, update: if true;
+        allow delete: if false;
+      }
     }
 
-    // Transparent Aid Ledger Collections
+    // ==============================================================
+    // 📦 POSTS (Standard Help Requests Collection)
+    // ==============================================================
+    match /posts/{postId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+
+      match /{subcollection=**} {
+        allow read, create, update: if true;
+        allow delete: if false;
+      }
+    }
+
+    // ==============================================================
+    // 🛒 COMMUNITY MARKETPLACE (/marketplace_items/{itemId})
+    // ==============================================================
+    match /marketplace_items/{itemId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // ==============================================================
+    // ⭐ USER REVIEWS & RATINGS (/reviews/{reviewId})
+    // ==============================================================
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // ==============================================================
+    // 🔖 BOOKMARKED / SAVED POSTS (/saved_posts/{saveId})
+    // ==============================================================
+    match /saved_posts/{saveId} {
+      allow read, create, update: if true;
+      allow delete: if true; // Users can remove their own saved bookmarks
+    }
+
+    // ==============================================================
+    // 📜 TRANSPARENT AID LEDGER COLLECTIONS
+    // ==============================================================
     match /aid_recipient_centers/{centerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
     match /aid_deliveries/{deliveryId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
     match /aid_broadcasts/{broadcastId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // Barter & Exchange Collections
+    // ==============================================================
+    // 🔄 BARTER & EXCHANGE COLLECTIONS
+    // ==============================================================
     match /barter_items/{itemId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
     match /barter_proposals/{proposalId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // QR Code Payments & Transactions
+    // ==============================================================
+    // 💳 QR CODE PAYMENTS & TRANSACTIONS
+    // ==============================================================
     match /qr_transactions/{txId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // Live Online Presence Heartbeat
+    // ==============================================================
+    // 🟢 LIVE ONLINE PRESENCE & GPS TRACKING SESSIONS
+    // ==============================================================
     match /online_users/{sessionId} {
       allow read, write: if true;
     }
 
-    // SOS Live GPS Tracking Sessions (හදිසි සජීවී ස්ථාන විකාශන)
     match /sos_live_sessions/{sessionId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
 
-    // Default fallback
+    // ==============================================================
+    // 🔒 DEFAULT FALLBACK (Protect any unlisted collections)
+    // ==============================================================
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false; // Block writes to undefined collections by default
     }
   }
 }
