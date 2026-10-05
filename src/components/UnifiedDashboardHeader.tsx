@@ -16,21 +16,17 @@ import {
   MapPin, 
   Crosshair, 
   Radio, 
-  HeartHandshake, 
   Sparkles, 
-  HelpCircle, 
   LogOut, 
   Sun, 
   Moon, 
   Shield, 
   Loader2, 
   Check,
-  ChevronDown,
   Coins,
   Bell,
   MessageSquare,
   QrCode,
-  ArrowRightLeft,
   Volume2,
   Zap,
   Settings
@@ -74,20 +70,18 @@ interface UnifiedDashboardHeaderProps {
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   user,
   currentLocation,
-  availableLocations,
+  availableLocations: _availableLocations,
   onSelectLocation,
   language,
   setLanguage,
   theme,
   toggleTheme,
-  onNavigateToIssues,
   onOpenSettings,
   onOpenWallet,
   onOpenNotifications,
   onOpenPickMeAlertSettings,
   onOpenInbox,
   inboxCount,
-  onOpenAssistant,
   onLogout,
   activeRoleView,
   setActiveRoleView,
@@ -96,7 +90,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   autoLoadedNotice = null,
   onOpenRedAlert,
   activeRedAlertsCount = 0,
-  onOpenBarterExchange,
   onOpenQrPay,
   onOpenShortcutHub,
   onOpenInstallApp,
@@ -109,9 +102,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
+
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+  const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
     const updateUnread = () => {
@@ -131,9 +127,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const creditBalance = user ? getUserCreditBalance(user) : 0;
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
   const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
-
-  const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
-  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   const getLocationName = (loc: LocationOption) => {
     if (language === 'si') return loc.nameSi;
@@ -225,19 +218,14 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
 
   return (
     <div className="relative z-20 mb-3 sm:mb-4 space-y-2">
-      {/* 
-        LAYER 1: Header Bar (App Logo + Central Quick Utilities + Emergency Red Alert & User Account / Logout Zone)
-      */}
+      {/* LAYER 1: Header Bar */}
       <div className="bg-white dark:bg-[#07150d] border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md transition-all duration-300">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3">
           
-          {/* Top Bar Left: App Brand + Settings Quick Button + Language Switcher */}
+          {/* Top Bar Left: App Brand & Language */}
           <div className="flex items-center justify-between lg:justify-start gap-2 sm:gap-2.5 flex-wrap shrink-0">
-            {/* 1. App Logo & Brand */}
             <div 
-              onClick={() => {
-                if (onNavigate) onNavigate('dashboard');
-              }}
+              onClick={() => onNavigate?.('dashboard')}
               className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
               title="සහය සේවා - මුල් පිටුව"
             >
@@ -257,7 +245,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </div>
             </div>
 
-            {/* ⚙️ Dedicated Top Bar Settings Button (Moved from bottom switcher to top bar!) */}
+            {/* Settings Quick Button */}
             {onOpenSettings && (
               <button
                 type="button"
@@ -291,15 +279,14 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             </div>
           </div>
 
-          {/* Center Utilities Group: Clean, organized quick tools */}
+          {/* Center Utilities Group (QR Pay Button Removed Here) */}
           <div className="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
-            {/* 🚨 Red Alert Button */}
             {onOpenRedAlert && (
               <button
                 type="button"
                 onClick={onOpenRedAlert}
                 className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer border border-red-300/80 shrink-0"
-                title="රතු එළිය (Red Alert) - ක්ෂණික හදිසි ආපදා දැනුම්දීම"
+                title="රතු එළිය (Red Alert)"
               >
                 <span className="text-xs animate-pulse">🚨</span>
                 <span className="font-black tracking-wide">රතු එළිය</span>
@@ -311,7 +298,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* 📲 Install / Download App Button */}
             {onOpenInstallApp && (
               <button
                 type="button"
@@ -327,7 +313,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   }
                 }}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={language === 'en' ? 'Download Sahaya Sewa App' : language === 'ta' ? 'செயலியை நிறுவுக' : 'සහය සේවා App එක Phone එකට Download කරගන්න'}
+                title={getLangText('App එක Download කරගන්න', 'Download Sahaya Sewa App', 'செயலியை நிறுவுக')}
               >
                 <span className="text-xs">📲</span>
                 <span className="font-black text-xs">
@@ -336,13 +322,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* Live Notifications Bell */}
             {onOpenNotifications && (
               <button
                 type="button"
                 onClick={onOpenNotifications}
                 className="relative p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
-                title="සජීවී දැනුම්දීම් (Live Notifications)"
+                title="සජීවී දැනුම්දීම්"
               >
                 <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 {unreadNotifCount > 0 && (
@@ -353,25 +338,23 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* 24/7 Background Sync & Audio Alerts Control */}
             {onOpenPickMeAlertSettings && (
               <button
                 type="button"
                 onClick={onOpenPickMeAlertSettings}
                 className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
-                title={language === 'en' ? '24/7 Audio Alert Settings' : language === 'ta' ? '24/7 ஒலி அமைப்புகள்' : '24/7 ශ්‍රව්‍ය පාලනය'}
+                title={getLangText('24/7 ශ්‍රව්‍ය පාලනය', '24/7 Audio Alert Settings', '24/7 ஒலி அமைப்புகள்')}
               >
                 <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </button>
             )}
 
-            {/* Message Inbox Button */}
             {onOpenInbox && (
               <button
                 type="button"
                 onClick={onOpenInbox}
                 className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title={language === 'en' ? 'Message Inbox & Chats' : language === 'ta' ? 'செய்திகள் & உரையாடல்கள்' : 'පණිවිඩ (Messages)'}
+                title={getLangText('පණිවිඩ (Messages)', 'Message Inbox & Chats', 'செய்திகள் & உரையாடல்கள்')}
               >
                 <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span className="hidden md:inline text-xs font-bold">
@@ -385,13 +368,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* ✨ Quick Multi-Category Registration Hub Button */}
             {onOpenQuickRegisterHub && (
               <button
                 type="button"
                 onClick={onOpenQuickRegisterHub}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={getLangText('ලියාපදිංචි වන්න (පරිශීලක, වෘත්තීය, ව්‍යාපාර, අලෙවිසැල්)', 'Register (User, Professional, Business, Shop)', 'பதிவு செய்க')}
+                title={getLangText('ලියාපදිංචි වන්න', 'Register', 'பதிவு செய்க')}
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                 <span className="font-black text-xs">
@@ -400,51 +382,35 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {/* 📱 Web App QR Code Direct Trigger */}
             {onOpenAppQr && (
               <button
                 type="button"
                 onClick={onOpenAppQr}
                 className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title={getLangText('📱 Web QR Code එක පෙන්වන්න (Scan to Open)', 'Show Web QR Code', 'Web QR குறியீடு')}
+                title="Web QR Code"
               >
                 <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="hidden sm:inline font-extrabold text-xs">QR Code</span>
               </button>
             )}
 
-            {/* Sahaya Pay QR Direct Button */}
-            {onOpenQrPay && (
-              <button
-                type="button"
-                onClick={() => onOpenQrPay('scan_pay')}
-                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-emerald-300 dark:border-[#1c402b] flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
-                title={language === 'en' ? 'QR Pay' : language === 'ta' ? 'QR கட்டணம்' : 'QR Pay'}
-              >
-                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden md:inline font-black text-xs">QR Pay</span>
-              </button>
-            )}
-
-            {/* ⚡ Sahaya Quick Hub Shortcut Button */}
             {onOpenShortcutHub && (
               <button
                 type="button"
                 onClick={onOpenShortcutHub}
                 className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/80 text-amber-900 dark:text-amber-300 flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
-                title={language === 'en' ? 'Quick Hub' : language === 'ta' ? 'குயிக் ஹப்' : 'Quick Hub'}
+                title="Quick Hub"
               >
                 <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
                 <span className="hidden md:inline font-black text-xs">Quick Hub</span>
               </button>
             )}
 
-            {/* Dark / Light Theme Toggle */}
             <button
               type="button"
               onClick={toggleTheme}
               className="p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
-              title="තේමාව මාරු කරන්න (Light / Dark Mode)"
+              title="Theme Toggle"
             >
               {theme === 'dark' ? (
                 <Sun className="w-4 h-4 text-amber-400 fill-amber-400" />
@@ -453,7 +419,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               )}
             </button>
 
-            {/* Admin Switcher (If Admin user) */}
             {checkIsAdmin(user) && onNavigate && (
               <button
                 type="button"
@@ -468,7 +433,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                     ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
                     : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/70'
                 }`}
-                title={language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරය'}
+                title="Admin Mode"
               >
                 <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 <span className="font-extrabold text-xs">Admin</span>
@@ -476,15 +441,14 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </div>
 
-          {/* Right Action & Account Zone: User Profile + 🚪 Exit Button (Always within viewport!) */}
+          {/* Right Account & Exit Zone */}
           <div className="flex items-center justify-between lg:justify-end gap-2 sm:gap-2.5 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
-            {/* User Profile Card Trigger */}
             <div 
               onClick={onOpenSettings}
               className={`flex items-center gap-2 p-1 rounded-xl transition-all ${
                 onOpenSettings ? 'cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15' : ''
               }`}
-              title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම් (Profile Settings)', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
+              title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම්', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
             >
               <div className="text-right min-w-0">
                 <div className="flex items-center justify-end gap-1">
@@ -509,7 +473,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                       alt={user.name || 'User'} 
                       loading="lazy"
                       decoding="async"
-                      referrerPolicy="no-referrer"
                       className="w-full h-full object-cover" 
                     />
                   ) : (
@@ -520,27 +483,23 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </div>
             </div>
 
-            {/* 🚪 Safe Dedicated Exit / Logout Button - Guaranteed Visibility, Never Overflows */}
             {onLogout && (
               <button
                 type="button"
                 onClick={() => setIsLogoutConfirmOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 hover:scale-105 shrink-0 whitespace-nowrap"
-                title={getLangText('පද්ධතියෙන් ඉවත් වන්න (Logout)', 'Log out of system', 'கணக்கிலிருந்து வெளியேறு')}
+                title={getLangText('පද්ධතියෙන් ඉවත් වන්න', 'Log out', 'வெளியேறு')}
               >
                 <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியேறு')}</span>
+                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியේறு')}</span>
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* 
-        LAYER 2: Location & Wallet Bar (Dedicated, Clean Status Pill Bar)
-      */}
+      {/* LAYER 2: Location & Wallet Bar */}
       <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-sm backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-        {/* Left: Active Location with icon and Auto GPS badge */}
         <div className="flex items-start sm:items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0 bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
             <MapPin className="w-4 h-4 animate-bounce" />
@@ -566,22 +525,20 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               )}
             </div>
 
-            {/* Exact Location String */}
             <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 truncate mt-0.5">
               {getLocationName(currentLocation)}
             </p>
           </div>
         </div>
 
-        {/* Right Controls: Auto GPS Trigger & Wallet Balance */}
+        {/* Right Controls: Auto GPS Trigger, QR Pay, & Wallet Balance */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap pt-1 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-[#132a1d]">
-          {/* Auto GPS Trigger */}
           <button
             type="button"
             onClick={handleDirectAutoGps}
             disabled={isAutoTracking}
             className="px-3 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-60 bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white border-emerald-400/30"
-            title={getLangText('සජීවී Auto GPS මගින් ස්ථානය නැවුම් කරන්න', 'Refresh Location via Live Auto GPS', 'நேரலை GPS மூலம் இடத்தைப் புதுப்பி')}
+            title={getLangText('ස්ථානය නැවුම් කරන්න', 'Refresh Location', 'இடத்தைப் புதுப்பி')}
           >
             {isAutoTracking ? (
               <>
@@ -596,26 +553,25 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </button>
 
-          {/* QR Pay Button */}
+          {/* Location බාර් එකේ QR Pay බටන් එක එලෙසම පවතී */}
           {!isVisitor && onOpenQrPay && (
             <button
               type="button"
               onClick={() => onOpenQrPay('scan_pay')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/70 text-amber-900 dark:text-amber-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="QR Pay - කේතය ස්කෑන් කර හෝ පෙන්වා ගෙවීම් කරන්න"
+              title="QR Pay"
             >
               <QrCode className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span className="hidden sm:inline">QR Pay</span>
             </button>
           )}
 
-          {/* Credit Balance Interactive Button */}
           {!isVisitor && (
             <button
               type="button"
               onClick={onOpenWallet}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border border-amber-400/60 dark:border-amber-500/50 shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 group"
-              title={getLangText('ක්‍රෙඩිට් ගිණුම සහ ශේෂය (Click to Open Wallet)', 'Credit Wallet & Balance', 'கிரெடிட் கணக்கு & மீதி')}
+              title={getLangText('ක්‍රෙඩිට් ගිණුම සහ ශේෂය', 'Credit Wallet & Balance', 'கிரெடிட் கணக்கு & மீதி')}
             >
               <div className="w-5 h-5 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center font-black text-[10px] shadow-2xs group-hover:rotate-12 transition-transform shrink-0">
                 <Coins className="w-3 h-3 text-amber-950" />
@@ -641,7 +597,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         </div>
       )}
 
-      {/* GPS Permission & Direct Activation Guide Modal */}
+      {/* Modals */}
       <GpsPermissionModal
         isOpen={isGpsPermissionModalOpen}
         onClose={() => setIsGpsPermissionModalOpen(false)}
@@ -649,7 +605,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
         language={language}
       />
 
-      {/* 🚪 Safe Logout Confirmation Modal */}
       {isLogoutConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#07160e] border border-slate-200 dark:border-[#163625] rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4 animate-scaleUp">
@@ -687,7 +642,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 type="button"
                 onClick={() => {
                   setIsLogoutConfirmOpen(false);
-                  if (onLogout) onLogout();
+                  onLogout?.();
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
