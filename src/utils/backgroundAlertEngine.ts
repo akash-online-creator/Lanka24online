@@ -1,9 +1,11 @@
 // 🚨 24/7 Background Notification & Emergency Alert Engine for Sahaya Sewa
-// Operates 24/7 in background via Service Worker, Web Push, and Background Sync
+// Operates 24/7 in background via Capacitor Native Push, Service Worker, and Background Sync
 // Uses classic emergency siren for Red Alerts and pleasant gentle chimes for general notifications
 
 import { activateBackgroundWakeLock } from './notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from './sirenAudio';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 export type AlertKind = 'quick_service' | 'red_alert' | 'emergency_blood' | 'disaster_relief' | 'general';
 
@@ -136,6 +138,26 @@ function playGentleNotificationChime(vol: number) {
   }
 }
 
+// 📱 Initialize Capacitor Native Emergency Siren Channel (Respects Silent Mode)
+export async function initializeNativeSirenChannel() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await PushNotifications.createChannel({
+        id: 'rathuweliya_siren_channel',
+        name: 'රතුවෙලිය ආපදා අනතුරු ඇඟවීම (Rathuweliya Alerts)',
+        description: 'හදිසි ආපදා තත්ත්වයන් සඳහා වන අනතුරු ඇඟවීම්',
+        importance: 5, // High Importance
+        sound: 'siren', // Play sound if phone is in Ring mode
+        visibility: 1,  // Show on Lockscreen
+        vibration: true // Vibrate when phone is in Silent/Vibrate mode
+      });
+      console.log('✅ Native Rathuweliya Siren Channel Configured');
+    } catch (e) {
+      console.error('❌ Failed to create native siren channel:', e);
+    }
+  }
+}
+
 // 🚨 Main 24/7 Trigger Function
 export function triggerPickMeAlert(params: {
   kind: AlertKind;
@@ -173,35 +195,34 @@ export function triggerPickMeAlert(params: {
   // 1. Activate Background Wake Lock
   activateBackgroundWakeLock().catch(() => {});
 
-  // 2. Play Audio:
-  // For emergency Red Alerts -> play the classic original siren sound
-  // For normal alerts -> play single gentle chime (no annoying continuous loops)
+  // 2. Play Audio & Smart Vibration Handling
   if (params.kind === 'red_alert') {
     try {
       startEmergencySiren();
     } catch {}
+
+    // Emergency SOS Vibration Pattern (1000ms vibrate, 300ms pause...)
+    if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([1000, 300, 1000, 300, 1000, 300, 1500]);
+      } catch {}
+    }
   } else {
     playGentleNotificationChime(settings.volume);
-  }
-
-  // 3. Vibration
-  if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
-    try {
-      if (params.kind === 'red_alert') {
-        navigator.vibrate([600, 200, 600, 200, 900]);
-      } else {
+    if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
         navigator.vibrate([200, 100, 200]);
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
-  // 4. Auto dismiss banner after 12 seconds
+  // 3. Auto dismiss banner after 12 seconds
   if (autoDismissTimeout) clearTimeout(autoDismissTimeout);
   autoDismissTimeout = setTimeout(() => {
     stopPickMeAlert();
   }, 12000);
 
-  // 5. Document Title Notification
+  // 4. Document Title Notification
   if (typeof document !== 'undefined') {
     originalDocumentTitle = document.title;
     let isBlink = false;
@@ -214,7 +235,7 @@ export function triggerPickMeAlert(params: {
     }, 1000);
   }
 
-  // 6. Push System 24/7 OS Notification (works even when tab/screen is closed)
+  // 5. Push System 24/7 OS Notification (works even when tab/screen is closed)
   fireBackgroundPushNotification(params);
 
   return true;
@@ -231,11 +252,17 @@ async function fireBackgroundPushNotification(params: {
   targetModal?: string;
   targetPostId?: string;
 }) {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
-
   const fullBody = `${params.message}${params.locationName ? ` • 📍 ${params.locationName}` : ''}`;
   const tagId = `sahaya-24h-alert-${params.kind}-${Date.now()}`;
+
+  // Native Platform Push handled via FCM Server Channel Trigger
+  if (Capacitor.isNativePlatform()) {
+    return;
+  }
+
+  // Web Browser Push Trigger
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
 
   if ('serviceWorker' in navigator) {
     try {
@@ -246,7 +273,7 @@ async function fireBackgroundPushNotification(params: {
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: tagId,
-          vibrate: [300, 100, 300],
+          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [300, 100, 300],
           requireInteraction: params.kind === 'red_alert',
           data: {
             url: '/',
@@ -287,7 +314,7 @@ async function fireBackgroundPushNotification(params: {
   } catch {}
 }
 
-// ⏹️ Stop Siren & Banner
+// ⏹️️ Stop Siren & Banner
 export function stopPickMeAlert(): void {
   try {
     stopEmergencySiren();
