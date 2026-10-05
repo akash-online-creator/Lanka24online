@@ -12,7 +12,7 @@ workflows:
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
       - name: Build Web Bundle & Prepare Android
         script: |
-          npm ci
+          npm install --no-audit
           npm run build
           mkdir -p assets/web
           cp -r dist/* assets/web/

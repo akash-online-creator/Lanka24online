@@ -25,7 +25,7 @@ jobs:
       - name: Build Web Bundle from Repository Source Code
         run: |
           echo "Building production web bundle from repository source..."
-          npm ci
+          npm install --no-audit
           npm run build
           mkdir -p assets/web
           cp -r dist/* assets/web/
