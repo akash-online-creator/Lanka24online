@@ -10,14 +10,14 @@ import {
   CheckCircle2, 
   FileText, 
   User as UserIcon, 
-  Phone,
-  RotateCcw 
+  Phone
 } from 'lucide-react';
 import { RedAlertDisasterType, RedAlertItem, User, LocationOption } from '../types';
 import { DISASTER_TYPES, getDisasterConfig } from '../data/redAlertData';
 import { resolveExactLocation } from '../utils/geoUtils';
 import { createRedAlertInFirestore } from '../lib/firebase';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
+import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
 
 interface RedAlertCreateModalProps {
   isOpen: boolean;
@@ -34,7 +34,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   currentUser,
   currentLocation,
   onAlertCreated,
-  onUpdateUser,
 }) => {
   const [selectedDisaster, setSelectedDisaster] = useState<RedAlertDisasterType>('fire');
   const [customTitle, setCustomTitle] = useState('');
@@ -161,7 +160,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
           }
         } catch {
           setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
-        } finally {
+        } fontally {
           setIsScanningGps(false);
         }
       },
@@ -265,7 +264,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       // Firestore එකට Red Alert එක පළ කිරීම
       const docId = await createRedAlertInFirestore(newAlertData);
 
-      // Record this alert ID locally so that this browser doesn't alarm itself
+      // Record this alert ID locally so that this browser doesn't alarm itself again unnecessarily
       try {
         const rawMyAlerts = localStorage.getItem('sahaya_my_created_alerts');
         const myAlerts = rawMyAlerts ? JSON.parse(rawMyAlerts) : [];
@@ -281,6 +280,17 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         ...newAlertData,
         id: docId,
       };
+
+      // 🚨 Trigger local feedback siren immediately upon successful creation
+      triggerPickMeAlert({
+        kind: 'red_alert',
+        title: `🚨 ${titleSi}`,
+        message: description.trim() || 'හදිසි ආපදා තත්ත්වයක් වාර්තා කර ඇත.',
+        locationName: locationName.trim(),
+        targetModal: 'red_alert',
+        targetPostId: docId,
+        forceRingtone: true,
+      });
 
       setSubmitSuccess(true);
       if (onAlertCreated) {
