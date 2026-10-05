@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ArrowRight, 
   X, 
@@ -16,22 +16,20 @@ import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
 import { 
   updateRedAlertStatus, 
-  deleteRedAlertInFirestore, 
-  flagRedAlertAsFake 
+  deleteRedAlertInFirestore 
 } from '../lib/firebase';
 import { filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
+import { PushNotifications, ActionPerformed, PushNotificationSchema } from '@capacitor/push-notifications';
 
-// 🚨 Default Tone Import එක
+// Siren ශබ්දය (Web fallback සඳහා)
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
 
-// 🔊 Audio Context Unlock Functionality
 let globalAudioContext: AudioContext | null = null;
 
 export const unlockAudioContext = () => {
   if (!globalAudioContext) {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (AudioContextClass) {
       globalAudioContext = new AudioContextClass();
     }
@@ -55,7 +53,7 @@ interface RedAlertBannerProps {
   currentLocation?: LocationOption;
   currentUser?: UserProfile | null;
   onOpenAlertDetail: (alert: RedAlertItem) => void;
-  onOpenCreate: () => void;
+  onOpenCreate?: () => void;
 }
 
 export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
@@ -63,20 +61,18 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   currentLocation,
   currentUser = null,
   onOpenAlertDetail,
-  onOpenCreate,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlayingSiren, setIsPlayingSiren] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isHovered, setIsHovered] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 🔑 User ID එක මත පදනම්ව Dynamically Storage Key එක සකස් කිරීම
+  // පරිශීලකයා මත පදනම්ව Dismiss කල Alerts LocalStorage තුළ තබා ගැනීම
   const activeUserId = currentUser?.id || currentUser?.phone || currentUser?.nic || 'guest_user';
-  const storageKey = `sahaya_dismissed_red_alerts_${activeUserId}`;
+  const storageKey = `rathuweliya_dismissed_alerts_${activeUserId}`;
 
-  // 1️⃣ අදාළ පරිශීලකයා Dismiss කළ Alert IDs පමණක් ලබා ගැනීම
   const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
-  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -89,69 +85,88 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   }, [storageKey]);
 
-  // 📱 Capacitor Native Setup - Android/iOS සඳහා Push Notification Listeners
+  // 📱 Capacitor Push Notification Handling (Foreground & Background Action)
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      // App එක Background/Closed තිබී Notification එක Touch කර App එකට පිවිසි විට
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        const data = notification.notification.data;
-        if (data && data.alertId) {
-          const targetAlert = alerts.find(a => a.id === data.alertId);
+    if (!Capacitor.isNativePlatform()) return;
+
+    // 1. App එක Background/Closed තිබී Notification එක Click කර ඇතුළු වූ විට
+    const actionListenerPromise = PushNotifications.addListener(
+      'pushNotificationActionPerformed',
+      (notification: ActionPerformed) => {
+        const alertData = notification.notification.data;
+        const targetAlertId = alertData?.alertId || alertData?.id;
+
+        if (targetAlertId) {
+          const targetAlert = alerts.find((a) => a.id === targetAlertId);
           if (targetAlert) {
             onOpenAlertDetail(targetAlert);
           }
         }
-      });
-    }
-  }, [alerts]);
-
-  // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 5 සීමාව සෙවීම
-  const uniqueAlertsMap = new Map<string, RedAlertItem>();
-
-  const nonDeletedAlerts = filterNonDeletedRedAlerts(alerts || []);
-  nonDeletedAlerts.forEach((alert) => {
-    if (alert && alert.id && alert.status === 'active' && !alert.isFlaggedFake && !(alert as any).isDeleted) {
-      if (!uniqueAlertsMap.has(alert.id)) {
-        uniqueAlertsMap.set(alert.id, alert);
       }
-    }
-  });
+    );
 
-  const activeAlerts = Array.from(uniqueAlertsMap.values()).filter((alert) => {
-    if (!alert || !alert.id) return false;
-    // මෙම User විසින් Dismiss කර ඇති Alert එකක් නම් නොපෙන්වන්න
-    if (dismissedAlertIds.includes(alert.id)) {
-      return false;
-    }
+    // 2. App එක Foreground එකේ පවතින විට Push Notification එකක් ලැබුණහොත්
+    const receivedListenerPromise = PushNotifications.addListener(
+      'pushNotificationReceived',
+      (notification: PushNotificationSchema) => {
+        const alertData = notification.data;
+        const targetAlertId = alertData?.alertId || alertData?.id;
+        
+        if (targetAlertId) {
+          const targetIndex = activeAlerts.findIndex((a) => a.id === targetAlertId);
+          if (targetIndex !== -1) {
+            setCurrentIndex(targetIndex);
+          }
+        }
+      }
+    );
 
-    // කිලෝමීටර් 5ක් ඇතුළත සිටින පරිශීලකයන්ට හෝ අදාළ දිස්ත්‍රික්කයේ පරිශීලකයන්ට පෙන්වීම
-    if (
-      currentLocation &&
-      typeof currentLocation.lat === 'number' &&
-      typeof currentLocation.lng === 'number' &&
-      typeof alert.latitude === 'number' &&
-      typeof alert.longitude === 'number'
-    ) {
-      const distanceKm = calculateDistanceKm(
-        currentLocation.lat,
-        currentLocation.lng,
-        alert.latitude,
-        alert.longitude
-      );
-      return distanceKm <= 5.0;
-    }
+    return () => {
+      actionListenerPromise.then((handle) => handle.remove());
+      receivedListenerPromise.then((handle) => handle.remove());
+    };
+  }, [alerts, onOpenAlertDetail]);
 
-    // Fallback if exact GPS is unavailable: match locationName or district if available
-    const alertLoc = (alert.locationName || (alert as any).district || '').toLowerCase();
-    const currentLocName = (currentLocation?.nameSi || currentLocation?.nameEn || '').toLowerCase();
-    if (currentLocName && alertLoc && (currentLocName.includes(alertLoc) || alertLoc.includes(currentLocName))) {
-      return true;
-    }
+  // 🗺️ කිලෝමීටර් 5 සීමාව සහ Active Alerts පමණක් Filtering කිරීම
+  const activeAlerts = useMemo(() => {
+    const uniqueMap = new Map<string, RedAlertItem>();
+    const nonDeletedAlerts = filterNonDeletedRedAlerts(alerts || []);
 
-    return false;
-  });
+    nonDeletedAlerts.forEach((alert) => {
+      if (alert?.id && alert.status === 'active' && !alert.isFlaggedFake && !(alert as any).isDeleted) {
+        if (!uniqueMap.has(alert.id)) {
+          uniqueMap.set(alert.id, alert);
+        }
+      }
+    });
 
-  // 🔄 Auto-transition carousel effect when multiple alerts exist
+    return Array.from(uniqueMap.values()).filter((alert) => {
+      if (!alert?.id || dismissedAlertIds.includes(alert.id)) return false;
+
+      // GPS අක්ෂාංශ/දේශාංශ පදනම් කරගත් කි.මී. 5 සීමාව
+      if (
+        typeof currentLocation?.lat === 'number' &&
+        typeof currentLocation?.lng === 'number' &&
+        typeof alert.latitude === 'number' &&
+        typeof alert.longitude === 'number'
+      ) {
+        const distanceKm = calculateDistanceKm(
+          currentLocation.lat,
+          currentLocation.lng,
+          alert.latitude,
+          alert.longitude
+        );
+        return distanceKm <= 5.0;
+      }
+
+      // GPS නොමැති අවස්ථාවක නම හෝ දිස්ත්‍රික්කය ගැලපීම (Fallback)
+      const alertLoc = (alert.locationName || (alert as any).district || '').toLowerCase();
+      const currentLocName = (currentLocation?.nameSi || currentLocation?.nameEn || '').toLowerCase();
+      return Boolean(currentLocName && alertLoc && (currentLocName.includes(alertLoc) || alertLoc.includes(currentLocName)));
+    });
+  }, [alerts, dismissedAlertIds, currentLocation]);
+
+  // Alert කිහිපයක් ඇති විට Carousel Transition
   useEffect(() => {
     if (activeAlerts.length <= 1 || isHovered) return;
     const interval = setInterval(() => {
@@ -164,48 +179,33 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     ? activeAlerts[currentIndex % activeAlerts.length] 
     : null;
 
-  // 🛡️ පරිශීලකයා මෙම ආපදාව වාර්තා කළ පුද්ගලයාදැයි පරීක්ෂා කිරීම
-  const isUserAuthorOfRedAlert = (alert: RedAlertItem | null): boolean => {
+  // වාර්තාකරු පරීක්ෂා කිරීම
+  const isUserAuthor = (alert: RedAlertItem | null): boolean => {
     if (!currentUser || !alert) return false;
-
-    const currentUserId = currentUser.id || currentUser.userId;
-    const matchesUserId = alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId);
-    const matchesPhone = alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone;
-    const matchesNic = (alert as any).reportedByNic && (currentUser as any).nic && (alert as any).reportedByNic === (currentUser as any).nic;
-    const matchesEmail = (alert as any).reportedByEmail && currentUser.email && (alert as any).reportedByEmail === currentUser.email;
-
-    return Boolean(matchesUserId || matchesPhone || matchesNic || matchesEmail);
+    const currentUid = currentUser.id || currentUser.userId;
+    return Boolean(
+      (alert.reportedByUserId && currentUid && alert.reportedByUserId === currentUid) ||
+      (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
+      ((alert as any).reportedByNic && currentUser.nic && (alert as any).reportedByNic === currentUser.nic) ||
+      ((alert as any).reportedByEmail && currentUser.email && (alert as any).reportedByEmail === currentUser.email)
+    );
   };
 
-  const isAuthor = isUserAuthorOfRedAlert(currentAlert);
+  const isAuthor = isUserAuthor(currentAlert);
   const hasActiveAlerts = activeAlerts.length > 0;
 
-  // 4️⃣ එක සයිරන් එකක් පමණක් continuous ලෙස ප්ලේ කිරීම
-  useEffect(() => {
-    if (!hasActiveAlerts || isAuthor || isMuted) {
-      stopSiren();
-      return;
-    }
-
-    playSiren();
-
-    return () => {
-      stopSiren();
-    };
-  }, [hasActiveAlerts, isAuthor, isMuted]);
-
+  // 🔊 Audio Siren පාලනය
   const playSiren = () => {
     unlockAudioContext();
     if (!audioRef.current) {
       audioRef.current = new Audio(defaultSirenSound);
       audioRef.current.loop = true;
     }
-
     if (audioRef.current.paused) {
       audioRef.current.play().then(() => {
         setIsPlayingSiren(true);
       }).catch((err) => {
-        console.warn("Autoplay policy blocked audio playback:", err);
+        console.warn("Autoplay policy blocked audio siren:", err);
       });
     }
   };
@@ -218,6 +218,20 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     setIsPlayingSiren(false);
   };
 
+  useEffect(() => {
+    // වාර්තාකරුට හෝ Muted කළ අයට සයිරන් නාද නොවේ
+    if (!hasActiveAlerts || isAuthor || isMuted) {
+      stopSiren();
+      return;
+    }
+
+    playSiren();
+
+    return () => {
+      stopSiren();
+    };
+  }, [hasActiveAlerts, isAuthor, isMuted]);
+
   const handleToggleSiren = () => {
     if (isPlayingSiren) {
       stopSiren();
@@ -228,17 +242,16 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  // 🛑 පරිශීලකයා Alert එක Dismiss කළ විට අදාළ User ID එක යටතේ Save වීම
   const handleDismissCurrentAlert = () => {
-    if (!currentAlert || !currentAlert.id) return;
+    if (!currentAlert?.id) return;
 
-    const updatedDismissedIds = [...dismissedAlertIds, currentAlert.id];
-    setDismissedAlertIds(updatedDismissedIds);
+    const updated = [...dismissedAlertIds, currentAlert.id];
+    setDismissedAlertIds(updated);
 
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updatedDismissedIds));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
     } catch (e) {
-      console.error("Failed to save dismissed alert to localStorage", e);
+      console.error("Local storage error:", e);
     }
 
     if (activeAlerts.length <= 1) {
@@ -248,30 +261,26 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  // Action Handlers
   const handleResolveAlert = async (alertId: string) => {
     stopSiren();
     await updateRedAlertStatus(alertId, 'resolved', 'වාර්තාකරු විසින් අනතුර විසඳූ බව සලකුණු කරන ලදී.');
   };
 
   const handleDeleteAlert = async (alertId: string) => {
-    if (confirm('මෙම ආපදා නිවේදනය සම්පූර්ණයෙන්ම ඉවත් කිරීමට ඔබට විශ්වාසද?')) {
+    if (window.confirm('මෙම ආපදා නිවේදනය සම්පූර්ණයෙන්ම ඉවත් කිරීමට ඔබට විශ්වාසද?')) {
       stopSiren();
       await deleteRedAlertInFirestore(alertId);
     }
   };
 
-  if (activeAlerts.length === 0 || !currentAlert || !currentAlert.id) {
-    return null;
-  }
+  if (!hasActiveAlerts || !currentAlert?.id) return null;
 
   const config = getDisasterConfig(currentAlert.disasterType);
 
   let distanceKm = 0;
   if (
-    currentLocation &&
-    typeof currentLocation.lat === 'number' &&
-    typeof currentLocation.lng === 'number' &&
+    typeof currentLocation?.lat === 'number' &&
+    typeof currentLocation?.lng === 'number' &&
     typeof currentAlert?.latitude === 'number' &&
     typeof currentAlert?.longitude === 'number'
   ) {
@@ -288,16 +297,16 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
-    <div 
+    <aside 
+      aria-label="රතුවෙලිය හදිසි ආපදා අනතුරු ඇඟවීම"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg border-b-2 border-red-400/80 relative z-30 animate-fadeIn"
     >
-      
-      {/* 1. ප්‍රධාන Banner තීරුව */}
+      {/* 1. Main Alert Bar */}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs">
         
-        {/* Left Indicator & Incident summary */}
+        {/* Visual Pulse Indicator & Location */}
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="relative flex items-center justify-center shrink-0">
             <span className="w-4 h-4 rounded-full bg-white/40 animate-ping absolute" />
@@ -307,9 +316,9 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="bg-black/30 px-2 py-0.5 rounded-full font-black text-[10px] tracking-wide flex items-center gap-1 text-yellow-300 border border-yellow-300/30">
               <span className="animate-pulse">🚨</span>
-              <span>රතු එළිය</span>
+              <span>රතුවෙලිය</span>
               {activeAlerts.length > 1 && (
-                <span className="bg-white/20 px-1 rounded text-white ml-0.5">
+                <span className="bg-white/20 px-1 rounded text-white ml-0.5 font-mono">
                   {(currentIndex % activeAlerts.length) + 1}/{activeAlerts.length}
                 </span>
               )}
@@ -326,10 +335,8 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           </div>
         </div>
 
-        {/* Controls & Action Buttons */}
+        {/* Action Buttons & Siren Toggle */}
         <div className="flex items-center gap-1.5 shrink-0">
-          
-          {/* 🔊 Siren On/Off Button */}
           {!isAuthor && (
             <button
               type="button"
@@ -339,17 +346,17 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
                   ? 'bg-yellow-400 hover:bg-yellow-500 text-black animate-bounce' 
                   : 'bg-black/30 hover:bg-black/40 text-white'
               }`}
-              title={isPlayingSiren ? "Siren නවත්වන්න" : "Siren නාද කරන්න"}
+              title={isPlayingSiren ? "සයිරන් නවත්වන්න" : "සයිරන් නාද කරන්න"}
             >
               {isPlayingSiren ? (
                 <>
                   <Volume2 className="w-3.5 h-3.5 text-red-700 animate-pulse" />
-                  <span className="hidden sm:inline">🚨 Siren නවත්වන්න</span>
+                  <span className="hidden sm:inline">සයිරන් නවත්වන්න</span>
                 </>
               ) : (
                 <>
                   <VolumeX className="w-3.5 h-3.5 opacity-80" />
-                  <span className="hidden sm:inline">Siren නිහඬයි</span>
+                  <span className="hidden sm:inline">නිහඬයි</span>
                 </>
               )}
             </button>
@@ -361,6 +368,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
                 type="button"
                 onClick={() => setCurrentIndex((prev) => (prev - 1 + activeAlerts.length) % activeAlerts.length)}
                 className="w-6 h-6 rounded-md bg-black/20 hover:bg-black/40 flex items-center justify-center text-white"
+                aria-label="පෙර අනතුරු ඇඟවීම"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -368,6 +376,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
                 type="button"
                 onClick={() => setCurrentIndex((prev) => (prev + 1) % activeAlerts.length)}
                 className="w-6 h-6 rounded-md bg-black/20 hover:bg-black/40 flex items-center justify-center text-white"
+                aria-label="ඊළඟ අනතුරු ඇඟවීම"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -392,13 +401,11 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-
       </div>
 
-      {/* 2. කළමනාකරණ තීරුව */}
+      {/* 2. Management & Threat Category Strip */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-center sm:justify-between items-center gap-2">
-          
           {isAuthor ? (
             <div className="w-full flex flex-wrap justify-between items-center gap-2">
               <span className="font-bold text-yellow-300 flex items-center gap-1">
@@ -425,21 +432,18 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
               </div>
             </div>
           ) : (
-            /* 🔥 'සිදුවී ඇති අනතුර' පෙන්වන කොටස */
             <div className="w-full flex justify-center items-center text-white">
               <span className="flex items-center gap-2 text-xs">
                 <AlertTriangle className="w-4 h-4 text-yellow-300" />
-                <span>සිදුවී ඇති අනතුර:</span> 
+                <span>ආපදා තත්ත්වය:</span> 
                 <strong className="text-yellow-300 bg-black/40 px-2.5 py-0.5 rounded border border-white/10 flex items-center gap-1 shadow-sm">
-                  {config.icon} {currentAlert.disasterTitleSi}
+                  {config?.icon || '⚠️'} {currentAlert.disasterTitleSi || currentAlert.disasterType}
                 </strong>
               </span>
             </div>
           )}
-
         </div>
       </div>
-
-    </div>
+    </aside>
   );
 };
