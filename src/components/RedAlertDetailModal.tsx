@@ -8,7 +8,6 @@ import {
   Send, 
   Share2, 
   Phone, 
-  User as UserIcon, 
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
@@ -60,21 +59,20 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   const [commenterName, setCommenterName] = useState(currentUser?.name || '');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
-  // In-app confirmation state instead of blocking window.confirm
+  // In-app තහවුරු කිරීමේ Panels
   const [confirmDialog, setConfirmDialog] = useState<'resolve' | 'cancel_delete' | null>(null);
   const [selectedResolveReason, setSelectedResolveReason] = useState('ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.');
   const [customResolveReason, setCustomResolveReason] = useState('');
   const [selectedCancelReason, setSelectedCancelReason] = useState('ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.');
   const [customCancelReason, setCustomCancelReason] = useState('');
 
-  // Fake reporting state
+  // Fake report controls
   const [showFakeReportModal, setShowFakeReportModal] = useState(false);
   const [fakeReason, setFakeReason] = useState('බොරුවක් / අසත්‍ය පුවතක් (Fake news)');
   const [fakeNotes, setFakeNotes] = useState('');
   const [isReportingFake, setIsReportingFake] = useState(false);
   const [fakeReportedSuccess, setFakeReportedSuccess] = useState(false);
 
-  // Copy share alert
   const [copiedShare, setCopiedShare] = useState(false);
 
   useEffect(() => {
@@ -86,22 +84,26 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     }
   }, [alert]);
 
+  useEffect(() => {
+    if (currentUser?.name) {
+      setCommenterName(currentUser.name);
+    }
+  }, [currentUser]);
+
   if (!isOpen || !alert) return null;
 
-  const handleClose = () => {
-    onClose();
-  };
-
-  // 1. ආපදාව වාර්තා කළ පුද්ගලයාද හෝ පරිපාලකද යන්න පරීක්ෂා කිරීම (Comprehensive Detection)
   const isAdmin = checkIsAdmin(currentUser);
 
+  // Browser එකෙන් නිර්මාණය කළ එකක්ද යන්න පරීක්ෂා කිරීම
   let isCreatedByThisBrowser = false;
   try {
     const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
     if (Array.isArray(myAlerts) && alert?.id && myAlerts.includes(alert.id)) {
       isCreatedByThisBrowser = true;
     }
-  } catch {}
+  } catch {
+    // LocalStorage fallback
+  }
 
   const isAuthorOfAlert = Boolean(
     isCreatedByThisBrowser ||
@@ -117,14 +119,14 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     ))
   );
 
-  const canManageAlert = isAuthorOfAlert || isAdmin || isCreatedByThisBrowser;
+  const canManageAlert = isAuthorOfAlert || isAdmin;
 
-  // ඔප්ෂන් 01: "ආපදාව විසඳුනා" (Mark as Resolved)
+  // 1. ආපදාව විසඳුනා (Mark as Resolved) - දේශීය දැනුම්දීම පමණක් විකාශනය වේ
   const handleConfirmResolveAlert = async () => {
-    if (!alert || !alert.id) return;
+    if (!alert?.id) return;
     setIsSubmitting(true);
-    const finalReason = customResolveReason.trim() || selectedResolveReason;
-    const resolvedTimeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+    const finalReason = selectedResolveReason === 'custom' ? customResolveReason.trim() : selectedResolveReason;
+    const resolvedTimeFormatted = `${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${new Date().toLocaleDateString('si-LK')})`;
     const actorName = currentUser?.name || alert.reportedByName || (isAdmin ? 'පරිපාලක (Admin)' : 'වාර්තාකරු');
 
     try {
@@ -138,7 +140,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         adminActionNote: finalReason,
       };
 
-      // 🔔 Dispatch rich notification with: අවදානම කුමක්ද, ඉවත් කළේ කීයටද, ඉවත් කළේ ඇයි
+      // දේශීය Notification විකාශනය (Local In-App Notification Manager)
       broadcastRedAlertResolvedNotification({
         alertId: alert.id,
         alertCode: alert.alertCode,
@@ -149,16 +151,11 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         resolvedBy: actorName,
       });
 
-      if (onAlertUpdated) {
-        onAlertUpdated(updatedItem);
-      }
-
-      setActionSuccessMsg('✅ ආපදාව විසඳුණි (Resolved) ලෙස සටහන් කර දැනුම්දීම් (Notifications) නිකුත් කරන ලදී!');
+      onAlertUpdated?.(updatedItem);
+      setActionSuccessMsg('✅ ආපදාව විසඳුණි (Resolved) ලෙස සටහන් විය!');
       setConfirmDialog(null);
 
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      setTimeout(() => onClose(), 1500);
     } catch (err) {
       console.error('Error resolving alert:', err);
       setActionSuccessMsg('⚠️ තත්ත්වය වෙනස් කිරීමට නොහැකි විය.');
@@ -167,12 +164,12 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     }
   };
 
-  // ඔප්ෂන් 02: "අනතුර ඉවත් කරන්න" (Cancel or Delete Alert)
+  // 2. අනතුර ඉවත් කරන්න (Cancel / Delete) - දේශීය දැනුම්දීම පමණක් විකාශනය වේ
   const handleConfirmCancelAlert = async () => {
-    if (!alert || !alert.id) return;
+    if (!alert?.id) return;
     setIsSubmitting(true);
-    const finalReason = customCancelReason.trim() || selectedCancelReason;
-    const resolvedTimeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('si-LK') + ')';
+    const finalReason = selectedCancelReason === 'custom' ? customCancelReason.trim() : selectedCancelReason;
+    const resolvedTimeFormatted = `${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${new Date().toLocaleDateString('si-LK')})`;
     const actorName = currentUser?.name || alert.reportedByName || (isAdmin ? 'පරිපාලක (Admin)' : 'වාර්තාකරු');
 
     try {
@@ -186,7 +183,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         adminActionNote: finalReason,
       };
 
-      // 🔔 Dispatch rich notification with: අවදානම කුමක්ද, ඉවත් කළේ කීයටද, ඉවත් කළේ ඇයි
+      // දේශීය Notification විකාශනය (Local In-App Notification Manager)
       broadcastRedAlertResolvedNotification({
         alertId: alert.id,
         alertCode: alert.alertCode,
@@ -197,24 +194,17 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         resolvedBy: actorName,
       });
 
-      if (onAlertUpdated) {
-        onAlertUpdated(updatedItem);
-      }
-      if (onAlertDeleted) {
-        onAlertDeleted(alert.id);
-      }
-
-      setActionSuccessMsg('🗑️ ආපදා නිවේදනය ඉවත් කර දැනුම්දීම් (Notifications) නිකුත් කරන ලදී.');
+      onAlertUpdated?.(updatedItem);
+      onAlertDeleted?.(alert.id);
+      setActionSuccessMsg('🗑️ ආපදා නිවේදනය පද්ධතියෙන් ඉවත් කරන ලදී.');
       setConfirmDialog(null);
 
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      setTimeout(() => onClose(), 1500);
     } catch (err) {
       console.error('Error cancelling alert:', err);
       try {
         await deleteRedAlertInFirestore(alert.id);
-        if (onAlertDeleted) onAlertDeleted(alert.id);
+        onAlertDeleted?.(alert.id);
         onClose();
       } catch (e) {
         setActionSuccessMsg('⚠️ ඉවත් කිරීමට නොහැකි විය.');
@@ -224,10 +214,10 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     }
   };
 
-  // ඔප්ෂන් 03: "තව අදහසක් දක්වන්න / Update එකක් දාන්න"
+  // 3. වාර්තාකරුගේ Live Update එකක් එක් කිරීම
   const handleSendReporterUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert || !alert.id || !reporterUpdateText.trim()) return;
+    if (!alert?.id || !reporterUpdateText.trim()) return;
 
     setIsSubmitting(true);
     const text = reporterUpdateText.trim();
@@ -256,20 +246,19 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
       setLocalComments(updatedComments);
       setReporterUpdateText('');
       setShowReporterUpdateInput(false);
+
       setActionSuccessMsg('💬 වාර්තාකරුගේ යාවත්කාලීන කිරීම සාර්ථකව පළවිය!');
 
-      if (onAlertUpdated) {
-        onAlertUpdated({
-          ...alert,
-          comments: updatedComments,
-          latestReporterUpdate: {
-            text,
-            createdAt: new Date().toISOString(),
-            reporterName: reporterDispName,
-            notificationText: `💬 වාර්තාකරුගෙන් අලුත් යාවත්කාලීන කිරීමක්: ${text}`,
-          },
-        });
-      }
+      onAlertUpdated?.({
+        ...alert,
+        comments: updatedComments,
+        latestReporterUpdate: {
+          text,
+          createdAt: new Date().toISOString(),
+          reporterName: reporterDispName,
+          notificationText: `💬 වාර්තාකරුගෙන් අලුත් යාවත්කාලීන කිරීමක්: ${text}`,
+        },
+      });
 
       setTimeout(() => setActionSuccessMsg(null), 4000);
     } catch (err) {
@@ -280,16 +269,16 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     }
   };
 
-  // General Comment Submit
+  // සාමාන්‍ය අදහස් (Comments) එක් කිරීම
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert || !alert.id || !commentText.trim()) return;
+    if (!alert?.id || !commentText.trim()) return;
 
     setIsSubmitting(true);
     const newComment: RedAlertComment = {
       id: `comm_${Date.now()}`,
       userId: currentUser?.userId || currentUser?.id || '',
-      userName: commenterName.trim() || currentUser?.name || 'ප්‍රදේශවාසියෙක්',
+      userName: commenterName.trim() || 'ප්‍රදේශවාසියෙක්',
       userPhone: currentUser?.phone || '',
       comment: commentText.trim(),
       createdAt: new Date().toISOString(),
@@ -302,15 +291,16 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
       setCommentText('');
     } catch (err) {
       console.error('Error submitting comment:', err);
-      window.alert('අදහස එක් කිරීමට නොහැකි විය.');
+      setActionSuccessMsg('⚠️ අදහස එක් කිරීමට නොහැකි විය.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Fake Alert වාර්තා කිරීම
   const handleReportFake = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!alert) return;
+    if (!alert?.id) return;
 
     setIsReportingFake(true);
     const report: RedAlertFakeReport = {
@@ -332,14 +322,14 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
       }, 2000);
     } catch (err) {
       console.error('Error reporting fake alert:', err);
-      window.alert('වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
+      setActionSuccessMsg('⚠️ වාර්තා කිරීමේදී දෝෂයක් ඇතිවිය.');
     } finally {
       setIsReportingFake(false);
     }
   };
 
   const handleShare = () => {
-    const text = `🚨 [රතු එළිය - හදිසි ආපදා දැනුම්දීම]\nආපදාව: ${alert.disasterTitleSi}\nස්ථානය: ${alert.locationName}\nදිනය/වේලාව: ${alert.incidentDate} ${alert.incidentTime}\n\nසහය සේවා (Sahaya Sewa) ඇප් එක හරහා බලන්න.`;
+    const text = `🚨 [රතුවෙලිය - හදිසි ආපදා අනතුරු ඇඟවීම]\nආපදාව: ${alert.disasterTitleSi}\nස්ථානය: ${alert.locationName}\nදිනය/වේලාව: ${alert.incidentDate} ${alert.incidentTime}\n\nසහාය සේවා (Sahaya Sewa) ඇප් එක හරහා සජීවීව බලන්න.`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
       setCopiedShare(true);
@@ -359,10 +349,10 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.35)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
-        {/* Top Header Ribbon */}
+        {/* Header Ribbon */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white shadow-md shrink-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -405,7 +395,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   onClick={() => setConfirmDialog('cancel_delete')}
                   disabled={isSubmitting}
                   className="p-2 rounded-xl bg-red-950/60 hover:bg-red-900 text-white border border-red-400/40 transition-all cursor-pointer"
-                  title={isAdmin ? "පරිපාලක ලෙස ආපදාව ඉවත් කරන්න (Admin Delete)" : "ආපදාව ඉවත් කරන්න (Delete)"}
+                  title={isAdmin ? "පරිපාලක ලෙස ආපදාව ඉවත් කරන්න" : "ආපදාව ඉවත් කරන්න"}
                 >
                   <Trash2 className="w-4 h-4 text-red-200" />
                 </button>
@@ -420,7 +410,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={handleClose}
+                onClick={onClose}
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
                 title="Close"
               >
@@ -437,7 +427,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         )}
 
         {actionSuccessMsg && (
-          <div className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 text-center shrink-0 animate-fadeIn flex items-center justify-center gap-1.5">
+          <div className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 text-center shrink-0 flex items-center justify-center gap-1.5">
             <CheckCircle2 className="w-4 h-4" />
             <span>{actionSuccessMsg}</span>
           </div>
@@ -445,11 +435,8 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1 flex flex-col">
-
-          {/* Main Incident Details Card */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
-              
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                 <div className="w-full">
@@ -473,10 +460,9 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   )}
                 </div>
               </div>
-
             </div>
 
-            {/* 🗺️ Google Maps Directions & Navigation Button */}
+            {/* Google Maps Directions */}
             <div className="pt-1">
               <a
                 href={`https://www.google.com/maps/dir/?api=1&destination=${alert.latitude && alert.longitude ? `${alert.latitude},${alert.longitude}` : encodeURIComponent(alert.locationName)}`}
@@ -489,7 +475,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </a>
             </div>
 
-            {/* 🎙️ Voice SOS Audio Note & Stamped Metadata */}
+            {/* Voice SOS Note */}
             {(alert.audioUrl || alert.isVoiceAlert) && (
               <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-950/90 to-rose-950/90 border-2 border-red-500/70 text-white space-y-2 shadow-lg">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -548,7 +534,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </div>
             )}
 
-            {/* Reporter Contact Info - ONLY visible to Admin for privacy */}
+            {/* Reporter Contact Info - Admin Only */}
             {isAdmin && (alert.reportedByName || alert.reportedByPhone) && (
               <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800 text-xs">
                 <div className="min-w-0">
@@ -571,9 +557,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             )}
           </div>
 
-          {/* =========================================================================
-             🎛️ 1. දැනුම්දීම පළ කළ කෙනාට (REPORTER) හෝ ADMIN ට පෙනෙන OPTIONS 3
-             ========================================================================= */}
+          {/* Action Panels */}
           {canManageAlert && alert.status === 'active' && (
             <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400 dark:border-amber-700/60 space-y-3 shadow-sm">
               <div className="flex items-center gap-2">
@@ -583,18 +567,17 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </span>
               </div>
 
-              {/* ⬆️ In-App Confirmation Card: Option 01 (Resolve) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
+              {/* Confirmation Card: Resolve */}
               {confirmDialog === 'resolve' && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-3 animate-fadeIn shadow-lg">
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-3 shadow-lg">
                   <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් පද්ධතියේ සියලු දෙනාගේ Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> සවිස්තරාත්මකව යැවෙනු ඇත.
+                    මෙමගින් පද්ධතියේ දේශීය Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> සටහන් කර යවනු ලැබේ.
                   </p>
 
-                  {/* 💡 Reason selector */}
                   <div className="space-y-1.5 pt-1">
                     <label className="text-[11px] font-black text-emerald-900 dark:text-emerald-200">
                       💡 ආපදාව ඉවත් කළ හේතුව තෝරන්න (Reason):
@@ -644,18 +627,17 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </div>
               )}
 
-              {/* ⬆️ In-App Confirmation Card: Option 02 (Cancel / Delete) - DISPLAYED ABOVE BUTTONS FOR INSTANT MOBILE ACCESS */}
+              {/* Confirmation Card: Cancel / Delete */}
               {confirmDialog === 'cancel_delete' && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-3 animate-fadeIn shadow-lg">
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-3 shadow-lg">
                   <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
                     <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
                     <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් ආපදා අනතුරු ඇඟවීම ක්‍රියා විරහිත කර පද්ධතියේ සියලු දෙනාගේ Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> යවනු ලැබේ.
+                    මෙමගින් ආපදා අනතුරු ඇඟවීම පද්ධතියෙන් ඉවත් කර දේශීය Notification මඟින් තොරතුරු යවනු ලැබේ.
                   </p>
 
-                  {/* 💡 Cancel Reason selector */}
                   <div className="space-y-1.5 pt-1">
                     <label className="text-[11px] font-black text-rose-900 dark:text-rose-200">
                       💡 අනතුර ඉවත් කළ හේතුව තෝරන්න (Reason):
@@ -709,7 +691,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                {/* Option 01: විසඳුනා */}
                 <button
                   type="button"
                   onClick={() => {
@@ -723,7 +704,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   <span>01. ආපදාව විසඳුනා</span>
                 </button>
 
-                {/* Option 02: ඉවත් කරන්න */}
                 <button
                   type="button"
                   onClick={() => {
@@ -737,7 +717,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   <span>02. අනතුර ඉවත් කරන්න</span>
                 </button>
 
-                {/* Option 03: තව අදහසක් දක්වන්න */}
                 <button
                   type="button"
                   onClick={() => {
@@ -752,9 +731,9 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* Option 03 Reporter Update Input Box */}
+              {/* Option 03: Live update box */}
               {showReporterUpdateInput && (
-                <form onSubmit={handleSendReporterUpdate} className="pt-3 space-y-2 border-t border-amber-300 dark:border-amber-800/60 animate-fadeIn">
+                <form onSubmit={handleSendReporterUpdate} className="pt-3 space-y-2 border-t border-amber-300 dark:border-amber-800/60">
                   <label className="text-xs font-bold text-amber-900 dark:text-amber-200 block">
                     💬 වාර්තාකරු ලෙස සජීවී යාවත්කාලීන කිරීමක් එකතු කරන්න:
                   </label>
@@ -782,92 +761,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             </div>
           )}
 
-          {/* Admin Management Controls */}
-          {currentUser?.role === 'admin' && !isAuthorOfAlert && (
-            <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/50 space-y-2">
-              <span className="text-xs font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-                🛡️ Admin Management
-              </span>
-
-              {/* ⬆️ Admin Confirmation Card (Displayed Above Admin Action Buttons) */}
-              {confirmDialog === 'resolve' && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-2.5 animate-fadeIn shadow-lg">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>පරිපාලක ලෙස මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmResolveAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      <span>ඔව්, ආපදාව විසඳුණි</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {confirmDialog === 'cancel_delete' && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-2.5 animate-fadeIn shadow-lg">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
-                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                    <span>පරිපාලක ලෙස මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmCancelAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      <span>ඔව්, අනතුර ඉවත් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 flex-wrap pt-1">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDialog('resolve')}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>අනතුර විසඳුණි (Resolve)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDialog('cancel_delete')}
-                  className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>අනතුර ඉවත් කරන්න (Delete)</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Fake Alert Warning / Action (Non-authors only) */}
+          {/* Fake Alert Warning (Non-authors) */}
           {!isAuthorOfAlert && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs">
               <span className="text-rose-700 dark:text-rose-400 font-bold">
@@ -884,9 +778,9 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             </div>
           )}
 
-          {/* Fake Report Input Modal */}
+          {/* Fake Report Modal Panel */}
           {showFakeReportModal && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3 animate-fadeIn">
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
                   <ShieldAlert className="w-4 h-4 text-rose-600" />
@@ -950,7 +844,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             </div>
           )}
 
-          {/* Comments Feed Section (All users & Reporter) */}
+          {/* Comments Feed */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 space-y-4 mt-2">
             <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
@@ -965,11 +859,11 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                   තවම අදහස් හෝ යාවත්කාලීන කිරීම් නොමැත. පහතින් තොරතුරු සටහන් කළ හැක.
                 </p>
               ) : (
-                localComments.map((c, cIdx) => {
+                localComments.map((c) => {
                   const isReporterComment = c.userName?.includes('වාර්තාකරු') || c.isReporterUpdate;
                   return (
                     <div
-                      key={`alert_comment_${c.id || 'c'}_${cIdx}`}
+                      key={c.id || `${c.userId}-${c.createdAt}`}
                       className={`p-3.5 rounded-xl text-xs space-y-1.5 border ${
                         isReporterComment
                           ? 'bg-amber-500/10 border-amber-500/40 text-amber-900 dark:text-amber-200'
@@ -978,18 +872,18 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                     >
                       <div className="flex items-center justify-between text-[11px] border-b border-slate-100 dark:border-white/5 pb-1">
                         <strong className="font-bold flex items-center gap-1">
-                          {isReporterComment ? '📢 ' + c.userName : c.userName}
+                          {isReporterComment ? `📢 ${c.userName}` : c.userName}
                         </strong>
                         <span className="text-slate-400 font-mono">{c.createdAtDisplay || ''}</span>
                       </div>
-                      <p className="font-medium leading-relaxed pt-1">{c.comment || (c as any).text}</p>
+                      <p className="font-medium leading-relaxed pt-1">{c.comment || c.text}</p>
                     </div>
                   );
                 })
               )}
             </div>
 
-            {/* General comment box */}
+            {/* Post Comment Input */}
             <form onSubmit={handleAddComment} className="flex gap-2 pt-2 border-t border-slate-200 dark:border-white/10 mt-2">
               <input
                 type="text"
