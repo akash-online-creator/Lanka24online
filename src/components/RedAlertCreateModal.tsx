@@ -160,7 +160,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
           }
         } catch {
           setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
-        } fontally {
+        } finally {
           setIsScanningGps(false);
         }
       },
