@@ -382,7 +382,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       }
     }
 
-    setName(user.name || '');
+    setName(user?.name || '');
     setAddress(user.address || '');
     setSaveSuccessMsg(
       getLang(
@@ -427,7 +427,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       }
     }
 
-    const isNameChanged = trimmedName !== (user.name || '');
+    const isNameChanged = trimmedName !== (user?.name || '');
     const isAddressChanged = trimmedAddress !== (user.address || '');
 
     let pendingUpdate: PendingProfileUpdate | undefined = user.pendingProfileUpdate;
@@ -437,7 +437,7 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         status: 'pending',
         requestedAt: new Date().toLocaleString('si-LK', { hour12: true }),
         requestedAtMs: Date.now(),
-        oldName: user.name || '',
+        oldName: user?.name || '',
         newName: isNameChanged ? trimmedName : undefined,
         oldAddress: user.address || '',
         newAddress: isAddressChanged ? trimmedAddress : undefined,
@@ -446,10 +446,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       };
     }
 
-    // Name and Address must NOT be updated immediately if changed! They keep current user.name and user.address
+    // Name and Address must NOT be updated immediately if changed!
     const updatedUser: User = {
       ...user,
-      name: isNameChanged ? user.name : trimmedName,
+      name: isNameChanged ? (user?.name || '') : trimmedName,
       address: isAddressChanged ? user.address : trimmedAddress,
       phone: trimmedPhone,
       email: trimmedEmail,

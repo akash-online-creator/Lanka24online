@@ -330,7 +330,7 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
     const whatIsNeededFormatted = narrative;
 
     const postPayload: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'> = {
-      userName: currentUser.name || 'පරිශීලකයා',
+      userName: currentUser?.name || 'පරිශීලකයා',
       userPhone: fullPhone,
       whatHappened: whatHappenedFormatted,
       whatIsNeeded: whatIsNeededFormatted,

@@ -103,7 +103,7 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
                 <tbody>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569; width: 38%;">සම්පූර්ණ නම (Full Name):</td>
-                    <td style="padding: 6px 8px; font-weight: 700; color: #0f172a;">${safeText(user.name)}</td>
+                    <td style="padding: 6px 8px; font-weight: 700; color: #0f172a;">${safeText(user?.name)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">වාසගම (Surname):</td>

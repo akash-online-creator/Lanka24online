@@ -99,7 +99,7 @@ export async function saveDevicePin(
   const pinRecord: StoredDevicePinData = {
     userId: user.id || user.userId || user.nicNumber,
     nicNumber: user.nicNumber || user.userId,
-    userName: user.name || 'පරිශීලක',
+    userName: user?.name || 'පරිශීලක',
     userPhoto: user.photoUrl || user.facePhotoUrl,
     userPhone: user.phone || user.whatsappNumber,
     deviceId,

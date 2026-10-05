@@ -461,15 +461,14 @@ export const ShortcutHubView: React.FC<ShortcutHubViewProps> = ({
               <div className="flex items-center gap-4 relative z-10">
                 <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/40 flex items-center justify-center font-black text-2xl shadow-inner shrink-0 overflow-hidden">
                   {user.facePhotoUrl || user.photoUrl ? (
-                    <img src={user.facePhotoUrl || user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    user.name?.charAt(0)?.toUpperCase() || 'U'
+                    <img src={user.facePhotoUrl || user.photoUrl} alt={user?.name} className="w-full h-full object-cover" />
+                  ) : (currentUser?.name || user?.name)?.charAt(0)?.toUpperCase() || 'U'
                   )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-black truncate">{user.name || 'පරිශීලක'}</h3>
+                    <h3 className="text-lg font-black truncate">{user?.name || 'පරිශීලක'}</h3>
                     {user.status === 'approved' && (
                       <ShieldCheck className="w-5 h-5 text-emerald-300 shrink-0" />
                     )}

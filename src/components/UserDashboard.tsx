@@ -470,7 +470,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const isNameMatch = Boolean(
         user?.name &&
         post?.userName &&
-        (post.userName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
+        (post.userName || '').trim().toLowerCase() === (user?.name || '').trim().toLowerCase()
       );
       return isPhoneMatch || isIdMatch || isNameMatch;
     };
@@ -482,7 +482,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         if (!r) return false;
         const repPhone = normalizePhone(r.responderPhone);
         const isPhone = Boolean(userPhoneClean && repPhone && (userPhoneClean === repPhone || userPhoneClean.endsWith(repPhone.slice(-7))));
-        const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user.name.trim().toLowerCase());
+        const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user?.name.trim().toLowerCase());
         return isPhone || isName;
       });
     };
@@ -536,7 +536,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       adminFlagged: true,
       adminFlagReason: combinedReason,
       adminFlaggedAt: nowIso,
-      adminFlaggedBy: user.name || 'පරිපාලක (Admin)',
+      adminFlaggedBy: user?.name || 'පරිපාලක (Admin)',
       isHiddenByAdmin: hidePost,
       moderationStatus: 'flagged',
     };
@@ -555,7 +555,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         adminFlagged: true,
         adminFlagReason: combinedReason,
         adminFlaggedAt: nowIso,
-        adminFlaggedBy: user.name || 'පරිපාලක (Admin)',
+        adminFlaggedBy: user?.name || 'පරිපාලක (Admin)',
         isHiddenByAdmin: hidePost,
         moderationStatus: 'flagged',
       });
@@ -645,7 +645,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       });
 
       await sendChatMessageToFirestore(postId, {
-        senderName: user.name || 'දැන්වීම්කරු',
+        senderName: user?.name || 'දැන්වීම්කරු',
         senderRole: 'seeker',
         text: `📝 [දැන්වීම්කරුගේ සංශෝධනය]: "${responseNote}" - පරිපාලක කරුණාකර නැවත පරීක්ෂා කර Unhide කරදෙන්න.`,
         timestamp: 'දැන්',
@@ -728,7 +728,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const deletedPayload: Partial<HelpPost> = {
         isDeleted: true,
         deletedAt: new Date().toISOString(),
-        deletedBy: checkIsAdmin(user) ? `Admin (${user.name})` : (user.name || postToDelete?.userName || 'User'),
+        deletedBy: checkIsAdmin(user) ? `Admin (${user?.name || 'Admin'})` : (user?.name || postToDelete?.userName || 'User'),
         status: 'deleted',
       };
       await updateHelpPostInFirestore(postId, deletedPayload).catch(() => {});
@@ -813,7 +813,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const isPostOwner = 
         (user?.id && post.userId === user.id) ||
         (user?.userId && post.userId === user.userId) ||
-        (post.userName && user?.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
+        (post.userName && user?.name && post.userName.trim().toLowerCase() === user?.name.trim().toLowerCase()) ||
         (post.userPhone && user?.phone && post.userPhone.trim() === user.phone.trim());
       
       const isViewerAdmin = checkIsAdmin(user);
@@ -1132,7 +1132,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       replies: updatedReplies,
       helpersAccepted: acceptedCount,
       isConfirmed: isComplete ? true : post.isConfirmed,
-      confirmedBy: reply.responderName || user.name,
+      confirmedBy: reply.responderName || user?.name,
       confirmedHelperName: reply.responderName || post.confirmedHelperName || '',
       confirmedHelperPhone: reply.responderPhone || post.confirmedHelperPhone || '',
       confirmedAt: new Date().toISOString(),
@@ -1289,9 +1289,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       });
 
       await sendChatMessageToFirestore(resolvedPost.id, {
-        senderName: user.name || resolvedPost.userName || 'ඉල්ලුම්කරු',
+        senderName: user?.name || resolvedPost.userName || 'ඉල්ලුම්කරු',
         senderRole: 'seeker',
-        text: `"${user.name || resolvedPost.userName}" විසින් ගැටලුව සාර්ථකව විසඳුණු බව තහවුරු කරන ලදී. ස්තුතියි!`,
+        text: `"${user?.name || resolvedPost.userName}" විසින් ගැටලුව සාර්ථකව විසඳුණු බව තහවුරු කරන ලදී. ස්තුතියි!`,
         timestamp: 'දැන්',
         senderPhone: user.phone || resolvedPost.userPhone || '',
       });
@@ -1324,9 +1324,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       });
 
       await sendChatMessageToFirestore(post.id, {
-        senderName: user.name || post.userName || 'ඉල්ලුම්කරු',
+        senderName: user?.name || post.userName || 'ඉල්ලුම්කරු',
         senderRole: 'seeker',
-        text: `"${user.name || post.userName}" විසින් සහය තවම ලබාදී අවසන් වී නැති බව සටහන් කර ඇත. සහය ලබාදී අවසන් වූ පසු සහායකයාට නැවත තහවුරු කළ හැක.`,
+        text: `"${user?.name || post.userName}" විසින් සහය තවම ලබාදී අවසන් වී නැති බව සටහන් කර ඇත. සහය ලබාදී අවසන් වූ පසු සහායකයාට නැවත තහවුරු කළ හැක.`,
         timestamp: 'දැන්',
         senderPhone: user.phone || post.userPhone || '',
       });
@@ -1347,7 +1347,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const isMyPost =
         (user?.id && post.userId === user.id) ||
         (user?.userId && post.userId === user.userId) ||
-        (post.userName && user?.name && post.userName.trim().toLowerCase() === user.name.trim().toLowerCase());
+        (post.userName && user?.name && post.userName.trim().toLowerCase() === user?.name.trim().toLowerCase());
 
       return Boolean(isMyPost);
     });
@@ -1369,7 +1369,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       return { ...rep, isAccepted: true, isConfirmed: true };
     });
 
-    const helperName = matchedReply?.responderName || confirmedPost.confirmedHelperName || confirmedPost.confirmedBy || user.name;
+    const helperName = matchedReply?.responderName || confirmedPost.confirmedHelperName || confirmedPost.confirmedBy || user?.name;
     const helperPhone = matchedReply?.responderPhone || confirmedPost.confirmedHelperPhone || '';
 
     const updated: HelpPost = {

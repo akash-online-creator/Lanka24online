@@ -134,7 +134,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     !isDemo &&
     currentUser && (
       (post.confirmedHelperPhone && normalizePhone(currentUser.phone) === normalizePhone(post.confirmedHelperPhone)) ||
-      (post.confirmedBy && currentUser.name && currentUser.name.trim().toLowerCase() === post.confirmedBy.trim().toLowerCase())
+      (post.confirmedBy && user?.name && user?.name.trim().toLowerCase() === post.confirmedBy.trim().toLowerCase())
     )
   );
   const hasContactPermission = Boolean(

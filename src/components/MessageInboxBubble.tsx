@@ -34,7 +34,7 @@ export const MessageInboxBubble: React.FC<MessageInboxBubbleProps> = ({
     const isNameMatch = Boolean(
       user?.name &&
       post?.userName &&
-      (post.userName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
+      (post.userName || '').trim().toLowerCase() === (user?.name || '').trim().toLowerCase()
     );
 
     return isPhoneMatch || isIdMatch || isNameMatch;
@@ -47,7 +47,7 @@ export const MessageInboxBubble: React.FC<MessageInboxBubbleProps> = ({
       if (!r) return false;
       const repPhone = normalizePhone(r.responderPhone);
       const isPhone = Boolean(userPhoneClean && repPhone && (userPhoneClean === repPhone || userPhoneClean.endsWith(repPhone.slice(-7))));
-      const isName = Boolean(user?.name && r.responderName && (r.responderName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase());
+      const isName = Boolean(user?.name && r.responderName && (r.responderName || '').trim().toLowerCase() === (user?.name || '').trim().toLowerCase());
       return isPhone || isName;
     });
   };
