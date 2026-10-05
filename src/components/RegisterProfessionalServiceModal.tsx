@@ -33,7 +33,7 @@ import { initialLocations } from '../data/initialData';
 interface RegisterProfessionalServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user?: User | null;
+  user: User;
   language: Language;
   currentLocationName?: string;
   onRegisterService: (newService: ProfessionalService) => void;
@@ -66,11 +66,11 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   const [experienceDuration, setExperienceDuration] = useState('');
   const [altPhone, setAltPhone] = useState('');
   const [revealContactConsent, setRevealContactConsent] = useState(true);
-  const [locationName, setLocationName] = useState(currentLocationName || user?.nearestTown || 'කඩවත');
+  const [locationName, setLocationName] = useState(currentLocationName || user.nearestTown || 'කඩවත');
   
   // Coordinates for map
-  const [mapLat, setMapLat] = useState<number>(user?.registrationLat || 7.1712);
-  const [mapLng, setMapLng] = useState<number>(user?.registrationLng || 79.8978);
+  const [mapLat, setMapLat] = useState<number>(user.registrationLat || 7.1712);
+  const [mapLng, setMapLng] = useState<number>(user.registrationLng || 79.8978);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isFullMapOpen, setIsFullMapOpen] = useState(false);
   const [mapSearchQuery, setMapSearchQuery] = useState('');
@@ -299,7 +299,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       createdAtMs: Date.now(),
       reviews: [],
       avgRating: 5.0,
-      isVerified: user?.status === 'approved' || true,
+      isVerified: user.status === 'approved' || true,
       revealContactConsent,
     };
 

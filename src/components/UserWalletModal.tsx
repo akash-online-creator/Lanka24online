@@ -100,7 +100,7 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-emerald-100/90 font-medium">
-                {user?.name || 'පරිශීලක'} • ඔබගේ ID: <span className="font-mono font-bold text-amber-300">{numericId}</span>
+                {user.name} • ඔබගේ ID: <span className="font-mono font-bold text-amber-300">{numericId}</span>
               </p>
             </div>
           </div>

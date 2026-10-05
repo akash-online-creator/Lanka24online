@@ -93,12 +93,6 @@ jobs:
         run: |
           ls -lh build/app/outputs/flutter-apk/
 
-      - name: Stage Latest APK in Public Download Directory
-        run: |
-          mkdir -p public/apk
-          cp build/app/outputs/flutter-apk/app-release.apk public/apk/sahayasewa-latest.apk
-          ls -lh public/apk/
-
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:

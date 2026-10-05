@@ -218,7 +218,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     const isNameMatch = Boolean(
       user?.name &&
       post?.userName &&
-      (post.userName || '').trim().toLowerCase() === (user?.name || '').trim().toLowerCase()
+      (post.userName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
     );
 
     return isPhoneMatch || isIdMatch || isNameMatch;
@@ -231,7 +231,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
       if (!r) return false;
       const repPhone = normalizePhone(r.responderPhone);
       const isPhone = Boolean(userPhoneClean && repPhone && (userPhoneClean === repPhone || userPhoneClean.endsWith(repPhone.slice(-7))));
-      const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user?.name.trim().toLowerCase());
+      const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user.name.trim().toLowerCase());
       return isPhone || isName;
     });
   };
@@ -352,7 +352,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: user?.name || 'පරිශීලක',
+      senderName: user.name || 'පරිශීලක',
       senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
       text: messageTextToSave,
       timestamp: formatMessageClockTime(undefined, nowMs),
@@ -398,7 +398,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: user?.name || 'පරිශීලක',
+      senderName: user.name || 'පරිශීලක',
       senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
       text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
       timestamp: formatMessageClockTime(undefined, nowMs),
@@ -760,7 +760,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
               <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f6faf8] dark:bg-[#040e08]">
                 {(messages || []).map((msg, msgIdx) => {
                   const isMe = 
-                    (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user?.name.trim().toLowerCase()) ||
+                    (user.name && msg.senderName && msg.senderName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
                     (msg.senderPhone && userPhoneClean && normalizePhone(msg.senderPhone) === userPhoneClean);
 
                   const isSeeker = 
@@ -920,7 +920,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
               <div className="p-3 bg-white dark:bg-[#06180f] border-t border-emerald-200 dark:border-[#0e3a24] shrink-0">
                 {isRecordingVoice ? (
                   <AudioVoiceRecorder
-                    senderName={user?.name || 'User'}
+                    senderName={user.name || 'User'}
                     sourceContext="Direct Chat"
                     onSendAudio={handleSendVoiceAudio}
                     onCancel={() => setIsRecordingVoice(false)}

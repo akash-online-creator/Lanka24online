@@ -65,7 +65,7 @@ export const checkIsPostOwner = (
     uPhone.slice(-9) === pPhone.slice(-9)
   );
 
-  const uName = (user?.name || '').trim().toLowerCase();
+  const uName = (user.name || '').trim().toLowerCase();
   const pName = (post.userName || '').trim().toLowerCase();
   const nameMatch = Boolean(uName && pName && uName === pName);
 

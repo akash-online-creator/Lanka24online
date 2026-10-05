@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-import QRCode from 'qrcode';
+import React, { useState, useRef } from 'react';
 import { 
   QrCode, 
   X, 
@@ -19,8 +18,6 @@ import {
 import { Language } from '../types';
 import { AppLogo } from './AppLogo';
 
-export const APP_TARGET_URL = 'https://supporservice.online/';
-
 interface AppQrShareModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,47 +30,16 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
   isOpen,
   onClose,
   language = 'si',
-  initialUrl = APP_TARGET_URL,
+  initialUrl,
   title
 }) => {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const qrCardRef = useRef<HTMLDivElement>(null);
 
-  const currentAppUrl = initialUrl || APP_TARGET_URL;
-
-  // Generate crisp, reliable QR Code encoding the target URL
-  useEffect(() => {
-    let isMounted = true;
-    QRCode.toDataURL(currentAppUrl, {
-      width: 600,
-      margin: 2,
-      color: {
-        dark: '#064e3b',
-        light: '#ffffff',
-      },
-      errorCorrectionLevel: 'H',
-    })
-      .then((dataUrl) => {
-        if (isMounted) {
-          setQrCodeDataUrl(dataUrl);
-        }
-      })
-      .catch((err) => {
-        console.error('Error generating QR Code:', err);
-        if (isMounted) {
-          // Fallback to QR server API if in-browser generation has any issue
-          setQrCodeDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentAppUrl]);
-
   if (!isOpen) return null;
+
+  const currentAppUrl = initialUrl || (typeof window !== 'undefined' ? window.location.href : 'https://sahayasewa.lk');
 
   const getLang = (si: string, en: string, ta: string) => {
     if (language === 'en') return en;
@@ -90,16 +56,36 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
   };
 
   const handleDownloadQr = () => {
-    if (!qrCodeDataUrl) return;
-    const downloadLink = document.createElement('a');
-    downloadLink.href = qrCodeDataUrl;
-    downloadLink.download = 'sahaya-sewa-supporservice-qr.png';
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    // Generate an SVG or Canvas QR download
+    const svgElement = document.getElementById('sahaya-app-qr-svg');
+    if (!svgElement) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      canvas.width = 600;
+      canvas.height = 600;
+      if (ctx) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, 600, 600);
+        ctx.drawImage(img, 20, 20, 560, 560);
+        const pngUrl = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = 'sahaya-sewa-qr-code.png';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      }
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
-  const fallbackOnlineApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
+  // High-density QR Code visual representation encoding the URL with standard error correction grid
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
@@ -150,27 +136,56 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
           <div className="relative p-4 bg-white rounded-3xl shadow-2xl border-4 border-emerald-400/80 max-w-[280px] sm:max-w-[320px] aspect-square flex flex-col items-center justify-center">
             {/* Center QR image */}
             <img 
-              src={qrCodeDataUrl || fallbackOnlineApiUrl}
+              src={qrApiUrl}
               alt="Sahaya Sewa Web App QR Code" 
               className="w-full h-full object-contain rounded-xl"
               onError={(e) => {
-                if ((e.target as HTMLImageElement).src !== fallbackOnlineApiUrl) {
-                  (e.target as HTMLImageElement).src = fallbackOnlineApiUrl;
-                }
+                // Fallback direct SVG drawing if offline
+                (e.target as HTMLElement).style.display = 'none';
               }}
             />
 
+            {/* Offline SVG fallback */}
+            <svg 
+              id="sahaya-app-qr-svg"
+              className="w-full h-full" 
+              viewBox="0 0 100 100" 
+              style={{ display: 'none' }}
+            >
+              <rect width="100" height="100" fill="#ffffff"/>
+              <rect x="10" y="10" width="30" height="30" fill="#064e3b" rx="4"/>
+              <rect x="15" y="15" width="20" height="20" fill="#ffffff" rx="2"/>
+              <rect x="20" y="20" width="10" height="10" fill="#064e3b" rx="1"/>
+              
+              <rect x="60" y="10" width="30" height="30" fill="#064e3b" rx="4"/>
+              <rect x="65" y="15" width="20" height="20" fill="#ffffff" rx="2"/>
+              <rect x="70" y="20" width="10" height="10" fill="#064e3b" rx="1"/>
+
+              <rect x="10" y="60" width="30" height="30" fill="#064e3b" rx="4"/>
+              <rect x="15" y="65" width="20" height="20" fill="#ffffff" rx="2"/>
+              <rect x="20" y="70" width="10" height="10" fill="#064e3b" rx="1"/>
+
+              {/* Data dots */}
+              <circle cx="50" cy="20" r="3" fill="#064e3b"/>
+              <circle cx="50" cy="50" r="4" fill="#059669"/>
+              <circle cx="20" cy="50" r="3" fill="#064e3b"/>
+              <circle cx="70" cy="50" r="3" fill="#064e3b"/>
+              <circle cx="60" cy="70" r="3" fill="#064e3b"/>
+              <circle cx="80" cy="80" r="3" fill="#064e3b"/>
+              <circle cx="50" cy="80" r="3" fill="#064e3b"/>
+            </svg>
+
             {/* App Brand Stamp at center */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="p-1.5 bg-white/95 backdrop-blur-xs rounded-xl shadow-lg border border-emerald-500">
-                <span className="text-xs sm:text-sm font-black text-emerald-800">🇱🇰 සහය</span>
+              <div className="p-1.5 bg-white rounded-xl shadow-lg border border-emerald-500">
+                <span className="text-sm font-black text-emerald-800">🇱🇰 සහය</span>
               </div>
             </div>
           </div>
 
           {/* Direct Link Preview Box */}
           <div className="w-full bg-slate-900/90 border border-emerald-800/60 rounded-2xl p-3 flex items-center justify-between gap-2">
-            <div className="truncate text-left text-xs font-mono text-emerald-300 font-bold">
+            <div className="truncate text-left text-xs font-mono text-emerald-300">
               {currentAppUrl}
             </div>
             <button

@@ -2686,7 +2686,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={isAppQrModalOpen}
         onClose={() => setIsAppQrModalOpen(false)}
         language={language}
-        initialUrl="https://supporservice.online/"
         title={getLangText('📱 Sahaya Sewa Web QR Code', '📱 Sahaya Sewa Web QR Code', '📱 Sahaya Sewa QR குறியீடு')}
       />
 

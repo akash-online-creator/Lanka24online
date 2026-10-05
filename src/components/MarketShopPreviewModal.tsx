@@ -66,7 +66,7 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
       ? `94${cleanPhone.substring(1)}`
       : cleanPhone;
     const msg = encodeURIComponent(
-      `ආයුබෝවන්, මම සහය (Sahaya) යෙදුම හරහා ඔබගේ "${user?.name}" සම්බන්ධ කරගනිමි.`
+      `ආයුබෝවන්, මම සහය (Sahaya) යෙදුම හරහා ඔබගේ "${shop.name}" සම්බන්ධ කරගනිමි.`
     );
     window.open(`https://wa.me/${internationalPhone}?text=${msg}`, '_blank');
   };
@@ -104,7 +104,7 @@ export const MarketShopPreviewModal: React.FC<MarketShopPreviewModalProps> = ({
                 </span>
               </div>
               <h2 className="text-lg sm:text-xl font-black leading-snug break-words">
-                {user?.name}
+                {shop.name}
               </h2>
               <p className="text-xs text-emerald-100 mt-1 flex items-center gap-1.5">
                 <span>හිමිකරු :</span>

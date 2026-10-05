@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { 
+import { 
   Issue, 
   User, 
   Language, 

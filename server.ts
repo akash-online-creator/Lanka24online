@@ -965,20 +965,6 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
-  // 📲 APK Direct Download & Version Handlers
-  app.get(['/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download'], (req, res) => {
-    const apkFilePath = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="sahayasewa-latest.apk"');
-    res.sendFile(apkFilePath);
-  });
-
-  app.get('/api/app/version', (req, res) => {
-    const versionFile = path.join(publicPath, 'apk', 'version.json');
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.sendFile(versionFile);
-  });
-
   app.get(['/manifest.json', '/manifest.webmanifest', '/site.webmanifest'], (req, res) => {
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
     res.setHeader('Access-Control-Allow-Origin', '*');

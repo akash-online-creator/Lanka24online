@@ -264,7 +264,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setInspectorScanResult(user.aiScanResult || null);
     setPhotoInspector({
       user,
-      userName: user?.name || 'පරිශීලක',
+      userName: user.name,
       userId: user.userId,
       nicNumber: user.nicNumber,
       facePhotoUrl: (user.facePhotoUrl && user.facePhotoUrl.trim() !== '') ? user.facePhotoUrl : user.photoUrl,
@@ -518,7 +518,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
 
       const riskLabel = result.riskLevel === 'high' ? 'අධි අවදානම් (HIGH RISK)' : result.riskLevel === 'medium' ? 'මධ්‍යම අවදානම් (MEDIUM RISK)' : 'අඩු අවදානම් / නිරවුල් (LOW RISK)';
-      setAdminActionNotification(`🤖 ${user?.name || 'පරිශීලක'} සඳහා AI ස්කෑන් පරීක්ෂාව අවසන්! (අවදානම: ${riskLabel}, ලකුණු: ${result.riskScore}/100)`);
+      setAdminActionNotification(`🤖 ${user.name} සඳහා AI ස්කෑන් පරීක්ෂාව අවසන්! (අවදානම: ${riskLabel}, ලකුණු: ${result.riskScore}/100)`);
       setTimeout(() => setAdminActionNotification(null), 7000);
       return result;
     } catch (err) {
@@ -612,7 +612,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Function 1: Reset Password Feature for Admin
   const handleResetUserPassword = async (user?: User | null) => {
     if (!user) return;
-    const confirmReset = window.confirm(`ඔබට ${user?.name || 'පරිශීලක'} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
+    const confirmReset = window.confirm(`ඔබට ${user.name || 'පරිශීලක'} සඳහා මුරපදය නැවත සැකසීමට (Reset Password) අවශ්‍යද?`);
     if (!confirmReset) return;
 
     // Generate a secure 6-digit random temporary password
@@ -689,7 +689,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
     }
 
-    setAdminActionNotification(`🔑 ${user?.name || 'පරිශීලක'} ගේ මුරපදය සාර්ථකව Reset කරන ලදී! නව මුරපදය: ${newTempPassword}`);
+    setAdminActionNotification(`🔑 ${user.name} ගේ මුරපදය සාර්ථකව Reset කරන ලදී! නව මුරපදය: ${newTempPassword}`);
     setTimeout(() => setAdminActionNotification(null), 8000);
   };
 
@@ -766,12 +766,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (onUpdateUser) onUpdateUser(updatedUser);
     const uid = user?.id || user?.userId;
     if (uid && onApproveUser) onApproveUser(uid);
-    setAdminActionNotification(`✅ ${user?.name || 'පරිශීලක'} (NIC: ${user.nicNumber}) ගේ ගිණුම සාර්ථකව අනුමත (Approve) කරන ලදී.`);
+    setAdminActionNotification(`✅ ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම සාර්ථකව අනුමත (Approve) කරන ලදී.`);
 
     // 📢 Broadcast Admin Notification
     broadcastAdminNotification({
-      title: `සාමාජික ගිණුමක් සත්‍යාපනය විය: ${user?.name || 'පරිශීලක'}`,
-      message: `${user?.name || 'පරිශීලක'} (${user.district || 'ශ්‍රී ලංකාව'}) සාමාජික ගිණුම පරිපාලක මණ්ඩලය විසින් සත්‍යාපනය කර අනුමත කරන ලදී.`,
+      title: `සාමාජික ගිණුමක් සත්‍යාපනය විය: ${user.name}`,
+      message: `${user.name} (${user.district || 'ශ්‍රී ලංකාව'}) සාමාජික ගිණුම පරිපාලක මණ්ඩලය විසින් සත්‍යාපනය කර අනුමත කරන ලදී.`,
       badgeText: 'VERIFIED',
       adminSender: 'පරිපාලක මණ්ඩලය (Admin Panel)',
       locationName: user.district,
@@ -781,7 +781,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleDirectRejectUser = (user: User) => {
-    const reason = window.prompt(`කරුණාකර ${user?.name || 'පරිශීලක'} ගේ ගිණුම ප්‍රතික්ෂේප කිරීමට හේතුව ඇතුළත් කරන්න (හෝ Cancel කරන්න):`, 'හැඳුනුම්පත් ඡායාරූපය අපැහැදිලියි හෝ තොරතුරු නොගැළපේ');
+    const reason = window.prompt(`කරුණාකර ${user.name} ගේ ගිණුම ප්‍රතික්ෂේප කිරීමට හේතුව ඇතුළත් කරන්න (හෝ Cancel කරන්න):`, 'හැඳුනුම්පත් ඡායාරූපය අපැහැදිලියි හෝ තොරතුරු නොගැළපේ');
     if (reason === null) return;
     const updatedUser: User = {
       ...user,
@@ -791,15 +791,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (onUpdateUser) onUpdateUser(updatedUser);
     const uid = user?.id || user?.userId;
     if (uid && onRejectUser) onRejectUser(uid, reason);
-    setAdminActionNotification(`❌ ${user?.name || 'පරිශීලක'} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කරන ලදී.`);
+    setAdminActionNotification(`❌ ${user.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කරන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
 
   const handleToggleBlockUser = (user: User) => {
     const willBlock = user.status !== 'blocked';
     const promptMsg = willBlock 
-      ? `ඔබට ${user?.name || 'පරිශීලක'} (NIC: ${user.nicNumber}) ගේ ගිණුම අවහිර (Block) කිරීමට අවශ්‍යද?` 
-      : `ඔබට ${user?.name || 'පරිශීලක'} (NIC: ${user.nicNumber}) ගේ ගිණුමේ අවහිරය ඉවත් (Unblock) කිරීමට අවශ්‍යද?`;
+      ? `ඔබට ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුම අවහිර (Block) කිරීමට අවශ්‍යද?` 
+      : `ඔබට ${user.name} (NIC: ${user.nicNumber}) ගේ ගිණුමේ අවහිරය ඉවත් (Unblock) කිරීමට අවශ්‍යද?`;
     if (!window.confirm(promptMsg)) return;
 
     let reason = user.blockedReason;
@@ -817,7 +817,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (onUpdateUser) onUpdateUser(updatedUser);
     const uid = user?.id || user?.userId;
     if (willBlock && onBlockUser && uid) onBlockUser(uid, reason || 'Blocked by Admin');
-    setAdminActionNotification(willBlock ? `⛔ ${user?.name || 'පරිශීලක'} ගේ ගිණුම අවහිර (Blocked) කරන ලදී.` : `✅ ${user?.name || 'පරිශීලක'} ගේ ගිණුම නැවත සක්‍රීය (Unblocked) කරන ලදී.`);
+    setAdminActionNotification(willBlock ? `⛔ ${user.name} ගේ ගිණුම අවහිර (Blocked) කරන ලදී.` : `✅ ${user.name} ගේ ගිණුම නැවත සක්‍රීය (Unblocked) කරන ලදී.`);
     setTimeout(() => setAdminActionNotification(null), 6000);
   };
 
@@ -1285,13 +1285,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             title="ඡායාරූපය විශාල කර බලන්න (Click to inspect)"
                           >
                             {nicFront ? (
-                              <img src={nicFront} alt={user?.name || 'User'} className="w-full h-full object-cover" />
+                              <img src={nicFront} alt={user.name || 'User'} className="w-full h-full object-cover" />
                             ) : (
-                              (user?.name || 'U').charAt(0)
+                              (user.name || 'U').charAt(0)
                             )}
                           </div>
                           <div>
-                            <h4 className="font-black text-slate-900 text-sm">{user?.name}</h4>
+                            <h4 className="font-black text-slate-900 text-sm">{user.name}</h4>
                             <div className="text-[11px] font-mono text-emerald-800 font-bold">
                               ID: {user.userId}
                             </div>
@@ -1621,11 +1621,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden border border-amber-300 cursor-pointer shrink-0"
                           >
                             {frontPhoto ? (
-                              <img src={frontPhoto} alt={user?.name} className="w-full h-full object-cover" />
+                              <img src={frontPhoto} alt={user.name} className="w-full h-full object-cover" />
                             ) : null}
                           </div>
                           <div>
-                            <h5 className="font-black text-slate-900 text-xs">{user?.name}</h5>
+                            <h5 className="font-black text-slate-900 text-xs">{user.name}</h5>
                             <div className="text-[11px] font-mono text-slate-600">NIC: {user.nicNumber}</div>
                             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                               user.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
@@ -1702,11 +1702,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden border border-rose-300 cursor-pointer shrink-0"
                           >
                             {frontPhoto ? (
-                              <img src={frontPhoto} alt={user?.name} className="w-full h-full object-cover" />
+                              <img src={frontPhoto} alt={user.name} className="w-full h-full object-cover" />
                             ) : null}
                           </div>
                           <div>
-                            <h5 className="font-black text-slate-900 text-xs">{user?.name}</h5>
+                            <h5 className="font-black text-slate-900 text-xs">{user.name}</h5>
                             <div className="text-[11px] font-mono text-slate-600">NIC: {user.nicNumber}</div>
                             <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white font-mono">
                               Risk Score: {scan?.riskScore} / 100
@@ -1817,14 +1817,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 title="පින්තූරය විශාල කර බලන්න"
                               >
                                 {user.photoUrl ? (
-                                  <img src={user.photoUrl} alt={user?.name || 'User'} className="w-full h-full object-cover" />
+                                  <img src={user.photoUrl} alt={user.name || 'User'} className="w-full h-full object-cover" />
                                 ) : (
-                                  (user?.name || 'U').charAt(0)
+                                  (user.name || 'U').charAt(0)
                                 )}
                               </div>
                               <div>
                                 <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                                  <span>{user?.name}</span>
+                                  <span>{user.name}</span>
                                   {user.role === 'admin' && (
                                     <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase">
                                       Admin

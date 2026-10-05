@@ -113,7 +113,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
         (currentUser.userNumericId && alert.reportedByUserId === currentUser.userNumericId)
       )) ||
       (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) ||
-      (alert.reportedByName && user?.name && typeof alert.reportedByName === 'string' && typeof ?.name === 'string' && alert.reportedByName.trim().toLowerCase() === user?.name.trim().toLowerCase())
+      (alert.reportedByName && currentUser.name && typeof alert.reportedByName === 'string' && typeof currentUser.name === 'string' && alert.reportedByName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
     ))
   );
 

@@ -203,7 +203,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   const isAuthorOfAlert = Boolean(currentUser && (
     (alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
     (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
-    (alert.reportedByName && user?.name && alert.reportedByName === user?.name)
+    (alert.reportedByName && currentUser.name && alert.reportedByName === currentUser.name)
   ));
 
   const config = getDisasterConfig(alert.disasterType);

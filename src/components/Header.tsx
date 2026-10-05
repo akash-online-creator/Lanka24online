@@ -158,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
         {currentUser && (
           <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[90px] sm:max-w-[120px] hidden md:inline">
-              {user?.name}
+              {currentUser.name}
             </span>
             <button
               onClick={onLogout}

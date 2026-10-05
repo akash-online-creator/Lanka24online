@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v4';
+const CACHE_NAME = 'sahaya-sewa-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -136,22 +136,12 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
   const url = new URL(event.request.url);
-
-  // Exclude API calls, Firestore, and Vite development module requests completely from SW cache
-  if (
-    url.pathname.startsWith('/api') || 
-    url.pathname.startsWith('/src/') ||
-    url.pathname.startsWith('/@') ||
-    url.pathname.startsWith('/node_modules/') ||
-    url.pathname.includes('vite') ||
-    url.hostname.includes('firestore') || 
-    url.hostname.includes('googleapis') || 
-    url.hostname.includes('firebase')
-  ) {
+  // Exclude API calls or Firestore calls
+  if (url.pathname.startsWith('/api') || url.hostname.includes('firestore') || url.hostname.includes('googleapis') || url.hostname.includes('firebase')) {
     return;
   }
 
-  // Network First for HTML navigation to ensure fresh code loads immediately after updates
+  // Network First for HTML navigation to ensure fresh hashed assets load after updates
   if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
     event.respondWith(
       fetch(event.request)
@@ -167,19 +157,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network First for any JS/CSS scripts so code updates are never trapped in cache
-  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.tsx') || url.pathname.endsWith('.ts')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          return networkResponse;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // Cache First for static media assets (icons, images, logos)
+  // Cache First for static hashed assets with network fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
