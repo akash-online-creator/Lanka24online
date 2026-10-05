@@ -12,7 +12,7 @@ export default defineConfig({
     host: '0.0.0.0',
   },
   build: {
-    outDir: 'assets/web',
+    outDir: 'dist',
     emptyOutDir: true,
   },
 });

@@ -324,11 +324,12 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     });
 
     try {
-      await controller.loadRequest(Uri.parse('https://supporservice.online/'));
+      await controller.loadFlutterAsset('assets/web/index.html');
     } catch (e) {
-      debugPrint('Primary online URL loading notice: $e');
+      debugPrint('Primary asset loading notice: $e');
       try {
-        await controller.loadFlutterAsset('assets/web/index.html');
+        final String htmlContent = await rootBundle.loadString('assets/web/index.html');
+        await controller.loadHtmlString(htmlContent, baseUrl: 'https://supporservice.online/');
       } catch (err) {
         debugPrint('Fallback loading error: $err');
       }
