@@ -90,13 +90,24 @@ flutter:
   assets:
     - assets/web/
     - assets/web/index.html
+    - assets/web/logo.jpg
+    - assets/web/manifest.json
 """
 
 with open(pubspec_path, "w", encoding="utf-8") as f:
     f.write(pubspec_content)
 print("Ensured pubspec.yaml with assets/web/ bindings.")
 
-# 4. Mirror assets/web into android/app/src/main/assets/web if directory exists
+# 4. Copy build output from dist/ if available
+if os.path.exists("dist/index.html"):
+    os.makedirs("assets/web", exist_ok=True)
+    with open("dist/index.html", "r", encoding="utf-8") as src_f:
+        built_html = src_f.read()
+    with open("assets/web/index.html", "w", encoding="utf-8") as dst_f:
+        dst_f.write(built_html)
+    print("Synced dist/index.html into assets/web/index.html")
+
+# 5. Mirror assets/web into android/app/src/main/assets/web if directory exists
 android_assets_dir = "android/app/src/main/assets/web"
 if os.path.exists("android/app/src/main"):
     os.makedirs(android_assets_dir, exist_ok=True)

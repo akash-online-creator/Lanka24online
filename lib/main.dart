@@ -23,6 +23,27 @@ class LocalAssetServer {
       _server!.listen((HttpRequest request) async {
         try {
           String path = request.uri.path;
+
+          // CORS Preflight handling
+          if (request.method == 'OPTIONS') {
+            request.response.headers.add('Access-Control-Allow-Origin', '*');
+            request.response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+            request.response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            request.response.statusCode = HttpStatus.ok;
+            await request.response.close();
+            return;
+          }
+
+          // Handle API requests when backend is on remote server
+          if (path.startsWith('/api/')) {
+            request.response.headers.contentType = ContentType.parse('application/json; charset=utf-8');
+            request.response.headers.add('Access-Control-Allow-Origin', '*');
+            request.response.statusCode = HttpStatus.notFound;
+            request.response.write('{"error": "API route not hosted locally on device", "fallback": true}');
+            await request.response.close();
+            return;
+          }
+
           if (path == '/' || path.isEmpty) {
             path = '/index.html';
           }
@@ -47,7 +68,7 @@ class LocalAssetServer {
             request.response.add(bytes);
             await request.response.close();
           } catch (e) {
-            // SPA Fallback to index.html
+            // SPA Fallback to index.html for unknown client routes
             final ByteData fallbackData = await rootBundle.load('assets/web/index.html');
             final List<int> bytes = fallbackData.buffer.asUint8List(fallbackData.offsetInBytes, fallbackData.lengthInBytes);
             request.response.headers.contentType = ContentType.parse('text/html; charset=utf-8');

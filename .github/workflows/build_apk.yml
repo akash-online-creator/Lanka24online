@@ -22,13 +22,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Fetch Official Production Web Application Bundle
+      - name: Build Web Bundle from Repository Source Code
         run: |
-          echo "Fetching verified production web bundle from https://supporservice.online/..."
+          echo "Building production web bundle from repository source..."
+          npm ci
+          npm run build
           mkdir -p assets/web
-          curl -sL https://supporservice.online/ -o assets/web/index.html
-          curl -sL https://supporservice.online/manifest.json -o assets/web/manifest.json || true
-          curl -sL https://supporservice.online/logo.jpg -o assets/web/logo.jpg || true
+          cp -r dist/* assets/web/
+          if [ -d "public" ]; then cp -r public/* assets/web/ || true; fi
           ls -lh assets/web/
 
       - name: Set up Python & Pillow for Image Processing
