@@ -5,6 +5,7 @@ let isSirenActive = false;
 let htmlAudioElement: HTMLAudioElement | null = null;
 let cachedVolume: number = 0.9;
 let cachedIsMuted: boolean = false;
+let audioUnlocked = false;
 
 type SirenChangeListener = () => void;
 const listeners = new Set<SirenChangeListener>();
@@ -117,7 +118,8 @@ export function getCustomSirenAudio(): string {
     const custom = localStorage.getItem('sahaya_custom_siren_url');
     if (custom) return custom;
   }
-  return typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
+  const resolvedDefault = typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
+  return resolvedDefault || '/assets/mixkit-manual-siren-fire-alert-1652.wav';
 }
 
 export function getSirenFileName(): string {
@@ -128,7 +130,18 @@ export function getSirenFileName(): string {
   return 'Fire Alert Siren (WAV)';
 }
 
+// 🔓 Mobile Autoplay Unlock Helper
 export function unlockAudio(): boolean {
+  if (audioUnlocked) return true;
+  try {
+    const dummyAudio = new Audio();
+    dummyAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+    dummyAudio.volume = 0.01;
+    dummyAudio.play().then(() => {
+      audioUnlocked = true;
+      dummyAudio.pause();
+    }).catch(() => {});
+  } catch {}
   return true;
 }
 
@@ -141,8 +154,7 @@ export function startEmergencySiren(): () => void {
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
     const soundUrl = getCustomSirenAudio();
 
-    // Debugging Console Log - මෙය Console එකේ පෙන්නයිදැයි බලන්න
-    console.log('🚨 Playing Default Siren File:', soundUrl);
+    console.log('🚨 Playing Emergency Siren File:', soundUrl);
 
     htmlAudioElement = new Audio(soundUrl);
     htmlAudioElement.loop = true;
@@ -151,13 +163,14 @@ export function startEmergencySiren(): () => void {
     const playPromise = htmlAudioElement.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
-        console.warn('Siren Play Blocked by Browser:', err);
+        console.warn('⚠️ Siren Audio Playback Blocked/Delayed by Browser Rules:', err);
       });
     }
 
+    // High Impact Emergency Vibration
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
-        navigator.vibrate([600, 200, 600, 200, 900, 300, 600, 200]);
+        navigator.vibrate([1000, 300, 1000, 300, 1000, 300, 1500]);
       } catch {}
     }
   } catch (err) {
