@@ -1,29 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Volume2, 
   VolumeX, 
   MapPin, 
   Clock, 
-  Calendar, 
   AlertTriangle, 
   MessageSquare, 
   Flag, 
   Send, 
-  CheckCircle2, 
-  Share2, 
   Navigation,
   Phone,
-  User as UserIcon,
   ShieldAlert
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { RedAlertItem, RedAlertComment, RedAlertFakeReport, User } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
 import { 
   startEmergencySiren, 
   stopEmergencySiren, 
   unlockAudio, 
-  isEmergencySirenPlaying,
   getSirenVolume,
   setSirenVolume,
   isDeviceSirenMuted,
@@ -51,8 +47,24 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   const [userInteracted, setUserInteracted] = useState(false);
   const [deviceMuted, setLocalDeviceMuted] = useState<boolean>(() => isDeviceSirenMuted());
   const [currentVolume, setCurrentVolume] = useState<number>(() => getSirenVolume());
-  const [showVolumeControl, setShowVolumeControl] = useState(false);
 
+  // Interactive UI Tabs & Sections
+  const [showCommentSection, setShowCommentSection] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [commenterName] = useState(currentUser?.name || '');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
+  // Fake Report State
+  const [showFakeReportModal, setShowFakeReportModal] = useState(false);
+  const [fakeReason, setFakeReason] = useState('බොරුවක් / අසත්‍ය පුවතක් (Fake news)');
+  const [fakeNotes, setFakeNotes] = useState('');
+  const [isReportingFake, setIsReportingFake] = useState(false);
+  const [fakeReportedSuccess, setFakeReportedSuccess] = useState(false);
+
+  const [localComments, setLocalComments] = useState<RedAlertComment[]>([]);
+  const fakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Siren settings listener
   useEffect(() => {
     const unsub = subscribeToLocalSirenChanges(() => {
       setLocalDeviceMuted(isDeviceSirenMuted());
@@ -61,30 +73,18 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     return () => unsub();
   }, []);
 
-  const [showCommentSection, setShowCommentSection] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [commenterName, setCommenterName] = useState(currentUser?.name || '');
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-
-  // Fake Report Modal State
-  const [showFakeReportModal, setShowFakeReportModal] = useState(false);
-  const [fakeReason, setFakeReason] = useState('බොරුවක් / අසත්‍ය පුවතක් (Fake news)');
-  const [fakeNotes, setFakeNotes] = useState('');
-  const [isReportingFake, setIsReportingFake] = useState(false);
-  const [fakeReportedSuccess, setFakeReportedSuccess] = useState(false);
-
-  // Local comments state for immediate optimistic UI update
-  const [localComments, setLocalComments] = useState<RedAlertComment[]>([]);
-
+  // Update local comments when alert prop updates
   useEffect(() => {
     if (alert) {
       setLocalComments(alert.comments || []);
     }
   }, [alert]);
 
-  // Attempt automatic siren start, and listen for user interaction if browser blocked autoplay
+  // Handle siren auto-triggering on alert receipt
   useEffect(() => {
-    if (isOpen && alert) {
+    if (isOpen && alert && !deviceMuted) {
+      // Capacitor Native පරිසරයේදී Android Channel එක මඟින් siren.mp3 නිකුත් වේ.
+      // Web / Browser පරිසරයේදී Web Audio API එක fallback එකක් ලෙස පණගන්වයි.
       unlockAudio();
       startEmergencySiren();
       setIsPlayingSiren(true);
@@ -94,23 +94,29 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
       stopEmergencySiren();
       setIsPlayingSiren(false);
     };
-  }, [isOpen, alert]);
+  }, [isOpen, alert, deviceMuted]);
 
-  // 37-second auto-silent timer for device siren
+  // ආරක්ෂිත පියවරක් ලෙස තත්පර 37කින් සයිරන් ශබ්දය Auto-mute වීම
   useEffect(() => {
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (isOpen && isPlayingSiren) {
       timer = setTimeout(() => {
         stopEmergencySiren();
         setIsPlayingSiren(false);
-      }, 37000); // 37 seconds auto-silent
+      }, 37000); // 37 Seconds Auto-silent
     }
     return () => {
       if (timer) clearTimeout(timer);
     };
   }, [isOpen, isPlayingSiren]);
 
-  // Handle explicit play/stop toggle with gesture unlock
+  useEffect(() => {
+    return () => {
+      if (fakeTimeoutRef.current) clearTimeout(fakeTimeoutRef.current);
+    };
+  }, []);
+
+  // පරිශීලකයා විසින් සයිරන් ශබ්දය Toggle කිරීම
   const handleToggleSiren = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setUserInteracted(true);
@@ -125,9 +131,9 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     }
   };
 
-  const handleModalClick = () => {
-    // If the browser blocked autoplay, tapping anywhere on the modal will unlock audio & play
-    if (!isPlayingSiren && !userInteracted) {
+  // Browser Autoplay block වූ අවස්ථාවක තිරය මත click කළ විට Unlock වීම
+  const handleModalBackdropClick = () => {
+    if (!isPlayingSiren && !userInteracted && !deviceMuted) {
       unlockAudio();
       startEmergencySiren();
       setIsPlayingSiren(true);
@@ -185,7 +191,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
     try {
       await reportRedAlertAsFake(alert.id, report);
       setFakeReportedSuccess(true);
-      setTimeout(() => {
+      fakeTimeoutRef.current = setTimeout(() => {
         setShowFakeReportModal(false);
         setFakeReportedSuccess(false);
       }, 2000);
@@ -201,24 +207,32 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 
   const currentUserId = currentUser?.id || currentUser?.userId;
   const isAuthorOfAlert = Boolean(currentUser && (
-    (alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUser.id || alert.reportedByUserId === currentUser.userId)) ||
+    (alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUserId)) ||
     (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
     (alert.reportedByName && currentUser.name && alert.reportedByName === currentUser.name)
   ));
 
   const config = getDisasterConfig(alert.disasterType);
   
-  // උඩ බැනරයට සහ පහළ කාඩ්පතට එකම දුර ප්‍රමාණ සංදර්ශනය (Distance consistency)
+  // කි.මී. 5 සීමාවේ දුර නිවැරදිව සංදර්ශනය කිරීම
   const distanceDisplay = distanceKm < 1 
     ? `මීටර් ${Math.round(distanceKm * 1000)}` 
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
+  const destinationQuery = (typeof alert.latitude === 'number' && typeof alert.longitude === 'number')
+    ? `${alert.latitude},${alert.longitude}`
+    : encodeURIComponent(alert.locationName || '');
+
   return (
     <div 
-      onClick={handleModalClick}
+      onClick={handleModalBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fadeIn"
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-4 border-red-600 rounded-3xl shadow-[0_0_80px_rgba(239,68,68,0.7)] overflow-hidden my-auto animate-pulse-glow max-h-[92vh] flex flex-col">
+      {/* Event Bubbling වැළැක්වීම සඳහා inner stopPropagation යොදා ඇත */}
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-4 border-red-600 rounded-3xl shadow-[0_0_80px_rgba(239,68,68,0.7)] overflow-hidden my-auto animate-pulse-glow max-h-[92vh] flex flex-col"
+      >
         
         {/* Animated Emergency Beacon Banner */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-3.5 sm:p-4 text-white flex items-center justify-between shadow-lg relative overflow-hidden shrink-0">
@@ -234,14 +248,16 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-yellow-300 border border-yellow-300/40 shrink-0">
-                  ⚠️ හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)
+                  ⚠️ රතුවෙලිය ක්ෂණික අනතුරු ඇඟවීම
                 </span>
-                <span className="font-mono text-xs text-white/90 shrink-0">
-                  {alert.alertCode}
-                </span>
+                {alert.alertCode && (
+                  <span className="font-mono text-xs text-white/90 shrink-0">
+                    {alert.alertCode}
+                  </span>
+                )}
               </div>
               <h2 className="text-sm sm:text-base font-black tracking-wide text-white drop-shadow-sm pt-0.5 truncate">
-                ඔබ ආපදා ස්ථානයේ සිට {distanceDisplay} ක් ඇතුළතයි!
+                ඔබ අනතුර සිදුවූ ස්ථානයේ සිට {distanceDisplay} ක් ආසන්නයේ සිටී!
               </h2>
             </div>
           </div>
@@ -249,10 +265,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           <div className="flex items-center gap-1.5 relative z-10 shrink-0">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClose();
-              }}
+              onClick={handleClose}
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition-all cursor-pointer"
               title="Close"
             >
@@ -261,13 +274,12 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
         </div>
 
-        {/* Responsive Siren Audio & Mute Controls Bar */}
+        {/* Siren Audio & Mute Controls Bar */}
         <div className="bg-slate-900 border-b border-slate-800 p-2 sm:p-2.5 px-3 sm:px-4 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-200 shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={() => {
                 const nextMute = !deviceMuted;
                 setLocalDeviceMuted(nextMute);
                 setDeviceSirenMuted(nextMute);
@@ -298,12 +310,12 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               {isPlayingSiren ? (
                 <>
                   <Volume2 className="w-3.5 h-3.5 text-red-700 animate-bounce" />
-                  <span>නවත්වන්න (Stop)</span>
+                  <span>සයිරන් නවත්වන්න (Stop)</span>
                 </>
               ) : (
                 <>
                   <Volume2 className="w-3.5 h-3.5 text-white" />
-                  <span>Siren අසන්න</span>
+                  <span>සයිරන් පණගන්වන්න</span>
                 </>
               )}
             </button>
@@ -338,7 +350,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           >
             <div className="flex items-center gap-2">
               <span className="text-base animate-bounce">🔊</span>
-              <span>Siren ශබ්දය ඇසීමට මෙතන ක්ලික් කරන්න (Click to sound alarm)</span>
+              <span>සයිරන් ශබ්දය අක්‍රියයි. ශබ්දය ඇසීමට මෙතන ඔබන්න (Click to sound alarm)</span>
             </div>
             <span className="bg-slate-950 text-amber-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
               Play Siren
@@ -346,10 +358,10 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
         )}
 
-        {/* Modal Main Content */}
+        {/* Modal Main Scrollable Details */}
         <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
-          {/* Proximity Warning Alert Callout */}
+          {/* Proximity Warning Banner */}
           <div className="p-3.5 rounded-2xl bg-red-500/15 border-2 border-red-500/40 flex items-start gap-3">
             <span className="text-2xl mt-0.5">⚠️</span>
             <div className="space-y-0.5">
@@ -357,20 +369,20 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 අවධානය යොමු කරන්න: ඔබ මෙම ආපදාව සිදුවූ ස්ථානයේ සිට කි.මී. 5 සීමාව තුළ සිටී!
               </h3>
               <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-                ආරක්ෂිත පියවර අනුගමනය කරන්න. ඔබ අවට සිටින පිරිස් දැනුවත් කරන්න. හදිසි ගලවාගැනීම් අවශ්‍ය නම් වහාම 119, 110 හෝ 117 ආපදා අංක අමතන්න.
+                ආරක්ෂිත ස්ථානයකට යොමුවන්න. ඔබ අවට සිටින අය දැනුවත් කරන්න. ක්ෂණික ගලවාගැනීම් අවශ්‍ය නම් 119, 110 හෝ 117 ආපදා කළමනාකරණ අංක අමතන්න.
               </p>
             </div>
           </div>
 
-          {/* Disaster Type & Details Card */}
+          {/* Disaster Type Card */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200 dark:border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
-                <span className="text-3xl">{config.icon}</span>
+                <span className="text-3xl">{config?.icon || '🚨'}</span>
                 <div>
                   <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">ආපදා වර්ගය</span>
                   <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                    {alert.disasterTitleSi}
+                    {alert.disasterTitleSi || alert.disasterType}
                   </h4>
                 </div>
               </div>
@@ -389,7 +401,9 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                 <div>
                   <span className="font-bold text-slate-500 dark:text-slate-400">ස්ථානය:</span>
                   <p className="font-black text-slate-800 dark:text-slate-200">{alert.locationName}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">📍 {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}</p>
+                  {typeof alert.latitude === 'number' && typeof alert.longitude === 'number' && (
+                    <p className="text-[10px] text-slate-400 font-mono">📍 {alert.latitude.toFixed(4)}, {alert.longitude.toFixed(4)}</p>
+                  )}
                 </div>
               </div>
 
@@ -406,7 +420,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border-2 border-amber-500/40 dark:border-amber-600/40 text-xs sm:text-sm shadow-sm space-y-1.5">
                 <span className="font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5 text-xs sm:text-sm">
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>හදිසි පණිවිඩය / විස්තරය (Emergency Note):</span>
+                  <span>හදිසි පණිවිඩය / විස්තරය:</span>
                 </span>
                 <p className="text-slate-900 dark:text-slate-100 leading-relaxed font-bold whitespace-pre-wrap break-words text-xs sm:text-sm pl-0.5">
                   {alert.description}
@@ -414,23 +428,22 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               </div>
             )}
 
-            {/* 🗺️ Google Maps Directions & Navigation Button */}
+            {/* Google Maps Directions */}
             <div className="pt-1">
               <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${alert.latitude && alert.longitude ? `${alert.latitude},${alert.longitude}` : encodeURIComponent(alert.locationName)}`}
+                href={`https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer"
               >
                 <Navigation className="w-4 h-4 text-white animate-pulse shrink-0" />
-                <span>🗺️ Google Maps Navigation (ස්ථානයට මඟ පෙන්වන්න)</span>
+                <span>🗺️ Google Maps Navigation (ආපදා ස්ථානයට මඟ පෙන්වන්න)</span>
               </a>
             </div>
 
-            {/* Emergency hotline call if available */}
             {alert.reportedByPhone && (
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
-                <span className="font-bold text-emerald-700 dark:text-emerald-400">හදිසි දුරකථන අංකය:</span>
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">වාර්තාකරුගේ අංකය:</span>
                 <a
                   href={`tel:${alert.reportedByPhone}`}
                   className="flex items-center gap-1 text-red-600 dark:text-red-400 font-bold hover:underline"
@@ -442,6 +455,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             )}
           </div>
 
+          {/* Action Tabs */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <button
               type="button"
@@ -449,7 +463,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>සිදුවීම පිළිබඳ යාවත්කාලීන තොරතුරු ({localComments.length})</span>
+              <span>ප්‍රදේශවාසීන්ගේ අදහස් ({localComments.length})</span>
             </button>
 
             <button
@@ -462,17 +476,18 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </button>
           </div>
 
+          {/* Live Updates & Comments */}
           {showCommentSection && (
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-white/10 space-y-3 animate-fadeIn">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
-                <span>ප්‍රදේශවාසීන්ගේ යාවත්කාලීන කිරීම් (Live Updates)</span>
+                <span>ප්‍රදේශවාසීන්ගේ සජීවී යාවත්කාලීන (Live Updates)</span>
               </h4>
 
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {localComments.length === 0 ? (
                   <p className="text-xs text-slate-400 italic py-2 text-center">
-                    තවම අදහස් පළවී නොමැත. සිදුවීම පිළිබඳ නවතම තොරතුරක් ඇත්නම් සටහන් කරන්න.
+                    තවම අදහස් පළවී නොමැත. නවතම තත්ත්වය දන්නේ නම් පහතින් සටහන් කරන්න.
                   </p>
                 ) : (
                   localComments.map((c, cIdx) => (
@@ -496,7 +511,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                     <span>🛡️ ඔබ මෙම ආපදාව වාර්තා කළ සාමාජිකයායි</span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-zinc-300">
-                    මෙම සිදුවීම දුටු අනෙකුත් සාමාජිකයින්ගේ යාවත්කාලීන අදහස් සහ තොරතුරු ඉහතින් සජීවීව බලාගත හැක.
+                    අනෙකුත් පරිශීලකයින්ගේ යාවත්කාලීන කිරීම් ඉහතින් නිරීක්ෂණය කළ හැක.
                   </p>
                 </div>
               ) : (
@@ -522,6 +537,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
           )}
 
+          {/* Fake Reporting Panel */}
           {showFakeReportModal && (
             <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between">
@@ -569,7 +585,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
                       type="text"
                       value={fakeNotes}
                       onChange={(e) => setFakeNotes(e.target.value)}
-                      placeholder="මෙය බොරුවක් බව ඔබ දන්නේ කෙසේද?..."
+                      placeholder="මෙය සාවද්‍ය තොරතුරක් බව ඔබ දන්නේ කෙසේද?..."
                       className="w-full p-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium"
                     />
                   </div>
