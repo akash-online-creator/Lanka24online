@@ -34,7 +34,7 @@ import {
   Filter,
   ArrowRight
 } from 'lucide-react';
-import { EmergencyServiceContact, EmergencyAdminAlert, Language } from '../types';
+import type { EmergencyServiceContact, EmergencyAdminAlert, Language, InactiveReportDetail } from '../types';
 import { 
   getStoredEmergencyContacts, 
   saveCustomEmergencyContact, 
@@ -632,7 +632,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                             <span>ක්‍රියා විරහිත බවට ලැබුණු පරිශීලක වාර්තා ({contact.reportedInactiveDetails.length}/3):</span>
                           </div>
                           <div className="space-y-1 pl-4">
-                            {contact.reportedInactiveDetails.map((rep, idx) => (
+                            {contact.reportedInactiveDetails.map((rep: InactiveReportDetail, idx: number) => (
                               <div key={idx} className="text-[10px] text-slate-700 dark:text-slate-300 flex items-center justify-between gap-2">
                                 <span>• <strong>{rep.userName}</strong> ({rep.userPhone || 'No phone'}): {rep.reason}</span>
                                 <span className="text-slate-400">{rep.timestamp}</span>

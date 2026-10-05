@@ -234,7 +234,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     if (editPost) {
       const updatedPost: HelpPost = {
         ...editPost,
-        userName: currentUser.name || editPost.userName || 'පරිශීලක',
+        userName: currentUser?.name || editPost.userName || 'පරිශීලක',
         userPhone: whatsappNumber.trim() || editPost.userPhone,
         whatHappened: whatHappened.trim(),
         whatIsNeeded: whatIsNeeded.trim(),

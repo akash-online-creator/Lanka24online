@@ -76,7 +76,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
       (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
       (currentUser.id && post.userId && currentUser.id === post.userId) ||
       (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-      (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
+      (user?.name && post.userName && user?.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
     )
   );
 
@@ -95,7 +95,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
       onConfirmPost({
         ...post,
         isConfirmed: true,
-        confirmedBy: currentUser.name,
+        confirmedBy: currentUser?.name || 'සහායකයා',
         status: 'confirmed',
         completionPin: post.completionPin || generatedPin,
         settlementBreakdown: {
@@ -127,7 +127,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
             helperEarned: helperEarnedTotal,
             isSettled: true,
             settledAt: new Date().toISOString(),
-            settledBy: currentUser.name,
+            settledBy: currentUser?.name || 'සහායකයා',
           }
         });
       }
@@ -587,7 +587,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                   <span>සහායකයා (Helper):</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">{post.confirmedBy || currentUser.name || 'සහායක'}</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">{post.confirmedBy || user?.name || 'සහායක'}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                   <span>සේවා ගාස්තුව (Agreed Service Fee):</span>

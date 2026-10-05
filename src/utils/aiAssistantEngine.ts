@@ -93,7 +93,7 @@ export async function translateText(
       }),
     });
 
-    if (res.ok) {
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       if (data.translatedText && !data.fallback) {
         return data.translatedText;
@@ -151,7 +151,7 @@ export async function askAssistant(
       }),
     });
 
-    if (res.ok) {
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       if (data.reply && !data.fallback) {
         // Extract relevant action buttons based on content

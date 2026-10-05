@@ -177,7 +177,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   const postAuthorPhone = normalizePhone(post.userPhone);
 
   const isPostAuthor = Boolean(
-    (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
+    (user?.name && post.userName && user?.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
     (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
     (currentUser.id && post.userId && currentUser.id === post.userId) ||
     (currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
@@ -222,7 +222,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: currentUser.name || 'පරිශීලක',
+      senderName: currentUser?.name || 'පරිශීලක',
       senderRole: isPostAuthor ? 'seeker' : 'helper',
       text: messageTextToSave,
       timestamp: formatMessageClockTime(undefined, nowMs),
@@ -266,7 +266,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
 
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: currentUser.name || 'පරිශීලක',
+      senderName: currentUser?.name || 'පරිශීලක',
       senderRole: isPostAuthor ? 'seeker' : 'helper',
       text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
       timestamp: formatMessageClockTime(undefined, nowMs),
@@ -434,7 +434,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
           <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#f6faf8] dark:bg-[#040e08]">
             {(messages || []).map((msg, msgIdx) => {
               const isMe = 
-                (currentUser.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+                (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user?.name.trim().toLowerCase()) ||
                 (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone);
 
               const isSeeker = 

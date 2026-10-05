@@ -5,7 +5,7 @@ import {
   stopPickMeAlert, 
   ActiveRingtoneState 
 } from '../utils/backgroundAlertEngine';
-import { Language } from '../types';
+import type { Language } from '../types';
 
 interface ActiveAlertRingerBannerProps {
   language?: Language;

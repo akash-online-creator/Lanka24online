@@ -259,7 +259,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       (post.replies?.some(r => (r.isConfirmed || r.isAccepted) && (
         (currentUser.userId && r.responderId && currentUser.userId === r.responderId) ||
         (currentUser.phone && r.responderPhone && normalizePhone(currentUser.phone) === normalizePhone(r.responderPhone)) ||
-        (currentUser.name && r.responderName && currentUser.name.trim().toLowerCase() === r.responderName.trim().toLowerCase())
+        (user?.name && r.responderName && user?.name.trim().toLowerCase() === r.responderName.trim().toLowerCase())
       )))
     )
   );
