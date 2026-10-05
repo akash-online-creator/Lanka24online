@@ -39,6 +39,7 @@ This file acts as a permanent architectural map for the AI assistant and develop
 ---
 
 ## 🛠️ Utility Functions (`/src/utils`)
+- `src/utils/apkDownloadHelper.ts` : 1-click Android APK direct download and version tracker helper.
 - `src/utils/aiAssistantEngine.ts` : Client-side AI prompt generator and local assistant fallbacks.
 - `src/utils/blockedCredentialsManager.ts` : Manage blacklisted NICs, phone numbers, and IP addresses.
 - `src/utils/creditManager.ts` : System credit calculations, rewards, gifting, and transaction deductions.
