@@ -32,7 +32,7 @@ interface MarketplaceAddSellerItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddItem: (item: MarketItem) => void;
-  currentUser: User;
+  currentUser?: User | null;
   allTags: TagItem[];
   onAddNewTag?: (tag: TagItem) => void;
 }
@@ -84,7 +84,7 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
   // Contact Privacy & WhatsApp
   const [revealContactConsent, setRevealContactConsent] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(true);
-  const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(currentUser?.phone || '');
 
   // Tag matching logic as user types title
   const cleanTitle = (title || '').trim().toLowerCase();

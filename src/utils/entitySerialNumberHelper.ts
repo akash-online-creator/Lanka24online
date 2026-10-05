@@ -162,7 +162,7 @@ export function searchUniversalEntitiesByAtQuery(
       const isBusiness = shop.type === 'business';
       const typeKey: EntityType = isBusiness ? 'business' : 'shop';
       const serial = getEntitySerialNumber(shop, typeKey);
-      const nameClean = (shop.name || '').toLowerCase();
+      const nameClean = (user?.name || '').toLowerCase();
       const phoneClean = (shop.userPhone || '').toLowerCase();
 
       const isMatch =
@@ -177,7 +177,7 @@ export function searchUniversalEntitiesByAtQuery(
           entityTypeNameTa: isBusiness ? 'வணிகம்' : 'கடை',
           serialNumber: serial,
           atTag: `@${serial}`,
-          title: shop.name || (isBusiness ? 'ව්‍යාපාරික ආයතනය' : 'අලෙවිසැල'),
+          title: shop?.name || (isBusiness ? 'ව්‍යාපාරික ආයතනය' : 'අලෙවිසැල'),
           subtitle: `${shop.categoryTag || ''} • ${shop.userName} (${shop.location?.name || ''})`,
           locationName: shop.location?.name,
           phone: shop.userPhone,
@@ -224,7 +224,7 @@ export function searchUniversalEntitiesByAtQuery(
     data.users.forEach((user) => {
       if (!user) return;
       const serial = getEntitySerialNumber(user, 'user');
-      const nameClean = (user.name || '').toLowerCase();
+      const nameClean = (user?.name || '').toLowerCase();
       const nicClean = (user.nicNumber || '').toLowerCase();
       const phoneClean = (user.phone || '').toLowerCase();
 
@@ -240,7 +240,7 @@ export function searchUniversalEntitiesByAtQuery(
           entityTypeNameTa: 'பயனர் கணக்கு',
           serialNumber: serial,
           atTag: `@${serial}`,
-          title: user.name || 'පරිශීලක',
+          title: user?.name || 'පරිශීලක',
           subtitle: `NIC: ${user.nicNumber ? `${user.nicNumber.slice(0, 5)}****` : '***'} • ${user.nearestTown || user.district || 'ශ්‍රී ලංකාව'}`,
           locationName: user.nearestTown || user.district,
           phone: user.phone,

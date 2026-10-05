@@ -108,7 +108,7 @@ export async function detectDuplicatePhotos(
       if (similarityPercent >= 85) {
         matches.push({
           userId: user.userId || user.id,
-          name: user.name || 'පරිශීලක',
+          name: user?.name || 'පරිශීලක',
           nicNumber: user.nicNumber || 'නොදනී',
           similarityPercent,
           userStatus: user.status || 'pending',
@@ -176,7 +176,7 @@ export async function scanUserNicSecurity(
       body: JSON.stringify({
         photoUrl,
         declaredNic: user.nicNumber || '',
-        userName: user.name || '',
+        userName: user?.name || '',
       }),
     });
 

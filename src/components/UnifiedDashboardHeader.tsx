@@ -453,7 +453,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <div className="text-right min-w-0">
                 <div className="flex items-center justify-end gap-1">
                   <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[90px] sm:max-w-[130px]">
-                    {user.name}
+                    {user?.name || 'පරිශීලක'}
                   </h2>
                   <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
                     <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
@@ -461,16 +461,16 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   </span>
                 </div>
                 <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                  ID: {numericId || user.userId}
+                  ID: {numericId || user?.userId || user?.id || 'Visitor'}
                 </p>
               </div>
 
               <div className="relative shrink-0">
                 <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm">
-                  {(user?.facePhotoUrl || user?.photoUrl) && (user.facePhotoUrl || user.photoUrl)?.trim() !== '' ? (
+                  {(user?.facePhotoUrl || user?.photoUrl) && (user?.facePhotoUrl || user?.photoUrl)?.trim() !== '' ? (
                     <img 
-                      src={user.facePhotoUrl || user.photoUrl} 
-                      alt={user.name || 'User'} 
+                      src={user?.facePhotoUrl || user?.photoUrl} 
+                      alt={user?.name || 'User'} 
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-cover" 

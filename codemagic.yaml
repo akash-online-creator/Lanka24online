@@ -10,6 +10,14 @@ workflows:
         script: |
           mkdir -p android
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+      - name: Build Web Bundle & Prepare Android
+        script: |
+          npm install --no-audit
+          npm run build
+          mkdir -p assets/web
+          cp -r dist/* assets/web/
+          if [ -d "public" ]; then cp -r public/* assets/web/ || true; fi
+          python3 scripts/prepare_android.py
       - name: Get Flutter packages
         script: |
           flutter pub get

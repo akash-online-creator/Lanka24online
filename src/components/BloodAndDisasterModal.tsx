@@ -345,7 +345,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const reqPhone = (req.contactPhone || '').replace(/\D/g, '');
     return Boolean(
       (userPhone && reqPhone && userPhone === reqPhone) ||
-      (currentUser.name && req.contactName && currentUser.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
+      (user?.name && req.contactName && user?.name.trim().toLowerCase() === req.contactName.trim().toLowerCase()) ||
       (currentUser.userId && req.userId && (currentUser.userId === req.userId || currentUser.id === req.userId)) ||
       (currentUser.id && req.userId && (currentUser.id === req.userId || currentUser.userId === req.userId)) ||
       (currentUser.nicNumber && req.userId && currentUser.nicNumber === req.userId)
@@ -359,7 +359,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const donorPhone = (donor.phone || '').replace(/\D/g, '');
     return Boolean(
       (userPhone && donorPhone && userPhone === donorPhone) ||
-      (currentUser.name && donor.name && currentUser.name.trim().toLowerCase() === donor.name.trim().toLowerCase()) ||
+      (user?.name && donor.name && user?.name.trim().toLowerCase() === donor.name.trim().toLowerCase()) ||
       (currentUser.userId && donor.userId && (currentUser.userId === donor.userId || currentUser.id === donor.userId)) ||
       (currentUser.id && donor.userId && (currentUser.id === donor.userId || currentUser.userId === donor.userId)) ||
       (currentUser.nicNumber && donor.userId && currentUser.nicNumber === donor.userId)
@@ -373,7 +373,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     const itemPhone = (item.contactPhone || '').replace(/\D/g, '');
     return Boolean(
       (userPhone && itemPhone && userPhone === itemPhone) ||
-      (currentUser.name && item.contactPerson && currentUser.name.trim().toLowerCase() === item.contactPerson.trim().toLowerCase()) ||
+      (user?.name && item.contactPerson && user?.name.trim().toLowerCase() === item.contactPerson.trim().toLowerCase()) ||
       (currentUser.userId && item.userId && (currentUser.userId === item.userId || currentUser.id === item.userId)) ||
       (currentUser.id && item.userId && (currentUser.id === item.userId || currentUser.userId === item.userId)) ||
       (currentUser.nicNumber && item.userId && currentUser.nicNumber === item.userId)

@@ -29,6 +29,7 @@ export interface ActiveRingtoneState {
   kind: AlertKind;
   title: string;
   message: string;
+  disasterType?: string;
   locationName?: string;
   targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert';
   targetPostId?: string;
@@ -163,6 +164,7 @@ export function triggerPickMeAlert(params: {
   kind: AlertKind;
   title: string;
   message: string;
+  disasterType?: string;
   locationName?: string;
   targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert';
   targetPostId?: string;
@@ -185,6 +187,7 @@ export function triggerPickMeAlert(params: {
     kind: params.kind,
     title: params.title,
     message: params.message,
+    disasterType: params.disasterType,
     locationName: params.locationName,
     targetModal: params.targetModal,
     targetPostId: params.targetPostId,

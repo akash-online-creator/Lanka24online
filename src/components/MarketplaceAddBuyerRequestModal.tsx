@@ -19,7 +19,7 @@ interface MarketplaceAddBuyerRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddRequest: (item: MarketItem) => void;
-  currentUser: User;
+  currentUser?: User | null;
   allTags: TagItem[];
   existingSellerItems?: MarketItem[];
   onAddNewTag?: (tag: TagItem) => void;
@@ -42,7 +42,7 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   const [notes, setNotes] = useState('');
   const [revealContactConsent, setRevealContactConsent] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(true);
-  const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(currentUser?.phone || '');
 
   // Live real-time matching of tags as user types
   const queryLower = searchQuery.trim().toLowerCase();

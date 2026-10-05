@@ -290,7 +290,7 @@ export function awardTrustPoints(
   adminName: string = 'පරිපාලක (Admin)'
 ): { newBalance: number; userTrust: UserTrustData } {
   const uid = getTrustUserId(user);
-  const uName = user.name || 'පරිශීලක';
+  const uName = user?.name || 'පරිශීලක';
   const all = getAllStoredTrustData();
   const current = all[uid] || {
     userId: uid,
@@ -338,7 +338,7 @@ export function deductTrustPoints(
   onUserAutoBlocked?: (userId: string, reason: string) => void
 ): { newBalance: number; isAutoBlocked: boolean; userTrust: UserTrustData } {
   const uid = getTrustUserId(user);
-  const uName = user.name || 'පරිශීලක';
+  const uName = user?.name || 'පරිශීලක';
   const all = getAllStoredTrustData();
   const current = all[uid] || {
     userId: uid,
@@ -407,7 +407,7 @@ export function toggleUserCustomBadge(
   adminName: string = 'පරිපාලක (Admin)'
 ): UserTrustData {
   const uid = getTrustUserId(user);
-  const uName = user.name || 'පරිශීලක';
+  const uName = user?.name || 'පරිශීලක';
   const all = getAllStoredTrustData();
   const current = all[uid] || {
     userId: uid,
@@ -465,7 +465,7 @@ export function unblockUserAndRestoreTrust(
   adminName: string = 'පරිපාලක (Admin)'
 ): UserTrustData {
   const uid = getTrustUserId(user);
-  const uName = user.name || 'පරිශීලක';
+  const uName = user?.name || 'පරිශීලක';
   const all = getAllStoredTrustData();
   const current = all[uid] || {
     userId: uid,

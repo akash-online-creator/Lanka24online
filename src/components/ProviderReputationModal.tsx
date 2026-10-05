@@ -61,7 +61,7 @@ export const ProviderReputationModal: React.FC<ProviderReputationModalProps> = (
     const newRev: ServiceReview = {
       id: `rev_${Date.now()}`,
       userId: user.userId || user.id || 'user',
-      userName: user.name || 'පරිශීලක',
+      userName: user?.name || 'පරිශීලක',
       userPhotoUrl: user.photoUrl,
       rating,
       comment: reviewComment.trim(),

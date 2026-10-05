@@ -31,10 +31,10 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
       second: '2-digit',
     });
 
-    const nicNumber = (user.nicNumber || user.userId || 'NIC_NOT_PROVIDED').trim();
-    const facePhoto = user.facePhotoUrl || user.photoUrl;
-    const nicFrontPhoto = user.nicFrontPhotoUrl || user.idCardPhotoUrl;
-    const nicBackPhoto = user.nicBackPhotoUrl;
+    const nicNumber = (user?.nicNumber || user?.userId || 'NIC_NOT_PROVIDED').trim();
+    const facePhoto = user?.facePhotoUrl || user?.photoUrl;
+    const nicFrontPhoto = user?.nicFrontPhotoUrl || user?.idCardPhotoUrl;
+    const nicBackPhoto = user?.nicBackPhotoUrl;
 
     const safeText = (val?: string | number | null) => (val ? String(val) : 'නොමැත (N/A)');
 
@@ -63,9 +63,9 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
             <!-- Header Badge Box -->
             <div style="text-align: right; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.2); padding: 10px 16px; border-radius: 12px;">
               <div style="font-size: 10px; color: #6ee7b7; text-transform: uppercase; font-weight: bold;">User ID</div>
-              <div style="font-size: 18px; font-weight: 900; color: #ffffff; font-family: monospace;">${safeText(user.userId)}</div>
+              <div style="font-size: 18px; font-weight: 900; color: #ffffff; font-family: monospace;">${safeText(user?.userNumericId || user?.userId || user?.id)}</div>
               <div style="font-size: 10px; color: #a7f3d0; margin-top: 2px;">
-                Status: <strong style="color: #34d399; text-transform: uppercase;">${safeText(user.status)}</strong>
+                Status: <strong style="color: #34d399; text-transform: uppercase;">${safeText(user?.status)}</strong>
               </div>
             </div>
           </div>
@@ -75,14 +75,14 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
         <div style="background: #f0fdf4; border-bottom: 1px solid #d1fae5; padding: 10px 28px; display: flex; justify-content: space-between; font-size: 11px; color: #065f46; font-weight: 600;">
           <div><strong>ජාතික හැඳුනුම්පත (NIC):</strong> <span style="font-family: monospace; font-size: 12px; font-weight: 800; color: #047857;">${nicNumber}</span></div>
           <div><strong>වාර්තාව බාගත කළ දිනය:</strong> ${nowFormatted}</div>
-          <div><strong>ලියාපදිංචි දිනය:</strong> ${safeText(user.registeredAt)}</div>
+          <div><strong>ලියාපදිංචි දිනය:</strong> ${safeText(user?.registeredAt)}</div>
         </div>
 
         <div style="padding: 24px 28px;">
           <!-- Section 1: User Identity & Profile Summary -->
           <div style="display: flex; gap: 24px; margin-bottom: 24px;">
             <!-- Face Photo Box -->
-            <div style="width: 140px; shrink: 0; text-align: center;">
+            <div style="width: 140px; flex-shrink: 0; text-align: center;">
               <div style="width: 130px; height: 155px; border-radius: 12px; overflow: hidden; border: 2px solid #059669; background: #f8fafc; margin: 0 auto 8px auto; display: flex; align-items: center; justify-content: center;">
                 ${
                   facePhoto
@@ -103,15 +103,15 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
                 <tbody>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569; width: 38%;">සම්පූර්ණ නම (Full Name):</td>
-                    <td style="padding: 6px 8px; font-weight: 700; color: #0f172a;">${safeText(user.name)}</td>
+                    <td style="padding: 6px 8px; font-weight: 700; color: #0f172a;">${safeText(user?.name)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">වාසගම (Surname):</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user.surname)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user?.surname)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">මුල් නම / අග නම:</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user.firstName)} ${safeText(user.lastName)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user?.firstName)} ${safeText(user?.lastName)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">ජාතික හැඳුනුම්පත් අංකය (NIC):</td>
@@ -119,23 +119,23 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">උපන් දිනය (Date of Birth):</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user.birthDate)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user?.birthDate)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">දුරකථන / WhatsApp අංකය:</td>
-                    <td style="padding: 6px 8px; font-weight: 800; color: #0f172a; font-family: monospace;">${safeText(user.whatsappNumber || user.phone)}</td>
+                    <td style="padding: 6px 8px; font-weight: 800; color: #0f172a; font-family: monospace;">${safeText(user?.phone || user?.whatsappNumber)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">Gmail / විද්‍යුත් ලිපිනය:</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a; font-family: monospace;">${safeText(user.email)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a; font-family: monospace;">${safeText(user?.email)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">පදිංචි ලිපිනය (Address):</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user.address)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user?.address)}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #e2e8f0;">
                     <td style="padding: 6px 8px; font-weight: bold; color: #475569;">ආසන්නතම නගරය (Nearest Town):</td>
-                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user.nearestTown)}</td>
+                    <td style="padding: 6px 8px; font-weight: 600; color: #0f172a;">${safeText(user?.nearestTown || user?.district)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -151,38 +151,38 @@ export async function generateAndDownloadUserPdf(user: User): Promise<boolean> {
               <div>
                 <span style="color: #64748b; font-weight: bold;">ලියාපදිංචි කළ ස්ථානය (Location):</span>
                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">
-                  📍 ${safeText(user.registrationLocationName || user.nearestTown || user.address)}
+                  📍 ${safeText(user?.registrationLocationName || user?.nearestTown || user?.district)}
                 </div>
               </div>
               <div>
                 <span style="color: #64748b; font-weight: bold;">GPS ඛණ්ඩාංක (Coordinates):</span>
                 <div style="font-weight: 700; color: #047857; font-family: monospace; margin-top: 2px;">
-                  ${user.registrationLat ? `${user.registrationLat.toFixed(5)}° N, ${user.registrationLng?.toFixed(5)}° E` : 'නොමැත'}
-                  ${user.registrationAccuracy ? ` (±${user.registrationAccuracy}m accuracy)` : ''}
+                  ${user?.registrationLat && user?.registrationLng ? `${user.registrationLat.toFixed(5)}° N, ${user.registrationLng.toFixed(5)}° E` : 'නොමැත'}
+                  ${user?.registrationAccuracy ? ` (±${user.registrationAccuracy}m accuracy)` : ''}
                 </div>
               </div>
               <div>
                 <span style="color: #64748b; font-weight: bold;">IP ලිපිනය (Client IP):</span>
                 <div style="font-weight: 700; color: #0284c7; font-family: monospace; margin-top: 2px;">
-                  ${safeText(user.ipAddress)}
+                  ${safeText(user?.ipAddress)}
                 </div>
               </div>
               <div>
                 <span style="color: #64748b; font-weight: bold;">භාවිතා කළ උපාංගය (Device Platform):</span>
                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">
-                  ${safeText(user.deviceInfo)}
+                  ${safeText(user?.deviceInfo)}
                 </div>
               </div>
               <div>
                 <span style="color: #64748b; font-weight: bold;">මුරපදය / System Key:</span>
                 <div style="font-weight: 800; color: #b45309; font-family: monospace; margin-top: 2px;">
-                  ${safeText(user.key || user.securityCode)}
+                  ${safeText(user?.securityCode || user?.key || user?.password)}
                 </div>
               </div>
               <div>
                 <span style="color: #64748b; font-weight: bold;">ගිණුම් වර්ගය (Role):</span>
                 <div style="font-weight: 700; color: #065f46; text-transform: uppercase; margin-top: 2px;">
-                  ${safeText(user.role)}
+                  ${safeText(user?.role)}
                 </div>
               </div>
             </div>

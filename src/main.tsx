@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
+import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
@@ -22,6 +22,8 @@ try {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
         console.log('PWA Service Worker registered:', reg.scope);
+        // Force immediate check for updated service worker
+        reg.update();
       }).catch((err) => {
         console.warn('SW registration notice:', err);
       });

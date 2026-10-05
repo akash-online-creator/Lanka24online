@@ -34,7 +34,7 @@ interface MarketplaceAddShopModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveShop: (shop: MarketShop) => void;
-  currentUser: User;
+  currentUser?: User | null;
   allTags: TagItem[];
   editShop?: MarketShop | null;
   defaultType?: 'shop' | 'business';
@@ -101,7 +101,7 @@ export const MarketplaceAddShopModal: React.FC<MarketplaceAddShopModalProps> = (
   // Contact & Privacy
   const [revealContactConsent, setRevealContactConsent] = useState(editShop?.revealContactConsent ?? true);
   const [showWhatsapp, setShowWhatsapp] = useState(editShop?.showWhatsapp ?? true);
-  const [whatsappNumber, setWhatsappNumber] = useState(editShop?.whatsappNumber || currentUser.phone || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(editShop?.whatsappNumber || currentUser?.phone || '');
 
   // Handle schedule presets
   const handleApplyPreset = (preset: 'everyday' | 'weekdays_only' | 'no_poya' | 'no_holidays') => {
