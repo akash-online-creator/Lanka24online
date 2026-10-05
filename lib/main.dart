@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -375,10 +376,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         serviceId: 256,
         notificationTitle: 'සහය සේවා 24/7 සක්‍රීයයි 🚨',
         notificationText: 'ඔබගේ ආරක්ෂාව උදෙසා සජීවී ආපදා සහ හදිසි පණිවුඩ අධීක්ෂණය වේ.',
-        notificationIcon: null,
-        buttons: [
-          const NotificationButton(id: 'open_app', text: 'ඇප් එක විවෘත කරන්න'),
-        ],
         callback: startCallback,
       );
     } catch (e) {
