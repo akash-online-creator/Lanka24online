@@ -110,6 +110,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initWebview(); // Pre-warm and connect Webview instantly on app startup
     _checkCurrentPermissions();
   }
 
@@ -150,8 +151,13 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
           _isCheckingPermissions = false;
         });
 
-        if (allGranted && _webViewController == null) {
-          _initializeActiveApp();
+        if (allGranted) {
+          if (_webViewController == null) {
+            _initializeActiveApp();
+          } else {
+            _initForegroundTask();
+            _startSilentBackgroundRadar();
+          }
         }
       }
     } catch (e) {
@@ -287,11 +293,21 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
 
             return NavigationDecision.navigate;
           },
+          onProgress: (int progress) {
+            if (progress >= 35 && _isLoading) {
+              if (mounted) setState(() => _isLoading = false);
+            }
+          },
           onPageStarted: (String url) {
-            if (mounted) setState(() => _isLoading = true);
+            // Dismiss loader quickly (max 1.2s safety timer) so the user never waits
+            Future.delayed(const Duration(milliseconds: 1200), () {
+              if (mounted && _isLoading) {
+                setState(() => _isLoading = false);
+              }
+            });
           },
           onPageFinished: (String url) {
-            if (mounted) setState(() => _isLoading = false);
+            if (mounted && _isLoading) setState(() => _isLoading = false);
             if (_lastLat != null && _lastLng != null) {
               _injectLocationIntoWebView(_lastLat!, _lastLng!, 10.0);
             }
@@ -324,12 +340,11 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     });
 
     try {
-      await controller.loadFlutterAsset('assets/web/index.html');
+      await controller.loadRequest(Uri.parse('https://supporservice.online/'));
     } catch (e) {
-      debugPrint('Primary asset loading notice: $e');
+      debugPrint('Primary online URL loading notice: $e');
       try {
-        final String htmlContent = await rootBundle.loadString('assets/web/index.html');
-        await controller.loadHtmlString(htmlContent, baseUrl: 'https://supporservice.online/');
+        await controller.loadFlutterAsset('assets/web/index.html');
       } catch (err) {
         debugPrint('Fallback loading error: $err');
       }
@@ -576,23 +591,74 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             children: [
               if (_webViewController != null)
                 WebViewWidget(controller: _webViewController!),
-              if (_isLoading)
-                Container(
-                  color: const Color(0xFF07130C),
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Color(0xFF007A4B)),
-                        SizedBox(height: 16),
-                        Text(
-                          'සහය සේවා පූරණය වෙමින් පවතී...',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
+              IgnorePointer(
+                ignoring: !_isLoading,
+                child: AnimatedOpacity(
+                  opacity: _isLoading ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    color: const Color(0xFF07130C),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF007A4B).withOpacity(0.35),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/web/logo.jpg',
+                                width: 76,
+                                height: 76,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.shield_rounded,
+                                  size: 44,
+                                  color: Color(0xFF00E676),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'සහය සේවා',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'ප්‍රජා සේවා හා ආපදා ආරක්ෂක පද්ධතිය',
+                            style: TextStyle(color: Colors.white54, fontSize: 12),
+                          ),
+                          const SizedBox(height: 22),
+                          const SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Color(0xFF00E676),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+              ),
             ],
           ),
         ),
