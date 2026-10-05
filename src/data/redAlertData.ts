@@ -1,5 +1,8 @@
+// src/data/redAlertData.ts
+
 import { RedAlertDisasterType } from '../types';
 
+// 1. Configuration Data Interface
 export interface DisasterTypeConfig {
   id: RedAlertDisasterType;
   titleSi: string;
@@ -11,6 +14,7 @@ export interface DisasterTypeConfig {
   bgClass: string;
 }
 
+// 2. Master Red Alert Disaster Types Config List
 export const DISASTER_TYPES: DisasterTypeConfig[] = [
   {
     id: 'fire',
@@ -104,25 +108,37 @@ export const DISASTER_TYPES: DisasterTypeConfig[] = [
   },
 ];
 
+// 3. Helper Function: Disaster Type එක අනුව Config එක ලබාගැනීම
 export function getDisasterConfig(type: RedAlertDisasterType): DisasterTypeConfig {
   return DISASTER_TYPES.find((d) => d.id === type) || DISASTER_TYPES[DISASTER_TYPES.length - 1];
 }
 
 /**
- * Haversine formula to compute great-circle distance between two GPS coordinates in kilometers.
+ * 4. Haversine formula to compute great-circle distance between two GPS coordinates in kilometers.
+ * Handles edge cases like 0 latitude/longitude and invalid/non-number types.
  */
-export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 999;
+export function calculateDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const coords = [lat1, lon1, lat2, lon2];
+  if (coords.some((c) => typeof c !== 'number' || isNaN(c))) {
+    return 999;
+  }
+
   const R = 6371; // Earth's mean radius in km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
+
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * (Math.PI / 180)) *
       Math.cos(lat2 * (Math.PI / 180)) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c * 100) / 100;
 }
-
