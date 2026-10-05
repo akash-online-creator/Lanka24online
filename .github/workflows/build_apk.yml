@@ -22,13 +22,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Build Standalone Web Application Bundle
+      - name: Build Web Bundle from Repository Source Code
         run: |
-          echo "Building production React SPA assets..."
-          npm install --legacy-peer-deps
-          npx vite build
+          echo "Building production web bundle from repository source..."
+          npm install --no-audit
+          npm run build
           mkdir -p assets/web
           cp -r dist/* assets/web/
+          if [ -d "public" ]; then cp -r public/* assets/web/ || true; fi
           ls -lh assets/web/
 
       - name: Set up Python & Pillow for Image Processing
@@ -59,15 +60,19 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=sahayasewa_mobile --org=com.sahayasewa -a java
           
-          # Configure compileSdk 35, minSdk 21 & multiDex in app/build.gradle
-          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/g' android/app/build.gradle || true
+          # Configure minSdk & multiDex in app/build.gradle
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdk flutter.minSdkVersion/minSdk 21/g' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 35/g' android/app/build.gradle || true
+          sed -i 's/compileSdk 34/compileSdk 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdkVersion = flutter.targetSdkVersion/targetSdkVersion = 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdk 34/targetSdk 35/g' android/app/build.gradle || true
           sed -i '/defaultConfig {/a \        multiDexEnabled true' android/app/build.gradle || true
 
           # Apply branding, icons, strings & manifest permissions
@@ -83,7 +88,7 @@ jobs:
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/project.android.flutter.compileSdkVersion/35/g' {} + || true
           find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} + || true
-          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} + || true
+          find /home/runner/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/35/g' {} + || true
 
       - name: Build Android Release APK
         run: |
@@ -92,12 +97,6 @@ jobs:
       - name: Verify APK Output
         run: |
           ls -lh build/app/outputs/flutter-apk/
-
-      - name: Stage Latest APK in Public Download Directory
-        run: |
-          mkdir -p public/apk
-          cp build/app/outputs/flutter-apk/app-release.apk public/apk/sahayasewa-latest.apk
-          ls -lh public/apk/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

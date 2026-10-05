@@ -106,14 +106,14 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
   const isAuthorOfAlert = Boolean(
     isCreatedByThisBrowser ||
     (currentUser && alert && (
-      (alert.reportedByUserId && (
+      (alert.reportedByUserId && typeof alert.reportedByUserId === 'string' && (
         (currentUser.id && alert.reportedByUserId === currentUser.id) ||
-        (currentUser.userId && alert.reportedByUserId.toLowerCase() === currentUser.userId.toLowerCase()) ||
-        (currentUser.nicNumber && alert.reportedByUserId.toLowerCase() === currentUser.nicNumber.toLowerCase()) ||
+        (currentUser.userId && typeof currentUser.userId === 'string' && alert.reportedByUserId.toLowerCase() === currentUser.userId.toLowerCase()) ||
+        (currentUser.nicNumber && typeof currentUser.nicNumber === 'string' && alert.reportedByUserId.toLowerCase() === currentUser.nicNumber.toLowerCase()) ||
         (currentUser.userNumericId && alert.reportedByUserId === currentUser.userNumericId)
       )) ||
       (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone.replace(/\D/g, '') === currentUser.phone.replace(/\D/g, '')) ||
-      (alert.reportedByName && currentUser.name && alert.reportedByName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      (alert.reportedByName && user?.name && typeof alert.reportedByName === 'string' && typeof ?.name === 'string' && alert.reportedByName.trim().toLowerCase() === user?.name.trim().toLowerCase())
     ))
   );
 

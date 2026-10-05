@@ -13,9 +13,7 @@ import {
   Eye,
   EyeOff,
   Smartphone,
-  Download,
-  CheckCircle2,
-  ArrowDownToLine
+  Download
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
@@ -24,7 +22,6 @@ import { DevicePinLoginView } from './DevicePinLoginView';
 import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { requestNotificationPermission } from '../utils/notificationManager';
 import { PWAInstallModal } from './PWAInstallModal';
-import { triggerApkDownload, isIOSDevice } from '../utils/apkDownloadHelper';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -59,7 +56,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
-  const [apkDownloadState, setApkDownloadState] = useState<'idle' | 'downloading' | 'started'>('idle');
 
   // Device PIN state
   const [storedPinData, setStoredPinData] = useState<StoredDevicePinData | null>(() => getStoredDevicePin());
@@ -399,88 +395,32 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </div>
         )}
 
-        {/* 📲 App Download & Update Button on Login Screen */}
-        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-[#173222] space-y-1.5">
+        {/* 📲 App Download Button on Login Screen */}
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-[#173222]">
           <button
             type="button"
-            onClick={() => {
-              if (isIOSDevice()) {
+            onClick={async () => {
+              try {
+                const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
+                const res = await triggerNativeInstallPrompt();
+                if (res.outcome !== 'accepted') {
+                  setIsPWAInstallOpen(true);
+                }
+              } catch {
                 setIsPWAInstallOpen(true);
-                return;
               }
-              setApkDownloadState('downloading');
-              triggerApkDownload('/apk/sahayasewa-latest.apk');
-              setTimeout(() => {
-                setApkDownloadState('started');
-                setTimeout(() => {
-                  setApkDownloadState('idle');
-                }, 8000);
-              }, 600);
             }}
-            className={`w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all ${
-              apkDownloadState === 'idle' ? 'animate-pulse' : ''
-            }`}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all animate-pulse"
           >
-            {apkDownloadState === 'downloading' ? (
-              <>
-                <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />
-                <span>
-                  {language === 'en'
-                    ? 'Starting Download...'
-                    : language === 'ta'
-                    ? 'பதிவிறக்கம் தொடங்குகிறது...'
-                    : 'බාගත වීම ආරම්භ වෙමින් පවතී...'}
-                </span>
-              </>
-            ) : apkDownloadState === 'started' ? (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                <span>
-                  {language === 'en'
-                    ? '✓ Downloading APK... Click open to Install/Update'
-                    : language === 'ta'
-                    ? '✓ பதிவிறக்கம் தொடங்கப்பட்டது (Open செய்து Update செய்க)'
-                    : '✓ APK Download ආරම්භ විය! Open කර Install/Update කරන්න'}
-                </span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 text-amber-300" />
-                <span>
-                  {language === 'en'
-                    ? '📲 Download & Update App (Direct APK)'
-                    : language === 'ta'
-                    ? '📲 செயலியை பதிவிறக்கம் / புதுப்பிக்க (Direct APK)'
-                    : '📲 සහය සේවා App එක Phone එකට Download කරගන්න'}
-                </span>
-              </>
-            )}
+            <Download className="w-4 h-4 text-amber-300" />
+            <span>
+              {language === 'en'
+                ? '📲 Download & Install Mobile App'
+                : language === 'ta'
+                ? '📲 செயலியை பதிவிறக்கம் செய்க (Download App)'
+                : '📲 සහය සේවා App එක Phone එකට Download කරගන්න'}
+            </span>
           </button>
-
-          {/* Quick Guidance Box after clicking download */}
-          {apkDownloadState === 'started' && (
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-[11px] text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5 animate-fadeIn">
-              <ArrowDownToLine className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div className="leading-tight">
-                <span className="font-bold">බාගත වූ පසු (After Download):</span>
-                <p className="text-[10px] text-slate-700 dark:text-slate-300 mt-0.5">
-                  Notification තීරුවේ ඇති <b>sahayasewa-latest.apk</b> මත ඔබා <b>Install</b> හෝ <b>Update</b> තෝරන්න. (දැනට App එක ඇති අයට ස්වයංක්‍රීයවම Update වේ)
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Alternative option for iPhone / Desktop browsers */}
-          <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-[#52735e] px-1">
-            <span>Android APK v1.0.8 (Latest)</span>
-            <button
-              type="button"
-              onClick={() => setIsPWAInstallOpen(true)}
-              className="text-[#00a86b] dark:text-emerald-400 hover:underline cursor-pointer font-medium"
-            >
-              iPhone / PWA Install?
-            </button>
-          </div>
         </div>
       </div>
 
