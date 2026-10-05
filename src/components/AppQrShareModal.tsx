@@ -1,22 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   QrCode, 
   X, 
   Copy, 
   Check, 
   Download, 
-  Share2, 
   Maximize2, 
   Minimize2, 
-  Sparkles, 
   ExternalLink,
-  Smartphone,
-  ShieldCheck,
-  Store,
-  Compass
+  Store
 } from 'lucide-react';
 import { Language } from '../types';
-import { AppLogo } from './AppLogo';
 
 interface AppQrShareModalProps {
   isOpen: boolean;
@@ -30,16 +24,34 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
   isOpen,
   onClose,
   language = 'si',
-  initialUrl,
+  initialUrl = 'https://supporservice.online/',
   title
 }) => {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentAppUrl, setCurrentAppUrl] = useState(initialUrl);
   const qrCardRef = useRef<HTMLDivElement>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    // Custom initialUrl එකක් ලබාදී නොමැති නම් පමණක් පවතින Window Location එක ලබා ගනී
+    if (initialUrl) {
+      setCurrentAppUrl(initialUrl);
+    } else if (typeof window !== 'undefined') {
+      setCurrentAppUrl(window.location.href);
+    }
+  }, [initialUrl]);
 
-  const currentAppUrl = initialUrl || (typeof window !== 'undefined' ? window.location.href : 'https://sahayasewa.lk');
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   const getLang = (si: string, en: string, ta: string) => {
     if (language === 'en') return en;
@@ -55,16 +67,15 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
     }
   };
 
-  const handleDownloadQr = () => {
-    // Generate an SVG or Canvas QR download
-    const svgElement = document.getElementById('sahaya-app-qr-svg');
-    if (!svgElement) return;
+  // https://supporservice.online/ සඳහා QR Code එක සෑදෙන API Url එක
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
 
-    const svgData = new XMLSerializer().serializeToString(svgElement);
+  const handleDownloadQr = () => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
     
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       canvas.width = 600;
       canvas.height = 600;
@@ -81,16 +92,17 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
         document.body.removeChild(downloadLink);
       }
     };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    img.src = qrApiUrl;
   };
 
-  // High-density QR Code visual representation encoding the URL with standard error correction grid
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+    <div 
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+      onClick={onClose}
+    >
       <div 
         ref={qrCardRef}
+        onClick={(e) => e.stopPropagation()}
         className={`relative w-full ${isFullscreen ? 'max-w-xl h-[95vh] flex flex-col justify-between' : 'max-w-md'} bg-gradient-to-b from-emerald-950 via-slate-900 to-slate-950 text-white rounded-3xl border-2 border-emerald-500/50 shadow-2xl p-5 sm:p-6 overflow-y-auto transition-all`}
       >
         {/* Top Header */}
@@ -134,46 +146,11 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
         {/* QR Code Graphic Container */}
         <div className="flex flex-col items-center justify-center space-y-4 py-2">
           <div className="relative p-4 bg-white rounded-3xl shadow-2xl border-4 border-emerald-400/80 max-w-[280px] sm:max-w-[320px] aspect-square flex flex-col items-center justify-center">
-            {/* Center QR image */}
             <img 
               src={qrApiUrl}
               alt="Sahaya Sewa Web App QR Code" 
               className="w-full h-full object-contain rounded-xl"
-              onError={(e) => {
-                // Fallback direct SVG drawing if offline
-                (e.target as HTMLElement).style.display = 'none';
-              }}
             />
-
-            {/* Offline SVG fallback */}
-            <svg 
-              id="sahaya-app-qr-svg"
-              className="w-full h-full" 
-              viewBox="0 0 100 100" 
-              style={{ display: 'none' }}
-            >
-              <rect width="100" height="100" fill="#ffffff"/>
-              <rect x="10" y="10" width="30" height="30" fill="#064e3b" rx="4"/>
-              <rect x="15" y="15" width="20" height="20" fill="#ffffff" rx="2"/>
-              <rect x="20" y="20" width="10" height="10" fill="#064e3b" rx="1"/>
-              
-              <rect x="60" y="10" width="30" height="30" fill="#064e3b" rx="4"/>
-              <rect x="65" y="15" width="20" height="20" fill="#ffffff" rx="2"/>
-              <rect x="70" y="20" width="10" height="10" fill="#064e3b" rx="1"/>
-
-              <rect x="10" y="60" width="30" height="30" fill="#064e3b" rx="4"/>
-              <rect x="15" y="65" width="20" height="20" fill="#ffffff" rx="2"/>
-              <rect x="20" y="70" width="10" height="10" fill="#064e3b" rx="1"/>
-
-              {/* Data dots */}
-              <circle cx="50" cy="20" r="3" fill="#064e3b"/>
-              <circle cx="50" cy="50" r="4" fill="#059669"/>
-              <circle cx="20" cy="50" r="3" fill="#064e3b"/>
-              <circle cx="70" cy="50" r="3" fill="#064e3b"/>
-              <circle cx="60" cy="70" r="3" fill="#064e3b"/>
-              <circle cx="80" cy="80" r="3" fill="#064e3b"/>
-              <circle cx="50" cy="80" r="3" fill="#064e3b"/>
-            </svg>
 
             {/* App Brand Stamp at center */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
