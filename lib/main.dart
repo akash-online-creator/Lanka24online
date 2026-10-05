@@ -186,7 +186,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _setupWebView();
-    _startLocalAppServer();
+    _loadAppContent();
     _requestAndStartBackgroundServices();
   }
 
@@ -198,10 +198,26 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.dispose();
   }
 
-  Future<void> _startLocalAppServer() async {
-    final port = await _assetServer.start();
-    if (mounted && port > 0) {
-      _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
+  Future<void> _loadAppContent() async {
+    try {
+      // Primary: Load native asset directly from APK (Ultra-fast, 0-latency, no network socket required)
+      await _controller.loadFlutterAsset('assets/web/index.html');
+    } catch (e) {
+      debugPrint('loadFlutterAsset notice: $e, trying LocalAssetServer...');
+      try {
+        final port = await _assetServer.start();
+        if (mounted && port > 0) {
+          await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
+        } else {
+          final htmlContent = await rootBundle.loadString('assets/web/index.html');
+          await _controller.loadHtmlString(htmlContent, baseUrl: 'https://supporservice.online');
+        }
+      } catch (err) {
+        try {
+          final htmlContent = await rootBundle.loadString('assets/web/index.html');
+          await _controller.loadHtmlString(htmlContent, baseUrl: 'https://supporservice.online');
+        } catch (_) {}
+      }
     }
   }
 
