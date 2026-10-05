@@ -20,6 +20,8 @@ import {
   flagRedAlertAsFake 
 } from '../lib/firebase';
 import { filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 // 🚨 Default Tone Import එක
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
@@ -87,7 +89,23 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   }, [storageKey]);
 
-  // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 2 සීමාව සෙවීම
+  // 📱 Capacitor Native Setup - Android/iOS සඳහා Push Notification Listeners
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      // App එක Background/Closed තිබී Notification එක Touch කර App එකට පිවිසි විට
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        const data = notification.notification.data;
+        if (data && data.alertId) {
+          const targetAlert = alerts.find(a => a.id === data.alertId);
+          if (targetAlert) {
+            onOpenAlertDetail(targetAlert);
+          }
+        }
+      });
+    }
+  }, [alerts]);
+
+  // 2️⃣ Duplicate ඉවත් කිරීම, active බව බලීම, Dismiss කළ ඒවා ඉවත් කිරීම සහ කි.මී. 5 සීමාව සෙවීම
   const uniqueAlertsMap = new Map<string, RedAlertItem>();
 
   const nonDeletedAlerts = filterNonDeletedRedAlerts(alerts || []);
@@ -243,21 +261,6 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  const handleReportFake = async (alertId: string) => {
-    if (!currentUser) {
-      alert('කරුණාකර පළමුව පද්ධතියට ලොග් වන්න.');
-      return;
-    }
-    if (confirm('මෙය සාවද්‍ය / බොරු අනතුරක් ලෙස වාර්තා කිරීමට අවශ්‍යද?')) {
-      await flagRedAlertAsFake(alertId, {
-        userId: currentUser?.userId || currentUser?.id || '',
-        name: currentUser?.name || 'පරිශීලක',
-        reason: 'User flagged as fake alert'
-      });
-      alert('ඔබගේ වාර්තා කිරීම පද්ධතියට යොමු කෙරුණි.');
-    }
-  };
-
   if (activeAlerts.length === 0 || !currentAlert || !currentAlert.id) {
     return null;
   }
@@ -392,7 +395,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
       </div>
 
-      {/* 2. කළමනාකරණ තීරුව (වෙනස් කරන ලද කොටස) */}
+      {/* 2. කළමනාකරණ තීරුව */}
       <div className="bg-black/20 border-t border-white/10 px-3 sm:px-4 py-1.5 text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-center sm:justify-between items-center gap-2">
           
@@ -422,7 +425,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
               </div>
             </div>
           ) : (
-            // 🔥 අලුතින් එක් කළ 'සිදුවී ඇති අනතුර' පෙන්වන කොටස
+            /* 🔥 'සිදුවී ඇති අනතුර' පෙන්වන කොටස */
             <div className="w-full flex justify-center items-center text-white">
               <span className="flex items-center gap-2 text-xs">
                 <AlertTriangle className="w-4 h-4 text-yellow-300" />
