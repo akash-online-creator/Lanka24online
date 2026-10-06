@@ -101,7 +101,7 @@ export const NotificationPermissionBanner: React.FC<NotificationPermissionBanner
             type="button"
             onClick={handleEnableNotifications}
             disabled={isRequesting}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
           >
             <Bell className="w-4 h-4" />
             <span>

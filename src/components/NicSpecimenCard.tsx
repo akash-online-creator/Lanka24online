@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Sparkles, CheckCircle2, QrCode } from 'lucide-react';
+import { Sparkles, ShieldCheck } from 'lucide-react';
 
 interface NicSpecimenCardProps {
   customImage?: string | null;
@@ -8,137 +8,142 @@ interface NicSpecimenCardProps {
 
 export const NicSpecimenCard: React.FC<NicSpecimenCardProps> = ({ customImage, compact = false }) => {
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/90 via-sky-50/80 to-emerald-50/90 border border-amber-200/80 shadow-xl text-slate-800 font-sans select-none transition-all duration-300 ${compact ? 'p-3 text-xs' : 'p-5'}`}>
-      
-      {/* Security Background Guilloche Watermark Patterns */}
-      <div className="absolute inset-0 opacity-[0.07] pointer-events-none bg-[radial-gradient(#0284c7_1px,transparent_1px)] [background-size:12px_12px]" />
-      <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-amber-300/20 blur-2xl pointer-events-none" />
-      <div className="absolute -left-12 -bottom-12 w-48 h-48 rounded-full bg-cyan-300/20 blur-2xl pointer-events-none" />
-      
-      {/* Top Header with Lion Emblem & Tricolor Republic Header */}
-      <div className="flex items-center justify-between border-b border-amber-900/10 pb-2.5 mb-3 relative z-10">
-        <div className="flex items-center gap-2.5">
-          {/* Official Emblem Emblem Graphic */}
-          <div className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-600/30 flex items-center justify-center shadow-sm shrink-0">
-            <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-700 fill-current" aria-label="Sri Lanka Emblem">
-              <path d="M12 2L9 9H15L12 2Z" fill="#b45309" />
-              <circle cx="12" cy="13" r="5" fill="#f59e0b" />
-              <path d="M7 13C7 10.2 9.2 8 12 8C14.8 8 17 10.2 17 13C17 15.8 14.8 18 12 18C9.2 18 7 15.8 7 13Z" fill="#b45309" opacity="0.4" />
-              <path d="M10 12h4v2h-4z" fill="#78350f" />
-            </svg>
-          </div>
-          <div>
-            <div className="text-[11px] font-bold tracking-tight text-amber-950 font-sinhala leading-tight">
-              ශ්‍රී ලංකා ප්‍රජාතාන්ත්‍රික සමාජවාදී ජනරජය
-            </div>
-            <div className="text-[9px] font-semibold text-amber-900/80 tracking-tight leading-none mt-0.5">
-              இலங்கை சனநாயக சோசலிசக் குடியரசு · SRI LANKA
-            </div>
-            <div className="text-[10px] font-black text-sky-900 tracking-wider uppercase font-sinhala mt-0.5">
-              ජාතික හැඳුනුම්පත · NATIONAL IDENTITY CARD
-            </div>
-          </div>
-        </div>
-
-        {/* Specimen Tag */}
-        <div className="px-2.5 py-1 bg-red-600 text-white font-black text-[10px] tracking-widest rounded-md uppercase shadow-sm border border-red-700 shrink-0">
-          ආදර්ශය / SPECIMEN
-        </div>
-      </div>
-
-      {/* Main Body with User Photo & Specimen Information */}
-      <div className="grid grid-cols-12 gap-3.5 relative z-10 items-center">
+    <div className="flex justify-center select-none">
+      {/* 1. Laminated Protective Card Outer Sleeve */}
+      <div className={`relative bg-white/95 rounded-2xl border-4 border-slate-300 shadow-xl overflow-hidden transition-all duration-300 ${compact ? 'max-w-[280px] p-2' : 'max-w-[340px] p-3'}`}>
         
-        {/* Photo Box */}
-        <div className="col-span-4 flex flex-col items-center">
-          <div className="w-full aspect-[3/4] max-h-36 rounded-xl overflow-hidden bg-slate-200 border-2 border-amber-600/40 shadow-inner relative flex items-center justify-center group">
-            {customImage ? (
-              <img 
-                src={customImage} 
-                alt="ID Card Photo Preview" 
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-b from-slate-200 to-slate-300 flex flex-col items-center justify-center p-2 text-center">
-                <div className="w-12 h-12 rounded-full bg-slate-400/50 flex items-center justify-center mb-1.5 shadow-sm">
-                  <svg className="w-8 h-8 text-slate-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                  </svg>
-                </div>
-                <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">
-                  ආදර්ශ ඡායාරූපය
-                </span>
-                <span className="text-[8px] text-slate-500 font-medium">SPECIMEN PHOTO</span>
-              </div>
-            )}
-
-            {/* Holographic Security Overlay Chip */}
-            <div className="absolute bottom-1 right-1 w-6 h-6 rounded-md bg-gradient-to-tr from-amber-400 via-rose-300 to-cyan-300 opacity-90 shadow-sm border border-white/60 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-amber-900" />
-            </div>
-          </div>
-
-          <div className="mt-1 text-[9px] font-mono font-bold text-amber-900/70 tracking-widest text-center">
-            SL-NIC 2026
-          </div>
-        </div>
-
-        {/* Identity Details Fields */}
-        <div className="col-span-8 space-y-1.5 text-left">
+        {/* Lamination Corner Notch / Sheen */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/30 via-transparent to-white/60 pointer-events-none" />
+        
+        {/* 2. Physical Card Body */}
+        <div className="relative bg-[#fafbfa] border border-slate-300 rounded-xl p-3 sm:p-4 text-slate-900 shadow-inner flex flex-col items-center">
           
-          {/* NIC Number */}
-          <div className="bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-amber-300/60 shadow-xs">
-            <span className="text-[9px] font-bold text-slate-500 block uppercase tracking-wider">
-              හැඳුනුම්පත් අංකය / NIC NO.
+          {/* Top Header Grid */}
+          <div className="w-full flex items-start justify-between gap-1 mb-1">
+            {/* Left Country Titles */}
+            <div className="text-left leading-tight">
+              <div className="text-xs sm:text-sm font-black font-sinhala tracking-tight text-slate-900">
+                ශ්‍රී ලංකා/இலங்கை
+              </div>
+              <div className="text-[10px] sm:text-xs font-black tracking-widest text-slate-900 font-sans uppercase">
+                SRI LANKA
+              </div>
+            </div>
+
+            {/* Center State Lion Emblem */}
+            <div className="flex flex-col items-center justify-center -mt-1">
+              <div className="w-9 h-11 relative flex items-center justify-center">
+                {/* State Crest Emblem Vector */}
+                <svg viewBox="0 0 100 120" className="w-full h-full drop-shadow-xs" aria-label="Sri Lanka State Emblem">
+                  {/* Outer Aureole */}
+                  <circle cx="50" cy="50" r="42" fill="#d97706" stroke="#78350f" strokeWidth="3" />
+                  <circle cx="50" cy="50" r="37" fill="#fef3c7" stroke="#b45309" strokeWidth="2" strokeDasharray="3 2" />
+                  <circle cx="50" cy="50" r="28" fill="#854d0e" />
+                  
+                  {/* Golden Lion with Sword */}
+                  <path d="M42 45 Q50 35 58 45 Q58 55 50 58 Q42 55 42 45 Z" fill="#fbbf24" />
+                  <rect x="47" y="36" width="16" height="3" fill="#fbbf24" />
+                  <line x1="58" y1="33" x2="58" y2="42" stroke="#fbbf24" strokeWidth="2" />
+                  
+                  {/* Punkalasa Base */}
+                  <path d="M30 92 L70 92 L62 108 L38 108 Z" fill="#b45309" stroke="#78350f" strokeWidth="2" />
+                  <ellipse cx="50" cy="92" rx="16" ry="6" fill="#f59e0b" />
+                  <circle cx="50" cy="84" r="5" fill="#fde68a" />
+                  
+                  {/* Sun and Moon Symbols */}
+                  <circle cx="28" cy="85" r="4" fill="#fbbf24" />
+                  <path d="M70 82 A 5 5 0 0 0 74 88 A 4 4 0 1 1 70 82 Z" fill="#fbbf24" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Right Series Number "3" */}
+            <div className="text-right">
+              <span className="text-2xl sm:text-3xl font-black text-slate-700 font-sans leading-none block">
+                3
+              </span>
+            </div>
+          </div>
+
+          {/* Citizen Name Field (Specimen) */}
+          <div className="w-full text-center py-0.5 mb-1">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 font-sinhala">
+              ඩබ්. එම්. අසංක කරුණාරත්න
             </span>
-            <div className="text-sm font-mono font-extrabold text-blue-950 tracking-wider">
-              199508241234 <span className="text-xs font-semibold text-slate-400">(හෝ 952371234V)</span>
+          </div>
+
+          {/* Central Portrait Photo with Golden Decorative Border */}
+          <div className="my-1 flex justify-center">
+            <div className="p-1 rounded bg-gradient-to-b from-amber-400 via-amber-200 to-amber-500 border-2 border-amber-600 shadow-md">
+              <div className="w-24 h-32 sm:w-28 sm:h-36 bg-slate-200 overflow-hidden relative flex flex-col items-center justify-center border border-amber-800/40">
+                {customImage ? (
+                  <img
+                    src={customImage}
+                    alt="ID Card Photo Preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-b from-slate-200 via-slate-100 to-slate-300 flex flex-col items-center justify-center p-2 text-center relative">
+                    {/* Silhouette Specimen Avatar */}
+                    <div className="w-12 h-12 rounded-full bg-slate-400/80 mb-1 border-2 border-slate-300 shadow-inner" />
+                    <div className="w-18 h-10 rounded-t-full bg-slate-500/80 shadow-inner" />
+                    <span className="absolute bottom-1 bg-amber-500/90 text-slate-950 font-black text-[8px] px-1.5 py-0.5 rounded uppercase tracking-wider shadow-xs">
+                      ආදර්ශය
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Full Name */}
-          <div>
-            <span className="text-[9px] font-bold text-slate-500 block uppercase">
-              සම්පූර්ණ නම / FULL NAME
-            </span>
-            <div className="text-xs font-bold text-slate-900 font-sinhala leading-tight">
-              කරුණාරත්න මුදියන්සේලාගේ අසංක
+          {/* Bottom Row: Date on Left, Signature & Seal on Right */}
+          <div className="w-full grid grid-cols-2 gap-1 items-end pt-1 pb-1.5 text-slate-900">
+            {/* Left: Issue Date */}
+            <div className="text-left">
+              <div className="text-[11px] sm:text-xs font-black font-mono tracking-tight text-slate-900">
+                2015/09/02
+              </div>
+              <div className="text-[9px] sm:text-[10px] font-black font-sinhala tracking-tight text-slate-800 flex items-center gap-1">
+                <span>දිනය</span>
+                <span className="text-[8px] font-sans">திகதி</span>
+              </div>
             </div>
-            <div className="text-[10px] font-semibold text-slate-700 tracking-tight">
-              KARUNARATHNA M. ASANKA
+
+            {/* Right: Signature & Commissioner General Title */}
+            <div className="text-right flex flex-col items-end">
+              {/* Handwritten Blue Signature Vector */}
+              <div className="h-4 w-20 relative flex items-center justify-end">
+                <svg viewBox="0 0 100 25" className="w-full h-full text-blue-800 stroke-current fill-none stroke-2">
+                  <path d="M5 18 Q 20 2, 35 15 T 60 8 T 85 18 T 95 10" />
+                  <path d="M25 22 Q 55 5, 80 20" strokeWidth="1.5" />
+                </svg>
+              </div>
+              
+              <div className="text-[8px] sm:text-[9px] font-bold font-sinhala leading-tight text-slate-900">
+                පුද්ගලයන් ලියාපදිංචි කිරීමේ
+              </div>
+              <div className="text-[8px] sm:text-[9px] font-bold font-sinhala leading-tight text-slate-900">
+                කොමසාරිස් ජනරාල්
+              </div>
+              <div className="text-[7px] sm:text-[8px] font-medium leading-none text-slate-700 mt-0.5">
+                ஆட்களைப் பதிவு செய்யும்
+              </div>
+              <div className="text-[7px] sm:text-[8px] font-medium leading-none text-slate-700">
+                ஆணையாளர் நாயகம்
+              </div>
             </div>
           </div>
 
-          {/* Date of Birth & Gender */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="text-[8px] font-bold text-slate-500 block">උපන් දිනය / D.O.B</span>
-              <span className="text-[11px] font-mono font-bold text-slate-800">1995.08.24</span>
+          {/* Bottom Legal Statutory Footer Box */}
+          <div className="w-full border border-slate-900 rounded p-1 text-center bg-white/50">
+            <div className="text-[8px] sm:text-[9px] font-black font-sinhala leading-tight text-slate-900">
+              1968 අංක 32 දරණ පුද්ගලයන් ලියාපදිංචි කිරීමේ පනත
             </div>
-            <div>
-              <span className="text-[8px] font-bold text-slate-500 block">ස්ත්‍රී/පුරුෂ / GENDER</span>
-              <span className="text-[11px] font-bold text-slate-800 font-sinhala">පුරුෂ / M</span>
+            <div className="text-[7px] sm:text-[8px] font-medium leading-tight text-slate-700 mt-0.5">
+              1968 ஆம் ஆண்டு 32 ஆம் இலக்க ஆட்களைப் பதிவு செய்யும் சட்டம்
             </div>
           </div>
 
-          {/* Address / Location Specimen */}
-          <div>
-            <span className="text-[8px] font-bold text-slate-500 block">ලිපිනය / ADDRESS</span>
-            <span className="text-[10px] font-semibold text-slate-800 font-sinhala line-clamp-1">
-              නො. 124, ප්‍රධාන පාර, මහනුවර (Kandy)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Security Bar with Microprint and Signature line */}
-      <div className="mt-3 pt-2 border-t border-amber-900/10 flex items-center justify-between text-[8px] font-mono text-slate-500 relative z-10">
-        <div className="flex items-center gap-1.5 font-bold text-amber-950">
-          <Shield className="w-3 h-3 text-emerald-600" />
-          <span>රජයේ නිල හැඳුනුම්පත් සම්මතය · SRI LANKA DRP</span>
-        </div>
-        <div className="flex items-center gap-1 font-mono tracking-tighter">
-          <span>&lt;&lt;&lt;LKA199508241234&lt;&lt;&lt;&lt;9508248M2601015LKA&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;4</span>
         </div>
       </div>
     </div>

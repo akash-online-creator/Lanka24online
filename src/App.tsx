@@ -38,12 +38,22 @@ export const App: React.FC = () => {
 
   const [language, setLanguage] = useState<Language>('si');
 
-  // Persist Theme to LocalStorage
+  // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
     try {
       localStorage.setItem('sahaya_sewa_theme', theme);
     } catch (e) {
       console.warn('Failed to save theme to LocalStorage:', e);
+    }
+
+    if (typeof document !== 'undefined') {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.add('light');
+      }
     }
   }, [theme]);
 

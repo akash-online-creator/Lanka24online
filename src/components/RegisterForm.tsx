@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Language, RegistrationConfig } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { RegistrationSuccessModal } from './RegistrationSuccessModal';
+import { NicSpecimenCard } from './NicSpecimenCard';
 import { compressImageFile } from '../utils/imageCompressor';
 import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -48,7 +49,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 }) => {
   const t = translations[language];
 
-  const mainTitle = registrationConfig?.mainTitle?.[language] || 'ලියාපදිංචි වීමේ පෝරමය';
+  const mainTitle = registrationConfig?.mainTitle?.[language] || (language === 'en' ? 'Register Now' : language === 'ta' ? 'பதிவு செய்க' : 'ලියාපදිංචි වන්න');
   const subtitle = registrationConfig?.subtitle?.[language] || 'කරුණාකර ඔබගේ නිවැරදි තොරතුරු ඇතුළත් කර පද්ධතියට සම්බන්ධ වන්න';
   const noticeBanner = registrationConfig?.noticeBanner?.[language];
   const termsAndConditions = registrationConfig?.termsAndConditions?.[language];
@@ -80,6 +81,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   // Photos State (Front of NIC is sufficient)
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
   const [showNicGuideModal, setShowNicGuideModal] = useState(false);
+  const nicFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Registration Submission Notification Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -659,7 +661,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </button>
               </div>
 
-              <div className="w-full min-h-[160px] sm:min-h-[190px] rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 relative group mx-auto flex flex-col items-center justify-center p-3 shadow-inner">
+              <div 
+                onClick={() => nicFileInputRef.current?.click()}
+                className="w-full min-h-[160px] sm:min-h-[190px] rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/20 relative group mx-auto flex flex-col items-center justify-center p-3 shadow-inner cursor-pointer active:scale-[0.99] transition-all"
+              >
                 {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
                   <div className="relative w-full h-full max-h-56 flex items-center justify-center">
                     <img
@@ -669,7 +674,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => setNicFrontPhoto('')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNicFrontPhoto('');
+                        if (nicFileInputRef.current) {
+                          nicFileInputRef.current.value = '';
+                        }
+                      }}
                       className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1.5 shadow-lg transition-colors cursor-pointer"
                       title="ඡායාරූපය ඉවත් කරන්න"
                     >
@@ -677,7 +688,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 py-4 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2 py-4 text-center pointer-events-none">
                     <MedicalPlusBadge size="lg" showGlow animated />
                     <span className="text-xs font-black text-emerald-900 tracking-tight">
                       ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනට එක් කරන්න (අනිවාර්යයි *)
@@ -687,18 +698,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     </span>
                   </div>
                 )}
-              </div>
-
-              <label className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-black active:scale-[0.99] cursor-pointer transition-all shadow-md">
-                <Upload className="w-4 h-4" />
-                <span>{nicFrontPhoto ? 'වෙනත් ඡායාරූපයක් තෝරන්න (Change Photo)' : 'හැඳුනුම්පත් ඡායාරූපය උඩුගත කරන්න (Upload NIC Front)'}</span>
                 <input
+                  ref={nicFileInputRef}
                   type="file"
                   accept="image/*"
                   onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
                   className="hidden"
                 />
-              </label>
+              </div>
             </div>
           </div>
 
@@ -771,44 +778,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             {/* Modal Body */}
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
               {/* Visual Card Sample of Sri Lanka NIC */}
-              <div className="relative rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 p-4 shadow-md overflow-hidden">
-                <div className="flex items-center justify-between border-b border-emerald-200 pb-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🇱🇰</span>
-                    <div>
-                      <div className="text-[11px] font-black text-emerald-950">ශ්‍රී ලංකා ජාතික හැඳුනුම්පත (ඉදිරිපස)</div>
-                      <div className="text-[9px] font-bold text-emerald-700">SRI LANKA NATIONAL IDENTITY CARD</div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-black">
-                    SAMPLE / ආදර්ශය
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 items-center">
-                  {/* Sample Photo Placeholder */}
-                  <div className="h-24 rounded-xl bg-white border-2 border-dashed border-emerald-400 flex flex-col items-center justify-center p-2 text-center shadow-inner">
-                    <Camera className="w-6 h-6 text-emerald-600 mb-1" />
-                    <span className="text-[9px] font-bold text-slate-600">හැඳුනුම්පත් ඡායාරූපය</span>
-                  </div>
-
-                  {/* Sample NIC Details */}
-                  <div className="col-span-2 space-y-2 text-left text-[11px]">
-                    <div className="bg-white/90 p-2 rounded-xl border border-emerald-200 shadow-2xs">
-                      <div className="text-[9px] font-bold text-slate-500">හැඳුනුම්පත් අංකය (NIC NO)</div>
-                      <div className="font-mono font-black text-emerald-950 text-xs tracking-wider">199512345678 / 951234567V</div>
-                    </div>
-                    <div className="bg-emerald-100/80 p-2 rounded-xl border border-emerald-300 text-emerald-900 text-[10px] font-bold leading-tight">
-                      ✓ හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය පමණක් ප්‍රමාණවත් වේ
-                    </div>
-                  </div>
-                </div>
-
-                {/* Clear watermark badge */}
-                <div className="mt-3 pt-2 border-t border-emerald-200/80 flex items-center justify-between text-[10px] text-emerald-800 font-bold">
-                  <span>✓ කොන් 4 ම පැහැදිලිව පෙනෙන සේ</span>
-                  <span>✓ ආලෝක පරාවර්තන නැතිව</span>
-                </div>
+              <div className="flex justify-center py-1">
+                <NicSpecimenCard />
               </div>
 
               {/* Instructions */}
