@@ -385,9 +385,6 @@ export const App: React.FC = () => {
             onNavigateToIssues={() => setActiveView('issues')}
             onNavigate={handleNavigate}
             onOpenAdminPanel={() => setActiveView('admin')}
-            onDeletePost={(postId) => {
-              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
-            }}
             onPermanentDeletePost={(postId) => {
               setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
             }}

@@ -209,7 +209,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   const isAuthorOfAlert = Boolean(currentUser && (
     (alert.reportedByUserId && currentUserId && (alert.reportedByUserId === currentUserId)) ||
     (alert.reportedByPhone && currentUser.phone && alert.reportedByPhone === currentUser.phone) ||
-    (alert.reportedByName && user?.name && alert.reportedByName === user?.name)
+    (alert.reportedByName && currentUser?.name && alert.reportedByName === currentUser.name)
   ));
 
   const config = getDisasterConfig(alert.disasterType);
@@ -226,7 +226,7 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   return (
     <div 
       onClick={handleModalBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-xl overflow-y-auto animate-fadeIn"
     >
       {/* Event Bubbling වැළැක්වීම සඳහා inner stopPropagation යොදා ඇත */}
       <div 
@@ -537,72 +537,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
             </div>
           )}
 
-          {/* Fake Reporting Panel */}
-          {showFakeReportModal && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>අසත්‍ය තොරතුරක් ලෙස Admin වෙත වාර්තා කරන්න</span>
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowFakeReportModal(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {fakeReportedSuccess ? (
-                <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold text-center">
-                  ✅ ස්තූතියි! මෙම වාර්තාව පරිපාලක (Admin) වෙත යොමු කරන ලදි.
-                </div>
-              ) : (
-                <form onSubmit={handleReportFake} className="space-y-2.5">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                      හේතුව තෝරන්න:
-                    </label>
-                    <select
-                      value={fakeReason}
-                      onChange={(e) => setFakeReason(e.target.value)}
-                      className="w-full p-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-bold"
-                    >
-                      <option value="බොරුවක් / අසත්‍ය පුවතක් (Fake news)">බොරුවක් / අසත්‍ය පුවතක් (Fake news)</option>
-                      <option value="පැරණි සිදුවීමක් (Outdated incident)">පැරණි සිදුවීමක් (Outdated incident)</option>
-                      <option value="නොමඟ යවන සුළුයි (Misleading / Exaggerated)">නොමඟ යවන සුළුයි (Misleading / Exaggerated)</option>
-                      <option value="වැරදි ස්ථානයක් (Wrong location)">වැරදි ස්ථානයක් (Wrong location)</option>
-                      <option value="වෙනත් කරුණක් (Other reason)">වෙනත් කරුණක් (Other reason)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                      වැඩිදුර පැහැදිලි කිරීම (අවශ්‍ය නම්):
-                    </label>
-                    <input
-                      type="text"
-                      value={fakeNotes}
-                      onChange={(e) => setFakeNotes(e.target.value)}
-                      placeholder="මෙය සාවද්‍ය තොරතුරක් බව ඔබ දන්නේ කෙසේද?..."
-                      className="w-full p-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isReportingFake}
-                    className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Flag className="w-3.5 h-3.5" />
-                    <span>වාර්තාව Admin වෙත Submit කරන්න</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-white/10">
             <button
               type="button"
@@ -612,6 +546,86 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
               තේරුම් ගතිමි (Dismiss)
             </button>
           </div>
+
+        </div>
+
+        {/* 🌟 Fake Reporting Overlay Dialog with Backdrop Blur */}
+        {showFakeReportModal && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 rounded-3xl animate-in fade-in duration-150 overflow-y-auto">
+            <div className="w-full max-w-lg p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-950 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                  <span>අසත්‍ය තොරතුරක් ලෙස Admin වෙත වාර්තා කරන්න</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowFakeReportModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {fakeReportedSuccess ? (
+                <div className="p-4 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold text-center">
+                  ✅ ස්තූතියි! මෙම වාර්තාව පරිපාලක (Admin) වෙත යොමු කරන ලදි.
+                </div>
+              ) : (
+                <form onSubmit={handleReportFake} className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      හේතුව තෝරන්න:
+                    </label>
+                    <select
+                      value={fakeReason}
+                      onChange={(e) => setFakeReason(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs font-bold"
+                    >
+                      <option value="බොරුවක් / අසත්‍ය පුවතක් (Fake news)">බොරුවක් / අසත්‍ය පුවතක් (Fake news)</option>
+                      <option value="පැරණි සිදුවීමක් (Outdated incident)">පැරණි සිදුවීමක් (Outdated incident)</option>
+                      <option value="නොමඟ යවන සුළුයි (Misleading / Exaggerated)">නොමඟ යවන සුළුයි (Misleading / Exaggerated)</option>
+                      <option value="වැරදි ස්ථානයක් (Wrong location)">වැරදි ස්ථානයක් (Wrong location)</option>
+                      <option value="වෙනත් කරුණක් (Other reason)">වෙනත් කරුණක් (Other reason)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      වැඩිදුර පැහැදිලි කිරීම (අවශ්‍ය නම්):
+                    </label>
+                    <input
+                      type="text"
+                      value={fakeNotes}
+                      onChange={(e) => setFakeNotes(e.target.value)}
+                      placeholder="මෙය සාවද්‍ය තොරතුරක් බව ඔබ දන්නේ කෙසේද?..."
+                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowFakeReportModal(false)}
+                      disabled={isReportingFake}
+                      className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isReportingFake}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Flag className="w-4 h-4" />
+                      <span>වාර්තාව Admin වෙත යවන්න</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
 
         </div>
 

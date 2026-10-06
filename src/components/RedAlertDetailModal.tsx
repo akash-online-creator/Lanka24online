@@ -349,7 +349,7 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xl overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-white dark:bg-[#0c1812] border-2 border-red-500 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.35)] overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
         {/* Header Ribbon */}
@@ -567,125 +567,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
                 </span>
               </div>
 
-              {/* Confirmation Card: Resolve */}
-              {confirmDialog === 'resolve' && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/90 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-3 shadow-lg">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-emerald-900 dark:text-emerald-300">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් පද්ධතියේ දේශීය Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> සටහන් කර යවනු ලැබේ.
-                  </p>
-
-                  <div className="space-y-1.5 pt-1">
-                    <label className="text-[11px] font-black text-emerald-900 dark:text-emerald-200">
-                      💡 ආපදාව ඉවත් කළ හේතුව තෝරන්න (Reason):
-                    </label>
-                    <select
-                      value={selectedResolveReason}
-                      onChange={(e) => setSelectedResolveReason(e.target.value)}
-                      className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-emerald-400 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.">ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.</option>
-                      <option value="මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.">මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.</option>
-                      <option value="හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.">හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.</option>
-                      <option value="ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.">ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.</option>
-                      <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
-                    </select>
-
-                    {selectedResolveReason === 'custom' && (
-                      <input
-                        type="text"
-                        placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
-                        value={customResolveReason}
-                        onChange={(e) => setCustomResolveReason(e.target.value)}
-                        className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-emerald-400 text-slate-900 dark:text-slate-100 mt-1"
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmResolveAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      <span>ඔව්, විසඳුණු බව දැනුම්දෙන්න</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Confirmation Card: Cancel / Delete */}
-              {confirmDialog === 'cancel_delete' && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-3 shadow-lg">
-                  <div className="flex items-center gap-2 font-black text-xs sm:text-sm text-rose-900 dark:text-rose-300">
-                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                    <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    මෙමගින් ආපදා අනතුරු ඇඟවීම පද්ධතියෙන් ඉවත් කර දේශීය Notification මඟින් තොරතුරු යවනු ලැබේ.
-                  </p>
-
-                  <div className="space-y-1.5 pt-1">
-                    <label className="text-[11px] font-black text-rose-900 dark:text-rose-200">
-                      💡 අනතුර ඉවත් කළ හේතුව තෝරන්න (Reason):
-                    </label>
-                    <select
-                      value={selectedCancelReason}
-                      onChange={(e) => setSelectedCancelReason(e.target.value)}
-                      className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-rose-400 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.">ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.</option>
-                      <option value="අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.">අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.</option>
-                      <option value="හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.">හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.</option>
-                      <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
-                    </select>
-
-                    {selectedCancelReason === 'custom' && (
-                      <input
-                        type="text"
-                        placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
-                        value={customCancelReason}
-                        onChange={(e) => setCustomCancelReason(e.target.value)}
-                        className="w-full p-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-rose-400 text-slate-900 dark:text-slate-100 mt-1"
-                      />
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDialog(null)}
-                      disabled={isSubmitting}
-                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                    >
-                      අවලංගු කරන්න
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmCancelAlert}
-                      disabled={isSubmitting}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    >
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      <span>ඔව්, අනතුර ඉවත් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <p className="text-xs text-amber-800 dark:text-amber-400 font-medium">
                 මෙම ආපදා නිවේදනය සඳහා පහත පියවර ගන්න:
               </p>
@@ -778,72 +659,6 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
             </div>
           )}
 
-          {/* Fake Report Modal Panel */}
-          {showFakeReportModal && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500/60 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>අසත්‍ය තොරතුරක් ලෙස වාර්තා කරන්න</span>
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowFakeReportModal(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {fakeReportedSuccess ? (
-                <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold text-center">
-                  ✅ ස්තූතියි! මෙම වාර්තාව පරිපාලක (Admin) වෙත යොමු කරන ලදි.
-                </div>
-              ) : (
-                <form onSubmit={handleReportFake} className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                      හේතුව තෝරන්න:
-                    </label>
-                    <select
-                      value={fakeReason}
-                      onChange={(e) => setFakeReason(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-bold"
-                    >
-                      <option value="බොරුවක් / අසත්‍ය පුවතක් (Fake news)">බොරුවක් / අසත්‍ය පුවතක් (Fake news)</option>
-                      <option value="පැරණි සිදුවීමක් (Outdated incident)">පැරණි සිදුවීමක් (Outdated incident)</option>
-                      <option value="නොමඟ යවන සුළුයි (Misleading / Exaggerated)">නොමඟ යවන සුළුයි (Misleading / Exaggerated)</option>
-                      <option value="වැරදි ස්ථානයක් (Wrong location)">වැරදි ස්ථානයක් (Wrong location)</option>
-                      <option value="වෙනත් කරුණක් (Other reason)">වෙනත් කරුණක් (Other reason)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                      වැඩිදුර පැහැදිලි කිරීම (අවශ්‍ය නම්):
-                    </label>
-                    <input
-                      type="text"
-                      value={fakeNotes}
-                      onChange={(e) => setFakeNotes(e.target.value)}
-                      placeholder="මෙය බොරුවක් බව ඔබ දන්නේ කෙසේද?..."
-                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-black/50 text-slate-900 dark:text-white text-xs font-medium"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isReportingFake}
-                    className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 mt-2"
-                  >
-                    <Flag className="w-4 h-4" />
-                    <span>වාර්තාව Admin වෙත Submit කරන්න</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
           {/* Comments Feed */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 space-y-4 mt-2">
             <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
@@ -905,6 +720,207 @@ export const RedAlertDetailModal: React.FC<RedAlertDetailModalProps> = ({
           </div>
 
         </div>
+
+        {/* 🌟 1. Overlay Question Box: Confirm Resolve */}
+        {confirmDialog === 'resolve' && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 rounded-3xl animate-in fade-in duration-150 overflow-y-auto">
+            <div className="w-full max-w-lg p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-950 border-2 border-emerald-500 text-emerald-950 dark:text-emerald-100 space-y-4 shadow-2xl">
+              <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-emerald-900 dark:text-emerald-300">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>මෙම ආපදා තත්ත්වය විසඳී ඇති බව සටහන් කරන්න ද?</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                මෙමගින් පද්ධතියේ දේශීය Notification වලට <strong>අවදානම කුමක්ද, ඉවත් කළ වේලාව සහ හේතුව</strong> සටහන් කර යවනු ලැබේ.
+              </p>
+
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-black text-emerald-900 dark:text-emerald-200 block">
+                  💡 ආපදාව ඉවත් කළ හේතුව තෝරන්න (Reason):
+                </label>
+                <select
+                  value={selectedResolveReason}
+                  onChange={(e) => setSelectedResolveReason(e.target.value)}
+                  className="w-full p-2.5 text-xs font-bold rounded-xl bg-slate-50 dark:bg-zinc-900 border border-emerald-400 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.">ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.</option>
+                  <option value="මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.">මාර්ගය සහ ගමනාගමනය යථා තත්ත්වයට පත් විය.</option>
+                  <option value="හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.">හදිසි අලුත්වැඩියාව සාර්ථකව නිම කරන ලදී.</option>
+                  <option value="ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.">ජල ගැලීම / ගංවතුර බැසගොස් අවදානම පහව ගියේය.</option>
+                  <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
+                </select>
+
+                {selectedResolveReason === 'custom' && (
+                  <input
+                    type="text"
+                    placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
+                    value={customResolveReason}
+                    onChange={(e) => setCustomResolveReason(e.target.value)}
+                    className="w-full p-2.5 text-xs font-bold rounded-xl bg-slate-50 dark:bg-zinc-900 border border-emerald-400 text-slate-900 dark:text-slate-100 mt-1.5"
+                  />
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmResolveAlert}
+                  disabled={isSubmitting}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  <span>ඔව්, විසඳුණු බව දැනුම්දෙන්න</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 2. Overlay Question Box: Confirm Cancel / Delete */}
+        {confirmDialog === 'cancel_delete' && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 rounded-3xl animate-in fade-in duration-150 overflow-y-auto">
+            <div className="w-full max-w-lg p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-950 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-4 shadow-2xl">
+              <div className="flex items-center gap-2.5 font-black text-sm sm:text-base text-rose-900 dark:text-rose-300">
+                <Trash2 className="w-6 h-6 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span>මෙම හදිසි අනතුරු ඇඟවීම ඉවත් කිරීමට අවශ්‍ය බව ස්ථිරද?</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                මෙමගින් ආපදා අනතුරු ඇඟවීම පද්ධතියෙන් ඉවත් කර දේශීය Notification මඟින් තොරතුරු යවනු ලැබේ.
+              </p>
+
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-black text-rose-900 dark:text-rose-200 block">
+                  💡 අනතුර ඉවත් කළ හේතුව තෝරන්න (Reason):
+                </label>
+                <select
+                  value={selectedCancelReason}
+                  onChange={(e) => setSelectedCancelReason(e.target.value)}
+                  className="w-full p-2.5 text-xs font-bold rounded-xl bg-slate-50 dark:bg-zinc-900 border border-rose-400 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.">ආපදා අවදානම පහව ගොස් ඇති බැවින් නිවේදනය ඉවත් කරන ලදී.</option>
+                  <option value="අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.">අසත්‍ය හෝ අත්වැරදීමකින් දැමූ නිවේදනයක් බැවින් ඉවත් කරන ලදී.</option>
+                  <option value="හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.">හදිසි සහන සේවා මඟින් තත්ත්වය පාලනය කරන ලදී.</option>
+                  <option value="custom">වෙනත් හේතුවක් සටහන් කරන්න...</option>
+                </select>
+
+                {selectedCancelReason === 'custom' && (
+                  <input
+                    type="text"
+                    placeholder="ඉවත් කළ නිශ්චිත හේතුව මෙහි ලියන්න..."
+                    value={customCancelReason}
+                    onChange={(e) => setCustomCancelReason(e.target.value)}
+                    className="w-full p-2.5 text-xs font-bold rounded-xl bg-slate-50 dark:bg-zinc-900 border border-rose-400 text-slate-900 dark:text-slate-100 mt-1.5"
+                  />
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCancelAlert}
+                  disabled={isSubmitting}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  <span>ඔව්, අනතුර ඉවත් කරන්න</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 3. Overlay Question Box: Fake Report Dialog */}
+        {showFakeReportModal && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 rounded-3xl animate-in fade-in duration-150 overflow-y-auto">
+            <div className="w-full max-w-lg p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-950 border-2 border-rose-500 text-rose-950 dark:text-rose-100 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                  <span>අසත්‍ය තොරතුරක් ලෙස වාර්තා කරන්න</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowFakeReportModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {fakeReportedSuccess ? (
+                <div className="p-4 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold text-center">
+                  ✅ ස්තූතියි! මෙම වාර්තාව පරිපාලක (Admin) වෙත යොමු කරන ලදි.
+                </div>
+              ) : (
+                <form onSubmit={handleReportFake} className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      හේතුව තෝරන්න:
+                    </label>
+                    <select
+                      value={fakeReason}
+                      onChange={(e) => setFakeReason(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs font-bold"
+                    >
+                      <option value="බොරුවක් / අසත්‍ය පුවතක් (Fake news)">බොරුවක් / අසත්‍ය පුවතක් (Fake news)</option>
+                      <option value="පැරණි සිදුවීමක් (Outdated incident)">පැරණි සිදුවීමක් (Outdated incident)</option>
+                      <option value="නොමඟ යවන සුළුයි (Misleading / Exaggerated)">නොමඟ යවන සුළුයි (Misleading / Exaggerated)</option>
+                      <option value="වැරදි ස්ථානයක් (Wrong location)">වැරදි ස්ථානයක් (Wrong location)</option>
+                      <option value="වෙනත් කරුණක් (Other reason)">වෙනත් කරුණක් (Other reason)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      වැඩිදුර පැහැදිලි කිරීම (අවශ්‍ය නම්):
+                    </label>
+                    <input
+                      type="text"
+                      value={fakeNotes}
+                      onChange={(e) => setFakeNotes(e.target.value)}
+                      placeholder="මෙය බොරුවක් බව ඔබ දන්නේ කෙසේද?..."
+                      className="w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowFakeReportModal(false)}
+                      disabled={isReportingFake}
+                      className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      අවලංගු කරන්න
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isReportingFake}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Flag className="w-4 h-4" />
+                      <span>වාර්තාව Admin වෙත යවන්න</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

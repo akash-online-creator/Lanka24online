@@ -222,7 +222,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
 
       {/* හදිසි අනතුරු ඇඟවීමේ ක්‍රියාකාරී පැනලය (Modal) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4 animate-in fade-in duration-200">
           <div className="bg-zinc-950 border-2 border-red-600 rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-[0_0_50px_rgba(220,38,38,0.3)] relative text-white">
             <button
               onClick={() => setIsModalOpen(false)}
