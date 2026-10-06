@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { HelpPost, Language, User, BloodDonationRequest, DisasterReliefItem, VolunteerDonor } from '../types';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { useUserMode } from '../context/UserModeContext';
 import { 
   AlertTriangle, 
   EyeOff, 
@@ -7,9 +9,11 @@ import {
   X, 
   ShieldAlert, 
   CheckCircle2, 
-  Info,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Edit,
+  Trash2,
+  UserX
 } from 'lucide-react';
 
 interface AdminModerationModalProps {
@@ -19,6 +23,9 @@ interface AdminModerationModalProps {
   onConfirmFlag: (postId: string, reason: string, hideFromUsers: boolean, customNote?: string) => void;
   onUnhideOrRestore?: (postId: string) => void;
   onRestorePost?: (postId: string) => void;
+  onEditPost?: (postId: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onBlockUser?: (userId: string) => void;
   language?: Language;
   adminUser?: User;
 }
@@ -63,6 +70,9 @@ export const AdminModerationModal: React.FC<AdminModerationModalProps> = ({
   onConfirmFlag,
   onUnhideOrRestore,
   onRestorePost,
+  onEditPost,
+  onDeletePost,
+  onBlockUser,
   language,
   adminUser,
 }) => {
@@ -70,6 +80,8 @@ export const AdminModerationModal: React.FC<AdminModerationModalProps> = ({
   const [customReason, setCustomReason] = useState<string>('');
   const [hideFromPublic, setHideFromPublic] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const { isUserMode } = useUserMode();
 
   if ((isOpen !== undefined && !isOpen) || !post) return null;
 
@@ -108,7 +120,9 @@ export const AdminModerationModal: React.FC<AdminModerationModalProps> = ({
   const displayNeed = post.whatIsNeeded || (post.unitsNeeded ? `පයින්ට් ${post.unitsNeeded}ක් අවශ්‍යයි • දිනය: ${post.neededDate || 'අද'}` : post.targetQuantity ? `අවශ්‍ය ප්‍රමාණය: ${post.targetQuantity}` : post.description || 'විස්තර');
   const restoreFn = onUnhideOrRestore || onRestorePost;
 
-  const isAdminUser = adminUser?.role === 'admin';
+  // checkIsAdmin helper එක මගින් පරිශීලකයා පරිපාලකයෙක්ද යන්න තහවුරු කිරීම
+  const isAdminUser = checkIsAdmin(adminUser || null);
+  const authorUserId = post.userId || post.uid || post.authorId || '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
@@ -159,6 +173,67 @@ export const AdminModerationModal: React.FC<AdminModerationModalProps> = ({
         {/* Body Content */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
           
+          {/* Admin Quick Action Toolbar - Only visible to Admins */}
+          {isAdminUser && (
+            <div className="bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/80 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-black text-amber-900 dark:text-amber-200">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>🛡️ {getLangText('පරිපාලක ක්ෂණික පාලන පුවරුව', 'Admin Quick Action Toolbar', 'நிர்வாகி விரைவு பட்டி')}</span>
+                {isUserMode && <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">(User Mode)</span>}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {/* Edit Post Button */}
+                {onEditPost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEditPost(post.id);
+                      onClose();
+                    }}
+                    className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>{getLangText('සංස්කරණය', 'Edit', 'திருத்து')}</span>
+                  </button>
+                )}
+
+                {/* Delete Post Button */}
+                {onDeletePost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(getLangText('මෙම දැන්වීම මකා දැමීමට ඔබට විශ්වාසද?', 'Are you sure you want to delete this post?', 'இந்த பதிவை நீக்க நிச்சயமாக விரும்புகிறீர்களா?'))) {
+                        onDeletePost(post.id);
+                        onClose();
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{getLangText('මකා දමන්න', 'Delete', 'நீக்கு')}</span>
+                  </button>
+                )}
+
+                {/* Block User Button */}
+                {onBlockUser && authorUserId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(getLangText('මෙම පරිශීලකයා බ්ලොක් කිරීමට ඔබට විශ්වාසද?', 'Are you sure you want to block this user?', 'இந்த பயனரை முடக்க நிச்சயமாக விரும்புகிறீர்களா?'))) {
+                        onBlockUser(authorUserId);
+                        onClose();
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-900 dark:bg-black hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                  >
+                    <UserX className="w-3.5 h-3.5" />
+                    <span>{getLangText('බ්ලොක්', 'Block User', 'முடக்கு')}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Post Summary Card */}
           <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
