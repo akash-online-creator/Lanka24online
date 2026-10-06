@@ -29,7 +29,8 @@ import {
   QrCode,
   Volume2,
   Zap,
-  Settings
+  Settings,
+  ArrowLeft
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -127,6 +128,9 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const creditBalance = user ? getUserCreditBalance(user) : 0;
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
   const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
+
+  // Check Admin privileges based on current logged in user
+  const isAdminUser = checkIsAdmin(user);
 
   const getLocationName = (loc: LocationOption) => {
     if (language === 'si') return loc.nameSi;
@@ -279,7 +283,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             </div>
           </div>
 
-          {/* Center Utilities Group (QR Pay Button Removed Here) */}
+          {/* Center Utilities Group */}
           <div className="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
             {onOpenRedAlert && (
               <button
@@ -419,7 +423,8 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               )}
             </button>
 
-            {checkIsAdmin(user) && onNavigate && (
+            {/* Admin Switcher / Return to Admin Panel Button */}
+            {isAdminUser && onNavigate && (
               <button
                 type="button"
                 onClick={() => {
@@ -428,15 +433,12 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   }
                   onNavigate('admin');
                 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
-                  activeRoleView === 'admin'
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
-                    : 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/70'
-                }`}
-                title="Admin Mode"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 font-black text-xs transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95 shrink-0"
+                title="Admin Panel වෙත ආපසු යන්න"
               >
-                <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span className="font-extrabold text-xs">Admin</span>
+                <ArrowLeft className="w-4 h-4 text-slate-950 stroke-[3]" />
+                <Shield className="w-4 h-4 text-slate-950 fill-amber-950/20" />
+                <span className="font-black text-xs">Admin Panel</span>
               </button>
             )}
           </div>
@@ -453,12 +455,18 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               <div className="text-right min-w-0">
                 <div className="flex items-center justify-end gap-1">
                   <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[90px] sm:max-w-[130px]">
-                    {user?.name || 'පරිශීලක'}
+                    {isAdminUser ? `🛡️ ${user?.name || 'පරිපාලක'}` : (user?.name || 'පරිශීලක')}
                   </h2>
-                  <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
-                    <ShieldCheck className="w-2 h-2 text-emerald-600 dark:text-emerald-400" />
-                    <span>VERIFIED</span>
-                  </span>
+                  {isAdminUser ? (
+                    <span className="flex text-[8px] font-black bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0 shadow-2xs">
+                      ADMIN
+                    </span>
+                  ) : (
+                    <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
+                      <ShieldCheck className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>VERIFIED</span>
+                    </span>
+                  )}
                 </div>
                 <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
                   ID: {numericId || user?.userId || user?.id || 'Visitor'}
@@ -491,7 +499,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 title={getLangText('පද්ධතියෙන් ඉවත් වන්න', 'Log out', 'வெளியேறு')}
               >
                 <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியේறு')}</span>
+                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியேறு')}</span>
               </button>
             )}
           </div>
@@ -553,7 +561,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </button>
 
-          {/* Location බාර් එකේ QR Pay බටන් එක එලෙසම පවතී */}
           {!isVisitor && onOpenQrPay && (
             <button
               type="button"
