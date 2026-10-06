@@ -3,7 +3,7 @@ import { HelpPost, Language, LocationOption, User } from '../types';
 import { PostCard } from './PostCard';
 import { Eye, Sparkles, X, CheckCircle2, MessageCircle, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { maskName, maskPhone } from '../utils/demoDataMasker';
-import { checkIsPostOwner } from '../utils/postOwnerHelper';
+import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface ViewHelpPostModalProps {
   post: HelpPost | null;
@@ -39,7 +39,7 @@ export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
   if (!isOpen || !post) return null;
 
   const isDemo = Boolean(currentUser?.isDemo);
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = checkIsAdmin(currentUser);
   const isPostOwner = checkIsPostOwner(currentUser, post);
 
   const getLangText = (si: string, en: string, ta: string) => {
