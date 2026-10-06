@@ -672,7 +672,7 @@ export const applyEvadingPenalty = (
     id: `tx_penalty_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     userId: idKey,
     userNumericId: numericId,
-    userName: user?.name || 'පරිශීලක',
+    userName: seekerUser?.name || 'පරිශීලක',
     userNic: seekerUser.nicNumber,
     userPhone: seekerUser.phone,
     amount: -travelFeeAmount,

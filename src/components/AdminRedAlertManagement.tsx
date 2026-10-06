@@ -509,7 +509,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                         {/* Block User Button */}
                         <button
                           type="button"
-                          onClick={() => handleBlockUserAction(alert.reportedById || alert.userId, alert.reportedByName)}
+                          onClick={() => handleBlockUserAction(alert.reportedByUserId || (alert as any).reportedById || (alert as any).userId, alert.reportedByName)}
                           className="px-3 py-1.5 bg-slate-900 hover:bg-black text-amber-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shadow-xs cursor-pointer border border-amber-400/40"
                         >
                           <UserX className="w-3.5 h-3.5 text-amber-400" />

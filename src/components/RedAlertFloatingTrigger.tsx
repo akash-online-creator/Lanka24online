@@ -8,74 +8,141 @@ import {
   ShieldAlert, 
   X, 
   BatteryWarning, 
-  CheckCircle2 
+  CheckCircle2,
+  FileEdit,
+  Loader2
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
+import { createRedAlertInFirestore } from '../lib/firebase';
+import { resolveExactLocation } from '../utils/geoUtils';
+import { startEmergencySiren } from '../utils/sirenAudio';
+import { triggerBrowserNotification } from '../utils/notificationManager';
+import { RedAlertDisasterType, LocationOption } from '../types';
 
 interface RedAlertFloatingTriggerProps {
   userId: string;
+  userName?: string;
+  currentLocation?: LocationOption;
   activeCount?: number;
   onOpenActiveList?: () => void;
   onOpenSosTracker?: () => void;
-  backendApiUrl?: string;
+  onOpenCreateModal?: () => void;
   onRequestIgnoreBattery?: () => void;
 }
 
 export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = ({
   userId,
+  userName = 'වාර්තාකරු',
+  currentLocation,
   activeCount = 0,
   onOpenActiveList,
   onOpenSosTracker,
-  backendApiUrl = 'http://localhost:5000/api',
+  onOpenCreateModal,
   onRequestIgnoreBattery,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedType, setSelectedType] = useState('හදිසි ගින්නක් (Fire)');
+  const [selectedType, setSelectedType] = useState<{ key: RedAlertDisasterType; label: string; en: string }>({
+    key: 'fire',
+    label: 'හදිසි ගින්නක් (Fire)',
+    en: 'Fire Emergency'
+  });
   const [description, setDescription] = useState('');
   const [broadcastStatus, setBroadcastStatus] = useState<string | null>(null);
 
-  // 1. හදිසි ආපදා වාර්තාවක් ක්ෂණිකව Backend එක වෙත යැවීම
+  // 1. හදිසි ආපදා වාර්තාවක් ක්ෂණිකව Firestore වෙත යැවීම
   const handleTriggerAlert = async () => {
     try {
       setLoading(true);
       setBroadcastStatus(null);
 
-      // වත්මන් නිශ්චිත GPS Coordinates ලබා ගැනීම
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-      });
+      let latitude = currentLocation?.lat || 6.9271;
+      let longitude = currentLocation?.lng || 79.8612;
+      let locName = currentLocation?.nameSi || 'ශ්‍රී ලංකාව';
 
-      const payload = {
-        disasterType: selectedType,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        description: description || 'ක්ෂණික අනතුරු ඇඟවීමකි. ආරක්ෂිත ස්ථාන කරා යොමුවන්න.',
-        reporterId: userId,
-      };
-
-      const response = await fetch(`${backendApiUrl}/broadcast-disaster`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setBroadcastStatus(`සාර්ථකයි! කි.මී. 5 ඇතුළත පුද්ගලයන් ${result.alertedUsersCount || 0} දෙනෙකුට සයිරන් නාදය යවන ලදී.`);
-        setTimeout(() => {
-          setIsModalOpen(false);
-          setBroadcastStatus(null);
-          setDescription('');
-        }, 2500);
-      } else {
-        alert(result.message || 'අනතුරු ඇඟවීම යැවීමට නොහැකි විය.');
+      try {
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+        });
+        if (position?.coords) {
+          latitude = position.coords.latitude;
+          longitude = position.coords.longitude;
+        }
+      } catch {
+        if (navigator.geolocation) {
+          try {
+            await new Promise<void>((res) => {
+              navigator.geolocation.getCurrentPosition(
+                (p) => {
+                  latitude = p.coords.latitude;
+                  longitude = p.coords.longitude;
+                  res();
+                },
+                () => res(),
+                { enableHighAccuracy: true, timeout: 5000 }
+              );
+            });
+          } catch {}
+        }
       }
+
+      try {
+        const resolved = await resolveExactLocation(latitude, longitude);
+        if (resolved?.shortDisplaySi) {
+          locName = resolved.shortDisplaySi;
+        }
+      } catch {}
+
+      const now = new Date();
+      const newAlertId = await createRedAlertInFirestore({
+        alertCode: `#RED-${Math.floor(1000 + Math.random() * 9000)}`,
+        disasterType: selectedType.key,
+        customDisasterTitle: selectedType.label,
+        disasterTitleSi: selectedType.label,
+        disasterTitleEn: selectedType.en,
+        disasterTitleTa: selectedType.label,
+        description: description || '🚨 ක්ෂණික රතු එළිය අනතුරු ඇඟවීමකි. ප්‍රවේසම් වන්න, ආරක්ෂිත ස්ථාන කරා යොමුවන්න.',
+        latitude,
+        longitude,
+        locationName: locName,
+        locationAccuracyMeters: 15,
+        incidentDate: now.toISOString().split('T')[0],
+        incidentTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: now.toISOString(),
+        createdAtMs: Date.now(),
+        reportedByUserId: userId,
+        reportedByName: userName || 'හදිසි දැනුම්දෙන්නා',
+        reportedByPhone: '',
+        status: 'active',
+        severity: 'critical',
+        comments: [],
+        fakeReports: [],
+        isFlaggedFake: false,
+      });
+
+      // Start audio alert
+      startEmergencySiren();
+
+      triggerBrowserNotification({
+        id: `alert-${Date.now()}`,
+        type: 'emergency_blood',
+        title: `🚨 රතු එළිය අනතුරු ඇඟවීම: ${selectedType.label}`,
+        message: `${locName} ප්‍රදේශයේ අනතුරු ඇඟවීමක් නිකුත් කෙරිණි.`,
+        timestamp: now.toISOString(),
+        isRead: false,
+        badgeText: 'SOS',
+      });
+
+      setBroadcastStatus(`සාර්ථකයි! කි.මී. 5 ඇතුළත සියලු පරිශීලකයින්ට සහ පද්ධතියට සයිරන් අනතුරු ඇඟවීම නිකුත් කරන ලදී.`);
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setBroadcastStatus(null);
+        setDescription('');
+      }, 3000);
     } catch (error) {
       console.error('Trigger Alert Error:', error);
-      alert('ස්ථානය ලබා ගැනීමට හෝ සර්වරය හා සම්බන්ධ වීමට නොහැකි විය.');
+      alert('අනතුරු ඇඟවීම යැවීමට නොහැකි විය. කරුණාකර නැවත උත්සාහ කරන්න.');
     } finally {
       setLoading(false);
     }
@@ -117,7 +184,13 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
         {/* ප්‍රධාන 1-Tap රතු එළිය Trigger බොත්තම */}
         <button
           type="button"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            if (onOpenCreateModal) {
+              onOpenCreateModal();
+            } else {
+              setIsModalOpen(true);
+            }
+          }}
           className="group relative flex items-center gap-2 px-4 py-3 sm:px-5 sm:py-3.5 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-xs sm:text-sm tracking-wide shadow-[0_0_30px_rgba(239,68,68,0.7)] hover:shadow-[0_0_40px_rgba(239,68,68,0.9)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-red-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
           title="රතු එළිය - හදිසි ආපදා ක්ෂණිකව දැනුම්දෙන්න"
           aria-label="රතු එළිය - හදිසි ආපදා ක්ෂණිකව දැනුම්දෙන්න"
@@ -200,17 +273,17 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: 'හදිසි ගින්නක් (Fire)', icon: Flame },
-                      { label: 'ජලගැලීම (Flood)', icon: Waves },
-                      { label: 'සුළි සුළඟ (Storm)', icon: Wind },
-                      { label: 'වෙනත් අනතුරක්', icon: AlertTriangle },
+                      { key: 'fire' as RedAlertDisasterType, label: 'හදිසි ගින්නක් (Fire)', en: 'Fire Emergency', icon: Flame },
+                      { key: 'flood' as RedAlertDisasterType, label: 'ජලගැලීම (Flood)', en: 'Flood Emergency', icon: Waves },
+                      { key: 'storm' as RedAlertDisasterType, label: 'සුළි සුළඟ (Storm)', en: 'Storm Alert', icon: Wind },
+                      { key: 'other' as RedAlertDisasterType, label: 'වෙනත් අනතුරක්', en: 'Other Emergency', icon: AlertTriangle },
                     ].map((item) => (
                       <button
                         key={item.label}
                         type="button"
-                        onClick={() => setSelectedType(item.label)}
+                        onClick={() => setSelectedType({ key: item.key, label: item.label, en: item.en })}
                         className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
-                          selectedType === item.label
+                          selectedType.key === item.key
                             ? 'border-red-500 bg-red-950/80 text-white shadow-[0_0_10px_rgba(239,68,68,0.3)]'
                             : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700'
                         }`}
@@ -235,14 +308,37 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
                   />
                 </div>
 
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleTriggerAlert}
-                  className="w-full py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wide hover:shadow-[0_0_25px_rgba(239,68,68,0.8)] active:scale-98 transition-all disabled:opacity-50 cursor-pointer text-white"
-                >
-                  {loading ? 'සම්බන්ධ වෙමින් පවතී...' : '🚨 සයිරන් අනතුරු ඇඟවීම වහාම නිකුත් කරන්න'}
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleTriggerAlert}
+                    className="w-full py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wide hover:shadow-[0_0_25px_rgba(239,68,68,0.8)] active:scale-98 transition-all disabled:opacity-50 cursor-pointer text-white flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>සම්බන්ධ වෙමින් පවතී...</span>
+                      </>
+                    ) : (
+                      <span>🚨 සයිරන් අනතුරු ඇඟවීම වහාම නිකුත් කරන්න</span>
+                    )}
+                  </button>
+
+                  {onOpenCreateModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        onOpenCreateModal();
+                      }}
+                      className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <FileEdit className="w-3.5 h-3.5 text-red-400" />
+                      <span>සවිස්තරාත්මක වාර්තාවක් / හඬ පණිවිඩයක් සමඟ පළකරන්න</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -251,3 +347,4 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     </>
   );
 };
+

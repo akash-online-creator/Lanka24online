@@ -150,7 +150,7 @@ export function isUserPermanentlyDeleted(userOrId: any): boolean {
   const id = userOrId.id ? String(userOrId.id).trim().toLowerCase() : '';
   const userId = userOrId.userId ? String(userOrId.userId).trim().toLowerCase() : '';
   const nic = userOrId.nicNumber ? String(userOrId.nicNumber).trim().toLowerCase() : '';
-  return (id && deletedSet.has(id)) || (userId && deletedSet.has(userId)) || (nic && deletedSet.has(nic));
+  return Boolean((id && deletedSet.has(id)) || (userId && deletedSet.has(userId)) || (nic && deletedSet.has(nic)));
 }
 
 export function filterNonDeletedUsers(users: User[]): User[] {

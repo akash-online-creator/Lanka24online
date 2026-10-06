@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem } from '../types';
+import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem, Issue } from '../types';
 import { translations } from '../data/translations';
 import { initialLocations, initialUsers, initialHelpPosts } from '../data/initialData';
 import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from '../data/professionalServicesData';
@@ -59,6 +59,9 @@ import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 import { AppQrShareModal } from './AppQrShareModal';
 import { RegisterProfessionalServiceModal } from './RegisterProfessionalServiceModal';
 import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { RedAlertCreateModal } from './RedAlertCreateModal';
+import { RedAlertDetailModal } from './RedAlertDetailModal';
+import { RedAlertFloatingTrigger } from './RedAlertFloatingTrigger';
 import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
 import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { MarketShop } from '../types';
@@ -118,8 +121,18 @@ import {
 } from 'lucide-react';
 
 interface UserDashboardProps {
-  user: User;
-  onNavigateToIssues: () => void;
+  user?: User;
+  currentUser?: User;
+  setCurrentUser?: (u: User | null) => void;
+  users?: User[];
+  setUsers?: React.Dispatch<React.SetStateAction<User[]>>;
+  setHelpPosts?: React.Dispatch<React.SetStateAction<HelpPost[]>>;
+  issues?: Issue[];
+  setIssues?: React.Dispatch<React.SetStateAction<Issue[]>>;
+  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
+  setTheme?: React.Dispatch<React.SetStateAction<Theme>>;
+  onOpenAdminPanel?: () => void;
+  onNavigateToIssues?: () => void;
   language: Language;
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
@@ -142,7 +155,17 @@ interface UserDashboardProps {
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
-  user,
+  user: propUser,
+  currentUser,
+  setCurrentUser,
+  users: propUsers,
+  setUsers,
+  setHelpPosts,
+  issues: propIssues,
+  setIssues,
+  setRedAlerts,
+  setTheme,
+  onOpenAdminPanel,
   onNavigateToIssues,
   language,
   setLanguage,
@@ -164,6 +187,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onViewRedAlertDetail,
   activeRedAlertsCount = 0,
 }) => {
+  const user = propUser || currentUser || ({
+    id: 'usr_guest',
+    name: 'පරිශීලක (User)',
+    nic: '000000000V',
+    whatsappPhone: '0770000000',
+    address: 'ශ්‍රී ලංකාව',
+    district: 'කොළඹ',
+    policeDivision: 'කොටුව',
+    status: 'approved',
+    role: 'user',
+    trustScore: 85,
+    creditBalance: 50,
+  } as User);
   const t = translations[language];
 
   // Active Location State (Defaults to Kadawatha or saved location)
@@ -384,6 +420,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [qrPayInitialTab, setQrPayInitialTab] = useState<'my_qr' | 'scan_pay'>('scan_pay');
   const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
   const [isFeaturesPostModalOpen, setIsFeaturesPostModalOpen] = useState(false);
+  const [isRedAlertCreateOpen, setIsRedAlertCreateOpen] = useState(false);
+  const [selectedAlertForDetail, setSelectedAlertForDetail] = useState<RedAlertItem | null>(null);
   
   // 🌟 Universal Quick Registration Hub & Web QR Modals
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
@@ -1537,10 +1575,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         <RedAlertBanner
           alerts={redAlerts}
           currentLocation={currentLocation}
+          currentUser={user}
           onOpenAlertDetail={(a) => {
             if (onViewRedAlertDetail) onViewRedAlertDetail(a);
+            else setSelectedAlertForDetail(a);
           }}
-          onOpenCreate={onOpenRedAlert || (() => {})}
+          onOpenCreate={() => {
+            if (onOpenRedAlert) onOpenRedAlert();
+            else setIsRedAlertCreateOpen(true);
+          }}
         />
       )}
 
@@ -1599,8 +1642,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             return;
           }
           if (onOpenRedAlert) onOpenRedAlert();
+          else setIsRedAlertCreateOpen(true);
         }}
-        activeRedAlertsCount={activeRedAlertsCount}
+        activeRedAlertsCount={activeRedAlertsCount || redAlerts.filter(a => a && a.status === 'active').length}
         onOpenBarterExchange={() => {
           if (user?.isDemo) {
             setShowDemoRegisterPrompt(true);
@@ -2713,6 +2757,60 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onSaveShop={(shop) => {
           handleSaveMarketShop(shop);
           setIsMarketplaceAddShopModalOpen(false);
+        }}
+      />
+
+      {/* 🚨 1-Tap Floating Red Alert Trigger */}
+      <RedAlertFloatingTrigger
+        userId={user.id}
+        userName={user.name}
+        currentLocation={currentLocation}
+        activeCount={activeRedAlertsCount || redAlerts.filter((a) => a && a.status === 'active').length}
+        onOpenActiveList={() => {
+          const firstActive = redAlerts.find((a) => a && a.status === 'active');
+          if (firstActive) {
+            setSelectedAlertForDetail(firstActive);
+          } else {
+            setIsRedAlertCreateOpen(true);
+          }
+        }}
+        onOpenSosTracker={() => setIsSosLiveModalOpen(true)}
+        onOpenCreateModal={() => setIsRedAlertCreateOpen(true)}
+      />
+
+      {/* 🚨 Red Alert Emergency Reporting Modal (Full Voice & GPS form) */}
+      <RedAlertCreateModal
+        isOpen={isRedAlertCreateOpen}
+        onClose={() => setIsRedAlertCreateOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        onAlertCreated={(newAlert) => {
+          setIsRedAlertCreateOpen(false);
+          if (setRedAlerts) {
+            setRedAlerts((prev) => [newAlert, ...(prev || [])]);
+          }
+          setSelectedAlertForDetail(newAlert);
+        }}
+      />
+
+      {/* 🚨 Red Alert Detail & Incident Management Modal */}
+      <RedAlertDetailModal
+        isOpen={!!selectedAlertForDetail}
+        alert={selectedAlertForDetail}
+        onClose={() => setSelectedAlertForDetail(null)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        onAlertUpdated={(updated) => {
+          if (setRedAlerts) {
+            setRedAlerts((prev) => (prev || []).map((a) => (a && a.id === updated.id ? updated : a)));
+          }
+          setSelectedAlertForDetail(updated);
+        }}
+        onAlertDeleted={(deletedId) => {
+          if (setRedAlerts) {
+            setRedAlerts((prev) => (prev || []).filter((a) => a && a.id !== deletedId));
+          }
+          setSelectedAlertForDetail(null);
         }}
       />
 

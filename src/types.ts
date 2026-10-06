@@ -1,3 +1,5 @@
+export * from './types/index';
+
 export interface UserRegistration {
   id: string;
   fullName: string;
@@ -46,3 +48,4 @@ export interface EmergencyContactItem {
   badge: string;
   description: string;
 }
+

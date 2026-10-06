@@ -364,6 +364,7 @@ export const App: React.FC = () => {
 
         {activeView === 'dashboard' && currentUser && (
           <UserDashboard
+            user={currentUser}
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
             users={users}
@@ -379,8 +380,20 @@ export const App: React.FC = () => {
             setLanguage={setLanguage}
             theme={theme}
             setTheme={setTheme}
+            toggleTheme={toggleTheme}
             onLogout={handleLogout}
+            onNavigateToIssues={() => setActiveView('issues')}
+            onNavigate={handleNavigate}
             onOpenAdminPanel={() => setActiveView('admin')}
+            onDeletePost={(postId) => {
+              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
+            }}
+            onPermanentDeletePost={(postId) => {
+              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
+            }}
+            onUpdatePost={(updated) => {
+              setHelpPosts((prev) => prev.map((p) => p && p.id === updated.id ? updated : p));
+            }}
           />
         )}
 

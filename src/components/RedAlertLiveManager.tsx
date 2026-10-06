@@ -9,13 +9,23 @@ import {
 import { triggerBrowserNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { User, Language } from '../types';
 
 interface Props {
-  currentUserId: string;
+  currentUserId?: string;
   currentUserName?: string;
+  currentUser?: User | null;
+  redAlerts?: RedAlertItem[];
+  language?: Language;
 }
 
-export const RedAlertLiveManager: React.FC<Props> = ({ currentUserId, currentUserName }) => {
+export const RedAlertLiveManager: React.FC<Props> = ({ 
+  currentUserId: propUserId, 
+  currentUserName: propUserName,
+  currentUser,
+}) => {
+  const currentUserId = propUserId || currentUser?.id || currentUser?.userId || 'usr_guest';
+  const currentUserName = propUserName || currentUser?.name || 'පරිශීලක';
   const [activeAlert, setActiveAlert] = useState<RedAlertItem | null>(null);
   const [popupMessage, setPopupMessage] = useState<string | null>(null);
   const [updateText, setUpdateText] = useState('');

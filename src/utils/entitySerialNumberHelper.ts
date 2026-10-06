@@ -162,7 +162,7 @@ export function searchUniversalEntitiesByAtQuery(
       const isBusiness = shop.type === 'business';
       const typeKey: EntityType = isBusiness ? 'business' : 'shop';
       const serial = getEntitySerialNumber(shop, typeKey);
-      const nameClean = (user?.name || '').toLowerCase();
+      const nameClean = (shop.name || shop.userName || '').toLowerCase();
       const phoneClean = (shop.userPhone || '').toLowerCase();
 
       const isMatch =
