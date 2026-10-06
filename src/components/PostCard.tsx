@@ -4,20 +4,13 @@ import {
   MessageSquare, 
   Share2, 
   MoreVertical, 
-  Edit3, 
   Trash2, 
   Eye, 
-  Flag, 
   CheckCircle, 
   XCircle, 
   Clock, 
-  Award, 
   Pin,
-  Sparkles,
-  ExternalLink,
-  Lock,
-  Globe,
-  AlertTriangle
+  Pencil
 } from 'lucide-react';
 import { Post, User } from '../types';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
@@ -57,14 +50,13 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [imageError, setImageError] = useState(false);
 
   // 1. Post Owner Verification
-  const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
+  const isPostOwner = isOwner ?? checkIsPostOwner(currentUser, post);
 
   // 2. Comprehensive Admin Verification
-  // පරිශීලක ප්‍රකාරයේ (User view/Switch view) සිටියද Admin Privileges පවතිනවාදැයි පරීක්ෂා කිරීම
   const isAdmin = !isDemo && checkIsAdmin(currentUser);
 
   // 3. Edit / Delete Permissions Check
-  const canModify = ownerCheck || isAdmin;
+  const canManage = isPostOwner || isAdmin;
 
   const isLiked = currentUser ? post.likes?.includes(currentUser.id) : false;
 
@@ -144,25 +136,25 @@ export const PostCard: React.FC<PostCardProps> = ({
           {/* Quick Actions & Menu */}
           <div className="flex items-center space-x-1 relative">
             
-            {/* Quick Edit/Delete Buttons (Directly Accessible via canModify) */}
-            {canModify && (
-              <div className="hidden sm:flex items-center space-x-1 mr-1">
+            {/* Quick Edit/Delete Buttons (Workflow එකට අනුව Pencil & Trash2 icons) */}
+            {canManage && (
+              <div className="flex items-center gap-1.5 mr-1">
                 {onEditPost && (
-                  <button
-                    onClick={() => onEditPost(post)}
-                    className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    title="Edit Post"
+                  <button 
+                    onClick={() => onEditPost(post)} 
+                    title="සංස්කරණය"
+                    className="p-1.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
                   >
-                    <Edit3 className="w-4 h-4" />
+                    <Pencil className="w-3.5 h-3.5 text-amber-500" />
                   </button>
                 )}
                 {onDeletePost && (
-                  <button
-                    onClick={() => onDeletePost(post.id)}
-                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    title="Delete Post"
+                  <button 
+                    onClick={() => onDeletePost(post.id)} 
+                    title="මකා දමන්න"
+                    className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                   </button>
                 )}
               </div>
@@ -190,17 +182,17 @@ export const PostCard: React.FC<PostCardProps> = ({
                   </button>
                 )}
 
-                {canModify && onEditPost && (
+                {canManage && onEditPost && (
                   <button
                     onClick={() => { setShowMenu(false); onEditPost(post); }}
-                    className="w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center space-x-2 sm:hidden"
+                    className="w-full text-left px-4 py-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center space-x-2 sm:hidden"
                   >
-                    <Edit3 className="w-4 h-4" />
+                    <Pencil className="w-4 h-4" />
                     <span>Edit Post</span>
                   </button>
                 )}
 
-                {canModify && onDeletePost && (
+                {canManage && onDeletePost && (
                   <button
                     onClick={() => { setShowMenu(false); onDeletePost(post.id); }}
                     className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2 sm:hidden"
