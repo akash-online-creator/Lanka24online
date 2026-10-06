@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
 import { initialUsers, initialHelpPosts } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
@@ -21,9 +21,29 @@ import {
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 
 export const App: React.FC = () => {
-  // Theme & Language
-  const [theme, setTheme] = useState<Theme>('dark');
+  // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const savedTheme = localStorage.getItem('sahaya_sewa_theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        return savedTheme;
+      }
+    } catch (e) {
+      console.warn('LocalStorage theme access notice:', e);
+    }
+    return 'light'; // Default Theme
+  });
+
   const [language, setLanguage] = useState<Language>('si');
+
+  // Persist Theme to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sahaya_sewa_theme', theme);
+    } catch (e) {
+      console.warn('Failed to save theme to LocalStorage:', e);
+    }
+  }, [theme]);
 
   // Application Data State
   const [users, setUsers] = useState<User[]>(initialUsers);
@@ -35,25 +55,31 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [activeView, setActiveView] = useState<'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
-    const saved = localStorage.getItem('sahaya_sewa_session_user');
-    if (saved) {
-      try {
+    try {
+      const saved = localStorage.getItem('sahaya_sewa_session_user');
+      if (saved) {
         const u: User = JSON.parse(saved);
         if (u.role === 'admin' || u.role === 'super_admin') return 'admin';
         if (u.status === 'pending') return 'pending';
         return 'dashboard';
-      } catch {}
-    }
+      }
+    } catch {}
     return 'login';
   });
 
-  // Persist Session
+  // Global Navigation Handler
+  const handleNavigate = useCallback((view: 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => {
+    setActiveView(view);
+  }, []);
+
+  // Persist User Session to LocalStorage
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
@@ -62,54 +88,27 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Real-time Firestore Sync Listeners
+  // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
-    let unsubscribeUsers: (() => void) | undefined;
-    let unsubscribePosts: (() => void) | undefined;
-    let unsubscribeAlerts: (() => void) | undefined;
-    let unsubscribeIssues: (() => void) | undefined;
+    const unsubscribeUsers = subscribeToUsers((dbUsers) => {
+      if (dbUsers && dbUsers.length > 0) {
+        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+      }
+    });
 
-    try {
-      unsubscribeUsers = subscribeToUsers((dbUsers) => {
-        if (dbUsers && dbUsers.length > 0) {
-          const merged = deduplicateUsers([...dbUsers, ...initialUsers]);
-          setUsers(merged);
+    const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
+      if (dbPosts && dbPosts.length > 0) {
+        setHelpPosts(dbPosts);
+      }
+    });
 
-          // Update current user session if changed
-          if (currentUser) {
-            const updated = merged.find(
-              (u) =>
-                u.id === currentUser.id ||
-                normalizeNIC(u.nic || '') === normalizeNIC(currentUser.nic || '')
-            );
-            if (updated) {
-              setCurrentUser(updated);
-              if (updated.status === 'pending' && activeView === 'dashboard') {
-                setActiveView('pending');
-              } else if (updated.status === 'approved' && activeView === 'pending') {
-                setActiveView('dashboard');
-              }
-            }
-          }
-        }
-      });
+    const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
+      setRedAlerts(alerts || []);
+    });
 
-      unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
-        if (dbPosts && dbPosts.length > 0) {
-          setHelpPosts(dbPosts);
-        }
-      });
-
-      unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
-        setRedAlerts(alerts || []);
-      });
-
-      unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
-        setIssues(dbIssues || []);
-      });
-    } catch (e) {
-      console.warn('Firestore sync notice:', e);
-    }
+    const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
+      setIssues(dbIssues || []);
+    });
 
     return () => {
       unsubscribeUsers?.();
@@ -117,23 +116,42 @@ export const App: React.FC = () => {
       unsubscribeAlerts?.();
       unsubscribeIssues?.();
     };
-  }, [currentUser?.id, activeView]);
+  }, []);
+
+  // Synchronize currentUser with real-time user state changes and manage auto-redirects
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updated = users.find(
+      (u) =>
+        u.id === currentUser.id ||
+        (u.nic && currentUser.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic))
+    );
+
+    if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
+      setCurrentUser(updated);
+
+      if (updated.status === 'pending' && activeView === 'dashboard') {
+        setActiveView('pending');
+      } else if (updated.status === 'approved' && activeView === 'pending') {
+        setActiveView('dashboard');
+      }
+    }
+  }, [users, currentUser, activeView]);
 
   // Login Handler
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = userIdOrNic.trim();
     const cleanPass = passKey.trim();
 
-    // Check in local/state users list first
     const norm = normalizeNIC(cleanId);
     let matched = users.find(
       (u) =>
         (normalizeNIC(u.nic || '') === norm || u.id === cleanId || u.whatsappPhone === cleanId) &&
-        (u.temporaryPassword === cleanPass || u.password === cleanPass || cleanPass === 'testPass123' || cleanPass === '545554')
+        (u.temporaryPassword === cleanPass || u.password === cleanPass)
     );
 
     if (!matched) {
-      // Check in Firestore
       try {
         const remoteUser = await getUserFromFirestore(cleanId);
         if (remoteUser) {
@@ -143,7 +161,6 @@ export const App: React.FC = () => {
     }
 
     if (!matched) {
-      // Demo Admin Bypass for admin IDs
       if (cleanId.toLowerCase().includes('admin') || cleanId === '000000000V') {
         matched = users.find((u) => u.role === 'admin' || u.role === 'super_admin') || initialUsers[0];
       }
@@ -218,6 +235,27 @@ export const App: React.FC = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
+  const handleCreateIssue = useCallback((newIssue: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>) => {
+    const created: Issue = {
+      ...newIssue,
+      id: `iss_${Date.now()}`,
+      issueCode: `ISS-${Math.floor(100000 + Math.random() * 900000)}`,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+    };
+    setIssues((prev) => [created, ...prev]);
+  }, []);
+
+  const handleBackFromIssues = useCallback(() => {
+    if (currentUser) {
+      if (currentUser.role === 'admin' || currentUser.role === 'super_admin') setActiveView('admin');
+      else if (currentUser.status === 'pending') setActiveView('pending');
+      else setActiveView('dashboard');
+    } else {
+      setActiveView('login');
+    }
+  }, [currentUser]);
+
   return (
     <ErrorBoundary>
       <div className={`w-full min-h-screen ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sinhala antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-200`}>
@@ -278,7 +316,8 @@ export const App: React.FC = () => {
             language={language}
             setLanguage={setLanguage}
             onLogout={handleLogout}
-            onSwitchToDashboard={() => setActiveView('dashboard')}
+            onSwitchToUserMode={() => setActiveView('dashboard')}
+            onNavigate={handleNavigate}
           />
         )}
 
@@ -308,25 +347,8 @@ export const App: React.FC = () => {
             issues={issues}
             users={users}
             currentUser={currentUser}
-            onSubmitIssue={(newIssue) => {
-              const created: Issue = {
-                ...newIssue,
-                id: `iss_${Date.now()}`,
-                issueCode: `ISS-${Math.floor(100000 + Math.random() * 900000)}`,
-                createdAt: new Date().toISOString(),
-                status: 'pending',
-              };
-              setIssues((prev) => [created, ...prev]);
-            }}
-            onBackToLogin={() => {
-              if (currentUser) {
-                if (currentUser.role === 'admin' || currentUser.role === 'super_admin') setActiveView('admin');
-                else if (currentUser.status === 'pending') setActiveView('pending');
-                else setActiveView('dashboard');
-              } else {
-                setActiveView('login');
-              }
-            }}
+            onSubmitIssue={handleCreateIssue}
+            onBackToLogin={handleBackFromIssues}
             language={language}
           />
         )}
