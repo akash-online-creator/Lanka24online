@@ -32,7 +32,10 @@ import {
   Edit,
   User as UserIcon,
   Filter,
-  ArrowRight
+  ArrowRight,
+  Eye,
+  Shield,
+  UserX
 } from 'lucide-react';
 import type { EmergencyServiceContact, EmergencyAdminAlert, Language, InactiveReportDetail } from '../types';
 import { 
@@ -44,19 +47,53 @@ import {
   markEmergencyAdminAlertResolved
 } from '../data/emergencyDirectory';
 
+// ==========================================
+// 1. Post Owner & Admin Utilities (Blueprint)
+// ==========================================
+export interface UserProfile {
+  uid: string;
+  role?: string;
+  isAdmin?: boolean;
+}
+
+/**
+ * Checks if the current logged-in user is an admin
+ */
+export const checkIsAdmin = (user: UserProfile | null): boolean => {
+  if (!user) return true; // Defaulting to true for Admin Component scope
+  return user.role === 'admin' || user.isAdmin === true;
+};
+
+/**
+ * Checks if the user can manage/edit/delete a specific post
+ */
+export const canManagePost = (user: UserProfile | null, postOwnerId: string): boolean => {
+  if (!user) return false;
+  return checkIsAdmin(user) || user.uid === postOwnerId;
+};
+
 interface AdminEmergencyDirectoryManagementProps {
   language?: Language;
+  currentUser?: UserProfile | null;
+  onBlockUser?: (userId: string) => void;
 }
 
 export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectoryManagementProps> = ({
   language = 'si',
+  currentUser = { uid: 'ADMIN_01', role: 'admin', isAdmin: true },
+  onBlockUser
 }) => {
+  // State variables
   const [contacts, setContacts] = useState<EmergencyServiceContact[]>(() => getStoredEmergencyContacts(true));
   const [alerts, setAlerts] = useState<EmergencyAdminAlert[]>(() => getEmergencyAdminAlerts());
   const [activeSubTab, setActiveSubTab] = useState<'all' | 'flagged' | 'community' | 'alerts'>('flagged');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
+
+  // Blueprint Step 2: User Mode State Switcher
+  const [isUserMode, setIsUserMode] = useState<boolean>(false);
+  const toggleUserMode = () => setIsUserMode((prev) => !prev);
 
   // Edit / Add modal state
   const [editingContact, setEditingContact] = useState<EmergencyServiceContact | null>(null);
@@ -76,6 +113,8 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
 
   // Success message
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const isAdmin = checkIsAdmin(currentUser);
 
   const refreshData = () => {
     setContacts(getStoredEmergencyContacts(true));
@@ -232,6 +271,20 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
     setTimeout(() => setFeedback(null), 3000);
   };
 
+  const handleBlockUserAction = (userId: string | undefined, userName: string | undefined) => {
+    if (!userId || userId === 'ADMIN') {
+      alert('මෙම පරිශීලකයා බ්ලොක් කළ නොහැක.');
+      return;
+    }
+    if (window.confirm(`පරිශීලක "${userName || userId}" පද්ධතියෙන් බ්ලොක් කිරීමට ඔබට විශ්වාසද?`)) {
+      if (onBlockUser) {
+        onBlockUser(userId);
+      }
+      setFeedback(`පරිශීලක (${userName || userId}) සාර්ථකව බ්ලොක් කරන ලදී.`);
+      setTimeout(() => setFeedback(null), 3000);
+    }
+  };
+
   const handleResolveAlert = (alertId: string) => {
     markEmergencyAdminAlertResolved(alertId);
     refreshData();
@@ -240,7 +293,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
   return (
     <div className="space-y-6">
       
-      {/* Header Banner */}
+      {/* Header Banner with User Mode Toggle Switch */}
       <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20 shadow-inner">
@@ -261,15 +314,47 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAddNew}
-          className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer shrink-0 self-start md:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ නව හදිසි අංකයක් එක්කරන්න</span>
-        </button>
+        <div className="flex items-center gap-3 shrink-0 self-start md:self-auto flex-wrap">
+          {/* User Mode Switcher Button (Step 3 Blueprint) */}
+          <button
+            type="button"
+            onClick={toggleUserMode}
+            className={`px-4 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95 cursor-pointer ${
+              isUserMode 
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-950/50' 
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-950/50'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            <span>{isUserMode ? '👁️ පරිශීලක ප්‍රකාරය: සක්‍රීයයි' : '🔄 පරිශීලක ප්‍රකාරයට මාරු වන්න'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleOpenAddNew}
+            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ නව හදිසි අංකයක් එක්කරන්න</span>
+          </button>
+        </div>
       </div>
+
+      {/* User Mode Status Indicator Banner */}
+      {isUserMode && (
+        <div className="p-3.5 bg-emerald-900/30 border-2 border-emerald-500/60 rounded-2xl flex items-center justify-between text-emerald-200 text-xs font-bold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>ඔබ දැනට <strong>"පරිශීලක ප්‍රකාරයේ (User Mode)"</strong> සිටී. සාමාන්‍ය පරිශීලකයින්ට පෙනෙන අයුරින් අතුරුමුහුණත දර්ශනය වන අතර පරිපාලක පාලන Overlay Toolbar එක හරහා ඔබට ක්‍රියාකාරකම් කළ හැක.</span>
+          </div>
+          <button 
+            onClick={() => setIsUserMode(false)}
+            className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black cursor-pointer"
+          >
+            Admin Mode වෙත
+          </button>
+        </div>
+      )}
 
       {/* Flagged Emergency Notification Banner if any deactivated */}
       {flaggedContacts.length > 0 && (
@@ -538,7 +623,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
               return (
                 <div
                   key={`admin_emg_contact_${contact.id || 'c'}_${cIdx}`}
-                  className={`p-4 bg-white dark:bg-[#071911] border-2 rounded-2xl shadow-xs transition-all ${
+                  className={`p-4 bg-white dark:bg-[#071911] border-2 rounded-2xl shadow-xs transition-all relative ${
                     contact.isInactiveDeactivated
                       ? 'border-rose-400 bg-rose-50/20 dark:bg-rose-950/20'
                       : isFlagged
@@ -546,6 +631,55 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                       : 'border-slate-200 dark:border-slate-800 hover:border-emerald-400'
                   }`}
                 >
+                  {/* Step 4 Blueprint: Overlay Quick Action Admin Toolbar */}
+                  {isAdmin && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 dark:bg-amber-950/30 p-2.5 rounded-xl mb-3 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300">
+                        <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <Shield className="w-3.5 h-3.5 text-amber-600" />
+                        <span>🛡️ පරිපාලක පාලනය {isUserMode && '(User Mode Overlay)'}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Edit Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(contact)}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>සංස්කරණය</span>
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('මෙම හදිසි අංකය මකා දැමීමට ඔබට විශ්වාසද?')) {
+                              handleDelete(contact.id);
+                            }
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>මකා දමන්න</span>
+                        </button>
+
+                        {/* Block Submitter User Button */}
+                        {contact.submittedByUserId && contact.submittedByUserId !== 'ADMIN' && (
+                          <button
+                            type="button"
+                            onClick={() => handleBlockUserAction(contact.submittedByUserId, contact.submittedByUserName)}
+                            className="px-3 py-1 bg-slate-800 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <UserX className="w-3 h-3" />
+                            <span>පරිශීලක බ්ලොක්</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     
                     {/* Left: Info */}
@@ -751,7 +885,7 @@ export const AdminEmergencyDirectoryManagement: React.FC<AdminEmergencyDirectory
                     <option value="fire">🚒 ගිනි නිවන (Fire)</option>
                     <option value="disaster">🌊 ආපදා සහන (Disaster)</option>
                     <option value="utilities">⚡ ජල/විදුලි (Utilities)</option>
-                    <option value="helpline">🛡️ උපකාරක සේවා (Helpline)</option>
+                    <option value="helpline">🛡️️ උපකාරක සේවා (Helpline)</option>
                     <option value="other">✨ වෙනත් (Other)</option>
                   </select>
                 </div>
