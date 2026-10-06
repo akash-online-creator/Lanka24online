@@ -1118,10 +1118,10 @@ export async function syncUserWhatsappInFirestore(userOrIdentifier: any, newWhat
       })
     );
 
-    // 2. Update Help Posts created by this user
+    // 2. Update Posts created by this user
     try {
-      const helpPostsRef = collection(db, 'help_posts');
-      const postsSnap = await getDocs(helpPostsRef);
+      const postsRef = collection(db, 'posts');
+      const postsSnap = await getDocs(postsRef);
       const batchPromises: Promise<any>[] = [];
 
       postsSnap.forEach((postDoc) => {
@@ -1134,7 +1134,7 @@ export async function syncUserWhatsappInFirestore(userOrIdentifier: any, newWhat
 
         if (matchesPoster) {
           batchPromises.push(
-            updateDoc(doc(db, 'help_posts', postDoc.id), {
+            updateDoc(doc(db, 'posts', postDoc.id), {
               contactWhatsapp: cleanWhatsapp,
               userPhone: cleanWhatsapp,
             }).catch(() => null)
@@ -1144,7 +1144,7 @@ export async function syncUserWhatsappInFirestore(userOrIdentifier: any, newWhat
 
       await Promise.all(batchPromises);
     } catch (postErr) {
-      console.warn('Help posts WhatsApp sync notice:', postErr);
+      console.warn('Posts WhatsApp sync notice:', postErr);
     }
 
     return true;
@@ -1360,11 +1360,30 @@ export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void
 // 🆘 HELP POST DELETION & SEED OPERATIONS
 // ==============================================================
 
+/**
+ * Permanently deletes a post from the 'posts' collection and syncs the ID 
+ * into system_settings/deleted_records to enforce global client purging.
+ */
 export async function deleteHelpPostFromFirestore(postId: string): Promise<void> {
+  if (!postId) return;
   try {
-    if (!postId) return;
+    // 1. Delete primary document from the 'posts' collection
     const docRef = doc(db, 'posts', postId);
     await deleteDoc(docRef);
+
+    // 2. Register deletion in remote system settings for cross-client sync
+    const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    await setDoc(
+      deletedRecordsRef,
+      {
+        deletedPostIds: arrayUnion(postId),
+        updatedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    console.log(`[Firestore] Post ${postId} successfully deleted from 'posts' and blacklisted.`);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `posts/${postId}`);
   }
