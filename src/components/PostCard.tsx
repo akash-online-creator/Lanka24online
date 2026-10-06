@@ -20,7 +20,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { Post, User } from '../types';
-import { checkIsPostOwner } from '../utils/auth';
+import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface PostCardProps {
   post: Post;
@@ -61,11 +61,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   // 2. Comprehensive Admin Verification
   // පරිශීලක ප්‍රකාරයේ (User view/Switch view) සිටියද Admin Privileges පවතිනවාදැයි පරීක්ෂා කිරීම
-  const isAdmin = !isDemo && (
-    currentUser?.role === 'admin' || 
-    currentUser?.isAdmin === true || 
-    currentUser?.originalRole === 'admin'
-  );
+  const isAdmin = !isDemo && checkIsAdmin(currentUser);
 
   // 3. Edit / Delete Permissions Check
   const canModify = ownerCheck || isAdmin;
