@@ -69,6 +69,7 @@ interface AdminPanelProps {
   onLogout?: () => void;
   onSwitchToUserMode?: () => void;
   onNavigate?: (view: any) => void;
+  onDeletePost?: (postId: string) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({

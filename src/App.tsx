@@ -3,6 +3,7 @@ import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
 import { initialUsers, initialHelpPosts } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
+import { GpsActivationGate } from './components/GpsActivationGate';
 import { UserDashboard } from './components/UserDashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { PendingApprovalView } from './components/PendingApprovalView';
@@ -73,7 +74,7 @@ export const App: React.FC = () => {
     }
   });
 
-  const [activeView, setActiveView] = useState<'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
+  const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
       if (saved) {
@@ -82,12 +83,18 @@ export const App: React.FC = () => {
         if (u.status === 'pending') return 'pending';
         return 'dashboard';
       }
+
+      // Check if permissions setup has been completed on initial launch
+      const isPermDone = localStorage.getItem('sahaya_permissions_setup_completed');
+      if (!isPermDone) {
+        return 'permissions';
+      }
     } catch {}
     return 'login';
   });
 
   // Global Navigation Handler
-  const handleNavigate = useCallback((view: 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => {
+  const handleNavigate = useCallback((view: 'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => {
     setActiveView(view);
   }, []);
 
@@ -318,12 +325,23 @@ export const App: React.FC = () => {
         />
 
         {/* View Router */}
+        {activeView === 'permissions' && (
+          <GpsActivationGate
+            onProceedToLogin={() => setActiveView('login')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+          />
+        )}
+
         {activeView === 'login' && (
           <LoginForm
             onLogin={handleLogin}
             onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setActiveView('register')}
             onNavigateToIssues={() => setActiveView('issues')}
+            onNavigateToPermissions={() => setActiveView('permissions')}
             language={language}
             setLanguage={setLanguage}
             theme={theme}

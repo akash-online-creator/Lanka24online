@@ -30,6 +30,7 @@ interface LoginFormProps {
   onUserDemoLogin?: () => void;
   onNavigateToRegister: () => void;
   onNavigateToIssues: () => void;
+  onNavigateToPermissions?: () => void;
   language: Language;
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
@@ -44,6 +45,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   onUserDemoLogin,
   onNavigateToRegister,
   onNavigateToIssues,
+  onNavigateToPermissions,
   language,
   setLanguage,
   theme = 'light',
@@ -234,11 +236,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </p>
       </div>
 
-      {/* Notification Banner */}
-      <div className="w-full mb-2">
-        <NotificationPermissionBanner language={language} variant="card" />
-      </div>
-
       {/* Form Container */}
       <div className="w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222]">
         
@@ -411,12 +408,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
       </div>
 
-      <div className="mt-1.5 text-center pb-0.5">
+      <div className="mt-2 text-center pb-1 flex items-center justify-center gap-3 text-xs">
+        {onNavigateToPermissions && (
+          <>
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={onNavigateToPermissions}
+              className="text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300 font-semibold hover:underline cursor-pointer transition-colors disabled:opacity-50"
+            >
+              <span>🔒 අවසර සැකසුම් (Permissions)</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+          </>
+        )}
         <button
           type="button"
           disabled={isLoading}
           onClick={onNavigateToIssues}
-          className="text-[#00a86b] hover:text-[#008f5b] font-semibold text-xs hover:underline cursor-pointer transition-colors disabled:opacity-50"
+          className="text-[#00a86b] hover:text-[#008f5b] font-semibold hover:underline cursor-pointer transition-colors disabled:opacity-50"
         >
           <span>{t.issuesHelpBtn || 'ගැටලු සඳහා'}</span>
         </button>

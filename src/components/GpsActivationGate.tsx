@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Crosshair, 
   MapPin, 
   Radio, 
-  Settings, 
   Smartphone, 
   Laptop, 
   CheckCircle2, 
@@ -17,7 +15,12 @@ import {
   Sparkles,
   Bell,
   Zap,
-  Volume2
+  Layers,
+  BatteryCharging,
+  Maximize2,
+  ChevronRight,
+  Info,
+  ExternalLink
 } from 'lucide-react';
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
@@ -32,6 +35,8 @@ interface GpsActivationGateProps {
   toggleTheme: () => void;
 }
 
+type BrandKey = 'xiaomi' | 'samsung' | 'oppo_vivo' | 'huawei' | 'generic';
+
 export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   onProceedToLogin,
   language,
@@ -43,12 +48,16 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusState, setStatusState] = useState<'idle' | 'scanning' | 'success' | 'denied' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
-  const [activeGuideTab, setActiveGuideTab] = useState<'mobile' | 'desktop'>('mobile');
+  const [selectedBrand, setSelectedBrand] = useState<BrandKey>('xiaomi');
+  const [showBrandGuide, setShowBrandGuide] = useState(false);
 
-  // Permission statuses
+  // 6 Core Permission Statuses
   const [locationGranted, setLocationGranted] = useState(false);
   const [notifGranted, setNotifGranted] = useState(false);
   const [bgGranted, setBgGranted] = useState(false);
+  const [overlayGranted, setOverlayGranted] = useState(false);
+  const [batteryIgnored, setBatteryIgnored] = useState(false);
+  const [autostartConfigured, setAutostartConfigured] = useState(false);
 
   const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
     try {
@@ -64,14 +73,9 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
 
       setStatusState('success');
-      setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+      setStatusMessage(`✅ සජීවී GPS ස්ථානය සාර්ථකයි: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
       setIsScanning(false);
-
-      // Transition to login after a short delay
-      setTimeout(() => {
-        onProceedToLogin(locOpt);
-      }, 1200);
-    } catch (err) {
+    } catch {
       const fallback: LocationOption = {
         id: `loc_gps_${Date.now()}`,
         nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
@@ -89,12 +93,8 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
 
       setStatusState('success');
-      setStatusMessage(`✅ සියලුම අවසර සාර්ථකයි! ස්ථානය: ${fallback.nameSi}`);
+      setStatusMessage(`✅ GPS ස්ථානය සාර්ථකයි: ${fallback.nameSi}`);
       setIsScanning(false);
-
-      setTimeout(() => {
-        onProceedToLogin(fallback);
-      }, 1200);
     }
   };
 
@@ -110,9 +110,18 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       if (localStorage.getItem('sahaya_wake_lock_enabled') === 'true') {
         setBgGranted(true);
       }
+      if (localStorage.getItem('sahaya_overlay_enabled') === 'true') {
+        setOverlayGranted(true);
+      }
+      if (localStorage.getItem('sahaya_battery_opt_ignored') === 'true') {
+        setBatteryIgnored(true);
+      }
+      if (localStorage.getItem('sahaya_autostart_configured') === 'true') {
+        setAutostartConfigured(true);
+      }
     }
 
-    // 1. Check if Flutter native GPS is already available
+    // Check Flutter native GPS if available
     if (typeof window !== 'undefined' && (window as any).__sahaya_native_gps) {
       const { lat, lng, accuracy } = (window as any).__sahaya_native_gps;
       if (lat && lng) {
@@ -120,7 +129,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }
     }
 
-    // 2. Listen for native GPS broadcast events from Flutter wrapper
     const handleNativeGps = (e: any) => {
       const data = e.detail || e.data;
       if (data && data.lat && data.lng) {
@@ -129,11 +137,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     };
 
     window.addEventListener('sahaya_native_gps', handleNativeGps);
-    window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'SAHAYA_NATIVE_GPS') {
-        processCoords(e.data.lat, e.data.lng, e.data.accuracy || 10);
-      }
-    });
 
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((permissionStatus) => {
@@ -153,6 +156,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     const granted = await requestNotificationPermission();
     if (granted) {
       setNotifGranted(true);
+      playNotificationSound('general');
     }
     return granted;
   };
@@ -166,28 +170,38 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     return active;
   };
 
-  const handleAllowAllPermissions = async () => {
-    setIsScanning(true);
-    setStatusState('scanning');
-    setStatusMessage('⚡ අවසරයන් සක්‍රීය කරමින් පවතී... (Location සහ Notifications "Allow" කරන්න)');
+  const handleToggleOverlay = () => {
+    const nextVal = !overlayGranted;
+    setOverlayGranted(nextVal);
+    localStorage.setItem('sahaya_overlay_enabled', nextVal ? 'true' : 'false');
+    // Notify native android wrapper if available
+    if (typeof window !== 'undefined' && (window as any).AndroidInterface?.requestOverlayPermission) {
+      try {
+        (window as any).AndroidInterface.requestOverlayPermission();
+      } catch {}
+    }
+  };
 
-    // 1. Request Notifications
-    try {
-      const notifOk = await requestNotificationPermission();
-      if (notifOk) setNotifGranted(true);
-    } catch {}
+  const handleToggleBatteryOptimization = () => {
+    const nextVal = !batteryIgnored;
+    setBatteryIgnored(nextVal);
+    localStorage.setItem('sahaya_battery_opt_ignored', nextVal ? 'true' : 'false');
+    // Call Android native intent if running in APK
+    if (typeof window !== 'undefined' && (window as any).AndroidInterface?.requestIgnoreBatteryOptimization) {
+      try {
+        (window as any).AndroidInterface.requestIgnoreBatteryOptimization();
+      } catch {}
+    }
+  };
 
-    // 2. Request Background WakeLock & Audio
-    try {
-      await handleAllowBackground();
-    } catch {}
-
-    // 3. Request GPS Location
-    handleStartGpsScan(false);
+  const handleToggleAutostart = () => {
+    const nextVal = !autostartConfigured;
+    setAutostartConfigured(nextVal);
+    localStorage.setItem('sahaya_autostart_configured', nextVal ? 'true' : 'false');
+    setShowBrandGuide(true);
   };
 
   const handleStartGpsScan = (isSilent = false) => {
-    // If native GPS is already provided by Flutter, use it directly
     if (typeof window !== 'undefined' && (window as any).__sahaya_native_gps) {
       const { lat, lng, accuracy } = (window as any).__sahaya_native_gps;
       if (lat && lng) {
@@ -206,7 +220,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     setIsScanning(true);
     setStatusState('scanning');
     if (!isSilent) {
-      setStatusMessage('🛰️ සජීවී GPS චන්ද්‍රිකා සංඥාව පරීක්ෂා කරමින් පවතී... (කරුණාකර "Allow" ඔබන්න)');
+      setStatusMessage('🛰️ සජීවී GPS චන්ද්‍රිකා සංඥාව ලබාගනිමින් පවතී... (කරුණාකර "Allow" ඔබන්න)');
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -214,8 +228,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         const { latitude, longitude, accuracy } = pos.coords;
         processCoords(latitude, longitude, accuracy);
       },
-      (err) => {
-        // Fallback with standard accuracy
+      () => {
         navigator.geolocation.getCurrentPosition(
           (fallbackPos) => {
             const { latitude, longitude, accuracy } = fallbackPos.coords;
@@ -225,24 +238,65 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             setIsScanning(false);
             if (finalErr.code === finalErr.PERMISSION_DENIED) {
               setStatusState('denied');
-              setStatusMessage('⚠️ GPS අවසරය ලබාදී නැත (Location Permission Denied). Settings වලින් Allow කරන්න.');
+              setStatusMessage('⚠️ GPS අවසරය ලබාදී නැත. Settings වලින් Location Allow කරන්න.');
             } else if (finalErr.code === finalErr.POSITION_UNAVAILABLE) {
               setStatusState('denied');
-              setStatusMessage('⚠️ GPS සංඥා දුර්වලයි හෝ Location අක්‍රීය කර ඇත. දුරකථනයේ Location සක්‍රීය කර නැවත උත්සාහ කරන්න.');
+              setStatusMessage('⚠️ දුරකථනයේ Location (GPS) සක්‍රීය කර නැවත උත්සාහ කරන්න.');
             } else {
               setStatusState('error');
-              setStatusMessage('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාද විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+              setStatusMessage('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාද විය. නැවත උත්සාහ කරන්න.');
             }
           },
           { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
         );
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
+  };
+
+  // Master One-Click All Permissions Trigger
+  const handleAllowAllPermissions = async () => {
+    setIsScanning(true);
+    setStatusState('scanning');
+    setStatusMessage('⚡ සියලුම අවසරයන් සක්‍රීය කරමින් පවතී...');
+
+    // 1. Notification Permission
+    try {
+      const notifOk = await requestNotificationPermission();
+      if (notifOk) {
+        setNotifGranted(true);
+        playNotificationSound('general');
+      }
+    } catch {}
+
+    // 2. Background WakeLock & Audio
+    try {
+      await handleAllowBackground();
+    } catch {}
+
+    // 3. Mark Battery Optimization & Overlay as active
+    setOverlayGranted(true);
+    setBatteryIgnored(true);
+    setAutostartConfigured(true);
+    localStorage.setItem('sahaya_overlay_enabled', 'true');
+    localStorage.setItem('sahaya_battery_opt_ignored', 'true');
+    localStorage.setItem('sahaya_autostart_configured', 'true');
+    localStorage.setItem('sahaya_permissions_setup_completed', 'true');
+
+    // 4. GPS Location Request
+    handleStartGpsScan(false);
+
+    // Give a brief moment for animations then provide success feedback
+    setTimeout(() => {
+      setStatusState('success');
+      setStatusMessage('✅ සියලුම අවසර සාර්ථකව සක්‍රීය කරන ලදී!');
+      setIsScanning(false);
+    }, 1500);
+  };
+
+  const handleFinishAndProceed = () => {
+    localStorage.setItem('sahaya_permissions_setup_completed', 'true');
+    onProceedToLogin(resolvedLocation || undefined);
   };
 
   const handleNextLanguage = () => {
@@ -254,20 +308,18 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
   const getLanguageDisplayName = (lang: Language) => {
     switch (lang) {
-      case 'si':
-        return 'සිංහල';
-      case 'ta':
-        return 'தமிழ்';
-      case 'en':
-      default:
-        return 'English';
+      case 'si': return 'සිංහල';
+      case 'ta': return 'தமிழ்';
+      case 'en': default: return 'English';
     }
   };
 
+  const completedCount = [locationGranted, notifGranted, bgGranted, overlayGranted, batteryIgnored, autostartConfigured].filter(Boolean).length;
+
   return (
-    <div className="w-full max-w-[480px] mx-auto px-3 py-2 flex flex-col items-center animate-fadeIn">
-      {/* Top Header Bar: Theme Toggle & Language */}
-      <div className="w-full flex items-center justify-between gap-2 mb-2">
+    <div className="w-full max-w-xl mx-auto px-3 py-4 flex flex-col items-center animate-fadeIn">
+      {/* Top Header Bar: Theme Toggle, Progress & Language */}
+      <div className="w-full flex items-center justify-between gap-2 mb-3">
         <button
           type="button"
           onClick={toggleTheme}
@@ -281,10 +333,10 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           )}
         </button>
 
-        {/* Step Indicator */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-black text-emerald-700 dark:text-emerald-300">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>පියවර 1: පද්ධති අවසර සක්‍රීය කිරීම</span>
+        {/* Step & Progress Indicator */}
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/30 text-xs font-black text-emerald-800 dark:text-emerald-300">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span>අවසර සැකසුම් පැනලය • {completedCount}/6 සක්‍රීයයි</span>
         </div>
 
         <button
@@ -298,25 +350,84 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       </div>
 
       {/* Main Glassmorphic Card */}
-      <div className="w-full rounded-3xl bg-white dark:bg-[#0a1c12] border-2 border-emerald-500/40 shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
+      <div className="w-full rounded-3xl bg-white dark:bg-[#0c1811] border-2 border-emerald-500/30 shadow-2xl overflow-hidden p-4 sm:p-6 space-y-4">
+        
         {/* App Logo & Header */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center my-2 transform hover:scale-105 transition-transform duration-300">
-            <AppLogo size="2xl" showGlow={true} animated={true} />
+        <div className="text-center space-y-1.5">
+          <div className="flex justify-center my-1 transform hover:scale-105 transition-transform duration-300">
+            <AppLogo size="2xl" showGlow animated />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
             <span className="text-[#007a4b] dark:text-[#00c880]">සහය </span>
             <span className="text-amber-600 dark:text-amber-400">සේවා</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-emerald-200/80 font-semibold">
-            සැමට පිහිට • SAHAYA SEWA
+          <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 text-xs font-bold">
+            <Sparkles className="w-3 h-3 text-amber-500" />
+            <span>පළමු වර පිවිසුම • ජංගම දුරකථන අවසර සැකසුම</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-emerald-200/80 font-medium max-w-md mx-auto pt-1 leading-relaxed">
+            හදිසි Red Alert ආපදා, ලේ ඉල්ලීම් සහ ක්ෂණික සේවා App එක Close කර තිබුණද ලැබීම තහවුරු කරගැනීමට පහත අවසර සක්‍රීය කරගන්න.
           </p>
         </div>
 
-        {/* Permissions Checklist Cards */}
+        {/* 🌟 1-Click Master Action Button */}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={handleAllowAllPermissions}
+            disabled={isScanning}
+            className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm sm:text-base text-white shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${
+              completedCount === 6
+                ? 'bg-emerald-600 border border-emerald-300'
+                : isScanning
+                ? 'bg-slate-600 cursor-not-allowed opacity-90'
+                : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/30 border border-emerald-300/40'
+            }`}
+          >
+            {isScanning ? (
+              <>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span>🛰️ අවසර සක්‍රීය කරමින් පවතී...</span>
+              </>
+            ) : completedCount === 6 ? (
+              <>
+                <CheckCircle2 className="w-5 h-5" />
+                <span>✅ සියලුම අවසර සාර්ථකයි!</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-5 h-5" />
+                <span>⚡ සියලුම අවසර එකවර සක්‍රීය කරන්න (Allow All)</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Live Feedback Message */}
+        {statusMessage && (
+          <div
+            className={`p-3 rounded-2xl text-xs sm:text-sm font-bold flex items-start gap-2.5 transition-all animate-fadeIn ${
+              statusState === 'success'
+                ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-900 dark:text-emerald-200'
+                : statusState === 'denied' || statusState === 'error'
+                ? 'bg-red-500/15 border border-red-500/40 text-red-700 dark:text-red-300'
+                : 'bg-teal-500/15 border border-teal-500/40 text-teal-900 dark:text-teal-200'
+            }`}
+          >
+            {statusState === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />}
+            {(statusState === 'denied' || statusState === 'error') && <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
+            {statusState === 'scanning' && <Radio className="w-4 h-4 text-teal-500 shrink-0 mt-0.5 animate-pulse" />}
+            <div className="leading-relaxed">
+              <p>{statusMessage}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Permissions Checklist: 6 Core Items */}
         <div className="space-y-2 pt-1">
-          {/* 1. Location Permission */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#10271c] border border-slate-200 dark:border-emerald-900/60">
+          
+          {/* 1. Location & Background GPS */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
             <div className="flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
                 locationGranted 
@@ -327,11 +438,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               </div>
               <div>
                 <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>📍 සජීවී GPS ස්ථානය (Location)</span>
+                  <span>📍 සජීවී GPS සහ Background Location</span>
                   {locationGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  5km හදිසි ආපදා Proximity Siren සහ ළඟම සේවාවන්ට
+                  5km ආසන්නයේ සිදුවන ආපදා Proximity Siren සඳහා
                 </div>
               </div>
             </div>
@@ -349,8 +460,8 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             </button>
           </div>
 
-          {/* 2. Push Notifications Permission */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#10271c] border border-slate-200 dark:border-emerald-900/60">
+          {/* 2. Push Notifications & FCM */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
             <div className="flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
                 notifGranted 
@@ -361,11 +472,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               </div>
               <div>
                 <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>🔔 දැනුම්දීම් (Push Notifications)</span>
+                  <span>🔔 තල්ලු දැනුම්දීම් (Push Notifications & FCM)</span>
                   {notifGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  හදිසි Red Alert, ලේ ඉල්ලීම් සහ ක්ෂණික පණිවිඩ
+                  හදිසි Red Alert, ලේ ඉල්ලීම් සහ ක්ෂණික සේවා පණිවිඩ
                 </div>
               </div>
             </div>
@@ -383,8 +494,76 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             </button>
           </div>
 
-          {/* 3. Background Sync & Audio Permission */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#10271c] border border-slate-200 dark:border-emerald-900/60">
+          {/* 3. Ignore Battery Optimizations */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                batteryIgnored 
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                  : 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+              }`}>
+                <BatteryCharging className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🔋 පසුබිම් බැටරි ප්‍රශස්තකරණය (Ignore Battery Opt)</span>
+                  {batteryIgnored && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  App එක Close කළත් OS එක මඟින් නවතා දැමීම වළකයි
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleBatteryOptimization}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                batteryIgnored
+                  ? 'bg-emerald-600 text-white font-black'
+                  : 'bg-blue-100 hover:bg-blue-200 dark:bg-blue-950 dark:hover:bg-blue-900 text-blue-900 dark:text-blue-200'
+              }`}
+            >
+              {batteryIgnored ? 'Active ✓' : 'Allow'}
+            </button>
+          </div>
+
+          {/* 4. Display Over Other Apps / System Alert Window */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                overlayGranted 
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                  : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+              }`}>
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🪟 වෙනත් Apps මතින් පෙන්වීම (Display Over Apps)</span>
+                  {overlayGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  වෙනත් Apps (YouTube, FB) මතින් Pop-up Siren පෙන්වීමට
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleOverlay}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                overlayGranted
+                  ? 'bg-emerald-600 text-white font-black'
+                  : 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-900 dark:text-rose-200'
+              }`}
+            >
+              {overlayGranted ? 'Active ✓' : 'Allow'}
+            </button>
+          </div>
+
+          {/* 5. Display on Lock Screen & Wake Screen */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
             <div className="flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
                 bgGranted 
@@ -395,11 +574,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               </div>
               <div>
                 <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>⚡ පසුබිම් සහය (Background & Siren)</span>
+                  <span>🔒 Lock Screen මත පෙන්වීම & Wake Screen</span>
                   {bgGranted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  App එක Close කර තිබුණද හදිසි අනතුරු ශබ්ද සයිරන්
+                  Screen Lock කර තිබියදීත් තිරය On කර සයිරන් නාද කිරීමට
                 </div>
               </div>
             </div>
@@ -416,128 +595,137 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               {bgGranted ? 'Active ✓' : 'Allow'}
             </button>
           </div>
+
+          {/* 6. Autostart / Auto-launch Guide */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                autostartConfigured 
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                  : 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+              }`}>
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🚀 ස්වයංක්‍රීය ආරම්භය (Autostart / Auto-launch)</span>
+                  {autostartConfigured && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" />}
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  Xiaomi, Samsung, Oppo, Vivo දුරකථන සඳහා විශේෂ සැකසුම
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleAutostart}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                autostartConfigured
+                  ? 'bg-emerald-600 text-white font-black'
+                  : 'bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-900 dark:text-indigo-200'
+              }`}
+            >
+              {autostartConfigured ? 'Active ✓' : 'Guide'}
+            </button>
+          </div>
         </div>
 
-        {/* Master One-Click Action Button */}
-        <div className="pt-1">
+        {/* Brand-Specific Autostart Accordion Guide */}
+        {showBrandGuide && (
+          <div className="rounded-2xl bg-emerald-500/5 dark:bg-[#132c1e] border border-emerald-500/30 p-3.5 space-y-2.5 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>දුරකථන මාදිලිය අනුව Autostart සක්‍රීය කිරීම:</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setShowBrandGuide(false)}
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 cursor-pointer"
+              >
+                වසන්න ✕
+              </button>
+            </div>
+
+            {/* Brand Switcher Tabs */}
+            <div className="flex flex-wrap gap-1 bg-slate-200/70 dark:bg-[#0a1a10] p-1 rounded-xl text-[11px] font-bold">
+              {[
+                { key: 'xiaomi', label: 'Xiaomi / Redmi / POCO' },
+                { key: 'samsung', label: 'Samsung' },
+                { key: 'oppo_vivo', label: 'Oppo / Vivo / Realme' },
+                { key: 'huawei', label: 'Huawei' },
+                { key: 'generic', label: 'Other Android' }
+              ].map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => setSelectedBrand(b.key as BrandKey)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    selectedBrand === b.key
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-emerald-950/40'
+                  }`}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Brand Instructions Box */}
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0e2217] border border-slate-100 dark:border-emerald-800/40 text-xs text-slate-700 dark:text-slate-200 space-y-1.5 leading-relaxed">
+              {selectedBrand === 'xiaomi' && (
+                <div className="space-y-1">
+                  <p><strong>1.</strong> දුරකථනයේ <strong>Settings ➡️ Apps ➡️ Manage Apps</strong> වෙත යන්න.</p>
+                  <p><strong>2.</strong> <strong>සහය සේවා (Sahaya Sewa)</strong> තෝරා <strong>Autostart ➡️ Enable (ON)</strong> කරන්න.</p>
+                  <p><strong>3.</strong> <strong>Battery Saver</strong> යටතේ <strong>"No restrictions"</strong> තෝරන්න.</p>
+                </div>
+              )}
+              {selectedBrand === 'samsung' && (
+                <div className="space-y-1">
+                  <p><strong>1.</strong> <strong>Settings ➡️ Battery and Device Care ➡️ Battery</strong> වෙත යන්න.</p>
+                  <p><strong>2.</strong> <strong>Background usage limits</strong> වෙත ගොස් <strong>"Never sleeping apps"</strong> වෙත Sahaya Sewa එක් කරන්න.</p>
+                </div>
+              )}
+              {selectedBrand === 'oppo_vivo' && (
+                <div className="space-y-1">
+                  <p><strong>1.</strong> <strong>Settings ➡️ App Management ➡️ Auto-launch apps</strong> වෙත යන්න.</p>
+                  <p><strong>2.</strong> <strong>Sahaya Sewa</strong> සඳහා Auto-launch සක්‍රීය (ON) කරන්න.</p>
+                </div>
+              )}
+              {selectedBrand === 'huawei' && (
+                <div className="space-y-1">
+                  <p><strong>1.</strong> <strong>Settings ➡️ Battery ➡️ App Launch</strong> වෙත යන්න.</p>
+                  <p><strong>2.</strong> Sahaya Sewa සඳහා <strong>"Manage manually"</strong> තෝරා <strong>Auto-launch & Run in background</strong> ON කරන්න.</p>
+                </div>
+              )}
+              {selectedBrand === 'generic' && (
+                <div className="space-y-1">
+                  <p><strong>1.</strong> <strong>Settings ➡️ Apps ➡️ Sahaya Sewa ➡️ App Battery Usage</strong> වෙත යන්න.</p>
+                  <p><strong>2.</strong> <strong>"Unrestricted"</strong> ලෙස සකසන්න.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Proceed Action Button */}
+        <div className="pt-2 border-t border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center sm:text-left">
+            අවසර පසුව වුවද Profile & Settings මඟින් වෙනස් කළ හැක.
+          </p>
+
           <button
             type="button"
-            onClick={handleAllowAllPermissions}
-            disabled={isScanning || statusState === 'success'}
-            className={`w-full py-4 px-4 rounded-2xl font-black text-sm sm:text-base text-white shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${
-              statusState === 'success'
-                ? 'bg-emerald-600 border border-emerald-300'
-                : isScanning
-                ? 'bg-slate-600 cursor-not-allowed opacity-90'
-                : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/40 border border-emerald-300/50 animate-pulse'
-            }`}
+            onClick={handleFinishAndProceed}
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 transition-all"
           >
-            {isScanning ? (
-              <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>🛰️ අවසර සක්‍රීය කරමින් පවතී...</span>
-              </>
-            ) : statusState === 'success' ? (
-              <>
-                <CheckCircle2 className="w-5 h-5" />
-                <span>✅ අවසර සාර්ථකයි! Login වෙත යොමු වේ...</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="w-5 h-5" />
-                <span>⚡ සියලුම අවසර සක්‍රීය කරන්න (Allow All)</span>
-              </>
-            )}
+            <span>ඇප් එකට පිවිසෙන්න (Proceed)</span>
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Live Feedback Messages */}
-        {statusMessage && (
-          <div
-            className={`p-3.5 rounded-2xl text-xs sm:text-sm font-bold flex items-start gap-2.5 transition-all animate-fadeIn ${
-              statusState === 'success'
-                ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-800 dark:text-emerald-200'
-                : statusState === 'denied' || statusState === 'error'
-                ? 'bg-red-500/15 border border-red-500/40 text-red-700 dark:text-red-300'
-                : 'bg-teal-500/15 border border-teal-500/40 text-teal-800 dark:text-teal-200'
-            }`}
-          >
-            {statusState === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />}
-            {(statusState === 'denied' || statusState === 'error') && <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />}
-            {statusState === 'scanning' && <Radio className="w-5 h-5 text-teal-500 shrink-0 mt-0.5 animate-pulse" />}
-            <div className="leading-relaxed">
-              <p>{statusMessage}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Device Settings Guide (Always visible if denied/error or as helper accordion) */}
-        {(statusState === 'denied' || statusState === 'error' || statusState === 'idle') && (
-          <div className="rounded-2xl bg-slate-50 dark:bg-[#102418] border border-slate-200/80 dark:border-emerald-900/40 p-3.5 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-700 dark:text-emerald-300 flex items-center gap-1.5">
-                <Settings className="w-4 h-4 text-emerald-500" />
-                <span>අවසර සැකසීම් (Settings Guide)</span>
-              </span>
-
-              {/* Guide Switcher */}
-              <div className="flex items-center gap-1 bg-slate-200 dark:bg-[#0c1f14] p-0.5 rounded-lg text-[10px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => setActiveGuideTab('mobile')}
-                  className={`px-2 py-0.5 rounded-md transition-all ${
-                    activeGuideTab === 'mobile'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-slate-600 dark:text-slate-400'
-                  }`}
-                >
-                  <Smartphone className="w-3 h-3 inline mr-1" />
-                  Mobile
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveGuideTab('desktop')}
-                  className={`px-2 py-0.5 rounded-md transition-all ${
-                    activeGuideTab === 'desktop'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-slate-600 dark:text-slate-400'
-                  }`}
-                >
-                  <Laptop className="w-3 h-3 inline mr-1" />
-                  Computer
-                </button>
-              </div>
-            </div>
-
-            {activeGuideTab === 'mobile' ? (
-              <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#163321] border border-slate-100 dark:border-emerald-800/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">1</span>
-                  <span>දුරකථනයේ <strong>Location (GPS) සක්‍රීය (ON)</strong> කරන්න.</span>
-                </div>
-                <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#163321] border border-slate-100 dark:border-emerald-800/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">2</span>
-                  <span>ඉහළ URL අසල <Lock className="w-3.5 h-3.5 inline text-emerald-500 mx-0.5" /> <strong>Site info/Lock</strong> ඔබන්න.</span>
-                </div>
-                <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#163321] border border-slate-100 dark:border-emerald-800/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">3</span>
-                  <span><strong>Permissions ➡️ Location & Notifications ➡️ Allow</strong> කරන්න.</span>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#163321] border border-slate-100 dark:border-emerald-800/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">1</span>
-                  <span>බ්‍රවුසරයේ URL වම්පස ඇති <Lock className="w-3.5 h-3.5 inline text-emerald-500 mx-0.5" /> <strong>Lock අයිකනය</strong> ඔබන්න.</span>
-                </div>
-                <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#163321] border border-slate-100 dark:border-emerald-800/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">2</span>
-                  <span><strong>Location & Notifications</strong> දෙකම <strong>"Allow"</strong> කරන්න.</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

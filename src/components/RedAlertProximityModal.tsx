@@ -627,8 +627,6 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
           </div>
         )}
 
-        </div>
-
       </div>
     </div>
   );
