@@ -1,591 +1,572 @@
-import React, { useState, useEffect } from "react";
-import { database, ref, onValue, push, set, remove, update } from "../firebase";
-import { Plus, Edit2, Trash2, CheckCircle, XCircle, Search, Clock, Users, Wrench, Shield, MessageSquare, Menu, X, ArrowLeft, RefreshCw, AlertTriangle, Play, Check } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import AdminUsers from "./AdminUsers";
-import AdminChat from "./AdminChat";
-import { useUserMode } from "../context/UserModeContext";
+import React, { useState, useMemo } from 'react';
+import { 
+  User, 
+  Issue, 
+  Language, 
+  HelpPost, 
+  RedAlertItem, 
+  CategoryItem, 
+  TagItem 
+} from '../types';
+import { translations } from '../data/translations';
+import { AppLogo } from './AppLogo';
+import { MemoryStorageBar } from './MemoryStorageBar';
+import { deduplicateUsers } from '../utils/userUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { useUserMode } from '../context/UserModeContext';
+import { 
+  updateHelpPostInFirestore,
+  deleteUserAccount,
+  deleteHelpPostFromFirestore,
+  syncUserProfileToFirestore
+} from '../lib/firebase';
+import { AdminCreditManagement } from './AdminCreditManagement';
+import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
+import { AdminIssuesManagement } from './AdminIssuesManagement';
+import { AdminRedAlertManagement } from './AdminRedAlertManagement';
+import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
+import { AdminTrustManagement } from './AdminTrustManagement';
+import { AdminPresenceDashboard } from './AdminPresenceDashboard';
+import { 
+  Shield, 
+  Users, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  MessageSquare, 
+  Search, 
+  Sparkles, 
+  UserCheck, 
+  Trash2, 
+  Globe, 
+  Phone, 
+  Mail, 
+  MapPin, 
+  AlertTriangle, 
+  Coins, 
+  Radio, 
+  BookOpen, 
+  Eye, 
+  RefreshCw,
+  LogOut,
+  FileText,
+  Activity,
+  Award
+} from 'lucide-react';
 
-interface Service {
-  id: string;
-  category: string;
-  district: string;
-  town: string;
-  name: string;
-  phone: string;
-  description: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: number;
+interface AdminPanelProps {
+  currentUser?: User | null;
+  users?: User[];
+  setUsers?: React.Dispatch<React.SetStateAction<User[]>>;
+  helpPosts?: HelpPost[];
+  setHelpPosts?: React.Dispatch<React.SetStateAction<HelpPost[]>>;
+  issues?: Issue[];
+  setIssues?: React.Dispatch<React.SetStateAction<Issue[]>>;
+  redAlerts?: RedAlertItem[];
+  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
+  language?: Language;
+  setLanguage?: (lang: Language) => void;
+  onLogout?: () => void;
+  onSwitchToUserMode?: () => void;
+  onNavigate?: (view: any) => void;
 }
 
-const CATEGORIES = [
-  "ගෙදර දොරේ අලුත්වැඩියා", "විදුලි සහ ජල නල", "වාහන අලුත්වැඩියා",
-  "ඉලෙක්ට්‍රොනික් උපාංග", "ප්‍රවාහන සේවා", "අධ්‍යාපනික සේවා",
-  "සෞඛ්‍ය සහ අලංකාරය", "උත්සව සහ ඡායාරූපකරණය", "වෙනත් සේවා"
-];
-
-const DISTRICTS = [
-  "කොළඹ", "ගම්පහ", "කළුතර", "මහනුවර", "මාතලේ", "නුවරඑළිය",
-  "ගාල්ල", "මාතර", "හම්බන්තොට", "යාපනය", "කිලිනොච්චිය", "මන්නාරම",
-  "වවුනියාව", "මුලතිව්", "මඩකලපුව", "අම්පාර", "ත්‍රිකුණාමලය", "කුරුණෑගල",
-  "පුත්තලම", "අනුරාධපුරය", "පොළොන්නරුව", "බදුල්ල", "බණ්ඩාරවෙල", "රත්නපුරය", "කෑගල්ල"
-];
-
-export default function AdminPanel() {
-  const navigate = useNavigate();
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  currentUser = null,
+  users: rawUsers = [],
+  setUsers,
+  helpPosts = [],
+  setHelpPosts,
+  issues = [],
+  setIssues,
+  redAlerts = [],
+  setRedAlerts,
+  language = 'si',
+  setLanguage,
+  onLogout,
+  onSwitchToUserMode,
+  onNavigate,
+}) => {
   const { isUserMode, toggleUserMode } = useUserMode();
-  
-  const [activeTab, setActiveTab] = useState<"services" | "users" | "chat">("services");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const t = translations[language] || translations.si;
 
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
 
-  // Form state
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    category: CATEGORIES[0],
-    district: DISTRICTS[0],
-    town: "",
-    name: "",
-    phone: "",
-    description: "",
-    status: "approved" as "pending" | "approved" | "rejected"
-  });
+  const [activeTab, setActiveTab] = useState<
+    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence'
+  >('users');
 
-  // Load services from Firebase
-  useEffect(() => {
-    const servicesRef = ref(database, "services");
-    const unsubscribe = onValue(servicesRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list: Service[] = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-        }));
-        setServices(list.reverse());
-      } else {
-        setServices([]);
-      }
-      setLoading(false);
-    });
+  const [userSearch, setUserSearch] = useState('');
+  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
+  const [postSearch, setPostSearch] = useState('');
+  const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
-    return () => unsubscribe();
-  }, []);
-
-  const handleOpenAdd = () => {
-    setEditingId(null);
-    setFormData({
-      category: CATEGORIES[0],
-      district: DISTRICTS[0],
-      town: "",
-      name: "",
-      phone: "",
-      description: "",
-      status: "approved"
-    });
-    setShowForm(true);
+  const showNotification = (msg: string) => {
+    setNotificationMsg(msg);
+    setTimeout(() => setNotificationMsg(null), 4000);
   };
 
-  const handleOpenEdit = (service: Service) => {
-    setEditingId(service.id);
-    setFormData({
-      category: service.category,
-      district: service.district,
-      town: service.town,
-      name: service.name,
-      phone: service.phone,
-      description: service.description,
-      status: service.status
-    });
-    setShowForm(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name || !formData.phone || !formData.town) {
-      alert("කරුණාකර අවශ්‍ය සියලුම තොරතුරු ඇතුළත් කරන්න.");
-      return;
+  // User Actions
+  const handleApproveUser = async (user: User) => {
+    const updated: User = { ...user, status: 'approved' };
+    if (setUsers) {
+      setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
     }
-
     try {
-      if (editingId) {
-        // Update
-        await update(ref(database, `services/${editingId}`), formData);
-      } else {
-        // Create
-        const newRef = push(ref(database, "services"));
-        await set(newRef, {
-          ...formData,
-          createdAt: Date.now()
-        });
-      }
-      setShowForm(false);
-    } catch (err) {
-      console.error("Error saving service:", err);
-      alert("දත්ත සුරැකීමේදී දෝෂයක් සිදු විය.");
+      await syncUserProfileToFirestore(updated);
+    } catch (e) {
+      console.warn('Firestore update error:', e);
     }
+    showNotification(`✅ ${user.name} ගේ ගිණුම සාර්ථකව අනුමත කරන ලදී.`);
   };
 
-  const handleStatusChange = async (id: string, status: "approved" | "rejected") => {
+  const handleRejectUser = async (user: User) => {
+    const reason = window.prompt('ප්‍රතික්ෂේප කිරීමට හේතුව (විකල්ප):', 'තොරතුරු අපැහැදිලියි');
+    if (reason === null) return;
+    const updated: User = { ...user, status: 'rejected' };
+    if (setUsers) {
+      setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
+    }
     try {
-      await update(ref(database, `services/${id}`), { status });
-    } catch (err) {
-      console.error("Error updating status:", err);
+      await syncUserProfileToFirestore(updated);
+    } catch (e) {
+      console.warn('Firestore update error:', e);
     }
+    showNotification(`❌ ${user.name} ගේ ගිණුම ප්‍රතික්ෂේප කරන ලදී.`);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("මෙම සේවාව ඉවත් කිරීමට ඔබට විශ්වාසද?")) {
-      try {
-        await remove(ref(database, `services/${id}`));
-      } catch (err) {
-        console.error("Error deleting service:", err);
-      }
+  const handleDeleteUserAction = async (user: User) => {
+    if (!window.confirm(`"${user.name}" ගිණුම සම්පූර්ණයෙන්ම මකා දැමීමට ඔබට විශ්වාසද?`)) return;
+    if (setUsers) {
+      setUsers(prev => prev.filter(u => u.id !== user.id));
     }
+    try {
+      await deleteUserAccount(user, true);
+    } catch (e) {
+      console.warn('Firestore delete error:', e);
+    }
+    showNotification(`🗑️ ${user.name} ගිණුම මකා දමන ලදී.`);
   };
 
-  // Filter logic
-  const filteredServices = services.filter((s) => {
-    const matchesStatus = filterStatus === "all" || s.status === filterStatus;
-    const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
-    const matchesSearch = 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.town.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.phone.includes(searchQuery);
+  // Post Actions
+  const handleDeletePostAction = async (postId: string) => {
+    if (!window.confirm('මෙම දැන්වීම මකා දැමීමට ඔබට විශ්වාසද?')) return;
+    if (setHelpPosts) {
+      setHelpPosts(prev => prev.filter(p => p.id !== postId));
+    }
+    try {
+      await deleteHelpPostFromFirestore(postId);
+    } catch (e) {
+      console.warn('Firestore delete post error:', e);
+    }
+    showNotification('🗑️ දැන්වීම සාර්ථකව මකා දමන ලදී.');
+  };
 
-    return matchesStatus && matchesCategory && matchesSearch;
-  });
+  // Issue Action
+  const handleReplyIssue = async (issueId: string, replyText: string, markResolved: boolean = true) => {
+    if (setIssues) {
+      setIssues(prev =>
+        prev.map(i =>
+          i.id === issueId
+            ? { ...i, status: markResolved ? 'resolved' : i.status, adminReply: replyText }
+            : i
+        )
+      );
+    }
+    showNotification('✉️ ගැටලුවට පිළිතුර සාර්ථකව යවන ලදී.');
+  };
 
-  const pendingCount = services.filter(s => s.status === "pending").length;
-  const approvedCount = services.filter(s => s.status === "approved").length;
+  const pendingUsersCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
+  const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending').length, [issues]);
+  const activeAlertsCount = useMemo(() => redAlerts.filter(a => a.status === 'active').length, [redAlerts]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    return users.filter(u => {
+      const matchFilter = userFilter === 'all' || u.status === userFilter;
+      const matchSearch =
+        !q ||
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.nicNumber || '').toLowerCase().includes(q) ||
+        (u.phone || '').includes(q) ||
+        (u.userId || '').toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+  }, [users, userFilter, userSearch]);
+
+  const filteredPosts = useMemo(() => {
+    const q = postSearch.trim().toLowerCase();
+    return helpPosts.filter(p => {
+      return (
+        !q ||
+        (p.userName || '').toLowerCase().includes(q) ||
+        (p.postCode || '').toLowerCase().includes(q) ||
+        (p.whatHappened || '').toLowerCase().includes(q) ||
+        (p.locationName || '').toLowerCase().includes(q)
+      );
+    });
+  }, [helpPosts, postSearch]);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
-      {/* Sidebar / Navigation */}
-      <aside className="bg-slate-900 text-slate-300 w-full md:w-64 flex-shrink-0">
-        <div className="p-4 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center space-x-2">
-            <Shield className="h-6 w-6 text-amber-500" />
-            <span className="font-bold text-lg text-white">පරිපාලක පාලකය</span>
+    <div className="w-full max-w-7xl mx-auto py-4 px-3 sm:px-6 space-y-6 animate-fadeIn">
+      
+      {/* Top Header Card */}
+      <div className="bg-gradient-to-r from-emerald-800 via-[#007a4b] to-teal-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-500/40">
+        <div className="flex items-center gap-3.5">
+          <AppLogo size="md" showGlow animated />
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black flex items-center gap-2">
+              <span>{t.adminDashboard || 'පරිපාලක පාලක පුවරුව'}</span>
+              <span className="text-[11px] bg-amber-400 text-slate-950 font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                ADMIN CONSOLE
+              </span>
+            </h2>
+            <p className="text-xs text-emerald-100 font-medium">
+              සහය සේවා (Sahaya Seva) • පරිශීලක, දැන්වීම්, ආරක්ෂක සහ ආපදා කළමනාකරණය
+            </p>
           </div>
-          <button 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-            className="md:hidden text-slate-400 hover:text-white"
-          >
-            {mobileMenuOpen ? <X /> : <Menu />}
-          </button>
         </div>
 
-        <nav className={`p-4 space-y-2 ${mobileMenuOpen ? "block" : "hidden md:block"}`}>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Switch to User View Button */}
           <button
-            onClick={() => { setActiveTab("services"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === "services" ? "bg-amber-500 text-slate-950 font-bold" : "hover:bg-slate-800 text-slate-300"
-            }`}
+            type="button"
+            onClick={onSwitchToUserMode}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white hover:bg-emerald-50 text-emerald-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer"
           >
-            <Wrench className="h-5 w-5" />
-            <span>සේවා කළමනාකරණය</span>
-            {pendingCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                {pendingCount}
-              </span>
-            )}
+            <Eye className="w-4 h-4 text-emerald-700" />
+            <span>👤 පරිශීලක ප්‍රකාරය (User Mode)</span>
           </button>
 
-          <button
-            onClick={() => { setActiveTab("users"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === "users" ? "bg-amber-500 text-slate-950 font-bold" : "hover:bg-slate-800 text-slate-300"
-            }`}
-          >
-            <Users className="h-5 w-5" />
-            <span>පරිශීලකයින්</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveTab("chat"); setMobileMenuOpen(false); }}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === "chat" ? "bg-amber-500 text-slate-950 font-bold" : "hover:bg-slate-800 text-slate-300"
-            }`}
-          >
-            <MessageSquare className="h-5 w-5" />
-            <span>සහය චැට් එක</span>
-          </button>
-
-          {/* User Mode Toggle Button */}
-          <div className="pt-4 border-t border-slate-800 mt-4">
-            <div className="flex items-center justify-between p-3 bg-slate-800 rounded-xl border border-slate-700">
-              <span className="text-xs font-medium text-slate-300">
-                {isUserMode ? "පරිශීලක ප්‍රකාරය" : "පරිපාලක ප්‍රකාරය"}
-              </span>
-              <button
-                onClick={toggleUserMode}
-                type="button"
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isUserMode ? "bg-emerald-500" : "bg-slate-600"
-                }`}
-                role="switch"
-                aria-checked={isUserMode}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    isUserMode ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-2">
+          {onLogout && (
             <button
-              onClick={() => navigate("/")}
-              className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white transition-all text-sm"
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-black/40 hover:bg-rose-600 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer border border-white/20"
             >
-              <ArrowLeft className="h-4 w-4" />
-              <span>ප්‍රධාන පිටුවට</span>
+              <LogOut className="w-3.5 h-3.5" />
+              <span>ඉවත් වන්න</span>
             </button>
-          </div>
-        </nav>
-      </aside>
+          )}
+        </div>
+      </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        {activeTab === "users" && <AdminUsers />}
-        {activeTab === "chat" && <AdminChat />}
+      {/* Notification Toast */}
+      {notificationMsg && (
+        <div className="p-3.5 bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg animate-fadeIn flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{notificationMsg}</span>
+        </div>
+      )}
 
-        {activeTab === "services" && (
-          <div className="max-w-6xl mx-auto space-y-6">
-            {/* Header & User Mode Switch */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">සහය සේවා - පරිපාලක පාලක පුවරුව</h1>
-                <p className="text-sm text-slate-500 mt-1">පද්ධති සහ ප්‍රජා දැන්වීම් කළමනාකරණය</p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* Mobile / Secondary User Mode Switcher Button */}
-                <button
-                  onClick={toggleUserMode}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                    isUserMode
-                      ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20 shadow-md"
-                      : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20 shadow-md"
-                  }`}
-                >
-                  <span>{isUserMode ? "👁️ පරිශීලක ප්‍රකාරය: සක්‍රීයයි" : "🔄 පරිශීලක ප්‍රකාරයට මාරු වන්න"}</span>
-                </button>
-
-                <button
-                  onClick={handleOpenAdd}
-                  className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl transition-all shadow-sm"
-                >
-                  <Plus className="h-5 w-5" />
-                  <span>අලුත් සේවාවක්</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                  <Wrench className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-slate-800">{services.length}</div>
-                  <div className="text-xs text-slate-500">මුළු සේවාවන්</div>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
-                  <Clock className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-amber-600">{pendingCount}</div>
-                  <div className="text-xs text-slate-500">තහවුරු කිරීමට ඇති</div>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-                  <CheckCircle className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-emerald-600">{approvedCount}</div>
-                  <div className="text-xs text-slate-500">තහවුරු කළ සේවාවන්</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-5 w-5" />
-                  <input
-                    type="text"
-                    placeholder="නම, නගරය, හෝ දුරකථන අංකය සොයන්න..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm bg-white"
-                  >
-                    <option value="all">සියලුම කාණ්ඩ</option>
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm bg-white"
-                  >
-                    <option value="all">සියලු තත්ත්වයන්</option>
-                    <option value="pending">තහවුරු කිරීමට ඇති (Pending)</option>
-                    <option value="approved">තහවුරු කළ (Approved)</option>
-                    <option value="rejected">ප්‍රතික්ෂේපිත (Rejected)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Services List Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {loading ? (
-                <div className="p-8 text-center text-slate-500 flex items-center justify-center space-x-2">
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                  <span>දත්ත පූරණය වෙමින් පවතී...</span>
-                </div>
-              ) : filteredServices.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">
-                  තොරතුරු කිසිවක් හමු වූයේ නැත.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="p-4">නම / විස්තරය</th>
-                        <th className="p-4">කාණ්ඩය / ස්ථානය</th>
-                        <th className="p-4">දුරකථන අංකය</th>
-                        <th className="p-4">තත්ත්වය</th>
-                        <th className="p-4 text-right">ක්‍රියාමාර්ග</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {filteredServices.map((service) => (
-                        <tr key={service.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <div className="font-bold text-slate-800">{service.name}</div>
-                            <div className="text-xs text-slate-500 line-clamp-1">{service.description}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-slate-800">{service.category}</div>
-                            <div className="text-xs text-slate-500">{service.district} - {service.town}</div>
-                          </td>
-                          <td className="p-4 font-mono text-slate-700">{service.phone}</td>
-                          <td className="p-4">
-                            {service.status === "approved" && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                Approved
-                              </span>
-                            )}
-                            {service.status === "pending" && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                Pending
-                              </span>
-                            )}
-                            {service.status === "rejected" && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                Rejected
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-4 text-right space-x-2">
-                            {service.status === "pending" && (
-                              <>
-                                <button
-                                  onClick={() => handleStatusChange(service.id, "approved")}
-                                  className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
-                                  title="Approve"
-                                >
-                                  <Check className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleStatusChange(service.id, "rejected")}
-                                  className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                                  title="Reject"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              </>
-                            )}
-
-                            <button
-                              onClick={() => handleOpenEdit(service)}
-                              className="p-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                              title="Edit"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-
-                            <button
-                              onClick={() => handleDelete(service.id)}
-                              className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+      {/* Navigation Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        {[
+          { id: 'users', label: 'පරිශීලකයින්', icon: Users, badge: pendingUsersCount },
+          { id: 'posts', label: 'දැන්වීම් පාලනය', icon: FileText, count: helpPosts.length },
+          { id: 'credits', label: 'ක්‍රෙඩිට් කළමනාකරණය', icon: Coins },
+          { id: 'emergency', label: 'හදිසි නාමාවලිය', icon: Phone },
+          { id: 'red_alerts', label: 'රතු එළිය (Disaster)', icon: Radio, badge: activeAlertsCount },
+          { id: 'issues', label: 'ගැටලු & උපකාර', icon: MessageSquare, badge: pendingIssuesCount },
+          { id: 'dictionary', label: 'සෙවුම් ඩික්ෂනරිය', icon: BookOpen },
+          { id: 'trust', label: 'විශ්වාසනීයතා ලාංඡන', icon: Award },
+          { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer shrink-0 shadow-xs ${
+                isActive
+                  ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white shadow-md shadow-emerald-700/30'
+                  : 'bg-white dark:bg-[#07170e] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#12281b] border border-slate-200 dark:border-[#153422]'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
+              <span>{tab.label}</span>
+              {Boolean(tab.badge && tab.badge > 0) && (
+                <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-black animate-pulse">
+                  {tab.badge}
+                </span>
               )}
-            </div>
-          </div>
-        )}
-      </main>
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Add / Edit Service Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-lg text-slate-800">
-                {editingId ? "සේවාව සංස්කරණය" : "නව සේවාවක් එකතු කිරීම"}
+      {/* Tab 1: User Management & Approvals */}
+      {activeTab === 'users' && (
+        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-600" />
+                <span>පරිශීලක කළමනාකරණය සහ අනුමැතිය (User Approvals)</span>
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
-              </button>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                මුළු පරිශීලකයින්: {users.length} • අනුමැතිය බලාපොරොත්තුවෙන්: {pendingUsersCount}
+              </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">නම / ආයතනය</label>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filter Buttons */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#06140c] p-1 rounded-xl">
+                {(['pending', 'approved', 'blocked', 'all'] as const).map(f => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setUserFilter(f)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      userFilter === f
+                        ? 'bg-emerald-600 text-white font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    {f === 'pending' ? `අනුමැතියට (${pendingUsersCount})` : f === 'approved' ? 'අනුමත' : f === 'blocked' ? 'බ්ලොක් කළ' : 'සියල්ල'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  placeholder="උදා: සුනිල් පෙරේරා"
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  placeholder="නම, NIC, දුරකථන සොයන්න..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">කාණ්ඩය</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-sm"
-                  >
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">දිස්ත්‍රික්කය</label>
-                  <select
-                    value={formData.district}
-                    onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-sm"
-                  >
-                    {DISTRICTS.map((dist) => (
-                      <option key={dist} value={dist}>{dist}</option>
-                    ))}
-                  </select>
-                </div>
+          {/* User Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredUsers.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-slate-400 font-bold text-xs bg-slate-50 dark:bg-[#06140c] rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+                පරිශීලකයින් හමු නොවීය.
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">නගරය</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.town}
-                    onChange={(e) => setFormData({ ...formData, town: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="උදා: මහරගම"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">දුරකථන අංකය</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="07XXXXXXXX"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">විස්තරය</label>
-                <textarea
-                  rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  placeholder="සේවාව පිළිබඳ කෙටි විස්තරයක්..."
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">තත්ත්වය (Status)</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-sm"
+            ) : (
+              filteredUsers.map(u => (
+                <div
+                  key={u.id}
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#143321] space-y-3 shadow-2xs hover:border-emerald-500/50 transition-all"
                 >
-                  <option value="approved">Approved</option>
-                  <option value="pending">Pending</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center shrink-0">
+                        {u.name?.charAt(0) || '👤'}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
+                          {u.name}
+                        </h4>
+                        <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold block">
+                          NIC: {u.nicNumber || u.userId || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium text-sm"
-                >
-                  අවලංගු කරන්න
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm"
-                >
-                  සුරකින්න
-                </button>
-              </div>
-            </form>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                        u.status === 'approved'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : u.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 animate-pulse'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      }`}
+                    >
+                      {u.status}
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] space-y-1 text-slate-600 dark:text-slate-300 font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{u.phone || u.whatsappNumber || 'දුරකථනය නොමැත'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="truncate">{u.address || u.district || 'ලිපිනය නොමැත'}</span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    {u.status === 'pending' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleApproveUser(u)}
+                          className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors flex items-center justify-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>අනුමත කරන්න</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectUser(u)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs transition-colors"
+                        >
+                          ප්‍රතික්ෂේප
+                        </button>
+                      </>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUserAction(u)}
+                      className="p-1.5 rounded-xl bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 dark:bg-[#11291d] transition-colors ml-auto"
+                      title="පරිශීලකයා මකා දමන්න"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
+
+      {/* Tab 2: Help Posts Moderation */}
+      {activeTab === 'posts' && (
+        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <span>ප්‍රජා දැන්වීම් පාලනය (Help Posts Moderation)</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                මුළු දැන්වීම් සංඛ්‍යාව: {helpPosts.length}
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={postSearch}
+                onChange={e => setPostSearch(e.target.value)}
+                placeholder="දැන්වීම් කේතය, නම හෝ විස්තරය..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {filteredPosts.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 font-bold text-xs bg-slate-50 dark:bg-[#06140c] rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+                දැන්වීම් හමු නොවීය.
+              </div>
+            ) : (
+              filteredPosts.map(p => (
+                <div
+                  key={p.id}
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#143321] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-emerald-500/50 transition-all"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono font-black text-xs">
+                        #{p.postCode || p.id?.slice(-6)}
+                      </span>
+                      <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                        {p.userName}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        • {p.locationName || 'ශ්‍රී ලංකාව'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 font-medium line-clamp-2">
+                      {p.whatHappened || p.whatIsNeeded || 'විස්තරයක් නොමැත'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePostAction(p.id)}
+                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-rose-600 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>මකා දමන්න</span>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: Credit Management */}
+      {activeTab === 'credits' && (
+        <AdminCreditManagement
+          users={users}
+          currentUser={currentUser}
+          language={language}
+          onDeletePost={handleDeletePostAction}
+        />
+      )}
+
+      {/* Tab 4: Emergency Directory */}
+      {activeTab === 'emergency' && (
+        <AdminEmergencyDirectoryManagement
+          language={language}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Tab 5: Red Alerts (Disaster Management) */}
+      {activeTab === 'red_alerts' && (
+        <AdminRedAlertManagement
+          alerts={redAlerts}
+          currentUser={currentUser}
+          language={language}
+          onRefreshRedAlerts={() => {}}
+        />
+      )}
+
+      {/* Tab 6: Issues Helpdesk */}
+      {activeTab === 'issues' && (
+        <AdminIssuesManagement
+          issues={issues}
+          users={users}
+          language={language}
+          onReplyIssue={handleReplyIssue}
+        />
+      )}
+
+      {/* Tab 7: Search Dictionary */}
+      {activeTab === 'dictionary' && (
+        <AdminSearchDictionaryManager
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Tab 8: Trust Badges Management */}
+      {activeTab === 'trust' && (
+        <AdminTrustManagement
+          users={users}
+          language={language}
+        />
+      )}
+
+      {/* Tab 9: Live Presence */}
+      {activeTab === 'presence' && (
+        <AdminPresenceDashboard
+          users={users}
+          language={language}
+        />
+      )}
+
     </div>
   );
-}
+};
+
+export default AdminPanel;
