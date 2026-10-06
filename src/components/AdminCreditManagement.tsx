@@ -5,18 +5,15 @@ import {
   extractNumericId, 
   getUserCreditBalance, 
   getStoredCreditTransactions, 
-  saveCreditTransactions, 
   addCreditByAdmin, 
-  deductCreditByAdmin,
-  CATEGORY_CREDIT_FEES,
-  formatCreditDate,
-  BANK_DEPOSIT_INFO
+  deductCreditByAdmin
 } from '../utils/creditManager';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
   Coins, 
   Search, 
   PlusCircle, 
-  MinusCircle,
+  MinusCircle, 
   Gift, 
   History, 
   UserCheck, 
@@ -24,20 +21,18 @@ import {
   Building, 
   ArrowDownLeft, 
   ArrowUpRight, 
-  AlertCircle, 
   CheckCircle2, 
-  Sparkles, 
-  Sliders, 
   RefreshCw, 
-  DollarSign, 
   FileText, 
-  X,
-  CreditCard,
-  User as UserIcon,
-  Phone,
-  Filter,
-  AlertTriangle,
-  ArrowRight
+  X, 
+  AlertTriangle, 
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Edit,
+  Trash2,
+  UserX,
+  ShieldAlert
 } from 'lucide-react';
 
 export const ADMIN_ADD_REASON_PRESETS = [
@@ -64,16 +59,29 @@ export const ADMIN_DEDUCT_REASON_PRESETS = [
 
 interface AdminCreditManagementProps {
   users: User[];
+  currentUser?: User | null;
   onUpdateUser?: (updatedUser: User) => void;
+  onEditPost?: (postId: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onBlockUser?: (userId: string) => void;
   language?: Language;
 }
 
 export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
   users: rawUsers,
+  currentUser = null,
   onUpdateUser,
+  onEditPost,
+  onDeletePost,
+  onBlockUser,
   language = 'si',
 }) => {
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
+  
+  // User Mode & Admin State
+  const isAdmin = checkIsAdmin(currentUser);
+  const [isUserMode, setIsUserMode] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserForCredit, setSelectedUserForCredit] = useState<User | null>(null);
   const [operationMode, setOperationMode] = useState<'add' | 'deduct'>('add');
@@ -95,7 +103,40 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
     setLedgerTransactions(getStoredCreditTransactions());
   };
 
-  // Filtered Users List by ID, NIC, Name, or Phone
+  const toggleUserMode = () => {
+    setIsUserMode((prev) => !prev);
+  };
+
+  // Action Handlers for Quick Action Toolbar
+  const handleEdit = (postId: string) => {
+    if (onEditPost) {
+      onEditPost(postId);
+    } else {
+      alert(`දැන්වීම සංස්කරණය (Post ID: ${postId})`);
+    }
+  };
+
+  const handleDelete = (postId: string) => {
+    if (window.confirm('මෙම දැන්වීම/සටහන මකා දැමීමට ඔබට විශ්වාසද?')) {
+      if (onDeletePost) {
+        onDeletePost(postId);
+      } else {
+        alert(`දැන්වීම මකා දමන ලදී (Post ID: ${postId})`);
+      }
+    }
+  };
+
+  const handleBlockUserAction = (userId: string) => {
+    if (window.confirm('මෙම පරිශීලකයා පද්ධතියෙන් බ්ලොක් කිරීමට ඔබට විශ්වාසද?')) {
+      if (onBlockUser) {
+        onBlockUser(userId);
+      } else {
+        alert(`පරිශීලකයා බ්ලොක් කරන ලදී (User ID: ${userId})`);
+      }
+    }
+  };
+
+  // Filtered Users List
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const list = (users || []).filter(Boolean);
@@ -289,7 +330,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
   return (
     <div className="space-y-6 text-slate-800 dark:text-slate-100">
       
-      {/* Top Banner & Hub Title */}
+      {/* Top Banner & User Mode Switcher Toolbar */}
       <div className="bg-gradient-to-r from-emerald-800 via-[#007a4b] to-teal-800 rounded-3xl p-5 sm:p-6 text-white shadow-lg flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-xl shadow-md shrink-0">
@@ -305,18 +346,35 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-emerald-100 font-medium mt-0.5">
-              පරිශීලක ID මඟින් සොයා ක්‍රෙඩිට් එකතු කිරීම (Credit), ඉවත් කිරීම (Debit), ත්‍යාග පිරිනැමීම සහ සම්පූර්ණ ලෙජරය පරීක්ෂා කිරීම.
+              පරිශීලක ID මඟින් සොයා ක්‍රෙඩිට් එකතු කිරීම, ඉවත් කිරීම, ත්‍‍යාග පිරිනැමීම සහ Quick Admin Actions.
             </p>
           </div>
         </div>
 
-        <button
-          onClick={refreshLedger}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>යාවත්කාලීන කරන්න</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* User Mode Switcher Button */}
+          <button
+            type="button"
+            onClick={toggleUserMode}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer shadow-md ${
+              isUserMode
+                ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40'
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'
+            }`}
+          >
+            {isUserMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            <span>{isUserMode ? '👁️ පරිශීලක ප්‍රකාරය: සක්‍රීයයි' : '🔄 පරිශීලක ප්‍රකාරයට මාරු වන්න'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={refreshLedger}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>යාවත්කාලීන</span>
+          </button>
+        </div>
       </div>
 
       {/* Success Alert Banner */}
@@ -370,7 +428,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
         </div>
       </div>
 
-      {/* SECTION 1: SEARCH & USER CREDIT ACTION (ADD OR DEDUCT) */}
+      {/* SECTION 1: SEARCH & USER CREDIT ACTION */}
       <div className="bg-white dark:bg-[#0a1a11] border border-slate-200 dark:border-[#173a26] rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
           <div>
@@ -383,7 +441,6 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
             </p>
           </div>
 
-          {/* Quick Search */}
           <div className="relative w-full sm:w-72">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -397,7 +454,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
         </div>
 
         {/* User Card List */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-1">
           {filteredUsers.length === 0 ? (
             <div className="col-span-full text-center py-6 bg-slate-50 dark:bg-[#06140c] rounded-2xl border border-dashed border-slate-300 dark:border-[#173a26]">
               <p className="text-xs text-slate-500 font-bold">
@@ -409,7 +466,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               if (!u) return null;
               const numericId = extractNumericId(u.nicNumber || u.userId);
               const userBal = getUserCreditBalance(u);
-              const isSelected = selectedUserForCredit && u && (selectedUserForCredit.id === u.id || selectedUserForCredit.userId === u.userId);
+              const isSelected = selectedUserForCredit && (selectedUserForCredit.id === u.id || selectedUserForCredit.userId === u.userId);
 
               return (
                 <div
@@ -422,6 +479,26 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                       : 'bg-white dark:bg-[#07170e] border-slate-200 dark:border-[#143321] hover:border-emerald-500/50'
                   }`}
                 >
+                  {/* ADMIN QUICK ACTION OVERLAY TOOLBAR ON USER CARDS */}
+                  {isAdmin && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-2 rounded-xl flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-[11px]">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>🛡️ පරිපාලක පාලනය {isUserMode && '(User Mode)'}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleBlockUserAction(u.userId || u.id)}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <UserX className="w-3 h-3" />
+                          <span>බ්ලොක්</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate max-w-[170px]">
@@ -447,7 +524,6 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                     </div>
                   </div>
 
-                  {/* Direct Action Buttons on Card */}
                   <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-emerald-950/60">
                     <button
                       type="button"
@@ -472,7 +548,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
           )}
         </div>
 
-        {/* Selected User Action Form (Add or Deduct) */}
+        {/* Selected User Action Form */}
         {selectedUserForCredit && (
           <form
             onSubmit={handleCreditSubmit}
@@ -482,28 +558,21 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                 : 'bg-gradient-to-br from-rose-50 to-orange-50/60 dark:from-[#21090f] dark:to-[#2e0e16] border-rose-500'
             }`}
           >
-            {/* Header with Close */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div
                   className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black shadow-xs ${
-                    operationMode === 'add'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-rose-600 text-white'
+                    operationMode === 'add' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
                   }`}
                 >
-                  {operationMode === 'add' ? (
-                    <PlusCircle className="w-5 h-5" />
-                  ) : (
-                    <MinusCircle className="w-5 h-5" />
-                  )}
+                  {operationMode === 'add' ? <PlusCircle className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
                 </div>
                 <div>
                   <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                    {selectedUserForCredit.name} ගිණුම • {operationMode === 'add' ? 'ක්‍රෙඩිට් එකතු කිරීම (Credit Addition)' : 'ක්‍රෙඩිට් ඉවත් කිරීම (Credit Deduction)'}
+                    {selectedUserForCredit.name} ගිණුම • {operationMode === 'add' ? 'ක්‍රෙඩිට් එකතු කිරීම' : 'ක්‍රෙඩිට් ඉවත් කිරීම'}
                   </h4>
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 font-mono font-bold">
-                    ID: {extractNumericId(selectedUserForCredit.nicNumber || selectedUserForCredit.userId)} • NIC: {selectedUserForCredit.nicNumber} • වත්මන් ශේෂය: රු. {currentSelectedUserBalance.toFixed(2)}
+                    ID: {extractNumericId(selectedUserForCredit.nicNumber || selectedUserForCredit.userId)} • వත්මන් ශේෂය: රු. {currentSelectedUserBalance.toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -517,7 +586,6 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               </button>
             </div>
 
-            {/* Operation Mode Switcher Toggle */}
             <div className="grid grid-cols-2 gap-2 bg-slate-200/70 dark:bg-black/40 p-1.5 rounded-2xl">
               <button
                 type="button"
@@ -525,11 +593,11 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                 className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   operationMode === 'add'
                     ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/10'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-white/40'
                 }`}
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>+ ක්‍රෙඩිට් එකතු කිරීම (Add / Credit)</span>
+                <span>+ එකතු කිරීම (Credit)</span>
               </button>
               <button
                 type="button"
@@ -537,15 +605,14 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                 className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   operationMode === 'deduct'
                     ? 'bg-rose-600 text-white shadow-md'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/10'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-white/40'
                 }`}
               >
                 <MinusCircle className="w-4 h-4" />
-                <span>- ක්‍රෙඩිට් ඉවත් කිරීම (Deduct / Debit)</span>
+                <span>- ඉවත් කිරීම (Debit)</span>
               </button>
             </div>
 
-            {/* Real-time Projected Balance Banner */}
             <div
               className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
                 operationMode === 'add'
@@ -571,28 +638,26 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
               </div>
 
               <div className="flex items-center gap-2 bg-white/70 dark:bg-black/50 px-3 py-1.5 rounded-xl border border-black/10">
-                <span className="font-bold">නව ශේෂය (Projected):</span>
+                <span className="font-bold">නව ශේෂය:</span>
                 <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
                   රු. {projectedBalance.toFixed(2)}
                 </span>
               </div>
             </div>
 
-            {/* Warning if deducting more than balance */}
             {isDeductingMoreThanBalance && (
               <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  සටහන: ඉවත් කිරීමට නියමිත මුදල (රු. {parsedAmount.toFixed(2)}) පරිශීලකයාගේ වත්මන් ශේෂයට වඩා වැඩිය. ඉවත් කිරීමෙන් පසු ශේෂය රු. 0.00 ලෙස සකස් වේ.
+                  සටහන: ඉවත් කිරීමට නියමිත මුදල පරිශීලකයාගේ ශේෂයට වඩා වැඩිය. ඉවත් කිරීමෙන් පසු ශේෂය රු. 0.00 වේ.
                 </span>
               </div>
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Action Type */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  ගනුදෙනු කාණ්ඩය (Category) *
+                  ගනුදෙනු කාණ්ඩය *
                 </label>
                 <select
                   value={actionType}
@@ -601,25 +666,24 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                 >
                   {operationMode === 'add' ? (
                     <>
-                      <option value="deposit">🏦 බැංකු තැන්පතු බැර කිරීම (Bank Top-Up Deposit)</option>
-                      <option value="reward">🎁 ත්‍යාග මුදල් ලබාදීම (Reward Gift Bonus)</option>
-                      <option value="welcome_gift">🎉 ලියාපදිංචි ත්‍යාගය (Welcome Bonus Rs. 100)</option>
-                      <option value="admin_adjustment">🔧 පරිපාලක බැර කිරීම (Custom Credit Addition)</option>
+                      <option value="deposit">🏦 බැංකු තැන්පතු බැර කිරීම</option>
+                      <option value="reward">🎁 ත්‍යාග මුදල් ලබාදීම</option>
+                      <option value="welcome_gift">🎉 ලියාපදිංචි ත්‍යාගය (Rs. 100)</option>
+                      <option value="admin_adjustment">🔧 පරිපාලක බැර කිරීම</option>
                     </>
                   ) : (
                     <>
-                      <option value="admin_adjustment">🚫 වැරදි තැන්පතු / අත්වැරදීම් ඉවත් කිරීම (Correction Debit)</option>
-                      <option value="penalty_compensation">⚖️ මගහැරීම් ගමන් ගාස්තු වන්දි අය කිරීම (Penalty / Travel Fee)</option>
-                      <option value="ad_fee">📢 දැන්වීම් සේවා ගාස්තු අය කිරීම (Ad Posting Fee Debit)</option>
+                      <option value="admin_adjustment">🚫 වැරදි තැන්පතු ඉවත් කිරීම</option>
+                      <option value="penalty_compensation">⚖️ මගහැරීම් ගමන් ගාස්තු වන්දි</option>
+                      <option value="ad_fee">📢 දැන්වීම් සේවා ගාස්තු අය කිරීම</option>
                     </>
                   )}
                 </select>
               </div>
 
-              {/* Amount */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  {operationMode === 'add' ? 'එකතු කරන මුදල (Rs. Amount to Add) *' : 'ඉවත් කරන මුදල (Rs. Amount to Deduct) *'}
+                  {operationMode === 'add' ? 'එකතු කරන මුදල (Rs.) *' : 'ඉවත් කරන මුදල (Rs.) *'}
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
@@ -636,60 +700,18 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white dark:bg-[#07170e] border border-slate-300 dark:border-[#173a26] text-sm font-black font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-                {/* Quick select buttons */}
-                <div className="flex items-center gap-1.5 pt-1">
-                  {['25', '50', '100', '250', '500'].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => setCreditAmount(amt)}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-colors cursor-pointer ${
-                        operationMode === 'add'
-                          ? 'bg-slate-200 dark:bg-[#143623] text-slate-800 dark:text-slate-200 hover:bg-emerald-500 hover:text-white'
-                          : 'bg-slate-200 dark:bg-[#36141a] text-slate-800 dark:text-slate-200 hover:bg-rose-500 hover:text-white'
-                      }`}
-                    >
-                      {operationMode === 'add' ? `+${amt}` : `-${amt}`}
-                    </button>
-                  ))}
-                  {operationMode === 'deduct' && currentSelectedUserBalance > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCreditAmount(currentSelectedUserBalance.toString())}
-                      className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[10px] font-bold hover:bg-rose-600 hover:text-white transition-colors cursor-pointer"
-                    >
-                      සම්පූර්ණ ශේෂය (රු. {currentSelectedUserBalance.toFixed(0)})
-                    </button>
-                  )}
-                </div>
               </div>
 
-              {/* Admin Remark / Reason Selector */}
               <div className="sm:col-span-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <FileText
-                      className={`w-3.5 h-3.5 ${
-                        operationMode === 'add' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                      }`}
-                    />
-                    <span>
-                      {operationMode === 'add'
-                        ? 'ක්‍රෙඩිට් එකතු කිරීමට හේතුව (Reason for Adding Credit) *'
-                        : 'ක්‍රෙඩිට් ඉවත් කිරීමට හේතුව (Reason for Deducting Credit) *'}
-                    </span>
-                  </label>
-                  {isCustomReason && (
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
-                      වෙනත් හේතුවක් සටහන් කරන්න
-                    </span>
-                  )}
-                </div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>හේතුව (Reason / Remark) *</span>
+                </label>
 
                 <select
                   value={selectedReason}
                   onChange={(e) => setSelectedReason(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white dark:bg-[#07170e] border border-slate-300 dark:border-[#173a26] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  className="w-full p-2.5 rounded-xl bg-white dark:bg-[#07170e] border border-slate-300 dark:border-[#173a26] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   {currentPresets.map((preset, prIdx) => (
                     <option key={`c_preset_${preset.id}_${prIdx}`} value={preset.id}>
@@ -698,76 +720,52 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                   ))}
                 </select>
 
-                {/* Conditional Field: When "Other (වෙනත්)" is selected */}
                 {isCustomReason ? (
-                  <div className="pt-1 animate-fadeIn space-y-1 bg-amber-500/5 dark:bg-amber-500/10 p-3 rounded-2xl border border-amber-500/30">
-                    <label className="text-[11px] font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                      <span>✍️ වෙනත් හේතුව / සටහන මෙහි ලියන්න (Specify Custom Reason) *</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={customRemark}
-                      onChange={(e) => setCustomRemark(e.target.value)}
-                      placeholder={
-                        operationMode === 'add'
-                          ? 'උදා: විශේෂ හදිසි ආපදා ආධාර ප්‍රදානය / මාරුවීම් ගාස්තු ගැලපීම...'
-                          : 'උදා: පරිශීලකයා විසින් ඉල්ලූ අවලංගු කිරීමක් / වැරදි ගනුදෙනු ආපසු ගැනීම...'
-                      }
-                      className="w-full p-2.5 rounded-xl bg-white dark:bg-[#07170e] border-2 border-amber-500/50 dark:border-amber-500/40 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-slate-400"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={customRemark}
+                    onChange={(e) => setCustomRemark(e.target.value)}
+                    placeholder="විශේෂ හේතුව සඳහන් කරන්න..."
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-[#07170e] border-2 border-amber-500/50 text-xs font-bold text-slate-900 dark:text-white"
+                  />
                 ) : (
-                  <div className="pt-0.5">
-                    <input
-                      type="text"
-                      value={customRemark}
-                      onChange={(e) => setCustomRemark(e.target.value)}
-                      placeholder="අතිරේක යොමු අංකය / ස්ලිප් අංකය (විකල්ප - Optional Slip / Ref No.)"
-                      className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-[11px] font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={customRemark}
+                    onChange={(e) => setCustomRemark(e.target.value)}
+                    placeholder="අතිරේක සටහන / Slip No. (විකල්ප)"
+                    className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-[11px]"
+                  />
                 )}
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setSelectedUserForCredit(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#11291d] dark:hover:bg-[#183928] text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#11291d] text-slate-700 dark:text-slate-300 text-xs font-bold"
               >
                 අවලංගු කරන්න
               </button>
               <button
                 type="submit"
                 disabled={isProcessing}
-                className={`px-5 py-2.5 rounded-xl text-white text-xs sm:text-sm font-black shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-5 py-2.5 rounded-xl text-white text-xs sm:text-sm font-black shadow-md ${
                   operationMode === 'add'
-                    ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] hover:from-emerald-500 hover:to-emerald-600'
-                    : 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-rose-600'
+                    ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b]'
+                    : 'bg-gradient-to-r from-rose-600 to-red-700'
                 }`}
               >
-                {operationMode === 'add' ? (
-                  <PlusCircle className="w-4 h-4" />
-                ) : (
-                  <MinusCircle className="w-4 h-4" />
-                )}
-                <span>
-                  {isProcessing
-                    ? 'සකසමින් පවතී...'
-                    : operationMode === 'add'
-                    ? 'ශේෂයට එකතු කරන්න (Add Credits)'
-                    : 'ශේෂයෙන් ඉවත් කරන්න (Deduct Credits)'}
-                </span>
+                {isProcessing ? 'සකසමින්...' : operationMode === 'add' ? 'එකතු කරන්න' : 'ඉවත් කරන්න'}
               </button>
             </div>
           </form>
         )}
       </div>
 
-      {/* SECTION 2: GLOBAL TRANSACTION LEDGER (ALL USERS) */}
+      {/* SECTION 2: GLOBAL LEDGER WITH ADMIN QUICK ACTIONS OVERLAY */}
       <div className="bg-white dark:bg-[#0a1a11] border border-slate-200 dark:border-[#173a26] rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
           <div className="flex items-center gap-2">
@@ -777,8 +775,7 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
             </h3>
           </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#07160e] p-1 rounded-xl text-[11px] font-bold overflow-x-auto max-w-full">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#07160e] p-1 rounded-xl text-[11px] font-bold overflow-x-auto">
             {[
               { key: 'all', label: 'සියල්ල' },
               { key: 'deposit', label: 'තැන්පතු (+)' },
@@ -790,10 +787,8 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
                 key={f.key}
                 type="button"
                 onClick={() => setLedgerFilter(f.key)}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer shrink-0 ${
-                  ledgerFilter === f.key
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                className={`px-2.5 py-1 rounded-lg transition-all shrink-0 ${
+                  ledgerFilter === f.key ? 'bg-emerald-600 text-white font-black' : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {f.label}
@@ -802,90 +797,115 @@ export const AdminCreditManagement: React.FC<AdminCreditManagementProps> = ({
           </div>
         </div>
 
-        {/* Ledger Search Box */}
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={ledgerSearch}
             onChange={(e) => setLedgerSearch(e.target.value)}
-            placeholder="ගනුදෙනු ලෙජරය තුළ පරිශීලක ID, නම, දැන්වීම් කේතය හෝ විස්තරය සොයන්න..."
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="පරිශීලක ID, නම හෝ දැන්වීම් කේතය සොයන්න..."
+            className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-[#06140c] border border-slate-200 dark:border-[#163b25] text-xs font-bold text-slate-900 dark:text-white"
           />
         </div>
 
-        {/* Ledger Table / List */}
+        {/* Ledger List */}
         {filteredLedger.length === 0 ? (
           <div className="text-center py-10 bg-slate-50 dark:bg-[#06140c] rounded-2xl border border-dashed border-slate-300 dark:border-[#173a26]">
             <Coins className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
             <p className="text-xs text-slate-500 font-bold">ගනුදෙනු කිසිවක් හමුනොවීය.</p>
           </div>
         ) : (
-          <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             {filteredLedger.map((tx, txIdx) => {
               const isPositive = tx.amount > 0;
               return (
                 <div
                   key={`admin_credit_tx_${tx.id || 't'}_${txIdx}`}
-                  className="bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-500/50 transition-all"
+                  className="bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl p-3.5 space-y-2 shadow-2xs hover:border-emerald-500/50 transition-all"
                 >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        isPositive
-                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
-                      }`}
-                    >
-                      {isPositive ? (
-                        <ArrowDownLeft className="w-4 h-4" />
-                      ) : (
-                        <ArrowUpRight className="w-4 h-4" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-black text-slate-900 dark:text-white">
-                          {tx.userName || 'පරිශීලක'}
-                        </span>
-                        <span className="text-[10px] font-mono font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded">
-                          ID: {tx.userNumericId}
-                        </span>
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                          • {tx.title}
-                        </span>
+                  {/* ADMIN QUICK ACTION OVERLAY TOOLBAR ON POST/TRANSACTION */}
+                  {isAdmin && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-2 rounded-xl flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300 text-[11px]">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>🛡️ පරිපාලක පාලනය {isUserMode && '(User Mode)'}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {tx.description}
-                      </p>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-[#6a907a] mt-1 font-mono">
-                        <span>{tx.timestamp}</span>
-                        <span>•</span>
-                        <span>ශේෂය: රු. {tx.balanceAfter.toFixed(2)}</span>
-                        {tx.adminRemark && (
-                          <>
-                            <span>•</span>
-                            <span className="text-amber-700 dark:text-amber-400">Note: {tx.adminRemark}</span>
-                          </>
-                        )}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(tx.postCode || tx.id)}
+                          className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>සංස්කරණය</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tx.postCode || tx.id)}
+                          className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>මකා දමන්න</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBlockUserAction(tx.userNumericId)}
+                          className="px-2 py-0.5 bg-slate-800 hover:bg-black text-white text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <UserX className="w-3 h-3" />
+                          <span>බ්ලොක්</span>
+                        </button>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="text-right shrink-0">
-                    <span
-                      className={`text-xs sm:text-sm font-black font-mono block ${
-                        isPositive
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-rose-600 dark:text-rose-400'
-                      }`}
-                    >
-                      {isPositive ? `+ රු. ${tx.amount.toFixed(2)}` : `- රු. ${Math.abs(tx.amount).toFixed(2)}`}
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">
-                      {tx.type.replace('_', ' ')}
-                    </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isPositive
+                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                        }`}
+                      >
+                        {isPositive ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-black text-slate-900 dark:text-white">
+                            {tx.userName || 'පරිශීලක'}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded">
+                            ID: {tx.userNumericId}
+                          </span>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                            • {tx.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          {tx.description}
+                        </p>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1 font-mono">
+                          <span>{tx.timestamp}</span>
+                          <span>•</span>
+                          <span>ශේෂය: රු. {tx.balanceAfter.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span
+                        className={`text-xs sm:text-sm font-black font-mono block ${
+                          isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                        }`}
+                      >
+                        {isPositive ? `+ රු. ${tx.amount.toFixed(2)}` : `- රු. ${Math.abs(tx.amount).toFixed(2)}`}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">
+                        {tx.type.replace('_', ' ')}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
