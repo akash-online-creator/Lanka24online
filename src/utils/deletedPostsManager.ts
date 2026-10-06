@@ -1,6 +1,9 @@
 import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem, User } from '../types';
 import { saveDeletedRecordsToFirestore, subscribeToDeletedRecordsFromFirestore, DeletedRecordsMap } from '../lib/firebase';
 
+// ==========================================
+// LocalStorage Key (Unified Constants)
+// ==========================================
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
 const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
 const DELETED_DISASTER_IDS_KEY = 'sahaya_deleted_disaster_ids';
@@ -12,6 +15,9 @@ const DELETED_MARKET_SHOPS_KEY = 'sahaya_deleted_market_shops_ids';
 const DELETED_PRO_SERVICES_KEY = 'sahaya_deleted_pro_services_ids';
 const DELETED_GROUP_IDS_KEY = 'sahaya_deleted_group_ids';
 
+// ==========================================
+// Storage Helper Functions
+// ==========================================
 function getStoredIds(key: string): string[] {
   try {
     const raw = localStorage.getItem(key);
@@ -26,13 +32,16 @@ function getStoredIds(key: string): string[] {
 function saveIds(key: string, ids: string[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
-    // Sync all deletions to Firestore
+    // LocalStorage එක වෙනස් වූ වහාම Firestore Cloud එකට Sync කෙරේ
     syncAllDeletionsToCloud();
   } catch (err) {
     console.warn(`Failed to save deleted IDs to storage key: ${key}`, err);
   }
 }
 
+// ==========================================
+// Firestore Sync Logic
+// ==========================================
 let syncTimeout: any = null;
 function syncAllDeletionsToCloud() {
   if (syncTimeout) clearTimeout(syncTimeout);
@@ -55,7 +64,7 @@ function syncAllDeletionsToCloud() {
   }, 300);
 }
 
-// Subscribe to Cloud Deleted Records once on load
+// App එක Load වන විට Cloud එකෙන් පැමිණෙන Deletions එකතු කර ගනී
 if (typeof window !== 'undefined') {
   try {
     subscribeToDeletedRecordsFromFirestore((cloudRecords) => {
@@ -104,7 +113,9 @@ if (typeof window !== 'undefined') {
   } catch {}
 }
 
-// ----------------- Users -----------------
+// ==========================================
+// 1. Users
+// ==========================================
 export function getStoredDeletedUserIds(): string[] {
   return getStoredIds(DELETED_USERS_KEY);
 }
@@ -158,7 +169,9 @@ export function filterNonDeletedUsers(users: User[]): User[] {
   });
 }
 
-// ----------------- Help Posts -----------------
+// ==========================================
+// 2. Help Posts
+// ==========================================
 export function getStoredDeletedPostIds(): string[] {
   return getStoredIds(DELETED_POST_IDS_KEY);
 }
@@ -182,13 +195,23 @@ export function isPostPermanentlyDeleted(postId: string): boolean {
   return getStoredDeletedPostIds().includes(postId);
 }
 
-export function filterNonDeletedPosts(posts: HelpPost[]): HelpPost[] {
+export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boolean; status?: string }>(posts: T[]): T[] {
   if (!Array.isArray(posts)) return [];
   const deletedIds = new Set(getStoredDeletedPostIds());
   return posts.filter((p) => p && p.id && !deletedIds.has(p.id) && !p.isDeleted && p.status !== 'deleted');
 }
 
-// ----------------- Blood Donation Requests -----------------
+// Real-time UI broadcast සදහා වන ශ්‍රිතය (Layer 3 Event Triggering)
+export function broadcastPostDeletion(postId: string): void {
+  addDeletedPostId(postId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+  }
+}
+
+// ==========================================
+// 3. Blood Donation Requests
+// ==========================================
 export function getStoredDeletedBloodIds(): string[] {
   return getStoredIds(DELETED_BLOOD_IDS_KEY);
 }
@@ -207,7 +230,9 @@ export function filterNonDeletedBloodRequests(requests: BloodDonationRequest[]):
   return requests.filter((r) => r && r.id && !deletedIds.has(r.id));
 }
 
-// ----------------- Disaster Relief Items -----------------
+// ==========================================
+// 4. Disaster Relief Items
+// ==========================================
 export function getStoredDeletedDisasterIds(): string[] {
   return getStoredIds(DELETED_DISASTER_IDS_KEY);
 }
@@ -226,7 +251,9 @@ export function filterNonDeletedDisasterItems(items: DisasterReliefItem[]): Disa
   return items.filter((d) => d && d.id && !deletedIds.has(d.id));
 }
 
-// ----------------- Volunteer Donors -----------------
+// ==========================================
+// 5. Volunteer Donors
+// ==========================================
 export function getStoredDeletedDonorIds(): string[] {
   return getStoredIds(DELETED_DONOR_IDS_KEY);
 }
@@ -245,7 +272,9 @@ export function filterNonDeletedDonors(donors: VolunteerDonor[]): VolunteerDonor
   return donors.filter((d) => d && d.id && !deletedIds.has(d.id));
 }
 
-// ----------------- Marketplace Items & Shops -----------------
+// ==========================================
+// 6. Marketplace Items & Shops
+// ==========================================
 export function getStoredDeletedMarketplaceIds(): string[] {
   return getStoredIds(DELETED_MARKETPLACE_IDS_KEY);
 }
@@ -282,7 +311,9 @@ export function filterNonDeletedMarketShops<T extends { id?: string }>(shops: T[
   return shops.filter((shop) => shop && shop.id && !deletedIds.has(shop.id));
 }
 
-// ----------------- Professional Services -----------------
+// ==========================================
+// 7. Professional Services
+// ==========================================
 export function getStoredDeletedProServiceIds(): string[] {
   return getStoredIds(DELETED_PRO_SERVICES_KEY);
 }
@@ -301,7 +332,9 @@ export function filterNonDeletedProServices<T extends { id?: string }>(services:
   return services.filter((s) => s && s.id && !deletedIds.has(s.id));
 }
 
-// ----------------- Groups & Shramadana -----------------
+// ==========================================
+// 8. Groups & Shramadana
+// ==========================================
 export function getStoredDeletedGroupIds(): string[] {
   return getStoredIds(DELETED_GROUP_IDS_KEY);
 }
@@ -320,7 +353,9 @@ export function filterNonDeletedGroups<T extends { id?: string }>(groups: T[]): 
   return groups.filter((g) => g && g.id && !deletedIds.has(g.id));
 }
 
-// ----------------- Red Alerts (රතු එළිය) -----------------
+// ==========================================
+// 9. Red Alerts (රතු එළිය)
+// ==========================================
 export function getStoredDeletedRedAlertIds(): string[] {
   return getStoredIds(DELETED_RED_ALERTS_KEY);
 }
