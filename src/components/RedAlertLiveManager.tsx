@@ -8,6 +8,7 @@ import {
 } from '../lib/firebase';
 import { triggerBrowserNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
+import { calculateDistanceKm } from '../utils/geoUtils';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { User, Language } from '../types';
 
@@ -69,6 +70,20 @@ export const RedAlertLiveManager: React.FC<Props> = ({
   useEffect(() => {
     let pushListenerHandle: any = null;
 
+    // Helper: වත්මන් පරිශීලකයාගේ GPS ස්ථානය ලබා ගැනීම
+    const getUserCoordinates = (): { lat: number; lng: number } => {
+      try {
+        const savedLoc = localStorage.getItem('sahaya_current_location');
+        if (savedLoc) {
+          const parsed = JSON.parse(savedLoc);
+          if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+            return { lat: parsed.lat, lng: parsed.lng };
+          }
+        }
+      } catch {}
+      return { lat: 6.9271, lng: 79.8612 }; // Colombo default
+    };
+
     // 1. Capacitor Push Notification Listener (App එක Foreground එකේ ඇති විට ලැබෙන Data සඳහා)
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       const disasterName = notification.data?.disasterType || notification.title || 'හදිසි ආපදාවක්';
@@ -120,9 +135,24 @@ export const RedAlertLiveManager: React.FC<Props> = ({
           }
         }
       } else if (currentActive) {
-        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට සයිරනය ක්‍රියාත්මක කිරීම
-        startEmergencySiren();
-        setIsSirenActive(true);
+        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට: දුර ප්‍රමාණය පරීක්ෂා කර කි.මී. 5 ඇතුළත නම් පමණක් සයිරනය ක්‍රියාත්මක කිරීම
+        const userCoords = getUserCoordinates();
+        const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 6.9271;
+        const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.8612;
+        const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+
+        // පරිශීලකයා කලින් මෙම alert එක dismiss කර ඇත්දැයි බැලීම
+        let isDismissed = false;
+        try {
+          const dismissedIds = JSON.parse(localStorage.getItem(`rathuweliya_dismissed_alerts_${currentUserId}`) || '[]');
+          isDismissed = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
+        } catch {}
+
+        if (distanceKm <= 5 && !isDismissed) {
+          startEmergencySiren();
+          setIsSirenActive(true);
+          triggerPopup(`🚨 අවධානය දෙන්න: ඔබේ ස්ථානයට කි.මී. ${distanceKm.toFixed(1)} ක් නුදුරින් ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
+        }
       }
 
       setActiveAlert(currentActive);
@@ -139,7 +169,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       }
       stopEmergencySiren();
     };
-  }, []);
+  }, [currentUserId]);
 
   // 1. "ආපදාව විසඳුනා" Button Action
   const handleResolve = async () => {

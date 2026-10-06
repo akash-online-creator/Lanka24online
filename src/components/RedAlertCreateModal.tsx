@@ -189,13 +189,15 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               setLatitude(currentLocation.lat || 6.9271);
               setLongitude(currentLocation.lng || 79.8612);
             } else {
-              setGpsError('GPS ස්ථානය ලබාගත නොහැකි විය. කරුණාකර ස්ථාන නාමය අතින් ඇතුළත් කරන්න.');
+              setLocationName('කොළඹ, ශ්‍රී ලංකාව');
+              setLatitude(6.9271);
+              setLongitude(79.8612);
             }
           },
-          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 3500, maximumAge: 60000 }
         );
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 3500, maximumAge: 10000 }
     );
   };
 
