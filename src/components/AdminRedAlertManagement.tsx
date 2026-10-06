@@ -14,7 +14,11 @@ import {
   RefreshCw,
   Search,
   RotateCcw,
-  Radio
+  Radio,
+  Edit,
+  UserX,
+  ShieldCheck,
+  EyeOff
 } from 'lucide-react';
 import { RedAlertItem, Language } from '../types';
 import { getDisasterConfig } from '../data/redAlertData';
@@ -22,15 +26,20 @@ import { updateRedAlertStatus, deleteRedAlertInFirestore, subscribeToSirenSettin
 import { persistSirenSettings, getSirenFileName } from '../utils/sirenAudio';
 import { addDeletedRedAlertId, filterNonDeletedRedAlerts } from '../utils/deletedPostsManager';
 import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
+import { checkIsAdmin, UserProfile } from '../utils/postOwnerHelper';
+import { useUserMode } from '../context/UserModeContext';
 
 interface AdminRedAlertManagementProps {
   alerts?: RedAlertItem[];
   redAlerts?: RedAlertItem[];
   language?: Language;
+  currentUser?: UserProfile | null;
   onRefreshAlerts?: () => void;
   onRefreshRedAlerts?: () => void;
   onViewAlertDetail?: (alert: RedAlertItem) => void;
   onViewDetail?: (alert: RedAlertItem) => void;
+  onEditAlert?: (alert: RedAlertItem) => void;
+  onBlockUser?: (userId: string, userName?: string) => void;
 }
 
 const DEFAULT_SIREN_NAME = 'Custom Fire Alert (WAV)';
@@ -39,15 +48,22 @@ const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhos
 export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = ({
   alerts: propAlerts,
   redAlerts,
+  currentUser = null,
   onRefreshAlerts,
   onRefreshRedAlerts,
   onViewAlertDetail,
   onViewDetail,
+  onEditAlert,
+  onBlockUser,
 }) => {
   const rawAlerts = propAlerts || redAlerts || [];
   const alerts = useMemo(() => filterNonDeletedRedAlerts(rawAlerts), [rawAlerts]);
   const handleRefresh = onRefreshAlerts || onRefreshRedAlerts;
   const handleViewDetail = onViewAlertDetail || onViewDetail;
+
+  // Context & Admin Verification
+  const { isUserMode, toggleUserMode } = useUserMode();
+  const isAdmin = checkIsAdmin(currentUser);
 
   const [filter, setFilter] = useState<'all' | 'active' | 'flagged_fake' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -136,7 +152,6 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     try {
       await updateRedAlertStatus(targetAlert.id, status, reasonText);
 
-      // තත්ත්වය විසඳුණු විට දැනුම්දීම් යැවීම
       if (status === 'resolved' || status === 'false_alarm') {
         broadcastRedAlertResolvedNotification({
           alertId: targetAlert.id,
@@ -159,7 +174,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
   };
 
   const handleDelete = async (targetAlert: RedAlertItem) => {
-    if (!window.confirm('මෙම ආපදා ඇඟවීම ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) return;
+    if (!window.confirm('මෙම ආපදා ඇඟවීම ස්ථිරවම මකා දැමීමට ඔබට විශ්වාසද?')) return;
 
     setActionLoadingId(targetAlert.id);
     const timeStr = `${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${new Date().toLocaleDateString('si-LK')})`;
@@ -187,6 +202,20 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
     }
   };
 
+  const handleBlockUserAction = (userId?: string, userName?: string) => {
+    if (!userId) {
+      window.alert('⚠️ පරිශීලක අයිඩිය (User ID) සොයාගත නොහැක.');
+      return;
+    }
+    if (window.confirm(`"${userName || userId}" නැමැති පරිශීලකයා පද්ධතියෙන් තහනම් (Block) කිරීමට ඔබට විශ්වාසද?`)) {
+      if (onBlockUser) {
+        onBlockUser(userId, userName);
+      } else {
+        window.alert(`✅ පරිශීලක (${userName || userId}) සාර්ථකව බ්ලොක් කරන ලදී.`);
+      }
+    }
+  };
+
   const handleSaveDirectUrl = async () => {
     const url = directAudioUrl.trim();
     if (url.length > 5) {
@@ -195,7 +224,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
       setDirectAudioUrl('');
       window.alert('✅ සාර්ථකයි! Audio URL එක Cloud Database හි ස්ථිරවම සුරකින ලදී.');
     } else {
-      window.alert('⚠️ කරුණාකර නිවැරදි Direct Audio / MP3 සබැඳියක් ඇතුළත් කරන්න.');
+      window.alert('⚠️️ කරුණාකර නිවැරදි Direct Audio / MP3 සබැඳියක් ඇතුළත් කරන්න.');
     }
   };
 
@@ -205,7 +234,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Top Banner / Siren Audio Controls */}
+      {/* Top Banner / Admin Controls & User Mode Switcher */}
       <div className="p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-lg space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -213,9 +242,16 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
               🚨
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-black tracking-wide">
-                රතු එළිය (Red Alerts) - හදිසි ආපදා පරිපාලනය
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg sm:text-xl font-black tracking-wide">
+                  රතු එළිය (Red Alerts) - පරිපාලක පුවරුව
+                </h3>
+                {isUserMode && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px] animate-pulse">
+                    👁️ User Mode Active
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-red-100 font-medium">
                 කි.මී. 5 වපසරියක සිටින අයට සයිරන් ඇඟවීම් (Push Notification) සහ ආපදා කළමනාකරණය
               </p>
@@ -223,6 +259,20 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* User Mode Switcher Button */}
+            <button
+              type="button"
+              onClick={toggleUserMode}
+              className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border ${
+                isUserMode
+                  ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 border-emerald-300'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-400'
+              }`}
+            >
+              {isUserMode ? <EyeOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+              <span>{isUserMode ? '👁️ පරිශීලක ප්‍රකාරය: සක්‍රීයයි' : '🔄 පරිශීලක ප්‍රකාරයට මාරු වන්න'}</span>
+            </button>
+
             <label 
               className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-300"
               title="Admin: Upload custom siren audio tone"
@@ -419,6 +469,57 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                       : 'border-slate-200 dark:border-white/10 opacity-75'
                   }`}
                 >
+                  {/* Quick Action Admin Toolbar - Rendered when logged in as Admin */}
+                  {isAdmin && (
+                    <div className="bg-amber-500/10 border border-amber-500/40 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>🛡️ පරිපාලක පාලන (Admin Quick Action)</span>
+                        {isUserMode && (
+                          <span className="text-[10px] bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded-md">
+                            User Mode View
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Edit Button */}
+                        {onEditAlert && (
+                          <button
+                            type="button"
+                            onClick={() => onEditAlert(alert)}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>සංස්කරණය</span>
+                          </button>
+                        )}
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          disabled={isActionLoading}
+                          onClick={() => handleDelete(alert)}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>මකා දමන්න</span>
+                        </button>
+
+                        {/* Block User Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleBlockUserAction(alert.reportedById || alert.userId, alert.reportedByName)}
+                          className="px-3 py-1.5 bg-slate-900 hover:bg-black text-amber-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shadow-xs cursor-pointer border border-amber-400/40"
+                        >
+                          <UserX className="w-3.5 h-3.5 text-amber-400" />
+                          <span>පරිශීලක බ්ලොක්</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Normal Post Header */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-emerald-950/60 pb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-red-100 dark:bg-red-950/80 text-2xl flex items-center justify-center shrink-0 border border-red-200 dark:border-red-800 shadow-sm">
@@ -556,7 +657,7 @@ export const AdminRedAlertManagement: React.FC<AdminRedAlertManagementProps> = (
                           className="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border border-amber-300"
                         >
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
-                          <span>අසත්‍යයි</span>
+                          <span>අසත්‍‍යයි</span>
                         </button>
                       )}
                     </div>
