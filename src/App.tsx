@@ -16,9 +16,11 @@ import {
   subscribeToRedAlerts,
   subscribeToIssuesFromFirestore,
   saveUserToFirestore,
-  getUserFromFirestore
+  getUserFromFirestore,
+  deleteHelpPostFromFirestore
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
+import { addDeletedPostId, filterNonDeletedPosts } from './utils/deletedPostsManager';
 
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
@@ -45,9 +47,9 @@ export const App: React.FC = () => {
     }
   }, [theme]);
 
-  // Application Data State
+  // Application Data State (Initial load filtered against permanent deletion blacklist)
   const [users, setUsers] = useState<User[]>(initialUsers);
-  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(initialHelpPosts);
+  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => filterNonDeletedPosts(initialHelpPosts));
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
 
@@ -79,6 +81,25 @@ export const App: React.FC = () => {
     setActiveView(view);
   }, []);
 
+  // Permanent Deletion Core Handler
+  const handleDeletePost = useCallback(async (postId: string) => {
+    // 1. LocalStorage එකේ ස්ථිරවම Blacklist කිරීම
+    addDeletedPostId(postId);
+
+    // 2. State එකෙන් වහාම ඉවත් කිරීම (Instant UI update & Sanitization)
+    setHelpPosts((prev) => filterNonDeletedPosts(prev.filter((p) => p.id !== postId)));
+
+    // 3. Global Event එකක් Broadcast කිරීම
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+
+    // 4. Firestore Database එකෙන් සදහටම මකා දැමීම
+    try {
+      await deleteHelpPostFromFirestore(postId);
+    } catch (err) {
+      console.warn('Backend delete sync note:', err);
+    }
+  }, []);
+
   // Persist User Session to LocalStorage
   useEffect(() => {
     if (currentUser) {
@@ -87,6 +108,18 @@ export const App: React.FC = () => {
       localStorage.removeItem('sahaya_sewa_session_user');
     }
   }, [currentUser]);
+
+  // Global Event Listener for Post Deletions triggered across components
+  useEffect(() => {
+    const handleGlobalPostDeleted = () => {
+      setHelpPosts((prev) => filterNonDeletedPosts(prev));
+    };
+
+    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    return () => {
+      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    };
+  }, []);
 
   // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
@@ -98,7 +131,8 @@ export const App: React.FC = () => {
 
     const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
       if (dbPosts && dbPosts.length > 0) {
-        setHelpPosts(dbPosts);
+        // Sanitize incoming Firestore real-time posts against local blacklist
+        setHelpPosts(filterNonDeletedPosts(dbPosts));
       }
     });
 
@@ -315,6 +349,7 @@ export const App: React.FC = () => {
             setUsers={setUsers}
             helpPosts={helpPosts}
             setHelpPosts={setHelpPosts}
+            onDeletePost={handleDeletePost}
             issues={issues}
             setIssues={setIssues}
             redAlerts={redAlerts}
@@ -335,6 +370,7 @@ export const App: React.FC = () => {
             setUsers={setUsers}
             helpPosts={helpPosts}
             setHelpPosts={setHelpPosts}
+            onDeletePost={handleDeletePost}
             issues={issues}
             setIssues={setIssues}
             redAlerts={redAlerts}
