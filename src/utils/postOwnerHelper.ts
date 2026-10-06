@@ -23,13 +23,6 @@ export const checkIsAdmin = (user: User | null | undefined): boolean => {
 
 /**
  * Strictly checks if the given user is the original author/owner of the post.
- * Rules:
- * 1. Demo / Guest users can NEVER be the owner of real posts.
- * 2. If post.userId exists, it MUST match user.userId or user.id.
- * 3. Only if post.userId is empty/undefined (legacy posts):
- *    - Phone numbers must match (>= 9 digits), AND
- *    - User's name must match post.userName.
- *    (Phone matching alone is strictly disallowed because test accounts frequently share dummy numbers like '123456789').
  */
 export const checkIsPostOwner = (
   user: User | null | undefined,
@@ -50,7 +43,6 @@ export const checkIsPostOwner = (
     if (currentId && postUserId.toLowerCase() === currentId.toLowerCase()) {
       return true;
     }
-    // If post has a userId and it doesn't match the user, they are NOT the owner!
     return false;
   }
 
@@ -69,7 +61,22 @@ export const checkIsPostOwner = (
   const pName = (post.userName || '').trim().toLowerCase();
   const nameMatch = Boolean(uName && pName && uName === pName);
 
-  // Require both phone match AND name match for legacy posts
   return phoneMatch && nameMatch;
 };
 
+/**
+ * Checks if the user can manage (Edit / Delete / Block) the given post.
+ * Returns true if the user is the Post Owner OR an Admin.
+ */
+export const canManagePost = (
+  user: User | null | undefined,
+  post: HelpPost | null | undefined
+): boolean => {
+  if (!user || !post) return false;
+  
+  // ඇඩ්මින්වරයෙකු නම් ඕනෑම පෝස්ට් එකක් පාලනය කිරීමට අවසර ඇත
+  if (checkIsAdmin(user)) return true;
+
+  // නැතහොත් පෝස්ට් එකේ අයිතිකාරයාට පමණක් අවසර ඇත
+  return checkIsPostOwner(user, post);
+};
