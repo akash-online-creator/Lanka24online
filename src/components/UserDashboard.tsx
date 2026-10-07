@@ -2798,6 +2798,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <RedAlertFloatingTrigger
         userId={user.id}
         userName={user.name}
+        currentUser={user}
         currentLocation={currentLocation}
         activeCount={activeRedAlertsCount || redAlerts.filter((a) => a && a.status === 'active').length}
         onOpenActiveList={() => {

@@ -1,9 +1,16 @@
 // Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
+// Exclusively configured for: mixkit-manual-siren-fire-alert-1652.wav
 import defaultSirenSound from '../assets/mixkit-manual-siren-fire-alert-1652.wav';
 
 let isSirenActive = false;
 let htmlAudioElement: HTMLAudioElement | null = null;
-let cachedVolume: number = 0.9;
+let audioContext: AudioContext | null = null;
+let audioBuffer: AudioBuffer | null = null;
+let activeSourceNode: AudioBufferSourceNode | null = null;
+let activeGainNode: GainNode | null = null;
+let isPreloading = false;
+
+let cachedVolume: number = 1.0;
 let cachedIsMuted: boolean = false;
 let audioUnlocked = false;
 
@@ -83,22 +90,28 @@ function applyLiveVolume(): void {
       htmlAudioElement.volume = effectiveVolume;
     } catch {}
   }
+  if (activeGainNode && audioContext) {
+    try {
+      activeGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
+    } catch {}
+  }
 }
 
-export function initSirenSettings(): () => void {
-  return () => {};
+/**
+ * Exclusively returns the mixkit-manual-siren-fire-alert-1652.wav audio URL
+ */
+export function getCustomSirenAudio(): string {
+  const resolvedDefault = typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
+  return resolvedDefault || '/mixkit-manual-siren-fire-alert-1652.wav';
+}
+
+export function getSirenFileName(): string {
+  return 'mixkit-manual-siren-fire-alert-1652.wav';
 }
 
 export async function persistSirenSettings(audioUrl?: string | null, fileName?: string, ...rest: any[]): Promise<void> {
   try {
     if (typeof window !== 'undefined') {
-      if (audioUrl !== undefined) {
-        if (audioUrl) {
-          localStorage.setItem('sahaya_custom_siren_url', audioUrl);
-        } else {
-          localStorage.removeItem('sahaya_custom_siren_url');
-        }
-      }
       if (fileName) {
         localStorage.setItem('sahaya_custom_siren_name', fileName);
       }
@@ -113,61 +126,142 @@ export function setCustomSirenAudio(audioUrl?: string, ...rest: any[]): void {
   }
 }
 
-export function getCustomSirenAudio(): string {
-  if (typeof window !== 'undefined') {
-    const custom = localStorage.getItem('sahaya_custom_siren_url');
-    if (custom) return custom;
+// 🔓 Preload Audio Buffer for 0-Latency Playback
+async function preloadSirenBuffer(): Promise<void> {
+  if (audioBuffer || isPreloading || typeof window === 'undefined') return;
+  isPreloading = true;
+
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContext) {
+      audioContext = new AudioContextClass();
+    }
+
+    const soundUrl = getCustomSirenAudio();
+    const response = await fetch(soundUrl);
+    const arrayBuf = await response.arrayBuffer();
+    audioBuffer = await audioContext.decodeAudioData(arrayBuf);
+    console.log('✅ Siren WAV Buffer successfully preloaded into memory');
+  } catch (err) {
+    console.warn('Siren buffer preload note:', err);
+  } finally {
+    isPreloading = false;
   }
-  const resolvedDefault = typeof defaultSirenSound === 'string' ? defaultSirenSound : (defaultSirenSound as any)?.default || defaultSirenSound;
-  return resolvedDefault || '/assets/mixkit-manual-siren-fire-alert-1652.wav';
 }
 
-export function getSirenFileName(): string {
-  if (typeof window !== 'undefined') {
-    const name = localStorage.getItem('sahaya_custom_siren_name');
-    if (name) return name;
-  }
-  return 'Fire Alert Siren (WAV)';
-}
-
-// 🔓 Mobile Autoplay Unlock Helper
+// 🔓 Mobile Autoplay Audio Unlock Helper
 export function unlockAudio(): boolean {
   if (audioUnlocked) return true;
   try {
-    const dummyAudio = new Audio();
-    dummyAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-    dummyAudio.volume = 0.01;
-    dummyAudio.play().then(() => {
-      audioUnlocked = true;
-      dummyAudio.pause();
-    }).catch(() => {});
+    if (typeof window !== 'undefined') {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass && !audioContext) {
+        audioContext = new AudioContextClass();
+      }
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+    }
+
+    if (!htmlAudioElement) {
+      htmlAudioElement = new Audio(getCustomSirenAudio());
+      htmlAudioElement.loop = true;
+      htmlAudioElement.volume = getSirenVolume();
+      htmlAudioElement.load();
+    }
+
+    audioUnlocked = true;
+    preloadSirenBuffer();
   } catch {}
   return true;
 }
 
-// 🚨 ප්‍රධාන සිරන් ක්‍රියාත්මක කිරීම 🚨
+export function initSirenSettings(): () => void {
+  if (typeof window !== 'undefined') {
+    const unlocker = () => {
+      unlockAudio();
+      window.removeEventListener('click', unlocker);
+      window.removeEventListener('touchstart', unlocker);
+    };
+    window.addEventListener('click', unlocker, { passive: true });
+    window.addEventListener('touchstart', unlocker, { passive: true });
+
+    // Preload early
+    setTimeout(() => {
+      preloadSirenBuffer();
+    }, 1000);
+  }
+  return () => {};
+}
+
+// 🚨 ප්‍රධාන සිරන් ක්‍රියාත්මක කිරීම (Exclusively mixkit-manual-siren-fire-alert-1652.wav) 🚨
 export function startEmergencySiren(): () => void {
   try {
     stopEmergencySiren();
     isSirenActive = true;
+    unlockAudio();
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
     const soundUrl = getCustomSirenAudio();
 
-    console.log('🚨 Playing Emergency Siren File:', soundUrl);
+    console.log('🚨 Playing Emergency Fire Siren:', soundUrl);
 
-    htmlAudioElement = new Audio(soundUrl);
-    htmlAudioElement.loop = true;
-    htmlAudioElement.volume = effectiveVolume;
-    
-    const playPromise = htmlAudioElement.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        console.warn('⚠️ Siren Audio Playback Blocked/Delayed by Browser Rules:', err);
-      });
+    // 1. High-Performance Web Audio Buffer Playback (Instant, Zero Latency)
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        if (!audioContext) audioContext = new AudioContextClass();
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch(() => {});
+        }
+
+        if (audioBuffer) {
+          activeSourceNode = audioContext.createBufferSource();
+          activeSourceNode.buffer = audioBuffer;
+          activeSourceNode.loop = true;
+
+          activeGainNode = audioContext.createGain();
+          activeGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
+
+          activeSourceNode.connect(activeGainNode);
+          activeGainNode.connect(audioContext.destination);
+          activeSourceNode.start(0);
+        }
+      }
+    } catch (e) {
+      console.warn('Web Audio buffer playback note:', e);
     }
 
-    // High Impact Emergency Vibration
+    // 2. HTML5 Audio Player (Tandem & Fallback)
+    try {
+      if (!htmlAudioElement) {
+        htmlAudioElement = new Audio(soundUrl);
+        htmlAudioElement.loop = true;
+      }
+      htmlAudioElement.volume = effectiveVolume;
+      htmlAudioElement.currentTime = 0;
+
+      const playPromise = htmlAudioElement.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('⚠️ Siren Audio Playback Pending User Interaction:', err);
+          const retryOnInteraction = () => {
+            if (isSirenActive && htmlAudioElement) {
+              htmlAudioElement.play().catch(() => {});
+            }
+            window.removeEventListener('click', retryOnInteraction);
+            window.removeEventListener('touchstart', retryOnInteraction);
+          };
+          window.addEventListener('click', retryOnInteraction, { once: true, passive: true });
+          window.addEventListener('touchstart', retryOnInteraction, { once: true, passive: true });
+        });
+      }
+    } catch (e) {
+      console.warn('HTML Audio player note:', e);
+    }
+
+    // High Impact Vibration for Mobile Devices
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate([1000, 300, 1000, 300, 1000, 300, 1500]);
@@ -184,14 +278,26 @@ export function stopEmergencySiren(): void {
   try {
     isSirenActive = false;
     
+    // Stop Web Audio Buffer
+    if (activeSourceNode) {
+      try { activeSourceNode.stop(); } catch {}
+      try { activeSourceNode.disconnect(); } catch {}
+      activeSourceNode = null;
+    }
+    if (activeGainNode) {
+      try { activeGainNode.disconnect(); } catch {}
+      activeGainNode = null;
+    }
+
+    // Stop HTML Audio
     if (htmlAudioElement) {
       try {
         htmlAudioElement.pause();
         htmlAudioElement.currentTime = 0;
       } catch {}
-      htmlAudioElement = null;
     }
 
+    // Stop Vibration
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate(0);

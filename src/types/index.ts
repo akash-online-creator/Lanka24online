@@ -1038,6 +1038,7 @@ export interface RedAlertItem {
   comments: RedAlertComment[];
   fakeReports: RedAlertFakeReport[];
   isFlaggedFake?: boolean;
+  verifiedByPin?: boolean;
   adminActionNote?: string;
   resolvedAt?: string;
   cancelledAt?: string;

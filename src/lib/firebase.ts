@@ -404,11 +404,37 @@ export async function markRedAlertAsResolved(id: string, reason?: string, _actor
 
 export async function reportRedAlertAsFake(id: string, reportData?: any): Promise<void> {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  await setDoc(docRef, sanitizeForFirestore({
-    status: 'fake',
-    fakeReport: reportData || true,
-    updatedAtServer: serverTimestamp(),
-  }), { merge: true });
+  try {
+    const snap = await getDoc(docRef);
+    let reporterUserId = '';
+    if (snap.exists()) {
+      const data = snap.data();
+      reporterUserId = data.reportedByUserId || '';
+    }
+
+    await setDoc(docRef, sanitizeForFirestore({
+      status: 'fake',
+      isFlaggedFake: true,
+      fakeReport: reportData || true,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+
+    // 🛡️ Fake Alert Penalty: Deduct Trust Score & Block Reporter
+    if (reporterUserId) {
+      const userRef = doc(db, USERS_COLLECTION, reporterUserId);
+      await setDoc(userRef, sanitizeForFirestore({
+        status: 'blocked',
+        isBlocked: true,
+        trustScore: 20,
+        trustPoints: 20,
+        blockedReason: 'අසත්‍ය (Fake) රතු එළිය අනතුරු ඇඟවීමක් පළ කිරීම හේතුවෙන් ගිණුම ස්වයංක්‍රීයව අත්හිටුවන ලදී (Blocked due to publishing Fake Red Alert).',
+        blockedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      }), { merge: true });
+    }
+  } catch (err) {
+    console.warn('reportRedAlertAsFake error:', err);
+  }
 }
 
 export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any): Promise<void> {

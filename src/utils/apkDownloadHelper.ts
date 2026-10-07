@@ -1,80 +1,77 @@
 /**
- * APK Download & Update Helper for Sahaya Sewa Mobile Application
+ * APK Direct Download Helper
+ * Dynamically resolves the latest release APK from GitHub Releases for Lanka24online
  */
 
-export interface AppVersionInfo {
-  appName: string;
-  versionName: string;
-  versionCode: number;
-  fileName: string;
-  downloadPath: string;
-  releaseNotes: string;
-  updatedAt: string;
-}
+export const GITHUB_REPO_OWNER = 'akash-online-creator';
+export const GITHUB_REPO_NAME = 'Lanka24online';
 
-export const LATEST_APK_PATH = '/apk/sahayasewa-latest.apk';
+export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
+export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`;
 
-/**
- * Checks if the current browser is running on an Android device
- */
-export function isAndroidDevice(): boolean {
-  if (typeof window === 'undefined' || !navigator) return false;
-  const userAgent = navigator.userAgent || (navigator as any).vendor || (window as any).opera || '';
-  return /android/i.test(userAgent);
+export interface LatestReleaseInfo {
+  tagName?: string;
+  apkDownloadUrl: string;
+  name?: string;
+  publishedAt?: string;
 }
 
 /**
- * Checks if the current browser is running on an iOS device (iPhone/iPad)
+ * Fetches the exact direct download URL for the latest APK from GitHub API
  */
-export function isIOSDevice(): boolean {
-  if (typeof window === 'undefined' || !navigator) return false;
-  const ua = navigator.userAgent || '';
-  const isApple = /iPad|iPhone|iPod/.test(ua);
-  const isMacWithTouch = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
-  return isApple || isMacWithTouch;
-}
+export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`, {
+      headers: {
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
 
-/**
- * Initiates direct 1-click APK download to the user's phone or computer.
- * Returns true if download was successfully initiated, or false if iOS (which requires PWA flow).
- */
-export function triggerApkDownload(apkUrl: string = LATEST_APK_PATH): { success: boolean; isIOS: boolean } {
-  if (isIOSDevice()) {
-    return { success: false, isIOS: true };
+    if (response.ok) {
+      const data = await response.json();
+      const assets = data.assets || [];
+      
+      // Find asset that ends with .apk
+      const apkAsset = assets.find((a: any) => a.name && a.name.toLowerCase().endsWith('.apk')) || assets[0];
+      
+      if (apkAsset && apkAsset.browser_download_url) {
+        return {
+          tagName: data.tag_name,
+          apkDownloadUrl: apkAsset.browser_download_url,
+          name: data.name || apkAsset.name,
+          publishedAt: data.published_at,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch latest release from GitHub API, falling back to direct release download:', err);
   }
 
+  // Fallback to standard GitHub latest direct download endpoint
+  return {
+    apkDownloadUrl: FALLBACK_APK_DIRECT_URL,
+  };
+}
+
+/**
+ * Triggers direct APK download in the user's browser/phone
+ */
+export async function triggerDirectApkDownload(): Promise<void> {
   try {
+    const info = await fetchLatestApkDownloadUrl();
+    const downloadUrl = info.apkDownloadUrl || FALLBACK_APK_DIRECT_URL;
+
+    // Trigger direct file download
     const link = document.createElement('a');
-    link.href = apkUrl;
-    link.setAttribute('download', 'sahayasewa-latest.apk');
+    link.href = downloadUrl;
+    link.setAttribute('download', 'SahayaSewa.apk');
     link.setAttribute('target', '_blank');
-    link.rel = 'noopener noreferrer';
+    link.setAttribute('rel', 'noopener noreferrer');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    return { success: true, isIOS: false };
-  } catch (error) {
-    console.warn('Direct link click failed, falling back to window.location:', error);
-    try {
-      window.location.href = apkUrl;
-      return { success: true, isIOS: false };
-    } catch {
-      return { success: false, isIOS: false };
-    }
-  }
-}
-
-/**
- * Fetches latest version details from the server/public folder
- */
-export async function fetchLatestAppVersion(): Promise<AppVersionInfo | null> {
-  try {
-    const res = await fetch('/api/app/version');
-    if (res.ok) {
-      return await res.json();
-    }
   } catch (err) {
-    console.debug('Failed to fetch app version from API:', err);
+    console.error('APK direct download trigger failed:', err);
+    window.location.href = FALLBACK_APK_DIRECT_URL;
   }
-  return null;
 }

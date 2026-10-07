@@ -272,14 +272,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
-      audioUrl: (voiceData as any)?.audioUrl || editPost?.audioUrl,
-      audioDurationSec: (voiceData as any)?.durationSec || editPost?.audioDurationSec,
-      voiceSentDate: (voiceData as any)?.date || editPost?.voiceSentDate,
-      voiceSentTime: (voiceData as any)?.time || editPost?.voiceSentTime,
-      voiceSentLocation: (voiceData as any)?.location || editPost?.voiceSentLocation,
-      voiceCoordinates: (voiceData as any)?.coords || editPost?.voiceCoordinates,
-      isVoicePost: Boolean((voiceData as any)?.audioUrl || editPost?.isVoicePost),
-      voiceTranscript: (voiceData as any)?.transcript || editPost?.voiceTranscript,
+      audioUrl: (voiceData as any)?.audioUrl,
+      audioDurationSec: (voiceData as any)?.durationSec,
+      voiceSentDate: (voiceData as any)?.date,
+      voiceSentTime: (voiceData as any)?.time,
+      voiceSentLocation: (voiceData as any)?.location,
+      voiceCoordinates: (voiceData as any)?.coords,
+      isVoicePost: Boolean((voiceData as any)?.audioUrl),
+      voiceTranscript: (voiceData as any)?.transcript,
     });
 
     // Reset and close

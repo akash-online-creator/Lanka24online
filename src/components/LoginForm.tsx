@@ -21,9 +21,7 @@ import { StoredDevicePinData, getStoredDevicePin, clearDevicePin } from '../util
 import { DevicePinLoginView } from './DevicePinLoginView';
 import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { requestNotificationPermission } from '../utils/notificationManager';
-
-// 🔗 ඔබගේ GitHub Release එකේ ඇති Direct APK Download Link එක
-const STABLE_APK_URL = "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/default.apk";
+import { triggerDirectApkDownload } from '../utils/apkDownloadHelper';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -58,6 +56,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [key, setKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Device PIN state
@@ -177,8 +176,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     }
   };
 
-  const handleDirectAPKDownload = () => {
-    window.location.href = STABLE_APK_URL;
+  const handleDirectAPKDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await triggerDirectApkDownload();
+    } catch (err) {
+      console.error('APK Download trigger error:', err);
+    } finally {
+      setTimeout(() => setIsDownloading(false), 3000);
+    }
   };
 
   return (
@@ -393,17 +400,33 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <div className="mt-2 pt-2 border-t border-slate-100 dark:border-[#173222]">
           <button
             type="button"
+            disabled={isDownloading}
             onClick={handleDirectAPKDownload}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all animate-pulse"
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-80"
           >
-            <Download className="w-4 h-4 text-amber-300" />
-            <span>
-              {language === 'en'
-                ? '📲 Download & Install Mobile App (APK)'
-                : language === 'ta'
-                ? '📲 செயலியை பதிவிறக்கம் செய்க (Download APK)'
-                : '📲 සහය සේවා App එක Phone එකට Download කරගන්න'}
-            </span>
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />
+                <span>
+                  {language === 'en'
+                    ? '⏳ Downloading APK File...'
+                    : language === 'ta'
+                    ? '⏳ செயலி பதிவிறக்கம் செய்யப்படுகிறது...'
+                    : '⏳ APK ගොනුව බාගත වෙමින් පවතී...'}
+                </span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-amber-300" />
+                <span>
+                  {language === 'en'
+                    ? '📲 Download & Install Mobile App (APK)'
+                    : language === 'ta'
+                    ? '📲 செயலியை பதிவிறக்கம் செய்க (Download APK)'
+                    : '📲 සහය සේවා App එක Phone එකට Download කරගන්න'}
+                </span>
+              </>
+            )}
           </button>
         </div>
       </div>

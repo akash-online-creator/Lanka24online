@@ -265,8 +265,12 @@ export const App: React.FC = () => {
   const handleUserDemoLogin = useCallback(() => {
     const demoUser: User = {
       id: 'demo_guest_user',
+      userId: 'demo_guest_user',
       name: 'නරඹන්නා (Demo Visitor)',
+      email: 'demo@sahayasewa.lk',
+      nicNumber: '000000000V',
       nic: '000000000V',
+      phone: '0770000000',
       whatsappPhone: '0770000000',
       address: 'කොළඹ (Colombo)',
       district: 'කොළඹ',
@@ -457,16 +461,18 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* Global Floating AI Assistant */}
-        <OmniAssistantChatBox
-          currentLanguage={language}
-          onLanguageChange={setLanguage}
-          mode={currentUser ? 'full' : 'auth'}
-          onSwitchToRegister={() => setActiveView('register')}
-          onSwitchToLogin={() => setActiveView('login')}
-          onOpenIssuesHelp={() => setActiveView('issues')}
-          onDemoLogin={handleUserDemoLogin}
-        />
+        {/* Global Floating AI Assistant for Auth and non-dashboard pages */}
+        {activeView !== 'dashboard' && (
+          <OmniAssistantChatBox
+            currentLanguage={language}
+            onLanguageChange={setLanguage}
+            mode={currentUser ? 'full' : 'auth'}
+            onSwitchToRegister={() => setActiveView('register')}
+            onSwitchToLogin={() => setActiveView('login')}
+            onOpenIssuesHelp={() => setActiveView('issues')}
+            onDemoLogin={handleUserDemoLogin}
+          />
+        )}
       </div>
     </ErrorBoundary>
   );
