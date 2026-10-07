@@ -27,6 +27,8 @@ import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminTrustManagement } from './AdminTrustManagement';
 import { AdminPresenceDashboard } from './AdminPresenceDashboard';
+import { AdminUserInspectionModal } from './AdminUserInspectionModal';
+import { AdminEditUserModal } from './AdminEditUserModal';
 import { 
   Shield, 
   Users, 
@@ -51,7 +53,8 @@ import {
   LogOut,
   FileText,
   Activity,
-  Award
+  Award,
+  Edit
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -102,14 +105,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [postSearch, setPostSearch] = useState('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
+  // User inspection and editing modal states
+  const [inspectingUser, setInspectingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+
   const showNotification = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 4000);
   };
 
-  // User Actions
+  // User Actions: Approve, Block, Unblock, Edit, Delete
   const handleApproveUser = async (user: User) => {
-    const updated: User = { ...user, status: 'approved' };
+    const updated: User = { 
+      ...user, 
+      status: 'approved',
+      isBlocked: false,
+      approvedAt: new Date().toISOString()
+    };
     if (setUsers) {
       setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
     }
@@ -119,6 +131,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       console.warn('Firestore update error:', e);
     }
     showNotification(`✅ ${user.name} ගේ ගිණුම සාර්ථකව අනුමත කරන ලදී.`);
+  };
+
+  const handleBlockUser = async (user: User, reason: string) => {
+    const updated: User = { 
+      ...user, 
+      status: 'blocked',
+      isBlocked: true,
+      blockedReason: reason || 'පරිපාලක විසින් බ්ලොක් කරන ලදී.',
+      blockedAt: new Date().toISOString()
+    };
+    if (setUsers) {
+      setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
+    }
+    try {
+      await syncUserProfileToFirestore(updated);
+    } catch (e) {
+      console.warn('Firestore block error:', e);
+    }
+    showNotification(`🚫 ${user.name} ගේ ගිණුම බ්ලොක් කරන ලදී.`);
+  };
+
+  const handleUnblockUser = async (user: User) => {
+    const updated: User = { 
+      ...user, 
+      status: 'approved',
+      isBlocked: false,
+      blockedReason: '',
+      updatedAt: new Date().toISOString()
+    };
+    if (setUsers) {
+      setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
+    }
+    try {
+      await syncUserProfileToFirestore(updated);
+    } catch (e) {
+      console.warn('Firestore unblock error:', e);
+    }
+    showNotification(`🔓 ${user.name} ගේ බ්ලොක් ඉවත් කර අනුමත කරන ලදී.`);
+  };
+
+  const handleSaveEditedUser = async (updated: User) => {
+    if (setUsers) {
+      setUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
+    }
+    try {
+      await syncUserProfileToFirestore(updated);
+    } catch (e) {
+      console.warn('Firestore save edited user error:', e);
+    }
+    showNotification(`💾 ${updated.name} ගේ තොරතුරු සාර්ථකව යාවත්කාලීන කරන ලදී.`);
   };
 
   const handleRejectUser = async (user: User) => {
@@ -352,83 +414,168 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 පරිශීලකයින් හමු නොවීය.
               </div>
             ) : (
-              filteredUsers.map(u => (
-                <div
-                  key={u.id}
-                  className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#143321] space-y-3 shadow-2xs hover:border-emerald-500/50 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center shrink-0">
-                        {u.name?.charAt(0) || '👤'}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
-                          {u.name}
-                        </h4>
-                        <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold block">
-                          NIC: {u.nicNumber || u.userId || 'N/A'}
+              filteredUsers.map(u => {
+                const nicPhoto = u.nicFrontPhotoUrl || u.idCardPhotoUrl || u.photoUrl;
+                const userNic = u.nicNumber || u.nic || u.userId || 'N/A';
+                const isBlocked = u.status === 'blocked' || u.isBlocked === true;
+
+                return (
+                  <div
+                    key={u.id}
+                    className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#143321] space-y-3 shadow-2xs hover:border-emerald-500/50 transition-all flex flex-col justify-between"
+                  >
+                    <div className="space-y-2.5">
+                      {/* User Avatar + Name + Status */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center shrink-0 shadow-sm">
+                            {u.name?.charAt(0) || '👤'}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
+                              {u.name}
+                            </h4>
+                            <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold block">
+                              NIC: {userNic}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase shrink-0 ${
+                            u.status === 'approved'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : u.status === 'pending'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 animate-pulse'
+                              : isBlocked
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {isBlocked ? 'Blocked' : u.status}
                         </span>
                       </div>
+
+                      {/* 🪪 Uploaded NIC Photo Preview Box */}
+                      {nicPhoto ? (
+                        <div 
+                          onClick={() => setInspectingUser(u)}
+                          className="p-2 rounded-xl bg-white dark:bg-[#0e2217] border border-emerald-500/30 flex items-center justify-between gap-2 cursor-pointer hover:border-emerald-500 transition-all group"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img
+                              src={nicPhoto}
+                              alt="NIC"
+                              className="w-12 h-8 rounded-lg object-cover border border-slate-200 dark:border-emerald-900/60 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <span className="text-[11px] font-bold text-slate-800 dark:text-emerald-200 flex items-center gap-1">
+                                <span>🪪 හැඳුනුම්පත් ඡායාරූපය</span>
+                              </span>
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block group-hover:underline">
+                                විශාල කර බලන්න 🔍
+                              </span>
+                            </div>
+                          </div>
+                          <Eye className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+                        </div>
+                      ) : (
+                        <div className="p-2 rounded-xl bg-rose-500/5 border border-rose-500/20 flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>හැඳුනුම්පත් ඡායාරූපයක් නොමැත</span>
+                        </div>
+                      )}
+
+                      {/* Contact and Address */}
+                      <div className="text-[11px] space-y-1 text-slate-600 dark:text-slate-300 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-mono">{u.phone || u.whatsappNumber || 'දුරකථනය නොමැත'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{u.address || u.district || 'ලිපිනය නොමැත'}</span>
+                        </div>
+                        {isBlocked && u.blockedReason && (
+                          <div className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">
+                            ⚠️ හේතුව: {u.blockedReason}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                        u.status === 'approved'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                          : u.status === 'pending'
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 animate-pulse'
-                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                      }`}
-                    >
-                      {u.status}
-                    </span>
-                  </div>
+                    {/* Actions Toolbar */}
+                    <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-200 dark:border-slate-800 flex-wrap">
+                      {/* Inspect & Verify NIC Button */}
+                      <button
+                        type="button"
+                        onClick={() => setInspectingUser(u)}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="හැඳුනුම්පත සහ තොරතුරු පරීක්ෂාව"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>විස්තර & NIC</span>
+                      </button>
 
-                  <div className="text-[11px] space-y-1 text-slate-600 dark:text-slate-300 font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{u.phone || u.whatsappNumber || 'දුරකථනය නොමැත'}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="truncate">{u.address || u.district || 'ලිපිනය නොමැත'}</span>
-                    </div>
-                  </div>
+                      {/* Edit Details Button */}
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(u)}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#11291d] dark:hover:bg-[#183d2a] text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="සාමාජික තොරතුරු වෙනස් කරන්න"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>සංස්කරණය</span>
+                      </button>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
-                    {u.status === 'pending' && (
-                      <>
+                      {/* Pending: Accept button */}
+                      {u.status === 'pending' && (
                         <button
                           type="button"
                           onClick={() => handleApproveUser(u)}
-                          className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors flex items-center justify-center gap-1"
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors flex items-center gap-1 cursor-pointer ml-auto"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>අනුමත කරන්න</span>
+                          <span>Accept</span>
                         </button>
+                      )}
+
+                      {/* Approved: Block button */}
+                      {u.status === 'approved' && !isBlocked && (
                         <button
                           type="button"
-                          onClick={() => handleRejectUser(u)}
-                          className="px-3 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs transition-colors"
+                          onClick={() => setInspectingUser(u)}
+                          className="px-2 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-xs transition-colors cursor-pointer ml-auto"
+                          title="ගිණුම බ්ලොක් කරන්න"
                         >
-                          ප්‍රතික්ෂේප
+                          <span>Block</span>
                         </button>
-                      </>
-                    )}
+                      )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteUserAction(u)}
-                      className="p-1.5 rounded-xl bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 dark:bg-[#11291d] transition-colors ml-auto"
-                      title="පරිශීලකයා මකා දමන්න"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      {/* Blocked: Unblock button */}
+                      {isBlocked && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnblockUser(u)}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors flex items-center gap-1 cursor-pointer ml-auto"
+                        >
+                          <span>Unblock</span>
+                        </button>
+                      )}
+
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUserAction(u)}
+                        className="p-1.5 rounded-xl bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-600 dark:bg-[#11291d] transition-colors"
+                        title="පරිශීලකයා මකා දමන්න"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -562,6 +709,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {activeTab === 'presence' && (
         <AdminPresenceDashboard
           users={users}
+          language={language}
+        />
+      )}
+
+      {/* 🪪 Member Inspection & NIC Verification Modal */}
+      {inspectingUser && (
+        <AdminUserInspectionModal
+          user={inspectingUser}
+          isOpen={Boolean(inspectingUser)}
+          onClose={() => setInspectingUser(null)}
+          onApprove={handleApproveUser}
+          onBlock={handleBlockUser}
+          onUnblock={handleUnblockUser}
+          onEdit={(u) => {
+            setInspectingUser(null);
+            setEditingUser(u);
+          }}
+          onDelete={handleDeleteUserAction}
+          language={language}
+        />
+      )}
+
+      {/* ✏️ Member Details Edit Modal */}
+      {editingUser && (
+        <AdminEditUserModal
+          user={editingUser}
+          isOpen={Boolean(editingUser)}
+          onClose={() => setEditingUser(null)}
+          onSave={handleSaveEditedUser}
           language={language}
         />
       )}
