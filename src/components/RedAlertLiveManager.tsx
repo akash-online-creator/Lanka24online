@@ -152,6 +152,19 @@ export const RedAlertLiveManager: React.FC<Props> = ({
           startEmergencySiren();
           setIsSirenActive(true);
           triggerPopup(`🚨 අවධානය දෙන්න: ඔබේ ස්ථානයට කි.මී. ${distanceKm.toFixed(1)} ක් නුදුරින් ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
+        } else if (!isDismissed) {
+          triggerBrowserNotification({
+            id: `alert-new-${currentActive.id || Date.now()}`,
+            type: 'emergency_blood',
+            title: `🚨 නව ආපදා අනතුරු ඇඟවීමක්: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
+            message: `📍 ${currentActive.locationName || 'ශ්‍රී ලංකාව'} ප්‍රදේශයෙන් හදිසි ආපදාවක් වාර්තා වී ඇත.`,
+            locationName: currentActive.locationName,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            badgeText: 'SOS',
+            targetModal: 'red_alert',
+            targetPostId: currentActive.id,
+          });
         }
       }
 
