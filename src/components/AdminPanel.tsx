@@ -322,6 +322,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* 📊 Live Memory & Storage Meter */}
+      <MemoryStorageBar 
+        helpPosts={helpPosts} 
+        users={users} 
+        issues={issues} 
+      />
+
       {/* Navigation Tabs Bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {[

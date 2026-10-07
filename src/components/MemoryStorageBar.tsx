@@ -1,6 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Database, HardDrive, Server, RefreshCw, Layers, CheckCircle2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Database, 
+  HardDrive, 
+  Server, 
+  RefreshCw, 
+  Layers, 
+  CheckCircle2, 
+  AlertCircle, 
+  Info, 
+  Sparkles,
+  Download,
+  Upload,
+  ShieldCheck
+} from 'lucide-react';
 import { User, HelpPost, CategoryItem, TagItem, Issue, BlockedCredential } from '../types';
+import { restorePostsBackupData, syncUserProfileToFirestore } from '../lib/firebase';
 
 interface MemoryStorageBarProps {
   helpPosts: HelpPost[];
@@ -95,6 +109,81 @@ export const MemoryStorageBar: React.FC<MemoryStorageBarProps> = ({
     setTimeout(() => {
       setIsRefreshing(false);
     }, 400);
+  };
+
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadFullBackup = () => {
+    try {
+      const backupData = {
+        exportVersion: '1.0',
+        exportedAt: new Date().toISOString(),
+        appName: 'Sahaya Sewa (සහය සේවා)',
+        totalRecords: (helpPosts?.length || 0) + (users?.length || 0),
+        data: {
+          users: users || [],
+          helpPosts: helpPosts || [],
+          categoryItems: categoryItems || [],
+          tagItems: tagItems || [],
+          issues: issues || [],
+          blockedCredentials: blockedCredentials || [],
+        },
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateTag = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `sahaya_sewa_database_backup_${dateTag}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupStatus('✅ සම්පූර්ණ දත්ත Backup ගොනුව සාර්ථකව Download විය.');
+      setTimeout(() => setBackupStatus(null), 4000);
+    } catch (err: any) {
+      setBackupStatus(`❌ Backup ගැනීමේදී දෝෂයක්: ${err?.message || err}`);
+    }
+  };
+
+  const handleRestoreBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm(`"${file.name}" ගොනුවෙන් දත්ත නැවත Restore කිරීමට ඔබට විශ්වාසද?`)) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setBackupStatus('⏳ දත්ත Restore කරමින් පවතී...');
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed.data || parsed;
+
+      if (payload.helpPosts && Array.isArray(payload.helpPosts)) {
+        await restorePostsBackupData(payload.helpPosts);
+      }
+
+      if (payload.users && Array.isArray(payload.users)) {
+        for (const u of payload.users) {
+          if (u && u.id) {
+            await syncUserProfileToFirestore(u);
+          }
+        }
+      }
+
+      setBackupStatus('✅ දත්ත සාර්ථකව Restore කරන ලදී!');
+      setTimeout(() => setBackupStatus(null), 5000);
+    } catch (err: any) {
+      setBackupStatus(`❌ Restore කිරීමේදී දෝෂයක්: ${err?.message || 'ගොනුව නිවැරදි JSON ආකෘතියේ නොවේ.'}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const formatBytes = (bytes: number): string => {
@@ -334,10 +423,56 @@ export const MemoryStorageBar: React.FC<MemoryStorageBarProps> = ({
             </div>
           </div>
 
+          <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-slate-200">
+                  ආපදා උපස්ථ සහ ප්‍රතිසාධනය (Database Backup & Disaster Recovery):
+                </span>
+              </div>
+
+              {backupStatus && (
+                <span className="text-[11px] font-bold text-amber-300 animate-fadeIn">
+                  {backupStatus}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 1-Click Backup Download */}
+              <button
+                type="button"
+                onClick={handleDownloadFullBackup}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                <span>සම්පූර්ණ දත්ත Backup එකක් බාගත කරන්න (Download JSON)</span>
+              </button>
+
+              {/* 1-Click Backup Restore */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleRestoreBackupFile}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-600 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Upload className="w-4 h-4 text-teal-400" />
+                <span>Backup එකකින් Restore කරන්න</span>
+              </button>
+            </div>
+          </div>
+
           <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-emerald-200 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <p className="leading-relaxed text-[11px]">
-              ඔබගේ Cloud Firestore Database මතකය ස්ථිරව ආරක්ෂිතව පවතින අතර, 1.00 GB ප්‍රමාණයක දත්ත ගබඩා කිරීමේ ඉඩ ප්‍රමාණයක් පවතී. දත්ත සංඛ්‍යාව ඉහළ යන විට මෙම Memory Bar එක සජීවීව (Real-time) යාවත්කාලීන වේ.
+              ඔබගේ Cloud Firestore Database මතකය Google Cloud Multi-Zone Servers මඟින් ස්ථිරව ආරක්ෂිතව පවතින අතර, 1.00 GB ප්‍රමාණයක දත්ත ගබඩා කිරීමේ ඉඩ ප්‍රමාණයක් පවතී. ඕනෑම හදිසි අවස්ථාවකදී භාවිතයට සම්පූර්ණ දත්ත Backup පිටපතක් මෙතැනින් බාගත කර තබාගත හැක.
             </p>
           </div>
         </div>
