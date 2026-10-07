@@ -62,15 +62,10 @@ export const App: React.FC = () => {
   // Application Data State (Initial load filtered against permanent deletion blacklist)
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
-    let savedPosts: HelpPost[] = [];
     try {
-      const raw = localStorage.getItem('sahaya_help_posts');
-      if (raw) savedPosts = JSON.parse(raw);
+      localStorage.removeItem('sahaya_help_posts');
     } catch {}
-    const map = new Map<string, HelpPost>();
-    initialHelpPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
-    savedPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
-    return filterNonDeletedPosts(Array.from(map.values()));
+    return filterNonDeletedPosts(initialHelpPosts);
   });
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -120,14 +115,17 @@ export const App: React.FC = () => {
       downloadPostBackupJson(postObj);
     }
 
-    // 3. LocalStorage Blacklist කිරීම
+    // 3. LocalStorage Blacklist & Purge local memory
     addDeletedPostId(postId);
+    try {
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
 
     // 4. Real-time UI State Refresh
-    setHelpPosts((prev) => filterNonDeletedPosts(prev.filter((p) => p && p.id !== postId)));
+    setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
     window.dispatchEvent(new Event('sahaya_post_deleted'));
 
-    // 3. Firestore Database එකෙන් සදහටම මකා දැමීම
+    // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
@@ -168,17 +166,16 @@ export const App: React.FC = () => {
     });
 
     const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
-      let savedPosts: HelpPost[] = [];
+      // Purge stale local memory cache
       try {
-        const raw = localStorage.getItem('sahaya_help_posts');
-        if (raw) savedPosts = JSON.parse(raw);
+        localStorage.removeItem('sahaya_help_posts');
       } catch {}
-      const map = new Map<string, HelpPost>();
-      initialHelpPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
-      savedPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
-      (dbPosts || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
-      const sanitized = filterNonDeletedPosts(Array.from(map.values()));
-      setHelpPosts(sanitized);
+
+      if (dbPosts) {
+        // Firestore is the authoritative source of truth: honor all deletions permanently
+        const sanitized = filterNonDeletedPosts(dbPosts);
+        setHelpPosts(sanitized);
+      }
     });
 
     const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {

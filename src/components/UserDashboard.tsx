@@ -274,23 +274,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Help Posts Feed State (Synced with Firestore Database & Parent App)
   const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(() => {
-    const saved = localStorage.getItem('sahaya_help_posts');
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return filterNonDeletedPosts(parsed);
-      } catch (e) { /* ignore */ }
-    }
+    try {
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
     return filterNonDeletedPosts(initialHelpPosts);
   });
 
-  // Effective synchronized help posts list
+  // Effective synchronized help posts list: prefer propHelpPosts directly from parent
   const helpPosts = useMemo(() => {
-    const base = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
-    const map = new Map<string, HelpPost>();
-    (localHelpPosts || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
-    (base || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
-    return filterNonDeletedPosts(Array.from(map.values()));
+    const list = propHelpPosts !== undefined ? propHelpPosts : localHelpPosts;
+    return filterNonDeletedPosts(list || []);
   }, [propHelpPosts, localHelpPosts]);
 
   // Real-time Firestore subscription if not provided by parent
@@ -769,17 +762,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       downloadPostBackupJson(postToDelete);
     }
 
-    // 3. LocalStorage Blacklist
+    // 3. LocalStorage Blacklist & Purge local memory
     addDeletedPostId(postId);
+    try {
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
 
-    // 4. Immediately remove from local state and update local storage
-    setLocalHelpPosts((prev) => {
-      const updated = (prev || []).filter((p) => p && p.id !== postId);
-      try {
-        localStorage.setItem('sahaya_help_posts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+    // 4. Immediately remove from local state
+    setLocalHelpPosts((prev) => (prev || []).filter((p) => p && p.id !== postId));
 
     if (propOnDeletePost) {
       propOnDeletePost(postId);
@@ -826,10 +816,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   useEffect(() => {
     localStorage.setItem('sahaya_current_location', JSON.stringify(currentLocation));
   }, [currentLocation]);
-
-  useEffect(() => {
-    localStorage.setItem('sahaya_help_posts', JSON.stringify(helpPosts));
-  }, [helpPosts]);
 
   // Recalculate distance from current active location
   const getPostDistance = (post: HelpPost) => {

@@ -228,6 +228,9 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [showPinSetupModal, setShowPinSetupModal] = useState(false);
   const [hasStoredDevicePin, setHasStoredDevicePin] = useState(() => !!getStoredDevicePin());
 
+  // Siren Audio Test State
+  const [isTestingSiren, setIsTestingSiren] = useState(false);
+
   // PWA App Install & Fullscreen Modal State
   const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
 
@@ -253,6 +256,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       setShowDisable2FAConfirm(false);
       setShowPinSetupModal(false);
       setHasStoredDevicePin(!!getStoredDevicePin());
+      setIsTestingSiren(false);
+    } else {
+      stopEmergencySiren();
+      setIsTestingSiren(false);
     }
   }, [isOpen, user, initialTab]);
 
@@ -1784,11 +1791,71 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                 </div>
               </div>
 
+              {/* Test Siren Audio Section */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-red-600/10 via-rose-600/10 to-amber-600/10 border-2 border-red-500/40 dark:border-red-500/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 text-left">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 ${
+                    isTestingSiren
+                      ? 'bg-red-600 text-white shadow-lg animate-bounce'
+                      : 'bg-red-100 dark:bg-red-950 text-red-600 border border-red-300 dark:border-red-800'
+                  }`}>
+                    <Volume2 className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                      <span>{getLang('🚨 සයිරන් නාදය පරික්ෂා කිරීම', '🚨 Test Siren Sound Now', '🚨 சைரன் ஒலியை சோதிக்கவும்')}</span>
+                      {isTestingSiren && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black animate-pulse">
+                          PLAYING
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-zinc-400">
+                      {getLang(
+                        'සයිරන් නාදය ඔබගේ දුරකථනයේ නිවැරදිව වාදනය වන බව තහවුරු කර ගැනීමට මෙතනින් නාද කර බලන්න.',
+                        'Press button to test how the emergency fire siren sounds on this device.',
+                        'இந்த சாதனத்தில் அவசர சைரன் எவ்வாறு ஒலிக்கிறது என்பதை சோதிக்கவும்.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isTestingSiren) {
+                      stopEmergencySiren();
+                      setIsTestingSiren(false);
+                    } else {
+                      unlockAudio();
+                      startEmergencySiren();
+                      setIsTestingSiren(true);
+                    }
+                  }}
+                  className={`w-full sm:w-auto px-5 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg cursor-pointer transition-all active:scale-95 ${
+                    isTestingSiren
+                      ? 'bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 text-white border-2 border-red-500'
+                      : 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white'
+                  }`}
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>
+                    {isTestingSiren
+                      ? getLang('🛑 නවත්වන්න (Stop Sound)', '🛑 Stop Sound', '🛑 நிறுத்தவும்')
+                      : getLang('🔊 සයිරන් නාදය අසන්න (Play Test Siren)', '🔊 Play Test Siren', '🔊 சைரன் ஒலிக்கவும்')}
+                  </span>
+                </button>
+              </div>
+
               {/* Close / Done Button */}
               <div className="pt-2 flex items-center justify-end">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => {
+                    stopEmergencySiren();
+                    setIsTestingSiren(false);
+                    onClose();
+                  }}
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95"
                 >
                   {getLang('සම්පූර්ණයි (Done)', 'Done', 'முடிந்தது')}
