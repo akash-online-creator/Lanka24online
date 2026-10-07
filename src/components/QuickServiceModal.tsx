@@ -21,6 +21,7 @@ import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface QuickServiceModalProps {
   isOpen: boolean;
@@ -250,6 +251,8 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       return;
     }
 
+    const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+
     onSubmitPost({
       userName: currentUser?.name || 'පරිශීලක',
       userPhone: whatsappNumber.trim() || userWhatsAppNumber,
@@ -263,7 +266,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       helpersNeeded: helpersNeeded,
       helpersAccepted: 0,
       feeAgreed: true,
-      locationName: voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක'),
+      locationName: resolvedLocation,
       distanceKm: 0.8, // Immediate local radius
       lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
       lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
@@ -280,6 +283,16 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       voiceCoordinates: (voiceData as any)?.coords,
       isVoicePost: Boolean((voiceData as any)?.audioUrl),
       voiceTranscript: (voiceData as any)?.transcript,
+    });
+
+    // Broadcast FCM Push Notification for Quick Service
+    broadcastPushNotification({
+      category: 'quick_service',
+      title: `ක්ෂණික සේවා ඉල්ලීමක්: ${whatIsNeeded.trim().slice(0, 40)}`,
+      body: `${resolvedLocation} • ${whatHappened.trim().slice(0, 60)}`,
+      locationName: resolvedLocation,
+      urgency: 'high',
+      badgeText: 'ක්ෂණික සේවා'
     });
 
     // Reset and close

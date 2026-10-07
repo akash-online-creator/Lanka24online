@@ -23,6 +23,7 @@ import {
   Zap,
   Globe
 } from 'lucide-react';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface AdminPresenceDashboardProps {
   users?: any[];
@@ -58,9 +59,20 @@ export const AdminPresenceDashboard: React.FC<AdminPresenceDashboardProps> = ({
   const handleSendBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
     if (!broadcastMessage.trim()) return;
+    const msg = broadcastMessage.trim();
     if (onSendAdminNotice) {
-      onSendAdminNotice(broadcastMessage.trim());
+      onSendAdminNotice(msg);
     }
+
+    // Broadcast FCM Push Notification to all devices
+    broadcastPushNotification({
+      category: 'admin_broadcast',
+      title: 'පරිපාලක හදිසි නිවේදනයකි (Admin Notice)',
+      body: msg,
+      urgency: 'high',
+      badgeText: 'ADMIN'
+    });
+
     setBroadcastSent(true);
     setBroadcastMessage('');
     setTimeout(() => setBroadcastSent(false), 4000);

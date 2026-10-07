@@ -25,10 +25,10 @@ self.addEventListener('activate', (event) => {
 });
 
 // ==============================================================
-// 🚨 BACKGROUND PUSH & SYSTEM NOTIFICATION HANDLERS
+// 🚨 BACKGROUND FCM PUSH & WORKMANAGER / SERVICE WORKER HANDLERS
 // ==============================================================
 
-// 1. Push Event (Web Push notifications when app is closed)
+// 1. Push Event (Web Push / FCM notifications when app is closed or backgrounded)
 self.addEventListener('push', (event) => {
   let data = {};
   if (event.data) {
@@ -39,23 +39,86 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = data.title || '🚨 සහය සේවා (Sahaya Seva)';
+  // Support FCM data payload wrapper or direct payload
+  const payload = data.data || data;
+  const category = payload.category || 'admin_broadcast';
+  const title = payload.title || data.notification?.title || data.title || '🚨 සහය සේවා (Sahaya Seva)';
+  const body = payload.body || payload.message || data.notification?.body || data.body || 'හදිසි ආපදාවක් හෝ නව ප්‍රජා ඉල්ලීමක් ඇත.';
+
+  // Determine category-specific icons, vibration, and actions
+  let vibrationPattern = [300, 100, 300, 100, 500];
+  let requireInteraction = false;
+  let actions = [
+    { action: 'open', title: '👁️ විස්තර බලන්න (Open App)' },
+    { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' }
+  ];
+
+  if (category === 'red_alert') {
+    vibrationPattern = [1000, 200, 1000, 200, 1500];
+    requireInteraction = true;
+    actions = [
+      { action: 'open_red_alert', title: '🚨 රතු එළිය බලන්න' },
+      { action: 'stop', title: '🔇 ශබ්දය නවත්වන්න' }
+    ];
+  } else if (category === 'sos_live') {
+    vibrationPattern = [500, 150, 500, 150, 800];
+    requireInteraction = true;
+    actions = [
+      { action: 'open_sos', title: '📡 SOS සජීවී සිතියම' },
+      { action: 'dismiss', title: 'ඉවත් කරන්න' }
+    ];
+  } else if (category === 'quick_service') {
+    vibrationPattern = [200, 100, 200];
+    actions = [
+      { action: 'open_quick_service', title: '⚡ ක්ෂණික සේවය බලන්න' },
+      { action: 'dismiss', title: 'පසුවට' }
+    ];
+  } else if (category === 'group_work') {
+    vibrationPattern = [150, 100, 150];
+    actions = [
+      { action: 'open_group_work', title: '👥 ශ්‍රමදානයට එක්වන්න' },
+      { action: 'dismiss', title: 'පසුවට' }
+    ];
+  } else if (category === 'admin_broadcast') {
+    vibrationPattern = [300, 100, 300];
+    actions = [
+      { action: 'open_admin', title: '🛡️ නිවේදනය බලන්න' },
+      { action: 'dismiss', title: 'හරි' }
+    ];
+  }
+
   const options = {
-    body: data.body || data.message || 'හදිසි ආපදාවක් හෝ නව ප්‍රජා ඉල්ලීමක් ඇත.',
-    icon: data.icon || '/logo.jpg',
+    body,
+    icon: '/logo.jpg',
     badge: '/logo.jpg',
-    image: data.image || undefined,
-    tag: data.tag || `sahaya-notif-${Date.now()}`,
-    data: data.data || { url: '/', targetModal: data.targetModal, alertId: data.alertId },
-    vibrate: [300, 100, 300, 100, 500],
-    requireInteraction: data.requireInteraction !== false,
-    actions: [
-      { action: 'open', title: '👁️ විස්තර බලන්න (Open App)' },
-      { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' }
-    ]
+    image: payload.image || undefined,
+    tag: payload.tag || `sahaya-fcm-${category}-${Date.now()}`,
+    data: {
+      url: '/',
+      category,
+      alertId: payload.alertId,
+      postId: payload.postId,
+      groupId: payload.groupId,
+      targetModal: category === 'red_alert' ? 'red_alert' : category === 'quick_service' ? 'quick_service' : category === 'group_work' ? 'group_work' : 'admin'
+    },
+    vibrate: vibrationPattern,
+    requireInteraction,
+    actions
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(title, options).then(() => {
+      // Broadcast to open clients if any exist
+      return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          client.postMessage({
+            type: 'PUSH_NOTIFICATION_RECEIVED',
+            payload: { category, title, body, ...payload }
+          });
+        }
+      });
+    })
+  );
 });
 
 // 2. Notification Click Event (Opens / focuses the App on click or stops audio)

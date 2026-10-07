@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   AlertTriangle, 
@@ -24,6 +24,7 @@ import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
 import { verifyCurrentUserPin, getStoredDevicePin, saveDevicePin } from '../utils/devicePinManager';
 import { startEmergencySiren } from '../utils/sirenAudio';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface RedAlertCreateModalProps {
   isOpen: boolean;
@@ -77,18 +78,20 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  // 🔢 PIN Dial Pad Dialog Box State
+  // 🔢 PIN Dial Pad State & Synchronous Ref (prevents dropped keypresses)
   const [showPinDialModal, setShowPinDialModal] = useState(false);
   const [dialPin, setDialPin] = useState('');
   const [dialPinError, setDialPinError] = useState<string | null>(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [hasStoredPin, setHasStoredPin] = useState<boolean>(() => Boolean(getStoredDevicePin()));
+  const pinBufferRef = useRef('');
 
   // Auto scan GPS ONCE when modal opens
   useEffect(() => {
     if (isOpen) {
       setHasStoredPin(Boolean(getStoredDevicePin()));
       setShowPinDialModal(false);
+      pinBufferRef.current = '';
       setDialPin('');
       setDialPinError(null);
       if (currentLocation?.lat && currentLocation?.lng) {
@@ -173,15 +176,31 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
       return;
     }
 
+    pinBufferRef.current = '';
     setDialPin('');
     setDialPinError(null);
     setShowPinDialModal(true);
   };
 
-  // Step 2: Handle Dial Pad Digit Click
+  // Step 2: Handle Dial Pad Digit Click with Synchronous Buffer & Tactile Feedback
+  const lastTouchTimeRef = useRef<number>(0);
+
   const handleDialDigit = (digit: string) => {
-    if (dialPin.length >= 4 || isVerifyingPin) return;
-    const nextPin = dialPin + digit;
+    const now = Date.now();
+    // Guard against duplicate rapid ghost clicks within 80ms while capturing fast typing
+    if (now - lastTouchTimeRef.current < 60) return;
+    lastTouchTimeRef.current = now;
+
+    if (isVerifyingPin) return;
+    if (pinBufferRef.current.length >= 4) return;
+
+    // Haptic touch vibration on keypress
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(35); } catch {}
+    }
+
+    const nextPin = pinBufferRef.current + digit;
+    pinBufferRef.current = nextPin;
     setDialPin(nextPin);
     setDialPinError(null);
 
@@ -194,17 +213,25 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   // Step 3: Handle Dial Pad Clear & Backspace
   const handleDialBackspace = () => {
     if (isVerifyingPin) return;
-    setDialPin((prev) => prev.slice(0, -1));
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(30); } catch {}
+    }
+    pinBufferRef.current = pinBufferRef.current.slice(0, -1);
+    setDialPin(pinBufferRef.current);
     setDialPinError(null);
   };
 
   const handleDialClear = () => {
     if (isVerifyingPin) return;
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(30); } catch {}
+    }
+    pinBufferRef.current = '';
     setDialPin('');
     setDialPinError(null);
   };
 
-  // Step 4: Execute PIN Verification & Firestore Publish
+  // Step 4: Execute PIN Verification & Firestore Publish (Starts siren immediately in 0ms)
   const executePinVerificationAndPublish = async (enteredPin: string) => {
     setIsVerifyingPin(true);
     setDialPinError(null);
@@ -231,13 +258,19 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         const verification = await verifyCurrentUserPin(enteredPin, currentUser || null);
         if (!verification.success) {
           setDialPinError('❌ ඔබ ඇතුළත් කළ Device Quick PIN අංකය වැරදියි!');
+          pinBufferRef.current = '';
           setDialPin('');
           setIsVerifyingPin(false);
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate([150, 100, 150]); } catch {}
+          }
           return;
         }
       }
 
-      // PIN is 100% verified -> Publish Red Alert to Firestore
+      // 🚨 PIN VERIFIED: Start Siren & Vibration IMMEDIATELY in 0ms right on user touch!
+      startEmergencySiren();
+
       setIsSubmitting(true);
       setShowPinDialModal(false);
 
@@ -297,16 +330,26 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         }
       } catch (_) {}
 
-      // Start Siren
-      startEmergencySiren();
-
-      // Trigger local notification
+      // Trigger local background notification
       triggerPickMeAlert({
         kind: 'emergency_blood',
         title: `🚨 ${titleSi}`,
         message: `${locationName.trim()} ප්‍රදේශයේ හදිසි ආපදා තත්ත්වයක් වාර්තා විය.`,
         locationName: locationName.trim(),
         forceRingtone: true,
+      });
+
+      // Broadcast FCM Push Notification to nearby devices and background workers
+      broadcastPushNotification({
+        category: 'red_alert',
+        title: titleSi,
+        body: `${locationName.trim()} ප්‍රදේශයෙන් ${titleSi} හදිසි ආපදාවක් වාර්තා වී ඇත.`,
+        alertId: docId,
+        locationName: locationName.trim(),
+        latitude,
+        longitude,
+        urgency: 'critical',
+        badgeText: 'රතු එළිය'
       });
 
       setSubmitSuccess(true);
@@ -565,46 +608,46 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       </div>
 
-      {/* 🔢 BEAUTIFUL & LARGE DEVICE QUICK PIN DIAL PAD DIALOG BOX */}
+      {/* 🔢 GREEN & WHITE THEMED BEAUTIFUL & LARGE DEVICE QUICK PIN DIAL PAD */}
       {showPinDialModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-slate-950 border-2 border-red-600/80 rounded-3xl p-6 sm:p-8 w-full max-w-sm sm:max-w-md shadow-[0_0_60px_rgba(220,38,38,0.5)] text-white space-y-5 relative">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#061c12] border-3 border-emerald-500 dark:border-emerald-500 rounded-3xl p-5 sm:p-7 w-full max-w-sm sm:max-w-md shadow-2xl shadow-emerald-950/40 text-slate-900 dark:text-white space-y-4 sm:space-y-5 relative select-none">
             
             {/* Close Dial Pad */}
             <button
               type="button"
               onClick={() => setShowPinDialModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 transition-colors cursor-pointer"
+              className="absolute top-4 right-4 p-2 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            {/* Header */}
+            {/* Green Header */}
             <div className="text-center space-y-1.5 pt-1">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-red-950/90 border border-red-600/60 flex items-center justify-center text-amber-300 shadow-inner">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30 border-2 border-white dark:border-emerald-300/40">
                 <Lock className="w-7 h-7" />
               </div>
-              <h3 className="font-black text-lg sm:text-xl text-white">
+              <h3 className="font-black text-xl sm:text-2xl text-emerald-950 dark:text-emerald-100 tracking-tight">
                 {hasStoredPin ? 'Device Quick PIN තහවුරු කරන්න' : 'නව Device Quick PIN එකක් සකසන්න'}
               </h3>
-              <p className="text-xs text-zinc-400 leading-tight max-w-xs mx-auto">
+              <p className="text-xs sm:text-sm text-emerald-800/90 dark:text-emerald-300/90 leading-tight max-w-xs mx-auto font-medium">
                 {hasStoredPin 
                   ? 'Fake Alerts වැළැක්වීමට ඔබගේ අංක 4ක Quick PIN එක ඇතුළත් කරන්න.'
                   : 'මෙම Device එක සඳහා අංක 4ක නව PIN අංකයක් ඇතුළත් කර සකසන්න.'}
               </p>
             </div>
 
-            {/* 4 Pin Dots Display */}
-            <div className="flex justify-center items-center gap-4 sm:gap-5 py-3 bg-zinc-900/50 rounded-2xl border border-zinc-800/80">
+            {/* 4 Green Pin Dots Display */}
+            <div className="flex justify-center items-center gap-4 sm:gap-6 py-3.5 bg-emerald-50/90 dark:bg-emerald-950/60 rounded-2xl border-2 border-emerald-300 dark:border-emerald-800 shadow-inner">
               {[0, 1, 2, 3].map((idx) => {
                 const isFilled = dialPin.length > idx;
                 return (
                   <div
                     key={idx}
-                    className={`w-5 h-5 rounded-full transition-all duration-200 ${
+                    className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full transition-all duration-200 ${
                       isFilled
-                        ? 'bg-amber-400 ring-4 ring-amber-400/40 scale-125 shadow-lg shadow-amber-400/30'
-                        : 'bg-zinc-800 border-2 border-zinc-700'
+                        ? 'bg-emerald-600 ring-4 ring-emerald-400/50 scale-110 shadow-md shadow-emerald-600/40'
+                        : 'bg-white dark:bg-emerald-900/50 border-2 border-emerald-300 dark:border-emerald-700'
                     }`}
                   />
                 );
@@ -613,63 +656,111 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
             {/* Error message */}
             {dialPinError && (
-              <div className="p-2.5 bg-red-950/90 border border-red-500 rounded-xl text-center text-xs font-bold text-red-200 flex items-center justify-center gap-1.5 animate-shake">
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <div className="p-2.5 bg-rose-50 dark:bg-rose-950/80 border-2 border-rose-400 rounded-xl text-center text-xs font-bold text-rose-700 dark:text-rose-200 flex items-center justify-center gap-1.5 animate-shake">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>{dialPinError}</span>
               </div>
             )}
 
             {/* Loading Verification State */}
             {isVerifyingPin && (
-              <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-bold text-amber-300 py-1">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>PIN අංකය තහවුරු කරමින් පවතී...</span>
+              <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300 py-1">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                <span>PIN අංකය තහවුරු කරමින් සයිරන් නාද කරයි...</span>
               </div>
             )}
 
-            {/* 3x4 Large Numeric Touch Dial Pad */}
-            <div className="grid grid-cols-3 gap-3 sm:gap-3.5 pt-1">
+            {/* 3x4 Large Green & White Numeric Touch Dial Pad */}
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3 pt-1 select-none">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
                 <button
                   key={digit}
                   type="button"
                   disabled={isVerifyingPin}
-                  onClick={() => handleDialDigit(digit)}
-                  className="h-16 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white font-mono text-3xl sm:text-4xl font-black shadow-lg hover:border-red-500/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    handleDialDigit(digit);
+                  }}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    handleDialDigit(digit);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDialDigit(digit);
+                  }}
+                  style={{ touchAction: 'manipulation' }}
+                  className="h-16 sm:h-20 rounded-2xl bg-white dark:bg-[#0c291b] hover:bg-emerald-50 dark:hover:bg-emerald-900/60 active:bg-emerald-600 active:text-white dark:active:bg-emerald-600 border-2 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 font-mono text-3xl sm:text-4xl font-black shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center"
                 >
                   {digit}
                 </button>
               ))}
 
-              {/* Clear */}
+              {/* Clear Button */}
               <button
                 type="button"
                 disabled={isVerifyingPin}
-                onClick={handleDialClear}
-                className="h-16 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white font-bold text-xs sm:text-sm shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleDialClear();
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  handleDialClear();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDialClear();
+                }}
+                style={{ touchAction: 'manipulation' }}
+                className="h-16 sm:h-20 rounded-2xl bg-emerald-100/70 dark:bg-[#0a2317] hover:bg-emerald-200/80 dark:hover:bg-emerald-900/80 active:bg-emerald-600 active:text-white border-2 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200 font-bold text-xs sm:text-sm shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center"
               >
                 Clear
               </button>
 
-              {/* '0' */}
+              {/* '0' Key */}
               <button
                 type="button"
                 disabled={isVerifyingPin}
-                onClick={() => handleDialDigit('0')}
-                className="h-16 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white font-mono text-3xl sm:text-4xl font-black shadow-lg hover:border-red-500/60 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleDialDigit('0');
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  handleDialDigit('0');
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDialDigit('0');
+                }}
+                style={{ touchAction: 'manipulation' }}
+                className="h-16 sm:h-20 rounded-2xl bg-white dark:bg-[#0c291b] hover:bg-emerald-50 dark:hover:bg-emerald-900/60 active:bg-emerald-600 active:text-white dark:active:bg-emerald-600 border-2 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 font-mono text-3xl sm:text-4xl font-black shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center"
               >
                 0
               </button>
 
-              {/* Backspace */}
+              {/* Backspace Button */}
               <button
                 type="button"
                 disabled={isVerifyingPin}
-                onClick={handleDialBackspace}
-                className="h-16 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white font-bold shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleDialBackspace();
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  handleDialBackspace();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDialBackspace();
+                }}
+                style={{ touchAction: 'manipulation' }}
+                className="h-16 sm:h-20 rounded-2xl bg-emerald-100/70 dark:bg-[#0a2317] hover:bg-emerald-200/80 dark:hover:bg-emerald-900/80 active:bg-emerald-600 active:text-white border-2 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200 shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-center"
                 title="Backspace"
               >
-                <Delete className="w-6 h-6" />
+                <Delete className="w-6 h-6 sm:w-7 sm:h-7" />
               </button>
             </div>
 

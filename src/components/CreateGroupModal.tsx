@@ -43,6 +43,7 @@ import {
 import { compressImageFile } from '../utils/imageCompressor';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface CreateGroupModalProps {
   isOpen: boolean;
@@ -325,6 +326,16 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     }));
 
     saveGroupInvitesToStorage([...newNotifications, ...existingInvites]);
+
+    // Broadcast FCM Push Notification for Group Work
+    broadcastPushNotification({
+      category: 'group_work',
+      title: `නව කණ්ඩායම් වැඩ මුලපිරීමක්: ${newGroup.name}`,
+      body: `${currentUser?.name || 'පරිශීලක'} විසින් නව ශ්‍රමදාන/කණ්ඩායම් වැඩ ව්‍යාපෘතියක් නිර්මාණය කරන ලදී.`,
+      groupId: newGroup.id,
+      urgency: 'normal',
+      badgeText: 'කණ්ඩායම් වැඩ'
+    });
 
     setIsSubmitting(false);
     onGroupCreated(newGroup);

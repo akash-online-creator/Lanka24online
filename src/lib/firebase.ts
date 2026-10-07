@@ -53,20 +53,26 @@ const firebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-function initFirestoreInstance() {
-  const dbId = firebaseConfigJson.firestoreDatabaseId || undefined;
-  try {
-    return initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-    }, dbId);
-  } catch {
-    return dbId ? getFirestore(app, dbId) : getFirestore(app);
-  }
-}
-
-export const db = initFirestoreInstance();
+export const db = firebaseConfigJson.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// Test Firestore backend connection
+async function testConnection() {
+  try {
+    const { getDocFromServer } = await import('firebase/firestore');
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firestore offline mode active. Local cache will be used.');
+    }
+  }
+}
+if (typeof window !== 'undefined') {
+  testConnection();
+}
 
 export enum OperationType {
   CREATE = 'create',

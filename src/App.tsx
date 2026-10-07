@@ -22,6 +22,7 @@ import {
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
+import { initFcmNotificationService } from './utils/fcmNotificationService';
 
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
@@ -157,6 +158,9 @@ export const App: React.FC = () => {
 
   // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
+    // Initialize FCM & Background Push Worker
+    const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
+
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
       if (dbUsers && dbUsers.length > 0) {
         setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
@@ -186,6 +190,7 @@ export const App: React.FC = () => {
     });
 
     return () => {
+      unsubscribeFcm?.();
       unsubscribeUsers?.();
       unsubscribePosts?.();
       unsubscribeAlerts?.();

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface SosLiveTrackerModalProps {
   isOpen: boolean;
@@ -297,6 +298,19 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           setIsActive(true);
           setIsLocating(false);
           updateMapVisuals(lat, lng, acc);
+
+          // 📡 Broadcast FCM Push Notification for SOS Live Session
+          broadcastPushNotification({
+            category: 'sos_live',
+            title: `සජීවී SOS ආපදා ලුහුබැඳීම (${currentUser?.name || 'පරිශීලක'})`,
+            body: `${locationName || 'නොදන්නා ස්ථානය'} සිට ${newCode} සජීවී ආධාර ඉල්ලීමක් නිකුත් කර ඇත.`,
+            alertId: newSessionId,
+            locationName,
+            latitude: lat,
+            longitude: lng,
+            urgency: 'critical',
+            badgeText: 'SOS LIVE'
+          });
 
           // 📲 Automatic WhatsApp Trigger
           triggerWhatsAppShare(newSessionId, lat, lng, newCode, emergencyNote);
