@@ -350,7 +350,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         locationTimestamp: new Date().toISOString(),
         deviceInfo: deviceInfo || 'Web Browser',
         loginHistory: [],
-        aiScanResult,
+        aiScanResult: aiScanResult as any,
       };
 
       setPendingUserData(userPayload);

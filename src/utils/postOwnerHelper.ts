@@ -23,7 +23,7 @@ export const checkIsAdmin = (user: UserProfile | User | null | undefined): boole
   if (!user) return false;
   if (user.role === 'admin' || (user as any).isAdmin === true || (user as any).isSuperAdmin === true) return true;
   
-  const uid = ((user as any).userId || user.uid || '').trim().toUpperCase();
+  const uid = ((user as any).userId || (user as any).uid || '').trim().toUpperCase();
   const nic = ((user as any).nicNumber || '').trim().toUpperCase();
   const email = ((user as any).email || '').trim().toLowerCase();
   const id = ((user as any).id || '').trim();
@@ -47,7 +47,7 @@ export const checkIsPostOwner = (
 
   // 1. Primary check: Post's creator userId vs user's identifiers
   const postUserId = post.userId ? String(post.userId).trim() : '';
-  const currentUserId = (user as any).userId || user.uid ? String((user as any).userId || user.uid).trim() : '';
+  const currentUserId = (user as any).userId || (user as any).uid ? String((user as any).userId || (user as any).uid).trim() : '';
   const currentId = (user as any).id ? String((user as any).id).trim() : '';
 
   if (postUserId) {
@@ -93,7 +93,7 @@ export const canManagePost = (
 
   // postOrOwnerId එක string එකක් ලෙස ලැබී ඇත්නම් (Blueprint එක අනුව)
   if (typeof postOrOwnerId === 'string') {
-    const currentUserId = (user as any).userId || user.uid || (user as any).id || '';
+    const currentUserId = (user as any).userId || (user as any).uid || (user as any).id || '';
     return currentUserId.toString().trim() === postOrOwnerId.trim();
   }
 

@@ -21,7 +21,7 @@ import {
   deleteHelpPostFromFirestore
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
-import { addDeletedPostId, filterNonDeletedPosts } from './utils/deletedPostsManager';
+import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
@@ -60,7 +60,17 @@ export const App: React.FC = () => {
 
   // Application Data State (Initial load filtered against permanent deletion blacklist)
   const [users, setUsers] = useState<User[]>(initialUsers);
-  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => filterNonDeletedPosts(initialHelpPosts));
+  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
+    let savedPosts: HelpPost[] = [];
+    try {
+      const raw = localStorage.getItem('sahaya_help_posts');
+      if (raw) savedPosts = JSON.parse(raw);
+    } catch {}
+    const map = new Map<string, HelpPost>();
+    initialHelpPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+    savedPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+    return filterNonDeletedPosts(Array.from(map.values()));
+  });
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
 
@@ -98,24 +108,31 @@ export const App: React.FC = () => {
     setActiveView(view);
   }, []);
 
-  // Permanent Deletion Core Handler
-  const handleDeletePost = useCallback(async (postId: string) => {
-    // 1. LocalStorage එකේ ස්ථිරවම Blacklist කිරීම
+  // Permanent Deletion Core Handler (Workflow Steps 1 to 4)
+  const handleDeletePost = useCallback(async (target: string | HelpPost) => {
+    const postId = typeof target === 'string' ? target : target.id;
+    if (!postId) return;
+    const postObj = typeof target === 'object' ? target : helpPosts.find((p) => p && p.id === postId);
+
+    // 1 & 2. Auto JSON File Download (Device එකට Save වීම)
+    if (postObj) {
+      downloadPostBackupJson(postObj);
+    }
+
+    // 3. LocalStorage Blacklist කිරීම
     addDeletedPostId(postId);
 
-    // 2. State එකෙන් වහාම ඉවත් කිරීම (Instant UI update & Sanitization)
-    setHelpPosts((prev) => filterNonDeletedPosts(prev.filter((p) => p.id !== postId)));
-
-    // 3. Global Event එකක් Broadcast කිරීම
+    // 4. Real-time UI State Refresh
+    setHelpPosts((prev) => filterNonDeletedPosts(prev.filter((p) => p && p.id !== postId)));
     window.dispatchEvent(new Event('sahaya_post_deleted'));
 
-    // 4. Firestore Database එකෙන් සදහටම මකා දැමීම
+    // 3. Firestore Database එකෙන් සදහටම මකා දැමීම
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
       console.warn('Backend delete sync note:', err);
     }
-  }, []);
+  }, [helpPosts]);
 
   // Persist User Session to LocalStorage
   useEffect(() => {
@@ -147,10 +164,17 @@ export const App: React.FC = () => {
     });
 
     const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
-      if (dbPosts && dbPosts.length > 0) {
-        // Sanitize incoming Firestore real-time posts against local blacklist
-        setHelpPosts(filterNonDeletedPosts(dbPosts));
-      }
+      let savedPosts: HelpPost[] = [];
+      try {
+        const raw = localStorage.getItem('sahaya_help_posts');
+        if (raw) savedPosts = JSON.parse(raw);
+      } catch {}
+      const map = new Map<string, HelpPost>();
+      initialHelpPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+      savedPosts.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+      (dbPosts || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
+      const sanitized = filterNonDeletedPosts(Array.from(map.values()));
+      setHelpPosts(sanitized);
     });
 
     const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {

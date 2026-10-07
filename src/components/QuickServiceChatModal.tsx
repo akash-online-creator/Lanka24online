@@ -177,7 +177,7 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   const postAuthorPhone = normalizePhone(post.userPhone);
 
   const isPostAuthor = Boolean(
-    (user?.name && post.userName && user?.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
+    (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
     (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
     (currentUser.id && post.userId && currentUser.id === post.userId) ||
     (currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
@@ -433,9 +433,10 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
           {/* Chat Messages Feed */}
           <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#f6faf8] dark:bg-[#040e08]">
             {(messages || []).map((msg, msgIdx) => {
-              const isMe = 
-                (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user?.name.trim().toLowerCase()) ||
-                (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone);
+              const isMe = Boolean(
+                (currentUser.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+                (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone)
+              );
 
               const isSeeker = 
                 msg.senderRole === 'seeker' || 

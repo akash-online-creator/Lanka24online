@@ -91,6 +91,7 @@ interface HelpRequestsPageProps {
   getPostDistance: (post: HelpPost) => number;
   onOfferSupport: (post: HelpPost) => void;
   onEditPost: (post: HelpPost) => void;
+  onToggleHidePost?: (post: HelpPost) => void;
   onViewPost: (post: HelpPost) => void;
   onDeletePost: (post: HelpPost) => void;
   onOpenChat: (post: HelpPost) => void;
@@ -135,6 +136,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   getPostDistance,
   onOfferSupport,
   onEditPost,
+  onToggleHidePost,
   onViewPost,
   onDeletePost,
   onOpenChat,
@@ -354,7 +356,20 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   // 4. All other posts are sorted chronologically (newest first)
   // 5. Tab filter applied (All / Emergency only / Quick Services only / Saved posts only)
   const newsFeedSortedPosts = useMemo(() => {
-    const sourceList = (filteredPosts || []).filter((p): p is HelpPost => Boolean(p && typeof p === 'object' && p.id && !p.isDeleted && p.status !== 'deleted' && !isPostPermanentlyDeleted(p.id)));
+    const isAdminUser = Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
+    const sourceList = (filteredPosts || []).filter((p): p is HelpPost => {
+      if (!p || typeof p !== 'object' || !p.id || p.isDeleted || p.status === 'deleted' || isPostPermanentlyDeleted(p.id)) {
+        return false;
+      }
+      const isHidden = Boolean(p.isHidden || p.isHiddenByAdmin || p.status === 'hidden');
+      if (isHidden) {
+        const isOwner = checkIsPostOwner(user, p);
+        if (!isAdminUser && !isOwner) {
+          return false;
+        }
+      }
+      return true;
+    });
 
     let result = sourceList;
 
@@ -1302,6 +1317,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       onToggleSave={(p) => handleToggleSavePost(p)}
                       onOfferSupport={(p) => onOfferSupport(p)}
                       onEditPost={(p) => onEditPost(p)}
+                      onToggleHidePost={(p) => onToggleHidePost ? onToggleHidePost(p) : undefined}
                       onViewPost={(p) => onViewPost(p)}
                       onDeletePost={(p) => onDeletePost(p)}
                       onOpenChat={(p) => onOpenChat(p)}

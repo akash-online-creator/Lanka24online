@@ -379,6 +379,58 @@ export function isPostPermanentlyDeleted(postId: string): boolean {
   return getStoredDeletedPostIds().includes(postId);
 }
 
+/**
+ * Workflow Step 1 & 2:
+ * දැන්වීමක් මැකීමට පෙර එහි සියලු දත්ත (ID, Title, Details, Photos, Owner details)
+ * `deleted_post_[POST_ID]_[TIMESTAMP].json` ලෙස ස්වයංක්‍රීයව පරිශීලකයාගේ උපකරණයට Save/Download කරවීම.
+ */
+export function downloadPostBackupJson(post: HelpPost): boolean {
+  if (!post || typeof window === 'undefined') return false;
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeId = post.id || post.postCode || 'unknown';
+    const filename = `deleted_post_${safeId}_${timestamp}.json`;
+    
+    const pAny = post as any;
+    const backupPayload = {
+      backupType: 'DELETED_HELP_POST_BACKUP',
+      exportedAt: new Date().toISOString(),
+      postId: post.id,
+      postCode: post.postCode,
+      category: post.category,
+      title: pAny.title || post.whatHappened || '',
+      whatHappened: post.whatHappened,
+      whatIsNeeded: post.whatIsNeeded,
+      location: pAny.location || pAny.address || '',
+      district: pAny.district || '',
+      policeDivision: pAny.policeDivision || '',
+      userName: post.userName,
+      userPhone: post.userPhone,
+      userId: pAny.userId || '',
+      photos: pAny.photos || pAny.images || [],
+      tags: pAny.tags || [],
+      status: post.status,
+      createdAt: post.createdAt,
+      fullRecord: post
+    };
+
+    const jsonString = JSON.stringify(backupPayload, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    console.warn('downloadPostBackupJson error:', err);
+    return false;
+  }
+}
+
 export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boolean; status?: string }>(posts: T[]): T[] {
   if (!Array.isArray(posts)) return [];
   const deletedIds = new Set(getStoredDeletedPostIds());

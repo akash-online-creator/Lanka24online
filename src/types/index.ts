@@ -1,4 +1,4 @@
-export type Role = 'user' | 'admin';
+export type Role = 'user' | 'admin' | 'super_admin';
 export type UserStatus = 'pending' | 'approved' | 'rejected' | 'blocked';
 export type IssueStatus = 'pending' | 'in_progress' | 'resolved';
 export type Language = 'si' | 'en' | 'ta';
@@ -85,6 +85,7 @@ export interface ServiceBill {
 
 export interface HelpPost {
   id: string;
+  title?: string;
   postCode: string; // e.g., #POST-7891
   userName: string;
   userNic?: string;
@@ -134,7 +135,10 @@ export interface HelpPost {
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
-  status?: 'active' | 'confirmed' | 'completed' | 'deleted';
+  isHidden?: boolean;
+  hiddenAt?: string;
+  hiddenBy?: string;
+  status?: 'active' | 'confirmed' | 'completed' | 'deleted' | 'hidden';
   findForMeType?: 'lost' | 'stolen' | 'find' | 'found';
   itemLostStolenOrSearched?: string;
   incidentLocation?: string;
@@ -312,15 +316,19 @@ export interface User {
   lastName?: string;
   email: string;
   nicNumber: string;
+  nic?: string;
   phone: string;
   address?: string;
   district?: string;
+  policeDivision?: string;
   birthDate?: string;
   nearestTown?: string;
   whatsappNumber?: string;
+  whatsappPhone?: string;
   securityCode?: string;
   tempCode?: string;
   tempPassword?: string;
+  temporaryPassword?: string;
   isTemporaryPassword?: boolean;
   isPasswordChanged?: boolean;
   devicePinConfigured?: boolean;
@@ -354,7 +362,10 @@ export interface User {
   personalDetailsPurged?: boolean;
   personalDetailsPurgedAt?: string;
   isDemo?: boolean;
+  isMedicalVerified?: boolean;
   credits?: number;
+  creditBalance?: number;
+  trustScore?: number;
   userNumericId?: string;
   welcomeGiftCredited?: boolean;
   twoFactorEnabled?: boolean;
@@ -730,6 +741,7 @@ export interface MarketShop {
   type: 'shop' | 'business'; // Shop (අලෙවිසැල) or Business Place (ව්‍යාපාරික ස්ථානය)
   mode?: 'shop' | 'online'; // for shops: Shop / Online
   name: string;
+  shopName?: string;
   location?: MarketLocation;
   schedulePreset?: 'everyday' | 'weekdays_only' | 'no_poya' | 'no_holidays' | 'custom';
   schedule: WeekSchedule;

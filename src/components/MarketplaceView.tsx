@@ -1269,7 +1269,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-sm text-slate-900 dark:text-zinc-100 truncate">
-                          {user?.name}
+                          {shop.shopName}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
                           {shop.mode === 'online' ? 'Online' : 'Shop'}
@@ -1356,7 +1356,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                       </div>
 
                       <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-zinc-100 leading-snug">
-                        {user?.name}
+                        {shop.shopName}
                       </h3>
 
                       {shop.location && (
@@ -1427,7 +1427,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                             {shop.showWhatsapp && shop.whatsappNumber && (
                               <button
                                 type="button"
-                                onClick={() => handleOpenWhatsApp(shop.whatsappNumber!(currentUser?.name || user?.name))}
+                                onClick={() => handleOpenWhatsApp(shop.whatsappNumber!, shop.shopName || shop.name || 'Shop')}
                                 className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                                 title="WhatsApp"
                               >

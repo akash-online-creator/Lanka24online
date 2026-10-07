@@ -11,10 +11,12 @@ import {
   Sparkles,
   Download,
   Upload,
-  ShieldCheck
+  ShieldCheck,
+  Search
 } from 'lucide-react';
 import { User, HelpPost, CategoryItem, TagItem, Issue, BlockedCredential } from '../types';
 import { restorePostsBackupData, syncUserProfileToFirestore } from '../lib/firebase';
+import { AdminStorageExplorerModal } from './AdminStorageExplorerModal';
 
 interface MemoryStorageBarProps {
   helpPosts: HelpPost[];
@@ -48,6 +50,7 @@ export const MemoryStorageBar: React.FC<MemoryStorageBarProps> = ({
 }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showExplorerModal, setShowExplorerModal] = useState(false);
   const [browserStorage, setBrowserStorage] = useState<{ usage: number; quota: number } | null>(null);
 
   // Firestore free tier capacity: 1 GiB (1,073,741,824 bytes)
@@ -235,7 +238,17 @@ export const MemoryStorageBar: React.FC<MemoryStorageBarProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 🔍 Explore Stored Data Button */}
+          <button
+            type="button"
+            onClick={() => setShowExplorerModal(true)}
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>ගබඩා දත්ත පිරික්සන්න (Inspect Data)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowDetails(!showDetails)}
@@ -477,6 +490,17 @@ export const MemoryStorageBar: React.FC<MemoryStorageBarProps> = ({
           </div>
         </div>
       )}
+
+      {/* 🔍 Storage Explorer Modal */}
+      <AdminStorageExplorerModal
+        isOpen={showExplorerModal}
+        onClose={() => setShowExplorerModal(false)}
+        users={users}
+        helpPosts={helpPosts}
+        issues={issues}
+        categoryItems={categoryItems}
+        tagItems={tagItems}
+      />
     </div>
   );
 };

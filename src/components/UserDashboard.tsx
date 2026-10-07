@@ -38,7 +38,7 @@ import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
-import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId } from '../utils/deletedPostsManager';
+import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
 import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
@@ -199,7 +199,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     role: 'user',
     trustScore: 85,
     creditBalance: 50,
-  } as User);
+  } as unknown as User);
   const t = translations[language];
 
   // Active Location State (Defaults to Kadawatha or saved location)
@@ -696,20 +696,43 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   const handleEditPost = (post: HelpPost) => {
     if (!post) return;
-    if (post.category === 'find_for_me' || post.findForMeType) {
-      setEditingFindForMePost(post);
-      setIsFindForMeModalOpen(true);
-    } else if (post.category === 'from_me_to_you' || post.fromMeToYouType) {
-      setEditingFromMeToYouPost(post);
-      setIsFromMeToYouModalOpen(true);
+    setEditingPost(post);
+  };
+
+  const handleToggleHidePost = async (post: HelpPost) => {
+    if (!post || !post.id) return;
+    const isCurrentlyHidden = Boolean(post.isHidden || post.isHiddenByAdmin || post.status === 'hidden');
+    const nextHidden = !isCurrentlyHidden;
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+
+    const updated: HelpPost = {
+      ...post,
+      isHidden: nextHidden,
+      isHiddenByAdmin: isAdmin ? nextHidden : Boolean(post.isHiddenByAdmin),
+      status: nextHidden ? 'hidden' : 'active',
+      hiddenAt: nextHidden ? new Date().toISOString() : undefined,
+      hiddenBy: nextHidden ? (user.name || 'Admin') : undefined,
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
     } else {
-      setEditingQuickServicePost(post);
-      setSelectedCategoryTitle(
-        post.category === 'normal_services'
-          ? 'සාමාන්‍ය සේවා'
-          : (post.tagCategory || 'ඉක්මන් සේවා')
-      );
-      setIsQuickServiceModalOpen(true);
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === post.id ? updated : p)));
+    }
+
+    if (selectedPostForDetail?.id === post.id) setSelectedPostForDetail(updated);
+    if (selectedPostForChat?.id === post.id) setSelectedPostForChat(updated);
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        isHidden: nextHidden,
+        isHiddenByAdmin: isAdmin ? nextHidden : Boolean(post.isHiddenByAdmin),
+        status: nextHidden ? 'hidden' : 'active',
+        hiddenAt: nextHidden ? new Date().toISOString() : null,
+        hiddenBy: nextHidden ? (user.name || 'Admin') : null,
+      });
+    } catch (err) {
+      console.warn('Failed to update hidden status in Firestore:', err);
     }
   };
 
@@ -739,10 +762,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   const handleConfirmDeletePost = async (postId: string) => {
     if (!postId) return;
-    addDeletedPostId(postId);
-    const postToDelete = (helpPosts || []).find((p) => p && p.id === postId);
+    const postToDelete = (helpPosts || []).find((p) => p && p.id === postId) || (localHelpPosts || []).find((p) => p && p.id === postId) || deletingPost;
 
-    // Immediately remove from local state and update local storage
+    // 1 & 2. Automatic Backup Preparation & Auto JSON File Download
+    if (postToDelete) {
+      downloadPostBackupJson(postToDelete);
+    }
+
+    // 3. LocalStorage Blacklist
+    addDeletedPostId(postId);
+
+    // 4. Immediately remove from local state and update local storage
     setLocalHelpPosts((prev) => {
       const updated = (prev || []).filter((p) => p && p.id !== postId);
       try {
@@ -758,10 +788,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnPermanentDeletePost(postId);
     }
 
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+
     setDeletingPost(null);
     setViewingPost(null);
     setSelectedPostForDetail(null);
 
+    // 3. Permanent Cleanup from Cloud
     try {
       const deletedPayload: Partial<HelpPost> = {
         isDeleted: true,
@@ -2060,6 +2093,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           getPostDistance={getPostDistance}
           onOfferSupport={(p) => setSelectedPostForDetail(p)}
           onEditPost={(p) => handleEditPost(p)}
+          onToggleHidePost={(p) => handleToggleHidePost(p)}
           onViewPost={(p) => setViewingPost(p)}
           onDeletePost={(p) => setDeletingPost(p)}
           onOpenChat={(p) => setSelectedPostForChat(p)}

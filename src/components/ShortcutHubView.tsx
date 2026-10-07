@@ -463,7 +463,7 @@ export const ShortcutHubView: React.FC<ShortcutHubViewProps> = ({
                   {user.facePhotoUrl || user.photoUrl ? (
                     <img src={user.facePhotoUrl || user.photoUrl} alt={user?.name} className="w-full h-full object-cover" />
                   ) : (
-                    (currentUser?.name || user?.name)?.charAt(0)?.toUpperCase() || 'U'
+                    user?.name?.charAt(0)?.toUpperCase() || 'U'
                   )}
                 </div>
 

@@ -25,6 +25,22 @@ export interface UserData {
   updatedAt?: string;
 }
 
+export async function getUserFromFirestore(userIdOrNic: string): Promise<any | null> {
+  if (!userIdOrNic) return null;
+  const res = await findUserByNic(userIdOrNic);
+  if (res) return res;
+  try {
+    const docRef = doc(db, 'users', userIdOrNic);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+  } catch (e) {
+    console.warn('getUserFromFirestore error:', e);
+  }
+  return null;
+}
+
 /**
  * Checks whether a given NIC number already exists in Firestore or local storage.
  */

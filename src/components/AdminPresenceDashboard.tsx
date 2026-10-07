@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 
 interface AdminPresenceDashboardProps {
+  users?: any[];
+  language?: any;
   onSendAdminNotice?: (msg: string) => void;
 }
 

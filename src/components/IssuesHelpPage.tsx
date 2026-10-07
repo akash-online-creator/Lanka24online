@@ -60,7 +60,7 @@ export const IssuesHelpPage: React.FC<IssuesHelpPageProps> = ({
   // Sync if currentUser arrives late
   useEffect(() => {
     if (currentUser) {
-      if (!userName) setUserName(user?.name || '');
+      if (!userName) setUserName(currentUser.name || '');
       if (!userPhone) setUserPhone(currentUser.phone || '');
       if (!userEmail) setUserEmail(currentUser.email || '');
       if (!nicNumber) setNicNumber(currentUser.nicNumber || '');

@@ -1442,7 +1442,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSaveLocation(loc);
+                            onSaveLocation?.(loc);
                             onClose();
                           }}
                           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-sm cursor-pointer"

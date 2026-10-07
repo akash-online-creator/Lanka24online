@@ -20,7 +20,7 @@ import {
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 import { StoredDevicePinData, verifyDevicePin, clearDevicePin } from '../utils/devicePinManager';
-import { getUserFromFirestore } from '../lib/firebase';
+import { getUserFromFirestore } from '../lib/user';
 import { PWAInstallModal } from './PWAInstallModal';
 import { triggerNativeInstallPrompt } from '../utils/pwaHelper';
 import { Download } from 'lucide-react';

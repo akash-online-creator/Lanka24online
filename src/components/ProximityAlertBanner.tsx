@@ -74,7 +74,7 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
                 </>
               ) : (
                 <>
-                  🚨 <strong>{(firstAlert as HelpPost).locationName}</strong>: {(firstAlert as HelpPost).whatHappened.slice(0, 45)}...
+                  🚨 <strong>{(firstAlert as any).locationName}</strong>: {((firstAlert as any).whatHappened || '').slice(0, 45)}...
                 </>
               )}
             </p>
@@ -95,7 +95,7 @@ export const ProximityAlertBanner: React.FC<ProximityAlertBannerProps> = ({
           ) : (
             <button
               type="button"
-              onClick={() => onOpenHelpPost && onOpenHelpPost(firstAlert as HelpPost)}
+              onClick={() => onOpenHelpPost && onOpenHelpPost(firstAlert as any)}
               className="px-3 py-1 bg-white text-rose-700 hover:bg-rose-50 font-black rounded-lg text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
             >
               <span>උදව් කරන්න</span>

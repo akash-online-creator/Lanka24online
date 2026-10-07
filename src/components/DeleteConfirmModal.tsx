@@ -54,7 +54,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               <span>ඔබට මෙම දැන්වීම මකා දැමීමට අවශ්‍යද?</span>
             </div>
             <p className="text-xs text-rose-900 dark:text-rose-200 font-bold leading-relaxed">
-              මෙහිදී දැන්වීම සාමාන්‍ය පුවරුවෙන් (Feed) ඉවත් වන අතර, **පරිපාලක (Admin) වෙත දින 3ක් යන තෙක් "Delete කරන ලදී"** ලෙස සටහන්ව පවතිනු ඇත.
+              මකා දැමීමට පෙර අදාළ දැන්වීමේ සියලුම Data (ID, Title, Details, Photos, Owner details) අඩංගු Backup JSON ගොනුවක් ඔබගේ උපකරණයට ස්වයංක්‍රීයව Save වන අතර, පද්ධතියෙන් සදහටම ඉවත් වේ.
             </p>
           </div>
 

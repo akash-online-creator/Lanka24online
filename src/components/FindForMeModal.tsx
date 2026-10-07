@@ -137,15 +137,7 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
 
   // 🎙️ Voice Data State
-  const [voiceData, setVoiceData] = useState<{
-    audioUrl?: string;
-    durationSec?: number;
-    transcript?: string;
-    date?: string;
-    time?: string;
-    location?: string;
-    coords?: { lat: number; lng: number };
-  } | null>(null);
+  const [voiceData, setVoiceData] = useState<any>(null);
 
   // Validation errors
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -461,14 +453,14 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
       otherDeliveryDetails: customDeliveryDetail.trim(),
       otherDetails: otherDetails.trim(),
       feeAgreed: true,
-      audioUrl: voiceData?.audioUrl || editPost?.audioUrl,
-      audioDurationSec: voiceData?.durationSec || editPost?.audioDurationSec,
-      voiceSentDate: voiceData?.date || editPost?.voiceSentDate,
-      voiceSentTime: voiceData?.time || editPost?.voiceSentTime,
-      voiceSentLocation: voiceData?.location || editPost?.voiceSentLocation,
-      voiceCoordinates: voiceData?.coords || editPost?.voiceCoordinates,
-      isVoicePost: Boolean(voiceData?.audioUrl || editPost?.isVoicePost),
-      voiceTranscript: voiceData?.transcript || editPost?.voiceTranscript,
+      audioUrl: (voiceData as any)?.audioUrl || editPost?.audioUrl,
+      audioDurationSec: (voiceData as any)?.durationSec || editPost?.audioDurationSec,
+      voiceSentDate: (voiceData as any)?.date || editPost?.voiceSentDate,
+      voiceSentTime: (voiceData as any)?.time || editPost?.voiceSentTime,
+      voiceSentLocation: (voiceData as any)?.location || editPost?.voiceSentLocation,
+      voiceCoordinates: (voiceData as any)?.coords || editPost?.voiceCoordinates,
+      isVoicePost: Boolean((voiceData as any)?.audioUrl || editPost?.isVoicePost),
+      voiceTranscript: (voiceData as any)?.transcript || editPost?.voiceTranscript,
     });
 
     recordPostSubmission(contactPhone.trim() || currentUser?.phone || 'user');

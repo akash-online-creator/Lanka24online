@@ -110,49 +110,47 @@ export const UpdateWhatsAppModal: React.FC<UpdateWhatsAppModalProps> = ({
       }
 
       // Sync to Firestore & Help Posts
-      const synced = await syncUserWhatsappInFirestore(userKey, newWhatsapp.trim());
+      await syncUserWhatsappInFirestore(userKey, newWhatsapp.trim());
 
-      if (synced || true) {
-        // Also update local storage users
-        try {
-          const saved = localStorage.getItem('sahaya_users');
-          if (saved) {
-            const list: User[] = JSON.parse(saved);
-            const updatedList = (list || []).map((u) => {
-              if (!u) return u;
-              if (
-                (u.id && u.id === userKey) ||
-                (u.userId && u.userId === userKey) ||
-                (u.nicNumber && u.nicNumber === userKey) ||
-                (u.phone && u.phone === userKey)
-              ) {
-                return {
-                  ...u,
-                  whatsappNumber: newWhatsapp.trim(),
-                  phone: newWhatsapp.trim(),
-                };
-              }
-              return u;
-            });
-            localStorage.setItem('sahaya_users', JSON.stringify(updatedList));
-          }
-        } catch (e) {}
-
-        const updatedTarget = targetUser
-          ? { ...targetUser, whatsappNumber: newWhatsapp.trim(), phone: newWhatsapp.trim() }
-          : ({
-              id: userKey,
-              userId: userKey,
-              nicNumber: userKey,
-              name: 'පරිශීලක',
-              whatsappNumber: newWhatsapp.trim(),
-              phone: newWhatsapp.trim(),
-            } as any);
-
-        setSuccessMessage('ඔබගේ නව WhatsApp අංකය සාර්ථකව පද්ධතියට එක් කරන ලදී!');
-        if (onSuccess) {
-          onSuccess(updatedTarget);
+      // Also update local storage users
+      try {
+        const saved = localStorage.getItem('sahaya_users');
+        if (saved) {
+          const list: User[] = JSON.parse(saved);
+          const updatedList = (list || []).map((u) => {
+            if (!u) return u;
+            if (
+              (u.id && u.id === userKey) ||
+              (u.userId && u.userId === userKey) ||
+              (u.nicNumber && u.nicNumber === userKey) ||
+              (u.phone && u.phone === userKey)
+            ) {
+              return {
+                ...u,
+                whatsappNumber: newWhatsapp.trim(),
+                phone: newWhatsapp.trim(),
+              };
+            }
+            return u;
+          });
+          localStorage.setItem('sahaya_users', JSON.stringify(updatedList));
         }
+      } catch (e) {}
+
+      const updatedTarget = targetUser
+        ? { ...targetUser, whatsappNumber: newWhatsapp.trim(), phone: newWhatsapp.trim() }
+        : ({
+            id: userKey,
+            userId: userKey,
+            nicNumber: userKey,
+            name: 'පරිශීලක',
+            whatsappNumber: newWhatsapp.trim(),
+            phone: newWhatsapp.trim(),
+          } as any);
+
+      setSuccessMessage('ඔබගේ නව WhatsApp අංකය සාර්ථකව පද්ධතියට එක් කරන ලදී!');
+      if (onSuccess) {
+        onSuccess(updatedTarget);
       }
     } catch (err: any) {
       console.error('WhatsApp update error:', err);

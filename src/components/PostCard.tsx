@@ -40,6 +40,7 @@ export interface PostCardProps {
   onOfferSupport?: (post: HelpPost) => void;
   onEditPost?: (post: HelpPost | any) => void;
   onDeletePost?: (postIdOrPost: any) => void;
+  onToggleHidePost?: (post: HelpPost | any) => void;
   onViewPost?: (post: HelpPost) => void;
   onViewDetails?: (postId: string) => void;
   onOpenChat?: (post: HelpPost) => void;

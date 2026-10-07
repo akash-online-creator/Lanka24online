@@ -91,15 +91,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
 
   // 🎙️ Voice Data state
-  const [voiceData, setVoiceData] = useState<{
-    audioUrl?: string;
-    durationSec?: number;
-    transcript?: string;
-    date?: string;
-    time?: string;
-    location?: string;
-    coords?: { lat: number; lng: number };
-  } | null>(null);
+  const [voiceData, setVoiceData] = useState<any>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -280,14 +272,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
-      audioUrl: voiceData?.audioUrl || editPost?.audioUrl,
-      audioDurationSec: voiceData?.durationSec || editPost?.audioDurationSec,
-      voiceSentDate: voiceData?.date || editPost?.voiceSentDate,
-      voiceSentTime: voiceData?.time || editPost?.voiceSentTime,
-      voiceSentLocation: voiceData?.location || editPost?.voiceSentLocation,
-      voiceCoordinates: voiceData?.coords || editPost?.voiceCoordinates,
-      isVoicePost: Boolean(voiceData?.audioUrl || editPost?.isVoicePost),
-      voiceTranscript: voiceData?.transcript || editPost?.voiceTranscript,
+      audioUrl: (voiceData as any)?.audioUrl || editPost?.audioUrl,
+      audioDurationSec: (voiceData as any)?.durationSec || editPost?.audioDurationSec,
+      voiceSentDate: (voiceData as any)?.date || editPost?.voiceSentDate,
+      voiceSentTime: (voiceData as any)?.time || editPost?.voiceSentTime,
+      voiceSentLocation: (voiceData as any)?.location || editPost?.voiceSentLocation,
+      voiceCoordinates: (voiceData as any)?.coords || editPost?.voiceCoordinates,
+      isVoicePost: Boolean((voiceData as any)?.audioUrl || editPost?.isVoicePost),
+      voiceTranscript: (voiceData as any)?.transcript || editPost?.voiceTranscript,
     });
 
     // Reset and close

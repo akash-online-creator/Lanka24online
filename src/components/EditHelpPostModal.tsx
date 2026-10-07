@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HelpPost, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
@@ -39,6 +39,29 @@ export const EditHelpPostModal: React.FC<EditHelpPostModalProps> = ({
   });
 
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (post && isOpen) {
+      setWhatHappened(post.whatHappened || '');
+      setWhatIsNeeded(post.whatIsNeeded || '');
+      setConditions(post.conditions || '');
+      setSpecialNotice(post.specialNotice || '');
+      setTransport(post.transport || '');
+      setPayment(post.payment || '');
+      setExternalLink(post.externalLink || post.videoUrl || '');
+      setHelpersNeeded(post.helpersNeeded || post.helpersCount || 1);
+      if (post.tagName) {
+        setSelectedTag({
+          id: post.tagId || 'tag_curr',
+          tagName: post.tagName,
+          category: post.tagCategory || '',
+        });
+      } else {
+        setSelectedTag(null);
+      }
+      setErrorMsg('');
+    }
+  }, [post, isOpen]);
 
   if (!isOpen || !post) return null;
 

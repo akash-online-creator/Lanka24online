@@ -759,9 +759,10 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
               {/* Chat history එක (චැට්කල පිළිවෙලින්) */}
               <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f6faf8] dark:bg-[#040e08]">
                 {(messages || []).map((msg, msgIdx) => {
-                  const isMe = 
-                    (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user?.name.trim().toLowerCase()) ||
-                    (msg.senderPhone && userPhoneClean && normalizePhone(msg.senderPhone) === userPhoneClean);
+                  const isMe = Boolean(
+                    (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
+                    (msg.senderPhone && userPhoneClean && normalizePhone(msg.senderPhone) === userPhoneClean)
+                  );
 
                   const isSeeker = 
                     msg.senderRole === 'seeker' || 

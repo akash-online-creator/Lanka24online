@@ -51,7 +51,9 @@ import {
 // 1. Post Owner & Admin Utilities (Blueprint)
 // ==========================================
 export interface UserProfile {
-  uid: string;
+  uid?: string;
+  id?: string;
+  userId?: string;
   role?: string;
   isAdmin?: boolean;
 }
@@ -59,7 +61,7 @@ export interface UserProfile {
 /**
  * Checks if the current logged-in user is an admin
  */
-export const checkIsAdmin = (user: UserProfile | null): boolean => {
+export const checkIsAdmin = (user: UserProfile | any | null): boolean => {
   if (!user) return true; // Defaulting to true for Admin Component scope
   return user.role === 'admin' || user.isAdmin === true;
 };
@@ -67,14 +69,14 @@ export const checkIsAdmin = (user: UserProfile | null): boolean => {
 /**
  * Checks if the user can manage/edit/delete a specific post
  */
-export const canManagePost = (user: UserProfile | null, postOwnerId: string): boolean => {
+export const canManagePost = (user: UserProfile | any | null, postOwnerId: string): boolean => {
   if (!user) return false;
-  return checkIsAdmin(user) || user.uid === postOwnerId;
+  return checkIsAdmin(user) || user.uid === postOwnerId || user.id === postOwnerId || user.userId === postOwnerId;
 };
 
 interface AdminEmergencyDirectoryManagementProps {
   language?: Language;
-  currentUser?: UserProfile | null;
+  currentUser?: UserProfile | any | null;
   onBlockUser?: (userId: string) => void;
 }
 
