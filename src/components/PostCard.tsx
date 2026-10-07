@@ -20,7 +20,8 @@ import {
   ShieldAlert,
   UserCheck,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 import { HelpPost, User, Language, LocationOption } from '../types';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
@@ -132,16 +133,54 @@ export const PostCard: React.FC<PostCardProps> = ({
     return getLangText('මෑතකදී', 'Recently', 'සමීපත්තිල්');
   };
 
-  // Permanent Deletion Handler
+  /**
+   * 1 & 2. Automatic Backup JSON Creator & Downloader Function
+   */
+  const triggerPostBackupDownload = (postData: any) => {
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const postId = postData.id || 'UNKNOWN';
+      const fileName = `deleted_post_${postId}_${timestamp}.json`;
+
+      const backupContent = {
+        deletedAt: new Date().toISOString(),
+        deletedBy: {
+          id: currentUser?.id || 'unknown',
+          name: currentUser?.name || 'Unknown User',
+          role: isAdmin ? 'Admin' : 'User'
+        },
+        postData: postData
+      };
+
+      const jsonString = JSON.stringify(backupContent, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Backup JSON download failed:', error);
+    }
+  };
+
+  /**
+   * Complete Delete Action Workflow
+   */
   const handleDelete = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setShowMenu(false);
     
+    // Step 1: Confirmation Modal
     const confirmMessage = isAdmin
       ? getLangText(
-          'පරිපාලක (Admin) ලෙස මෙම දැන්වීම පද්ධතියෙන් සදහටම ඉවත් කිරීමට ඔබට සහතිකද?',
-          'Are you sure you want to permanently delete this post as Admin?',
-          'நிர்வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா?'
+          'පරිපාලක (Admin) ලෙස මෙම දැන්වීම පද්ධතියෙන් සදහටම ඉවත් කිරීමට ඔබට සහතිකද? (දත්ත JSON ගොනුවක් ලෙස ඔබගේ ඩිවයිස් එකට සුරැකෙනු ඇත)',
+          'Are you sure you want to permanently delete this post as Admin? (Data will be downloaded as JSON backup)',
+          'நிර්வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா? (தரவு JSON கோப்பாக பதிவிறக்கப்படும்)'
         )
       : getLangText(
           'මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?',
@@ -151,9 +190,15 @@ export const PostCard: React.FC<PostCardProps> = ({
 
     if (!window.confirm(confirmMessage)) return;
 
-    setIsDeletingLocal(true);
     const targetId = post.id;
 
+    // Step 2: Automatic Backup JSON Download (Admin සඳහා හෝ Post Owner සඳහා)
+    triggerPostBackupDownload(post);
+
+    // Immediate UI hiding for smooth UX
+    setIsDeletingLocal(true);
+
+    // Step 3: Permanent Cleanup from Cloud DB & Local Storage Blacklist
     if (targetId) {
       addDeletedPostId(targetId);
       try {
@@ -163,12 +208,14 @@ export const PostCard: React.FC<PostCardProps> = ({
           deletedAt: new Date().toISOString(),
           deletedBy: isAdmin ? `Admin (${currentUser?.name || 'Admin'})` : (currentUser?.name || post.userName || 'User')
         }).catch(() => {});
+
         await deleteHelpPostFromFirestore(targetId).catch(() => {});
       } catch (err) {
         console.warn('Post delete background notice:', err);
       }
     }
 
+    // Step 4: Real-time UI State Refresh Callback
     if (onDeletePost) {
       try {
         onDeletePost(targetId || post);
@@ -236,7 +283,6 @@ export const PostCard: React.FC<PostCardProps> = ({
   const displayPhone = isDemo ? maskPhone(phoneNumber) : phoneNumber;
   const locationText = post.locationName || post.incidentLocation || getLangText('ශ්‍රී ලංකාව', 'Sri Lanka', 'இலங்கை');
   const distance = typeof post.distanceKm === 'number' ? post.distanceKm : null;
-  const isLiked = currentUser && Array.isArray(post.likes) ? post.likes.includes(currentUser.id) : false;
 
   // Check if corrupted / empty post
   const isCorrupted = !post.whatHappened && !post.whatIsNeeded && !post.title && !post.content && !post.donationItem && !post.itemLostStolenOrSearched;
@@ -372,10 +418,10 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           </div>
 
-          {/* Top Quick Actions (Pencil / Trash2 / Menu) */}
+          {/* Top Quick Actions */}
           <div className="flex items-center gap-1 shrink-0 relative">
             
-            {/* Quick Edit & Delete for Post Owner or Admin */}
+            {/* Quick Edit & Delete */}
             {canModify && (
               <div className="flex items-center gap-1">
                 {onEditPost && (
@@ -510,7 +556,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         {/* Post Content Details */}
         <div className="space-y-2.5 text-sm sm:text-base">
           
-          {/* Main Content: What happened / Description */}
+          {/* Main Content */}
           {(post.whatHappened || post.content || post.title || post.itemLostStolenOrSearched || post.donationItem) && (
             <div className="bg-slate-50 dark:bg-[#06160d] p-3.5 rounded-2xl border border-slate-200/80 dark:border-emerald-950/80">
               <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
@@ -561,7 +607,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           )}
 
-          {/* Image Attachment (if available) */}
+          {/* Image Attachment */}
           {(post.image || post.photoUrl || post.userPhotoUrl) && !imageError && (
             <div className="mt-3 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-h-72">
               <img 
@@ -609,7 +655,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             )}
           </div>
 
-          {/* Primary Action Button (උදව් කිරීමට / විස්තර) */}
+          {/* Primary Action Button */}
           <div className="flex items-center gap-2">
             {(onOfferSupport || onOpenConfirm) && (
               <button
