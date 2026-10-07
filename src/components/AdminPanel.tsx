@@ -4,18 +4,14 @@ import {
   Issue, 
   Language, 
   HelpPost, 
-  RedAlertItem, 
-  CategoryItem, 
-  TagItem 
+  RedAlertItem 
 } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MemoryStorageBar } from './MemoryStorageBar';
 import { deduplicateUsers } from '../utils/userUtils';
-import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { useUserMode } from '../context/UserModeContext';
 import { 
-  updateHelpPostInFirestore,
   deleteUserAccount,
   deleteHelpPostFromFirestore,
   syncUserProfileToFirestore
@@ -30,26 +26,18 @@ import { AdminPresenceDashboard } from './AdminPresenceDashboard';
 import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminEditUserModal } from './AdminEditUserModal';
 import { 
-  Shield, 
   Users, 
   CheckCircle2, 
-  XCircle, 
-  Clock, 
   MessageSquare, 
   Search, 
-  Sparkles, 
-  UserCheck, 
   Trash2, 
-  Globe, 
   Phone, 
-  Mail, 
   MapPin, 
   AlertTriangle, 
   Coins, 
   Radio, 
   BookOpen, 
   Eye, 
-  RefreshCw,
   LogOut,
   FileText,
   Activity,
@@ -112,6 +100,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const showNotification = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 4000);
+  };
+
+  // ----------------------------------------------------
+  // 📥 Automatic JSON Download Helper for Deleted Post Backup
+  // ----------------------------------------------------
+  const downloadPostBackupJSON = (post: HelpPost) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `deleted_post_${post.postCode || post.id}_${timestamp}.json`;
+
+    const backupData = {
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.name || 'ADMIN',
+      adminId: currentUser?.id || 'UNKNOWN',
+      postData: post,
+    };
+
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // User Actions: Approve, Block, Unblock, Edit, Delete
@@ -183,21 +199,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showNotification(`💾 ${updated.name} ගේ තොරතුරු සාර්ථකව යාවත්කාලීන කරන ලදී.`);
   };
 
-  const handleRejectUser = async (user: User) => {
-    const reason = window.prompt('ප්‍රතික්ෂේප කිරීමට හේතුව (විකල්ප):', 'තොරතුරු අපැහැදිලියි');
-    if (reason === null) return;
-    const updated: User = { ...user, status: 'rejected' };
-    if (setUsers) {
-      setUsers(prev => prev.map(u => (u.id === user.id ? updated : u)));
-    }
-    try {
-      await syncUserProfileToFirestore(updated);
-    } catch (e) {
-      console.warn('Firestore update error:', e);
-    }
-    showNotification(`❌ ${user.name} ගේ ගිණුම ප්‍රතික්ෂේප කරන ලදී.`);
-  };
-
   const handleDeleteUserAction = async (user: User) => {
     if (!window.confirm(`"${user.name}" ගිණුම සම්පූර්ණයෙන්ම මකා දැමීමට ඔබට විශ්වාසද?`)) return;
     if (setUsers) {
@@ -211,18 +212,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showNotification(`🗑️ ${user.name} ගිණුම මකා දමන ලදී.`);
   };
 
-  // Post Actions
+  // ----------------------------------------------------
+  // 🗑️ Complete Post Delete Action (Workflow Implementation)
+  // ----------------------------------------------------
   const handleDeletePostAction = async (postId: string) => {
-    if (!window.confirm('මෙම දැන්වීම මකා දැමීමට ඔබට විශ්වාසද?')) return;
-    if (setHelpPosts) {
-      setHelpPosts(prev => prev.filter(p => p.id !== postId));
+    const postToDelete = helpPosts.find(p => p.id === postId);
+
+    if (!postToDelete) {
+      showNotification('⚠️ අදාළ දැන්වීම සොයා ගැනීමට නොහැකි විය.');
+      return;
     }
+
+    // Step 1: Confirmation Modal & Backup Data Preparation
+    const isConfirmed = window.confirm(
+      `"${postToDelete.title || postToDelete.postCode || 'මෙම දැන්වීම'}" සම්පූර්ණයෙන්ම මකා දැමීමට ඔබට විශ්වාසද?\n\n(මකා දැමීමට පෙර මෙහි සියලුම දත්ත JSON ගොනුවක් ලෙස ඔබගේ ඩිවයිස් එකට Auto-Download වේ)`
+    );
+
+    if (!isConfirmed) return;
+
     try {
+      // Step 2: Automatic JSON File Download
+      downloadPostBackupJSON(postToDelete);
+
+      // Step 3: Permanent Cleanup from Cloud & Local
+      // 3.1 Firebase DB Cleanup
       await deleteHelpPostFromFirestore(postId);
+
+      // 3.2 LocalStorage Blacklist Update (Real-time sync වැළැක්වීමට)
+      const existingBlacklist: string[] = JSON.parse(
+        localStorage.getItem('deletedPostIds') || '[]'
+      );
+      if (!existingBlacklist.includes(postId)) {
+        localStorage.setItem(
+          'deletedPostIds',
+          JSON.stringify([...existingBlacklist, postId])
+        );
+      }
+
+      // Step 4: Real-time UI State Refresh
+      if (setHelpPosts) {
+        setHelpPosts(prev => prev.filter(p => p.id !== postId));
+      }
+
+      showNotification('🗑️ දැන්වීම Backup කර සාර්ථකව මකා දමන ලදී.');
     } catch (e) {
-      console.warn('Firestore delete post error:', e);
+      console.error('Firestore delete post error:', e);
+      showNotification('❌ දැන්වීම මකා දැමීමේදී දෝෂයක් සිදු විය.');
     }
-    showNotification('🗑️ දැන්වීම සාර්ථකව මකා දමන ලදී.');
   };
 
   // Issue Action
@@ -291,7 +327,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Switch to User View Button */}
           <button
             type="button"
             onClick={onSwitchToUserMode}
@@ -322,7 +357,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* 📊 Live Memory & Storage Meter */}
+      {/* Live Memory & Storage Meter */}
       <MemoryStorageBar 
         helpPosts={helpPosts} 
         users={users} 
@@ -382,7 +417,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Filter Buttons */}
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#06140c] p-1 rounded-xl">
                 {(['pending', 'approved', 'blocked', 'all'] as const).map(f => (
                   <button
@@ -400,7 +434,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 ))}
               </div>
 
-              {/* Search Box */}
               <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -414,7 +447,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* User Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {filteredUsers.length === 0 ? (
               <div className="col-span-full py-12 text-center text-slate-400 font-bold text-xs bg-slate-50 dark:bg-[#06140c] rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
@@ -432,7 +464,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#143321] space-y-3 shadow-2xs hover:border-emerald-500/50 transition-all flex flex-col justify-between"
                   >
                     <div className="space-y-2.5">
-                      {/* User Avatar + Name + Status */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center shrink-0 shadow-sm">
@@ -463,7 +494,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </span>
                       </div>
 
-                      {/* 🪪 Uploaded NIC Photo Preview Box */}
                       {nicPhoto ? (
                         <div 
                           onClick={() => setInspectingUser(u)}
@@ -493,7 +523,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       )}
 
-                      {/* Contact and Address */}
                       <div className="text-[11px] space-y-1 text-slate-600 dark:text-slate-300 font-medium">
                         <div className="flex items-center gap-1.5">
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -511,9 +540,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* Actions Toolbar */}
                     <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-200 dark:border-slate-800 flex-wrap">
-                      {/* Inspect & Verify NIC Button */}
                       <button
                         type="button"
                         onClick={() => setInspectingUser(u)}
@@ -524,7 +551,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span>විස්තර & NIC</span>
                       </button>
 
-                      {/* Edit Details Button */}
                       <button
                         type="button"
                         onClick={() => setEditingUser(u)}
@@ -535,7 +561,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span>සංස්කරණය</span>
                       </button>
 
-                      {/* Pending: Accept button */}
                       {u.status === 'pending' && (
                         <button
                           type="button"
@@ -547,7 +572,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </button>
                       )}
 
-                      {/* Approved: Block button */}
                       {u.status === 'approved' && !isBlocked && (
                         <button
                           type="button"
@@ -559,7 +583,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </button>
                       )}
 
-                      {/* Blocked: Unblock button */}
                       {isBlocked && (
                         <button
                           type="button"
@@ -570,7 +593,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </button>
                       )}
 
-                      {/* Delete button */}
                       <button
                         type="button"
                         onClick={() => handleDeleteUserAction(u)}
@@ -720,7 +742,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
-      {/* 🪪 Member Inspection & NIC Verification Modal */}
+      {/* Member Inspection & NIC Verification Modal */}
       {inspectingUser && (
         <AdminUserInspectionModal
           user={inspectingUser}
@@ -738,7 +760,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
-      {/* ✏️ Member Details Edit Modal */}
+      {/* Member Details Edit Modal */}
       {editingUser && (
         <AdminEditUserModal
           user={editingUser}
