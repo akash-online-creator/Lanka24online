@@ -1,8 +1,21 @@
-import { HelpPost, BloodDonationRequest, DisasterReliefItem, VolunteerDonor, RedAlertItem, User } from '../types';
-import { saveDeletedRecordsToFirestore, subscribeToDeletedRecordsFromFirestore, DeletedRecordsMap } from '../lib/firebase';
+import { 
+  HelpPost, 
+  BloodDonationRequest, 
+  DisasterReliefItem, 
+  VolunteerDonor, 
+  RedAlertItem, 
+  User 
+} from '../types';
+import { 
+  saveDeletedRecordsToFirestore, 
+  subscribeToDeletedRecordsFromFirestore, 
+  DeletedRecordsMap 
+} from '../lib/firebase';
+import { doc, deleteDoc, getFirestore } from 'firebase/firestore';
+import { ref, deleteObject, getStorage } from 'firebase/storage';
 
 // ==========================================
-// LocalStorage Key (Unified Constants)
+// LocalStorage Keys (Unified Constants)
 // ==========================================
 const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
 const DELETED_BLOOD_IDS_KEY = 'sahaya_deleted_blood_ids';
@@ -32,7 +45,7 @@ function getStoredIds(key: string): string[] {
 function saveIds(key: string, ids: string[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
-    // LocalStorage එක වෙනස් වූ වහාම Firestore Cloud එකට Sync කෙරේ
+    // LocalStorage වෙනස් වූ වහාම Firestore Cloud එකට Sync කෙරේ
     syncAllDeletionsToCloud();
   } catch (err) {
     console.warn(`Failed to save deleted IDs to storage key: ${key}`, err);
@@ -42,8 +55,8 @@ function saveIds(key: string, ids: string[]): void {
 // ==========================================
 // Firestore Sync Logic
 // ==========================================
-let syncTimeout: any = null;
-function syncAllDeletionsToCloud() {
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
+export function syncAllDeletionsToCloud(): void {
   if (syncTimeout) clearTimeout(syncTimeout);
   syncTimeout = setTimeout(() => {
     try {
@@ -114,6 +127,185 @@ if (typeof window !== 'undefined') {
 }
 
 // ==========================================
+// Backup & Export Helpers (Step 1 & 2)
+// ==========================================
+
+export interface BackupDataWrapper<T = any> {
+  version: string;
+  entityType: string;
+  deletedAt: string;
+  deletedBy?: string;
+  record: T;
+}
+
+/**
+ * 1. Post/Item එකක Full details JSON ගොනුවක් ලෙස Admin ඩිවයිස් එකට Download කිරීම
+ */
+export function downloadBackupJSON<T extends { id?: string }>(
+  itemData: T, 
+  entityType: string = 'post',
+  adminIdentifier?: string
+): void {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const itemId = itemData.id || 'unknown_id';
+    
+    const backupWrapper: BackupDataWrapper<T> = {
+      version: '1.0',
+      entityType,
+      deletedAt: new Date().toISOString(),
+      deletedBy: adminIdentifier || 'Admin',
+      record: itemData
+    };
+
+    const jsonString = JSON.stringify(backupWrapper, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `deleted_${entityType}_${itemId}_${timestamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Failed to download backup JSON:', err);
+  }
+}
+
+/**
+ * Restore කිරීම සඳහා Admin විසින් Select කරන Backup JSON file එක Parse කිරීම
+ */
+export async function parseBackupJSONFile<T = any>(file: File): Promise<BackupDataWrapper<T>> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed && parsed.record) {
+          resolve(parsed as BackupDataWrapper<T>);
+        } else {
+          // Wrapper නැති පරණ Raw data JSON එකක් නම්
+          resolve({
+            version: '1.0',
+            entityType: 'unknown',
+            deletedAt: new Date().toISOString(),
+            record: parsed
+          });
+        }
+      } catch (err) {
+        reject(new Error('Invalid JSON file format'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to read backup file'));
+    reader.readAsText(file);
+  });
+}
+
+// ==========================================
+// Permanent Cloud Cleanup Helpers (Step 3)
+// ==========================================
+
+/**
+ * Firestore Document සහ Firebase Storage Media සදහටම Cleanup කිරීම
+ */
+export async function permanentCloudCleanup(
+  collectionName: string, 
+  documentId: string, 
+  mediaUrls: string[] = []
+): Promise<void> {
+  const db = getFirestore();
+  const storage = getStorage();
+
+  // 1. Storage Images / Media Delete කිරීම
+  if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+    const deletePromises = mediaUrls.map(async (url) => {
+      if (!url || typeof url !== 'string' || !url.includes('firebasestorage')) return;
+      try {
+        const storageRef = ref(storage, url);
+        await deleteObject(storageRef);
+      } catch (err) {
+        console.warn(`Failed to delete media asset: ${url}`, err);
+      }
+    });
+    await Promise.allSettled(deletePromises);
+  }
+
+  // 2. Firestore Document Delete කිරීම
+  try {
+    const docRef = doc(db, collectionName, documentId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error(`Failed to delete Firestore document: ${collectionName}/${documentId}`, err);
+    throw err;
+  }
+}
+
+// ==========================================
+// Full Admin Permanent Delete Orchestrator
+// ==========================================
+
+export interface PermanentDeleteOptions {
+  collectionName: string;
+  itemId: string;
+  itemData: any;
+  entityType?: string;
+  mediaUrls?: string[];
+  adminIdentifier?: string;
+  blacklistKey: string;
+}
+
+/**
+ * Step 1-4 දක්වා සම්පූර්ණ Admin Delete Workflow එක ක්‍රියාත්මක කිරීම
+ */
+export async function executePermanentAdminDelete(options: PermanentDeleteOptions): Promise<void> {
+  const {
+    collectionName,
+    itemId,
+    itemData,
+    entityType = 'post',
+    mediaUrls = [],
+    adminIdentifier,
+    blacklistKey
+  } = options;
+
+  // Step 1 & 2: Backup JSON auto-download කිරීම
+  downloadBackupJSON(itemData, entityType, adminIdentifier);
+
+  // Step 3: Cloud Cleanup (Firestore & Storage)
+  await permanentCloudCleanup(collectionName, itemId, mediaUrls);
+
+  // Step 3 (cont.): Local Blacklist එකට ID එක එකතු කර Cloud sync කිරීම
+  const currentBlacklist = getStoredIds(blacklistKey);
+  saveIds(blacklistKey, [...currentBlacklist, itemId]);
+
+  // Step 4: UI Event Broadcast කිරීම
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sahaya_entity_deleted', {
+      detail: { itemId, entityType, collectionName }
+    }));
+  }
+}
+
+// ==========================================
+// Restore Helper Functions
+// ==========================================
+
+/**
+ * Blacklist එකෙන් ID එකක් ඉවත් කර Item එක Restore කිරීම සක්‍රිය කිරීම
+ */
+export function restoreDeletedId(blacklistKey: string, idToRestore: string): void {
+  if (!idToRestore) return;
+  const current = getStoredIds(blacklistKey);
+  const updated = current.filter(
+    (id) => id !== idToRestore && id.toLowerCase() !== idToRestore.toLowerCase()
+  );
+  saveIds(blacklistKey, updated);
+}
+
+// ==========================================
 // 1. Users
 // ==========================================
 export function getStoredDeletedUserIds(): string[] {
@@ -131,14 +323,7 @@ export function addDeletedUserId(identifier: string): void {
 
 export function removeDeletedUserId(identifier: string): void {
   if (!identifier) return;
-  const clean = identifier.trim();
-  const current = getStoredDeletedUserIds();
-  saveIds(
-    DELETED_USERS_KEY,
-    current.filter(
-      (id) => id !== clean && id !== clean.toLowerCase() && id !== clean.toUpperCase()
-    )
-  );
+  restoreDeletedId(DELETED_USERS_KEY, identifier.trim());
 }
 
 export function isUserPermanentlyDeleted(userOrId: any): boolean {
@@ -186,8 +371,7 @@ export function addDeletedPostId(postId: string): void {
 
 export function removeDeletedPostId(postId: string): void {
   if (!postId) return;
-  const current = getStoredDeletedPostIds();
-  saveIds(DELETED_POST_IDS_KEY, current.filter((id) => id !== postId));
+  restoreDeletedId(DELETED_POST_IDS_KEY, postId);
 }
 
 export function isPostPermanentlyDeleted(postId: string): boolean {
@@ -201,7 +385,7 @@ export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boole
   return posts.filter((p) => p && p.id && !deletedIds.has(p.id) && !p.isDeleted && p.status !== 'deleted');
 }
 
-// Real-time UI broadcast සදහා වන ශ්‍රිතය (Layer 3 Event Triggering)
+// Real-time UI broadcast (Layer 3 Event Triggering)
 export function broadcastPostDeletion(postId: string): void {
   addDeletedPostId(postId);
   if (typeof window !== 'undefined') {
@@ -222,6 +406,10 @@ export function addDeletedBloodId(bloodId: string): void {
   if (!current.includes(bloodId)) {
     saveIds(DELETED_BLOOD_IDS_KEY, [...current, bloodId]);
   }
+}
+
+export function removeDeletedBloodId(bloodId: string): void {
+  restoreDeletedId(DELETED_BLOOD_IDS_KEY, bloodId);
 }
 
 export function filterNonDeletedBloodRequests(requests: BloodDonationRequest[]): BloodDonationRequest[] {
@@ -245,6 +433,10 @@ export function addDeletedDisasterId(disasterId: string): void {
   }
 }
 
+export function removeDeletedDisasterId(disasterId: string): void {
+  restoreDeletedId(DELETED_DISASTER_IDS_KEY, disasterId);
+}
+
 export function filterNonDeletedDisasterItems(items: DisasterReliefItem[]): DisasterReliefItem[] {
   if (!Array.isArray(items)) return [];
   const deletedIds = new Set(getStoredDeletedDisasterIds());
@@ -264,6 +456,10 @@ export function addDeletedDonorId(donorId: string): void {
   if (!current.includes(donorId)) {
     saveIds(DELETED_DONOR_IDS_KEY, [...current, donorId]);
   }
+}
+
+export function removeDeletedDonorId(donorId: string): void {
+  restoreDeletedId(DELETED_DONOR_IDS_KEY, donorId);
 }
 
 export function filterNonDeletedDonors(donors: VolunteerDonor[]): VolunteerDonor[] {
@@ -287,6 +483,10 @@ export function addDeletedMarketplaceId(itemId: string): void {
   }
 }
 
+export function removeDeletedMarketplaceId(itemId: string): void {
+  restoreDeletedId(DELETED_MARKETPLACE_IDS_KEY, itemId);
+}
+
 export function filterNonDeletedMarketItems<T extends { id?: string }>(items: T[]): T[] {
   if (!Array.isArray(items)) return [];
   const deletedIds = new Set(getStoredDeletedMarketplaceIds());
@@ -303,6 +503,10 @@ export function addDeletedMarketShopId(shopId: string): void {
   if (!current.includes(shopId)) {
     saveIds(DELETED_MARKET_SHOPS_KEY, [...current, shopId]);
   }
+}
+
+export function removeDeletedMarketShopId(shopId: string): void {
+  restoreDeletedId(DELETED_MARKET_SHOPS_KEY, shopId);
 }
 
 export function filterNonDeletedMarketShops<T extends { id?: string }>(shops: T[]): T[] {
@@ -326,6 +530,10 @@ export function addDeletedProServiceId(serviceId: string): void {
   }
 }
 
+export function removeDeletedProServiceId(serviceId: string): void {
+  restoreDeletedId(DELETED_PRO_SERVICES_KEY, serviceId);
+}
+
 export function filterNonDeletedProServices<T extends { id?: string }>(services: T[]): T[] {
   if (!Array.isArray(services)) return [];
   const deletedIds = new Set(getStoredDeletedProServiceIds());
@@ -345,6 +553,10 @@ export function addDeletedGroupId(groupId: string): void {
   if (!current.includes(groupId)) {
     saveIds(DELETED_GROUP_IDS_KEY, [...current, groupId]);
   }
+}
+
+export function removeDeletedGroupId(groupId: string): void {
+  restoreDeletedId(DELETED_GROUP_IDS_KEY, groupId);
 }
 
 export function filterNonDeletedGroups<T extends { id?: string }>(groups: T[]): T[] {
@@ -369,9 +581,7 @@ export function addDeletedRedAlertId(alertId: string): void {
 }
 
 export function removeDeletedRedAlertId(alertId: string): void {
-  if (!alertId) return;
-  const current = getStoredDeletedRedAlertIds();
-  saveIds(DELETED_RED_ALERTS_KEY, current.filter((id) => id !== alertId));
+  restoreDeletedId(DELETED_RED_ALERTS_KEY, alertId);
 }
 
 export function isRedAlertPermanentlyDeleted(alertId: string): boolean {
@@ -386,3 +596,17 @@ export function filterNonDeletedRedAlerts(alerts: RedAlertItem[]): RedAlertItem[
     (a) => a && a.id && !deletedIds.has(a.id) && !(a as any).isDeleted && (a.status as string) !== 'deleted'
   );
 }
+
+// Export Key Constants (Restore/Admin Actions සඳහා භාවිත කිරීමට)
+export const STORAGE_KEYS = {
+  POSTS: DELETED_POST_IDS_KEY,
+  USERS: DELETED_USERS_KEY,
+  BLOOD: DELETED_BLOOD_IDS_KEY,
+  DISASTER: DELETED_DISASTER_IDS_KEY,
+  DONORS: DELETED_DONOR_IDS_KEY,
+  RED_ALERTS: DELETED_RED_ALERTS_KEY,
+  MARKETPLACE: DELETED_MARKETPLACE_IDS_KEY,
+  MARKET_SHOPS: DELETED_MARKET_SHOPS_KEY,
+  PRO_SERVICES: DELETED_PRO_SERVICES_KEY,
+  GROUPS: DELETED_GROUP_IDS_KEY,
+};
