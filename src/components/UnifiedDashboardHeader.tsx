@@ -64,6 +64,7 @@ interface UnifiedDashboardHeaderProps {
   onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
   onOpenShortcutHub?: () => void;
   onOpenInstallApp?: () => void;
+  onOpenSavedPlaces?: () => void;
   onOpenQuickRegisterHub?: () => void;
   onOpenAppQr?: () => void;
 }
@@ -94,6 +95,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenQrPay,
   onOpenShortcutHub,
   onOpenInstallApp,
+  onOpenSavedPlaces,
   onOpenQuickRegisterHub,
   onOpenAppQr,
 }) => {
@@ -372,16 +374,16 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {onOpenQuickRegisterHub && (
+            {(onOpenSavedPlaces || onOpenQuickRegisterHub) && (
               <button
                 type="button"
-                onClick={onOpenQuickRegisterHub}
+                onClick={onOpenSavedPlaces || onOpenQuickRegisterHub}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={getLangText('ලියාපදිංචි වන්න', 'Register', 'பதிவு செய்க')}
+                title={getLangText('ස්ථානය සුරකින්න', 'Save Place', 'இடத்தை சேமி')}
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                <MapPin className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                 <span className="font-black text-xs">
-                  {getLangText('ලියාපදිංචි වන්න', 'Register', 'பதிவு செய்க')}
+                  {getLangText('ස්ථානය සුරකින්න', 'Save Place', 'இடத்தை சேமி')}
                 </span>
               </button>
             )}
