@@ -55,6 +55,7 @@ import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
 import { PWAInstallModal } from './PWAInstallModal';
+import { SavedPlacesModal } from './SavedPlacesModal';
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 import { AppQrShareModal } from './AppQrShareModal';
 import { RegisterProfessionalServiceModal } from './RegisterProfessionalServiceModal';
@@ -417,6 +418,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [selectedAlertForDetail, setSelectedAlertForDetail] = useState<RedAlertItem | null>(null);
   
   // 🌟 Universal Quick Registration Hub & Web QR Modals
+  const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
   const [isAppQrModalOpen, setIsAppQrModalOpen] = useState(false);
   const [isRegisterProfessionalModalOpen, setIsRegisterProfessionalModalOpen] = useState(false);
@@ -1681,7 +1683,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsQrPayModalOpen(true);
         }}
         onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
-        onOpenQuickRegisterHub={() => setIsQuickRegistrationHubOpen(true)}
+        onOpenSavedPlaces={() => setIsSavedPlacesModalOpen(true)}
         onOpenAppQr={() => setIsAppQrModalOpen(true)}
       />
 
@@ -2720,29 +2722,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         language={language}
       />
 
-      {/* ✨ Universal Multi-Category Registration Hub Modal */}
-      <QuickRegistrationHubModal
-        isOpen={isQuickRegistrationHubOpen}
-        onClose={() => setIsQuickRegistrationHubOpen(false)}
+      {/* 📍 Community Places & Save Location Proximity Modal */}
+      <SavedPlacesModal
+        isOpen={isSavedPlacesModalOpen}
+        onClose={() => setIsSavedPlacesModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
         language={language}
-        onSelectUserRegistration={() => {
-          if (onNavigate) {
-            onNavigate('register');
-          } else {
-            setShowDemoRegisterPrompt(true);
-          }
-        }}
-        onSelectProfessionalRegistration={() => {
-          setIsRegisterProfessionalModalOpen(true);
-        }}
-        onSelectBusinessRegistration={() => {
-          setMarketplaceShopModalType('business');
-          setIsMarketplaceAddShopModalOpen(true);
-        }}
-        onSelectShopRegistration={() => {
-          setMarketplaceShopModalType('shop');
-          setIsMarketplaceAddShopModalOpen(true);
-        }}
       />
 
       {/* 📱 Direct Web Application QR Share & Fullscreen Standee Modal */}
