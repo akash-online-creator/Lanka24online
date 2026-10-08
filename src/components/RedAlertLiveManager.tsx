@@ -47,7 +47,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     triggerBrowserNotification({
       id: `alert-update-${Date.now()}`,
-      type: 'emergency_blood',
+      type: 'red_alert',
       title: '🚨 රතුවෙලිය ආපදා අනතුරු ඇඟවීම!',
       message: msg,
       timestamp: new Date().toISOString(),
@@ -63,7 +63,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   // 🔇 සයිරන් නාදය Mute කිරීමේ ක්‍රියාවලිය
   const handleSilenceSiren = () => {
-    stopEmergencySiren();
+    stopEmergencySiren(true);
     setIsSirenActive(false);
   };
 
@@ -147,7 +147,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
             updatedAlertInList.statusChangeMessage || 
             '✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.'
           );
-          stopEmergencySiren();
+          stopEmergencySiren(true);
           setIsSirenActive(false);
         }
         // B. දැනුම්දීම ඉවත් කරගත් විට
@@ -156,7 +156,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
             updatedAlertInList.statusChangeMessage || 
             'ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.'
           );
-          stopEmergencySiren();
+          stopEmergencySiren(true);
           setIsSirenActive(false);
         }
         // C. පළකළ අය විසින් අලුත් විස්තරයක් එක් කළ විට
@@ -183,7 +183,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       if (popupTimeoutRef.current) {
         clearTimeout(popupTimeoutRef.current);
       }
-      stopEmergencySiren();
     };
   }, [currentUserId]);
 
@@ -193,7 +192,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     setIsSubmitting(true);
     try {
       await markRedAlertAsResolved(activeAlert.id);
-      stopEmergencySiren();
+      stopEmergencySiren(true);
       setIsSirenActive(false);
     } catch {
       alert('තත්ත්වය වෙනස් කිරීමට නොහැකි විය.');
@@ -208,7 +207,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     setIsSubmitting(true);
     try {
       await cancelRedAlertByReporter(activeAlert.id);
-      stopEmergencySiren();
+      stopEmergencySiren(true);
       setIsSirenActive(false);
     } catch {
       alert('ඉවත් කිරීමට නොහැකි විය.');
