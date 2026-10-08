@@ -22,6 +22,7 @@ import { DevicePinLoginView } from './DevicePinLoginView';
 import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { requestNotificationPermission } from '../utils/notificationManager';
 import { triggerDirectApkDownload } from '../utils/apkDownloadHelper';
+import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -58,6 +59,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
 
   // Device PIN state
   const [storedPinData, setStoredPinData] = useState<StoredDevicePinData | null>(() => getStoredDevicePin());
@@ -360,13 +362,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             <div className="flex-1 border-t border-slate-200/80 dark:border-[#162e20]" />
           </div>
 
+          {/* ✨ Universal Multi-Category Registration Hub Button */}
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => setIsQuickRegistrationHubOpen(true)}
+            className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black py-2.5 px-4 rounded-xl shadow-md hover:scale-[1.01] active:scale-98 transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center gap-2 border border-emerald-400/50"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span>{language === 'en' ? '✨ Register Now (Registration Hub)' : language === 'ta' ? '✨ பதிவு செய்க (பதிவு மையம்)' : '✨ ලියාපදිංචි වන්න (ලියාපදිංචි හබ් එක)'}</span>
+          </button>
+
           <button
             type="button"
             disabled={isLoading}
             onClick={onNavigateToRegister}
-            className="w-full bg-white dark:bg-transparent hover:bg-emerald-50/40 dark:hover:bg-[#0d1f14] text-[#00a86b] font-bold py-2 px-4 rounded-xl border border-[#00a86b] transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center disabled:opacity-50"
+            className="w-full text-center text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer pt-1"
           >
-            <span>{t.registerBtn || 'ලියාපදිංචි වීමට'}</span>
+            {language === 'en' ? 'Or register directly as a new member →' : language === 'ta' ? 'அல்லது புதிய உறுப்பினராக பதிவு செய்யவும் →' : 'හෝ සෘජුවම නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වීමට →'}
           </button>
         </form>
 
@@ -454,6 +467,29 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           <span>{t.issuesHelpBtn || 'ගැටලු සඳහා'}</span>
         </button>
       </div>
+
+      {/* ✨ Universal Multi-Category Registration Hub Modal for New Users */}
+      <QuickRegistrationHubModal
+        isOpen={isQuickRegistrationHubOpen}
+        onClose={() => setIsQuickRegistrationHubOpen(false)}
+        language={language}
+        onSelectUserRegistration={() => {
+          setIsQuickRegistrationHubOpen(false);
+          onNavigateToRegister();
+        }}
+        onSelectProfessionalRegistration={() => {
+          setIsQuickRegistrationHubOpen(false);
+          onNavigateToRegister();
+        }}
+        onSelectBusinessRegistration={() => {
+          setIsQuickRegistrationHubOpen(false);
+          onNavigateToRegister();
+        }}
+        onSelectShopRegistration={() => {
+          setIsQuickRegistrationHubOpen(false);
+          onNavigateToRegister();
+        }}
+      />
     </div>
   );
 };
