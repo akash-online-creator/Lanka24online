@@ -132,8 +132,8 @@ export interface VerifyPinResult {
 }
 
 /**
- * Verifies the entered 4-digit PIN.
- * If user switched to another device, automatically resets this device's PIN and informs the user.
+ * Verifies the entered 4-digit PIN for device PIN quick login.
+ * If user switched to another device remotely, resets this device's PIN.
  */
 export async function verifyDevicePin(
   enteredPin: string,
@@ -158,7 +158,17 @@ export async function verifyDevicePin(
     };
   }
 
-  // Find user locally first
+  // 1. Verify PIN Hash first
+  const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
+  if (computedHash !== stored.pinHash) {
+    return {
+      success: false,
+      reason: 'wrong_pin',
+      message: 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.',
+    };
+  }
+
+  // 2. Find user locally
   let user = allUsers.find(
     (u) =>
       u &&
@@ -168,7 +178,7 @@ export async function verifyDevicePin(
         (stored.nicNumber && u.nicNumber && u.nicNumber.toUpperCase() === stored.nicNumber.toUpperCase()))
   );
 
-  // If async fetcher provided, try fetching latest to check if activeDeviceId changed remotely
+  // If async fetcher provided, try fetching latest
   if (fetchLatestUserFn) {
     try {
       const latest = await fetchLatestUserFn(stored.nicNumber || stored.userId);
@@ -196,7 +206,15 @@ export async function verifyDevicePin(
 
   const currentDeviceId = getOrCreateDeviceId();
 
-  // 🚨 CRITICAL RULE: If user logged in from another device, reset PIN on this device!
+  // If this device's stored record matches the current device, allow seamless login
+  if (stored.deviceId === currentDeviceId) {
+    return {
+      success: true,
+      matchedUser: user,
+    };
+  }
+
+  // Only reset if an actual foreign device takeover is detected
   if (user.activeDeviceId && user.activeDeviceId !== currentDeviceId) {
     clearDevicePin();
     return {
@@ -207,16 +225,6 @@ export async function verifyDevicePin(
     };
   }
 
-  // Verify PIN Hash
-  const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
-  if (computedHash !== stored.pinHash) {
-    return {
-      success: false,
-      reason: 'wrong_pin',
-      message: 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.',
-    };
-  }
-
   return {
     success: true,
     matchedUser: user,
@@ -224,8 +232,8 @@ export async function verifyDevicePin(
 }
 
 /**
- * Verifies if the entered PIN matches the device PIN for the current user.
- * Returns { success: boolean; message?: string; needsSetup?: boolean; deviceMismatch?: boolean }
+ * Verifies if the entered PIN matches the device PIN for the current user during in-app actions (e.g., Red Alert).
+ * Fixed: Does not trigger false-positive device mismatch resets on the same device.
  */
 export async function verifyCurrentUserPin(
   enteredPin: string,
@@ -241,21 +249,30 @@ export async function verifyCurrentUserPin(
     return { success: false, needsSetup: true, message: 'මෙම Device එක සඳහා තවමත් PIN අංකයක් සකසා නොමැත.' };
   }
 
+  // 1. ප්‍රථමයෙන් ඇතුළත් කළ PIN අංකයේ Hash අගය නිවැරදි දැයි තහවුරු කරන්න
+  const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
+  if (computedHash !== stored.pinHash) {
+    return {
+      success: false,
+      message: 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.',
+    };
+  }
+
   const currentDeviceId = getOrCreateDeviceId();
+
+  // 2. PIN අංකය සකස් කර ඇත්තේ මෙම Device එකෙහිම නම් (stored.deviceId === currentDeviceId),
+  // State හි ඇති sync ප්‍රමාදයක් නිසා PIN එක Reset නොකර සත්‍යාපනය සාර්ථක කරන්න.
+  if (stored.deviceId === currentDeviceId) {
+    return { success: true };
+  }
+
+  // 3. වෙනත් Device එකකින් පැමිණි අවස්ථාවක් නම් පමණක් Reset කරන්න
   if (currentUser?.activeDeviceId && currentUser.activeDeviceId !== currentDeviceId) {
     clearDevicePin();
     return {
       success: false,
       deviceMismatch: true,
       message: '⚠️ ඔබ වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය Reset විය. කරුණාකර නැවත PIN එකක් සකසන්න.',
-    };
-  }
-
-  const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
-  if (computedHash !== stored.pinHash) {
-    return {
-      success: false,
-      message: 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.',
     };
   }
 
