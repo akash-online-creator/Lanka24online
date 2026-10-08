@@ -1,13 +1,13 @@
 // 🚨 24/7 Background Notification & Emergency Alert Engine for Sahaya Sewa
 // Operates 24/7 in background via Capacitor Native Push, Service Worker, and Background Sync
-// Uses classic emergency siren for Red Alerts and pleasant gentle chimes for general notifications
+// Uses classic emergency siren for Red Alerts and pleasant chimes for general notifications
 
 import { activateBackgroundWakeLock } from './notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from './sirenAudio';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
-export type AlertKind = 'quick_service' | 'red_alert' | 'emergency_blood' | 'disaster_relief' | 'general';
+export type AlertKind = 'quick_service' | 'red_alert' | 'emergency_blood' | 'disaster_relief' | 'general' | 'group_work';
 
 export interface BackgroundAlertSettings {
   backgroundAlertsEnabled: boolean;
@@ -19,10 +19,11 @@ export interface BackgroundAlertSettings {
     red_alert: boolean;
     emergency_blood: boolean;
     disaster_relief: boolean;
+    group_work: boolean;
   };
 }
 
-export type PickMeAlertSettings = BackgroundAlertSettings; // Backwards compatibility
+export type PickMeAlertSettings = BackgroundAlertSettings;
 
 export interface ActiveRingtoneState {
   isRinging: boolean;
@@ -39,7 +40,7 @@ export interface ActiveRingtoneState {
 const SETTINGS_STORAGE_KEY = 'sahaya_24h_background_alert_settings';
 const DEFAULT_SETTINGS: BackgroundAlertSettings = {
   backgroundAlertsEnabled: true,
-  volume: 0.8,
+  volume: 0.9,
   vibrationEnabled: true,
   notificationPushEnabled: true,
   soundTypes: {
@@ -47,6 +48,7 @@ const DEFAULT_SETTINGS: BackgroundAlertSettings = {
     red_alert: true,
     emergency_blood: true,
     disaster_relief: true,
+    group_work: true,
   },
 };
 
@@ -103,7 +105,7 @@ export function savePickMeAlertSettings(settings: Partial<BackgroundAlertSetting
   } catch {}
 }
 
-// Soft pleasant notification chime (single tone, non-annoying)
+// Soft pleasant notification chime
 function playGentleNotificationChime(vol: number) {
   try {
     if (typeof window === 'undefined') return;
@@ -125,7 +127,7 @@ function playGentleNotificationChime(vol: number) {
     osc.frequency.setValueAtTime(587.33, now); // D5
     osc.frequency.setValueAtTime(880, now + 0.12); // A5
 
-    const safeVol = Math.max(0.05, Math.min(vol * 0.3, 0.4));
+    const safeVol = Math.max(0.05, Math.min(vol * 0.35, 0.5));
     gain.gain.setValueAtTime(safeVol, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
 
@@ -134,27 +136,68 @@ function playGentleNotificationChime(vol: number) {
 
     osc.start(now);
     osc.stop(now + 0.5);
-  } catch (e) {
-    // silently catch if browser policy blocks audio before user interaction
-  }
+  } catch {}
 }
 
-// 📱 Initialize Capacitor Native Emergency Siren Channel (Respects Silent Mode)
+// 📱 Initialize Native Android Notification Channels (Capacitor)
 export async function initializeNativeSirenChannel() {
   if (Capacitor.isNativePlatform()) {
     try {
+      // 1. Red Alert Siren Channel (Max Importance, Lockscreen visibility, custom siren sound)
       await PushNotifications.createChannel({
         id: 'rathuweliya_siren_channel',
-        name: 'රතුවෙලිය ආපදා අනතුරු ඇඟවීම (Rathuweliya Alerts)',
-        description: 'හදිසි ආපදා තත්ත්වයන් සඳහා වන අනතුරු ඇඟවීම්',
-        importance: 5, // High Importance
-        sound: 'siren', // Play sound if phone is in Ring mode
-        visibility: 1,  // Show on Lockscreen
-        vibration: true // Vibrate when phone is in Silent/Vibrate mode
+        name: '🚨 රතුවෙලිය ආපදා සයිරනය (Red Alert Siren)',
+        description: 'හදිසි ආපදා තත්ත්වයන් සඳහා වන අතිශය හදිසි අනතුරු ඇඟවීම්',
+        importance: 5, // Lights up display & shows lockscreen heads-up banner
+        sound: 'siren', // Maps to res/raw/siren.wav in Android APK
+        visibility: 1,  // VISIBILITY_PUBLIC (Shows on Lockscreen)
+        vibration: true,
+        lights: true,
+        lightColor: '#ef4444'
       });
-      console.log('✅ Native Rathuweliya Siren Channel Configured');
+
+      // 2. SOS Live Channel
+      await PushNotifications.createChannel({
+        id: 'sos_live_channel',
+        name: '📡 SOS Live හදිසි ආපදා (SOS Emergency)',
+        description: 'හදිසි ජීවිතාරක්ෂක සහ සජීවී පිහිට ඉල්ලීම්',
+        importance: 5,
+        sound: 'emergency_blood',
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#dc2626'
+      });
+
+      // 3. Quick Urgent Services Channel
+      await PushNotifications.createChannel({
+        id: 'quick_service_channel',
+        name: '⚡ ක්ෂණික සේවා (Quick Urgent Services)',
+        description: 'හදිසි කාර්මික, ජල, විදුලි හා තාක්ෂණික සේවා ඉල්ලීම්',
+        importance: 4,
+        sound: 'quick_service',
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#10b981'
+      });
+
+      // 4. Group Work Channel
+      await PushNotifications.createChannel({
+        id: 'group_work_channel',
+        name: '👥 කණ්ඩායම් වැඩ සහ ශ්‍රමදාන (Group Work)',
+        description: 'ප්‍රජා කණ්ඩායම් ක්‍රියාකාරකම් හා සාමූහික දැනුම්දීම්',
+        importance: 4,
+        sound: 'group_work',
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#3b82f6'
+      });
+
+      console.log('✅ Native Android Push Channels created successfully');
     } catch (e) {
-      console.error('❌ Failed to create native siren channel:', e);
+      console.warn('Native notification channel creation note:', e);
     }
   }
 }
@@ -172,16 +215,9 @@ export function triggerPickMeAlert(params: {
 }): boolean {
   const settings = getPickMeAlertSettings();
 
-  // Check if background notifications are enabled
   if (!settings.backgroundAlertsEnabled && !params.forceRingtone) return false;
-  if (params.kind === 'quick_service' && !settings.soundTypes.quick_service && !params.forceRingtone) return false;
-  if (params.kind === 'red_alert' && !settings.soundTypes.red_alert && !params.forceRingtone) return false;
-  if (params.kind === 'emergency_blood' && !settings.soundTypes.emergency_blood && !params.forceRingtone) return false;
-  if (params.kind === 'disaster_relief' && !settings.soundTypes.disaster_relief && !params.forceRingtone) return false;
 
-  // Stop any previous state
-  stopPickMeAlert();
-
+  // Set active state
   currentRingtoneState = {
     isRinging: true,
     kind: params.kind,
@@ -195,16 +231,15 @@ export function triggerPickMeAlert(params: {
   };
   notifyStateChange();
 
-  // 1. Activate Background Wake Lock
+  // 1. Activate Background Wake Lock (Keeps CPU awake)
   activateBackgroundWakeLock().catch(() => {});
 
-  // 2. Play Audio & Smart Vibration Handling
+  // 2. Play Audio & Vibration
   if (params.kind === 'red_alert') {
     try {
       startEmergencySiren();
     } catch {}
 
-    // Emergency SOS Vibration Pattern (1000ms vibrate, 300ms pause...)
     if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate([1000, 300, 1000, 300, 1000, 300, 1500]);
@@ -219,13 +254,7 @@ export function triggerPickMeAlert(params: {
     }
   }
 
-  // 3. Auto dismiss banner after 12 seconds
-  if (autoDismissTimeout) clearTimeout(autoDismissTimeout);
-  autoDismissTimeout = setTimeout(() => {
-    stopPickMeAlert();
-  }, 12000);
-
-  // 4. Document Title Notification
+  // 3. Document Title Notification
   if (typeof document !== 'undefined') {
     originalDocumentTitle = document.title;
     let isBlink = false;
@@ -238,7 +267,7 @@ export function triggerPickMeAlert(params: {
     }, 1000);
   }
 
-  // 5. Push System 24/7 OS Notification (works even when tab/screen is closed)
+  // 4. Fire OS Level Background Push Notification
   fireBackgroundPushNotification(params);
 
   return true;
@@ -258,69 +287,57 @@ async function fireBackgroundPushNotification(params: {
   const fullBody = `${params.message}${params.locationName ? ` • 📍 ${params.locationName}` : ''}`;
   const tagId = `sahaya-24h-alert-${params.kind}-${Date.now()}`;
 
-  // Native Platform Push handled via FCM Server Channel Trigger
-  if (Capacitor.isNativePlatform()) {
-    return;
-  }
-
-  // Web Browser Push Trigger
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
-
+  // 1. Send via Service Worker
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready;
-      if (reg && (reg as any).showNotification) {
-        await (reg as any).showNotification(params.title, {
+      if (reg && reg.showNotification) {
+        await reg.showNotification(params.title, {
           body: fullBody,
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: tagId,
-          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [300, 100, 300],
-          requireInteraction: params.kind === 'red_alert',
+          vibrate: params.kind === 'red_alert' ? [1000, 200, 1000, 200, 1500] : [200, 100, 200],
+          requireInteraction: params.kind === 'red_alert' || params.kind === 'emergency_blood',
           data: {
             url: '/',
             targetModal: params.targetModal,
             targetPostId: params.targetPostId,
-            kind: params.kind,
           },
-          actions: [
-            { action: 'open', title: '👁️ විස්තර බලන්න (Open)' },
-            { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' },
-          ],
+          actions: params.kind === 'red_alert' ? [
+            { action: 'open_red_alert', title: '🚨 රතු එළිය බලන්න' },
+            { action: 'stop', title: '🔇 ශබ්දය නවත්වන්න' }
+          ] : [
+            { action: 'open', title: '👁️ බලන්න (View)' }
+          ]
         });
         return;
       }
     } catch {}
   }
 
-  try {
-    const notif = new Notification(params.title, {
-      body: fullBody,
-      icon: '/logo.jpg',
-      badge: '/logo.jpg',
-      tag: tagId,
-    });
-    notif.onclick = () => {
-      window.focus();
-      stopPickMeAlert();
-      window.dispatchEvent(
-        new CustomEvent('sahaya_notification_clicked', {
-          detail: {
-            targetModal: params.targetModal,
-            targetPostId: params.targetPostId,
-          },
-        })
-      );
-      notif.close();
-    };
-  } catch {}
+  // 2. Direct Window Notification Fallback
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const notif = new Notification(params.title, {
+        body: fullBody,
+        icon: '/logo.jpg',
+        badge: '/logo.jpg',
+        tag: tagId,
+      });
+      notif.onclick = () => {
+        window.focus();
+        stopPickMeAlert();
+        notif.close();
+      };
+    } catch {}
+  }
 }
 
-// ⏹️️ Stop Siren & Banner
+// ⏹️ Stop Siren & Banner
 export function stopPickMeAlert(): void {
   try {
-    stopEmergencySiren();
+    stopEmergencySiren(true);
   } catch {}
 
   if (autoDismissTimeout) {
@@ -353,22 +370,4 @@ export function isPickMeAlertRinging(): boolean {
 
 export function getCurrentRingtoneState(): ActiveRingtoneState | null {
   return currentRingtoneState;
-}
-
-// Preview / Test
-export function previewPickMeSound(kind: AlertKind): Promise<void> {
-  return new Promise((resolve) => {
-    triggerPickMeAlert({
-      kind,
-      title: kind === 'red_alert' ? '🚨 රතු අනතුරු ඇඟවීමේ නාදය' : '🔔 සහය සේවා පණිවිඩ නාදය',
-      message: '24/7 පසුබිම් දැනුම්දීම් පරීක්ෂාව සාර්ථකයි.',
-      locationName: 'කොළඹ / ශ්‍රී ලංකාව',
-      forceRingtone: true,
-    });
-
-    setTimeout(() => {
-      stopPickMeAlert();
-      resolve();
-    }, 4000);
-  });
 }
