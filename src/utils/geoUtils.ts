@@ -305,12 +305,26 @@ export function toSinhalaRoadName(road: string, villageHintSi?: string): string 
     converted = converted.replace(reg, v);
   }
 
+  // Handle Christian and Catholic Saint road names prevalent in Western Province / Ja-Ela / Negombo
+  converted = converted
+    .replace(/\bst\.?\s*anne'?s?\b/gi, 'ශාන්ත ආනා')
+    .replace(/\bst\.?\s*anthony'?s?\b/gi, 'ශාන්ත අන්තෝනි')
+    .replace(/\bst\.?\s*joseph'?s?\b/gi, 'ශාන්ත ජෝසප්')
+    .replace(/\bst\.?\s*mary'?s?\b/gi, 'ශාන්ත මරියා')
+    .replace(/\bst\.?\s*peter'?s?\b/gi, 'ශාන්ත පීතර')
+    .replace(/\bst\.?\s*jude'?s?\b/gi, 'ශාන්ත ජූඩ්')
+    .replace(/\bst\.?\s*sebastian'?s?\b/gi, 'ශාන්ත සෙබස්තියන්')
+    .replace(/\bst\.?\s*francis'?s?\b/gi, 'ශාන්ත ෆ්‍රැන්සිස්')
+    .replace(/\bst\.?\s*lazaro'?s?\b/gi, 'ශාන්ත ලාසරස්')
+    .replace(/\bst\.?\s+([A-Za-z])/gi, 'ශාන්ත $1');
+
   // Replace road suffixes
   converted = converted
     .replace(/\b(road|rd\.?)\b/gi, 'පාර')
     .replace(/\b(mawatha|mw\.?|mwt)\b/gi, 'මාවත')
     .replace(/\b(lane|ln\.?)\b/gi, 'පටුමග')
-    .replace(/\b(street|st\.?)\b/gi, 'වීදිය')
+    .replace(/\b(street)\b/gi, 'වීදිය')
+    .replace(/(?<=\w\s)st\b/gi, 'වීදිය')
     .replace(/\b(avenue|ave\.?)\b/gi, 'මාවත')
     .replace(/\b(place|pl\.?)\b/gi, 'පෙදෙස')
     .replace(/\b(drive|dr\.?)\b/gi, 'මාවත')
