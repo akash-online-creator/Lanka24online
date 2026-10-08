@@ -2805,6 +2805,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsRedAlertCreateOpen(false)}
         currentUser={user}
         currentLocation={currentLocation}
+        onUpdateUser={(updatedUser) => {
+          if (setCurrentUser) setCurrentUser(updatedUser);
+          if (onUpdateUser) onUpdateUser(updatedUser);
+        }}
         onAlertCreated={(newAlert) => {
           setIsRedAlertCreateOpen(false);
           if (setRedAlerts) {
