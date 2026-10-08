@@ -23,6 +23,10 @@ import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { requestNotificationPermission } from '../utils/notificationManager';
 import { triggerDirectApkDownload } from '../utils/apkDownloadHelper';
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { MarketShop } from '../types';
+import { initialTags } from '../data/initialData';
+import { getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -60,6 +64,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
+  const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
+  const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'shop' | 'business'>('shop');
+
+  const handleSaveMarketShop = (newShop: MarketShop) => {
+    const currentShops = getStoredMarketShops();
+    const updated = [newShop, ...currentShops.filter((s) => s && s.id !== newShop.id)];
+    saveMarketShopsToStorage(updated);
+    setIsMarketplaceAddShopModalOpen(false);
+    alert(
+      marketplaceShopModalType === 'business'
+        ? (language === 'en' ? '✅ Your business / enterprise has been successfully registered!' : language === 'ta' ? '✅ உங்கள் வணிகம் வெற்றிகரமாக பதிவு செய்யப்பட்டது!' : '✅ ඔබගේ ව්‍යාපාරය/ආයතනය සාර්ථකව ලියාපදිංචි කරන ලදී!')
+        : (language === 'en' ? '✅ Your shop / store has been successfully registered!' : language === 'ta' ? '✅ உங்கள் கடை வெற்றிகரமாக பதிவு செய்யப்பட்டது!' : '✅ ඔබගේ වෙළඳසැල/අලෙවිසැල සාර්ථකව ලියාපදිංචි කරන ලදී!')
+    );
+  };
 
   // Device PIN state
   const [storedPinData, setStoredPinData] = useState<StoredDevicePinData | null>(() => getStoredDevicePin());
@@ -477,18 +495,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           setIsQuickRegistrationHubOpen(false);
           onNavigateToRegister();
         }}
-        onSelectProfessionalRegistration={() => {
-          setIsQuickRegistrationHubOpen(false);
-          onNavigateToRegister();
-        }}
         onSelectBusinessRegistration={() => {
           setIsQuickRegistrationHubOpen(false);
-          onNavigateToRegister();
+          setMarketplaceShopModalType('business');
+          setIsMarketplaceAddShopModalOpen(true);
         }}
         onSelectShopRegistration={() => {
           setIsQuickRegistrationHubOpen(false);
-          onNavigateToRegister();
+          setMarketplaceShopModalType('shop');
+          setIsMarketplaceAddShopModalOpen(true);
         }}
+      />
+
+      {/* 🏪 / 🏢 Direct Business & Shop Registration Modal for New Users */}
+      <MarketplaceAddShopModal
+        isOpen={isMarketplaceAddShopModalOpen}
+        onClose={() => setIsMarketplaceAddShopModalOpen(false)}
+        currentUser={null}
+        allTags={initialTags}
+        defaultType={marketplaceShopModalType}
+        onSaveShop={handleSaveMarketShop}
       />
     </div>
   );
