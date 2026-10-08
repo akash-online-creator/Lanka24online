@@ -1,18 +1,13 @@
 import React from 'react';
 import { 
   UserPlus, 
-  Briefcase, 
   Building2, 
   Store, 
   X, 
   ShieldCheck, 
   MapPin, 
   Sparkles, 
-  ChevronRight,
-  AlertTriangle,
-  Lock,
-  Compass,
-  CheckCircle
+  ChevronRight 
 } from 'lucide-react';
 import { Language } from '../types';
 
@@ -21,9 +16,9 @@ interface QuickRegistrationHubModalProps {
   onClose: () => void;
   language?: Language;
   onSelectUserRegistration: () => void;
-  onSelectProfessionalRegistration: () => void;
   onSelectBusinessRegistration: () => void;
   onSelectShopRegistration: () => void;
+  onSelectProfessionalRegistration?: () => void;
 }
 
 export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps> = ({
@@ -31,7 +26,6 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
   onClose,
   language = 'si',
   onSelectUserRegistration,
-  onSelectProfessionalRegistration,
   onSelectBusinessRegistration,
   onSelectShopRegistration,
 }) => {
@@ -46,11 +40,11 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
   const registrationOptions = [
     {
       id: 'user',
-      titleSi: '1. පරිශීලක ලියාපදිංචිය',
-      titleEn: '1. User Registration',
-      titleTa: '1. பயனர் பதிவு',
+      titleSi: '1. සාමාන්‍ය ප්‍රජා පරිශීලක ලියාපදිංචිය',
+      titleEn: '1. Community User Registration',
+      titleTa: '1. சமூக பயனர் பதிவு',
       subtitleSi: 'ප්‍රජා සහයෝගීතා ගිණුමක් විවෘත කර සියලුම සේවාවන් ලබාගන්න / උදව් කරන්න.',
-      subtitleEn: 'Create a personal community account to request or offer help.',
+      subtitleEn: 'Create a personal community account to request or offer help and access all services.',
       subtitleTa: 'உதவி கோர அல்லது வழங்க தனிப்பட்ட சமூக கணக்கை உருவாக்கவும்.',
       badgeSi: 'පුද්ගලික ගිණුම්',
       badgeEn: 'Personal Account',
@@ -61,26 +55,10 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
       action: onSelectUserRegistration,
     },
     {
-      id: 'professional',
-      titleSi: '2. වෘත්තීය සාමාජික ලියාපදිංචිය',
-      titleEn: '2. Professional Member Registration',
-      titleTa: '2. தொழில்முறை உறுப்பினர் பதிவு',
-      subtitleSi: 'කාර්මිකයන්, විදුලි/ජල කාර්මික, තාක්ෂණික ශිල්පීන් හා වෘත්තිකයන් සේවා සැපයීමට ලියාපදිංචි වන්න.',
-      subtitleEn: 'Register as a skilled technician, artisan, or professional service provider.',
-      subtitleTa: 'திறமையான தொழில்நுட்ப வல்லுநர் அல்லது சேவை வழங்குநராக பதிவு செய்யவும்.',
-      badgeSi: 'වෘත්තීය ශිල්පීන්',
-      badgeEn: 'Skilled Artisan',
-      badgeTa: 'தொழில் வல்லுநர்',
-      icon: Briefcase,
-      gradient: 'from-blue-600 to-indigo-700',
-      borderHover: 'hover:border-blue-400',
-      action: onSelectProfessionalRegistration,
-    },
-    {
       id: 'business',
-      titleSi: '3. ව්‍යාපාර ලියාපදිංචිය',
-      titleEn: '3. Business Registration',
-      titleTa: '3. வணிக பதிவு',
+      titleSi: '2. ව්‍යාපාර හා ආයතන ලියාපදිංචිය',
+      titleEn: '2. Business & Enterprise Registration',
+      titleTa: '2. வணிக பதிவு',
       subtitleSi: 'සමාගම්, ආයතන, සේවා කාර්යාල හා නිෂ්පාදන ආයතන ප්‍රජා සිතියමේ ලියාපදිංචි කරන්න.',
       subtitleEn: 'Register companies, service enterprises, and corporate locations on community map.',
       subtitleTa: 'நிறுவனங்கள் மற்றும் சேவை மையங்களை சமூக வரைபடத்தில் பதிவு செய்யவும்.',
@@ -94,9 +72,9 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
     },
     {
       id: 'shop',
-      titleSi: '4. අලෙවිසැල් ලියාපදිංචිය',
-      titleEn: '4. Shop & Store Registration',
-      titleTa: '4. கடை மற்றும் விற்பனை நிலைய பதிவு',
+      titleSi: '3. වෙළඳසැල් හා අලෙවිසැල් ලියාපදිංචිය',
+      titleEn: '3. Shop & Store Registration',
+      titleTa: '3. கடை மற்றும் விற்பனை நிலைய பதிவு',
       subtitleSi: 'සිල්ලර/තොග කඩසාප්පු, ඖෂධහල්, සුපිරි වෙළඳසැල් හා භාණ්ඩ විකුණුම්හල් ලියාපදිංචි කරන්න.',
       subtitleEn: 'Register retail stores, wholesale shops, pharmacies, and local grocery outlets.',
       subtitleTa: 'சில்லறை/மொத்த கடைகள், மருந்தகங்கள் மற்றும் உள்ளூர் கடைகளை பதிவு செய்யவும்.',
@@ -140,8 +118,8 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
 
         {/* Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5">
-          {/* Options Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Options Grid (3 Distinct Categories) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {registrationOptions.map((opt) => {
               const IconComp = opt.icon;
               return (
@@ -174,7 +152,7 @@ export const QuickRegistrationHubModal: React.FC<QuickRegistrationHubModalProps>
                   </div>
 
                   <div className="pt-3 mt-2 border-t border-slate-200 dark:border-emerald-900/40 flex items-center justify-between text-xs font-black text-emerald-700 dark:text-emerald-400 group-hover:translate-x-1 transition-transform">
-                    <span>{getLang('ලියාපදිංචි පිටුවට යන්න', 'Go to Registration', 'பதிவு பக்கத்திற்கு செல்லவும்')}</span>
+                    <span>{getLang('ලියාපදිංචි වෙන්න', 'Register Now', 'பதிவு செய்')}</span>
                     <ChevronRight className="w-4 h-4" />
                   </div>
                 </button>
