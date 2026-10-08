@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { User, LocationOption, Language } from '../types';
 import { calculateDistanceKm, resolveExactLocation } from '../utils/geoUtils';
+import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -164,42 +165,23 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     return si;
   };
 
-  // Helper: Detect active GPS location
-  const handleDetectGps = () => {
+  // Helper: Detect active GPS location with Meter-Level Precision (No Stale Caching)
+  const handleDetectGps = async () => {
     setIsLocating(true);
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const acc = Math.round(pos.coords.accuracy || 10);
-          setCurrentCoords({ lat, lng });
-          setGpsAccuracy(acc);
-          setIsLocating(false);
+    try {
+      const fix = await getHighAccuracyLocation(10000);
+      setCurrentCoords({ lat: fix.lat, lng: fix.lng });
+      setGpsAccuracy(fix.accuracyMeters);
 
-          try {
-            const resolved = await resolveExactLocation(lat, lng);
-            if (resolved?.shortDisplaySi) {
-              setResolvedAddress(resolved.shortDisplaySi);
-            }
-          } catch {}
-        },
-        () => {
-          setIsLocating(false);
-          // Fallback to stored location if GPS access is denied
-          try {
-            const savedLoc = localStorage.getItem('sahaya_current_location');
-            if (savedLoc) {
-              const parsed = JSON.parse(savedLoc);
-              if (parsed.lat && parsed.lng) {
-                setCurrentCoords({ lat: parsed.lat, lng: parsed.lng });
-              }
-            }
-          } catch {}
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 15000 }
-      );
-    } else {
+      try {
+        const resolved = await resolveExactLocation(fix.lat, fix.lng);
+        if (resolved?.shortDisplaySi) {
+          setResolvedAddress(resolved.shortDisplaySi);
+        }
+      } catch {}
+    } catch (e) {
+      console.debug('High accuracy GPS fetch notice:', e);
+    } finally {
       setIsLocating(false);
     }
   };
