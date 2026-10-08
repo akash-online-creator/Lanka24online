@@ -346,7 +346,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
       // Trigger local background notification
       triggerPickMeAlert({
-        kind: 'emergency_blood',
+        kind: 'red_alert',
         title: `🚨 ${titleSi}`,
         message: `${locationName.trim()} ප්‍රදේශයේ හදිසි ආපදා තත්ත්වයක් වාර්තා විය.`,
         locationName: locationName.trim(),
