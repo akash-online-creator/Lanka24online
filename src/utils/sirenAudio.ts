@@ -1,7 +1,6 @@
 // Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
-// Exclusively configured for: mixkit-manual-siren-fire-alert-1652.mp3 & mixkit-manual-siren-fire-alert-1652.wav
+// Exclusively configured for: mixkit-manual-siren-fire-alert-1652.wav
 
-const SIREN_MP3_URL = '/mixkit-manual-siren-fire-alert-1652.mp3';
 const SIREN_WAV_URL = '/mixkit-manual-siren-fire-alert-1652.wav';
 
 let isSirenActive = false;
@@ -10,9 +9,6 @@ let audioContext: AudioContext | null = null;
 let audioBuffer: AudioBuffer | null = null;
 let activeSourceNode: AudioBufferSourceNode | null = null;
 let activeGainNode: GainNode | null = null;
-let syntheticOscillator: OscillatorNode | null = null;
-let syntheticLfo: OscillatorNode | null = null;
-let syntheticGainNode: GainNode | null = null;
 let isPreloading = false;
 let vibrationInterval: any = null;
 let wakeLockSentinel: any = null;
@@ -102,36 +98,28 @@ function applyLiveVolume(): void {
       activeGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
     } catch {}
   }
-  if (syntheticGainNode && audioContext) {
-    try {
-      syntheticGainNode.gain.setValueAtTime(effectiveVolume * 0.8, audioContext.currentTime);
-    } catch {}
-  }
 }
 
+/**
+ * Returns the exact Siren Audio URL: mixkit-manual-siren-fire-alert-1652.wav
+ */
 export function getCustomSirenAudio(): string {
-  return SIREN_MP3_URL;
+  return SIREN_WAV_URL;
 }
 
+/**
+ * Returns the exact Siren Audio File Name
+ */
 export function getSirenFileName(): string {
   return 'mixkit-manual-siren-fire-alert-1652.wav';
 }
 
-export async function persistSirenSettings(audioUrl?: string | null, fileName?: string, ...rest: any[]): Promise<void> {
-  try {
-    if (typeof window !== 'undefined') {
-      if (fileName) {
-        localStorage.setItem('sahaya_custom_siren_name', fileName);
-      }
-      window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed'));
-    }
-  } catch {}
+export async function persistSirenSettings(_audioUrl?: string | null, _fileName?: string, ..._rest: any[]): Promise<void> {
+  notifyLocalChanges();
 }
 
-export function setCustomSirenAudio(audioUrl?: string, ...rest: any[]): void {
-  if (audioUrl) {
-    persistSirenSettings(audioUrl);
-  }
+export function setCustomSirenAudio(_audioUrl?: string, ..._rest: any[]): void {
+  notifyLocalChanges();
 }
 
 function getOrCreateAudioContext(): AudioContext | null {
@@ -148,7 +136,7 @@ function getOrCreateAudioContext(): AudioContext | null {
   return audioContext;
 }
 
-// 🔓 Preload Audio Buffer into RAM for instant zero-latency playback
+// 🔓 Preload mixkit-manual-siren-fire-alert-1652.wav into RAM for zero-latency start
 export async function preloadSirenBuffer(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (audioBuffer) return;
@@ -159,28 +147,16 @@ export async function preloadSirenBuffer(): Promise<void> {
     const ctx = getOrCreateAudioContext();
     if (!ctx) return;
 
-    // Try MP3 first (579KB, fast), then WAV (1.5MB)
-    let arrayBuf: ArrayBuffer | null = null;
-    try {
-      const res = await fetch(SIREN_MP3_URL);
-      if (res.ok) {
-        arrayBuf = await res.arrayBuffer();
-      }
-    } catch {
-      const res = await fetch(SIREN_WAV_URL);
-      if (res.ok) {
-        arrayBuf = await res.arrayBuffer();
-      }
-    }
-
-    if (arrayBuf && ctx) {
+    const res = await fetch(SIREN_WAV_URL);
+    if (res.ok) {
+      const arrayBuf = await res.arrayBuffer();
       audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
-        const decoded = ctx.decodeAudioData(arrayBuf!, resolve, reject);
+        const decoded = ctx.decodeAudioData(arrayBuf, resolve, reject);
         if (decoded && typeof (decoded as any).then === 'function') {
           (decoded as any).then(resolve).catch(reject);
         }
       });
-      console.log('✅ Siren Audio Buffer loaded into Web Audio RAM');
+      console.log('✅ mixkit-manual-siren-fire-alert-1652.wav loaded into Web Audio RAM');
     }
   } catch (err) {
     console.warn('Siren buffer preload note:', err);
@@ -189,7 +165,7 @@ export async function preloadSirenBuffer(): Promise<void> {
   }
 }
 
-// 🔓 Mobile Autoplay Audio Unlock Helper
+// 🔓 Mobile Audio Engine Unlock Helper (User Touch / Keypad / Click)
 export function unlockAudio(): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -198,7 +174,7 @@ export function unlockAudio(): boolean {
       ctx.resume().catch(() => {});
     }
 
-    // Play a tiny 0.001s silent buffer to permanently unlock iOS / Android audio engine
+    // Play a 0.001s silent sample to unlock browser audio restrictions
     if (ctx && ctx.state === 'running') {
       try {
         const buffer = ctx.createBuffer(1, 1, 22050);
@@ -213,8 +189,11 @@ export function unlockAudio(): boolean {
       htmlAudioElement = new Audio();
       htmlAudioElement.preload = 'auto';
       htmlAudioElement.loop = true;
-      htmlAudioElement.src = SIREN_MP3_URL;
+      htmlAudioElement.src = SIREN_WAV_URL;
       htmlAudioElement.volume = getSirenVolume();
+      htmlAudioElement.load();
+    } else if (htmlAudioElement.src !== SIREN_WAV_URL && !htmlAudioElement.src.endsWith(SIREN_WAV_URL)) {
+      htmlAudioElement.src = SIREN_WAV_URL;
       htmlAudioElement.load();
     }
 
@@ -224,7 +203,7 @@ export function unlockAudio(): boolean {
   return true;
 }
 
-// 📳 Continuous Pulsating Emergency Vibration
+// 📳 Continuous Emergency Vibration
 function startContinuousVibration() {
   stopContinuousVibration();
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -268,7 +247,7 @@ async function acquireScreenWakeLock() {
       navigator.mediaSession.metadata = new (window as any).MediaMetadata({
         title: '🚨 රතු එළිය - හදිසි ආපදා සයිරන් අනතුරු ඇඟවීම',
         artist: 'සහය සේවා (Sahaya Sewa Emergency Siren)',
-        album: 'RED ALERT - Fire & Disaster Emergency',
+        album: 'mixkit-manual-siren-fire-alert-1652',
         artwork: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
@@ -296,62 +275,6 @@ function releaseScreenWakeLock() {
   } catch {}
 }
 
-// 📢 Fail-Safe Web Audio Synthetic Siren Tone Generator
-// Starts instantaneously in 0ms offline or while audio file is buffering
-function startSyntheticEmergencySiren(ctx: AudioContext, vol: number) {
-  try {
-    stopSyntheticEmergencySiren();
-    if (!ctx) return;
-
-    // Main carrier oscillator (sweeps frequency)
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(650, ctx.currentTime);
-
-    // LFO modulator for authentic fire/disaster warble (0.45 Hz sweep between 650Hz and 950Hz)
-    const lfo = ctx.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.setValueAtTime(0.45, ctx.currentTime);
-
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.setValueAtTime(300, ctx.currentTime);
-    lfo.connect(lfoGain);
-    lfoGain.connect(osc.frequency);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(Math.min(1, vol * 0.75), ctx.currentTime);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    lfo.start();
-
-    syntheticOscillator = osc;
-    syntheticLfo = lfo;
-    syntheticGainNode = gain;
-  } catch (err) {
-    console.warn('Synthetic siren note:', err);
-  }
-}
-
-function stopSyntheticEmergencySiren() {
-  if (syntheticOscillator) {
-    try { syntheticOscillator.stop(); } catch {}
-    try { syntheticOscillator.disconnect(); } catch {}
-    syntheticOscillator = null;
-  }
-  if (syntheticLfo) {
-    try { syntheticLfo.stop(); } catch {}
-    try { syntheticLfo.disconnect(); } catch {}
-    syntheticLfo = null;
-  }
-  if (syntheticGainNode) {
-    try { syntheticGainNode.disconnect(); } catch {}
-    syntheticGainNode = null;
-  }
-}
-
 export function initSirenSettings(): () => void {
   if (typeof window !== 'undefined') {
     const unlocker = () => {
@@ -363,7 +286,7 @@ export function initSirenSettings(): () => void {
     window.addEventListener('pointerdown', unlocker, { passive: true });
     window.addEventListener('keydown', unlocker, { passive: true });
 
-    // Initial preload
+    // Initial preload of mixkit-manual-siren-fire-alert-1652.wav
     setTimeout(() => {
       preloadSirenBuffer().catch(() => {});
     }, 200);
@@ -371,7 +294,11 @@ export function initSirenSettings(): () => void {
   return () => {};
 }
 
-// 🚨 ප්‍රධාන සයිරන් ක්‍රියාත්මක කිරීම (Exclusively mixkit-manual-siren-fire-alert-1652) 🚨
+/**
+ * 🚨 ප්‍රධාන සයිරන් ක්‍රියාත්මක කිරීම
+ * Exclusively plays 'mixkit-manual-siren-fire-alert-1652.wav' in a continuous loop.
+ * No synthetic beeps, no other files.
+ */
 export function startEmergencySiren(): () => void {
   try {
     isSirenActive = true;
@@ -381,11 +308,11 @@ export function startEmergencySiren(): () => void {
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
     const ctx = getOrCreateAudioContext();
 
-    console.log('🚨 Playing Emergency Fire Siren at volume:', effectiveVolume);
+    console.log('🚨 Playing Emergency Siren: mixkit-manual-siren-fire-alert-1652.wav at volume:', effectiveVolume);
 
     let webAudioStarted = false;
 
-    // 1. Web Audio Preloaded RAM Playback (Zero Latency Instant Start)
+    // 1. Web Audio API Preloaded RAM Buffer Playback (Zero Latency Instant Loop)
     if (ctx && ctx.state === 'running' && audioBuffer) {
       try {
         if (activeSourceNode) {
@@ -405,49 +332,40 @@ export function startEmergencySiren(): () => void {
         activeSourceNode.start(0);
         webAudioStarted = true;
       } catch (e) {
-        console.warn('Web Audio buffer start note:', e);
+        console.warn('Web Audio buffer playback note:', e);
       }
     }
 
-    // 2. HTML5 Audio Element Playback (Supports Background / Screen-off Playback)
+    // 2. HTML5 Audio Element Playback (Universal Mobile & Background Support)
     try {
       if (!htmlAudioElement) {
         htmlAudioElement = new Audio();
         htmlAudioElement.preload = 'auto';
         htmlAudioElement.loop = true;
       }
-      
-      if (!htmlAudioElement.src || !htmlAudioElement.src.includes('mixkit-manual-siren-fire-alert-1652')) {
-        htmlAudioElement.src = SIREN_MP3_URL;
+
+      if (htmlAudioElement.src !== SIREN_WAV_URL && !htmlAudioElement.src.endsWith(SIREN_WAV_URL)) {
+        htmlAudioElement.src = SIREN_WAV_URL;
       }
 
       htmlAudioElement.volume = effectiveVolume;
-      htmlAudioElement.currentTime = 0;
+      htmlAudioElement.loop = true;
 
-      const p = htmlAudioElement.play();
-      if (p !== undefined) {
-        p.then(() => {
-          // If HTML audio started successfully, stop synthetic oscillator if active
-          stopSyntheticEmergencySiren();
-        }).catch((err) => {
-          console.warn('HTML5 Audio play note:', err);
-          // Try WAV URL fallback
-          if (htmlAudioElement && isSirenActive) {
-            htmlAudioElement.src = SIREN_WAV_URL;
-            htmlAudioElement.play().catch(() => {});
-          }
-        });
+      // If Web Audio buffer is not already playing, start HTML5 Audio
+      if (!webAudioStarted) {
+        htmlAudioElement.currentTime = 0;
+        const p = htmlAudioElement.play();
+        if (p !== undefined) {
+          p.catch((err) => {
+            console.warn('HTML5 Audio play permission note:', err);
+          });
+        }
       }
     } catch (e) {
-      console.warn('HTML Audio player note:', e);
+      console.warn('HTML Audio element note:', e);
     }
 
-    // 3. Fail-Safe Synthetic Siren if file buffer isn't loaded yet
-    if (!webAudioStarted && ctx && ctx.state === 'running' && !htmlAudioElement?.currentTime) {
-      startSyntheticEmergencySiren(ctx, effectiveVolume);
-    }
-
-    // 4. Continuous Emergency Vibration
+    // 3. Continuous Emergency Vibration
     startContinuousVibration();
 
   } catch (err) {
@@ -471,9 +389,6 @@ export function stopEmergencySiren(): void {
       try { activeGainNode.disconnect(); } catch {}
       activeGainNode = null;
     }
-
-    // Stop Synthetic Generator
-    stopSyntheticEmergencySiren();
 
     // Stop HTML Audio
     if (htmlAudioElement) {
