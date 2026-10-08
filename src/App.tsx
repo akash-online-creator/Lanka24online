@@ -425,6 +425,7 @@ export const App: React.FC = () => {
             user={currentUser}
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
+            onUpdateUser={(updated) => setCurrentUser(updated)}
             users={users}
             setUsers={setUsers}
             helpPosts={helpPosts}
