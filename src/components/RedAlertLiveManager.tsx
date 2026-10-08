@@ -103,7 +103,42 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       const currentActive = alertList.find((a) => a && a.status === 'active') || null;
       const prevAlert = prevAlertRef.current;
 
-      if (prevAlert) {
+      const isBrandNewAlert = currentActive && (!prevAlert || currentActive.id !== prevAlert.id);
+
+      if (isBrandNewAlert) {
+        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට: සයිරනය ක්‍රියාත්මක කිරීම
+        const userCoords = getUserCoordinates();
+        const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 6.9271;
+        const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.8612;
+        const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+
+        let isDismissed = false;
+        try {
+          const dismissedIds = JSON.parse(localStorage.getItem(`rathuweliya_dismissed_alerts_${currentUserId}`) || '[]');
+          isDismissed = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
+        } catch {}
+
+        const isReporter = currentActive.reportedByUserId === currentUserId;
+
+        if ((distanceKm <= 15 || isReporter) && !isDismissed) {
+          startEmergencySiren();
+          setIsSirenActive(true);
+          triggerPopup(`🚨 අවධානය දෙන්න: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
+        } else if (!isDismissed) {
+          triggerBrowserNotification({
+            id: `alert-new-${currentActive.id || Date.now()}`,
+            type: 'red_alert',
+            title: `🚨 නව ආපදා අනතුරු ඇඟවීමක්: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
+            message: `📍 ${currentActive.locationName || 'ශ්‍රී ලංකාව'} ප්‍රදේශයෙන් හදිසි ආපදාවක් වාර්තා වී ඇත.`,
+            locationName: currentActive.locationName,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            badgeText: 'SOS',
+            targetModal: 'red_alert',
+            targetPostId: currentActive.id,
+          });
+        }
+      } else if (prevAlert) {
         const updatedAlertInList = alertList.find((a) => a && a.id === prevAlert.id);
 
         // A. ආපදාව විසඳුනු බව සටහන් කළ විට
@@ -133,38 +168,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
           if (currentActive.latestReporterUpdate?.notificationText) {
             triggerPopup(currentActive.latestReporterUpdate.notificationText);
           }
-        }
-      } else if (currentActive) {
-        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට: දුර ප්‍රමාණය පරීක්ෂා කර කි.මී. 5 ඇතුළත නම් පමණක් සයිරනය ක්‍රියාත්මක කිරීම
-        const userCoords = getUserCoordinates();
-        const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 6.9271;
-        const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.8612;
-        const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
-
-        // පරිශීලකයා කලින් මෙම alert එක dismiss කර ඇත්දැයි බැලීම
-        let isDismissed = false;
-        try {
-          const dismissedIds = JSON.parse(localStorage.getItem(`rathuweliya_dismissed_alerts_${currentUserId}`) || '[]');
-          isDismissed = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
-        } catch {}
-
-        if (distanceKm <= 5 && !isDismissed) {
-          startEmergencySiren();
-          setIsSirenActive(true);
-          triggerPopup(`🚨 අවධානය දෙන්න: ඔබේ ස්ථානයට කි.මී. ${distanceKm.toFixed(1)} ක් නුදුරින් ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
-        } else if (!isDismissed) {
-          triggerBrowserNotification({
-            id: `alert-new-${currentActive.id || Date.now()}`,
-            type: 'emergency_blood',
-            title: `🚨 නව ආපදා අනතුරු ඇඟවීමක්: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
-            message: `📍 ${currentActive.locationName || 'ශ්‍රී ලංකාව'} ප්‍රදේශයෙන් හදිසි ආපදාවක් වාර්තා වී ඇත.`,
-            locationName: currentActive.locationName,
-            timestamp: new Date().toISOString(),
-            isRead: false,
-            badgeText: 'SOS',
-            targetModal: 'red_alert',
-            targetPostId: currentActive.id,
-          });
         }
       }
 
