@@ -26,7 +26,7 @@ import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 import { triggerPickMeAlert } from '../utils/backgroundAlertEngine';
 import { verifyCurrentUserPin, getStoredDevicePin, saveDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { DevicePinSetupModal } from './DevicePinSetupModal';
-import { startEmergencySiren, unlockAudio } from '../utils/sirenAudio';
+import { startEmergencySiren, unlockAudio, setEmergencySirenLock } from '../utils/sirenAudio';
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 export interface RedAlertCreateModalProps {
@@ -282,7 +282,8 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         return;
       }
 
-      // 🚨 PIN VERIFIED: Start Siren & Vibration IMMEDIATELY on touch!
+      // 🚨 PIN VERIFIED: Lock and Start Siren & Vibration IMMEDIATELY on touch!
+      setEmergencySirenLock(true);
       startEmergencySiren();
 
       setIsSubmitting(true);
@@ -344,14 +345,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         }
       } catch (_) {}
 
-      // Trigger local background notification
-      triggerPickMeAlert({
-        kind: 'red_alert',
-        title: `🚨 ${titleSi}`,
-        message: `${locationName.trim()} ප්‍රදේශයේ හදිසි ආපදා තත්ත්වයක් වාර්තා විය.`,
-        locationName: locationName.trim(),
-        forceRingtone: true,
-      });
+      // Note: Siren and active alert banner are synchronized via RedAlertLiveManager
 
       // Broadcast FCM Push Notification to nearby devices and background workers
       broadcastPushNotification({
