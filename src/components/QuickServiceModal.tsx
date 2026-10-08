@@ -22,18 +22,19 @@ import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
 import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
+import { generateStartPin, calculatePlatformFee } from '../utils/serviceWorkflowManager';
 
 interface QuickServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmitPost: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => void;
   currentLocation: LocationOption;
+  availableLocations: LocationOption[];
   currentUser: User;
-  lang: Language;
-  categoryTitle?: string;
-  selectedCategoryObj?: CategoryItem | null;
+  categories?: CategoryItem[];
+  lang?: Language;
   editPost?: HelpPost | null;
-  onUpdatePost?: (updatedPost: HelpPost) => void;
+  onUpdatePost?: (post: HelpPost) => void;
 }
 
 export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
@@ -41,202 +42,156 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   onClose,
   onSubmitPost,
   currentLocation,
+  availableLocations,
   currentUser,
-  lang,
-  categoryTitle,
-  selectedCategoryObj,
+  categories = [],
+  lang = 'si',
   editPost,
   onUpdatePost,
 }) => {
-  const t = translations[lang];
+  const t = translations[lang] || translations.si;
 
-  // 1. ගැටලුව කුමක්ද? *
-  const [whatHappened, setWhatHappened] = useState('');
-  
-  // 2. ඔබ බලාපොරොත්තු වන්නේ කුමක්ද? *
-  const [whatIsNeeded, setWhatIsNeeded] = useState('');
-  
-  // 3. විශේෂ දැනුවත් කිරිමක් ඇත්නම් ඇතුලත් කරන්න.
-  const [specialNotice, setSpecialNotice] = useState('');
-  
-  // 4. කොන්දේසි ඇත්නම් පවසන්න. (Conditions)
-  const [conditions, setConditions] = useState('');
-  
-  // 5. ගමනාගමනය සිදුවන්නේ කෙසෙද? (පහල අවස්ථාවලින් එකක් තෙරිමට අවසර දෙන්න.)
-  const transportOptions = [
-    'ඔබ පැමිණිය යුතුයි',
-    'මා පැමිණෙන්නම්',
-    'ඔබ එවන්න',
-    'මම ගෙනැවිත්දෙන්නම්',
-    'මම එවන්නම්'
-  ];
-  const [transport, setTransport] = useState<string>('ඔබ පැමිණිය යුතුයි');
+  // Selected Category (Defaults to Quick Services or Normal Services)
+  const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(() => {
+    return categories.find(c => c.id === 'quick_services') || categories[0] || null;
+  });
 
-  // 6. ගෙවීම් ක්‍රමය (Payment Method)
-  const [paymentType, setPaymentType] = useState<'agree' | 'custom'>('agree');
-  const [customPaymentAmount, setCustomPaymentAmount] = useState('');
-
-  // 7. උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (- ___ +)
-  const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
-
-  // Verification 02: ඇප් ගාස්තු ලෙස රු. 50 ක් අයවේ. ගාස්තුව අය කරගන්නද? -> 'හරි'
-  const [isFeeConfirmed, setIsFeeConfirmed] = useState<boolean>(false);
-
-  // Verification 03: ඔබ ලබා දී ඇති මෙම වට්සැප් අංකය වැඩද? -> 'ඔව්'
-  const userWhatsAppNumber = currentUser?.whatsappNumber || currentUser?.phone || '';
-  const [whatsappNumber, setWhatsappNumber] = useState<string>(userWhatsAppNumber);
-  const [isWhatsAppConfirmed, setIsWhatsAppConfirmed] = useState<boolean>(false);
-
-  // Tags State
-  const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
+  // Selected Tag
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
 
-  // 🎙️ Voice Data state
+  // Form Fields State
+  const [whatHappened, setWhatHappened] = useState('');
+  const [whatIsNeeded, setWhatIsNeeded] = useState('');
+  const [conditions, setConditions] = useState('');
+  const [specialNotice, setSpecialNotice] = useState('');
+  const [transport, setTransport] = useState('ඔබ පැමිණිය යුතුයි');
+  const [paymentType, setPaymentType] = useState<'agree' | 'custom'>('agree');
+  const [customPaymentAmount, setCustomPaymentAmount] = useState('1500');
+  const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [voiceData, setVoiceData] = useState<any>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      const tags = getStoredTags();
-      setAllTags(tags);
-
-      if (editPost) {
-        setWhatHappened(editPost.whatHappened || '');
-        setWhatIsNeeded(editPost.whatIsNeeded || '');
-        setSpecialNotice(editPost.specialNotice || '');
-        setConditions(editPost.conditions || '');
-        setTransport(editPost.transport || 'ඔබ පැමිණිය යුතුයි');
-
-        if (editPost.payment && (editPost.payment.includes('රු.') || editPost.payment.includes('ගෙවිය හැක'))) {
-          setPaymentType('custom');
-          const extractedNum = editPost.payment.replace(/\D/g, '');
-          setCustomPaymentAmount(extractedNum || '');
-        } else {
-          setPaymentType('agree');
-          setCustomPaymentAmount('');
-        }
-
-        setHelpersNeeded(editPost.helpersNeeded || editPost.helpersCount || 1);
-        setWhatsappNumber(editPost.userPhone || currentUser?.whatsappNumber || currentUser?.phone || '');
-        setIsFeeConfirmed(true);
-        setIsWhatsAppConfirmed(true);
-
-        if (editPost.tagName) {
-          const found = tags.find(t => t.tagName === editPost.tagName) || {
-            id: editPost.tagId || 'tag_curr',
-            tagName: editPost.tagName,
-            category: editPost.tagCategory || '',
-          };
-          setSelectedTag(found);
-        } else {
-          setSelectedTag(null);
-        }
-      } else {
-        // Clear all fields completely for new posts
-        setWhatHappened('');
-        setWhatIsNeeded('');
-        setSpecialNotice('');
-        setConditions('');
-        setTransport('ඔබ පැමිණිය යුතුයි');
-        setPaymentType('agree');
-        setCustomPaymentAmount('');
-        setHelpersNeeded(1);
-        setWhatsappNumber(currentUser?.whatsappNumber || currentUser?.phone || '');
-        setIsFeeConfirmed(false);
-        setIsWhatsAppConfirmed(false);
-        setSelectedTag(null);
-        setErrors({});
-        setHasAttemptedSubmit(false);
-      }
-    }
-  }, [isOpen, editPost, currentUser]);
-
-  // Validation errors map
-  const [errors, setErrors] = useState<{
-    whatHappened?: string;
-    whatIsNeeded?: string;
-    selectedTag?: string;
-    customPayment?: string;
-    feeConfirm?: string;
-    whatsappConfirm?: string;
-  }>({});
-
+  // Validation Error States
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  // Prefill phone from logged-in user profile
+  const userWhatsAppNumber = currentUser?.whatsappNumber || currentUser?.phone || '';
+
+  useEffect(() => {
+    if (currentUser && !whatsappNumber) {
+      setWhatsappNumber(userWhatsAppNumber);
+    }
+  }, [currentUser, userWhatsAppNumber]);
+
+  // Handle Edit Post prefill
+  useEffect(() => {
+    if (editPost && isOpen) {
+      setWhatHappened(editPost.whatHappened || '');
+      setWhatIsNeeded(editPost.whatIsNeeded || '');
+      setConditions(editPost.conditions || '');
+      setSpecialNotice(editPost.specialNotice || '');
+      setTransport(editPost.transport || 'ඔබ පැමිණිය යුතුයි');
+      setWhatsappNumber(editPost.userPhone || userWhatsAppNumber);
+      
+      if (editPost.payment && (editPost.payment.includes('රු.') || editPost.payment.includes('ගෙවිය හැක'))) {
+        setPaymentType('custom');
+        const extractedNum = editPost.payment.replace(/\D/g, '');
+        if (extractedNum) setCustomPaymentAmount(extractedNum);
+      } else {
+        setPaymentType('agree');
+      }
+
+      setHelpersNeeded(editPost.helpersNeeded || editPost.helpersCount || 1);
+
+      if (editPost.tagId) {
+        const allTags = getStoredTags();
+        const found = allTags.find(t => t.id === editPost.tagId);
+        if (found) setSelectedTag(found);
+      }
+    } else if (!editPost && isOpen) {
+      // Reset form
+      setWhatHappened('');
+      setWhatIsNeeded('');
+      setConditions('');
+      setSpecialNotice('');
+      setTransport('ඔබ පැමිණිය යුතුයි');
+      setPaymentType('agree');
+      setCustomPaymentAmount('1500');
+      setHelpersNeeded(1);
+      setWhatsappNumber(userWhatsAppNumber);
+      setSelectedTag(null);
+      setVoiceData(null);
+      setErrors({});
+      setHasAttemptedSubmit(false);
+    }
+  }, [editPost, isOpen, userWhatsAppNumber]);
 
   if (!isOpen) return null;
 
-  const validateForm = () => {
-    const newErrors: {
-      whatHappened?: string;
-      whatIsNeeded?: string;
-      selectedTag?: string;
-      customPayment?: string;
-      feeConfirm?: string;
-      whatsappConfirm?: string;
-    } = {};
+  // Validation function
+  const validate = () => {
+    const newErrors: { [key: string]: string } = {};
 
-    // 01. අනිවාර්ය කරුණු ඇතුලත් කිරීම
     if (!whatHappened.trim()) {
-      newErrors.whatHappened = '1. කරුණාකර ගැටලුව කුමක්දැයි ඇතුළත් කරන්න. (අනිවාර්යයි *)';
+      newErrors.whatHappened = 'කරුණාකර සිදුවී ඇති දේ කෙටියෙන් සටහන් කරන්න.';
     }
+
     if (!whatIsNeeded.trim()) {
-      newErrors.whatIsNeeded = '2. කරුණාකර ඔබ බලාපොරොත්තු වන දෙය ඇතුළත් කරන්න. (අනිවාර්යයි *)';
+      newErrors.whatIsNeeded = 'කරුණාකර වියයුතු දේ සටහන් කරන්න.';
     }
-    if (!selectedTag) {
-      newErrors.selectedTag = 'කරුණාකර දැන්වීම පහසුවෙන් සෙවීමට Tag එකක් තෝරන්න. (අනිවාර්යයි *)';
+
+    const phoneToTest = whatsappNumber.trim() || userWhatsAppNumber;
+    if (!phoneToTest) {
+      newErrors.whatsappNumber = 'කරුණාකර සම්බන්ධ කරගත හැකි WhatsApp දුරකථන අංකයක් ඇතුළත් කරන්න.';
+    } else {
+      const cleanPhone = phoneToTest.replace(/[^0-9]/g, '');
+      if (cleanPhone.length < 9 || cleanPhone.length > 12) {
+        newErrors.whatsappNumber = 'වලංගු දුරකථන අංකයක් ඇතුළත් කරන්න (උදා: 0771234567).';
+      }
     }
+
     if (paymentType === 'custom' && (!customPaymentAmount.trim() || Number(customPaymentAmount) <= 0)) {
-      newErrors.customPayment = 'කරුණාකර ඔබට ගෙවිය හැකි වලංගු මුදලක් ඇතුළත් කරන්න.';
-    }
-
-    // 02. ඇප් ගාස්තු ලෙස රු. 50 ක් අයවේ. ගාස්තුව අය කරගන්නද? -> 'හරි'
-    if (!isFeeConfirmed) {
-      newErrors.feeConfirm = 'කරුණාකර රු. 50 ඇප් ගාස්තුව අයකරගැනීම සඳහා "හරි" බොත්තම ක්ලික් කරන්න.';
-    }
-
-    // 03. ඔබ ලබා දී ඇති මෙම වට්සැප් අංකය වැඩද? -> 'ඔව්'
-    if (!isWhatsAppConfirmed) {
-      newErrors.whatsappConfirm = 'කරුණාකර ඔබගේ වට්සැප් අංකය වැඩ කරන බව තහවුරු කිරීමට "ඔව්" බොත්තම ක්ලික් කරන්න.';
+      newErrors.customPayment = 'කරුණාකර වලංගු මුදලක් ඇතුළත් කරන්න.';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // Helper count increment / decrement
+  const handleHelperChange = (delta: number) => {
+    setHelpersNeeded(prev => {
+      const next = prev + delta;
+      return next >= 1 ? next : 1;
+    });
+  };
+
+  // Submit Handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setHasAttemptedSubmit(true);
 
-    const isValid = validateForm();
-    if (!isValid) {
-      // Scroll to top of modal or show highlighted notice
+    if (!validate()) {
       return;
     }
 
     const paymentText = paymentType === 'agree'
       ? 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'
-      : `මට ගෙවිය හැක: රු. ${customPaymentAmount}/=`;
+      : `මට ගෙවිය හැක: රු. ${Number(customPaymentAmount).toLocaleString()}`;
 
-    // Combine special notice & conditions
-    let combinedConditions = conditions.trim();
-    if (specialNotice.trim()) {
-      combinedConditions = combinedConditions 
-        ? `විශේෂ දැනුවත් කිරීම: ${specialNotice.trim()}\nකොන්දේසි: ${combinedConditions}`
-        : `විශේෂ දැනුවත් කිරීම: ${specialNotice.trim()}`;
-    }
-
-    if (editPost) {
+    if (editPost && onUpdatePost) {
       const updatedPost: HelpPost = {
         ...editPost,
-        userName: currentUser?.name || editPost.userName || 'පරිශීලක',
-        userPhone: whatsappNumber.trim() || editPost.userPhone,
         whatHappened: whatHappened.trim(),
         whatIsNeeded: whatIsNeeded.trim(),
-        conditions: conditions.trim() || 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.',
-        specialNotice: specialNotice.trim() || 'අද දවස තුල',
+        conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
+        specialNotice: specialNotice.trim(),
         transport: transport,
         payment: paymentText,
         helpersNeeded: helpersNeeded,
         helpersCount: helpersNeeded,
+        userPhone: whatsappNumber.trim() || userWhatsAppNumber,
         tagName: selectedTag?.tagName || editPost.tagName,
         tagCategory: selectedTag?.category || editPost.tagCategory,
         tagId: selectedTag?.id || editPost.tagId,
@@ -252,6 +207,8 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     }
 
     const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+    const autoPlatformFee = calculatePlatformFee(paymentText);
+    const newStartPin = generateStartPin();
 
     onSubmitPost({
       userName: currentUser?.name || 'පරිශීලක',
@@ -266,8 +223,15 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       helpersNeeded: helpersNeeded,
       helpersAccepted: 0,
       feeAgreed: true,
+      startPin: newStartPin,
+      completionPin: newStartPin,
+      platformFee: autoPlatformFee,
+      travelFeePerKm: 100,
+      serviceStage: 'open',
+      applicants: [],
+      selectedHelpers: [],
       locationName: resolvedLocation,
-      distanceKm: 0.8, // Immediate local radius
+      distanceKm: 0.8,
       lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
       lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
@@ -285,268 +249,217 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       voiceTranscript: (voiceData as any)?.transcript,
     });
 
-    // Broadcast FCM Push Notification for Quick Service
     broadcastPushNotification({
       category: 'quick_service',
-      title: `ක්ෂණික සේවා ඉල්ලීමක්: ${whatIsNeeded.trim().slice(0, 40)}`,
-      body: `${resolvedLocation} • ${whatHappened.trim().slice(0, 60)}`,
+      title: '⚡ නව ඉක්මන් සේවා දැන්වීමක්!',
+      message: `${whatHappened.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
       locationName: resolvedLocation,
-      urgency: 'high',
-      badgeText: 'ක්ෂණික සේවා'
+      lat: currentLocation?.lat,
+      lng: currentLocation?.lng,
+      targetModal: 'quick_service',
     });
 
-    // Reset and close
     setHasAttemptedSubmit(false);
     setErrors({});
     onClose();
   };
 
-  const errorCount = Object.keys(errors).length;
-
   return (
-    <div 
-      id="quick-service-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto"
-    >
-      <div className="w-full max-w-2xl bg-white dark:bg-[#07150e] border-2 border-emerald-500/80 dark:border-emerald-600/60 rounded-3xl shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden relative my-6 flex flex-col text-slate-900 dark:text-slate-100 max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/80 backdrop-blur-md animate-fadeIn">
+      <div className="w-full max-w-2xl bg-white dark:bg-[#06180f] rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.35)] border-2 border-emerald-500/40 overflow-hidden flex flex-col max-h-[92vh]">
         
-        {/* Top Accent Gradient Bar */}
-        <div className="h-2.5 bg-gradient-to-r from-[#007a4b] via-emerald-400 to-teal-500" />
-
-        {/* Modal Header */}
-        <div className="bg-gradient-to-r from-emerald-50 via-teal-50/50 to-white dark:from-[#0b2417] dark:via-[#091b12] dark:to-[#07150e] px-5 sm:px-7 py-4 border-b border-emerald-200/80 dark:border-[#163a25] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#007a4b] text-white flex items-center justify-center font-black shadow-md shadow-emerald-700/30 shrink-0">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 p-4 sm:p-5 text-white flex items-center justify-between shadow-md shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-inner">
               <Zap className="w-5 h-5 fill-white" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight leading-snug flex items-center gap-2">
-                <span>{editPost ? 'දැන්වීම සංස්කරණය (Edit Post)' : (categoryTitle ? `${categoryTitle} ඉල්ලීම` : 'ඉක්මන් සේවා (Quick Services) ඉල්ලීම')}</span>
-                {editPost && (
-                  <span className="text-xs font-mono bg-emerald-900/80 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-lg">
-                    #{editPost.postCode}
-                  </span>
-                )}
-              </h3>
-              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                {editPost ? 'ඔබ ඇතුළත් කළ තොරතුරු යාවත්කාලීන කර සුරකින්න.' : 'ඉක්මනින්, උපකාරයක් ලබාගැනිමට - වැදගත් තොරතුරු පුරවා ඉල්ලීම් පල කරන්න.'}
+              <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
+                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : 'ඉක්මන් සේවා ඉල්ලීමක් පළකරන්න'}</span>
+              </h2>
+              <p className="text-[11px] text-emerald-100 font-medium">
+                අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී කඩිනම් සේවාවක් ලබාගන්න
               </p>
             </div>
           </div>
 
           <button
-            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-200/80 dark:bg-[#163322] hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 flex items-center justify-center font-black text-base transition-all cursor-pointer shadow-sm active:scale-90 shrink-0"
-            title="Close"
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center font-bold transition-all cursor-pointer"
           >
             ✕
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
-          
-          {/* 🎙️ AI Voice Inline Recorder Bar */}
+        {/* AI Voice Inline Bar */}
+        <div className="p-3 bg-emerald-50/70 dark:bg-[#092216] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
           <AiVoiceInlineBar
-            currentLocation={currentLocation}
-            lang={lang}
-            titlePrompt="🎙️ ඉක්මන් සේවා AI හඬ සහය (Voice Input):"
-            onVoiceCaptured={(data) => {
+            onVoiceDataReceived={(data) => {
               setVoiceData(data);
+              if (data.transcript) {
+                setWhatHappened(data.transcript);
+              }
               if (data.parsedFields?.whatHappened) {
                 setWhatHappened(data.parsedFields.whatHappened);
-              } else if (data.transcript) {
-                setWhatHappened(data.transcript);
               }
               if (data.parsedFields?.whatIsNeeded) {
                 setWhatIsNeeded(data.parsedFields.whatIsNeeded);
-              } else if (!whatIsNeeded) {
-                setWhatIsNeeded('ක්ෂණික කාර්මික/සේවා සහයක් අවශ්‍යයි');
+              }
+              if (data.parsedFields?.transport) {
+                setTransport(data.parsedFields.transport);
               }
               if (data.parsedFields?.payment && data.parsedFields.payment.includes('රු.')) {
                 setPaymentType('custom');
                 setCustomPaymentAmount(data.parsedFields.payment.replace(/\D/g, ''));
               }
             }}
+            currentLocation={currentLocation}
           />
+        </div>
 
-          {/* Top Error Alert Summary if Validation Fails */}
-          {hasAttemptedSubmit && errorCount > 0 && (
-            <div className="bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 rounded-2xl p-4 text-rose-900 dark:text-rose-200 animate-shake shadow-md">
-              <div className="flex items-center gap-2 font-extrabold text-sm mb-2 text-rose-700 dark:text-rose-300">
-                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                <span>කරුණාකර පහත අඩුපාඩු නිවැරදි කර නැවත Submit කරන්න:</span>
-              </div>
-              <ul className="list-disc list-inside text-xs font-semibold space-y-1 pl-1">
-                {errors.whatHappened && <li>{errors.whatHappened}</li>}
-                {errors.whatIsNeeded && <li>{errors.whatIsNeeded}</li>}
-                {errors.customPayment && <li>{errors.customPayment}</li>}
-                {errors.feeConfirm && <li>{errors.feeConfirm}</li>}
-                {errors.whatsappConfirm && <li>{errors.whatsappConfirm}</li>}
-              </ul>
-            </div>
-          )}
-
-          {/* 1. ගැටලුව කුමක්ද? * */}
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
+          
+          {/* 1. සේවා කාණ්ඩය (Category) */}
           <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="text-emerald-700 dark:text-emerald-400 font-black">1.</span>
-                <span>ගැටලුව කුමක්ද?</span>
-                <span className="text-rose-600 dark:text-rose-400 font-black text-base">*</span>
-              </span>
-              {errors.whatHappened && (
-                <span className="text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" /> අනිවාර්යයි
-                </span>
-              )}
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Zap className="w-4 h-4 text-emerald-600" />
+              <span>සේවා කාණ්ඩය (Category):</span>
             </label>
-            <input
-              type="text"
-              required
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const quickCat = categories.find(c => c.id === 'quick_services') || null;
+                  setSelectedCategoryObj(quickCat);
+                }}
+                className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  selectedCategoryObj?.id === 'quick_services'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>ඉක්මන් සේවා (Quick)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const normalCat = categories.find(c => c.id === 'normal_services') || null;
+                  setSelectedCategoryObj(normalCat);
+                }}
+                className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  selectedCategoryObj?.id === 'normal_services'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>සාමාන්‍ය සේවා (Normal)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Tag තේරීම */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
+            </label>
+            <TagSelector
+              selectedTag={selectedTag}
+              onSelectTag={setSelectedTag}
+              lang={lang}
+            />
+          </div>
+
+          {/* 3. සිදුවී ඇති දේ (What Happened) */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <HelpCircle className="w-4 h-4 text-emerald-600" />
+              <span>සිදුවී ඇති දේ (What Happened) <span className="text-rose-500">*</span>:</span>
+            </label>
+            <textarea
+              rows={3}
               value={whatHappened}
               onChange={(e) => {
                 setWhatHappened(e.target.value);
                 if (errors.whatHappened) setErrors(prev => ({ ...prev, whatHappened: undefined }));
               }}
-              placeholder="උදා: මගේ බයික් එක කැඩිලා / ජල නළ කාන්දුවක් / විදුලි ගැටලුවක්"
-              className={`w-full bg-slate-50 dark:bg-[#0c1f15] border-2 rounded-2xl py-3 px-4 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner ${
-                errors.whatHappened 
-                  ? 'border-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/60 bg-rose-50/50' 
-                  : 'border-slate-300 dark:border-[#1d422d] focus:border-[#007a4b] dark:focus:border-emerald-500'
+              placeholder="උදා: මෝටර් සයිකලයේ ටයර් එක පැන්චර් වී ඇත / වතුර බටයක් කැඩී වතුර කාන්දු වේ..."
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                errors.whatHappened ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
               }`}
             />
             {errors.whatHappened && (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 pt-0.5">
-                {errors.whatHappened}
-              </p>
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatHappened}</p>
             )}
           </div>
 
-          {/* 2. ඔබ බලාපොරොත්තු වන්නේ කුමක්ද? * */}
+          {/* 4. වියයුතු දේ (What is Needed) */}
           <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="text-emerald-700 dark:text-emerald-400 font-black">2.</span>
-                <span>ඔබ බලාපොරොත්තු වන්නේ කුමක්ද?</span>
-                <span className="text-rose-600 dark:text-rose-400 font-black text-base">*</span>
-              </span>
-              {errors.whatIsNeeded && (
-                <span className="text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" /> අනිවාර්යයි
-                </span>
-              )}
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              <span>වියයුතු දේ (What is Needed) <span className="text-rose-500">*</span>:</span>
             </label>
-            <input
-              type="text"
-              required
+            <textarea
+              rows={2}
               value={whatIsNeeded}
               onChange={(e) => {
                 setWhatIsNeeded(e.target.value);
                 if (errors.whatIsNeeded) setErrors(prev => ({ ...prev, whatIsNeeded: undefined }));
               }}
-              placeholder="උදා: බයික් එක රෙපයාර් කර ගැනීමට සහායක් / අලුත්වැඩියා කාර්මිකයෙකු"
-              className={`w-full bg-slate-50 dark:bg-[#0c1f15] border-2 rounded-2xl py-3 px-4 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner ${
-                errors.whatIsNeeded 
-                  ? 'border-rose-500 ring-2 ring-rose-300 dark:ring-rose-900/60 bg-rose-50/50' 
-                  : 'border-slate-300 dark:border-[#1d422d] focus:border-[#007a4b] dark:focus:border-emerald-500'
+              placeholder="උදා: පැන්චරය දමා දීමට කාර්මිකයෙකු අවශ්‍යයි / ජලනල කාර්මිකයෙකු අවශ්‍යයි..."
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                errors.whatIsNeeded ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
               }`}
             />
             {errors.whatIsNeeded && (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 pt-0.5">
-                {errors.whatIsNeeded}
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatIsNeeded}</p>
+            )}
+          </div>
+
+          {/* 5. ගමනාගමනය (Transport) */}
+          <div className="space-y-2">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Car className="w-4 h-4 text-emerald-600" />
+              <span>ගමනාගමනය (Transport):</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {[
+                { id: 'ඔබ පැමිණිය යුතුයි', label: 'ඔබ පැමිණිය යුතුයි (You arrive)' },
+                { id: 'මා පැමිණෙන්නම්', label: 'මා පැමිණෙන්නම් (I will come)' },
+              ].map((opt) => (
+                <button
+                  type="button"
+                  key={opt.id}
+                  onClick={() => setTransport(opt.id)}
+                  className={`p-2.5 rounded-xl border font-bold transition-all text-left flex items-center justify-between cursor-pointer ${
+                    transport === opt.id
+                      ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-xs'
+                      : 'bg-slate-50 dark:bg-[#0a1a12] border-slate-200 dark:border-[#163824] text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {transport === opt.id && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                </button>
+              ))}
+            </div>
+            {transport === 'ඔබ පැමිණිය යුතුයි' && (
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                💡 සහායකයා පැමිණෙන දුර සඳහා කි.මී. 1 ට රු. 100 ක ප්‍රවාහන දීමනාවක් ස්වයංක්‍රීයව බිල්පතට එක්වේ.
               </p>
             )}
           </div>
 
-          {/* TAG SELECTION SYSTEM (Requirement 01, 02, 03, 04) */}
-          <TagSelector
-            selectedTag={selectedTag}
-            onSelectTag={(tag) => {
-              setSelectedTag(tag);
-              if (errors.selectedTag) setErrors((prev) => ({ ...prev, selectedTag: undefined }));
-            }}
-            allTags={allTags}
-            onTagCreated={(newTag) => {
-              setAllTags((prev) => [newTag, ...prev]);
-            }}
-            errorMsg={errors.selectedTag}
-          />
-
-          {/* 3. විශේෂ දැනුවත් කිරිමක් ඇත්නම් ඇතුලත් කරන්න. */}
-          <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <span className="text-emerald-700 dark:text-emerald-400 font-black">3.</span>
-              <span>විශේෂ දැනුවත් කිරිමක් ඇත්නම් ඇතුලත් කරන්න.</span>
-            </label>
-            <textarea
-              rows={2}
-              value={specialNotice}
-              onChange={(e) => setSpecialNotice(e.target.value)}
-              placeholder="උදා: සවස 4.00 ට පෙර පැමිණිය හැකිනම් වඩාත් පහසුයි..."
-              className="w-full bg-slate-50 dark:bg-[#0c1f15] border-2 border-slate-300 dark:border-[#1d422d] focus:border-[#007a4b] dark:focus:border-emerald-500 rounded-2xl py-2.5 px-4 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner"
-            />
-          </div>
-
-          {/* 4. කොන්දේසි ඇත්නම් පවසන්න. (Conditions) */}
-          <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <span className="text-emerald-700 dark:text-emerald-400 font-black">4.</span>
-              <span>කොන්දේසි ඇත්නම් පවසන්න. (Conditions)</span>
-            </label>
-            <textarea
-              rows={2}
-              value={conditions}
-              onChange={(e) => setConditions(e.target.value)}
-              placeholder="උදා: පළපුරුදු කාර්මික ශිල්පීන් පමණක් සම්බන්ධ වන්න. අවශ්‍ය Tools රැගෙන එන්න."
-              className="w-full bg-slate-50 dark:bg-[#0c1f15] border-2 border-slate-300 dark:border-[#1d422d] focus:border-[#007a4b] dark:focus:border-emerald-500 rounded-2xl py-2.5 px-4 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner"
-            />
-          </div>
-
-          {/* 5. ගමනාගමනය සිදුවන්නේ කෙසෙද? (පහල අවස්ථාවලින් එකක් තෙරිමට අවසර දෙන්න.) */}
+          {/* 6. ගෙවීම් (Payment) */}
           <div className="space-y-2">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <span className="text-emerald-700 dark:text-emerald-400 font-black">5.</span>
-              <span>ගමනාගමනය සිදුවන්නේ කෙසෙද? <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">(පහල අවස්ථාවලින් එකක් තෝරන්න)</span></span>
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 dark:bg-[#0a1a12] p-3 rounded-2xl border border-slate-200 dark:border-[#163824]">
-              {transportOptions.map((opt) => {
-                const isSelected = transport === opt;
-                return (
-                  <label
-                    key={opt}
-                    onClick={() => setTransport(opt)}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs sm:text-sm font-bold cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 dark:border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm'
-                        : 'bg-white dark:bg-[#0c2217] border-slate-200 dark:border-[#1b3d29] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#122e20]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="transport_choice"
-                      checked={isSelected}
-                      onChange={() => setTransport(opt)}
-                      className="accent-emerald-600 w-4 h-4"
-                    />
-                    <span>{opt}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 6. ගෙවීම් ක්‍රමය (Payment Method) */}
-          <div className="space-y-2">
-            <div>
-              <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <span className="text-emerald-700 dark:text-emerald-400 font-black">6.</span>
-                <span>ගෙවීම් ක්‍රමය (Payment Method)</span>
+            <div className="flex items-center justify-between">
+              <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <span>ගෙවීම් (Payment / Fee):</span>
               </label>
-              <p className="text-[11px] font-medium text-slate-500 dark:text-emerald-300/80">
-                (ඇප් ගාස්තුවට අමතරව සේවය වෙනුවෙන් ගෙවන මුදල මෙහි සදහන් කරන්න.)
-              </p>
             </div>
 
             <div className="bg-slate-50 dark:bg-[#0a1a12] p-3.5 rounded-2xl border border-slate-200 dark:border-[#163824] space-y-3">
@@ -605,6 +518,17 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
                 />
               </div>
             </div>
+
+            {/* Platform Fee Auto-Deduction Notice */}
+            <div className="p-2.5 bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl border border-emerald-300/80 dark:border-emerald-800/60 flex items-center justify-between text-[11px]">
+              <span className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ඇප් ගාස්තුව (Platform Fee):</span>
+              </span>
+              <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
+                {paymentType === 'custom' && Number(customPaymentAmount) === 0 ? 'රු. 0.00 (නොමිලේ සේවා)' : 'රු. 50.00 (ගනුදෙනුව සාර්ථක වූ පසු)'}
+              </span>
+            </div>
             {errors.customPayment && (
               <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.customPayment}</p>
             )}
@@ -612,168 +536,97 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 
           {/* 7. උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (- ___ +) */}
           <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <span className="text-emerald-700 dark:text-emerald-400 font-black">7.</span>
-              <span>උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව</span>
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Users className="w-4 h-4 text-emerald-600" />
+              <span>අවශ්‍ය සහායකයින් ගණන (Helpers Needed):</span>
             </label>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center bg-slate-50 dark:bg-[#0a1a12] border-2 border-slate-300 dark:border-[#163824] rounded-2xl p-1 shadow-inner">
-                <button
-                  type="button"
-                  onClick={() => setHelpersNeeded((prev) => Math.max(1, prev - 1))}
-                  className="w-10 h-10 rounded-xl bg-white dark:bg-[#0e271a] hover:bg-slate-200 dark:hover:bg-[#163c28] text-slate-800 dark:text-white flex items-center justify-center font-black transition-all shadow-sm active:scale-90 cursor-pointer"
-                  title="Decrease"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <div className="w-16 text-center font-mono text-lg font-black text-slate-900 dark:text-white">
-                  {helpersNeeded}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setHelpersNeeded((prev) => Math.min(20, prev + 1))}
-                  className="w-10 h-10 rounded-xl bg-white dark:bg-[#0e271a] hover:bg-slate-200 dark:hover:bg-[#163c28] text-slate-800 dark:text-white flex items-center justify-center font-black transition-all shadow-sm active:scale-90 cursor-pointer"
-                  title="Increase"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                (උදව් කිරීමට අවශ්‍ය සහයකයින් ගණන)
+            <div className="flex items-center gap-4 bg-slate-50 dark:bg-[#0a1a12] p-2.5 rounded-2xl border border-slate-200 dark:border-[#163824] w-fit">
+              <button
+                type="button"
+                onClick={() => handleHelperChange(-1)}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-[#1b3d29] flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer shadow-xs active:scale-95"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <span className="font-mono font-black text-base text-emerald-700 dark:text-emerald-300 w-6 text-center">
+                {helpersNeeded}
               </span>
+              <button
+                type="button"
+                onClick={() => handleHelperChange(1)}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-[#1b3d29] flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer shadow-xs active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-slate-500 font-medium pl-1">පුද්ගලයින්</span>
             </div>
           </div>
 
-          <div className="h-px bg-slate-200 dark:bg-[#163824] my-2" />
-
-          {/* VERIFICATION SECTION 02: ඇප් ගාස්තු ලෙස රු. 50 ක් අයවේ. ගාස්තුව අය කරගන්නද? -> 'හරි' */}
-          <div 
-            className={`p-4 rounded-2xl border-2 transition-all space-y-3 ${
-              errors.feeConfirm 
-                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500 shadow-md ring-2 ring-rose-200 dark:ring-rose-900/40' 
-                : isFeeConfirmed
-                ? 'bg-emerald-50 dark:bg-[#0c2417] border-emerald-500 shadow-sm'
-                : 'bg-amber-50/70 dark:bg-[#171d12] border-amber-300 dark:border-[#383a1a]'
-            }`}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-200 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
-                  ගාස්තු තහවුරු කිරීම (02)
-                </span>
-                <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                  ඇප් ගාස්තු ලෙස රු. 50 ක් අයවේ. ගාස්තුව අය කරගන්නද?
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeeConfirmed(!isFeeConfirmed);
-                  if (errors.feeConfirm) setErrors(prev => ({ ...prev, feeConfirm: undefined }));
-                }}
-                className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                  isFeeConfirmed
-                    ? 'bg-[#007a4b] hover:bg-[#006e43] text-white ring-2 ring-emerald-300 dark:ring-emerald-600'
-                    : 'bg-slate-200 dark:bg-[#1c3827] hover:bg-emerald-600 hover:text-white text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2b543c]'
-                }`}
-              >
-                {isFeeConfirmed ? <Check className="w-4 h-4 text-white stroke-[3]" /> : null}
-                <span>{isFeeConfirmed ? '✓ හරි (තහවුරුයි)' : 'හරි'}</span>
-              </button>
-            </div>
-
-            {errors.feeConfirm && (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>{errors.feeConfirm}</span>
-              </p>
+          {/* 8. WhatsApp අංකය */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <MessageSquare className="w-4 h-4 text-emerald-600" />
+              <span>ඔබගේ WhatsApp අංකය <span className="text-rose-500">*</span>:</span>
+            </label>
+            <input
+              type="text"
+              value={whatsappNumber}
+              onChange={(e) => {
+                setWhatsappNumber(e.target.value);
+                if (errors.whatsappNumber) setErrors(prev => ({ ...prev, whatsappNumber: undefined }));
+              }}
+              placeholder="0771234567"
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm ${
+                errors.whatsappNumber ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
+              }`}
+            />
+            {errors.whatsappNumber && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatsappNumber}</p>
             )}
           </div>
 
-          {/* VERIFICATION SECTION 03: ඔබ ලබා දී ඇති මෙම වට්සැප් අංකය වැඩද? -> 'ඔව්' */}
-          <div 
-            className={`p-4 rounded-2xl border-2 transition-all space-y-3 ${
-              errors.whatsappConfirm 
-                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500 shadow-md ring-2 ring-rose-200 dark:ring-rose-900/40' 
-                : isWhatsAppConfirmed
-                ? 'bg-emerald-50 dark:bg-[#0c2417] border-emerald-500 shadow-sm'
-                : 'bg-teal-50/70 dark:bg-[#0c1f1b] border-teal-300 dark:border-[#1a3d34]'
-            }`}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-teal-800 dark:text-teal-300 bg-teal-200 dark:bg-teal-950/80 px-2 py-0.5 rounded-md border border-teal-300 dark:border-teal-800">
-                  වට්සැප් තහවුරු කිරීම (03)
-                </span>
-                <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                  ඔබ ලබා දී ඇති මෙම වට්සැප් අංකය වැඩද?
-                </p>
-                <div className="flex items-center gap-2 pt-0.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">අංකය:</span>
-                  <span className="font-mono text-sm sm:text-base font-black text-[#007a4b] dark:text-emerald-300 bg-white dark:bg-[#07150e] px-3 py-1 rounded-xl border border-emerald-300 dark:border-[#1b442d] shadow-inner">
-                    {whatsappNumber}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsWhatsAppConfirmed(!isWhatsAppConfirmed);
-                  if (errors.whatsappConfirm) setErrors(prev => ({ ...prev, whatsappConfirm: undefined }));
-                }}
-                className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                  isWhatsAppConfirmed
-                    ? 'bg-[#007a4b] hover:bg-[#006e43] text-white ring-2 ring-emerald-300 dark:ring-emerald-600'
-                    : 'bg-slate-200 dark:bg-[#1c3827] hover:bg-emerald-600 hover:text-white text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2b543c]'
-                }`}
-              >
-                {isWhatsAppConfirmed ? <Check className="w-4 h-4 text-white stroke-[3]" /> : null}
-                <span>{isWhatsAppConfirmed ? '✓ ඔව් (තහවුරුයි)' : 'ඔව්'}</span>
-              </button>
-            </div>
-
-            {errors.whatsappConfirm && (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>{errors.whatsappConfirm}</span>
-              </p>
-            )}
+          {/* 9. කොන්දේසි (Conditions) */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
+              <span>කොන්දේසි (විකල්ප):</span>
+            </label>
+            <input
+              type="text"
+              value={conditions}
+              onChange={(e) => setConditions(e.target.value)}
+              placeholder="උදා: වැඩය සාර්ථක වූ පසු පමණක් ගෙවීම් කරනු ලැබේ..."
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-[#1b3d29] bg-slate-50 dark:bg-[#07130c] text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            />
           </div>
 
-          {/* 🛡️ Trust & Insurance Platform Guarantee Card */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/80 via-[#07291a] to-slate-950 border border-emerald-500/40 text-white space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="font-extrabold text-amber-300">
-                🛡️ සහය සේවා පාරිභෝගික ආරක්ෂණ වගකීම (Platform Guarantee)
-              </span>
-            </div>
-            <p className="text-[11px] text-emerald-100/90 leading-snug">
-              ඇප් එකෙන් බාහිරව කරන සෘජු ගනුදෙනු සඳහා වේදිකාවේ කිසිදු වගකීමක් නොමැත. ඇප් එක හරහා සම්බන්ධ වන ගනුදෙනුවලට පමණක් ගුණාත්මක සහතිකය සහ මැදිහත්වීම ලැබේ.
-            </p>
+          {/* 10. විශේෂ දැනුවත් කිරීම */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
+              <span>විශේෂ දැනුවත් කිරීම (විකල්ප):</span>
+            </label>
+            <input
+              type="text"
+              value={specialNotice}
+              onChange={(e) => setSpecialNotice(e.target.value)}
+              placeholder="උදා: සුනඛයෙකු බැඳ ඇත / ගේට්ටුව වසා ඇත..."
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-[#1b3d29] bg-slate-50 dark:bg-[#07130c] text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            />
           </div>
 
-          {/* SUBMIT BUTTON */}
+          {/* Submit Button */}
           <div className="pt-3">
             <button
               type="submit"
-              className="w-full py-4 rounded-2xl bg-[#00a86b] hover:bg-[#00925c] active:bg-[#007a4b] text-white font-black text-base shadow-[0_10px_25px_rgba(0,168,107,0.35)] border-b-4 border-[#006e43] transition-all flex items-center justify-center gap-2 cursor-pointer active:translate-y-0.5 active:border-b-0"
+              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-[0_4px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
             >
-              <span>{editPost ? 'වෙනස්කම් සුරකින්න (Save Changes)' : 'SUBMIT (පළ කරන්න)'}</span>
-              <ArrowRight className="w-5 h-5" />
+              <span>{editPost ? 'යාවත්කාලීන කරන්න' : 'දැන්වීම පළකරන්න'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
-
-            <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 font-medium pt-2">
-              සියලු අනිවාර්ය කරුණු, රු. 50 ගාස්තුව සඳහා <strong>'හරි'</strong> සහ වට්සැප් සඳහා <strong>'ඔව්'</strong> තහවුරු කළ විට පමණක් දැන්වීම පළ වේ.
-            </p>
           </div>
 
         </form>
+
       </div>
     </div>
   );
 };
-
-
