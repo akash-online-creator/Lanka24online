@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   MapPin,
   Navigation,
@@ -21,6 +22,24 @@ interface GroupChatMapViewerModalProps {
   location: GroupMessageLocation | null;
 }
 
+const MAP_THEMES = {
+  voyager: {
+    name: 'Street',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+  },
+  satellite: {
+    name: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    labelUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    maxZoom: 19,
+    attribution: '&copy; Esri, Maxar',
+  }
+};
+
 export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = ({
   isOpen,
   onClose,
@@ -28,7 +47,7 @@ export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = (
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const [mapLayer, setMapLayer] = useState<'osm' | 'hot' | 'satellite'>('osm');
+  const [mapLayer, setMapLayer] = useState<'voyager' | 'satellite'>('voyager');
   const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
@@ -45,33 +64,32 @@ export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = (
       zoomControl: false,
     });
 
-    let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    let subdomains: string[] | string = 'abc';
-
-    if (mapLayer === 'hot') {
-      tileUrl = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
-    } else if (mapLayer === 'satellite') {
-      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      subdomains = [];
-    }
-
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains,
-      attribution: '&copy; OpenStreetMap contributors',
+    const activeConfig = MAP_THEMES[mapLayer];
+    L.tileLayer(activeConfig.url, {
+      maxZoom: activeConfig.maxZoom,
+      subdomains: activeConfig.subdomains as any,
+      attribution: activeConfig.attribution,
     }).addTo(map);
 
-    // Marker
+    if (mapLayer === 'satellite' && (activeConfig as any).labelUrl) {
+      L.tileLayer((activeConfig as any).labelUrl, {
+        maxZoom: 19,
+        zIndex: 10,
+      }).addTo(map);
+    }
+
+    // Modern glowing pin
     const customIcon = L.divIcon({
-      className: 'viewer-chat-pin',
+      className: 'modern-viewer-pin',
       html: `
-        <div style="position: relative; width: 40px; height: 40px; transform: translate(-50%, -100%);">
-          <div style="position: absolute; inset: 0; background: #e11d48; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 10px 20px rgba(225, 29, 72, 0.4); border: 3px solid white;"></div>
-          <div style="position: absolute; top: 8px; left: 8px; width: 14px; height: 14px; background: white; border-radius: 50%;"></div>
+        <div style="position: relative; width: 44px; height: 44px; display: flex; items-center; justify-content: center;">
+          <div style="position: absolute; width: 34px; height: 34px; border-radius: 50% 50% 50% 0; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); transform: rotate(-45deg); box-shadow: 0 10px 25px rgba(225, 29, 72, 0.5); border: 2.5px solid white;"></div>
+          <div style="position: absolute; top: 11px; left: 15px; width: 14px; height: 14px; background: white; border-radius: 50%; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);"></div>
+          <div style="position: absolute; bottom: 2px; width: 10px; height: 4px; background: rgba(0,0,0,0.3); border-radius: 50%; filter: blur(1.5px);"></div>
         </div>
       `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
+      iconSize: [44, 44],
+      iconAnchor: [22, 42],
     });
 
     const marker = L.marker([location.lat, location.lng], { icon: customIcon }).addTo(map);
@@ -87,14 +105,19 @@ export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = (
 
     mapInstanceRef.current = map;
 
-    const timer = setTimeout(() => {
+    const runInvalidate = () => {
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
+        mapInstanceRef.current.invalidateSize({ animate: false });
       }
-    }, 200);
+    };
+
+    requestAnimationFrame(runInvalidate);
+    const t1 = setTimeout(runInvalidate, 100);
+    const t2 = setTimeout(runInvalidate, 350);
 
     return () => {
-      clearTimeout(timer);
+      clearTimeout(t1);
+      clearTimeout(t2);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -104,152 +127,103 @@ export const GroupChatMapViewerModal: React.FC<GroupChatMapViewerModalProps> = (
 
   if (!isOpen || !location) return null;
 
-  const handleCopyCoords = () => {
-    navigator.clipboard.writeText(`${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`);
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
+
+  const handleCopy = () => {
+    const text = `${location.name}\n${location.address || ''}\n${mapsUrl}`;
+    navigator.clipboard.writeText(text);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2500);
+    setTimeout(() => setIsCopied(false), 2000);
   };
-
-  const handleOpenGoogleMaps = () => {
-    if (!location) return;
-    window.open(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`, '_blank');
-  };
-
-  const handleRecenter = () => {
-    if (mapInstanceRef.current && location) {
-      mapInstanceRef.current.setView([location.lat, location.lng], 16, { animate: true });
-    }
-  };
-
-  if (!isOpen || !location) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-3xl rounded-3xl border-2 border-indigo-500 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
-        
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+      <style>{`
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          z-index: 10 !important;
+          background: #f1f5f9 !important;
+        }
+      `}</style>
+      <div className="relative w-full max-w-xl bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border-2 border-indigo-500/40 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-4 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
-              <MapPin className="w-5 h-5 text-white" />
+        <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-700 via-rose-700 to-indigo-800 text-white flex items-center justify-between shadow-md shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+              <MapPin className="w-4 h-4 text-white" />
             </div>
-            <div className="min-w-0">
-              <h3 className="font-black text-sm sm:text-base leading-tight truncate">
+            <div>
+              <h3 className="text-sm font-black truncate max-w-[260px] sm:max-w-md">
                 {location.name}
               </h3>
-              <p className="text-[11px] text-indigo-200 font-mono truncate">
-                {location.lat.toFixed(5)}° N, {location.lng.toFixed(5)}° E {location.address ? `• ${location.address}` : ''}
+              <p className="text-[11px] text-white/80">
+                {location.lat.toFixed(5)}° N, {location.lng.toFixed(5)}° E
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Layer switcher */}
-            <div className="flex rounded-xl border border-white/20 bg-black/20 p-0.5">
-              <button
-                type="button"
-                onClick={() => setMapLayer('osm')}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                  mapLayer === 'osm' ? 'bg-white text-indigo-900 shadow-xs' : 'text-white/80'
-                }`}
-              >
-                Street
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapLayer('satellite')}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                  mapLayer === 'satellite' ? 'bg-white text-indigo-900 shadow-xs' : 'text-white/80'
-                }`}
-              >
-                Satellite
-              </button>
-            </div>
-
+        {/* Map Layer Switcher Header */}
+        <div className="px-4 py-2 bg-slate-50 dark:bg-zinc-800/60 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs font-bold shrink-0">
+          <span className="text-slate-500 dark:text-zinc-400">
+            {location.address || 'ශ්‍රී ලංකාව'}
+          </span>
+          <div className="flex rounded-lg border border-indigo-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5">
             <button
               type="button"
-              onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title="වසන්න"
+              onClick={() => setMapLayer('voyager')}
+              className={`px-2 py-1 rounded text-[10px] font-bold ${
+                mapLayer === 'voyager' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-zinc-400'
+              }`}
             >
-              <X className="w-5 h-5" />
+              Street
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapLayer('satellite')}
+              className={`px-2 py-1 rounded text-[10px] font-bold ${
+                mapLayer === 'satellite' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-zinc-400'
+              }`}
+            >
+              Satellite
             </button>
           </div>
         </div>
-
-        {/* Note Banner if present */}
-        {location.note && (
-          <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-950/60 border-b border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 shrink-0">
-            <span className="text-sm">📝</span>
-            <span>{location.note}</span>
-          </div>
-        )}
 
         {/* Map Container */}
-        <div className="relative flex-1 min-h-[320px] sm:min-h-[420px] bg-slate-100 dark:bg-zinc-950">
+        <div className="relative flex-1 min-h-[300px] w-full overflow-hidden bg-slate-100 dark:bg-zinc-950">
           <div ref={mapContainerRef} className="w-full h-full" />
-
-          {/* Floating Controls */}
-          <div className="absolute right-3 top-3 z-[400] flex flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={() => mapInstanceRef.current?.zoomIn()}
-              className="w-9 h-9 rounded-xl bg-white dark:bg-zinc-900 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => mapInstanceRef.current?.zoomOut()}
-              className="w-9 h-9 rounded-xl bg-white dark:bg-zinc-900 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handleRecenter}
-              className="w-9 h-9 rounded-xl bg-white dark:bg-zinc-900 shadow-md border border-zinc-200 dark:border-zinc-700 text-indigo-600 dark:text-indigo-400 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Re-center"
-            >
-              <LocateFixed className="w-4 h-4" />
-            </button>
-          </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-3.5 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopyCoords}
-              className="px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-bold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{isCopied ? 'පිටපත් විය!' : 'GPS පිටපත් කරන්න'}</span>
-            </button>
-          </div>
+        {/* Footer & Route Buttons */}
+        <div className="p-4 bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 text-slate-800 dark:text-zinc-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{isCopied ? 'Copied!' : 'Copy Link'}</span>
+          </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenGoogleMaps}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Google Maps හරහා මාර්ගය (Directions)</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
-            >
-              වසන්න
-            </button>
-          </div>
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Google Maps හරහා මාර්ගය (Navigate)</span>
+          </a>
         </div>
-
       </div>
     </div>
   );
