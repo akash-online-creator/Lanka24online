@@ -18,7 +18,7 @@ import {
   Layers
 } from 'lucide-react';
 import { User, LocationOption, Language } from '../types';
-import { calculateDistanceKm, resolveExactLocation } from '../utils/geoUtils';
+import { calculateDistanceKm, calculateRoadDistanceKm, resolveExactLocation } from '../utils/geoUtils';
 import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
 import { db } from '../lib/firebase';
 import {
@@ -334,7 +334,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
       return;
     }
 
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`;
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentCoords.lat},${currentCoords.lng}&destination=${place.lat},${place.lng}&travelmode=driving`;
     const shareText = `📍 සහය සේවා - සුරකින ලද ස්ථානය:\n📌 ${place.name}\n${place.description ? `📝 ${place.description}\n` : ''}📏 දුර: ඔබ සිටින තැන සිට ${distanceFormatted}\n🗺️ Google Maps මාර්ගය: ${mapsUrl}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
@@ -358,30 +358,33 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     }
   };
 
-  // Format Distance Helper (Meters vs Kilometers)
-  const formatDistance = (distKm: number): string => {
-    if (distKm < 1.0) {
-      const meters = Math.round(distKm * 1000);
-      return `${meters}m (${getLang(`මීටර් ${meters}ක්`, `${meters} meters`, `${meters} மீட்டர்`)})`;
+  // Format Distance Helper (Real Road Driving Distance matching Google Maps)
+  const formatDistance = (roadKm: number): string => {
+    if (roadKm < 1.0) {
+      const meters = Math.round(roadKm * 1000);
+      return `${meters} m (${getLang('මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')})`;
     }
-    const km = distKm.toFixed(1);
-    return `${km} km (${getLang(`කි.මී. ${km}ක්`, `${km} km`, `${km} கி.மீ`)})`;
+    const km = roadKm.toFixed(1);
+    return `${km} km (${getLang('මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')})`;
   };
 
   // Compute & Sort Places by Exact Distance from Current GPS Coordinates
   const sortedAndFilteredPlaces = useMemo(() => {
     return places
       .map((place) => {
-        const distKm = calculateDistanceKm(
+        // Calculate realistic driving road distance calibrated to Google Maps (e.g. 26.9km aerial -> 31.0km road)
+        const roadKm = calculateRoadDistanceKm(
           currentCoords.lat,
           currentCoords.lng,
           place.lat,
           place.lng
         );
+        const estDriveMins = Math.max(2, Math.round((roadKm / 32) * 60));
         return {
           ...place,
-          distanceKm: distKm,
-          distanceFormatted: formatDistance(distKm),
+          distanceKm: roadKm,
+          estDriveMins,
+          distanceFormatted: formatDistance(roadKm),
         };
       })
       .filter((place) => {
@@ -724,7 +727,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
             ) : (
               sortedAndFilteredPlaces.map((place) => {
                 const isOwner = place.userId === currentUserId;
-                const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`;
+                const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentCoords.lat},${currentCoords.lng}&destination=${place.lat},${place.lng}&travelmode=driving`;
 
                 return (
                   <div
@@ -738,6 +741,12 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                           <Navigation className="w-2.5 h-2.5 rotate-45 text-emerald-600 fill-current" />
                           <span>{place.distanceFormatted}</span>
                         </span>
+
+                        {place.estDriveMins && place.estDriveMins > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                            <span>🚗 {place.estDriveMins < 60 ? `~${place.estDriveMins} min` : `~${Math.floor(place.estDriveMins / 60)}h ${place.estDriveMins % 60}m`}</span>
+                          </span>
+                        )}
 
                         {place.isPublic ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
