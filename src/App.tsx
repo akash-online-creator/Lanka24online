@@ -5,6 +5,7 @@ import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { UserDashboard } from './components/UserDashboard';
+import { SosLiveViewerModal } from './components/SosLiveViewerModal';
 import { AdminPanel } from './components/AdminPanel';
 import { PendingApprovalView } from './components/PendingApprovalView';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
@@ -39,6 +40,13 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
+  const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('sos_session');
+    }
+    return null;
+  });
 
   // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
@@ -262,7 +270,6 @@ export const App: React.FC = () => {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   }, [users]);
-
   // Guest Demo Login Handler
   const handleUserDemoLogin = useCallback(() => {
     const demoUser: User = {
@@ -425,7 +432,6 @@ export const App: React.FC = () => {
             user={currentUser}
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
-            onUpdateUser={(updated) => setCurrentUser(updated)}
             users={users}
             setUsers={setUsers}
             helpPosts={helpPosts}
@@ -477,6 +483,22 @@ export const App: React.FC = () => {
           />
         )}
       </div>
+
+      {/* 👁️ Global SOS Live Viewer Modal (Emergency Direct Access without Login) */}
+      {sosViewerSessionId && (
+        <SosLiveViewerModal
+          isOpen={Boolean(sosViewerSessionId)}
+          sessionId={sosViewerSessionId}
+          language={language}
+          onClose={() => {
+            setSosViewerSessionId(null);
+            try {
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {}
+          }}
+        />
+      )}
+
     </ErrorBoundary>
   );
 };
