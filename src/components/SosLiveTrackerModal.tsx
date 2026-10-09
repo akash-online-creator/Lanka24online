@@ -380,16 +380,13 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [locationName, setLocationName] = useState<string>(currentLocation?.nameSi || 'ජා-ඇල / කටුනායක (Katunayake / Ja-Ela)');
   const [breadcrumbs, setBreadcrumbs] = useState<SosBreadcrumbPoint[]>([]);
 
-  // 3. Trusted Emergency Contacts
+  // 3. Trusted Emergency Contacts (Strictly real contacts, empty by default)
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_trusted_contacts');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      { id: 'tc_1', name: 'පවුලේ සාමාජිකයා 1', phone: currentUser?.phone || '0771234567', relationship: 'මව / පියා' },
-      { id: 'tc_2', name: 'හදිසි සම්බන්ධතාව 2', phone: '0711234567', relationship: 'සැමියා / බිරිඳ / මිතුරා' }
-    ];
+    return [];
   });
   const [showAddContact, setShowAddContact] = useState<boolean>(false);
   const [newContactName, setNewContactName] = useState<string>('');
