@@ -27,14 +27,11 @@ import {
   Lock,
   Languages,
   Loader2,
-  Check,
-  Trophy,
-  RotateCcw,
-  Star,
-  UserPlus
+  Check
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User as UserType, HelperApplicant } from '../types';
 import { applyToHelpPost, selectHelperApplicant, cancelAndReopenPost, calculateTravelFee, maskNicNumber } from '../utils/serviceWorkflowManager';
+import { Trophy, RotateCcw, Star, UserPlus } from 'lucide-react';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -90,7 +87,6 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   const [activePost, setActivePost] = React.useState<HelpPost | null>(post);
   const [isApplying, setIsApplying] = React.useState(false);
   const [applySuccessMsg, setApplySuccessMsg] = React.useState<string | null>(null);
-  const [showApplicantsModal, setShowApplicantsModal] = React.useState(false);
 
   React.useEffect(() => {
     setActivePost(post);
@@ -105,7 +101,54 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   const isHelperAccepted = Boolean(currentUser && selectedHelpers.some(h => h.helperId === currentUser.userId || h.helperId === currentUser.id));
   const startPin = currentPost?.startPin || currentPost?.completionPin || '4829';
 
-  const displayPost = React.useMemo(() => (currentPost ? getLocalizedPost(currentPost, lang) : null), [currentPost, lang]);
+  const handleApply = async () => {
+    if (!currentPost || !currentUser) return;
+    if (isDemo) {
+      if (onRequireRegistration) onRequireRegistration();
+      return;
+    }
+    setIsApplying(true);
+    try {
+      const updated = await applyToHelpPost({
+        post: currentPost,
+        helperUser: currentUser,
+        distanceKm: motorcycleRoute.distanceKm,
+      });
+      setActivePost(updated);
+      if (onPostUpdated) onPostUpdated(updated);
+      setApplySuccessMsg('ඔබගේ සහයෝගීතා අයදුම්පත සාර්ථකව යවන ලදී!');
+      setTimeout(() => setApplySuccessMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleAcceptApplicant = async (app: HelperApplicant) => {
+    if (!currentPost) return;
+    // Generate distinct 4-digit PIN for this helper
+    const helperPin = app.startPin || Math.floor(1000 + Math.random() * 9000).toString();
+    const applicantWithPin = { ...app, startPin: helperPin, status: 'accepted' as const };
+    const updated = await selectHelperApplicant({
+      post: currentPost,
+      applicant: applicantWithPin,
+    });
+    setActivePost(updated);
+    if (onPostUpdated) onPostUpdated(updated);
+  };
+
+  const handleCancelReopen = async () => {
+    if (!currentPost) return;
+    const updated = await cancelAndReopenPost({
+      post: currentPost,
+      reason: 'සහායකයා නොපැමිණීම හේතුවෙන් අවලංගු කරන ලදී.',
+    });
+    setActivePost(updated);
+    if (onPostUpdated) onPostUpdated(updated);
+  };
+
+  const displayPost = React.useMemo(() => (post ? getLocalizedPost(post, lang) : null), [post, lang]);
   const cardLabels = React.useMemo(() => getCardLabels(lang), [lang]);
 
   const getLangText = (si: string, en: string, ta: string) => {
@@ -126,7 +169,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
   React.useEffect(() => {
     let isMounted = true;
-    if (!currentPost || translationMode === 'original') {
+    if (!post || translationMode === 'original') {
       setGooglePost(null);
       setIsTranslating(false);
       return;
@@ -134,7 +177,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
     if (targetGoogleLang === 'en' || targetGoogleLang === 'ta' || translationMode === 'google') {
       setIsTranslating(true);
-      translatePostWithGoogle(currentPost, targetGoogleLang)
+      translatePostWithGoogle(post, targetGoogleLang)
         .then((res) => {
           if (isMounted) {
             setGooglePost(res);
@@ -142,9 +185,7 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           }
         })
         .catch(() => {
-          if (isMounted) {
-            setIsTranslating(false);
-          }
+          if (isMounted) setIsTranslating(false);
         });
     } else {
       setGooglePost(null);
@@ -154,133 +195,142 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     return () => {
       isMounted = false;
     };
-  }, [currentPost, targetGoogleLang, translationMode]);
+  }, [post, targetGoogleLang, translationMode]);
 
-  const effectivePost = (translationMode !== 'original' && googlePost) ? googlePost : (displayPost || currentPost);
+  const effectivePost = React.useMemo(() => {
+    if (!post) return null;
+    if (translationMode === 'original') return post;
+    if (googlePost) return googlePost;
+    return displayPost;
+  }, [translationMode, googlePost, displayPost, post]);
 
-  // Helper Actions
-  const handleApply = async () => {
-    if (!currentPost || !currentUser) return;
-    if (isDemo) {
-      if (onRequireRegistration) onRequireRegistration();
-      return;
-    }
-    setIsApplying(true);
-    try {
-      const updated = await applyToHelpPost({
-        post: currentPost,
-        helperUser: currentUser,
-        distanceKm: motorcycleRoute.distanceKm,
-      });
-      setActivePost(updated);
-      if (onPostUpdated) onPostUpdated(updated);
-      setApplySuccessMsg('ඔබගේ සහයෝගීතා කැමැත්ත සාර්ථකව යවන ලදී!');
-      setTimeout(() => setApplySuccessMsg(null), 3000);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsApplying(false);
-    }
-  };
+  if (!isOpen || !post || !effectivePost) return null;
 
-  const handleAcceptApplicant = async (app: HelperApplicant) => {
-    if (!currentPost) return;
-    const updated = await selectHelperApplicant({
-      post: currentPost,
-      applicant: app,
-    });
-    setActivePost(updated);
-    if (onPostUpdated) onPostUpdated(updated);
-  };
+  const isAdmin = currentUser?.role === 'admin' && !isDemo;
+  const isOwner = checkIsPostOwner(currentUser, post);
+  const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
 
-  const handleCancelReopen = async () => {
-    if (!currentPost) return;
-    const updated = await cancelAndReopenPost({
-      post: currentPost,
-      reason: 'සහායකයා නොපැමිණීම හේතුවෙන් අවලංගු කරන ලදී.',
-    });
-    setActivePost(updated);
-    if (onPostUpdated) onPostUpdated(updated);
-  };
-
-  if (!isOpen || !currentPost) return null;
-
-  const isConfirmed = Boolean(currentPost.isConfirmed);
-
-  const safeConditions = inspectAndSanitizeMessage(currentPost.conditions || '', isConfirmed).sanitizedText;
-  const safeSpecialNotice = inspectAndSanitizeMessage(currentPost.specialNotice || '', isConfirmed).sanitizedText;
-
-  const viewerLat = currentLocation?.lat || 7.1712;
-  const viewerLng = currentLocation?.lng || 79.8978;
-  const postLat = currentPost.lat || 6.9271;
-  const postLng = currentPost.lng || 79.8612;
-
-  const motorcycleRoute = calculateMotorcycleRoadDistance(viewerLat, viewerLng, postLat, postLng);
-  const travelFee = calculateTravelFee(
-    motorcycleRoute.distanceKm, 
-    currentPost.transport, 
-    currentPost.customTransportFee
+  const isConfirmedHelper = Boolean(
+    !isDemo &&
+    currentUser && (
+      (post.confirmedHelperPhone && normalizePhone(currentUser.phone) === normalizePhone(post.confirmedHelperPhone)) ||
+      (post.confirmedBy && currentUser.name && currentUser.name.trim().toLowerCase() === post.confirmedBy.trim().toLowerCase())
+    )
+  );
+  const hasContactPermission = Boolean(
+    !isDemo && (isOwner || isAdmin || isConfirmedHelper || post.revealContactConsent === true)
   );
 
-  const rawLoc = currentPost.locationName || '';
-  const safeLocationDisplay = getVillageOrTownDisplay(rawLoc);
+  // Calculate accurate Motorcycle Road Distance
+  const viewerLat = currentLocation?.lat || 7.1710;
+  const viewerLng = currentLocation?.lng || 79.8986;
+  const viewerLocName = currentLocation?.nameSi || (lang === 'en' ? 'Your Location (Viewer)' : lang === 'ta' ? 'உங்கள் இடம்' : 'ඔබ සිටින ස්ථානය (නරඹන්නා)');
 
-  const viewerLocName = currentLocation?.nameSi 
-    ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` 
-    : 'ඔබගේ ස්ථානය';
+  const postLat = post.lat || 7.1710;
+  const postLng = post.lng || 79.8986;
+  const postLocName = effectivePost.locationName || (lang === 'en' ? 'Posted Location' : lang === 'ta' ? 'பதிவு செய்யப்பட்ட இடம்' : 'දැන්වීම පළකළ ස්ථානය');
 
-  const helpersCount = currentPost.helpersNeeded || currentPost.helpersCount || 1;
+  const motorcycleRoute = calculateMotorcycleRoadDistance(
+    postLat,
+    postLng,
+    viewerLat,
+    viewerLng,
+    postLocName,
+    viewerLocName,
+    lang
+  );
 
-  let formattedCreatedTime = currentPost.createdAt || '';
-  if (currentPost.createdAtMs) {
-    try {
-      const d = new Date(currentPost.createdAtMs);
-      formattedCreatedTime = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } catch {}
+  const displayPostCode = (post?.postCode && typeof post.postCode === 'string') 
+    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`) 
+    : (post?.id ? `#${post.id.slice(-6)}` : '#POST');
+  const helpersCount = post.helpersNeeded || post.helpersCount || 1;
+
+  const isConfirmed = Boolean(post.isConfirmed);
+
+  // Extract conditions & special notice cleanly
+  let displaySpecialNotice = effectivePost.specialNotice || '';
+  let displayConditions = effectivePost.conditions || '';
+
+  if (!displaySpecialNotice && effectivePost.conditions) {
+    if (effectivePost.conditions.includes('විශේෂ දැනුවත් කිරීම')) {
+      const parts = effectivePost.conditions.split(/කොන්දේසි[:\s]*/i);
+      if (parts.length > 1) {
+        displaySpecialNotice = parts[0].replace(/විශේෂ දැනුවත් කිරීම්?[:\s]*/gi, '').trim();
+        displayConditions = parts.slice(1).join(' ').trim();
+      } else {
+        displaySpecialNotice = effectivePost.conditions.replace(/විශේෂ දැනුවත් කිරීම්?[:\s]*/gi, '').trim();
+        displayConditions = lang === 'en' ? 'Experienced technicians only, please.' : lang === 'ta' ? 'அனுபவமுள்ளவர்கள் மட்டும் தொடர்பு கொள்ளவும்.' : 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
+      }
+    }
   }
 
+  if (!displayConditions || displayConditions.trim() === '') {
+    displayConditions = lang === 'en' ? 'Experienced technicians only, please.' : lang === 'ta' ? 'அனுபவமுள்ளவர்கள் மட்டும் தொடர்பு கொள்ளவும்.' : 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
+  }
+  if (!displaySpecialNotice || displaySpecialNotice.trim() === '') {
+    displaySpecialNotice = lang === 'en' ? 'Today' : lang === 'ta' ? 'இன்று' : 'අද දවස තුල';
+  }
+
+  const safeWhatHappened = !isConfirmed ? inspectAndSanitizeMessage(effectivePost.whatHappened, false).sanitizedText : effectivePost.whatHappened;
+  const safeWhatIsNeeded = !isConfirmed ? inspectAndSanitizeMessage(effectivePost.whatIsNeeded, false).sanitizedText : effectivePost.whatIsNeeded;
+  const safeConditions = !isConfirmed ? inspectAndSanitizeMessage(displayConditions, false).sanitizedText : displayConditions;
+  const safeSpecialNotice = !isConfirmed ? inspectAndSanitizeMessage(displaySpecialNotice, false).sanitizedText : displaySpecialNotice;
+  const safeLocationDisplay = isConfirmed 
+    ? getVillageOrTownDisplay(postLocName) 
+    : (postLocName ? `${getVillageOrTownDisplay(postLocName).split(',')[0]} (🔒)` : '🔒');
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn">
-      <div className="w-full max-w-xl bg-gradient-to-b from-white via-emerald-50/30 to-white dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-500/50 rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,122,75,0.25)] overflow-hidden relative p-5 sm:p-7 max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/70 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      {/* Green and White Mixed Modal Container */}
+      <div className="w-full max-w-lg bg-gradient-to-b from-white via-emerald-50/40 to-white dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-500/50 rounded-[2rem] shadow-[0_20px_60px_rgba(0,122,75,0.25)] overflow-hidden relative p-5 sm:p-6 my-4 flex flex-col max-h-[92vh]">
         
-        {/* Header Bar */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-3 py-1 rounded-xl border border-emerald-300 dark:border-emerald-700/60 shadow-sm">
-              {currentPost.postCode}
+        {/* Header Bar with Emerald accents */}
+        <div className="flex items-center justify-between pb-3.5 mb-3 border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono text-xs font-black bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-3 py-1 rounded-xl border border-emerald-300 dark:border-emerald-700/60 shadow-sm">
+              {displayPostCode}
             </span>
-            <span className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-extrabold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{effectivePost?.title || effectivePost?.whatHappened?.slice(0, 30) || 'සේවා දැන්වීම'}</span>
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              {post.category === 'find_for_me' 
+                ? getLangText('සොයාදෙන්න දැන්වීම් විස්තරය', 'Find For Me Details', 'தேடித்தருக விளம்பர விவரம்') 
+                : getLangText('ක්ෂණික සේවා විස්තරය', 'Quick Service Details', 'உடனடி சேவை விவரம்')}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {onOpenLeaderboard && (
+            {(isOwner || isAdmin) && onEditPost && (
               <button
                 type="button"
-                onClick={onOpenLeaderboard}
-                className="px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 flex items-center gap-1 cursor-pointer"
-                title="Leaderboard බලන්න"
+                onClick={() => {
+                  onClose();
+                  onEditPost(post);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer border border-amber-300/40"
+                title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்து')}
               >
-                <Trophy className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Leaderboard</span>
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{getLangText('සංස්කරණය', 'Edit', 'திருத்து')}</span>
               </button>
             )}
 
-            {isPostOwner && onDeletePost && (
+            {(isOwner || isAdmin) && onDeletePost && (
               <button
-                onClick={() => onDeletePost(currentPost)}
-                className="w-8 h-8 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 border border-rose-200 dark:border-rose-900 flex items-center justify-center transition-all cursor-pointer shadow-xs"
-                title="දැන්වීම මකන්න"
+                type="button"
+                onClick={() => {
+                  onDeletePost(post);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer border border-rose-400/40"
+                title={getLangText('දැන්වීම මකා දමන්න (Delete Post)', 'Delete Post', 'நீக்கு')}
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{getLangText('මකා දමන්න', 'Delete', 'நீக்கு')}</span>
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-full bg-emerald-100/80 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 flex items-center justify-center font-bold transition-all cursor-pointer shadow-xs"
+              className="w-8 h-8 rounded-full bg-emerald-100/80 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 hover:text-emerald-900 dark:hover:text-emerald-100 border border-emerald-200 dark:border-emerald-800/70 flex items-center justify-center font-bold transition-all cursor-pointer"
+              title={getLangText('වසන්න', 'Close', 'மூடு')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -288,80 +338,462 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
         </div>
 
         {/* Content Box */}
-        <div className="overflow-y-auto space-y-3.5 py-4 text-left flex-1 pr-1">
+        <div className="bg-white dark:bg-[#071710] border border-emerald-200/90 dark:border-emerald-900/70 rounded-2xl p-4 sm:p-5 space-y-3.5 text-sm overflow-y-auto shadow-sm">
           
-          {/* User info Card */}
-          <div className="p-3 bg-white/95 dark:bg-[#071a12] rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 shadow-sm flex items-center justify-between flex-wrap gap-2">
+          {/* Hi Greeting & User info */}
+          <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-emerald-100 dark:border-emerald-950/80 flex-wrap">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-sm shadow-inner shrink-0">
-                <User className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/50 flex items-center justify-center shrink-0">
+                <User className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <span>{translateName(currentPost.userName, lang)}</span>
-                  {currentPost.isMedicalVerified && (
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <div className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
+                <span>{getLangText('Hi, මම', 'Hi, I am', 'வணக்கம், நான்')}</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                  {maskName(
+                    translateName(
+                      effectivePost?.userName || post.userName,
+                      translationMode === 'original' ? 'si' : targetGoogleLang
+                    ),
+                    isDemo,
+                    translationMode === 'original' ? 'si' : targetGoogleLang
                   )}
-                </h3>
-                <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-emerald-600" />
-                    <span>{formattedCreatedTime}</span>
-                  </span>
-                </div>
+                </span>
+                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  <span>{cardLabels.accountHolder}</span>
+                </span>
               </div>
-            </div>
-
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">සේවා කාණ්ඩය</span>
-              <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-300/60">
-                {currentPost.category === 'quick_services' ? 'ඉක්මන් සේවා' : 'සාමාන්‍ය සේවා'}
-              </span>
             </div>
           </div>
 
-          {/* Voice Player Header Card */}
-          {(currentPost.isVoicePost || currentPost.audioUrl) && (
-            <div className="p-3 bg-emerald-50/70 dark:bg-[#081e14] rounded-2xl border border-emerald-300/80 dark:border-emerald-800/60 space-y-2 shadow-xs">
-              <AudioVoicePlayer
-                audioUrl={currentPost.audioUrl || ''}
-                durationSec={currentPost.audioDurationSec}
-                title="හඬ පණිවිඩය (Voice Request)"
-              />
-              {currentPost.voiceTranscript && (
-                <div className="p-2 bg-white/90 dark:bg-[#071710] rounded-xl border border-emerald-200 text-xs">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 block text-[10px] uppercase">හඬ පිටපත:</span>
-                  <p className="font-medium text-slate-800 dark:text-slate-200">{currentPost.voiceTranscript}</p>
+          {/* Google Translate Interactive Bar */}
+          <div className="flex items-center justify-between gap-2 p-2 bg-slate-50/90 dark:bg-[#082216] rounded-2xl border border-slate-200/90 dark:border-emerald-800/70 flex-wrap shadow-2xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                <Languages className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
+                <span>Google Translate:</span>
+                {isTranslating ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold animate-pulse text-[10px]">
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                    <span>{getLangText('පරිවර්තනය වෙමින්...', 'Translating...', 'மொழிபெயர்க்கிறது...')}</span>
+                  </span>
+                ) : googlePost && translationMode !== 'original' ? (
+                  <span className="text-emerald-700 dark:text-emerald-300 font-black text-[10px] bg-emerald-100 dark:bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-700 flex items-center gap-0.5">
+                    <Check className="w-2.5 h-2.5" />
+                    <span>{getLangText('පරිවර්තනය විය', 'Translated', 'மொழிபெயர்க்கப்பட்டது')}</span>
+                  </span>
+                ) : null}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setTranslationMode('original');
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  translationMode === 'original'
+                    ? 'bg-emerald-700 text-white shadow-2xs ring-1 ring-emerald-500'
+                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
+                }`}
+                title={getLangText('දැන්වීම පළකළ මුල් භාෂාවෙන් බැලීම', 'View original post language', 'அசல் மொழியில் பார்க்க')}
+              >
+                {getLangText('මුල් පිටපත', 'Original', 'அசல்')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTranslationMode('google');
+                  setTargetGoogleLang('en');
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  translationMode !== 'original' && targetGoogleLang === 'en'
+                    ? 'bg-sky-600 text-white shadow-2xs ring-1 ring-sky-400'
+                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-sky-600 border border-slate-200 dark:border-slate-800'
+                }`}
+                title="Translate to English"
+              >
+                English
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTranslationMode('google');
+                  setTargetGoogleLang('ta');
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  translationMode !== 'original' && targetGoogleLang === 'ta'
+                    ? 'bg-amber-600 text-white shadow-2xs ring-1 ring-amber-400'
+                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-amber-600 border border-slate-200 dark:border-slate-800'
+                }`}
+                title="தமிழில் படிக்க"
+              >
+                தமிழ்
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTranslationMode('google');
+                  setTargetGoogleLang('si');
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  translationMode !== 'original' && targetGoogleLang === 'si'
+                    ? 'bg-emerald-600 text-white shadow-2xs ring-1 ring-emerald-400'
+                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
+                }`}
+                title="සිංහලට පරිවර්තනය"
+              >
+                සිංහල
+              </button>
+            </div>
+          </div>
+
+          {post.category === 'find_for_me' ? (() => {
+            const effectiveType = post.findForMeType || (
+              post.whatHappened?.includes('නැතිවූ') || post.whatIsNeeded?.includes('නැතිවූ') || post.tagName?.toLowerCase().includes('lost')
+                ? 'lost'
+                : post.whatHappened?.includes('සොරාගත්') || post.whatIsNeeded?.includes('සොරාගත්') || post.tagName?.toLowerCase().includes('stolen')
+                ? 'stolen'
+                : 'find'
+            );
+
+            const effectiveItemName = post.itemLostStolenOrSearched ||
+              post.whatHappened?.replace(/^(නැතිවූ|සොරාගත්|සොයන|අවශ්‍ය)\s*(දෙයක්|භාණ්ඩයක්)?:\s*/i, '')?.split('.')[0] ||
+              post.whatIsNeeded?.replace(/^නැතිවූ\s*|^සොරාගත්\s*|^සොයන\s*|සොයාදෙන්න\.?$/g, '')?.trim() ||
+              post.tagName ||
+              'අදාළ භාණ්ඩය / සේවාව';
+
+            const rawContactPhone = post.contactPhone || post.userPhone || '';
+            const rawContactWhatsapp = post.contactWhatsapp || post.userPhone || '';
+            const rawContactAddress = post.contactAddress || post.locationName || '';
+
+            const effectiveContactPhone = hasContactPermission 
+              ? (rawContactPhone || '0771234567') 
+              : (rawContactPhone ? `${rawContactPhone.slice(0, 3)} *** **** (🔒 ආරක්ෂිතයි)` : '07* *** **** (🔒 ආරක්ෂිතයි)');
+            const effectiveContactWhatsapp = hasContactPermission 
+              ? (rawContactWhatsapp || '0771234567') 
+              : (rawContactWhatsapp ? `${rawContactWhatsapp.slice(0, 3)} *** **** (🔒 ආරක්ෂිතයි)` : '07* *** **** (🔒 ආරක්ෂිතයි)');
+            const effectiveContactAddress = hasContactPermission
+              ? (rawContactAddress || 'ගෙදර ලිපිනය')
+              : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)';
+            const effectiveLocationName = post.locationName || 'ස්ථානය තහවුරු කර ඇත';
+            const effectiveIncidentLocation = post.incidentLocation || post.locationName || '';
+            const effectiveIncidentDate = post.incidentDate || (post.createdAt?.includes('මීට') ? 'අද' : post.createdAt) || '';
+            const effectiveIncidentTime = post.incidentTime || '';
+            const effectiveDelivery = post.deliveryOption || post.transport || 'ගෙනවිත් දෙන්න ඒ සදහා මම ඔබට වෙනම ගෙවන්නම්';
+            const effectiveOtherDetails = post.otherDetails || (post.conditions && typeof post.conditions === 'string' && !post.conditions.startsWith('ගණුදෙනුව') && !post.conditions.startsWith('සම්බන්ධ') ? post.conditions : '');
+            const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
+            const safeIdentifyingInfo = hasContactPermission 
+              ? post.identifyingInfo 
+              : (post.identifyingInfo ? inspectAndSanitizeMessage(post.identifyingInfo, false).sanitizedText : '');
+
+            return (
+              /* DEDICATED FIND FOR ME PRESENTATION IN DETAIL MODAL */
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap pb-1">
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-xl shadow-xs border ${
+                    effectiveType === 'lost'
+                      ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800'
+                      : effectiveType === 'stolen'
+                      ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
+                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
+                  }`}>
+                    <Search className="w-3.5 h-3.5" />
+                    <span>
+                      {effectiveType === 'lost'
+                        ? getLangText('🔴 නැතිවූ දෙයක් (Lost Item)', '🔴 Lost Item', '🔴 தொலைந்த பொருள்')
+                        : effectiveType === 'stolen'
+                        ? getLangText('⚠️ සොරාගත් දෙයක් (Stolen Item)', '⚠️ Stolen Item', '⚠️ திருடப்பட்ட பொருள்')
+                        : getLangText('🔍 සොයාදෙන්න (Search / Procurement)', '🔍 Find For Me', '🔍 தேடித்தருக')}
+                    </span>
+                  </span>
+
+                  {showReward && (
+                    <span className="inline-flex items-center gap-1 text-xs font-black text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/90 px-3 py-1 rounded-xl border border-amber-300 dark:border-amber-600">
+                      <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>{getLangText('තෑග්ගක් සහිතයි', 'Reward Offered', 'பரிசு உண்டு')}</span>
+                    </span>
+                  )}
+                </div>
+
+                {(effectiveType === 'lost' || effectiveType === 'stolen') && (
+                  <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-2">
+                    <p>
+                      {effectiveIncidentDate ? `${effectiveIncidentDate} ${getLangText('දින, ', 'on, ', 'அன்று, ')}` : ''}
+                      {effectiveIncidentTime ? `${effectiveIncidentTime} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
+                      {effectiveIncidentLocation ? `${effectiveIncidentLocation} ${getLangText('දී, ', 'at, ', 'இடத்தில், ')}` : ''}
+                      <strong className="text-emerald-700 dark:text-emerald-300 font-black">
+                        {translateText(effectiveItemName, lang)}
+                      </strong>{' '}
+                      {effectiveType === 'lost' ? getLangText('නැතිවී ඇත,', 'is lost,', 'தொலைந்துவிட்டது,') : getLangText('සොරාගෙන ඇත,', 'is stolen,', 'திருடப்பட்டுவிட்டது,')}{' '}
+                      {getLangText('සොයාගත් කෙනෙක් වේනම්', 'if found please contact me via', 'கண்டெடுத்தால் என்னை தொடர்பு கொள்ளவும்:')}{' '}
+                      <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
+                        {effectiveContactPhone}
+                        {effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` ${getLangText('හෝ', 'or', 'அல்லது')} ${effectiveContactWhatsapp}` : ''}
+                      </span>{' '}
+                      {getLangText('හරහා මා සම්බන්ධකරගන්න.', '.', '.')}
+                    </p>
+                    <p className="text-slate-800 dark:text-slate-200">
+                      {getLangText('නැතිනම්', 'Or send to', 'அல்லது பின்வரும் முகவரிக்கு அனுப்பவும்:')}{' '}
+                      <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
+                        {getVillageOrTownDisplay(effectiveContactAddress)}
+                      </span>{' '}
+                      {getLangText('ට එවන්න. නිවැරදි ස්ථානය:', '. Verified location:', '. உறுதிப்படுத்தப்பட்ட இடம்:')}{' '}
+                      <span className="font-extrabold text-slate-900 dark:text-white">
+                        {getVillageOrTownDisplay(effectiveLocationName)}
+                      </span>
+                    </p>
+
+                    {/* Identifying info on item (Phone, NIC, Reg/Serial No, or Name) */}
+                    {safeIdentifyingInfo && safeIdentifyingInfo.trim() !== '' && (
+                      <div className="mt-2 p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/70 dark:border-amber-700/70 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
+                        <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
+                          <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>{getLangText('නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:', 'Phone / NIC / Serial / Markings on item:', 'பொருளிலுள்ள தொலைபேசி / அடையாள அட்டை / அடையாளங்கள்:')}</span>
+                        </div>
+                        <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                          {safeIdentifyingInfo}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {effectiveType === 'find' && (
+                  <div className="space-y-2.5">
+                    <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-1.5">
+                      <p>
+                        {post.targetPrice ? `${post.targetPrice} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
+                        <strong className="text-emerald-700 dark:text-emerald-300 font-black">
+                          {translateText(effectiveItemName, lang)}
+                        </strong>{' '}
+                        {post.quantityNeeded ? `${post.quantityNeeded} ` : ''}{getLangText('අවශ්‍යයි,', 'is needed,', 'தேவைப்படுகிறது,')}
+                      </p>
+                      {post.hasDeadline && post.deadlineDate && (
+                        <p className="text-rose-600 dark:text-rose-400 font-extrabold">
+                          {getLangText('පෙර සොයාදෙන්න:', 'Please find before:', 'இதற்கு முன்னர் கண்டறியவும்:')} {post.deadlineDate} {post.deadlineTime ? `(${post.deadlineTime}) ` : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Contact & Location Info */}
+                    <div className="p-3 bg-white dark:bg-[#082014] rounded-2xl border border-emerald-200 dark:border-emerald-900 text-xs space-y-1.5">
+                      <strong className="text-emerald-900 dark:text-emerald-300 font-black block pb-1 border-b border-emerald-200/80 dark:border-emerald-900/50">
+                        {getLangText('ස්ථානය හා සම්බන්ධකරගතහැකි තොරතුරු:', 'Location & Contact Information:', 'இடம் மற்றும் தொடர்பு விவரங்கள்:')}
+                      </strong>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 font-semibold">
+                        <div>
+                          <span className="text-slate-500">{getLangText('දුරකථන: ', 'Phone: ', 'தொலைபேசி: ')}</span>
+                          <strong className="text-slate-900 dark:text-white">{effectiveContactPhone}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">WhatsApp: </span>
+                          <strong className="text-slate-900 dark:text-white">{effectiveContactWhatsapp}</strong>
+                        </div>
+                        {effectiveContactAddress && (
+                          <div className="sm:col-span-2">
+                            <span className="text-slate-500">{getLangText('ගෙදර ලිපිනය: ', 'Address: ', 'முகவரி: ')}</span>
+                            <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveContactAddress)}</strong>
+                          </div>
+                        )}
+                        <div className="sm:col-span-2">
+                          <span className="text-slate-500">{getLangText('නිවැරදි ස්ථානය: ', 'Verified Location: ', 'உறுதிப்படுத்தப்பட்ட இடம்: ')}</span>
+                          <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveLocationName)}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Delivery / Transaction Method */}
+                    <div className="p-3 bg-emerald-100/60 dark:bg-[#0a2719] rounded-2xl border border-emerald-300 text-xs space-y-1">
+                      <strong className="text-emerald-900 dark:text-emerald-300 font-black flex items-center gap-1.5">
+                        <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{getLangText('ගණුදෙනුව සිදුවියයුතු ආකාරය:', 'Transaction / Delivery Method:', 'பரிவர்த்தனை / விநியோக முறை:')}</span>
+                      </strong>
+                      <p className="font-bold text-slate-900 dark:text-white pl-5">
+                        {translateText(effectiveDelivery, lang)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Other details */}
+                {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
+                  <div className="p-3 bg-slate-50 dark:bg-[#081e14] rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+                    <strong className="text-emerald-900 dark:text-emerald-300 font-black block mb-0.5">
+                      {getLangText('වැඩි විස්තර:', 'Additional Details:', 'கூடுதல் விவரங்கள்:')}
+                    </strong>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{translateText(effectiveOtherDetails, lang)}</p>
+                  </div>
+                )}
+
+                {/* Reward (Only shown if hasReward) */}
+                {showReward && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-amber-900 dark:text-amber-200 font-extrabold text-xs flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>
+                      <strong>{getLangText('සොයාදෙන්නාහට මගෙන්:', 'Reward for finder:', 'கண்டெடுப்பவருக்கு பரிசு:')}</strong> {post.rewardDetails}
+                    </span>
+                  </div>
+                )}
+
+                {/* Direct Instant Action chips */}
+                <div className="pt-2 grid grid-cols-2 gap-2">
+                  {hasContactPermission ? (
+                    <>
+                      {rawContactPhone && (
+                        <a
+                          href={`tel:${rawContactPhone.replace(/\D/g, '')}`}
+                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>{getLangText('ඇමතුමක් ගන්න', 'Call', 'அழைக்கவும்')}</span>
+                        </a>
+                      )}
+
+                      {rawContactWhatsapp && (
+                        <a
+                          href={`https://wa.me/${rawContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onOpenChat(post)}
+                        title={getLangText('දුරකථන අංකය ලබා ගැනීමට ඉල්ලුම්කරු සමග Chat කරන්න', 'Chat to request phone number', 'தொலைபேசி எண்ணை பெற உரையாடவும்')}
+                        className="py-2.5 px-3 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{getLangText('අංකය ඉල්ලන්න (Chat)', 'Request Number', 'எண்ணை கேளுங்கள்')}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenChat(post)}
+                        title={getLangText('ලිපිනය හා WhatsApp තොරතුරු ලබා ගැනීමට Chat කරන්න', 'Chat for address and WhatsApp', 'முகவரி மற்றும் WhatsApp விவரங்களுக்கு உரையாடவும்')}
+                        className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-teal-600" />
+                        <span>{getLangText('සංවාදය (Chat)', 'Chat', 'உரையாடு')}</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })() : (post.isVoicePost || post.audioUrl) ? (
+            /* DEDICATED VOICE REQUEST DETAIL PRESENTATION */
+            <div className="space-y-3">
+              {/* 🎙️ Voice Player Header Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-teal-950 to-emerald-950 border-2 border-emerald-500/80 shadow-md space-y-3 text-white">
+                <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                  <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                    <span>🎙️ {getLangText('AI හඬ ආධාර ඉල්ලීම (Voice Request)', 'AI Voice Request', 'AI குரல் உதவி கோரிக்கை')}</span>
+                  </span>
+                  {post.voiceLanguage && (
+                    <span className="text-[10px] bg-emerald-800/80 text-emerald-200 px-2.5 py-0.5 rounded-full font-bold uppercase">
+                      {post.voiceLanguage === 'si' ? 'සිංහල' : post.voiceLanguage === 'ta' ? 'தமிழ்' : 'English'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Auto Stamped Date, Time & Sent Location */}
+                {(post.voiceSentDate || post.voiceSentTime || post.voiceSentLocation) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 text-xs font-semibold text-emerald-100 border border-emerald-500/30">
+                    {post.voiceSentDate && (
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate font-mono">{post.voiceSentDate}</span>
+                      </div>
+                    )}
+                    {post.voiceSentTime && (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-teal-300 shrink-0" />
+                        <span className="truncate font-mono">{post.voiceSentTime}</span>
+                      </div>
+                    )}
+                    {post.voiceSentLocation && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span className="truncate">{post.voiceSentLocation}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {post.audioUrl && (
+                  <div className="pt-1">
+                    <AudioVoicePlayer 
+                      audioUrl={post.audioUrl} 
+                      durationSec={post.audioDurationSec || 5} 
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Spoken transcript note if available */}
+              {(post.voiceTranscript || (safeWhatHappened && !safeWhatHappened.startsWith('🎙️') && safeWhatHappened !== 'හඬ පණිවිඩය අසා සහය වන්න')) && (
+                <div className="p-3.5 bg-emerald-50/70 dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/50 rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="text-emerald-800 dark:text-emerald-300 font-black block mb-1">
+                    📝 {getLangText('හඬින් පැවසූ සටහන (Voice Note Text):', 'Voice Note Text:', 'குரல் குறிப்புரை:')}
+                  </span>
+                  <p className="leading-relaxed font-medium">
+                    {renderTextWithLinks(post.voiceTranscript || safeWhatHappened)}
+                  </p>
                 </div>
               )}
             </div>
+          ) : (
+            /* STANDARD QUICK SERVICES VIEW */
+            <>
+              {/* 1. සිදුවී ඇති දේ (What Happened) */}
+              <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-900/60 rounded-xl space-y-0.5">
+                <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-300 block">
+                  {getLangText('සිදුවී ඇති දේ:', 'What happened:', 'நடந்தது என்ன:')}
+                </span>
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                  {renderTextWithLinks(safeWhatHappened)}
+                </p>
+              </div>
+
+              {/* 2. වියයුතු දේ (What is Needed) */}
+              <div className="p-3 bg-white dark:bg-[#0b2419]/70 border border-emerald-300/80 dark:border-emerald-700/60 rounded-xl space-y-0.5 shadow-sm">
+                <span className="font-extrabold text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {getLangText('වියයුතු දේ:', 'What is needed:', 'செய்ய வேண்டியது:')}
+                </span>
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                  {renderTextWithLinks(safeWhatIsNeeded)}
+                </p>
+              </div>
+            </>
           )}
 
-          {/* 1. සිදුවී ඇති දේ (What Happened) */}
-          <div className="p-3 bg-white/95 dark:bg-[#071a12] rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 text-xs space-y-1 shadow-sm">
-            <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <HelpCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              {getLangText('සිදුවී ඇති දේ:', 'What Happened:', 'நடந்தது என்ன:')}
-            </span>
-            <p className="font-bold text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-              {renderTextWithLinks(effectivePost?.whatHappened || currentPost.whatHappened)}
-            </p>
-          </div>
+          {/* 🏍️ ACCURATE MOTORCYCLE ROAD ROUTE & DISTANCE CARD (White & Emerald Styled) */}
+          <div className="p-3.5 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white dark:from-[#092217] dark:via-[#05180f] dark:to-[#092217] border-2 border-emerald-500/50 dark:border-emerald-600/50 rounded-2xl space-y-2.5 shadow-sm">
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-black text-xs text-emerald-800 dark:text-emerald-300">
+                <span className="text-sm">🏍️</span>
+                <span>{getLangText('මෝටර් සයිකලයෙන් මාර්ග දුර (Motorcycle Road Distance)', 'Motorcycle Road Distance', 'மோட்டார் சைக்கிள் வீதி தூரம்')}</span>
+              </div>
+              <span className="text-[10px] font-mono font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-sm">
+                ~{motorcycleRoute.formattedTime}
+              </span>
+            </div>
 
-          {/* 2. වියයුතු දේ (What is Needed) */}
-          <div className="p-3 bg-white/95 dark:bg-[#071a12] rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 text-xs space-y-1 shadow-sm">
-            <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              {getLangText('වියයුතු දේ:', 'What is Needed:', 'தேவைப்படுவது என்ன:')}
-            </span>
-            <p className="font-bold text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-              {renderTextWithLinks(effectivePost?.whatIsNeeded || currentPost.whatIsNeeded)}
-            </p>
-          </div>
-
-          {/* Two Locations & Distance Comparison */}
-          <div className="p-3 bg-emerald-100/60 dark:bg-emerald-950/40 rounded-2xl border border-emerald-300/70 dark:border-emerald-800/60 space-y-2.5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            {/* Two Locations Comparison */}
+            <div className="grid grid-cols-1 gap-2 text-xs">
               <div className="p-2.5 bg-white dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex items-center gap-2.5 shadow-sm">
                 <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
                 <div className="min-w-0">
@@ -394,21 +826,8 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               </div>
             </div>
 
-            {/* Travel Allowance Fee Readout */}
-            {travelFee > 0 && (
-              <div className="p-2.5 bg-emerald-50/80 dark:bg-emerald-950/60 rounded-xl border border-emerald-300 dark:border-emerald-800 flex items-center justify-between text-xs shadow-xs">
-                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Car className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ප්‍රවාහන දීමනාව ({currentPost.transport}):</span>
-                </span>
-                <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
-                  + රු. {travelFee.toLocaleString()}.00
-                </span>
-              </div>
-            )}
-
             {/* Direct Google Maps Directions link / Privacy Lock */}
-            {currentPost.isConfirmed || currentPost.category === 'find_for_me' ? (
+            {post.isConfirmed || post.category === 'find_for_me' ? (
               <a
                 href={motorcycleRoute.mapsUrl}
                 target="_blank"
@@ -423,96 +842,133 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 <span>{getLangText('🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා නිශ්චිත ලිපිනය විවෘත වේ', '🔒 Full address and Google Maps route unlocked after support confirmation', '🔒 உதவி உறுதிப்படுத்திய பின் வரைபடம் மற்றும் முகவரி திறக்கப்படும்')}</span>
               </div>
             )}
+
           </div>
-
-          {/* 3. කොන්දේසි (Conditions) */}
-          <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
-            <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <Wrench className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              {getLangText('කොන්දේසි:', 'Conditions:', 'நிபந்தனைகள்:')}
-            </span>
-            <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-              {translateText(safeConditions, lang)}
-            </p>
-          </div>
-
-          {/* 4. විශේෂ දැනුවත් කිරීම (Special Notice) */}
-          <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
-            <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              {getLangText('විශේෂ දැනුවත් කිරීම:', 'Special Notice:', 'விசேட அறிவிப்பு:')}
-            </span>
-            <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-              {translateText(safeSpecialNotice, lang)}
-            </p>
-          </div>
-
-          {/* 5. අවශ්‍ය සහායකයින් ගණන */}
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 pt-0.5">
-            <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>{getLangText('අවශ්‍ය සහායකයින් ගණන: ', 'Helpers needed: ', 'தேவையான உதவியாளர்கள்: ')}</span>
-            <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm sm:text-base">
-              {helpersCount}
-            </span>
-            <span>{getLangText(' කි.', ' person(s)', ' நபர்(கள்)')}</span>
-          </div>
-
-          {/* 6. ගමනාගමනය (Transport) */}
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-            <Car className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>{getLangText('ගමනාගමනය: ', 'Transport: ', 'போக்குவரத்து: ')}<span className="font-extrabold text-slate-900 dark:text-slate-100">{translateText(currentPost.transport || 'ඔබ පැමිණිය යුතුයි.', lang)}</span></span>
-          </div>
-
-          {/* 7. ගෙවීම් (Payment) */}
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/60 p-3 rounded-xl border border-emerald-300/80 dark:border-emerald-700/60 shadow-sm">
-            <Banknote className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>{getLangText('ගෙවීම් : ', 'Payment / Fee: ', 'கட்டணம்: ')}<span className="font-black text-slate-900 dark:text-white">{translateText(currentPost.payment || 'කතා කරගත හැක', lang)}</span></span>
-          </div>
-
-          {/* Embedded Media Player */}
-          {(currentPost.externalLink || currentPost.videoUrl) && (
-            <div className="pt-2">
-              <EmbeddedMediaViewer
-                url={currentPost.externalLink || currentPost.videoUrl}
-                compact={false}
-              />
-            </div>
-          )}
-
-          {/* Secret Start PIN: Strictly for Post Owner ONLY */}
-          {isPostOwner && selectedHelpers.length > 0 && (
-            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/80 border-2 border-emerald-400 rounded-2xl text-center space-y-2 animate-fadeIn">
-              <div className="flex items-center justify-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
-                <Lock className="w-4 h-4 text-emerald-600" />
-                <span>රහස් Start PIN අංකය (සහායකයා පැමිණි පසු වැඩේ ආරම්භ කිරීමට ඔහුට දෙන්න):</span>
+          {post.category !== 'find_for_me' && !post.isVoicePost && !post.audioUrl && (
+            <>
+              {/* 3. කොන්දේසි (Conditions) */}
+              <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
+                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {getLangText('කොන්දේසි:', 'Conditions:', 'நிபந்தனைகள்:')}
+                </span>
+                <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
+                  {translateText(safeConditions, lang)}
+                </p>
               </div>
-              <span className="text-3xl font-black font-mono tracking-widest text-emerald-700 dark:text-emerald-300 block">
-                {startPin}
-              </span>
-              <p className="text-[10px] text-slate-500">
-                * මෙම රහස් අංකය පෙනෙන්නේ ඔබට පමණි.
+
+              {/* 4. විශේෂ දැනුවත් කිරීම (Special Notice) */}
+              <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
+                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {getLangText('විශේෂ දැනුවත් කිරීම:', 'Special Notice:', 'விசேட அறிவிப்பு:')}
+                </span>
+                <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
+                  {translateText(safeSpecialNotice, lang)}
+                </p>
+              </div>
+
+              {/* 5. අවශ්‍ය සහායකයින් ගණන (Helpers Count - No underscores!) */}
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 pt-0.5">
+                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{getLangText('අවශ්‍ය සහායකයින් ගණන: ', 'Helpers needed: ', 'தேவையான உதவியாளர்கள்: ')}</span>
+                <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm sm:text-base">
+                  {helpersCount}
+                </span>
+                <span>{getLangText(' කි.', ' person(s)', ' நபர்(கள்)')}</span>
+              </div>
+
+              {/* 6. ගමනාගමනය (Transport) */}
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                <Car className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{getLangText('ගමනාගමනය: ', 'Transport: ', 'போக்குவரத்து: ')}<span className="font-extrabold text-slate-900 dark:text-slate-100">{translateText(post.transport || (lang === 'en' ? 'You should arrive' : lang === 'ta' ? 'நீங்கள் வர வேண்டும்' : 'ඔබ පැමිණිය යුතුයි'), lang)}</span></span>
+              </div>
+
+              {/* 7. ගෙවීම් (Payment) */}
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/60 p-3 rounded-xl border border-emerald-300/80 dark:border-emerald-700/60 shadow-sm">
+                <Banknote className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{getLangText('ගෙවීම් : ', 'Payment / Fee: ', 'கட்டணம்: ')}<span className="font-black text-slate-900 dark:text-white">{translateText(post.payment || (lang === 'en' ? 'I agree to your fee' : lang === 'ta' ? 'உங்கள் கட்டணத்திற்கு சம்மதிக்கிறேன்' : 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'), lang)}</span></span>
+              </div>
+
+              {/* Embedded Media / Video Link Player */}
+              {(post.externalLink || post.videoUrl) && (
+                <div className="pt-2">
+                  <EmbeddedMediaViewer
+                    url={post.externalLink || post.videoUrl}
+                    compact={false}
+                  />
+                </div>
+              )}
+
+              {/* 8. උදව් කරන්න Prompt */}
+              <p className="text-center text-emerald-700 dark:text-emerald-400 font-black pt-1 text-base sm:text-lg tracking-wide">
+                {getLangText('උදව් කරන්න.', 'Please help.', 'உதவி செய்யுங்கள்.')}
               </p>
-              <button
-                type="button"
-                onClick={handleCancelReopen}
-                className="mt-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 rounded-lg text-[10px] font-bold hover:bg-rose-100 flex items-center justify-center gap-1 mx-auto cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>සහායකයා නොපැමිණියේ නම් අවලංගු කර නැවත විවෘත කරන්න</span>
-              </button>
-            </div>
+            </>
           )}
 
-          {/* Dedicated Applicants List View for Post Owner */}
-          {isPostOwner && (showApplicantsModal || applicants.length > 0) && (
+        </div>
+
+                  {/* Seeker / Post Owner: Applicants Pool & Start PIN Management */}
+          {isPostOwner && (
             <div className="p-4 bg-emerald-50/70 dark:bg-[#071911] border-2 border-emerald-400/80 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-emerald-600" />
-                  <span>කැමැත්ත දැක්වූවන් (අවශ්‍ය: {helpersNeeded} | තෝරාගත්: {selectedHelpers.length}/{helpersNeeded})</span>
+                  <span>සහායකයින් තෝරාගැනීම (අවශ්‍ය: {helpersNeeded} | තෝරාගත්: {selectedHelpers.length}/{helpersNeeded})</span>
                 </h4>
+                {onOpenLeaderboard && (
+                  <button
+                    type="button"
+                    onClick={onOpenLeaderboard}
+                    className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trophy className="w-3 h-3" />
+                    <span>Leaderboard</span>
+                  </button>
+                )}
               </div>
 
+              {/* Start PIN Display for Seeker: Distinct PIN for each selected helper */}
+              {selectedHelpers.length > 0 && (
+                <div className="p-3 bg-white dark:bg-slate-900 border-2 border-emerald-400 rounded-xl space-y-2">
+                  <span className="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 block text-center">
+                    🔑 රහස් ආරම්භක PIN අංක (සහායකයා වැඩබිමට පැමිණි පසු වැඩ ආරම්භ කිරීමට ඔහුට දෙන්න):
+                  </span>
+                  <div className="space-y-1.5">
+                    {selectedHelpers.map((h, idx) => {
+                      const hPin = h.startPin || (startPin ? (parseInt(startPin) + idx * 1111) % 9000 + 1000 : '4829').toString();
+                      return (
+                        <div key={h.helperId || idx} className="p-2.5 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-xl flex items-center justify-between border border-emerald-200 dark:border-emerald-800">
+                          <div>
+                            <div className="text-xs font-black text-slate-800 dark:text-white">
+                              {idx + 1}. {h.helperName}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              ID: ***{extractId4Digits(h.helperNicMasked || h.helperId)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-base sm:text-lg font-black font-mono tracking-widest text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border-2 border-emerald-400 inline-block shadow-xs">
+                              {hPin}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelReopen}
+                    className="mt-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 rounded-lg text-[10px] font-bold hover:bg-rose-100 flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>සහායකයා නොපැමිණියේ නම් අවලංගු කර නැවත විවෘත කරන්න</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Applicants List */}
               {applicants.length === 0 ? (
                 <p className="text-[11px] text-slate-500 text-center py-2">
                   තවමත් සහායකයින් ඉදිරිපත් වී නොමැත. සහායකයෙකු ඉදිරිපත් වූ සැනින් ඔබට Notification එකක් ලැබේ.
@@ -524,42 +980,40 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                     return (
                       <div
                         key={app.id}
-                        className={`p-3 rounded-2xl border flex items-center justify-between text-xs gap-2 ${
+                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
                           isSelected
                             ? 'bg-emerald-100/90 dark:bg-emerald-950 border-emerald-500'
                             : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
                         }`}
                       >
-                        {/* Minimal Profile Strictly showing: Name, 4 digits ID, Rank, Feedback only */}
-                        <div className="space-y-1 pr-2 min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-slate-900 dark:text-white text-xs">{app.helperName}</span>
-                            <span className="text-[10px] font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.2 rounded-full border border-emerald-300 dark:border-emerald-800">
-                              ID: ***{app.helperIdLast4 || extractId4Digits(app.helperNicMasked)}
-                            </span>
-                            <span className="text-[10px] font-bold text-amber-600 flex items-center gap-0.5">
-                              <Star className="w-3 h-3 fill-amber-400" /> {(app.helperRating || 1.10).toFixed(2)} (Rank #{app.helperRank || 12})
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 dark:text-white">{app.helperName}</span>
+                            <span className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
+                              ID: ***{extractId4Digits(app.helperNicMasked || app.helperId)}
                             </span>
                           </div>
-
-                          <div className="space-y-0.5 pt-0.5">
-                            {(app.feedbackComments && app.feedbackComments.length > 0 ? app.feedbackComments : ['විශිෂ්ට හා කාරුණික සේවාවක්', 'නියමිත වේලාවට වැඩේ නිමකළා']).slice(0, 2).map((fb, fidx) => (
-                              <p key={fidx} className="text-[10px] text-slate-600 dark:text-slate-400 italic">
-                                "{fb}"
-                              </p>
-                            ))}
+                          <div className="text-[10px] text-slate-500 flex items-center gap-2 pt-0.5">
+                            <span className="text-amber-600 font-bold flex items-center gap-0.5">
+                              <Star className="w-3 h-3 fill-amber-400" /> {app.helperRating?.toFixed(2) || '4.80'}
+                            </span>
+                            {app.feedbackComments && (
+                              <span className="text-slate-400 italic truncate max-w-[140px]">
+                                "{app.feedbackComments}"
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {isSelected ? (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-200/80 px-2.5 py-1.5 rounded-xl shrink-0">
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-200/80 px-2 py-1 rounded-lg">
                             ✓ තෝරාගන්නා ලදී
                           </span>
                         ) : (
                           <button
                             type="button"
                             onClick={() => handleAcceptApplicant(app)}
-                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer shrink-0"
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
                           >
                             තෝරාගන්න
                           </button>
@@ -572,15 +1026,14 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
             </div>
           )}
 
+          {/* Toast on apply success */}
           {applySuccessMsg && (
             <div className="p-3 bg-emerald-100 text-emerald-900 text-xs rounded-xl font-bold text-center animate-bounce">
               {applySuccessMsg}
             </div>
           )}
 
-        </div>
-
-        {/* Bottom Action Buttons: CHAT and කැමැත්ත දැක්වූවන් (Poster) / APPLY (Helper) */}
+        {/* Bottom Action Buttons: CHAT and CONFIRM / APPLY */}
         <div className="grid grid-cols-2 gap-3 pt-4 shrink-0">
           <button
             onClick={() => {
@@ -597,17 +1050,13 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           </button>
 
           {isPostOwner ? (
-            /* Post Owner View: කැමැත්ත දැක්වූවන් Button with Counter Badge */
+            /* Post Owner View */
             <button
-              type="button"
-              onClick={() => setShowApplicantsModal(true)}
-              className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 cursor-pointer relative"
+              onClick={() => onOpenConfirm(currentPost || post)}
+              className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
             >
-              <Users className="w-4 h-4" />
-              <span>කැමැත්ත දැක්වූවන්</span>
-              <span className="px-2 py-0.5 rounded-full bg-white text-emerald-800 text-[10px] font-mono font-black shadow-sm">
-                {applicants.length}
-              </span>
+              <CheckCircle className="w-4 h-4" />
+              <span>{isConfirmed ? 'ගනුදෙනු ලදුපත (Receipt)' : 'තහවුරු කිරීම (Confirm)'}</span>
             </button>
           ) : isHelperAccepted ? (
             /* Helper is Selected: Enter Start PIN */
@@ -616,22 +1065,22 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
             >
               <CheckCircle className="w-4 h-4" />
-              <span>🚀 වැඩේ ආරම්භ කරන්න</span>
+              <span>🚀 වැඩේ ආරම්භ කරන්න (Start Job)</span>
             </button>
           ) : isHelperApplied ? (
-            /* Helper has applied and is waiting */
+            /* Helper has applied and is waiting for seeker */
             <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-amber-100 dark:bg-amber-950/80 border border-amber-400 text-amber-900 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-1 text-center">
-              <span>⏳ ඔබගේ කැමැත්ත යවා ඇත</span>
+              <span>⏳ කැමැත්ත පළ කර ඇත (දැන්වීම්කරුගේ තේරීම අපේක්ෂාවෙන්)</span>
             </div>
           ) : (
-            /* Outside Helper: Apply to Help */
+            /* Outside Helper: Express willingness to Help */
             <button
               onClick={handleApply}
               disabled={isApplying}
               className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-[0_4px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
             >
               <UserPlus className="w-4 h-4" />
-              <span>{isApplying ? 'යවමින්...' : '🤝 මම සහය වෙන්නම්'}</span>
+              <span>{isApplying ? 'යවමින්...' : '🤝 මම සහය වෙන්නම් (කැමැත්ත පළ කරන්න)'}</span>
             </button>
           )}
         </div>
