@@ -159,7 +159,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   user: propUser,
   currentUser,
   setCurrentUser,
-  users: propUsers,
+  users,
   setUsers,
   setHelpPosts,
   issues: propIssues,
