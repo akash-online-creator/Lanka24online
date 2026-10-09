@@ -854,7 +854,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   // Category & Distance & Tag Filtering Logic
-  const filteredHelpPosts = (helpPosts || []).filter((post) => {
+  const filteredPosts = (helpPosts || []).filter((post) => {
     if (!post || !post.id || post.isDeleted || post.status === 'deleted' || isPostPermanentlyDeleted(post.id)) return false;
 
     // Check if post author is blocked or deleted by admin
