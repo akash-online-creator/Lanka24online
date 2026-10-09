@@ -662,7 +662,14 @@ export const PostCard: React.FC<PostCardProps> = ({
               /* Post Owner View: Orange "කැමැත්ත දැක්වූවන්" button with badge counter */
               <button
                 type="button"
-                onClick={handleView}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onOfferSupport) {
+                    onOfferSupport(post);
+                  } else {
+                    handleView(e);
+                  }
+                }}
                 className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all border border-orange-400/50"
                 title="සහය වීමට කැමැත්ත පළකළ අයගේ ලැයිස්තුව"
               >
