@@ -911,7 +911,67 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           const lng = Number(position.coords.longitude.toFixed(6));
           const acc = position.coords.accuracy ? Math.round(position.coords.accuracy) : 10;
           const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0;
-          const head = position.coords.heading ? Math.round(position.coords.
+          const head = position.coords.heading ? Math.round(position.coords.heading) : undefined;
+
+          setCurrentCoords({ lat, lng });
+          setAccuracy(acc);
+          setSpeedKmh(speed);
+          if (head !== undefined) setHeading(head);
+
+          const newPoint: SosBreadcrumbPoint = {
+            lat,
+            lng,
+            timestampMs: Date.now(),
+            accuracyMeters: acc,
+            speedKmh: speed,
+          };
+
+          breadcrumbsRef.current = [...breadcrumbsRef.current.slice(-49), newPoint];
+          setBreadcrumbs([...breadcrumbsRef.current]);
+
+          // Update Leaflet marker
+          if (markerRef.current) markerRef.current.setLatLng([lat, lng]);
+          if (accuracyCircleRef.current) {
+            accuracyCircleRef.current.setLatLng([lat, lng]);
+            accuracyCircleRef.current.setRadius(acc);
+          }
+          if (polylineRef.current) polylineRef.current.addLatLng([lat, lng]);
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setView([lat, lng], mapInstanceRef.current.getZoom(), { animate: true });
+          }
+
+          // Throttle updates to Firestore every 4 seconds
+          const now = Date.now();
+          if (now - lastSyncTimeRef.current > 4000) {
+            lastSyncTimeRef.current = now;
+            await updateSosLiveLocation(sessionId, {
+              latitude: lat,
+              longitude: lng,
+              accuracyMeters: acc,
+              speedKmh: speed,
+              headingDegrees: head,
+              batteryPercent: batteryLevel || undefined,
+              isCharging,
+              locationName,
+              emergencyNote,
+              breadcrumbTrail: breadcrumbsRef.current.slice(-25),
+              isDuressSilent: isDuressActive,
+            });
+          }
+        },
+        (err) => console.warn('Geolocation watch error:', err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+
+      watchIdRef.current = watchId;
+
+      return () => {
+        navigator.geolocation.clearWatch(watchId);
+        watchIdRef.current = null;
+      };
+    }
+  }, [isActive, isDuressActive, sessionId, batteryLevel, isCharging, locationName, emergencyNote]);
+
   // 🗺️ Leaflet Map Setup
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
