@@ -181,7 +181,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       ? getLangText(
           'පරිපාලක (Admin) ලෙස මෙම දැන්වීම පද්ධතියෙන් සදහටම ඉවත් කිරීමට ඔබට සහතිකද? (දත්ත JSON ගොනුවක් ලෙස ඔබගේ ඩිවයිස් එකට සුරැකෙනු ඇත)',
           'Are you sure you want to permanently delete this post as Admin? (Data will be downloaded as JSON backup)',
-          'நிර්வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா? (தரவு JSON கோப்பாக பதிவிறக்கப்படும்)'
+          'நிர்வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா? (தரவு JSON கோப்பாக பதிவிறக்கப்படும்)'
         )
       : getLangText(
           'මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?',
@@ -261,10 +261,11 @@ export const PostCard: React.FC<PostCardProps> = ({
       onRequireRegistration();
       return;
     }
-    if (onOpenConfirm) {
-      onOpenConfirm(post);
-    } else if (onOfferSupport) {
+    // Always open detail modal first so helpers can view details and express willingness
+    if (onOfferSupport) {
       onOfferSupport(post);
+    } else if (onOpenConfirm) {
+      onOpenConfirm(post);
     } else if (onOpenChat) {
       onOpenChat(post);
     }
@@ -355,7 +356,6 @@ export const PostCard: React.FC<PostCardProps> = ({
           )}
         </div>
       )}
-
       {/* Main Post Header */}
       <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -658,18 +658,37 @@ export const PostCard: React.FC<PostCardProps> = ({
 
           {/* Primary Action Button */}
           <div className="flex items-center gap-2">
-            {(onOfferSupport || onOpenConfirm) && (
+            {ownerCheck ? (
+              /* Post Owner View: Orange "කැමැත්ත දැක්වූවන්" button with badge counter */
               <button
                 type="button"
-                onClick={handleSupport}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                onClick={handleView}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all border border-orange-400/50"
+                title="සහය වීමට කැමැත්ත පළකළ අයගේ ලැයිස්තුව"
               >
-                <HelpCircle className="w-4 h-4" />
-                <span>{getLangText('සහාය වන්න (Help)', 'Offer Support', 'உதவ முன்வாருங்கள்')}</span>
+                <UserCheck className="w-4 h-4" />
+                <span>{getLangText('කැමැත්ත දැක්වූවන්', 'Willing Helpers', 'விருப்பம் தெரிவித்தோர்')}</span>
+                {Boolean((post.applicants && post.applicants.length > 0) || (post.replies && post.replies.length > 0) || post.repliesCount) && (
+                  <span className="bg-white text-orange-700 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shadow-xs">
+                    {post.applicants?.length || post.replies?.length || post.repliesCount || 0}
+                  </span>
+                )}
               </button>
+            ) : (
+              /* Outside Helper View: Green "සහාය වන්න" button */
+              (onOfferSupport || onOpenConfirm) && (
+                <button
+                  type="button"
+                  onClick={handleSupport}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span>{getLangText('සහාය වන්න (Help)', 'Offer Support', 'உதவ முன்வாருங்கள்')}</span>
+                </button>
+              )
             )}
 
-            {onViewPost && (
+            {onViewPost && !ownerCheck && (
               <button
                 type="button"
                 onClick={handleView}
