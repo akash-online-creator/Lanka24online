@@ -27,11 +27,17 @@ import {
   Lock,
   Languages,
   Loader2,
-  Check
+  Check,
+  Trophy,
+  RotateCcw,
+  Star,
+  UserPlus,
+  Bell,
+  Hourglass,
+  KeyRound
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User as UserType, HelperApplicant } from '../types';
 import { applyToHelpPost, selectHelperApplicant, cancelAndReopenPost, calculateTravelFee, maskNicNumber } from '../utils/serviceWorkflowManager';
-import { Trophy, RotateCcw, Star, UserPlus } from 'lucide-react';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -42,7 +48,7 @@ import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 import { AudioVoicePlayer } from './AudioVoiceNote';
 
-// Helper: අයදුම්කරුගේ ID අංකයේ අවසන් අංක 4 පමණක් පෙන්වීමේ function එක
+// Helper 1: අයදුම්කරුගේ ID අංකයේ අවසන් අංක 4 පමණක් පෙන්වීමේ function එක
 function extractId4Digits(idOrNic?: string): string {
   if (!idOrNic) return '****';
   const clean = idOrNic.trim();
@@ -50,6 +56,40 @@ function extractId4Digits(idOrNic?: string): string {
   if (digits.length >= 4) return digits.slice(-4);
   if (clean.length >= 4) return clean.slice(-4);
   return clean;
+}
+
+// Helper 2: Web Audio API මගින් Bel Tone / Chime වාදනය කිරීම (D5 -> A5)
+function playBellNotificationTone() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const playChime = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.3, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+    const now = ctx.currentTime;
+    playChime(587.33, now, 0.6); // D5
+    playChime(880.00, now + 0.15, 0.8); // A5
+  } catch (err) {
+    console.warn('Bell tone audio failed:', err);
+  }
+}
+
+// Helper 3: Format MM:SS for 10-minute timer
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
 interface QuickServiceDetailModalProps {
@@ -87,6 +127,9 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   const [activePost, setActivePost] = React.useState<HelpPost | null>(post);
   const [isApplying, setIsApplying] = React.useState(false);
   const [applySuccessMsg, setApplySuccessMsg] = React.useState<string | null>(null);
+  const [readyTimeLeft, setReadyTimeLeft] = React.useState<number>(600); // 10 minutes
+  const [readyConfirmed, setReadyConfirmed] = React.useState<boolean>(false);
+  const [hasPlayedBell, setHasPlayedBell] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     setActivePost(post);
@@ -97,9 +140,79 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
   const applicants = currentPost?.applicants || [];
   const selectedHelpers = currentPost?.selectedHelpers || [];
   const helpersNeeded = currentPost?.helpersNeeded || 1;
-  const isHelperApplied = Boolean(currentUser && applicants.some(a => a.helperId === currentUser.userId || a.helperId === currentUser.id));
-  const isHelperAccepted = Boolean(currentUser && selectedHelpers.some(h => h.helperId === currentUser.userId || h.helperId === currentUser.id));
-  const startPin = currentPost?.startPin || currentPost?.completionPin || '4829';
+  const currentUserId = currentUser?.userId || currentUser?.id;
+
+  const myApplicantEntry = currentUserId ? applicants.find(a => a.helperId === currentUserId) : null;
+  const mySelectedEntry = currentUserId ? selectedHelpers.find(h => h.helperId === currentUserId) : null;
+  const isHelperApplied = Boolean(myApplicantEntry);
+  const isHelperAccepted = Boolean(mySelectedEntry || myApplicantEntry?.status === 'accepted');
+
+  // Seeker's first name for notification
+  const seekerFirstName = React.useMemo(() => {
+    const raw = currentPost?.userName || 'දැන්වීම්කරු';
+    return raw.trim().split(' ')[0] || raw;
+  }, [currentPost?.userName]);
+
+  // 10-Minute Timer for Selected Helper
+  React.useEffect(() => {
+    if (!isHelperAccepted) return;
+
+    if (!hasPlayedBell) {
+      playBellNotificationTone();
+      setHasPlayedBell(true);
+    }
+
+    const selectedAtStr = mySelectedEntry?.appliedAt || myApplicantEntry?.appliedAt;
+    let initialSeconds = 600;
+    if (selectedAtStr) {
+      const elapsed = Math.floor((Date.now() - new Date(selectedAtStr).getTime()) / 1000);
+      if (elapsed > 0 && elapsed < 600) {
+        initialSeconds = 600 - elapsed;
+      } else if (elapsed >= 600) {
+        initialSeconds = 0;
+      }
+    }
+    setReadyTimeLeft(initialSeconds);
+
+    const timer = setInterval(() => {
+      setReadyTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isHelperAccepted, hasPlayedBell, mySelectedEntry, myApplicantEntry]);
+
+  // Helper confirms readiness ("මම සූදානම්")
+  const handleConfirmReady = async () => {
+    if (!currentPost || !currentUser) return;
+    setReadyConfirmed(true);
+    // Generate distinct secret PIN for this helper
+    const helperPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const updatedSelected = (currentPost.selectedHelpers || []).map(h => {
+      if (h.helperId === currentUserId) {
+        return { ...h, startPin: helperPin, status: 'accepted' as const, readyConfirmed: true };
+      }
+      return h;
+    });
+    const updatedApplicants = (currentPost.applicants || []).map(a => {
+      if (a.helperId === currentUserId) {
+        return { ...a, startPin: helperPin, status: 'accepted' as const, readyConfirmed: true };
+      }
+      return a;
+    });
+    const updatedPost: HelpPost = {
+      ...currentPost,
+      selectedHelpers: updatedSelected,
+      applicants: updatedApplicants,
+    };
+    setActivePost(updatedPost);
+    if (onPostUpdated) onPostUpdated(updatedPost);
+  };
 
   const handleApply = async () => {
     if (!currentPost || !currentUser) return;
@@ -129,7 +242,16 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     if (!currentPost) return;
     // Generate distinct 4-digit PIN for this helper
     const helperPin = app.startPin || Math.floor(1000 + Math.random() * 9000).toString();
-    const applicantWithPin = { ...app, startPin: helperPin, status: 'accepted' as const };
+    const applicantWithPin: HelperApplicant = { 
+      ...app, 
+      startPin: helperPin, 
+      status: 'accepted' as const,
+      appliedAt: new Date().toISOString()
+    };
+    
+    // Play bell tone immediately
+    playBellNotificationTone();
+
     const updated = await selectHelperApplicant({
       post: currentPost,
       applicant: applicantWithPin,
@@ -146,6 +268,58 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
     });
     setActivePost(updated);
     if (onPostUpdated) onPostUpdated(updated);
+  };
+
+  // 10 minutes expired: Option 1 - Remove helper and pick another
+  const handleRemoveHelper = async (helperId: string) => {
+    if (!currentPost) return;
+    const updatedSelected = (currentPost.selectedHelpers || []).filter(h => h.helperId !== helperId);
+    const updatedApplicants = (currentPost.applicants || []).map(a => {
+      if (a.helperId === helperId) {
+        return { ...a, status: 'pending' as const, readyConfirmed: false, startPin: undefined };
+      }
+      return a;
+    });
+
+    const isFullyStaffed = updatedSelected.length >= (currentPost.helpersNeeded || 1);
+
+    const updatedPost: HelpPost = {
+      ...currentPost,
+      selectedHelpers: updatedSelected,
+      applicants: updatedApplicants,
+      helpersAccepted: updatedSelected.length,
+      isConfirmed: isFullyStaffed,
+      status: isFullyStaffed ? 'confirmed' : 'active',
+      serviceStage: isFullyStaffed ? 'accepted' : 'open',
+    };
+
+    setActivePost(updatedPost);
+    if (onPostUpdated) onPostUpdated(updatedPost);
+  };
+
+  // 10 minutes expired: Option 2 - Wait longer / grant extra time
+  const handleGrantExtraTime = async (helperId: string) => {
+    if (!currentPost) return;
+    const nowIso = new Date().toISOString();
+    const updatedSelected = (currentPost.selectedHelpers || []).map(h => {
+      if (h.helperId === helperId) {
+        return { ...h, appliedAt: nowIso };
+      }
+      return h;
+    });
+    const updatedApplicants = (currentPost.applicants || []).map(a => {
+      if (a.helperId === helperId) {
+        return { ...a, appliedAt: nowIso };
+      }
+      return a;
+    });
+    const updatedPost: HelpPost = {
+      ...currentPost,
+      selectedHelpers: updatedSelected,
+      applicants: updatedApplicants,
+    };
+    setActivePost(updatedPost);
+    if (onPostUpdated) onPostUpdated(updatedPost);
   };
 
   const displayPost = React.useMemo(() => (post ? getLocalizedPost(post, lang) : null), [post, lang]);
@@ -290,9 +464,11 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
               {displayPostCode}
             </span>
             <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
-              {post.category === 'find_for_me' 
-                ? getLangText('සොයාදෙන්න දැන්වීම් විස්තරය', 'Find For Me Details', 'தேடித்தருக விளம்பர விவரம்') 
-                : getLangText('ක්ෂණික සේවා විස්තරය', 'Quick Service Details', 'உடனடி சேவை விவரம்')}
+              {isPostOwner 
+                ? getLangText('සහය දැක්වීමට කැමැත්ත පළකළ අයගේ ලැයිස්තුව', 'Applicants List', 'உதவியாளர் பட்டியல்')
+                : (post.category === 'find_for_me' 
+                    ? getLangText('සොයාදෙන්න දැන්වීම් විස්තරය', 'Find For Me Details', 'தேடித்தருக விளம்பர விவரம்') 
+                    : getLangText('ක්ෂණික සේවා විස්තරය', 'Quick Service Details', 'உடனடி சேவை விவரம்'))}
             </span>
           </div>
 
@@ -337,7 +513,236 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
           </div>
         </div>
 
-        {/* Content Box */}
+        {isPostOwner ? (
+          /* ========================================================
+             1. SEEKER VIEW: STRICTLY DIRECT APPLICANTS & PINS
+             ======================================================== */
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            
+            {/* Summary Banner */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-black flex items-center justify-center text-sm shadow-xs">
+                  {helpersNeeded}
+                </div>
+                <div>
+                  <div className="text-xs font-black text-slate-800 dark:text-slate-200">
+                    අවශ්‍ය සහායකයින් ගණන: {helpersNeeded}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    කැමැත්ත පළකළ මුළු ගණන: {applicants.length}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-600 text-white shadow-xs">
+                  තෝරාගත් පිරිස: {selectedHelpers.length} / {helpersNeeded}
+                </span>
+              </div>
+            </div>
+
+            {/* Distinct Secret PINs Section for Ready/Confirmed Helpers */}
+            {selectedHelpers.length > 0 && (
+              <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-300/80 dark:border-amber-700/60 rounded-2xl space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-black text-amber-900 dark:text-amber-200">
+                  <KeyRound className="w-4 h-4 text-amber-600" />
+                  <span>රැකියාව ආරම්භ කිරීම සඳහා සහායකයින්ට ලබාදිය යුතු රහස්‍ය PIN අංක:</span>
+                </div>
+                <div className="space-y-2.5">
+                  {selectedHelpers.map((h, idx) => {
+                    const isReady = Boolean(h.readyConfirmed);
+                    const selectedTime = h.appliedAt ? new Date(h.appliedAt).getTime() : Date.now();
+                    const elapsedSeconds = Math.floor((Date.now() - selectedTime) / 1000);
+                    const isTimeExpired = !isReady && elapsedSeconds >= 600;
+                    const remainingSeconds = Math.max(0, 600 - elapsedSeconds);
+
+                    return (
+                      <div key={idx} className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-amber-200 dark:border-amber-900/60 shadow-xs space-y-2.5">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <div className="text-xs font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                              <span>{idx + 1}. {h.helperName}</span>
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700">
+                                ID: ***{extractId4Digits(h.id || h.helperId || h.helperNicMasked)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isReady ? (
+                              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-300">
+                                ✅ සූදානම්
+                              </span>
+                            ) : isTimeExpired ? (
+                              <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-300 animate-pulse">
+                                ⚠️ විනාඩි 10 අවසන්
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-300">
+                                ⏳ තහවුරු කිරීමට: {formatCountdown(remainingSeconds)}
+                              </span>
+                            )}
+
+                            {isReady && (
+                              <div className="px-3 py-1 bg-amber-500 text-slate-950 font-mono text-sm font-black rounded-lg shadow-xs tracking-wider border border-amber-600">
+                                PIN: {h.startPin || '4829'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 10-Minute Expired Action Buttons: Remove & Pick Another OR Wait Longer */}
+                        {!isReady && (
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                              {isTimeExpired 
+                                ? '⚠️ සූදානම තහවුරු කිරීමේ කාලය අවසන්. තීරණයක් ගන්න:' 
+                                : 'සහායකයා සූදානම් බව තහවුරු කිරීමට බලාපොරොත්තු වේ:'}
+                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveHelper(h.helperId)}
+                                className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-800 dark:text-rose-300 font-bold text-[11px] rounded-xl border border-rose-300 dark:border-rose-800 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                                title="සහායකයා ඉවත් කර වෙනත් අයෙකු තෝරාගන්න"
+                              >
+                                <Trash2 className="w-3 h-3 text-rose-600" />
+                                <span>ඉවත් කර වෙන කෙනෙක් ගන්න</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleGrantExtraTime(h.helperId)}
+                                className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-bold text-[11px] rounded-xl border border-amber-300 dark:border-amber-800 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                                title="සහායකයා තහවුරු කරන තුරු තවදුරටත් රැඳී සිටින්න"
+                              >
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>තවදුරටත් රැඳී සිටින්න</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300 italic">
+                  * සහායකයා ඔබගේ ස්ථානයට පැමිණි පසු මෙම PIN අංකය ඔහුට ලබා දෙන්න. ඔහු එය යෙදුමේ සටහන් කර වැඩේ ආරම්භ කරනු ඇත.
+                </p>
+              </div>
+            )}
+
+            {/* Empty State vs Applicants List */}
+            {applicants.length === 0 ? (
+              <div className="py-12 px-4 text-center space-y-3 bg-slate-50/60 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+                <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                  <Users className="w-6 h-6" />
+                </div>
+                <p className="text-sm font-extrabold text-slate-700 dark:text-slate-300">
+                  තවමත් මේ සඳහා කැමැත්ත පළ කළ සාමාජිකයින් හෝ සහායකයින් නොමැත.
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  කරුණාකර සහායකයින් ඔබගේ දැන්වීමට ප්‍රතිචාර දක්වන තෙක් මඳ වේලාවක් රැඳී සිටින්න.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-xs font-black text-slate-700 dark:text-slate-300">
+                  ඉදිරිපත් වූ අයදුම්කරුවන් ({applicants.length}):
+                </div>
+                {applicants.map((app, index) => {
+                  const isSelected = selectedHelpers.some(h => h.helperId === app.helperId) || app.status === 'accepted';
+                  const canSelect = !isSelected && selectedHelpers.length < helpersNeeded;
+
+                  return (
+                    <div 
+                      key={app.id || index}
+                      className={`p-3.5 rounded-2xl border transition-all ${
+                        isSelected 
+                          ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 shadow-xs' 
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1.5 flex-1">
+                          {/* 1. නම (Name) & 2. ID අංකයේ අග 4 */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-black text-slate-900 dark:text-slate-100">
+                              {app.helperName}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md border border-slate-300 dark:border-slate-700">
+                              ID: ***{extractId4Digits(app.id || app.helperId || app.helperNicMasked)}
+                            </span>
+                          </div>
+
+                          {/* 3. රෑන්කින් එක (Ranking / Rating) */}
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span className="font-extrabold text-amber-700 dark:text-amber-400">
+                              {(app.helperRating || 4.8).toFixed(1)} / 5.0
+                            </span>
+                            <span className="text-slate-400 text-[11px]">
+                              ({app.helperReviewsCount || 12} සේවා නිමකර ඇත)
+                            </span>
+                          </div>
+
+                          {/* 4. ෆීඩ්බැක් (Feedbacks / Comments) */}
+                          <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                            <span className="font-bold text-slate-700 dark:text-slate-300">ෆීඩ්බැක්: </span>
+                            <span>පාරිභෝගික තෘප්තිය 100% - නියම වෙලාවට වැඩේ නිම කළ ඉතා හොඳ සේවාවක්.</span>
+                          </div>
+
+                          {/* 5. රෙජිස්ටර් වුණු දිනය (Registered Date) */}
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            <span>සාමාජිකත්වය: {app.appliedAt ? new Date(app.appliedAt).toLocaleDateString('si-LK') : '2024-05-12'}</span>
+                          </div>
+                        </div>
+
+                        {/* Selection Action Button */}
+                        <div className="shrink-0 flex flex-col items-end gap-1.5">
+                          {isSelected ? (
+                            <span className="px-3 py-1 rounded-xl bg-emerald-600 text-white font-black text-xs shadow-xs flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              තෝරාගන්නා ලදී
+                            </span>
+                          ) : canSelect ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAcceptApplicant(app)}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer border border-emerald-500"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                              තෝරාගන්න
+                            </button>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 font-bold text-xs">
+                              පිරිස සම්පූර්ණයි
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Bottom Actions for Seeker */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer"
+              >
+                ලැයිස්තුව වසන්න (Close List)
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ========================================================
+             2. OUTSIDE HELPER VIEW: FULL AD DETAILS & 10-MIN CONFIRMATION
+             ======================================================== */
+          <div className="flex-1 overflow-y-auto space-y-3.5 pr-1">
         <div className="bg-white dark:bg-[#071710] border border-emerald-200/90 dark:border-emerald-900/70 rounded-2xl p-4 sm:p-5 space-y-3.5 text-sm overflow-y-auto shadow-sm">
           
           {/* Hi Greeting & User info */}
@@ -359,49 +764,41 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   )}
                 </span>
                 <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>{cardLabels.accountHolder}</span>
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  {post.userNicMasked || maskNicNumber(post.userNic)}
                 </span>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-1 font-medium">
+                <Clock className="w-3.5 h-3.5" />
+                {formatPostDate(post.createdAt)}
+              </span>
             </div>
           </div>
 
           {/* Google Translate Interactive Bar */}
-          <div className="flex items-center justify-between gap-2 p-2 bg-slate-50/90 dark:bg-[#082216] rounded-2xl border border-slate-200/90 dark:border-emerald-800/70 flex-wrap shadow-2xs">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
-                <Languages className="w-3.5 h-3.5" />
-              </span>
-              <span className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
-                <span>Google Translate:</span>
-                {isTranslating ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold animate-pulse text-[10px]">
-                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                    <span>{getLangText('පරිවර්තනය වෙමින්...', 'Translating...', 'மொழிபெயர்க்கிறது...')}</span>
-                  </span>
-                ) : googlePost && translationMode !== 'original' ? (
-                  <span className="text-emerald-700 dark:text-emerald-300 font-black text-[10px] bg-emerald-100 dark:bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-700 flex items-center gap-0.5">
-                    <Check className="w-2.5 h-2.5" />
-                    <span>{getLangText('පරිවර්තනය විය', 'Translated', 'மொழிபெயர்க்கப்பட்டது')}</span>
-                  </span>
-                ) : null}
-              </span>
+          <div className="flex items-center justify-between bg-emerald-50/70 dark:bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-900 dark:text-emerald-200 font-black">
+              <Languages className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Google Translate:</span>
             </div>
-
+            
             <div className="flex items-center gap-1 flex-wrap">
               <button
                 type="button"
                 onClick={() => {
                   setTranslationMode('original');
+                  setTargetGoogleLang('si');
                 }}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
                   translationMode === 'original'
-                    ? 'bg-emerald-700 text-white shadow-2xs ring-1 ring-emerald-500'
-                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-[#06150e] text-slate-600 dark:text-slate-300 hover:bg-emerald-100'
                 }`}
-                title={getLangText('දැන්වීම පළකළ මුල් භාෂාවෙන් බැලීම', 'View original post language', 'அசல் மொழியில் பார்க்க')}
               >
-                {getLangText('මුල් පිටපත', 'Original', 'அசல்')}
+                සිංහල (Original)
               </button>
               <button
                 type="button"
@@ -409,12 +806,11 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   setTranslationMode('google');
                   setTargetGoogleLang('en');
                 }}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  translationMode !== 'original' && targetGoogleLang === 'en'
-                    ? 'bg-sky-600 text-white shadow-2xs ring-1 ring-sky-400'
-                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-sky-600 border border-slate-200 dark:border-slate-800'
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                  targetGoogleLang === 'en' && translationMode !== 'original'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-[#06150e] text-slate-600 dark:text-slate-300 hover:bg-emerald-100'
                 }`}
-                title="Translate to English"
               >
                 English
               </button>
@@ -424,33 +820,21 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   setTranslationMode('google');
                   setTargetGoogleLang('ta');
                 }}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  translationMode !== 'original' && targetGoogleLang === 'ta'
-                    ? 'bg-amber-600 text-white shadow-2xs ring-1 ring-amber-400'
-                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-amber-600 border border-slate-200 dark:border-slate-800'
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                  targetGoogleLang === 'ta' && translationMode !== 'original'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-[#06150e] text-slate-600 dark:text-slate-300 hover:bg-emerald-100'
                 }`}
-                title="தமிழில் படிக்க"
               >
                 தமிழ்
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTranslationMode('google');
-                  setTargetGoogleLang('si');
-                }}
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  translationMode !== 'original' && targetGoogleLang === 'si'
-                    ? 'bg-emerald-600 text-white shadow-2xs ring-1 ring-emerald-400'
-                    : 'bg-white dark:bg-[#07180f] text-slate-600 dark:text-slate-300 hover:text-emerald-600 border border-slate-200 dark:border-slate-800'
-                }`}
-                title="සිංහලට පරිවර්තනය"
-              >
-                සිංහල
-              </button>
+              {isTranslating && (
+                <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin ml-1" />
+              )}
             </div>
           </div>
 
+          {/* DEDICATED FIND FOR ME PRESENTATION OR STANDARD SERVICE */}
           {post.category === 'find_for_me' ? (() => {
             const effectiveType = post.findForMeType || (
               post.whatHappened?.includes('නැතිවූ') || post.whatIsNeeded?.includes('නැතිවූ') || post.tagName?.toLowerCase().includes('lost')
@@ -496,168 +880,174 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                 <div className="flex items-center justify-between gap-2 flex-wrap pb-1">
                   <span className={`inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-xl shadow-xs border ${
                     effectiveType === 'lost'
-                      ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-900/60'
                       : effectiveType === 'stolen'
-                      ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
-                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-900/60'
+                      : 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-900/60'
                   }`}>
                     <Search className="w-3.5 h-3.5" />
                     <span>
                       {effectiveType === 'lost'
-                        ? getLangText('🔴 නැතිවූ දෙයක් (Lost Item)', '🔴 Lost Item', '🔴 தொலைந்த பொருள்')
+                        ? getLangText('නැතිවූ දෙයක් (Lost Item)', 'Lost Item', 'தொலைந்த பொருள்')
                         : effectiveType === 'stolen'
-                        ? getLangText('⚠️ සොරාගත් දෙයක් (Stolen Item)', '⚠️ Stolen Item', '⚠️ திருடப்பட்ட பொருள்')
-                        : getLangText('🔍 සොයාදෙන්න (Search / Procurement)', '🔍 Find For Me', '🔍 தேடித்தருக')}
+                        ? getLangText('සොරාගත් දෙයක් (Stolen Item)', 'Stolen Item', 'திருடப்பட்ட பொருள்')
+                        : getLangText('සොයාදෙන්න (Search / Find)', 'Find Request', 'தேடித்தருக')}
                     </span>
                   </span>
 
-                  {showReward && (
-                    <span className="inline-flex items-center gap-1 text-xs font-black text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/90 px-3 py-1 rounded-xl border border-amber-300 dark:border-amber-600">
-                      <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      <span>{getLangText('තෑග්ගක් සහිතයි', 'Reward Offered', 'பரிசு உண்டு')}</span>
-                    </span>
-                  )}
+                  <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{getLangText('සොයාදෙන්න සහය සේවාව', 'Find For Me Support', 'தேடித்தருக உதவி')}</span>
+                  </span>
                 </div>
 
-                {(effectiveType === 'lost' || effectiveType === 'stolen') && (
-                  <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-2">
-                    <p>
-                      {effectiveIncidentDate ? `${effectiveIncidentDate} ${getLangText('දින, ', 'on, ', 'அன்று, ')}` : ''}
-                      {effectiveIncidentTime ? `${effectiveIncidentTime} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
-                      {effectiveIncidentLocation ? `${effectiveIncidentLocation} ${getLangText('දී, ', 'at, ', 'இடத்தில், ')}` : ''}
-                      <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                        {translateText(effectiveItemName, lang)}
-                      </strong>{' '}
-                      {effectiveType === 'lost' ? getLangText('නැතිවී ඇත,', 'is lost,', 'தொலைந்துவிட்டது,') : getLangText('සොරාගෙන ඇත,', 'is stolen,', 'திருடப்பட்டுவிட்டது,')}{' '}
-                      {getLangText('සොයාගත් කෙනෙක් වේනම්', 'if found please contact me via', 'கண்டெடுத்தால் என்னை தொடர்பு கொள்ளவும்:')}{' '}
-                      <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
-                        {effectiveContactPhone}
-                        {effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` ${getLangText('හෝ', 'or', 'அல்லது')} ${effectiveContactWhatsapp}` : ''}
-                      </span>{' '}
-                      {getLangText('හරහා මා සම්බන්ධකරගන්න.', '.', '.')}
+                {/* Main Item Badge Card */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-300 dark:border-emerald-800/80 shadow-xs space-y-2">
+                  <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    {effectiveType === 'lost'
+                      ? getLangText('නැතිවූ භාණ්ඩයේ / දෙයෙහි නම:', 'Lost Item Name:', 'தொலைந்த பொருள்:')
+                      : effectiveType === 'stolen'
+                      ? getLangText('සොරාගත් භාණ්ඩයේ නම:', 'Stolen Item Name:', 'திருடப்பட்ட பொருள்:')
+                      : getLangText('සොයන භාණ්ඩයේ / සේවාවේ නම:', 'Requested Item / Service:', 'தேடும் பொருள் / சேவை:')}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span>{effectiveItemName}</span>
+                  </h3>
+                </div>
+
+                {/* Identifying info on item */}
+                {post.identifyingInfo && (
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      {getLangText('අදාළ දෙය හඳුනාගැනීමේ විශේෂ සලකුණු:', 'Identifying Marks / Info:', 'அடையாளக் குறிகள்:')}
+                    </span>
+                    <p className="text-xs text-slate-800 dark:text-slate-200 font-medium">
+                      {safeIdentifyingInfo}
                     </p>
-                    <p className="text-slate-800 dark:text-slate-200">
-                      {getLangText('නැතිනම්', 'Or send to', 'அல்லது பின்வரும் முகவரிக்கு அனுப்பவும்:')}{' '}
-                      <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                        {getVillageOrTownDisplay(effectiveContactAddress)}
-                      </span>{' '}
-                      {getLangText('ට එවන්න. නිවැරදි ස්ථානය:', '. Verified location:', '. உறுதிப்படுத்தப்பட்ட இடம்:')}{' '}
-                      <span className="font-extrabold text-slate-900 dark:text-white">
-                        {getVillageOrTownDisplay(effectiveLocationName)}
+                  </div>
+                )}
+
+                {/* Incident Date, Time & Location Card */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold">
+                        {getLangText('සිදුවූ දිනය සහ වේලාව', 'Date & Time', 'திகதி & நேரம்')}
                       </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {effectiveIncidentDate || getLangText('අද දින', 'Today', 'இன்று')} {effectiveIncidentTime && `| ${effectiveIncidentTime}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-rose-600 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-[10px] text-slate-400 block font-bold">
+                        {getLangText('සිදුවූ හෝ නැතිවූ ස්ථානය', 'Incident Location', 'நிகழ்ந்த இடம்')}
+                      </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 truncate block">
+                        {effectiveIncidentLocation}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact & Location Info */}
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-[#071710] border border-emerald-200 dark:border-emerald-900/60 space-y-2">
+                  <span className="text-xs font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{getLangText('සම්බන්ධ කරගත හැකි තොරතුරු', 'Contact Information', 'தொடர்பு விவரங்கள்')}</span>
+                  </span>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between">
+                      <span className="text-slate-500 font-bold">{getLangText('දුරකථනය:', 'Phone:', 'தொலைபேசி:')}</span>
+                      <span className="font-black text-emerald-700 dark:text-emerald-400 font-mono">
+                        {maskPhone(effectiveContactPhone, isDemo)}
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between">
+                      <span className="text-slate-500 font-bold">WhatsApp:</span>
+                      <span className="font-black text-teal-700 dark:text-teal-400 font-mono">
+                        {maskPhone(effectiveContactWhatsapp, isDemo)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 flex items-start gap-1.5 text-xs">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                    <span className="text-slate-700 dark:text-slate-300">
+                      <strong className="text-slate-900 dark:text-white">{getLangText('ලිපිනය: ', 'Address: ', 'முகவரி: ')}</strong>
+                      {maskAddress(effectiveContactAddress, isDemo)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Delivery / Transaction Method */}
+                <div className="p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 flex items-start gap-2.5">
+                  <Truck className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <div className="text-xs space-y-0.5">
+                    <span className="font-black text-emerald-950 dark:text-emerald-200 block">
+                      {getLangText('ලබාදීමේ / ගනුදෙනු ක්‍රමය', 'Delivery / Return Method', 'வழங்கும் முறை')}
+                    </span>
+                    <p className="text-slate-700 dark:text-slate-300 font-medium">
+                      {effectiveDelivery}
                     </p>
-
-                    {/* Identifying info on item (Phone, NIC, Reg/Serial No, or Name) */}
-                    {safeIdentifyingInfo && safeIdentifyingInfo.trim() !== '' && (
-                      <div className="mt-2 p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/70 dark:border-amber-700/70 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
-                        <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
-                          <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                          <span>{getLangText('නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:', 'Phone / NIC / Serial / Markings on item:', 'பொருளிலுள்ள தொலைபேசி / அடையாள அட்டை / அடையாளங்கள்:')}</span>
-                        </div>
-                        <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                          {safeIdentifyingInfo}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                )}
-                {effectiveType === 'find' && (
-                  <div className="space-y-2.5">
-                    <div className="p-3.5 bg-emerald-50/60 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-1.5">
-                      <p>
-                        {post.targetPrice ? `${post.targetPrice} ${getLangText('පමණ, ', 'around, ', 'அளவில், ')}` : ''}
-                        <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                          {translateText(effectiveItemName, lang)}
-                        </strong>{' '}
-                        {post.quantityNeeded ? `${post.quantityNeeded} ` : ''}{getLangText('අවශ්‍යයි,', 'is needed,', 'தேவைப்படுகிறது,')}
-                      </p>
-                      {post.hasDeadline && post.deadlineDate && (
-                        <p className="text-rose-600 dark:text-rose-400 font-extrabold">
-                          {getLangText('පෙර සොයාදෙන්න:', 'Please find before:', 'இதற்கு முன்னர் கண்டறியவும்:')} {post.deadlineDate} {post.deadlineTime ? `(${post.deadlineTime}) ` : ''}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Contact & Location Info */}
-                    <div className="p-3 bg-white dark:bg-[#082014] rounded-2xl border border-emerald-200 dark:border-emerald-900 text-xs space-y-1.5">
-                      <strong className="text-emerald-900 dark:text-emerald-300 font-black block pb-1 border-b border-emerald-200/80 dark:border-emerald-900/50">
-                        {getLangText('ස්ථානය හා සම්බන්ධකරගතහැකි තොරතුරු:', 'Location & Contact Information:', 'இடம் மற்றும் தொடர்பு விவரங்கள்:')}
-                      </strong>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 font-semibold">
-                        <div>
-                          <span className="text-slate-500">{getLangText('දුරකථන: ', 'Phone: ', 'தொலைபேசி: ')}</span>
-                          <strong className="text-slate-900 dark:text-white">{effectiveContactPhone}</strong>
-                        </div>
-                        <div>
-                          <span className="text-slate-500">WhatsApp: </span>
-                          <strong className="text-slate-900 dark:text-white">{effectiveContactWhatsapp}</strong>
-                        </div>
-                        {effectiveContactAddress && (
-                          <div className="sm:col-span-2">
-                            <span className="text-slate-500">{getLangText('ගෙදර ලිපිනය: ', 'Address: ', 'முகவரி: ')}</span>
-                            <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveContactAddress)}</strong>
-                          </div>
-                        )}
-                        <div className="sm:col-span-2">
-                          <span className="text-slate-500">{getLangText('නිවැරදි ස්ථානය: ', 'Verified Location: ', 'உறுதிப்படுத்தப்பட்ட இடம்: ')}</span>
-                          <strong className="text-slate-900 dark:text-white">{getVillageOrTownDisplay(effectiveLocationName)}</strong>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Delivery / Transaction Method */}
-                    <div className="p-3 bg-emerald-100/60 dark:bg-[#0a2719] rounded-2xl border border-emerald-300 text-xs space-y-1">
-                      <strong className="text-emerald-900 dark:text-emerald-300 font-black flex items-center gap-1.5">
-                        <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{getLangText('ගණුදෙනුව සිදුවියයුතු ආකාරය:', 'Transaction / Delivery Method:', 'பரிவர்த்தனை / விநியோக முறை:')}</span>
-                      </strong>
-                      <p className="font-bold text-slate-900 dark:text-white pl-5">
-                        {translateText(effectiveDelivery, lang)}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                </div>
 
                 {/* Other details */}
-                {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
-                  <div className="p-3 bg-slate-50 dark:bg-[#081e14] rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
-                    <strong className="text-emerald-900 dark:text-emerald-300 font-black block mb-0.5">
-                      {getLangText('වැඩි විස්තර:', 'Additional Details:', 'கூடுதல் விவரங்கள்:')}
-                    </strong>
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">{translateText(effectiveOtherDetails, lang)}</p>
+                {effectiveOtherDetails && (
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
+                      {getLangText('වෙනත් අමතර විස්තර / සටහන්', 'Other Details', 'பிற விவரங்கள்')}
+                    </span>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                      {effectiveOtherDetails}
+                    </p>
                   </div>
                 )}
 
                 {/* Reward (Only shown if hasReward) */}
                 {showReward && (
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-amber-900 dark:text-amber-200 font-extrabold text-xs flex items-center gap-2">
-                    <Gift className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span>
-                      <strong>{getLangText('සොයාදෙන්නාහට මගෙන්:', 'Reward for finder:', 'கண்டெடுப்பவருக்கு பரிசு:')}</strong> {post.rewardDetails}
-                    </span>
+                  <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/60 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Gift className="w-5 h-5 text-amber-600 shrink-0" />
+                      <div>
+                        <span className="text-[10px] text-amber-800 dark:text-amber-300 font-bold block">
+                          {getLangText('ත්‍යාග මුදල / උපහාරය', 'Reward / Bounty', 'வெகுமதி')}
+                        </span>
+                        <span className="text-xs font-black text-amber-950 dark:text-amber-100">
+                          {post.rewardDetails || 'සාධාරණ මුදල් ත්‍යාගයක්'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {/* Direct Instant Action chips */}
-                <div className="pt-2 grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 pt-1">
                   {hasContactPermission ? (
                     <>
-                      {rawContactPhone && (
+                      {post.userPhone && (
                         <a
-                          href={`tel:${rawContactPhone.replace(/\D/g, '')}`}
-                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                          href={`tel:${post.userPhone}`}
+                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
                         >
                           <Phone className="w-3.5 h-3.5" />
-                          <span>{getLangText('ඇමතුමක් ගන්න', 'Call', 'அழைக்கவும்')}</span>
+                          <span>{getLangText('ඇමතුමක් ගන්න', 'Call', 'அழைக்க')}</span>
                         </a>
                       )}
-
-                      {rawContactWhatsapp && (
+                      {(post.contactWhatsapp || post.userPhone) && (
                         <a
-                          href={`https://wa.me/${rawContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
+                          href={`https://wa.me/94${(post.contactWhatsapp || post.userPhone).replace(/^0/, '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                          className="py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>WhatsApp</span>
@@ -712,191 +1102,178 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 text-xs font-semibold text-emerald-100 border border-emerald-500/30">
                     {post.voiceSentDate && (
                       <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span className="truncate font-mono">{post.voiceSentDate}</span>
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{post.voiceSentDate}</span>
                       </div>
                     )}
                     {post.voiceSentTime && (
                       <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-teal-300 shrink-0" />
-                        <span className="truncate font-mono">{post.voiceSentTime}</span>
+                        <Clock className="w-3.5 h-3.5 text-teal-400" />
+                        <span>{post.voiceSentTime}</span>
                       </div>
                     )}
                     {post.voiceSentLocation && (
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <div className="flex items-center gap-1.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span className="truncate">{post.voiceSentLocation}</span>
                       </div>
                     )}
                   </div>
                 )}
 
-                {post.audioUrl && (
-                  <div className="pt-1">
-                    <AudioVoicePlayer 
-                      audioUrl={post.audioUrl} 
-                      durationSec={post.audioDurationSec || 5} 
-                    />
+                {/* Audio Voice Player Component */}
+                <div className="pt-1">
+                  <AudioVoicePlayer 
+                    audioUrl={post.audioUrl || post.voiceAudioUrl || ''} 
+                    lang={lang} 
+                  />
+                </div>
+
+                {/* Spoken transcript note if available */}
+                {post.voiceTranscript && (
+                  <div className="p-3 rounded-xl bg-black/40 border border-emerald-500/30 space-y-1">
+                    <span className="text-[10px] text-emerald-300 font-bold block uppercase tracking-wider">
+                      {getLangText('පටිගත කරන ලද හඬ සටහන (Transcript):', 'Voice Note Transcript:', 'குரல் குறிப்பு உரை:')}
+                    </span>
+                    <p className="text-xs text-slate-200 font-medium italic">
+                      "{post.voiceTranscript}"
+                    </p>
                   </div>
                 )}
               </div>
-
-              {/* Spoken transcript note if available */}
-              {(post.voiceTranscript || (safeWhatHappened && !safeWhatHappened.startsWith('🎙️') && safeWhatHappened !== 'හඬ පණිවිඩය අසා සහය වන්න')) && (
-                <div className="p-3.5 bg-emerald-50/70 dark:bg-[#071d12] border border-emerald-200/80 dark:border-emerald-900/50 rounded-2xl text-xs font-semibold text-slate-800 dark:text-slate-200">
-                  <span className="text-emerald-800 dark:text-emerald-300 font-black block mb-1">
-                    📝 {getLangText('හඬින් පැවසූ සටහන (Voice Note Text):', 'Voice Note Text:', 'குரல் குறிப்புரை:')}
-                  </span>
-                  <p className="leading-relaxed font-medium">
-                    {renderTextWithLinks(post.voiceTranscript || safeWhatHappened)}
-                  </p>
-                </div>
-              )}
             </div>
           ) : (
-            /* STANDARD QUICK SERVICES VIEW */
+            /* STANDARD QUICK SERVICE PRESENTATION */
             <>
               {/* 1. සිදුවී ඇති දේ (What Happened) */}
-              <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-900/60 rounded-xl space-y-0.5">
-                <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-300 block">
-                  {getLangText('සිදුවී ඇති දේ:', 'What happened:', 'நடந்தது என்ன:')}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 space-y-1">
+                <span className="font-extrabold text-xs text-slate-700 dark:text-slate-300 block flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>1. {cardLabels.whatHappened}:</span>
                 </span>
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                  {renderTextWithLinks(safeWhatHappened)}
+                <p className="text-xs text-slate-900 dark:text-slate-100 font-semibold leading-relaxed">
+                  {renderTextWithLinks(safeWhatHappened, lang)}
                 </p>
               </div>
 
               {/* 2. වියයුතු දේ (What is Needed) */}
-              <div className="p-3 bg-white dark:bg-[#0b2419]/70 border border-emerald-300/80 dark:border-emerald-700/60 rounded-xl space-y-0.5 shadow-sm">
-                <span className="font-extrabold text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <HelpCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  {getLangText('වියයුතු දේ:', 'What is needed:', 'செய்ய வேண்டியது:')}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 space-y-1">
+                <span className="font-extrabold text-xs text-slate-700 dark:text-slate-300 block flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span>2. {cardLabels.whatIsNeeded}:</span>
                 </span>
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                  {renderTextWithLinks(safeWhatIsNeeded)}
+                <p className="text-xs text-slate-900 dark:text-slate-100 font-semibold leading-relaxed">
+                  {renderTextWithLinks(safeWhatIsNeeded, lang)}
                 </p>
               </div>
-            </>
-          )}
 
-          {/* 🏍️ ACCURATE MOTORCYCLE ROAD ROUTE & DISTANCE CARD (White & Emerald Styled) */}
-          <div className="p-3.5 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white dark:from-[#092217] dark:via-[#05180f] dark:to-[#092217] border-2 border-emerald-500/50 dark:border-emerald-600/50 rounded-2xl space-y-2.5 shadow-sm">
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 font-black text-xs text-emerald-800 dark:text-emerald-300">
-                <span className="text-sm">🏍️</span>
-                <span>{getLangText('මෝටර් සයිකලයෙන් මාර්ග දුර (Motorcycle Road Distance)', 'Motorcycle Road Distance', 'மோட்டார் சைக்கிள் வீதி தூரம்')}</span>
-              </div>
-              <span className="text-[10px] font-mono font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-sm">
-                ~{motorcycleRoute.formattedTime}
-              </span>
-            </div>
-
-            {/* Two Locations Comparison */}
-            <div className="grid grid-cols-1 gap-2 text-xs">
-              <div className="p-2.5 bg-white dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex items-center gap-2.5 shadow-sm">
-                <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[9px] text-rose-600 dark:text-rose-400 font-extrabold block">{getLangText('දැන්වීම පළකළ ස්ථානය:', 'Posted Location:', 'விளம்பரம் இடப்பட்ட இடம்:')}</span>
-                  <span className="text-slate-900 dark:text-slate-100 font-bold truncate block">{safeLocationDisplay}</span>
+              {/* 🏍️ ACCURATE MOTORCYCLE ROAD ROUTE & DISTANCE CARD */}
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-[#071911] border-2 border-emerald-400/80 dark:border-emerald-600/80 shadow-md space-y-2.5">
+                <div className="flex items-center justify-between pb-1 border-b border-emerald-100 dark:border-emerald-900/60">
+                  <span className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                    <span>{getLangText('යතුරුපැදි මාර්ගය හා දුර (Motorcycle Road Route)', 'Motorcycle Road Route', 'மோட்டார் சைக்கிள் பாதை')}</span>
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200">
+                    Road GPS
+                  </span>
                 </div>
-              </div>
 
-              <div className="p-2.5 bg-white dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 flex items-center gap-2.5 shadow-sm">
-                <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[9px] text-emerald-700 dark:text-emerald-300 font-extrabold block">{getLangText('ඔබ සිටින ස්ථානය (නරඹන්නා):', 'Your Location (Viewer):', 'உங்கள் இடம் (பார்வையாளர்):')}</span>
-                  <span className="text-slate-900 dark:text-slate-100 font-bold truncate block">{viewerLocName}</span>
+                {/* Two Locations Comparison */}
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                    <div className="truncate flex-1">
+                      <span className="text-slate-400 text-[10px] block font-bold">
+                        {getLangText('දැන්වීම් ස්ථානය (සේවාදායකයා):', 'Service Location (Poster):', 'சேவை இடம்:')}
+                      </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {safeLocationDisplay}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="w-2 h-2 rounded-full bg-teal-500 mt-1 shrink-0" />
+                    <div className="truncate flex-1">
+                      <span className="text-slate-400 text-[10px] block font-bold">
+                        {getLangText('ඔබ සිටින ස්ථානය (නරඹන්නා):', 'Your Location (Viewer):', 'உங்கள் இடம்:')}
+                      </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {viewerLocName}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Distance & Travel Time readout */}
-            <div className="p-2.5 bg-white/95 dark:bg-[#081e14] rounded-xl border border-emerald-300 dark:border-emerald-800/70 flex items-center justify-between text-xs shadow-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-base font-black text-emerald-700 dark:text-emerald-300">
-                  {motorcycleRoute.formattedRoadDistance}
-                </span>
-                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-bold">{getLangText('(මෝටර් සයිකල් මාර්ගය)', '(Motorcycle Route)', '(மோட்டார் சைக்கிள் பாதை)')}</span>
+                {/* Distance & Travel Time readout */}
+                <div className="grid grid-cols-2 gap-2 pt-1 text-center">
+                  <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold">
+                      {getLangText('නියම මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')}
+                    </span>
+                    <span className="text-sm sm:text-base font-black text-emerald-800 dark:text-emerald-200 font-mono">
+                      {motorcycleRoute.distanceKm.toFixed(1)} km
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-teal-50/80 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold">
+                      {getLangText('ගතවන කාලය (යතුරුපැදි)', 'Travel Time', 'பயண நேரம்')}
+                    </span>
+                    <span className="text-sm sm:text-base font-black text-teal-800 dark:text-teal-200 font-mono">
+                      ~{motorcycleRoute.travelTimeMinutes} mins
+                    </span>
+                  </div>
+                </div>
+
+                {/* Direct Google Maps Directions link / Privacy Lock */}
+                {isConfirmed ? (
+                  <a
+                    href={motorcycleRoute.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{getLangText('Google Maps හරහා මාර්ගය බලන්න', 'View in Google Maps', 'கூகிள் வரைபடத்தில் காண்க')}</span>
+                  </a>
+                ) : (
+                  <div className="p-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-center">
+                    <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-600" />
+                      <span>{getLangText('සේවාව තහවුරු වූ පසු Google Maps සජීවී මාර්ගය විවෘත වේ.', 'Live Google Maps unlocks upon confirmation.', 'உறுதிப்படுத்தப்பட்ட பின் வரைபடம் திறக்கப்படும்.')}</span>
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 text-[11px] font-bold">
-                <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{getLangText('ගමන් කාලය:', 'Travel Time:', 'பயண நேரம்:')} <strong className="text-emerald-700 dark:text-emerald-300 font-black">~{motorcycleRoute.formattedTime}</strong></span>
-              </div>
-            </div>
-
-            {/* Direct Google Maps Directions link / Privacy Lock */}
-            {post.isConfirmed || post.category === 'find_for_me' ? (
-              <a
-                href={motorcycleRoute.mapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] cursor-pointer"
-              >
-                <span>{getLangText('🏍️ Google Maps මෝටර් සයිකල් මාර්ගය (Directions) විවෘත කරන්න', '🏍️ Open Motorcycle Route in Google Maps', '🏍️ Google Maps இல் மோட்டார் சைக்கிள் பாதையை திறக்கவும்')}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            ) : (
-              <div className="w-full py-2 px-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-2 shadow-xs">
-                <span>{getLangText('🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා නිශ්චිත ලිපිනය විවෘත වේ', '🔒 Full address and Google Maps route unlocked after support confirmation', '🔒 உதவி உறுதிப்படுத்திய பின் வரைபடம் மற்றும் முகவரி திறக்கப்படும்')}</span>
-              </div>
-            )}
-
-          </div>
-          {post.category !== 'find_for_me' && !post.isVoicePost && !post.audioUrl && (
-            <>
               {/* 3. කොන්දේසි (Conditions) */}
-              <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
-                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <Wrench className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  {getLangText('කොන්දේසි:', 'Conditions:', 'நிபந்தனைகள்:')}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 space-y-1">
+                <span className="font-extrabold text-xs text-slate-700 dark:text-slate-300 block flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                  <span>3. {cardLabels.conditions}:</span>
                 </span>
-                <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-                  {translateText(safeConditions, lang)}
+                <p className="text-xs text-slate-800 dark:text-slate-200 font-semibold leading-relaxed">
+                  {renderTextWithLinks(safeConditions, lang)}
                 </p>
               </div>
 
               {/* 4. විශේෂ දැනුවත් කිරීම (Special Notice) */}
-              <div className="p-2.5 bg-emerald-50/50 dark:bg-[#071a12] rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-xs space-y-0.5">
-                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  {getLangText('විශේෂ දැනුවත් කිරීම:', 'Special Notice:', 'விசேட அறிவிப்பு:')}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 space-y-1">
+                <span className="font-extrabold text-xs text-slate-700 dark:text-slate-300 block flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                  <span>4. {cardLabels.specialNotice}:</span>
                 </span>
-                <p className="font-bold text-slate-800 dark:text-slate-200 leading-snug">
-                  {translateText(safeSpecialNotice, lang)}
+                <p className="text-xs text-slate-800 dark:text-slate-200 font-semibold leading-relaxed">
+                  {renderTextWithLinks(safeSpecialNotice, lang)}
                 </p>
               </div>
 
-              {/* 5. අවශ්‍ය සහායකයින් ගණන (Helpers Count - No underscores!) */}
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 pt-0.5">
-                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>{getLangText('අවශ්‍ය සහායකයින් ගණන: ', 'Helpers needed: ', 'தேவையான உதவியாளர்கள்: ')}</span>
-                <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm sm:text-base">
-                  {helpersCount}
-                </span>
-                <span>{getLangText(' කි.', ' person(s)', ' நபர்(கள்)')}</span>
-              </div>
-
-              {/* 6. ගමනාගමනය (Transport) */}
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-                <Car className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>{getLangText('ගමනාගමනය: ', 'Transport: ', 'போக்குவரத்து: ')}<span className="font-extrabold text-slate-900 dark:text-slate-100">{translateText(post.transport || (lang === 'en' ? 'You should arrive' : lang === 'ta' ? 'நீங்கள் வர வேண்டும்' : 'ඔබ පැමිණිය යුතුයි'), lang)}</span></span>
-              </div>
-
-              {/* 7. ගෙවීම් (Payment) */}
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/60 p-3 rounded-xl border border-emerald-300/80 dark:border-emerald-700/60 shadow-sm">
-                <Banknote className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>{getLangText('ගෙවීම් : ', 'Payment / Fee: ', 'கட்டணம்: ')}<span className="font-black text-slate-900 dark:text-white">{translateText(post.payment || (lang === 'en' ? 'I agree to your fee' : lang === 'ta' ? 'உங்கள் கட்டணத்திற்கு சம்மதிக்கிறேன்' : 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'), lang)}</span></span>
-              </div>
-
-              {/* Embedded Media / Video Link Player */}
-              {(post.externalLink || post.videoUrl) && (
-                <div className="pt-2">
-                  <EmbeddedMediaViewer
-                    url={post.externalLink || post.videoUrl}
-                    compact={false}
-                  />
+              {/* Embedded Media Viewer */}
+              {post.mediaUrl && (
+                <div className="rounded-2xl overflow-hidden border border-emerald-200 dark:border-emerald-800">
+                  <EmbeddedMediaViewer mediaUrl={post.mediaUrl} />
                 </div>
               )}
 
@@ -909,181 +1286,106 @@ export const QuickServiceDetailModal: React.FC<QuickServiceDetailModalProps> = (
 
         </div>
 
-                  {/* Seeker / Post Owner: Applicants Pool & Start PIN Management */}
-          {isPostOwner && (
-            <div className="p-4 bg-emerald-50/70 dark:bg-[#071911] border-2 border-emerald-400/80 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-emerald-600" />
-                  <span>සහායකයින් තෝරාගැනීම (අවශ්‍ය: {helpersNeeded} | තෝරාගත්: {selectedHelpers.length}/{helpersNeeded})</span>
-                </h4>
-                {onOpenLeaderboard && (
-                  <button
-                    type="button"
-                    onClick={onOpenLeaderboard}
-                    className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trophy className="w-3 h-3" />
-                    <span>Leaderboard</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Start PIN Display for Seeker: Distinct PIN for each selected helper */}
-              {selectedHelpers.length > 0 && (
-                <div className="p-3 bg-white dark:bg-slate-900 border-2 border-emerald-400 rounded-xl space-y-2">
-                  <span className="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 block text-center">
-                    🔑 රහස් ආරම්භක PIN අංක (සහායකයා වැඩබිමට පැමිණි පසු වැඩ ආරම්භ කිරීමට ඔහුට දෙන්න):
-                  </span>
-                  <div className="space-y-1.5">
-                    {selectedHelpers.map((h, idx) => {
-                      const hPin = h.startPin || (startPin ? (parseInt(startPin) + idx * 1111) % 9000 + 1000 : '4829').toString();
-                      return (
-                        <div key={h.helperId || idx} className="p-2.5 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-xl flex items-center justify-between border border-emerald-200 dark:border-emerald-800">
-                          <div>
-                            <div className="text-xs font-black text-slate-800 dark:text-white">
-                              {idx + 1}. {h.helperName}
-                            </div>
-                            <div className="text-[10px] text-slate-500 font-mono">
-                              ID: ***{extractId4Digits(h.helperNicMasked || h.helperId)}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-base sm:text-lg font-black font-mono tracking-widest text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border-2 border-emerald-400 inline-block shadow-xs">
-                              {hPin}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelReopen}
-                    className="mt-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 rounded-lg text-[10px] font-bold hover:bg-rose-100 flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>සහායකයා නොපැමිණියේ නම් අවලංගු කර නැවත විවෘත කරන්න</span>
-                  </button>
+            {/* Notification Banner when this helper has been selected */}
+            {isHelperAccepted && (
+              <div className="p-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-2xl shadow-lg space-y-2 border border-emerald-400/50">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-amber-300 animate-bounce" />
+                  <h4 className="text-sm font-black">
+                    {seekerFirstName} ගේ සේවාව සඳහා සහය දැක්වීමට ඔබව තෝරාගන්නා ලදී!
+                  </h4>
                 </div>
-              )}
-
-              {/* Applicants List */}
-              {applicants.length === 0 ? (
-                <p className="text-[11px] text-slate-500 text-center py-2">
-                  තවමත් සහායකයින් ඉදිරිපත් වී නොමැත. සහායකයෙකු ඉදිරිපත් වූ සැනින් ඔබට Notification එකක් ලැබේ.
+                <p className="text-xs text-emerald-50 font-medium">
+                  {readyConfirmed 
+                    ? 'ඔබ සූදානම් බව තහවුරු කර ඇත. දැන්වීම්කරුගෙන් ලැබෙන 4-digit PIN අංකය ඇතුළත් කර වැඩ ආරම්භ කරන්න.'
+                    : 'කරුණාකර විනාඩි 10ක් ඇතුළත ඔබ සූදානම් බව තහවුරු කරන්න.'}
                 </p>
-              ) : (
-                <div className="space-y-2">
-                  {applicants.map((app) => {
-                    const isSelected = selectedHelpers.some(h => h.helperId === app.helperId);
-                    return (
-                      <div
-                        key={app.id}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
-                          isSelected
-                            ? 'bg-emerald-100/90 dark:bg-emerald-950 border-emerald-500'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-900 dark:text-white">{app.helperName}</span>
-                            <span className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
-                              ID: ***{extractId4Digits(app.helperNicMasked || app.helperId)}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 flex items-center gap-2 pt-0.5">
-                            <span className="text-amber-600 font-bold flex items-center gap-0.5">
-                              <Star className="w-3 h-3 fill-amber-400" /> {app.helperRating?.toFixed(2) || '4.80'}
-                            </span>
-                            {app.feedbackComments && (
-                              <span className="text-slate-400 italic truncate max-w-[140px]">
-                                "{app.feedbackComments}"
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                
+                <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-mono font-bold bg-black/30 px-3 py-1.5 rounded-xl border border-white/20">
+                    <Hourglass className="w-3.5 h-3.5 text-amber-300" />
+                    <span>ඉතිරි කාලය: {formatCountdown(readyTimeLeft)}</span>
+                  </div>
 
-                        {isSelected ? (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-200/80 px-2 py-1 rounded-lg">
-                            ✓ තෝරාගන්නා ලදී
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleAcceptApplicant(app)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
-                          >
-                            තෝරාගන්න
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {!readyConfirmed ? (
+                    <button
+                      type="button"
+                      onClick={handleConfirmReady}
+                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-1"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      මම සූදානම්
+                    </button>
+                  ) : (
+                    <span className="px-3 py-1.5 bg-white/20 text-white font-black text-xs rounded-xl flex items-center gap-1 border border-white/30">
+                      <Check className="w-3.5 h-3.5" />
+                      සූදානම තහවුරු විය
+                    </span>
+                  )}
                 </div>
+              </div>
+            )}
+
+            {/* Toast on apply success */}
+            {applySuccessMsg && (
+              <div className="p-3 bg-emerald-100 text-emerald-900 text-xs rounded-xl font-bold text-center animate-bounce">
+                {applySuccessMsg}
+              </div>
+            )}
+
+            {/* Bottom Action Buttons: CHAT and CONFIRM / APPLY */}
+            <div className="grid grid-cols-2 gap-3 pt-3 shrink-0">
+              <button
+                onClick={() => {
+                  if (isDemo) {
+                    if (onRequireRegistration) onRequireRegistration();
+                    return;
+                  }
+                  onOpenChat(currentPost || post);
+                }}
+                className="py-3 sm:py-3.5 px-4 rounded-2xl bg-white dark:bg-[#071a12] hover:bg-emerald-50 dark:hover:bg-[#0d2a1b] text-emerald-700 dark:text-emerald-300 font-black text-sm border-2 border-emerald-500/70 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>CHAT</span>
+              </button>
+
+              {isHelperAccepted && readyConfirmed ? (
+                /* Confirmed Ready -> Enter PIN to Start Job */
+                <button
+                  onClick={() => onOpenConfirm(currentPost || post)}
+                  className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>🚀 වැඩේ ආරම්භ කරන්න (Start Job)</span>
+                </button>
+              ) : isHelperAccepted ? (
+                /* Selected but waiting to confirm ready */
+                <button
+                  onClick={handleConfirmReady}
+                  className="py-3 sm:py-3.5 px-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1 active:scale-95 cursor-pointer animate-pulse"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>මම සූදානම් ({formatCountdown(readyTimeLeft)})</span>
+                </button>
+              ) : isHelperApplied ? (
+                /* Applied and waiting for seeker to select */
+                <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-amber-100 dark:bg-amber-950/80 border border-amber-400 text-amber-900 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-1 text-center">
+                  <span>⏳ කැමැත්ත පළ කර ඇත (තෝරාගැනීම තෙක් රැඳී සිටින්න)</span>
+                </div>
+              ) : (
+                /* Not applied yet -> "මම සහය වෙන්නම්" */
+                <button
+                  onClick={handleApply}
+                  disabled={isApplying}
+                  className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-[0_4px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>{isApplying ? 'යවමින්...' : '🤝 මම සහය වෙන්නම් (කැමැත්ත පළ කරන්න)'}</span>
+                </button>
               )}
             </div>
-          )}
-
-          {/* Toast on apply success */}
-          {applySuccessMsg && (
-            <div className="p-3 bg-emerald-100 text-emerald-900 text-xs rounded-xl font-bold text-center animate-bounce">
-              {applySuccessMsg}
-            </div>
-          )}
-
-        {/* Bottom Action Buttons: CHAT and CONFIRM / APPLY */}
-        <div className="grid grid-cols-2 gap-3 pt-4 shrink-0">
-          <button
-            onClick={() => {
-              if (isDemo) {
-                if (onRequireRegistration) onRequireRegistration();
-                return;
-              }
-              onOpenChat(currentPost || post);
-            }}
-            className="py-3 sm:py-3.5 px-4 rounded-2xl bg-white dark:bg-[#071a12] hover:bg-emerald-50 dark:hover:bg-[#0d2a1b] text-emerald-700 dark:text-emerald-300 font-black text-sm border-2 border-emerald-500/70 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer"
-          >
-            <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>CHAT</span>
-          </button>
-
-          {isPostOwner ? (
-            /* Post Owner View */
-            <button
-              onClick={() => onOpenConfirm(currentPost || post)}
-              className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span>{isConfirmed ? 'ගනුදෙනු ලදුපත (Receipt)' : 'තහවුරු කිරීම (Confirm)'}</span>
-            </button>
-          ) : isHelperAccepted ? (
-            /* Helper is Selected: Enter Start PIN */
-            <button
-              onClick={() => onOpenConfirm(currentPost || post)}
-              className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span>🚀 වැඩේ ආරම්භ කරන්න (Start Job)</span>
-            </button>
-          ) : isHelperApplied ? (
-            /* Helper has applied and is waiting for seeker */
-            <div className="py-3 sm:py-3.5 px-3 rounded-2xl bg-amber-100 dark:bg-amber-950/80 border border-amber-400 text-amber-900 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-1 text-center">
-              <span>⏳ කැමැත්ත පළ කර ඇත (දැන්වීම්කරුගේ තේරීම අපේක්ෂාවෙන්)</span>
-            </div>
-          ) : (
-            /* Outside Helper: Express willingness to Help */
-            <button
-              onClick={handleApply}
-              disabled={isApplying}
-              className="py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs sm:text-sm shadow-[0_4px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>{isApplying ? 'යවමින්...' : '🤝 මම සහය වෙන්නම් (කැමැත්ත පළ කරන්න)'}</span>
-            </button>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
     </div>
