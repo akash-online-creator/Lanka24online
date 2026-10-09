@@ -51,11 +51,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 }) => {
   const t = translations[lang] || translations.si;
 
-  // Selected Category (Defaults to Quick Services or Normal Services)
-  const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(() => {
-    return categories.find(c => c.id === 'quick_services') || categories[0] || null;
-  });
-
   // Selected Tag
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
 
@@ -64,9 +59,21 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [whatIsNeeded, setWhatIsNeeded] = useState('');
   const [conditions, setConditions] = useState('');
   const [specialNotice, setSpecialNotice] = useState('');
-  const [transport, setTransport] = useState('ඔබ පැමිණිය යුතුයි');
+  
+  // 5 Transport Modes
+  const transportOptions = [
+    'ඔබ පැමිණිය යුතුයි.',
+    'මා එවන්නම්',
+    'මා ගෙනවිත් දෙන්නම්.',
+    'ඔබ එවන්න :Free delivery',
+    'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්'
+  ];
+  const [transport, setTransport] = useState<string>('ඔබ පැමිණිය යුතුයි.');
+  const [customTransportFee, setCustomTransportFee] = useState<string>('');
+
+  // Payment State (No hardcoded 1500)
   const [paymentType, setPaymentType] = useState<'agree' | 'custom'>('agree');
-  const [customPaymentAmount, setCustomPaymentAmount] = useState('1500');
+  const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [voiceData, setVoiceData] = useState<any>(null);
@@ -75,7 +82,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
-  // Prefill phone from logged-in user profile
   const userWhatsAppNumber = currentUser?.whatsappNumber || currentUser?.phone || '';
 
   useEffect(() => {
@@ -84,14 +90,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     }
   }, [currentUser, userWhatsAppNumber]);
 
-  // Handle Edit Post prefill
   useEffect(() => {
     if (editPost && isOpen) {
       setWhatHappened(editPost.whatHappened || '');
       setWhatIsNeeded(editPost.whatIsNeeded || '');
       setConditions(editPost.conditions || '');
       setSpecialNotice(editPost.specialNotice || '');
-      setTransport(editPost.transport || 'ඔබ පැමිණිය යුතුයි');
+      setTransport(editPost.transport || 'ඔබ පැමිණිය යුතුයි.');
+      setCustomTransportFee(editPost.customTransportFee ? String(editPost.customTransportFee) : '');
       setWhatsappNumber(editPost.userPhone || userWhatsAppNumber);
       
       if (editPost.payment && (editPost.payment.includes('රු.') || editPost.payment.includes('ගෙවිය හැක'))) {
@@ -110,14 +116,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         if (found) setSelectedTag(found);
       }
     } else if (!editPost && isOpen) {
-      // Reset form
       setWhatHappened('');
       setWhatIsNeeded('');
       setConditions('');
       setSpecialNotice('');
-      setTransport('ඔබ පැමිණිය යුතුයි');
+      setTransport('ඔබ පැමිණිය යුතුයි.');
+      setCustomTransportFee('');
       setPaymentType('agree');
-      setCustomPaymentAmount('1500');
+      setCustomPaymentAmount('');
       setHelpersNeeded(1);
       setWhatsappNumber(userWhatsAppNumber);
       setSelectedTag(null);
@@ -129,7 +135,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Validation function
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
 
@@ -159,7 +164,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Helper count increment / decrement
   const handleHelperChange = (delta: number) => {
     setHelpersNeeded(prev => {
       const next = prev + delta;
@@ -167,7 +171,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     });
   };
 
-  // Submit Handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setHasAttemptedSubmit(true);
@@ -188,6 +191,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
         specialNotice: specialNotice.trim(),
         transport: transport,
+        customTransportFee: transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0,
         payment: paymentText,
         helpersNeeded: helpersNeeded,
         helpersCount: helpersNeeded,
@@ -197,9 +201,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         tagId: selectedTag?.id || editPost.tagId,
       };
 
-      if (onUpdatePost) {
-        onUpdatePost(updatedPost);
-      }
+      onUpdatePost(updatedPost);
       setHasAttemptedSubmit(false);
       setErrors({});
       onClose();
@@ -209,6 +211,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
     const autoPlatformFee = calculatePlatformFee(paymentText);
     const newStartPin = generateStartPin();
+    const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
 
     onSubmitPost({
       userName: currentUser?.name || 'පරිශීලක',
@@ -219,6 +222,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
       specialNotice: specialNotice.trim(),
       transport: transport,
+      customTransportFee: finalTransportFee,
       payment: paymentText,
       helpersNeeded: helpersNeeded,
       helpersAccepted: 0,
@@ -235,7 +239,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
       lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
-      category: selectedCategoryObj?.id || 'quick_services',
+      category: 'quick_services',
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
@@ -251,7 +255,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 
     broadcastPushNotification({
       category: 'quick_service',
-      title: '⚡ නව ඉක්මන් සේවා දැන්වීමක්!',
+      title: '⚡ නව සේවා දැන්වීමක්!',
       message: `${whatHappened.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
       locationName: resolvedLocation,
       lat: currentLocation?.lat,
@@ -276,10 +280,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : 'ඉක්මන් සේවා ඉල්ලීමක් පළකරන්න'}</span>
+                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : 'සේවා ඉල්ලීමක් පළකරන්න'}</span>
               </h2>
               <p className="text-[11px] text-emerald-100 font-medium">
-                අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී කඩිනම් සේවාවක් ලබාගන්න
+                අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී සේවාවන් ලබාගන්න
               </p>
             </div>
           </div>
@@ -321,48 +325,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
           
-          {/* 1. සේවා කාණ්ඩය (Category) */}
-          <div className="space-y-1.5">
-            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-              <Zap className="w-4 h-4 text-emerald-600" />
-              <span>සේවා කාණ්ඩය (Category):</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const quickCat = categories.find(c => c.id === 'quick_services') || null;
-                  setSelectedCategoryObj(quickCat);
-                }}
-                className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  selectedCategoryObj?.id === 'quick_services'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>ඉක්මන් සේවා (Quick)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const normalCat = categories.find(c => c.id === 'normal_services') || null;
-                  setSelectedCategoryObj(normalCat);
-                }}
-                className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  selectedCategoryObj?.id === 'normal_services'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>සාමාන්‍ය සේවා (Normal)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. Tag තේරීම */}
+          {/* Tag Selector */}
           <div className="space-y-1.5">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
@@ -374,7 +337,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             />
           </div>
 
-          {/* 3. සිදුවී ඇති දේ (What Happened) */}
+          {/* සිදුවී ඇති දේ (What Happened) */}
           <div className="space-y-1.5">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <HelpCircle className="w-4 h-4 text-emerald-600" />
@@ -397,7 +360,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             )}
           </div>
 
-          {/* 4. වියයුතු දේ (What is Needed) */}
+          {/* වියයුතු දේ (What is Needed) */}
           <div className="space-y-1.5">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <FileText className="w-4 h-4 text-emerald-600" />
@@ -420,50 +383,76 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             )}
           </div>
 
-          {/* 5. ගමනාගමනය (Transport) */}
+          {/* 5 ගමනාගමන ක්‍රම (5 Transport Modes) */}
           <div className="space-y-2">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <Car className="w-4 h-4 text-emerald-600" />
-              <span>ගමනාගමනය (Transport):</span>
+              <span>ගමනාගමනය සිදුවන්නේ කෙසේද? <span className="text-xs text-slate-500 font-normal">(පහතින් එකක් තෝරන්න)</span>:</span>
             </label>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {[
-                { id: 'ඔබ පැමිණිය යුතුයි', label: 'ඔබ පැමිණිය යුතුයි (You arrive)' },
-                { id: 'මා පැමිණෙන්නම්', label: 'මා පැමිණෙන්නම් (I will come)' },
-              ].map((opt) => (
-                <button
-                  type="button"
-                  key={opt.id}
-                  onClick={() => setTransport(opt.id)}
-                  className={`p-2.5 rounded-xl border font-bold transition-all text-left flex items-center justify-between cursor-pointer ${
-                    transport === opt.id
-                      ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-xs'
-                      : 'bg-slate-50 dark:bg-[#0a1a12] border-slate-200 dark:border-[#163824] text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {transport === opt.id && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                </button>
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 dark:bg-[#0a1a12] p-3 rounded-2xl border border-slate-200 dark:border-[#163824]">
+              {transportOptions.map((opt) => {
+                const isSelected = transport === opt;
+                return (
+                  <label
+                    key={opt}
+                    onClick={() => setTransport(opt)}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs sm:text-sm font-bold cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm'
+                        : 'bg-white dark:bg-[#0c2217] border-slate-200 dark:border-[#1b3d29] text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="transport_choice"
+                      checked={isSelected}
+                      onChange={() => setTransport(opt)}
+                      className="accent-emerald-600 w-4 h-4"
+                    />
+                    <span>{opt}</span>
+                  </label>
+                );
+              })}
             </div>
-            {transport === 'ඔබ පැමිණිය යුතුයි' && (
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
-                💡 සහායකයා පැමිණෙන දුර සඳහා කි.මී. 1 ට රු. 100 ක ප්‍රවාහන දීමනාවක් ස්වයංක්‍රීයව බිල්පතට එක්වේ.
+
+            {/* Option 5: Custom Transport Fee Input */}
+            {transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' && (
+              <div className="p-3 bg-emerald-50 dark:bg-[#0d281a] border-2 border-emerald-400 rounded-2xl space-y-1.5 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>ඔබ ගෙවන ප්‍රවාහන ගාස්තුව (රු.):</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={customTransportFee}
+                  onChange={(e) => setCustomTransportFee(e.target.value)}
+                  placeholder="උදා: 350"
+                  className="w-full sm:w-48 bg-white dark:bg-[#07130c] border border-emerald-400 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-inner"
+                />
+                <p className="text-[10px] text-slate-500">
+                  * මෙම ප්‍රවාහන මුදල සහායකයාගේ අවසන් සේවා බිල්පතට ස්වයංක්‍රීයව ඇතුළත් වේ.
+                </p>
+              </div>
+            )}
+
+            {/* Option 2: Distance based note */}
+            {transport === 'මා එවන්නම්' && (
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium px-1">
+                💡 සහායකයා පැමිණෙන දුර අනුව (කි.මී. 1 ට රු. 100 බැගින්) ප්‍රවාහන ගාස්තුව ස්වයංක්‍රීයව බිල්පතට එක්වේ.
               </p>
             )}
           </div>
 
-          {/* 6. ගෙවීම් (Payment) */}
+          {/* ගෙවීම් (Payment) */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                <Banknote className="w-4 h-4 text-emerald-600" />
-                <span>ගෙවීම් (Payment / Fee):</span>
-              </label>
-            </div>
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Banknote className="w-4 h-4 text-emerald-600" />
+              <span>ගෙවීම් (Payment / Fee):</span>
+            </label>
 
             <div className="bg-slate-50 dark:bg-[#0a1a12] p-3.5 rounded-2xl border border-slate-200 dark:border-[#163824] space-y-3">
-              {/* Option 1: Agree */}
               <label 
                 onClick={() => setPaymentType('agree')}
                 className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
@@ -484,7 +473,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
                 </span>
               </label>
 
-              {/* Option 2: Custom Amount */}
               <div 
                 onClick={() => setPaymentType('custom')}
                 className={`flex flex-wrap items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
@@ -513,13 +501,12 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
                     setCustomPaymentAmount(e.target.value);
                     if (errors.customPayment) setErrors(prev => ({ ...prev, customPayment: undefined }));
                   }}
-                  placeholder="1500"
-                  className="w-32 bg-white dark:bg-[#07130c] border border-slate-300 dark:border-[#1b3d29] rounded-xl px-3 py-1 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="ගාස්තුව ඇතුළත් කරන්න..."
+                  className="w-36 bg-white dark:bg-[#07130c] border border-slate-300 dark:border-[#1b3d29] rounded-xl px-3 py-1 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
-            {/* Platform Fee Auto-Deduction Notice */}
             <div className="p-2.5 bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl border border-emerald-300/80 dark:border-emerald-800/60 flex items-center justify-between text-[11px]">
               <span className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
                 <Banknote className="w-3.5 h-3.5 text-emerald-600" />
@@ -534,7 +521,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             )}
           </div>
 
-          {/* 7. උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (- ___ +) */}
+          {/* උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (- ___ +) */}
           <div className="space-y-1.5">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <Users className="w-4 h-4 text-emerald-600" />
@@ -562,7 +549,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             </div>
           </div>
 
-          {/* 8. WhatsApp අංකය */}
+          {/* WhatsApp අංකය */}
           <div className="space-y-1.5">
             <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
               <MessageSquare className="w-4 h-4 text-emerald-600" />
@@ -585,7 +572,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             )}
           </div>
 
-          {/* 9. කොන්දේසි (Conditions) */}
+          {/* කොන්දේසි */}
           <div className="space-y-1.5">
             <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
               <span>කොන්දේසි (විකල්ප):</span>
@@ -599,7 +586,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             />
           </div>
 
-          {/* 10. විශේෂ දැනුවත් කිරීම */}
+          {/* විශේෂ දැනුවත් කිරීම */}
           <div className="space-y-1.5">
             <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
               <span>විශේෂ දැනුවත් කිරීම (විකල්ප):</span>
@@ -608,7 +595,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
               type="text"
               value={specialNotice}
               onChange={(e) => setSpecialNotice(e.target.value)}
-              placeholder="උදා: සුනඛයෙකු බැඳ ඇත / ගේට්ටුව වසා ඇත..."
+              placeholder="උදා: සවස 4.00 ට පෙර පැමිණිය හැකිනම් වඩාත් පහසුයි..."
               className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-[#1b3d29] bg-slate-50 dark:bg-[#07130c] text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
             />
           </div>
