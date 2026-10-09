@@ -34,7 +34,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User as UserType, HelperApplicant } from '../types';
-import { applyToHelpPost, selectHelperApplicant, cancelAndReopenPost, calculateTravelFee, maskNicNumber, extractId4Digits } from '../utils/serviceWorkflowManager';
+import { applyToHelpPost, selectHelperApplicant, cancelAndReopenPost, calculateTravelFee, maskNicNumber } from '../utils/serviceWorkflowManager';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { maskName, maskPhone, maskAddress } from '../utils/demoDataMasker';
@@ -44,6 +44,16 @@ import { renderTextWithLinks } from '../utils/textUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
 import { AudioVoicePlayer } from './AudioVoiceNote';
+
+// Helper: අයදුම්කරුගේ ID අංකයේ අවසන් අංක 4 පමණක් පෙන්වීමේ function එක
+function extractId4Digits(idOrNic?: string): string {
+  if (!idOrNic) return '****';
+  const clean = idOrNic.trim();
+  const digits = clean.replace(/\D/g, '');
+  if (digits.length >= 4) return digits.slice(-4);
+  if (clean.length >= 4) return clean.slice(-4);
+  return clean;
+}
 
 interface QuickServiceDetailModalProps {
   post: HelpPost | null;
