@@ -1553,24 +1553,34 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             )}
 
             {/* Contacts list */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {trustedContacts.map((c) => (
-                <div key={c.id} className="p-2.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{c.name} ({c.relationship})</span>
-                    <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold">{c.phone}</span>
+            {trustedContacts.length === 0 ? (
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-2xl text-center space-y-1">
+                <span className="text-sm font-black text-amber-900 dark:text-amber-200 block">
+                  ⚠️ හදිසි අංක තවමත් ඇතුළත් කර නැත
+                </span>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                  හදිසි ආපදාවකදී WhatsApp හෝ SMS මඟින් සජීවී ලොකේෂන් එක සහ හඬපටය යැවීම සඳහා, ඉහත <strong>"+ අංකයක් එක්කරන්න"</strong> බොත්තම ඔබා ඔබගේ පවුලේ සැබෑ දුරකථන අංකයක් එක් කරන්න.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {trustedContacts.map((c) => (
+                  <div key={c.id} className="p-2.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{c.name} ({c.relationship})</span>
+                      <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 font-bold">{c.phone}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTrustedContacts((prev) => prev.filter(x => x.id !== c.id))}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTrustedContacts((prev) => prev.filter(x => x.id !== c.id))}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            )}
 
         </div>
 
