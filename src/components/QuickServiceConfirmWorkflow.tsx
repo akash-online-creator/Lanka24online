@@ -7,33 +7,30 @@ import {
   CheckCircle, 
   Heart, 
   Sparkles, 
-  Award, 
-  ExternalLink, 
   ShieldCheck, 
   Lock, 
-  DollarSign, 
   Receipt, 
   FileCheck, 
   Check, 
-  HelpCircle, 
   Copy, 
-  Clock,
-  Car,
-  Wrench,
-  ThumbsUp,
-  ThumbsDown,
-  Star,
-  RotateCcw
+  Clock, 
+  Car, 
+  Plus, 
+  Trash2, 
+  RotateCcw, 
+  Calendar, 
+  User as UserIcon,
+  X
 } from 'lucide-react';
-import { HelpPost, User as UserType, RatingTier, ServiceBill } from '../types';
+import { HelpPost, User as UserType, RatingTier, BillItem, ServiceBill } from '../types';
 import { 
   verifyAndStartJobWithPin, 
   submitServiceBill, 
   rejectServiceBill, 
   confirmServiceCompletionAndReview, 
   calculateTravelFee,
-  RATING_TIER_CONFIG,
-  maskNicNumber
+  generate9DigitInvoiceNumber,
+  RATING_TIER_CONFIG
 } from '../utils/serviceWorkflowManager';
 
 interface QuickServiceConfirmWorkflowProps {
@@ -48,10 +45,10 @@ interface QuickServiceConfirmWorkflowProps {
 type Stage = 
   | 'start_pin_verification'  // 1. Helper enters 4-digit Start PIN upon arrival
   | 'job_in_progress'         // 2. Active Service in Progress
-  | 'helper_submit_bill'      // 3. Helper prepares and submits bill (Travel km*100 + Material cost)
+  | 'helper_submit_bill'      // 3. Helper prepares and submits bill (Dynamic Rows + Travel km*100)
   | 'seeker_review_bill'      // 4. Seeker reviews: [ස්ථිරයි] vs [තවම අවසන් නැත]
   | 'feedback_and_rating'     // 5. 6-Tier Rating Buttons + Review Comment Box
-  | 'receipt_view';           // 6. Official Digital Settlement Receipt
+  | 'receipt_view';           // 6. Official 9-Digit Digital Settlement Invoice
 
 export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowProps> = ({
   post,
@@ -70,10 +67,10 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   const [isCopiedPin, setIsCopiedPin] = useState<boolean>(false);
   const [emagencyNotice, setEmagencyNotice] = useState<string | null>(null);
 
-  // Bill builder states
-  const [laborFee, setLaborFee] = useState<number>(1500);
-  const [materialCost, setMaterialCost] = useState<number>(0);
-  const [materialNotes, setMaterialNotes] = useState<string>('');
+  // Dynamic Multi-Item Bill Builder Rows: Left = Description, Right = Amount (No hardcoded 1500)
+  const [billRows, setBillRows] = useState<BillItem[]>([
+    { id: 'item_1', title: 'මූලික සේවා ගාස්තුව', amount: 0 }
+  ]);
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [showRejectBox, setShowRejectBox] = useState<boolean>(false);
 
@@ -85,12 +82,14 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
     if (post) {
       setActivePost(post);
 
-      if (post.payment) {
+      if (post.serviceBill?.items && post.serviceBill.items.length > 0) {
+        setBillRows(post.serviceBill.items);
+      } else if (post.payment) {
         const match = post.payment.match(/\d[\d,.]*/);
-        if (match) {
-          const num = parseFloat(match[0].replace(/,/g, ''));
-          setLaborFee(isNaN(num) ? 1500 : num);
-        }
+        const parsedAmount = match ? parseFloat(match[0].replace(/,/g, '')) : 0;
+        setBillRows([
+          { id: 'item_1', title: 'මූලික සේවා ගාස්තුව', amount: isNaN(parsedAmount) ? 0 : parsedAmount }
+        ]);
       }
 
       if (post.status === 'completed' || post.serviceStage === 'completed') {
@@ -119,8 +118,40 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
 
   const startPin = activePost.startPin || activePost.completionPin || '4829';
   const helperPhone = activePost.confirmedHelperPhone || activePost.userPhone || '0771234567';
-  const travelFee = calculateTravelFee(activePost.distanceKm || 3.0, activePost.transport);
-  const totalCalculatedBill = laborFee + travelFee + materialCost;
+  
+  const travelFee = calculateTravelFee(
+    activePost.distanceKm || 3.0, 
+    activePost.transport, 
+    activePost.customTransportFee
+  );
+
+  const itemsTotalAmount = billRows.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalCalculatedBill = itemsTotalAmount + travelFee;
+  const officialInvoiceNumber = activePost.serviceBill?.invoiceNumber || activePost.invoiceNumber || '982401824';
+
+  const handleAddBillRow = () => {
+    setBillRows(prev => [
+      ...prev,
+      { id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`, title: '', amount: 0 }
+    ]);
+  };
+
+  const handleUpdateBillRow = (id: string, field: 'title' | 'amount', value: any) => {
+    setBillRows(prev => prev.map(row => {
+      if (row.id === id) {
+        return {
+          ...row,
+          [field]: field === 'amount' ? Math.max(0, parseFloat(value) || 0) : value
+        };
+      }
+      return row;
+    }));
+  };
+
+  const handleRemoveBillRow = (id: string) => {
+    if (billRows.length <= 1) return;
+    setBillRows(prev => prev.filter(r => r.id !== id));
+  };
 
   const handleEmagency = () => {
     setEmagencyNotice(`🚨 Emergency Alert sent with location (${activePost.locationName}) to ${activePost.userName} & Emergency contacts!`);
@@ -145,17 +176,16 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
       setPinError('');
       setStage('job_in_progress');
     } else {
-      setPinError(res.error || 'වැරදි PIN අංකයකි.');
+      setPinError(res.error || 'ඇතුළත් කළ Start PIN අංකය වැරදියි.');
     }
   };
 
   const handleSubmitBill = async () => {
     const updated = await submitServiceBill({
       post: activePost,
-      laborFee,
+      items: billRows,
       travelFee,
-      materialCost,
-      materialNotes,
+      totalAmount: totalCalculatedBill,
       helperUser: currentUser,
     });
     setActivePost(updated);
@@ -249,7 +279,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                   </button>
                 </div>
                 <span className="text-[11px] text-slate-500 block">
-                  සහායකයා පැමිණ මෙම PIN අංකය ඇතුළත් කළ පසු සේවාව ආරම්භ වේ.
+                  * මෙම රහස් අංකය පෙනෙන්නේ ඔබට පමණි. සහායකයා පැමිණි පසු පමණක් ලබාදෙන්න.
                 </span>
               </div>
 
@@ -271,13 +301,13 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
           ) : (
             <div className="py-4 space-y-4 text-center animate-fadeIn bg-white dark:bg-[#071710] p-6 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-600 mx-auto">
-                <KeyIcon className="w-8 h-8" />
+                <Lock className="w-8 h-8" />
               </div>
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 සේවාව ආරම්භ කිරීමට Start PIN එක ඇතුළත් කරන්න
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
-                ඔබ දැන්වීම්කරුගේ ස්ථානයට පැමිණි පසු වැඩේ ආරම්භ කිරීමට දැන්වීම්කරුගේ තිරයේ ඇති අංක 4ක Start PIN එක ඉල්ලා මෙහි ඇතුළත් කරන්න.
+                ඔබ සේවා ස්ථානයට පැමිණි පසු වැඩේ ආරම්භ කිරීමට සේවාදායකයාගෙන් අංක 4ක Start PIN එක ඉල්ලා මෙහි ඇතුළත් කරන්න.
               </p>
 
               <div className="space-y-2 max-w-xs mx-auto">
@@ -301,7 +331,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                   onClick={handleStartJob}
                   className="py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white rounded-2xl font-black text-xs shadow-md active:scale-95 cursor-pointer"
                 >
-                  🚀 වැඩේ ආරම්භ කරන්න (Start Job)
+                  🚀 වැඩේ ආරම්භ කරන්න
                 </button>
                 <button
                   onClick={onClose}
@@ -314,7 +344,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
           )
         )}
 
-        {/* STAGE 2: JOB IN PROGRESS */}
+        {/* STAGE 2: ACTIVE SERVICE IN PROGRESS */}
         {stage === 'job_in_progress' && (
           <div className="space-y-4 py-3 text-center animate-fadeIn">
             <div className="p-4 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 rounded-2xl space-y-2">
@@ -361,80 +391,102 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
               </button>
             </div>
 
-            {/* Finish Job Trigger */}
+            {/* Helper: Bill Builder Button */}
             <div className="p-4 bg-white dark:bg-[#071710] border-2 border-emerald-400 rounded-2xl shadow-sm text-left space-y-2.5">
               <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
                 <FileCheck className="w-4 h-4 text-emerald-600" />
-                <span>සේවය නිමවූ පසු බිල්පත ඉදිරිපත් කිරීම</span>
+                <span>සේවය නිමවූ පසු බිල්පත සකස් කිරීම</span>
               </span>
               <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                වැඩේ අවසන් වූ පසු සහායකයා විසින් දුර සහ අමතර වියදම් ඇතුළත් කර බිල්පත ඉදිරිපත් කළ යුතුය.
+                සේවාව අවසන් වූ පසු විස්තරය සහ ගාස්තු ඇතුළත් කර අවසන් බිල්පත ඉදිරිපත් කරන්න.
               </p>
               <button
                 onClick={() => setStage('helper_submit_bill')}
                 className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Receipt className="w-4 h-4" />
-                <span>🏁 වැඩේ අවසන් - බිල්පත ඉදිරිපත් කරන්න (Submit Final Bill)</span>
+                <span>🧾 බිල සකසන්න (Prepare Final Bill)</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* STAGE 3: HELPER SUBMITS BILL */}
+        {/* STAGE 3: HELPER DYNAMIC MULTI-ITEM BILL BUILDER */}
         {stage === 'helper_submit_bill' && (
           <div className="space-y-4 py-2 animate-fadeIn">
             <div className="text-center space-y-1">
               <h3 className="text-base font-black text-slate-900 dark:text-white">
-                අවසන් සේවා බිල්පත සකස් කිරීම
+                සේවා බිල්පත සකස් කිරීම (Bill Builder)
               </h3>
               <p className="text-xs text-slate-500">
-                පැමිණි දුර සහ සේවාවට යෙදූ අමතර බඩුබාහිරාදි වියදම් ඇතුළත් කරන්න.
+                වම් පසින් විස්තරය හා දකුණු පසින් ගාස්තුව සටහන් කරන්න. (+) මඟින් පේළි එකතු කරන්න.
               </p>
             </div>
 
-            <div className="p-4 bg-white dark:bg-[#071911] border-2 border-emerald-300 dark:border-emerald-800 rounded-2xl space-y-3 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-700 dark:text-slate-300">කතා කරගත් මූලික සේවා ගාස්තුව:</span>
-                <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
-                  රු. {laborFee.toLocaleString()}.00
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2">
-                <div>
-                  <span className="font-bold text-slate-700 dark:text-slate-300 block">ගමන් වියදම් දීමනාව:</span>
-                  <span className="text-[10px] text-slate-500">මෝටර් සයිකල් දුර ~{(travelFee / 100).toFixed(1)} km × රු. 100</span>
+            <div className="p-4 bg-white dark:bg-[#071911] border-2 border-emerald-400 rounded-2xl space-y-3 text-xs">
+              <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-2 font-bold text-slate-600 dark:text-slate-400 text-[11px] px-1">
+                  <span className="col-span-7">විස්තරය (Description)</span>
+                  <span className="col-span-4 text-right">ගාස්තුව (රු.)</span>
+                  <span className="col-span-1"></span>
                 </div>
-                <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
-                  + රු. {travelFee.toLocaleString()}.00
-                </span>
+
+                {billRows.map((row, index) => (
+                  <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+                    <input
+                      type="text"
+                      value={row.title}
+                      onChange={(e) => handleUpdateBillRow(row.id, 'title', e.target.value)}
+                      placeholder={`අයිතමය ${index + 1} විස්තරය...`}
+                      className="col-span-7 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.amount || ''}
+                      onChange={(e) => handleUpdateBillRow(row.id, 'amount', e.target.value)}
+                      placeholder="0.00"
+                      className="col-span-4 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-right text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <div className="col-span-1 flex justify-center">
+                      {billRows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBillRow(row.id)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 cursor-pointer"
+                          title="ඉවත් කරන්න"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddBillRow}
+                  className="w-full py-2 px-3 border-2 border-dashed border-emerald-400 dark:border-emerald-700 rounded-xl text-emerald-700 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>➕ තවත් ගාස්තුවක් එකතු කරන්න (Add Item)</span>
+                </button>
               </div>
 
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-1.5">
-                <label className="font-bold text-slate-700 dark:text-slate-300 block">
-                  අමතර බඩුබාහිරාදි වියදම් (Material & Parts Cost):
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="number"
-                    value={materialCost || ''}
-                    onChange={(e) => setMaterialCost(Math.max(0, parseFloat(e.target.value) || 0))}
-                    placeholder="රු. 0.00"
-                    className="col-span-1 p-2 bg-slate-50 dark:bg-slate-900 border border-emerald-300 rounded-xl font-mono text-xs font-bold"
-                  />
-                  <input
-                    type="text"
-                    value={materialNotes}
-                    onChange={(e) => setMaterialNotes(e.target.value)}
-                    placeholder="විස්තරය (උදා: වයර් සහ ස්විච්)"
-                    className="col-span-2 p-2 bg-slate-50 dark:bg-slate-900 border border-emerald-300 rounded-xl text-xs"
-                  />
+              {travelFee > 0 && (
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-2 flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/40 p-2.5 rounded-xl">
+                  <span className="flex items-center gap-1.5">
+                    <Car className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>ප්‍රවාහන දීමනාව ({activePost.transport}):</span>
+                  </span>
+                  <span className="font-mono font-black text-sm">
+                    + රු. {travelFee.toLocaleString()}.00
+                  </span>
                 </div>
-              </div>
+              )}
 
-              <div className="border-t-2 border-emerald-500 pt-2 flex items-center justify-between text-sm font-black text-slate-900 dark:text-white">
-                <span>මුළු එකතුව (Total Bill):</span>
+              <div className="border-t-2 border-emerald-500 pt-2.5 flex items-center justify-between text-sm font-black text-slate-900 dark:text-white">
+                <span>සම්පූර්ණ මුළු වියදම (Total Amount):</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-mono text-base">
                   රු. {totalCalculatedBill.toLocaleString()}.00
                 </span>
@@ -443,12 +495,14 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
+                type="button"
                 onClick={handleSubmitBill}
                 className="py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white rounded-2xl font-black text-xs shadow-md active:scale-95 cursor-pointer"
               >
-                බිල්පත යවන්න (Submit Bill)
+                🏁 බිල්පත ඉදිරිපත් කරන්න
               </button>
               <button
+                type="button"
                 onClick={() => setStage('job_in_progress')}
                 className="py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-xs"
               >
@@ -471,34 +525,26 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
             </div>
 
             <div className="p-4 bg-white dark:bg-[#071911] border-2 border-emerald-400 rounded-2xl space-y-2.5 text-xs text-left">
-              <div className="flex justify-between text-slate-700 dark:text-slate-300">
-                <span>සේවා ගාස්තුව:</span>
-                <span className="font-mono font-bold">රු. {laborFee.toLocaleString()}.00</span>
+              <div className="space-y-1.5 pb-2 border-b border-slate-100 dark:border-slate-800">
+                {billRows.map((item, idx) => (
+                  <div key={item.id || idx} className="flex justify-between text-slate-700 dark:text-slate-300">
+                    <span>{item.title || `අයිතමය ${idx + 1}`}:</span>
+                    <span className="font-mono font-bold">රු. {(Number(item.amount) || 0).toLocaleString()}.00</span>
+                  </div>
+                ))}
               </div>
 
               {travelFee > 0 && (
-                <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
-                  <span>ගමන් වියදම් දීමනාව (කි.මී. {(travelFee/100).toFixed(1)} × රු. 100):</span>
-                  <span className="font-mono font-bold">+ රු. {travelFee.toLocaleString()}.00</span>
+                <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-bold">
+                  <span>ප්‍රවාහන දීමනාව:</span>
+                  <span className="font-mono">+ රු. {travelFee.toLocaleString()}.00</span>
                 </div>
               )}
-
-              {materialCost > 0 && (
-                <div className="flex justify-between text-slate-700 dark:text-slate-300">
-                  <span>අමතර බඩුබාහිරාදි ({materialNotes || 'ද්‍රව්‍ය'}):</span>
-                  <span className="font-mono font-bold">+ රු. {materialCost.toLocaleString()}.00</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-emerald-700 dark:text-emerald-400 border-t border-slate-100 dark:border-slate-800 pt-1.5">
-                <span>ප්‍රසාද වට්ටම (Signup Bonus):</span>
-                <span className="font-mono font-bold">- රු. 100.00</span>
-              </div>
 
               <div className="border-t-2 border-emerald-500 pt-2 flex justify-between text-sm font-black text-slate-900 dark:text-white">
-                <span>අතට ගෙවිය යුතු මුදල (Net Payable):</span>
+                <span>ගෙවිය යුතු මුළු මුදල (Net Payable):</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-mono text-base">
-                  රු. {Math.max(0, totalCalculatedBill - 100).toLocaleString()}.00
+                  රු. {totalCalculatedBill.toLocaleString()}.00
                 </span>
               </div>
             </div>
@@ -511,7 +557,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                 <textarea
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="උදා: තවම අලුත්වැඩියාව සම්පූර්ණ නැත / නැවත පරීක්ෂා කළ යුතුය..."
+                  placeholder="උදා: තවම වැඩේ නිමවී නැත / අඩුපාඩු පවතී..."
                   className="w-full p-2 bg-white dark:bg-slate-900 border border-amber-300 rounded-lg text-xs"
                   rows={2}
                 />
@@ -520,7 +566,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                     onClick={handleRejectBill}
                     className="px-3 py-1.5 bg-rose-600 text-white font-bold text-xs rounded-lg cursor-pointer"
                   >
-                    නොවිසඳුනු බව තහවුරු කරන්න
+                    තවම අවසන් නැති බව තහවුරු කරන්න
                   </button>
                   <button
                     onClick={() => setShowRejectBox(false)}
@@ -533,6 +579,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
             ) : (
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={handleApproveBill}
                   className="py-3 px-4 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white rounded-2xl font-black text-xs shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
                 >
@@ -541,6 +588,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setShowRejectBox(true)}
                   className="py-3 px-4 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border-2 border-rose-300 dark:border-rose-800 rounded-2xl font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5"
                 >
@@ -552,7 +600,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
           </div>
         )}
 
-        {/* STAGE 5: 6-TIER RATINGS & REVIEW COMMENT */}
+        {/* STAGE 5: 6-TIER RATING BUTTONS & REVIEW COMMENT BOX */}
         {stage === 'feedback_and_rating' && (
           <div className="space-y-4 py-2 animate-fadeIn text-center">
             <div className="space-y-1">
@@ -606,75 +654,109 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
               onClick={handleSubmitReviewAndComplete}
               className="w-full py-3 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs rounded-2xl shadow-md cursor-pointer active:scale-95"
             >
-              සම්පූර්ණ කර ලදුපත ලබාගන්න (Complete & View Receipt)
+              සම්පූර්ණ කර නිල ඉන්වොයිසිය බලන්න (View Official Invoice)
             </button>
           </div>
         )}
 
-        {/* STAGE 6: OFFICIAL DIGITAL SETTLEMENT RECEIPT */}
+        {/* STAGE 6: OFFICIAL 9-DIGIT DIGITAL SETTLEMENT INVOICE */}
         {stage === 'receipt_view' && (
           <div className="space-y-4 animate-fadeIn">
-            <div className="bg-white dark:bg-[#071911] border-2 border-emerald-500/70 rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="bg-white dark:bg-[#071911] border-2 border-emerald-500 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 relative overflow-hidden">
               
-              <div className="text-center pb-3 border-b border-dashed border-emerald-300 dark:border-emerald-800">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto mb-1.5 shadow-sm">
-                  <ShieldCheck className="w-6 h-6" />
+              {/* Header with App Name & Logo */}
+              <div className="text-center pb-3 border-b-2 border-emerald-500 space-y-1.5">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-600 flex items-center justify-center text-white font-black text-sm shadow-md">
+                    සහය
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-base font-black text-slate-900 dark:text-white leading-none">
+                      සහය සේවා (Sahaya Sewa)
+                    </h2>
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase tracking-wider">
+                      නිල සේවා ගනුදෙනු ඉන්වොයිසිය
+                    </span>
+                  </div>
                 </div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  නිල සේවා ගනුදෙනු ලදුපත (Official Settlement Receipt)
-                </h3>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                  TXN: #TXN-{activePost.id?.slice(0, 8).toUpperCase() || '7A9B3C2D'} • {new Date().toLocaleDateString('si-LK')}
-                </p>
-              </div>
 
-              <div className="space-y-2 text-xs font-mono">
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
-                  <span>දැන්වීම් අංකය (Post Code):</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{activePost.postCode}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
-                  <span>දැන්වීම්කරු (Seeker):</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{activePost.userName}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
-                  <span>සහායකයා (Helper):</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">{activePost.confirmedBy || 'සහායක'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
-                  <span>සේවා ගාස්තුව:</span>
-                  <span className="font-bold">රු. {laborFee.toLocaleString()}.00</span>
-                </div>
-                {travelFee > 0 && (
-                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-emerald-700 dark:text-emerald-400">
-                    <span>ප්‍රවාහන දීමනාව (කි.මී. {(travelFee/100).toFixed(1)} × රු. 100):</span>
-                    <span className="font-bold">+ රු. {travelFee.toLocaleString()}.00</span>
-                  </div>
-                )}
-                {materialCost > 0 && (
-                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400">
-                    <span>අමතර බඩු වියදම්:</span>
-                    <span className="font-bold">+ රු. {materialCost.toLocaleString()}.00</span>
-                  </div>
-                )}
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800 text-emerald-700 dark:text-emerald-400">
-                  <span>ප්‍රසාද දීමනා වට්ටම (Signup Bonus):</span>
-                  <span className="font-bold">- රු. 100.00</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b-2 border-emerald-500 text-sm font-black text-slate-900 dark:text-white">
-                  <span>අතට ගෙවූ ශුද්ධ මුදල (Net Settled):</span>
-                  <span className="text-emerald-600 dark:text-emerald-400">
-                    රු. {Math.max(0, totalCalculatedBill - 100).toLocaleString()}.00
+                {/* 9-Digit Invoice Number in Big Bold Font-Mono */}
+                <div className="pt-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest block">
+                    බිල්පත් අංකය (INVOICE NO)
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black font-mono tracking-widest text-emerald-700 dark:text-emerald-300">
+                    #INV-{officialInvoiceNumber}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <span>ගනුදෙනුව සාර්ථකව පියවා ඇත (Settled & Verified)</span>
+              {/* Service Metadata Grid */}
+              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <div>
+                  <span className="text-slate-500 block">සහය වුණු පුද්ගලයා:</span>
+                  <strong className="text-emerald-700 dark:text-emerald-300 text-xs">
+                    {activePost.serviceBill?.helperName || activePost.confirmedBy || currentUser?.name || 'සහායක'}
+                  </strong>
                 </div>
-                <span className="text-[10px] font-mono bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
+                <div>
+                  <span className="text-slate-500 block">සහය ලැබූ පුද්ගලයා:</span>
+                  <strong className="text-slate-900 dark:text-white text-xs">
+                    {activePost.serviceBill?.seekerName || activePost.userName}
+                  </strong>
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                  <span className="text-slate-500 block">ආරම්භ කළ වේලාව:</span>
+                  <span className="text-slate-800 dark:text-slate-200">
+                    {activePost.serviceBill?.startedAt ? new Date(activePost.serviceBill.startedAt).toLocaleTimeString('si-LK') : '10:00 AM'}
+                  </span>
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                  <span className="text-slate-500 block">අවසන් කළ වේලාව / දිනය:</span>
+                  <span className="text-slate-800 dark:text-slate-200">
+                    {activePost.serviceBill?.endedAt ? new Date(activePost.serviceBill.endedAt).toLocaleTimeString('si-LK') : new Date().toLocaleTimeString('si-LK')} • {activePost.serviceBill?.date || new Date().toLocaleDateString('si-LK')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Itemized Table */}
+              <div className="space-y-2 text-xs font-mono">
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-1 font-bold text-slate-500 flex justify-between">
+                  <span>විස්තරය (Item Description)</span>
+                  <span>ගාස්තුව (Amount)</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {billRows.map((item, idx) => (
+                    <div key={item.id || idx} className="flex justify-between py-0.5 border-b border-dashed border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                      <span>{item.title || `අයිතමය ${idx + 1}`}</span>
+                      <span className="font-bold">රු. {(Number(item.amount) || 0).toLocaleString()}.00</span>
+                    </div>
+                  ))}
+
+                  {travelFee > 0 && (
+                    <div className="flex justify-between py-0.5 border-b border-dashed border-slate-100 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-bold">
+                      <span>ප්‍රවාහන දීමනාව ({activePost.transport})</span>
+                      <span>+ රු. {travelFee.toLocaleString()}.00</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between py-2 border-t-2 border-emerald-500 text-sm font-black text-slate-900 dark:text-white pt-2">
+                  <span>සම්පූර්ණ මුළු වියදම (TOTAL COST):</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 text-base">
+                    රු. {totalCalculatedBill.toLocaleString()}.00
+                  </span>
+                </div>
+              </div>
+
+              {/* Verification Stamp */}
+              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>තහවුරු කළ නිල ඉන්වොයිසිය (Search bar එකෙන් පරීක්ෂා කළ හැක)</span>
+                </div>
+                <span className="text-[9px] font-mono bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
                   VERIFIED ✓
                 </span>
               </div>
@@ -695,11 +777,3 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
     </div>
   );
 };
-
-function KeyIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-    </svg>
-  );
-}
