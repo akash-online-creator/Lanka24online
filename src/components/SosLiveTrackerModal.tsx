@@ -1579,11 +1579,13 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                     </button>
                   </div>
                 ))}
-                
               </div>
-            </div>
+            )}
+          </div>
 
-      {/* FOOTER BAR WITH DURESS & CLOSE */}
+        </div>
+
+        {/* FOOTER BAR WITH DURESS & CLOSE */}
         <div className="p-3.5 sm:p-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
             {isActive ? '🔴 සජීවී විකාශනය ක්‍රියාත්මකයි' : '⚪ විකාශනය අක්‍රියයි'}
