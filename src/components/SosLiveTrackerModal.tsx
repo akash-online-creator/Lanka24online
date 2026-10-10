@@ -18,229 +18,202 @@ import {
   Compass, 
   Gauge, 
   AlertTriangle, 
-  UserCheck, 
-  Users, 
-  MessageSquare, 
-  CheckCircle2, 
-  Clock, 
   X, 
-  ChevronRight, 
-  Eye, 
-  EyeOff, 
-  Activity, 
-  Flame, 
-  Stethoscope, 
-  Car, 
-  CarFront,
-  HelpCircle, 
-  Sparkles, 
-  Wifi, 
-  WifiOff, 
-  Lock, 
-  KeyRound, 
-  Send, 
-  Mic, 
-  MicOff, 
-  Maximize2, 
-  Minimize2, 
   RefreshCw, 
-  FileText, 
   Layers, 
-  History, 
-  Plus, 
-  Trash2, 
-  Bell, 
+  MessageCircle, 
+  Send,
+  Sparkles,
   Info,
+  Clock,
+  HeartHandshake,
+  Mic,
+  MicOff,
+  Home,
+  UserCheck,
   ShieldCheck,
+  Flame,
+  Plus,
+  Trash2,
+  KeyRound,
+  Bell,
+  Hourglass,
+  Smartphone,
+  Car,
+  PhoneCall,
+  Stethoscope,
   Building2,
-  PhoneCall
+  Lock,
+  Users,
+  HelpCircle
 } from 'lucide-react';
-import { User, LocationOption, Language } from '../types';
-import { db } from '../lib/firebase';
-import { 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  onSnapshot, 
-  arrayUnion, 
-  serverTimestamp,
-  getDoc 
-} from 'firebase/firestore';
+import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
+import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
 
-// -------------------------------------------------------------
-// Emergency Presets & Facility Directory (Sri Lanka Standard)
-// -------------------------------------------------------------
-export interface EmergencyServiceContact {
-  id: string;
-  name: string;
-  nameSi: string;
-  phone: string;
-  category: 'police' | 'hospital' | 'suwasariya' | 'fire' | 'tourist_police';
-  lat: number;
-  lng: number;
-  address: string;
-}
-
-export const SRI_LANKA_EMERGENCY_FACILITIES: EmergencyServiceContact[] = [
-  {
-    id: 'police-119',
-    name: 'Police Emergency Hotline',
-    nameSi: 'පොලිස් හදිසි ඇමතුම් ඒකකය',
-    phone: '119',
-    category: 'police',
-    lat: 6.9319,
-    lng: 79.8478,
-    address: 'Police Headquarters, Colombo 01',
-  },
-  {
-    id: 'suwasariya-1990',
-    name: '1990 Suwa Seriya Free Ambulance',
-    nameSi: '1990 සුවසැරිය ගිලන්රථ සේවය',
-    phone: '1990',
-    category: 'suwasariya',
-    lat: 6.9034,
-    lng: 79.8553,
-    address: 'National Ambulance Operations Center, Colombo',
-  },
-  {
-    id: 'katunayake-police',
-    name: 'Katunayake Police Station',
-    nameSi: 'කටුනායක පොලිස් ස්ථානය',
-    phone: '0112252222',
-    category: 'police',
-    lat: 7.1648,
-    lng: 79.8863,
-    address: 'Canada Friendship Rd, Katunayake',
-  },
-  {
-    id: 'ja-ela-police',
-    name: 'Ja-Ela Police Station',
-    nameSi: 'ජා-ඇල පොලිස් ස්ථානය',
-    phone: '0112236222',
-    category: 'police',
-    lat: 7.0784,
-    lng: 79.8916,
-    address: 'Negombo Road, Ja-Ela',
-  },
-  {
-    id: 'negombo-general-hospital',
-    name: 'Negombo District General Hospital',
-    nameSi: 'මීගමුව දිස්ත්‍රික් මහ රෝහල',
-    phone: '0312222261',
-    category: 'hospital',
-    lat: 7.2144,
-    lng: 79.8427,
-    address: 'Colombo Road, Negombo',
-  },
-  {
-    id: 'ragama-general-hospital',
-    name: 'Colombo North Teaching Hospital (Ragama)',
-    nameSi: 'රාගම ශික්ෂණ රෝහල',
-    phone: '0112958271',
-    category: 'hospital',
-    lat: 7.0286,
-    lng: 79.9242,
-    address: 'Hospital Road, Ragama',
-  },
-  {
-    id: 'fire-rescue-110',
-    name: 'Fire & Emergency Service',
-    nameSi: 'ගිනි නිවන හා මුදාගැනීමේ සේවය',
-    phone: '110',
-    category: 'fire',
-    lat: 6.9388,
-    lng: 79.8547,
-    address: 'Fire Service Dept, Colombo',
-  },
-  {
-    id: 'tourist-police-1912',
-    name: 'Tourist Police Division',
-    nameSi: 'සංචාරක පොලිස් ඒකකය',
-    phone: '1912',
-    category: 'tourist_police',
-    lat: 6.9271,
-    lng: 79.8412,
-    address: 'Sri Lanka Tourism Development Authority, Colombo 03',
-  },
-];
-
+// 1. Trusted Emergency Contact Model
 export interface TrustedContact {
   id: string;
   name: string;
   phone: string;
   relationship: string;
-  notifyOnStart: boolean;
 }
 
-export interface LiveLocationBreadcrumb {
+// 2. Sri Lanka Emergency Facility Interface (Police & Hospitals)
+export interface EmergencyFacility {
+  id: string;
+  nameSi: string;
+  nameEn: string;
+  category: 'police' | 'hospital';
+  phone: string;
+  altPhone?: string;
   lat: number;
   lng: number;
-  accuracy: number;
-  speed: number | null;
-  heading: number | null;
-  altitude: number | null;
-  timestamp: string;
-  batteryLevel: number | null;
-  isCharging: boolean | null;
-  batteryState?: 'normal' | 'low' | 'critical';
-  signalQuality?: 'excellent' | 'good' | 'poor' | 'searching';
+  addressSi: string;
 }
 
-export interface EmergencyChatMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  senderRole: 'victim' | 'trusted_contact' | 'responder' | 'system';
-  message: string;
-  timestamp: string;
-}
+export const SRI_LANKA_EMERGENCY_FACILITIES: EmergencyFacility[] = [
+  // Police Stations (Katunayake / Ja-Ela & Western Province Core)
+  {
+    id: 'pol_jaela',
+    nameSi: 'ජා-ඇල පොලිස් ස්ථානය',
+    nameEn: 'Ja-Ela Police Station',
+    category: 'police',
+    phone: '0112236222',
+    altPhone: '0112236522',
+    lat: 7.0782,
+    lng: 79.8920,
+    addressSi: 'මීගමුව පාර, ජා-ඇල',
+  },
+  {
+    id: 'pol_kandana',
+    nameSi: 'කඳාන පොලිස් ස්ථානය',
+    nameEn: 'Kandana Police Station',
+    category: 'police',
+    phone: '0112236224',
+    altPhone: '0112237222',
+    lat: 7.0475,
+    lng: 79.8961,
+    addressSi: 'මීගමුව පාර, කඳාන',
+  },
+  {
+    id: 'pol_katunayake',
+    nameSi: 'කටුනායක පොලිස් ස්ථානය',
+    nameEn: 'Katunayake Police Station',
+    category: 'police',
+    phone: '0112252222',
+    altPhone: '0112252651',
+    lat: 7.1648,
+    lng: 79.8863,
+    addressSi: 'කැනඩා මිත්‍රත්ව මාවත, කටුනායක',
+  },
+  {
+    id: 'pol_negombo',
+    nameSi: 'මීගමුව පොලිස් මූලස්ථානය',
+    nameEn: 'Negombo Police HQ',
+    category: 'police',
+    phone: '0312222222',
+    altPhone: '0312222223',
+    lat: 7.2088,
+    lng: 79.8358,
+    addressSi: 'කොළඹ පාර, මීගමුව',
+  },
+  {
+    id: 'pol_seeduwa',
+    nameSi: 'සීදූව පොලිස් ස්ථානය',
+    nameEn: 'Seeduwa Police Station',
+    category: 'police',
+    phone: '0112253222',
+    lat: 7.1264,
+    lng: 79.8803,
+    addressSi: 'මීගමුව පාර, සීදූව',
+  },
+  {
+    id: 'pol_ragama',
+    nameSi: 'රාගම පොලිස් ස්ථානය',
+    nameEn: 'Ragama Police Station',
+    category: 'police',
+    phone: '0112958222',
+    lat: 7.0286,
+    lng: 79.9242,
+    addressSi: 'දුම්රියපොළ පාර, රාගම',
+  },
+  {
+    id: 'pol_wattala',
+    nameSi: 'වත්තල පොලිස් ස්ථානය',
+    nameEn: 'Wattala Police Station',
+    category: 'police',
+    phone: '0112930222',
+    lat: 6.9892,
+    lng: 79.8924,
+    addressSi: 'මීගමුව පාර, වත්තල',
+  },
+  {
+    id: 'pol_hq_119',
+    nameSi: 'පොලිස් හදිසි ඇමතුම් ඒකකය (119)',
+    nameEn: 'Police Emergency Hotline (119)',
+    category: 'police',
+    phone: '119',
+    lat: 6.9319,
+    lng: 79.8478,
+    addressSi: 'පොලිස් මූලස්ථානය, කොළඹ 01',
+  },
+  {
+    id: 'pol_tourist',
+    nameSi: 'සංචාරක පොලිස් ඒකකය (1912)',
+    nameEn: 'Tourist Police (1912)',
+    category: 'police',
+    phone: '1912',
+    lat: 6.9271,
+    lng: 79.8412,
+    addressSi: 'කොල්ලුපිටිය, කොළඹ 03',
+  },
 
-export interface SosSessionSchema {
-  id: string;
-  sessionCode: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  userEmail: string;
-  userAvatar?: string;
-  vehicleNumber?: string;
-  vehicleType?: string;
-  status: 'active' | 'resolved' | 'duress_silent' | 'expired';
-  startTime: string;
-  updatedTime: string;
-  endTime?: string;
-  deactivationReason?: string;
-  emergencyType: 'medical' | 'accident' | 'threat' | 'fire' | 'harassment' | 'general';
-  customNotes?: string;
-  batteryLevel: number | null;
-  isCharging: boolean | null;
-  currentLat: number;
-  currentLng: number;
-  accuracy: number;
-  speed: number | null;
-  heading: number | null;
-  altitude: number | null;
-  breadcrumbs: LiveLocationBreadcrumb[];
-  chatMessages: EmergencyChatMessage[];
-  trustedContactsNotified: {
-    contactId: string;
-    phone: string;
-    name: string;
-    sentAt: string;
-    channel: 'sms' | 'whatsapp' | 'call';
-  }[];
-  audioClips?: {
-    id: string;
-    url: string;
-    timestamp: string;
-    durationSeconds: number;
-  }[];
-  expiresAtMs: number;
-}
+  // Emergency Hospitals
+  {
+    id: 'hosp_jaela',
+    nameSi: 'ජා-ඇල ප්‍රාදේශීය රෝහල',
+    nameEn: 'Ja-Ela Base Hospital',
+    category: 'hospital',
+    phone: '0112236261',
+    lat: 7.0795,
+    lng: 79.8935,
+    addressSi: 'රෝහල පාර, ජා-ඇල',
+  },
+  {
+    id: 'hosp_ragama',
+    nameSi: 'රාගම ශික්ෂණ රෝහල',
+    nameEn: 'Colombo North Teaching Hospital (Ragama)',
+    category: 'hospital',
+    phone: '0112958271',
+    altPhone: '0112958272',
+    lat: 7.0286,
+    lng: 79.9242,
+    addressSi: 'ශ්‍රී ලංකා වෛද්‍ය පීඨ පරිශ්‍රය, රාගම',
+  },
+  {
+    id: 'hosp_negombo',
+    nameSi: 'මීගමුව දිස්ත්‍රික් මහ රෝහල',
+    nameEn: 'Negombo District General Hospital',
+    category: 'hospital',
+    phone: '0312222261',
+    altPhone: '0312222262',
+    lat: 7.2144,
+    lng: 79.8427,
+    addressSi: 'කොළඹ පාර, මීගමුව',
+  },
+  {
+    id: 'hosp_suwasariya_1990',
+    nameSi: '1990 සුවසැරිය නොමිලේ ගිලන්රථ සේවය',
+    nameEn: '1990 Suwa Seriya Free Ambulance',
+    category: 'hospital',
+    phone: '1990',
+    lat: 6.9034,
+    lng: 79.8553,
+    addressSi: 'සුවසැරිය ජාතික මෙහෙයුම් මධ්‍යස්ථානය',
+  }
+];
 
-// -------------------------------------------------------------
-// Audio Alarm Synthesizer (Siren Alert Tone generator)
-// -------------------------------------------------------------
+// 3. Audio Alarm Synthesizer (Siren Alert Tone generator)
 let globalSirenCtx: AudioContext | null = null;
 let globalSirenOsc1: OscillatorNode | null = null;
 let globalSirenGain: GainNode | null = null;
@@ -258,16 +231,13 @@ function startHighDecibelSiren(): void {
       globalSirenCtx.resume();
     }
 
-    if (globalSirenOsc1) {
-      return; // Already running
-    }
+    if (globalSirenOsc1) return;
 
     const osc = globalSirenCtx.createOscillator();
     const gain = globalSirenCtx.createGain();
 
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(800, globalSirenCtx.currentTime);
-
     gain.gain.setValueAtTime(0.7, globalSirenCtx.currentTime);
 
     osc.connect(gain);
@@ -288,7 +258,7 @@ function startHighDecibelSiren(): void {
       toggleFreq = !toggleFreq;
     }, 400);
   } catch (e) {
-    console.warn('AudioContext siren failed to trigger:', e);
+    console.warn('AudioContext siren error:', e);
   }
 }
 
@@ -328,8 +298,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
     '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
   ];
-  
-  // 🗺️ දුර ගණනය කිරීමේ සූත්‍රය (Distance Calculator)
+
+  // 🗺️ දුර ගණනය කිරීමේ සූත්‍රය (Distance Calculator - Self-contained)
   const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371; // Earth radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -343,7 +313,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return parseFloat((R * c).toFixed(1));
   };
-
   // 1. Session States
   const [isActive, setIsActive] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -357,6 +326,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
   const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
+  const [customVehicleType, setCustomVehicleType] = useState<string>('');
+  const [isCloudSaved, setIsCloudSaved] = useState<boolean>(false);
+  const [showFeaturesGuideModal, setShowFeaturesGuideModal] = useState<boolean>(false);
 
   // 2. Realtime Telemetry
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>({
@@ -521,6 +493,10 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const syncInitialSessionToFirestore = useCallback(async (lat: number, lng: number) => {
     if (!sessionId) return;
     const nowIso = new Date().toISOString();
+    const effectiveVehicleType = vehicleType === '✨ වෙනත්' && customVehicleType.trim() 
+      ? customVehicleType.trim() 
+      : vehicleType;
+
     const sessionPayload: any = {
       id: sessionId,
       sessionCode: sessionCode,
@@ -528,10 +504,12 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       userName: currentUser?.name || 'පරිශීලක',
       userPhone: currentUser?.phone || '',
       vehicleNumber: vehicleNumber.trim() ? vehicleNumber.trim().toUpperCase() : undefined,
-      vehicleType: vehicleNumber.trim() ? vehicleType : undefined,
+      vehicleType: vehicleNumber.trim() ? effectiveVehicleType : undefined,
       status: 'active',
       startedAt: startedAt || nowIso,
       updatedAt: nowIso,
+      latitude: lat,
+      longitude: lng,
       lastLat: lat,
       lastLng: lng,
       accuracyMeters: accuracy || 10,
@@ -549,10 +527,11 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
     try {
       await createOrUpdateSosLiveSession(sessionPayload);
+      setIsCloudSaved(true);
     } catch (e) {
       console.warn('Silent Firestore sync error:', e);
     }
-  }, [sessionId, sessionCode, currentUser, accuracy, speedKmh, heading, batteryLevel, isCharging, locationName, emergencyNote, startedAt]);
+  }, [sessionId, sessionCode, currentUser, accuracy, speedKmh, heading, batteryLevel, isCharging, locationName, emergencyNote, startedAt, vehicleNumber, vehicleType, customVehicleType]);
 
   useEffect(() => {
     if (isOpen) {
@@ -569,7 +548,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   ) => {
     const liveLink = trackingLink;
     const primaryContact = trustedContacts[0];
-    const vehicleText = vehicleNumber.trim() ? ` (වාහනය: ${vehicleType} ${vehicleNumber.trim().toUpperCase()})` : '';
+    const effectiveVehicle = vehicleType === '✨ වෙනත්' && customVehicleType ? customVehicleType : vehicleType;
+    const vehicleText = vehicleNumber.trim() ? ` (වාහනය: ${effectiveVehicle} ${vehicleNumber.trim().toUpperCase()})` : '';
 
     let reasonSi = 'හදිසි අනතුරක්!';
     if (reason === 'panic_3tap') reasonSi = 'පැනික් බටන් 3-වරක් ක්ලික් කිරීම (Panic 3-Tap Trigger)';
@@ -581,15 +561,17 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       `🚨 *හදිසි සහය සේවා (Sahaya Sewa) ආපදා නිවේදනය!*\n` +
       `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
       `⚠️ *හේතුව:* ${reasonSi}\n` +
-      (vehicleNumber ? `🚖 *වාහන අංකය:* ${vehicleType} ${vehicleNumber.toUpperCase()}\n` : '') +
+      (vehicleNumber ? `🚖 *වාහන අංකය:* ${effectiveVehicle} ${vehicleNumber.toUpperCase()}\n` : '') +
       `📍 *ස්ථානය:* ${locationName}\n` +
+      `🌐 *GPS ඛණ්ඩාංක:* ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}\n` +
+      `🗺️ *Google Maps:* https://www.google.com/maps?q=${coords.lat},${coords.lng}\n` +
       `🔋 *බැටරිය:* ${batteryLevel !== null ? `${batteryLevel}%` : 'ප්‍රමාණවත්'}\n` +
       `🔗 *සජීවී GPS ගමන් සිතියම:* ${liveLink}\n\n` +
       `_කරුණාකර වහාම මෙම සබැඳිය විවෘත කර මා සිටින ස්ථානයට සහය එවන්න._`
     );
 
     const smsText = encodeURIComponent(
-      `SOS! ${reasonSi}. මා සිටින සජීවී ස්ථානය:${vehicleText} ${liveLink}`
+      `SOS! ${reasonSi}. මා සිටින සජීවී ස්ථානය:${vehicleText} ${liveLink} (Google Maps: https://maps.google.com/?q=${coords.lat},${coords.lng})`
     );
 
     if (primaryContact && primaryContact.phone) {
@@ -607,7 +589,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         window.location.href = `sms:${primaryContact.phone}?body=${smsText}`;
       }
     }
-  }, [trackingLink, trustedContacts, currentUser, vehicleNumber, vehicleType, locationName, batteryLevel, getLangText]);
+  }, [trackingLink, trustedContacts, currentUser, vehicleNumber, vehicleType, customVehicleType, locationName, batteryLevel, getLangText]);
 
   // Continuous Audio Recording (Evidence capture)
   const startAudioRecordingLoop = useCallback(() => {
@@ -637,8 +619,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
     setIsRecordingAudio(false);
   }, []);
-
-    // 🚨 Master SOS Start Function
+  // 🚨 Master SOS Start Function
   const handleStartSos = useCallback(async (customReason?: any) => {
     setIsLocating(true);
     setIsSavingAndLocking(true);
@@ -672,6 +653,10 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         breadcrumbsRef.current = [initialBreadcrumb];
         setBreadcrumbs([initialBreadcrumb]);
 
+        const effectiveVehicleType = vehicleType === '✨ වෙනත්' && customVehicleType.trim() 
+          ? customVehicleType.trim() 
+          : vehicleType;
+
         const initialSession: SosLiveSession = {
           id: activeSessionId,
           sessionCode: activeCode,
@@ -690,7 +675,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           isActive: true,
           status: 'active',
           vehicleNumber: vehicleNumber.trim().toUpperCase() || undefined,
-          vehicleType: vehicleNumber.trim() ? vehicleType : undefined,
+          vehicleType: vehicleNumber.trim() ? effectiveVehicleType : undefined,
           emergencyReason: customReason || 'manual',
           emergencyNote,
           createdAt: nowIso,
@@ -709,6 +694,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         setIsDuressActive(false);
         setIsLocating(false);
         setIsSavingAndLocking(false);
+        setIsCloudSaved(true);
         setSavingStatusStep('');
 
         // Haptic Feedback
@@ -763,6 +749,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     locationName,
     vehicleNumber,
     vehicleType,
+    customVehicleType,
     emergencyNote,
     recordedAudioUrl,
     startAudioRecordingLoop,
@@ -886,6 +873,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       };
     }
   }, [isActive, isDuressActive, sessionId, batteryLevel, isCharging, locationName, emergencyNote]);
+
   // 🗺️ Leaflet Map Setup
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
@@ -977,14 +965,13 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   // Toggle Loud Siren
   const handleToggleSiren = () => {
     if (isSirenOn) {
-      stopLoudPoliceSiren();
+      stopHighDecibelSiren();
       setIsSirenOn(false);
     } else {
-      playLoudPoliceSiren();
+      startHighDecibelSiren();
       setIsSirenOn(true);
     }
   };
-
   if (!isOpen) return null;
 
   return (
@@ -1014,14 +1001,28 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all cursor-pointer"
-            title="වසන්න"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 💡 SAFETY FEATURES GUIDE BUTTON */}
+            <button
+              type="button"
+              onClick={() => setShowFeaturesGuideModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-white/20 shadow-xs"
+              title="ආරක්ෂක විශේෂාංග මඟපෙන්වීම"
+            >
+              <HelpCircle className="w-4 h-4 text-amber-300" />
+              <span className="hidden sm:inline">විශේෂාංග මඟපෙන්වීම</span>
+              <span className="sm:hidden">උදව්</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all cursor-pointer"
+              title="වසන්න"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 🔒 MANDATORY LOCATION-SAVING LOCK GATE OVERLAY */}
@@ -1070,18 +1071,18 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
             
             <p className="text-xs text-slate-600 dark:text-slate-300 mb-3">
-              ඔබ ගමන් ගන්නා ත්‍රිරෝද රථය, ටැක්සි, බස් හෝ වෑන් රථයේ අංකය මෙහි ඇතුළත් කරන්න. හදිසි පණිවිඩය යනවිට මෙම අංකයද ඔබේ පවුලේ අයට හා පොලිසියට ලැබෙනු ඇත.
+              ඔබ ගමන් ගන්නා ත්‍රිරෝද රථය, ටැක්සි, බස්, වෑන්, මෝටර් සයිකල් හෝ වෙනත් වාහනයේ අංකය ඇතුළත් කරන්න. හදිසි පණිවිඩය යනවිට මෙම විස්තර ඔබගේ හිතවතුන්ට ලැබෙනු ඇත.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {/* Vehicle Type Selector */}
-              <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 sm:col-span-1">
-                {['🛺 ත්‍රිරෝද රථය', '🚕 කුලී රථය', '🚌 බස් රථය', '🚐 වෑන් රථය'].map((type) => (
+            <div className="space-y-2.5">
+              {/* Vehicle Type Selector (Full Options) */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+                {['🛺 ත්‍රිරෝද රථය', '🚕 කුලී රථය', '🚌 බස් රථය', '🚐 වෑන් රථය', '🏍️ මෝටර් සයිකලය', '✨ වෙනත්'].map((type) => (
                   <button
                     key={type}
                     type="button"
                     onClick={() => setVehicleType(type)}
-                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all cursor-pointer ${
                       vehicleType === type
                         ? 'bg-amber-500 text-slate-950 shadow-md font-black'
                         : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
@@ -1092,18 +1093,29 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 ))}
               </div>
 
+              {/* Custom Vehicle Type Input (If 'වෙනත්' selected) */}
+              {vehicleType === '✨ වෙනත්' && (
+                <input
+                  type="text"
+                  value={customVehicleType}
+                  onChange={(e) => setCustomVehicleType(e.target.value)}
+                  placeholder="වාහනයේ වර්ගය මෙහි ටයිප් කරන්න (උදා: ලොරි රථය, බෝට්ටුව, පාපැදිය)"
+                  className="w-full px-3.5 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white placeholder:text-slate-400"
+                />
+              )}
+
               {/* Number Plate Input */}
-              <div className="sm:col-span-2 relative">
+              <div className="relative">
                 <input
                   type="text"
                   value={vehicleNumber}
                   onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
-                  placeholder="උදා: WP ABH-1234 හෝ ND-5678"
+                  placeholder="වාහනයේ අංක තහඩුව (උදා: WP ABH-1234 හෝ ND-5678)"
                   className="w-full px-4 py-2 text-sm font-mono font-black uppercase rounded-xl bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900 dark:text-white placeholder:text-slate-400"
                 />
                 {vehicleNumber && (
                   <span className="absolute right-3 top-2.5 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                    ලියාපදිංචි අංකය සක්‍රියයි ✓
+                    අංකය සක්‍රියයි ✓
                   </span>
                 )}
               </div>
@@ -1129,7 +1141,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
               {/* Action Buttons: Siren & SOS Toggle */}
               <div className="flex items-center gap-2 shrink-0">
-                {/* Loud Police Siren Button */}
                 <button
                   type="button"
                   onClick={handleToggleSiren}
@@ -1144,7 +1155,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                   <span>{isSirenOn ? 'සයිරන් Off' : 'සයිරන් On'}</span>
                 </button>
 
-                {/* Big ON / OFF Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1207,8 +1217,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               </div>
             )}
           </div>
-
-          {/* 📡 2.5 LIVE LOCATION SHARING CARD */}
+          {/* 📡 2.5 LIVE LOCATION SHARING CARD (Cloud Sync Guarded) */}
           <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-emerald-500/80 shadow-md space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1217,8 +1226,12 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                   සජීවී GPS ලොකේෂන් එක ශෙයා කරන්න (Share Live Tracking)
                 </h4>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300">
-                {isActive ? '🔴 සජීවීව ක්‍රියාත්මකයි' : '🟢 ගමනට පෙර ශෙයා කරන්න'}
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border transition-all ${
+                isCloudSaved || isActive
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300'
+                  : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-300 animate-pulse'
+              }`}>
+                {isCloudSaved || isActive ? '✅ Cloud සබැඳිය සූදානම්' : '⏳ Cloud වෙත තැන්පත් වෙමින්...'}
               </span>
             </div>
 
@@ -1226,96 +1239,124 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               ඔබ රාත්‍රී හෝ අනාරක්ෂිත ගමනක් යාමට පෙර මෙම සජීවී සිතියම් ලින්ක් එක ඔබගේ පවුලේ අයට හෝ මිතුරන්ට යවන්න. ඔවුන්ට සිතියම මත ඔබ ගමන් කරන මාර්ගය සජීවීව බලාගත හැක.
             </p>
 
-            {/* Tracking Link display & Copy button */}
-            <div className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-between gap-2">
-              <div className="truncate text-xs font-mono text-slate-700 dark:text-slate-300 select-all">
-                {trackingLink}
+            {/* Cloud Sync Gate: Block link display until Cloud confirms save */}
+            {!isCloudSaved && !isActive ? (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center gap-2.5 text-xs font-bold text-amber-700 dark:text-amber-300 animate-pulse">
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
+                <span>GPS පිහිටීම Cloud එකට සුරකිමින් පවතී... තත්පරයක් රැඳී සිටින්න.</span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  syncInitialSessionToFirestore(currentCoords.lat, currentCoords.lng);
-                  if (navigator.clipboard) {
-                    navigator.clipboard.writeText(trackingLink);
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 3000);
-                  }
-                }}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all active:scale-95 shadow cursor-pointer"
-              >
-                {isCopied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>පිටපත් විය!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Link</span>
-                  </>
-                )}
-              </button>
-            </div>
+            ) : (
+              <>
+                {/* Tracking Link display & Copy button */}
+                <div className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-between gap-2">
+                  <div className="truncate text-xs font-mono text-slate-700 dark:text-slate-300 select-all">
+                    {trackingLink}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(trackingLink);
+                        setIsCopied(true);
+                        setTimeout(() => setIsCopied(false), 3000);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all active:scale-95 shadow cursor-pointer"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>පිටපත් විය!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
 
-            {/* Quick Share Buttons: WhatsApp, SMS, Direct 119/1990 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              {/* WhatsApp Share Button with Vehicle Plate Info */}
-              <button
-                type="button"
-                onClick={() => {
-                  syncInitialSessionToFirestore(currentCoords.lat, currentCoords.lng);
-                  const msg = encodeURIComponent(
-                    `🚨 *හදිසි ආපදා ඇමතුමයි (SOS EMERGENCY ALERT)*\n` +
-                    `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
-                    (vehicleNumber ? `🚖 *වාහනය:* ${vehicleType} - ${vehicleNumber.toUpperCase()}\n` : '') +
-                    `📍 *ස්ථානය:* ${locationName || 'කටුනායක / ජා-ඇල'}\n` +
-                    `🔋 *බැටරිය:* ${batteryLevel !== null ? `${batteryLevel}%` : 'ප්‍රමාණවත්'}\n` +
-                    `⚡ *හදිසි පණිවිඩය:* ${emergencyNote}\n\n` +
-                    `🔴 *සජීවී සිතියම් සබැඳිය (Live Tracking Link):*\n${trackingLink}\n\n` +
-                    `කරුණාකර මා සිටින තැන සිතියමෙන් බලා වහාම උදව් කරන්න!`
-                  );
-                  window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
-                }}
-                className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
-              >
-                <span>💬 WhatsApp යවන්න</span>
-              </button>
+                {/* Quick Share Buttons: WhatsApp, SMS, Any App, Direct 119/1990 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  {/* WhatsApp Share Button with Detailed GPS Coordinates */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const effectiveVehicle = vehicleType === '✨ වෙනත්' && customVehicleType ? customVehicleType : vehicleType;
+                      const msg = encodeURIComponent(
+                        `🚨 *හදිසි ආපදා ඇමතුමයි (SOS EMERGENCY ALERT)*\n` +
+                        `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
+                        (vehicleNumber ? `🚖 *වාහනය:* ${effectiveVehicle} (${vehicleNumber.toUpperCase()})\n` : '') +
+                        `📍 *ස්ථානය:* ${locationName || 'කටුනායක / ජා-ඇල'}\n` +
+                        `🌐 *GPS ඛණ්ඩාංක:* ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)} (±${accuracy || 10}m)\n` +
+                        `🗺️ *Google Maps:* https://www.google.com/maps?q=${currentCoords.lat},${currentCoords.lng}\n` +
+                        `🔋 *බැටරිය:* ${batteryLevel !== null ? `${batteryLevel}\%${isCharging ? '⚡ (චාර්ජ් වෙමින්)' : ''}` : 'ප්‍රමාණවත්'}\n` +
+                        `⚡ *හදිසි පණිවිඩය:* ${emergencyNote}\n\n` +
+                        `🔴 *සජීවී සිතියම් සබැඳිය (Sahaya Sewa Live Tracking):*\n${trackingLink}\n\n` +
+                        `කරුණාකර මා සිටින තැන සිතියමෙන් බලා වහාම උදව් කරන්න!`
+                      );
+                      window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+                    }}
+                    className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
+                  >
+                    <span>💬 WhatsApp</span>
+                  </button>
 
-              {/* SMS Share Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  syncInitialSessionToFirestore(currentCoords.lat, currentCoords.lng);
-                  const smsBody = encodeURIComponent(
-                    `SOS! මට හදිසි උදව් අවශ්‍යයි. මම සිටින තැන සජීවීව බලන්න: ${trackingLink}${
-                      vehicleNumber ? ` (වාහනය: ${vehicleType}${vehicleNumber.toUpperCase()})` : ''
-                    }`
-                  );
-                  window.open(`sms:?body=${smsBody}`, '_self');
-                }}
-                className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
-              >
-                <span>📱 SMS යවන්න</span>
-              </button>
+                  {/* SMS Share Button with Coordinates */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const effectiveVehicle = vehicleType === '✨ වෙනත්' && customVehicleType ? customVehicleType : vehicleType;
+                      const smsBody = encodeURIComponent(
+                        `SOS! මට හදිසි උදව් අවශ්‍යයි. මගේ සජීවී ස්ථානය: ${trackingLink} (ස්ථානය: ${locationName} | GPS: ${currentCoords.lat.toFixed(5)},${currentCoords.lng.toFixed(5)})${
+                          vehicleNumber ? ` | වාහනය: ${effectiveVehicle}${vehicleNumber.toUpperCase()}` : ''
+                        }`
+                      );
+                      window.open(`sms:?body=${smsBody}`, '_self');
+                    }}
+                    className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
+                  >
+                    <span>📱 SMS</span>
+                  </button>
 
-              {/* 119 Police Hotline Button */}
-              <a
-                href="tel:119"
-                className="p-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all"
-              >
-                <PhoneCall className="w-3.5 h-3.5" />
-                <span>119 පොලිසිය</span>
-              </a>
+                  {/* Any App (Native Share Sheet) */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const effectiveVehicle = vehicleType === '✨ වෙනත්' && customVehicleType ? customVehicleType : vehicleType;
+                      const shareData = {
+                        title: '🚨 හදිසි ආපදා සජීවී ලොකේෂන් සබැඳිය',
+                        text: `SOS හදිසි ආපදාවක පසුවෙමි. මගේ සජීවී ස්ථානය නිරීක්ෂණය කරන්න:${vehicleNumber ? ` (වාහනය: ${effectiveVehicle}${vehicleNumber.toUpperCase()})` : ''}`,
+                        url: trackingLink,
+                      };
+                      if (navigator.share) {
+                        try {
+                          await navigator.share(shareData);
+                        } catch {}
+                      } else if (navigator.clipboard) {
+                        navigator.clipboard.writeText(trackingLink);
+                        setIsCopied(true);
+                        setTimeout(() => setIsCopied(false), 3000);
+                      }
+                    }}
+                    className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>වෙනත් Apps</span>
+                  </button>
 
-              {/* 1990 Suwasariya Ambulance Button */}
-              <a
-                href="tel:1990"
-                className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all"
-              >
-                <Stethoscope className="w-3.5 h-3.5" />
-                <span>1990 සුවසැරිය</span>
-              </a>
-            </div>
+                  {/* 119 Police Hotline Button */}
+                  <a
+                    href="tel:119"
+                    className="p-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>119 පොලිසිය</span>
+                  </a>
+                </div>
+              </>
+            )}
           </div>
 
           {/* 🗺️ 3. INTERACTIVE LIVE MAP & SATELLITE SWITCHER */}
@@ -1332,9 +1373,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setMapLayer('street')}
+                  onClick={() => setMapLayer('osm')}
                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                    mapLayer === 'street'
+                    mapLayer === 'osm'
                       ? 'bg-rose-600 text-white font-black'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -1394,7 +1435,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       👮 {station.nameSi}
                     </span>
                     <span className="text-[11px] text-slate-500 block truncate">
-                      {station.address}
+                      {station.addressSi}
                     </span>
                     <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
                       දුර: ~{station.distanceKm} km
@@ -1421,7 +1462,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       🏥 {hospital.nameSi}
                     </span>
                     <span className="text-[11px] text-slate-500 block truncate">
-                      {hospital.address}
+                      {hospital.addressSi}
                     </span>
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                       දුර: ~{hospital.distanceKm} km
@@ -1438,7 +1479,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               ))}
             </div>
           </div>
-
           {/* 👥 5. TRUSTED CONTACTS MANAGEMENT (Strictly Real Contacts - Zero Dummy Data) */}
           <div className="p-4 sm:p-5 rounded-3xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
@@ -1616,7 +1656,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </div>
               )}
 
-              {/* PIN input tabs or field */}
+              {/* PIN input */}
               <div className="space-y-3">
                 <input
                   type="password"
@@ -1630,7 +1670,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                   className="w-full text-center tracking-widest text-lg font-mono font-black p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
                 />
 
-                {/* Alternate password or NIC verification if PIN forgotten */}
                 <div className="text-[11px] text-slate-500 text-center">
                   PIN අමතක නම්: NIC අංකය හෝ මුරපදය යොදා විසඳිය හැක
                 </div>
@@ -1660,7 +1699,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       setShowDuressModal(false);
                       handleStopSos(false);
                     } else {
-                      // Check user password / NIC fallback
                       const uPass = (currentUser as any)?.password;
                       const uNic = (currentUser as any)?.nic;
                       const inputNic = enteredPin;
@@ -1682,6 +1720,74 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                   තහවුරු කර Off කරන්න
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 💡 SAFETY FEATURES AWARENESS & GUIDE MODAL */}
+        {showFeaturesGuideModal && (
+          <div className="absolute inset-0 z-[160] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                  <h4 className="text-base font-black text-slate-900 dark:text-white">
+                    ආරක්ෂක විශේෂාංග මඟපෙන්වීම
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFeaturesGuideModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-700 dark:text-slate-300">
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-1">
+                  <span className="font-black text-emerald-800 dark:text-emerald-300 block">
+                    🛰️ 1. සජීවී GPS ගමන් මඟ (Live GPS Breadcrumbs):
+                  </span>
+                  ඔබ ගමන් කරන සැබෑ මාර්ගය තත්පරයෙන් තත්පරය සිතියම මත සජීවීව ඇඳේ. දුරකථනයේ බැටරි මට්ටම, ගමන් වේගය සහ GPS නිරවද්‍යතාව සජීවීව Cloud හරහා හිතවතුන්ට බලාගත හැක.
+                </div>
+
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-1">
+                  <span className="font-black text-amber-800 dark:text-amber-300 block">
+                    🚖 2. වාහන අංක පලිහ (Vehicle Registration Shield):
+                  </span>
+                  ඔබ ගමන් ගන්නා ත්‍රිරෝද, කුලී රථ, බස්, වෑන්, මෝටර් සයිකල් හෝ වෙනත් ඕනෑම වාහනයක අංක තහඩුව ඇතුළත් කළ හැක. WhatsApp / SMS හදිසි පණිවිඩය සමඟ මෙම වාහන විස්තරද ක්ෂණිකව යැවේ.
+                </div>
+
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-800 space-y-1">
+                  <span className="font-black text-rose-800 dark:text-rose-300 block">
+                    👮 3. ආසන්නතම පොලිස් හා රෝහල් රේඩාර් (Emergency Radar):
+                  </span>
+                  ඔබ සිටින ස්ථානයේ සිට ආසන්නතම පොලිස් ස්ථාන හා රෝහල් දුර අනුව පෙළගස්වා ඇති අතර, තනි ක්ලික් එකකින් (1-Tap Call) සෘජුවම ඇමතිය හැක.
+                </div>
+
+                <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-300 dark:border-slate-700 space-y-1">
+                  <span className="font-black text-rose-600 dark:text-rose-400 block">
+                    🔐 4. රහසිගත ආරක්ෂක කේතය (Duress PIN - 9999):
+                  </span>
+                  යම් අයෙකු බලහත්කාරයෙන් ඔබ ලවා SOS එක Off කරවීමට උත්සාහ කළහොත්, <span className="font-mono font-black text-white bg-slate-900 px-1.5 py-0.5 rounded">9999</span> යොදන්න. එවිට තිරය මත SOS එක Off වූ බව බොරුවට පෙන්වා, රහසිගතව පසුබිමින් දිගටම සජීවී GPS විකාශනය කරයි. (සාමාන්‍ය ආරක්ෂිතව විසඳීමට <span className="font-mono font-black text-emerald-600">1234</span> හෝ ඔබගේ Password භාවිත කරන්න).
+                </div>
+
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 space-y-1">
+                  <span className="font-black text-blue-800 dark:text-blue-300 block">
+                    📢 5. සයිරන් සහ හඬ පටිගත කිරීම (Siren & Audio Evidence):
+                  </span>
+                  අවදානම් අවස්ථාවකදී සොර සතුරන් බිය ගැන්වීමට උස් හඬින් යුත් සයිරන් නාදයක් නිකුත් කළ හැකි අතර, පසුබිමේ ඇති සංවාද සාක්ෂි ලෙස ස්වයංක්‍රීයව පටිගත වේ.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowFeaturesGuideModal(false)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl transition-all cursor-pointer shadow-md"
+              >
+                තේරුම් ගත්තා (Close Guide)
+              </button>
             </div>
           </div>
         )}
