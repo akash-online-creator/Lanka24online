@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -93,6 +93,9 @@ class LocalAssetServer {
   }
 }
 
+// ==============================================================
+// 🚨 24/7 BACKGROUND RADAR TASK HANDLER (PERSISTENT EXECUTION)
+// ==============================================================
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(SahayaForegroundTaskHandler());
@@ -197,7 +200,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     super.dispose();
   }
-
   Future<void> _loadAppContent() async {
     try {
       final String htmlContent = await rootBundle.loadString('assets/web/index.html');
@@ -288,6 +290,15 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             _fetchAndInjectCurrentLocation();
           }
         },
+      )
+      ..addJavaScriptChannel(
+        'SahayaNativeAlertChannel',
+        onMessageReceived: (JavaScriptMessage message) async {
+          debugPrint('🚨 [SahayaNativeAlertChannel] Event received: ${message.message}');
+          if (message.message == 'PLAY_SIREN' || message.message.startsWith('TRIGGER_RED_ALERT')) {
+            _triggerEmergencySirenNotification(message.message);
+          }
+        },
       );
 
     if (controller.platform is AndroidWebViewController) {
@@ -307,8 +318,20 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     _controller = controller;
   }
 
+  void _triggerEmergencySirenNotification(String payload) {
+    try {
+      FlutterForegroundTask.updateService(
+        notificationTitle: '🚨 රතු එළිය - හදිසි ආපදා අනතුරු ඇඟවීම!',
+        notificationText: 'ඔබගේ කලාපයේ හදිසි ආපදාවක් වාර්තා වී ඇත. වහාම පරීක්ෂා කරන්න!',
+      );
+    } catch (e) {
+      debugPrint('Siren update error: $e');
+    }
+  }
+
   Future<void> _requestAndStartBackgroundServices() async {
     try {
+      // 1. Location Permissions (Foreground & Background "Always Allow")
       final locStatus = await Permission.location.request();
       if (locStatus.isGranted) {
         try {
@@ -316,8 +339,24 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         } catch (_) {}
       }
 
+      // 2. Notification Permissions (Android 13+)
       await Permission.notification.request();
 
+      // 3. System Alert Window (Display over other apps for emergency popup)
+      try {
+        if (!await Permission.systemAlertWindow.isGranted) {
+          await Permission.systemAlertWindow.request();
+        }
+      } catch (_) {}
+
+      // 4. Exact Alarm Permission (for zero-latency siren triggering)
+      try {
+        if (!await Permission.scheduleExactAlarm.isGranted) {
+          await Permission.scheduleExactAlarm.request();
+        }
+      } catch (_) {}
+
+      // 5. Unrestricted Battery / Ignore Battery Optimization
       try {
         if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
           await FlutterForegroundTask.requestIgnoreBatteryOptimization();
@@ -382,15 +421,17 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   void _initForegroundService() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'sahaya_24x7_radar',
-        channelName: 'සහය සේවා 24/7 ආරක්ෂක සේවය',
-        channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ළඟම පිහිටි සේවාවන් පැය 24 පුරා අධීක්ෂණය කරයි.',
-        channelImportance: NotificationChannelImportance.LOW,
-        priority: NotificationPriority.LOW,
+        channelId: 'sahaya_emergency_red_alert',
+        channelName: 'රතු එළිය හදිසි ආපදා සයිරන් (Red Alert)',
+        channelDescription: 'හදිසි ආපදා, රතු එළිය අනතුරු ඇඟවීම් සහ ජීවිතාරක්ෂක පණිවුඩ සයිරන් නාදය සමඟින් පැය 24 පුරා අධීක්ෂණය කරයි.',
+        channelImportance: NotificationChannelImportance.MAX,
+        priority: NotificationPriority.MAX,
+        enableVibration: true,
+        playSound: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
-        playSound: false,
+        playSound: true,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(15000),
