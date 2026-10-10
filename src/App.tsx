@@ -131,91 +131,98 @@ export const App: React.FC = () => {
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
-      console.error('Delete post error in Firestore:', err);
+      console.warn('Backend delete sync note:', err);
     }
   }, [helpPosts]);
 
-  // Handle live window sync events for post deletions
-  useEffect(() => {
-    const handleSync = () => {
-      setHelpPosts((prev) => filterNonDeletedPosts(prev || []));
-    };
-    window.addEventListener('sahaya_post_deleted', handleSync);
-    window.addEventListener('storage', handleSync);
-    return () => {
-      window.removeEventListener('sahaya_post_deleted', handleSync);
-      window.removeEventListener('storage', handleSync);
-    };
-  }, []);
-
-  // Initialize FCM Push Notifications for Native APK & Web Push
+  // Persist User Session to LocalStorage
   useEffect(() => {
     if (currentUser) {
-      initFcmNotificationService(currentUser).catch((err) => {
-        console.warn('FCM Push Notification init notice:', err);
-      });
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('sahaya_sewa_session_user');
     }
   }, [currentUser]);
 
-  // Real-time Database Sync (Firestore Real-time Listeners)
+  // Global Event Listener for Post Deletions triggered across components
   useEffect(() => {
-    const unsubUsers = subscribeToUsers((firestoreUsers) => {
-      if (firestoreUsers && firestoreUsers.length > 0) {
-        setUsers((prev) => deduplicateUsers([...prev, ...firestoreUsers]));
-      }
-    });
-
-    const unsubPosts = subscribeToHelpPosts((firestorePosts) => {
-      if (firestorePosts && firestorePosts.length > 0) {
-        setHelpPosts((prev) => {
-          const merged = [...prev];
-          firestorePosts.forEach((fp) => {
-            const index = merged.findIndex((p) => p.id === fp.id);
-            if (index !== -1) {
-              merged[index] = fp;
-            } else {
-              merged.push(fp);
-            }
-          });
-          return filterNonDeletedPosts(merged);
-        });
-      }
-    });
-
-    const unsubAlerts = subscribeToRedAlerts((firestoreAlerts) => {
-      if (firestoreAlerts) {
-        setRedAlerts(firestoreAlerts);
-      }
-    });
-
-    const unsubIssues = subscribeToIssuesFromFirestore((firestoreIssues) => {
-      if (firestoreIssues) {
-        setIssues(firestoreIssues);
-      }
-    });
-
+    const handleGlobalPostDeleted = () => {
+      setHelpPosts((prev) => filterNonDeletedPosts(prev));
+    };
+    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
     return () => {
-      unsubUsers();
-      unsubPosts();
-      unsubAlerts();
-      unsubIssues();
+      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
     };
   }, []);
 
-  // Sync Current User with Realtime User Updates
+  // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
-    if (currentUser) {
-      const updated = users.find((u) => u.id === currentUser.id);
-      if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
-        setCurrentUser(updated);
-        try {
-          localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updated));
-        } catch {}
+    // Initialize FCM & Background Push Worker
+    const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
 
-        if (updated.status === 'pending' && activeView === 'dashboard') {
-          setActiveView('pending');
-        } else if (updated.status === 'approved' && activeView === 'pending') {
-          setActiveView('dashboard');
+    const unsubscribeUsers = subscribeToUsers((dbUsers) => {
+      if (dbUsers && dbUsers.length > 0) {
+        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+      }
+    });
+
+    const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
+      // Purge stale local memory cache
+      try {
+        localStorage.removeItem('sahaya_help_posts');
+      } catch {}
+
+      if (dbPosts) {
+        // Firestore is the authoritative source of truth: honor all deletions permanently
+        const sanitized = filterNonDeletedPosts(dbPosts);
+        setHelpPosts(sanitized);
+      }
+    });
+
+    const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
+      setRedAlerts(alerts || []);
+    });
+
+    const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
+      setIssues(dbIssues || []);
+    });
+
+    return () => {
+      unsubscribeFcm?.();
+      unsubscribeUsers?.();
+      unsubscribePosts?.();
+      unsubscribeAlerts?.();
+      unsubscribeIssues?.();
+    };
+  }, []);
+
+  // Synchronize currentUser with real-time user state changes and manage auto-redirects
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const freshUser = users.find(
+      (u) =>
+        u.id === currentUser.id ||
+        (u.userId && u.userId === currentUser.userId) ||
+        (u.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic || ''))
+    );
+
+    if (freshUser) {
+      const isRoleDifferent = freshUser.role !== currentUser.role;
+      const isStatusDifferent = freshUser.status !== currentUser.status;
+      const isCreditsDifferent = freshUser.credits !== currentUser.credits;
+
+      if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
+        setCurrentUser(freshUser);
+
+        if (freshUser.status === 'blocked') {
+          handleLogout();
+          alert('ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.');
+          return;
+        }
+
+        if (isStatusDifferent && activeView === 'pending' && freshUser.status === 'approved') {
+          setActiveView(freshUser.role === 'admin' || freshUser.role === 'super_admin' ? 'admin' : 'dashboard');
         }
       }
     }
