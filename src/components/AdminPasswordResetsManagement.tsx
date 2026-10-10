@@ -85,10 +85,9 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
     const userNic = matchedUser.nic || matchedUser.nicNumber || req.nic;
     const msg = `සහය සේවා (Sahaya Sewa) - මුරපද යාවත්කාලීන කිරීම
 
-ගරු ${matchedUser.name},
+හිතවත් ${matchedUser.name},
 ඔබගේ ගිණුමට ප්‍රවේශ වීම සඳහා තාවකාලික මුරපදය සකසා ඇත.
 
-• ජාතික හැඳුනුම්පත් අංකය: ${userNic}
 • තාවකාලික මුරපදය: ${tempPass}
 
 කරුණාකර මෙම තාවකාලික මුරපදය භාවිතයෙන් පද්ධතියට ලොග් වන්න. ලොග් වූ වහාම ඔබගේ නව ස්ථිර මුරපදය ඇතුළත් කිරීමට විමසනු ඇත.
@@ -112,10 +111,10 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
 
     const msg = `සහය සේවා (Sahaya Sewa) - දැනුම්දීම
 
-ගරු ${req.name || matchedUser?.name || 'සාමාජිකයා'},
+හිතවත්  ${req.name || matchedUser?.name || 'සාමාජිකයා'},
 ඔබ විසින් ඉදිරිපත් කළ මුරපදය වෙනස් කිරීමේ ඉල්ලීමේ තොරතුරු පරීක්ෂා කිරීමේදී, ඔබ ලබා දුන් විස්තර (NIC: ${userNic}) අපගේ පද්ධතියේ ලියාපදිංචි වී ඇති ගිණුමේ තොරතුරු සමඟ නොගැළපෙන බව (වැරදි බව) නිරීක්ෂණය විය.
 
-කරුණාකර ඔබ ලියාපදිංචි වීමේදී ලබා දුන් සත්‍ය ජාතික හැඳුනුම්පත් අංකය (NIC) සහ දුරකථන අංකය නිවැරදිව ඇතුළත් කර නැවත ඉල්ලීමක් යොමු කරන්න.
+කරුණාකර ඔබ ලියාපදිංචි වීමේදී ලබා දුන් සත්‍ය ජාතික හැඳුනුම්පත් අංකය (NIC), දුරකථන අංකය හා සම්පුර්ණ නම නිවැරදිව ඇතුළත් කර නැවත ඉල්ලීමක් යොමු කරන්න.
 
 ප්‍රවේශ වීමට: https://supporservice.online
 
