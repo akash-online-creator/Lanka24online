@@ -330,7 +330,17 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
   });
   const [startedAt, setStartedAt] = useState<string>('');
-  const [emergencyNote, setEmergencyNote] = useState<string>(PRESET_MESSAGES[0]);
+    // පෙරනිමි හදිසි කෙටි පණිවිඩ ලැයිස්තුව
+  const PRESET_MESSAGES = [
+    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!',
+    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
+    '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
+    '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
+  ];
+
+  const [emergencyNote, setEmergencyNote] = useState<string>(
+    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!'
+  );
   const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
   const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
