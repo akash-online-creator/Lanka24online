@@ -42,6 +42,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<'idle' | 'scanning' | 'success' | 'denied' | 'error'>('idle');
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
+  const [isAutoProceeding, setIsAutoProceeding] = useState(false);
 
   // Process Coordinates from GPS
   const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
@@ -83,7 +84,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     }
   };
 
-  // Check initial permissions
+  // Check initial permissions & Trigger Auto-Request
   useEffect(() => {
     // 1. Notification Permission Check
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -115,7 +116,29 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         }
       }).catch(() => {});
     }
+
+    // 🚀 Auto-Request both permissions on screen load
+    const autoReqTimer = setTimeout(() => {
+      handleAllowBothPermissions();
+    }, 600);
+
+    return () => clearTimeout(autoReqTimer);
   }, []);
+
+  // 🚀 Auto-Proceed as soon as BOTH permissions are granted
+  useEffect(() => {
+    if (locationGranted && notifGranted && !isAutoProceeding) {
+      setIsAutoProceeding(true);
+      setStatusType('success');
+      setStatusMessage('✅ අවසර 2ම සාර්ථකව සක්‍රීය විය! ආරක්ෂිතව ඇප් එකට පිවිසෙමින් පවතී...');
+
+      const proceedTimer = setTimeout(() => {
+        handleFinishAndProceed();
+      }, 1200);
+
+      return () => clearTimeout(proceedTimer);
+    }
+  }, [locationGranted, notifGranted, isAutoProceeding, resolvedLocation]);
 
   // Request Notification Permission
   const handleRequestNotification = async () => {
@@ -201,6 +224,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   };
 
   const handleFinishAndProceed = () => {
+    if (!locationGranted || !notifGranted) {
+      setStatusType('denied');
+      setStatusMessage('⚠️ ඔබගේ ආරක්ෂාව උදෙසා GPS සහ දැනුම්දීම් අවසර 2ම සක්‍රීය කිරීම අනිවාර්ය වේ.');
+      return;
+    }
     localStorage.setItem('sahaya_permissions_setup_completed', 'true');
     stopEmergencySiren();
     onProceedToLogin(resolvedLocation || undefined);
@@ -403,18 +431,30 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           </div>
         </div>
 
-        {/* Bottom Proceed Action Button */}
+        {/* Bottom Proceed Action Button (Strictly Locked Until Both Active) */}
         <div className="pt-2 border-t border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center sm:text-left">
-            ස්ථානය සහ දැනුම්දීම් පසුවද වෙනස් කළ හැක.
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center sm:text-left flex items-center gap-1">
+            <Lock className="w-3 h-3 text-amber-500 inline shrink-0" />
+            <span>ආරක්ෂිත හේතුන් මත අවසර 2ම නොමැතිව ඇප් එකට පිවිසිය නොහැක.</span>
           </p>
 
           <button
             type="button"
             onClick={handleFinishAndProceed}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 transition-all"
+            disabled={!isBothComplete || isAutoProceeding}
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all ${
+              isBothComplete
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95 animate-pulse'
+                : 'bg-slate-200 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
+            }`}
           >
-            <span>ඇප් එකට පිවිසෙන්න (Proceed)</span>
+            <span>
+              {isAutoProceeding
+                ? 'ඇප් එකට පිවිසෙමින් පවතී... 🚀'
+                : isBothComplete
+                ? 'ඇප් එකට පිවිසෙන්න (Proceed)'
+                : '🔒 අවසර 2ම අවශ්‍යයි (Locked)'}
+            </span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
