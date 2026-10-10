@@ -56,7 +56,6 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { User, LocationOption, Language } from '../types';
-import { highAccuracyGps } from '../lib/highAccuracyGps';
 import { db } from '../lib/firebase';
 import { 
   doc, 
@@ -694,27 +693,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         setIsLocating(false);
       }
     };
-
-    // Obtain High-Accuracy GPS
-    try {
-      const bestPos = await highAccuracyGps.getHighAccuracyPosition({
-        timeoutMs: 12000,
-        desiredAccuracyMeters: 15,
-        maxRetries: 2,
-      });
-      if (bestPos && bestPos.latitude && bestPos.longitude) {
-        await activateWithPosition(
-          bestPos.latitude,
-          bestPos.longitude,
-          bestPos.accuracy || 10,
-          bestPos.speedKmh || 0,
-          bestPos.headingDegrees || 0
-        );
-        return;
-      }
-    } catch (e) {
-      console.warn('High-accuracy GPS provider fallback:', e);
-    }
 
     // Fallback to standard geolocation
     if (navigator.geolocation) {
