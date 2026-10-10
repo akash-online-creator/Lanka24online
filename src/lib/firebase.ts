@@ -98,6 +98,8 @@ export function handleFirestoreError(error: any, operation: OperationType | stri
 export function sanitizeForFirestore(obj: any): any {
   if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
+  // Preserve Firestore FieldValue and serverTimestamp
+  if (obj._methodName || (obj.constructor && obj.constructor.name === 'FieldValue')) return obj;
   if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
   const sanitized: Record<string, any> = {};
   for (const key of Object.keys(obj)) {
@@ -215,7 +217,6 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
     console.warn('subscribeToUsers error:', err);
   });
 }
-
 // ==============================================================
 // 🆘 HELP POSTS OPERATIONS
 // ==============================================================
@@ -490,18 +491,35 @@ export async function saveSirenSettingsToFirestore(settings: any): Promise<void>
 export async function createOrUpdateSosLiveSession(session: any): Promise<string> {
   const id = session.id || `sos_${Date.now()}`;
   const docRef = doc(db, 'sos_live_sessions', id);
-  await setDoc(docRef, sanitizeForFirestore({ ...session, id, updatedAtServer: serverTimestamp() }), { merge: true });
+  const cleanData = sanitizeForFirestore(session);
+  await setDoc(docRef, { 
+    ...cleanData, 
+    id, 
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
   return id;
 }
 
 export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
-  await setDoc(docRef, sanitizeForFirestore({ ...locationData, updatedAtServer: serverTimestamp() }), { merge: true });
+  const cleanData = sanitizeForFirestore(locationData);
+  await setDoc(docRef, { 
+    ...cleanData, 
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
 }
 
-export async function stopSosLiveSession(sessionId: string): Promise<void> {
+export async function stopSosLiveSession(sessionId: string, reason?: string): Promise<void> {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
-  await setDoc(docRef, sanitizeForFirestore({ status: 'ended', isActive: false, updatedAtServer: serverTimestamp() }), { merge: true });
+  await setDoc(docRef, { 
+    status: 'ended', 
+    isActive: false, 
+    deactivationReason: reason || 'Resolved',
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
 }
 
 export function subscribeToSosLiveSession(sessionId: string, callback: (session: any) => void): () => void {
@@ -527,7 +545,6 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     return null;
   }
 }
-
 // ==============================================================
 // 📋 ISSUES MANAGEMENT
 // ==============================================================
