@@ -82,7 +82,7 @@ export async function initializeAllNativePushChannels() {
     try {
       // 1. Red Alert Siren Channel (Max Importance, Lockscreen visibility, custom siren sound)
       await PushNotifications.createChannel({
-        id: 'rathuweliya_siren_channel',
+        id: 'sahaya_emergency_red_alert',
         name: '🚨 රතුවෙලිය ආපදා සයිරනය (Red Alert Siren)',
         description: 'හදිසි ආපදා තත්ත්වයන් සඳහා වන අතිශය හදිසි අනතුරු ඇඟවීම්',
         importance: 5, // IMPORTANCE_HIGH / MAX: Lights up display & heads-up notification
@@ -269,6 +269,13 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
     case 'red_alert': {
       // Start emergency siren immediately in continuous loop
       startEmergencySiren();
+
+      // Trigger Flutter / Android Native Foreground Siren Notification
+      if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+        try {
+          (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + JSON.stringify(payload));
+        } catch (_) {}
+      }
 
       // Emergency SOS Vibration (1000ms vibrate, 200ms pause...)
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
