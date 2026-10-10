@@ -101,6 +101,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [resetRequests, setResetRequests] = useState<any[]>([]);
   const [copiedRequestId, setCopiedRequestId] = useState<string | null>(null);
   const [generatedMessages, setGeneratedMessages] = useState<Record<string, { tempPass: string; message: string }>>({});
+  const [generatedRejectMessages, setGeneratedRejectMessages] = useState<Record<string, string>>({});
   const [resetFilter, setResetFilter] = useState<'all' | 'pending' | 'completed'>('pending');
   const [resetSearch, setResetSearch] = useState('');
 
@@ -185,6 +186,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }));
 
     showNotification(`✅ ${matchedUser.name} සඳහා තාවකාලික මුරපදය (${tempPass}) සාර්ථකව සකසන ලදී!`);
+  };
+
+  // ⚠️ තොරතුරු වැරදි බව දන්වා WhatsApp / SMS පණිවිඩයක් ජනනය කිරීම
+  const handleGenerateRejectMessage = async (req: any, matchedUser?: User) => {
+    const userNic = req.nic || matchedUser?.nic || '';
+    const cleanPhone = (req.phone || '').replace(/[^0-9]/g, '');
+
+    const msg = `සහය සේවා (Sahaya Sewa) - දැනුම්දීම
+
+ගරු ${req.name || matchedUser?.name || 'සාමාජිකයා'},
+ඔබ විසින් ඉදිරිපත් කළ මුරපදය වෙනස් කිරීමේ ඉල්ලීමේ තොරතුරු පරීක්ෂා කිරීමේදී, ඔබ ලබා දුන් විස්තර (NIC: ${userNic}) අපගේ පද්ධතියේ ලියාපදිංචි වී ඇති ගිණුමේ තොරතුරු සමඟ නොගැළපෙන බව (වැරදි බව) නිරීක්ෂණය විය.
+
+කරුණාකර ඔබ ලියාපදිංචි වීමේදී ලබා දුන් සත්‍ය ජාතික හැඳුනුම්පත් අංකය (NIC), දුරකථන අංකය හා ඔබගේ සම්පුර්ණ නම ඇතුළත් කර නැවත ඉල්ලීමක් යොමු කරන්න.
+
+ප්‍රවේශ වීමට: https://supporservice.online
+
+ස්තූතියි!
+සහය සේවා පරිපාලන කණ්ඩායම`;
+
+    try {
+      await updatePasswordResetRequestInFirestore(req.id, {
+        status: 'rejected',
+        rejectReason: 'තොරතුරු නොගැළපේ',
+        processedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Update reject status error:', e);
+    }
+
+    setGeneratedRejectMessages((prev) => ({
+      ...prev,
+      [req.id]: msg
+    }));
+
+    showNotification(`⚠️ ${req.name} සඳහා දෝෂ දැනුම්දීමේ පණිවිඩය සකස් කරන ලදී.`);
   };
 
   const handleCopyMessage = (reqId: string, text: string) => {
@@ -630,187 +666,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>අනුමත කරන්න</span>
                         </button>
-                      )}
-
-                      {isApproved && (
-                        <button
-                          type="button"
-                          onClick={() => handleBlockUser(u)}
-                          className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-bold rounded-lg cursor-pointer"
-                          title="Block User"
-                        >
-                          අවහිර
-                        </button>
-                      )}
-
-                      {isBlocked && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnblockUser(u)}
-                          className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold rounded-lg cursor-pointer"
-                          title="Unblock User"
-                        >
-                          සක්‍රීය
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => setEditingUser(u)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg cursor-pointer"
-                        title="Edit Details"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 2: Help Posts Moderation */}
-      {activeTab === 'posts' && (
-        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
-            <div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-600" />
-                <span>දැන්වීම් පාලනය (Help Posts Moderation)</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                පළ කර ඇති මුළු දැන්වීම් සංඛ්‍යාව: {helpPosts.length}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="දැන්වීම් මාතෘකාව, විස්තර හෝ කේතය මඟින් සොයන්න..."
-              value={postSearch}
-              onChange={(e) => setPostSearch(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {helpPosts
-              .filter((p) => {
-                if (!p) return false;
-                const q = postSearch.trim().toLowerCase();
-                if (!q) return true;
-                return (
-                  (p.title && p.title.toLowerCase().includes(q)) ||
-                  (p.description && p.description.toLowerCase().includes(q)) ||
-                  (p.postCode && p.postCode.toLowerCase().includes(q))
-                );
-              })
-              .map((post) => (
-                <div
-                  key={post.id}
-                  className="p-4 rounded-2xl border border-slate-200 dark:border-[#153422] bg-white dark:bg-[#07170e] hover:shadow-md transition-all flex flex-col justify-between gap-3 text-xs"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[10px] bg-slate-100 dark:bg-[#12281b] px-2 py-0.5 rounded text-slate-600 dark:text-emerald-400 font-bold">
-                        {post.postCode || post.id}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {post.category || 'සාමාන්‍ය'}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-slate-900 dark:text-white line-clamp-1">
-                      {post.title}
-                    </h4>
-                    <p className="text-slate-500 dark:text-slate-400 text-[11px] line-clamp-2">
-                      {post.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 dark:border-[#153422] flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {post.userName || 'සාමාජිකයෙක්'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePostPermanently(post.id)}
-                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>මකා දමන්න</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Credit Management */}
-      {activeTab === 'credits' && (
-        <AdminCreditManagement
-          users={users}
-          currentUser={currentUser}
-          language={language}
-          onUsersUpdated={() => {}}
-        />
-      )}
-
-      {/* Tab 4: Emergency Directory */}
-      {activeTab === 'emergency' && (
-        <AdminEmergencyDirectoryManagement
-          language={language}
-          currentUser={currentUser}
-        />
-      )}
-
-      {/* Tab 5: Red Alerts (Disaster Management) */}
-      {activeTab === 'red_alerts' && (
-        <AdminRedAlertManagement
-          redAlerts={redAlerts}
-          currentUser={currentUser}
-          language={language}
-          onRedAlertsUpdated={() => {}}
-        />
-      )}
-
-      {/* Tab 6: Issues Helpdesk */}
-      {activeTab === 'issues' && (
-        <AdminIssuesManagement
-          issues={issues}
-          users={users}
-          currentUser={currentUser}
-          language={language}
-        />
-      )}
-
-      {/* Tab 7: Search Dictionary */}
-      {activeTab === 'dictionary' && (
-        <AdminSearchDictionaryManager
-          language={language}
-        />
-      )}
-
-      {/* Tab 8: Trust Badges Management */}
-      {activeTab === 'trust' && (
-        <AdminTrustManagement
-          users={users}
-          language={language}
-        />
-      )}
-
-      {/* Tab 9: Live Presence */}
-      {activeTab === 'presence' && (
-        <AdminPresenceDashboard
-          users={users}
-          language={language}
-        />
-      )}
-
       {/* Tab 10: Password Reset Requests (යාවත්කාලීන කිරීමට ඇති මුරපද ලැයිස්තුව) */}
       {activeTab === 'password_resets' && (
         <div className="space-y-4 animate-fadeIn">
@@ -943,10 +798,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
                               req.status === 'completed'
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : req.status === 'rejected'
+                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                                 : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                             }`}
                           >
-                            {req.status === 'completed' ? '✅ මුරපදය නිකුත් කර ඇත' : '⏳ රැඳී පවතී'}
+                            {req.status === 'completed'
+                              ? '✅ මුරපදය නිකුත් කර ඇත'
+                              : req.status === 'rejected'
+                              ? '❌ තොරතුරු වැරදියි'
+                              : '⏳ රැඳී පවතී'}
                           </span>
                         </div>
                         <button
@@ -982,14 +843,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 NIC: {matchedUser.nic || matchedUser.nicNumber} | Phone: {matchedUser.whatsappPhone || matchedUser.phone || 'නැත'} | තත්ත්වය: {matchedUser.status}
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateTempPassword(req, matchedUser)}
-                              className="px-3.5 py-2 bg-[#007a4b] hover:bg-[#00633d] active:bg-[#005232] text-white font-bold rounded-xl cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-                              <span>{req.status === 'completed' ? '🔄 නැවත Generate කරන්න' : '🔑 නව මුරපදය (Temp Code)'}</span>
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateTempPassword(req, matchedUser)}
+                                className="px-3.5 py-2 bg-[#007a4b] hover:bg-[#00633d] active:bg-[#005232] text-white font-bold rounded-xl cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" />
+                                <span>{req.status === 'completed' ? '🔄 නැවත Generate කරන්න' : '🔑 නව මුරපදය (Temp Code)'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateRejectMessage(req, matchedUser)}
+                                className="px-3 py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <span>⚠️ තොරතුරු වැරදියි (දැනුම්දීම)</span>
+                              </button>
+                            </div>
                           </div>
 
                           {/* Generated Temp Password & Action Message */}
@@ -1034,6 +905,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <ExternalLink className="w-3.5 h-3.5" />
                                       <span>WhatsApp මඟින් යවන්න</span>
                                     </a>
+                                    <a
+                                      href={`sms:${(req.phone || '').replace(/[^0-9]/g, '')}?body=${encodeURIComponent(currentMsg)}`}
+                                      className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
+                                    >
+                                      <Phone className="w-3.5 h-3.5" />
+                                      <span>SMS මඟින් යවන්න</span>
+                                    </a>
                                   </div>
                                 </div>
                               )}
@@ -1041,9 +919,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
                         </div>
                       ) : (
-                        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 rounded-xl text-xs flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                          <span>මෙම NIC හෝ දුරකථන අංකයට සමාන ලියාපදිංචි ගිණුමක් පද්ධතියේ හමු නොවීය.</span>
+                        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>මෙම NIC හෝ දුරකථන අංකයට සමාන ලියාපදිංචි ගිණුමක් පද්ධතියේ හමු නොවීය.</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateRejectMessage(req)}
+                            className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>⚠️ තොරතුරු වැරදියි (දැනුම්දීම යවන්න)</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ⚠️ තොරතුරු වැරදි බවට සකස් වූ පණිවිඩය (Rejection Message) */}
+                      {generatedRejectMessages[req.id] && (
+                        <div className="p-3.5 bg-amber-50/90 dark:bg-[#20180d] border border-amber-300 dark:border-amber-800/80 rounded-2xl text-xs space-y-2.5 animate-fadeIn">
+                          <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-600" />
+                            <span>⚠️ තොරතුරු වැරදි බවට පරිශීලකයා වෙත යැවීමට සකස් කළ පණිවිඩය:</span>
+                          </div>
+
+                          <pre className="text-[11px] p-3 bg-white dark:bg-black/60 rounded-xl whitespace-pre-wrap font-sans text-slate-800 dark:text-slate-200 border border-amber-200 dark:border-amber-900/60 leading-relaxed">
+                            {generatedRejectMessages[req.id]}
+                          </pre>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyMessage(req.id, generatedRejectMessages[req.id])}
+                              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all"
+                            >
+                              {copiedRequestId === req.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>පිටපත් විය!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>පණිවිඩය Copy කරගන්න</span>
+                                </>
+                              )}
+                            </button>
+                            <a
+                              href={`https://wa.me/${(req.phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(generatedRejectMessages[req.id])}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>WhatsApp මඟින් යවන්න</span>
+                            </a>
+                            <a
+                              href={`sms:${(req.phone || '').replace(/[^0-9]/g, '')}?body=${encodeURIComponent(generatedRejectMessages[req.id])}`}
+                              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition-all"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>SMS මඟින් යවන්න</span>
+                            </a>
+                          </div>
                         </div>
                       )}
                     </div>
