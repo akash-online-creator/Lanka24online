@@ -81,7 +81,7 @@ export interface EmergencyServiceContact {
   address: string;
 }
 
-export const SRI_LANKA_EMERGENCY_SERVICES: EmergencyServiceContact[] = [
+export const SRI_LANKA_EMERGENCY_FACILITIES: EmergencyServiceContact[] = [
   {
     id: 'police-119',
     name: 'Police Emergency Hotline',
