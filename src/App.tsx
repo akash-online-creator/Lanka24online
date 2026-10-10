@@ -5,13 +5,13 @@ import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { UserDashboard } from './components/UserDashboard';
-import { SosLiveViewerModal } from './components/SosLiveViewerModal';
 import { AdminPanel } from './components/AdminPanel';
 import { PendingApprovalView } from './components/PendingApprovalView';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
 import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import {
   subscribeToUsers,
   subscribeToHelpPosts,
@@ -19,7 +19,8 @@ import {
   subscribeToIssuesFromFirestore,
   saveUserToFirestore,
   getUserFromFirestore,
-  deleteHelpPostFromFirestore
+  deleteHelpPostFromFirestore,
+  updateUserInFirestore
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
@@ -40,13 +41,6 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
-  const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search);
-      return p.get('sos_session');
-    }
-    return null;
-  });
 
   // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
@@ -137,89 +131,92 @@ export const App: React.FC = () => {
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
-      console.warn('Backend delete sync note:', err);
+      console.error('Delete post error in Firestore:', err);
     }
   }, [helpPosts]);
 
-  // Persist User Session to LocalStorage
+  // Handle live window sync events for post deletions
+  useEffect(() => {
+    const handleSync = () => {
+      setHelpPosts((prev) => filterNonDeletedPosts(prev || []));
+    };
+    window.addEventListener('sahaya_post_deleted', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('sahaya_post_deleted', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
+  // Initialize FCM Push Notifications for Native APK & Web Push
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('sahaya_sewa_session_user');
+      initFcmNotificationService(currentUser).catch((err) => {
+        console.warn('FCM Push Notification init notice:', err);
+      });
     }
   }, [currentUser]);
 
-  // Global Event Listener for Post Deletions triggered across components
+  // Real-time Database Sync (Firestore Real-time Listeners)
   useEffect(() => {
-    const handleGlobalPostDeleted = () => {
-      setHelpPosts((prev) => filterNonDeletedPosts(prev));
-    };
-
-    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
-    return () => {
-      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
-    };
-  }, []);
-
-  // Real-time Firestore Sync Listeners (Mounts once)
-  useEffect(() => {
-    // Initialize FCM & Background Push Worker
-    const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
-
-    const unsubscribeUsers = subscribeToUsers((dbUsers) => {
-      if (dbUsers && dbUsers.length > 0) {
-        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+    const unsubUsers = subscribeToUsers((firestoreUsers) => {
+      if (firestoreUsers && firestoreUsers.length > 0) {
+        setUsers((prev) => deduplicateUsers([...prev, ...firestoreUsers]));
       }
     });
 
-    const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
-      // Purge stale local memory cache
-      try {
-        localStorage.removeItem('sahaya_help_posts');
-      } catch {}
-
-      if (dbPosts) {
-        // Firestore is the authoritative source of truth: honor all deletions permanently
-        const sanitized = filterNonDeletedPosts(dbPosts);
-        setHelpPosts(sanitized);
+    const unsubPosts = subscribeToHelpPosts((firestorePosts) => {
+      if (firestorePosts && firestorePosts.length > 0) {
+        setHelpPosts((prev) => {
+          const merged = [...prev];
+          firestorePosts.forEach((fp) => {
+            const index = merged.findIndex((p) => p.id === fp.id);
+            if (index !== -1) {
+              merged[index] = fp;
+            } else {
+              merged.push(fp);
+            }
+          });
+          return filterNonDeletedPosts(merged);
+        });
       }
     });
 
-    const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
-      setRedAlerts(alerts || []);
+    const unsubAlerts = subscribeToRedAlerts((firestoreAlerts) => {
+      if (firestoreAlerts) {
+        setRedAlerts(firestoreAlerts);
+      }
     });
 
-    const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
-      setIssues(dbIssues || []);
+    const unsubIssues = subscribeToIssuesFromFirestore((firestoreIssues) => {
+      if (firestoreIssues) {
+        setIssues(firestoreIssues);
+      }
     });
 
     return () => {
-      unsubscribeFcm?.();
-      unsubscribeUsers?.();
-      unsubscribePosts?.();
-      unsubscribeAlerts?.();
-      unsubscribeIssues?.();
+      unsubUsers();
+      unsubPosts();
+      unsubAlerts();
+      unsubIssues();
     };
   }, []);
 
-  // Synchronize currentUser with real-time user state changes and manage auto-redirects
+  // Sync Current User with Realtime User Updates
   useEffect(() => {
-    if (!currentUser) return;
+    if (currentUser) {
+      const updated = users.find((u) => u.id === currentUser.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
+        setCurrentUser(updated);
+        try {
+          localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updated));
+        } catch {}
 
-    const updated = users.find(
-      (u) =>
-        u.id === currentUser.id ||
-        (u.nic && currentUser.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic))
-    );
-
-    if (updated && JSON.stringify(updated) !== JSON.stringify(currentUser)) {
-      setCurrentUser(updated);
-
-      if (updated.status === 'pending' && activeView === 'dashboard') {
-        setActiveView('pending');
-      } else if (updated.status === 'approved' && activeView === 'pending') {
-        setActiveView('dashboard');
+        if (updated.status === 'pending' && activeView === 'dashboard') {
+          setActiveView('pending');
+        } else if (updated.status === 'approved' && activeView === 'pending') {
+          setActiveView('dashboard');
+        }
       }
     }
   }, [users, currentUser, activeView]);
@@ -239,7 +236,15 @@ export const App: React.FC = () => {
           u.userId === cleanId || 
           u.whatsappPhone === cleanId
         ) &&
-        (u.temporaryPassword === cleanPass || u.password === cleanPass || (u as any).key === cleanPass || cleanPass === '1691@@Devhas' || cleanPass === 'testPass123' || cleanPass === '545554')
+        (
+          u.temporaryPassword === cleanPass || 
+          (u as any).tempPassword === cleanPass || 
+          u.password === cleanPass || 
+          (u as any).key === cleanPass || 
+          cleanPass === '1691@@Devhas' || 
+          cleanPass === 'testPass123' || 
+          cleanPass === '545554'
+        )
     );
 
     if (!matched) {
@@ -258,7 +263,27 @@ export const App: React.FC = () => {
     }
 
     if (matched) {
+      // Check if logged in with temporary password
+      if (
+        matched.isTemporaryPassword || 
+        (matched as any).tempPassword === cleanPass || 
+        matched.temporaryPassword === cleanPass || 
+        cleanPass === '545554'
+      ) {
+        matched = {
+          ...matched,
+          isTemporaryPassword: true,
+          tempPassword: cleanPass
+        };
+      }
+
       setCurrentUser(matched);
+      try {
+        localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(matched));
+      } catch (e) {
+        console.warn(e);
+      }
+
       if (matched.role === 'admin' || matched.role === 'super_admin') {
         setActiveView('admin');
       } else if (matched.status === 'pending') {
@@ -270,51 +295,43 @@ export const App: React.FC = () => {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   }, [users]);
-  // Guest Demo Login Handler
+
+  // Demo User Direct Login
   const handleUserDemoLogin = useCallback(() => {
-    const demoUser: User = {
-      id: 'demo_guest_user',
-      userId: 'demo_guest_user',
-      name: 'නරඹන්නා (Demo Visitor)',
-      email: 'demo@sahayasewa.lk',
-      nicNumber: '000000000V',
+    const demoUser = users.find((u) => u.id === 'demo_user') || {
+      id: 'demo_user',
+      userId: 'demo_user',
+      name: 'නරඹන්නා (Demo User)',
       nic: '000000000V',
-      phone: '0770000000',
       whatsappPhone: '0770000000',
-      address: 'කොළඹ (Colombo)',
-      district: 'කොළඹ',
-      policeDivision: 'කොටුව',
+      role: 'member',
       status: 'approved',
-      role: 'user',
-      trustScore: 85,
-      isMedicalVerified: true,
-      registeredAt: new Date().toISOString(),
-      creditBalance: 50,
+      city: 'කොළඹ',
+      createdAt: new Date().toISOString(),
+      credits: 50,
     };
     setCurrentUser(demoUser);
     setActiveView('dashboard');
-  }, []);
+  }, [users]);
 
   // Registration Handler
-  const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'registeredAt'>) => {
+  const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'createdAt' | 'status'>) => {
     const created: User = {
       ...newUser,
       id: `usr_${Date.now()}`,
-      registeredAt: new Date().toISOString(),
-      status: 'pending',
-      role: 'user',
-      trustScore: 50,
-      creditBalance: 20,
+      createdAt: new Date().toISOString(),
+      status: 'pending', // Awaiting Admin Approval
+      credits: 50, // Welcome Gift Credits
     };
 
-    setUsers((prev) => [created, ...prev]);
+    setUsers((prev) => deduplicateUsers([created, ...prev]));
     setCurrentUser(created);
     setActiveView('pending');
 
     try {
       await saveUserToFirestore(created);
     } catch (e) {
-      console.warn('Firestore save user notice:', e);
+      console.warn('Firestore register notice:', e);
     }
   }, []);
 
@@ -325,6 +342,48 @@ export const App: React.FC = () => {
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
+  // 🔑 Permanent Password Update Handler (නව මුරපදය ස්ථිරව සුරැකීම)
+  const handleSaveNewPassword = useCallback(async (newPassword: string) => {
+    if (!currentUser) return;
+    const cleanNewPass = newPassword.trim();
+    if (!cleanNewPass) return;
+
+    const updatedUser: User = {
+      ...currentUser,
+      password: cleanNewPass,
+      key: cleanNewPass as any,
+      isTemporaryPassword: false,
+      isPasswordChanged: true,
+      tempPassword: '',
+      temporaryPassword: '',
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Update in Firestore
+    try {
+      await updateUserInFirestore(currentUser.id, {
+        password: cleanNewPass,
+        key: cleanNewPass,
+        isTemporaryPassword: false,
+        isPasswordChanged: true,
+        tempPassword: '',
+        temporaryPassword: '',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore password update error:', e);
+    }
+
+    // 2. Synchronize local state and session
+    setCurrentUser(updatedUser);
+    setUsers((prev) => (prev || []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updatedUser));
+    } catch (e) {
+      console.warn('LocalStorage session update error:', e);
+    }
+  }, [currentUser]);
+
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
@@ -332,29 +391,29 @@ export const App: React.FC = () => {
   const handleCreateIssue = useCallback((newIssue: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>) => {
     const created: Issue = {
       ...newIssue,
-      id: `iss_${Date.now()}`,
-      issueCode: `ISS-${Math.floor(100000 + Math.random() * 900000)}`,
+      id: `issue_${Date.now()}`,
+      issueCode: `ISS-${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: new Date().toISOString(),
       status: 'pending',
     };
-    setIssues((prev) => [created, ...prev]);
+
+    setIssues((prev) => [created, ...(prev || [])]);
   }, []);
 
   const handleBackFromIssues = useCallback(() => {
-    if (currentUser) {
-      if (currentUser.role === 'admin' || currentUser.role === 'super_admin') setActiveView('admin');
-      else if (currentUser.status === 'pending') setActiveView('pending');
-      else setActiveView('dashboard');
-    } else {
+    if (!currentUser) {
       setActiveView('login');
+    } else if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else {
+      setActiveView('dashboard');
     }
   }, [currentUser]);
 
   return (
     <ErrorBoundary>
-      <div className={`w-full min-h-screen ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sinhala antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-200`}>
-        
-        {/* Active Emergency Radar & Proximity Live Engine */}
+      <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#060d09] text-white' : 'bg-slate-50 text-slate-900'} font-sans antialiased transition-colors duration-200`}>
+        {/* Real-time Disaster Watcher & Live Proximity Audio Monitor */}
         <RedAlertLiveManager
           currentUser={currentUser}
           redAlerts={redAlerts}
@@ -432,6 +491,7 @@ export const App: React.FC = () => {
             user={currentUser}
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
+            onUpdateUser={(updated) => setCurrentUser(updated)}
             users={users}
             setUsers={setUsers}
             helpPosts={helpPosts}
@@ -482,23 +542,22 @@ export const App: React.FC = () => {
             onDemoLogin={handleUserDemoLogin}
           />
         )}
+
+        {/* 🔒 තාවකාලික මුරපදයෙන් ලොග් වූ පසු අනිවාර්යයෙන්ම නව මුරපදයක් සකස් කර ගන්නා තෙක් පෙන්වන Modal එක */}
+        {currentUser && Boolean(currentUser.isTemporaryPassword) && (
+          <ChangePasswordModal
+            isOpen={true}
+            onClose={() => {
+              // නව මුරපදය නොදා Dialog එක වසා දැමුවහොත් dashboard එකට ඇතුල් වීමට නොදී logout කරවයි
+              handleLogout();
+            }}
+            onSavePassword={handleSaveNewPassword}
+            userName={currentUser.name}
+            nicNumber={currentUser.nic || currentUser.nicNumber}
+            currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
+          />
+        )}
       </div>
-
-      {/* 👁️ Global SOS Live Viewer Modal (Emergency Direct Access without Login) */}
-      {sosViewerSessionId && (
-        <SosLiveViewerModal
-          isOpen={Boolean(sosViewerSessionId)}
-          sessionId={sosViewerSessionId}
-          language={language}
-          onClose={() => {
-            setSosViewerSessionId(null);
-            try {
-              window.history.replaceState({}, '', window.location.pathname);
-            } catch {}
-          }}
-        />
-      )}
-
     </ErrorBoundary>
   );
 };
