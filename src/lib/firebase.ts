@@ -807,3 +807,57 @@ export function subscribeToDeletedRecordsFromFirestore(callback: (records: Delet
     return () => {};
   }
 }
+
+// ==============================================================
+// 🔑 PASSWORD RESET REQUESTS OPERATIONS
+// ==============================================================
+export const PASSWORD_RESETS_COLLECTION = 'password_reset_requests';
+
+export function subscribeToPasswordResetRequests(callback: (requests: any[]) => void): () => void {
+  const colRef = collection(db, PASSWORD_RESETS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.warn('subscribeToPasswordResetRequests error:', err);
+  });
+}
+
+export async function submitPasswordResetRequest(requestData: any): Promise<string> {
+  const id = requestData.id || `reset_${Date.now()}`;
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...requestData,
+      id,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp()
+    }));
+    return id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, PASSWORD_RESETS_COLLECTION);
+    return id;
+  }
+}
+
+export async function updatePasswordResetRequestInFirestore(id: string, updateData: any): Promise<void> {
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...updateData,
+      updatedAtServer: serverTimestamp()
+    }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
+  }
+}
+
+export async function deletePasswordResetRequestFromFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
+  }
+}
