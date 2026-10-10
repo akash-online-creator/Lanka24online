@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, 
   Radio, 
@@ -43,6 +43,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusType, setStatusType] = useState<'idle' | 'scanning' | 'success' | 'denied' | 'error'>('idle');
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
   const [isAutoProceeding, setIsAutoProceeding] = useState(false);
+  const hasProceededRef = useRef(false);
 
   // Process Coordinates from GPS
   const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
@@ -84,7 +85,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     }
   };
 
-  // Check initial permissions & Trigger Auto-Request
+  // Check initial permissions
   useEffect(() => {
     // 1. Notification Permission Check
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -117,7 +118,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }).catch(() => {});
     }
 
-    // 🚀 Auto-Request both permissions on screen load
+    // 🚀 Auto-Request both permissions on load
     const autoReqTimer = setTimeout(() => {
       handleAllowBothPermissions();
     }, 600);
@@ -127,18 +128,19 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
   // 🚀 Auto-Proceed as soon as BOTH permissions are granted
   useEffect(() => {
-    if (locationGranted && notifGranted && !isAutoProceeding) {
+    if (locationGranted && notifGranted && !hasProceededRef.current) {
+      hasProceededRef.current = true;
       setIsAutoProceeding(true);
       setStatusType('success');
       setStatusMessage('✅ අවසර 2ම සාර්ථකව සක්‍රීය විය! ආරක්ෂිතව ඇප් එකට පිවිසෙමින් පවතී...');
 
       const proceedTimer = setTimeout(() => {
         handleFinishAndProceed();
-      }, 1200);
+      }, 1000);
 
       return () => clearTimeout(proceedTimer);
     }
-  }, [locationGranted, notifGranted, isAutoProceeding, resolvedLocation]);
+  }, [locationGranted, notifGranted]);
 
   // Request Notification Permission
   const handleRequestNotification = async () => {
@@ -441,7 +443,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           <button
             type="button"
             onClick={handleFinishAndProceed}
-            disabled={!isBothComplete || isAutoProceeding}
+            disabled={!isBothComplete}
             className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all ${
               isBothComplete
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95 animate-pulse'
@@ -449,10 +451,8 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             }`}
           >
             <span>
-              {isAutoProceeding
-                ? 'ඇප් එකට පිවිසෙමින් පවතී... 🚀'
-                : isBothComplete
-                ? 'ඇප් එකට පිවිසෙන්න (Proceed)'
+              {isBothComplete
+                ? 'ඇප් එකට පිවිසෙන්න (Proceed) >'
                 : '🔒 අවසර 2ම අවශ්‍යයි (Locked)'}
             </span>
             <ChevronRight className="w-4 h-4" />
