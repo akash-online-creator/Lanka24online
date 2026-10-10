@@ -321,6 +321,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   currentLocation,
   language = 'si',
 }) => {
+  // 0. Preset Emergency Messages
+  const PRESET_MESSAGES = [
+    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!',
+    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
+    '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
+    '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
+  ];
+
   // 1. Session States
   const [isActive, setIsActive] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -330,264 +338,281 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
   });
   const [startedAt, setStartedAt] = useState<string>('');
-    // පෙරනිමි හදිසි කෙටි පණිවිඩ ලැයිස්තුව
-  const PRESET_MESSAGES = [
-    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!',
-    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
-    '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
-    '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
-  ];
-
-  const [emergencyNote, setEmergencyNote] = useState<string>(
-    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!'
-  );
+  const [emergencyNote, setEmergencyNote] = useState<string>(PRESET_MESSAGES[0]);
   const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
   const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
 
-  // Location-saving lock gate state
-  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
-  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
-  const [savingError, setSavingError] = useState<string | null>(null);
-
-  // 2. GPS & Tracking States
-  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(() => {
-    if (currentLocation && currentLocation.lat && currentLocation.lng) {
-      return { lat: currentLocation.lat, lng: currentLocation.lng };
-    }
-    // Katunayake / Ja-Ela default center
-    return { lat: 7.0782, lng: 79.8920 };
+  // 2. Realtime Telemetry
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>({
+    lat: currentLocation?.lat || 7.0782, // Katunayake / Ja-Ela area
+    lng: currentLocation?.lng || 79.8920,
   });
-  const [locationName, setLocationName] = useState<string>('කටුනායක / ජා-ඇල ප්‍රදේශය');
-  const [breadcrumbs, setBreadcrumbs] = useState<LiveLocationBreadcrumb[]>([]);
-  const [accuracyMeter, setAccuracyMeter] = useState<number>(12);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
   const [speedKmh, setSpeedKmh] = useState<number | null>(null);
-  const [headingDegree, setHeadingDegree] = useState<number | null>(null);
-  const [altitudeMeter, setAltitudeMeter] = useState<number | null>(null);
-  const [gpsError, setGpsError] = useState<string | null>(null);
-  const [isLocating, setIsLocating] = useState<boolean>(false);
-
-  // 3. Device Diagnostics
+  const [heading, setHeading] = useState<number | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [isCharging, setIsCharging] = useState<boolean | null>(null);
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [isCharging, setIsCharging] = useState<boolean>(false);
+  const [locationName, setLocationName] = useState<string>(currentLocation?.nameSi || 'ජා-ඇල / කටුනායක (Katunayake / Ja-Ela)');
+  const [breadcrumbs, setBreadcrumbs] = useState<SosBreadcrumbPoint[]>([]);
 
-  // 4. Audio Siren & Media Recording
-  const [isSirenPlaying, setIsSirenPlaying] = useState<boolean>(false);
-  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
-  const [recordedAudioCount, setRecordedAudioCount] = useState<number>(0);
-
-  // 5. Trusted Contacts & Notifications (Strictly real contacts - No dummy numbers)
+  // 3. Trusted Emergency Contacts
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_trusted_contacts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
+      if (saved) return JSON.parse(saved);
+    } catch {}
     return [];
   });
-  const [newContactName, setNewContactName] = useState('');
-  const [newContactPhone, setNewContactPhone] = useState('');
-  const [newContactRelation, setNewContactRelation] = useState('පවුලේ සාමාජික / හිතවතෙක්');
-  const [isAddContactModalOpen, setIsAddContactModalOpen] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [selectedEmergencyType, setSelectedEmergencyType] = useState<
-    'medical' | 'accident' | 'threat' | 'fire' | 'harassment' | 'general'
-  >('threat');
+  const [showAddContact, setShowAddContact] = useState<boolean>(false);
+  const [newContactName, setNewContactName] = useState<string>('');
+  const [newContactPhone, setNewContactPhone] = useState<string>('');
+  const [newContactRel, setNewContactRel] = useState<string>('පවුලේ සාමාජික');
 
-  // 6. Security & Duress PIN Deactivation
-  const [isDuressModalOpen, setIsDuressModalOpen] = useState(false);
-  const [enteredPin, setEnteredPin] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [duressDeactivatedFake, setDuressDeactivatedFake] = useState(false);
-
-  // 7. Radar: Nearby Facilities
-  const [activeTab, setActiveTab] = useState<'tracker' | 'radar' | 'chat' | 'contacts'>('tracker');
-  const [chatMessages, setChatMessages] = useState<EmergencyChatMessage[]>([]);
-  const [newChatMessage, setNewChatMessage] = useState('');
-
-  // Refs for tracking & cleanups
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const leafletMapRef = useRef<L.Map | null>(null);
-  const victimMarkerRef = useRef<L.Marker | null>(null);
-  const accuracyCircleRef = useRef<L.Circle | null>(null);
-  const breadcrumbPolylineRef = useRef<L.Polyline | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const breadcrumbsRef = useRef<LiveLocationBreadcrumb[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const isContinuousAudioRunningRef = useRef<boolean>(false);
-
-  // Keep breadcrumbs ref updated
   useEffect(() => {
-    breadcrumbsRef.current = breadcrumbs;
-  }, [breadcrumbs]);
+    try {
+      localStorage.setItem('sahaya_trusted_contacts', JSON.stringify(trustedContacts));
+    } catch {}
+  }, [trustedContacts]);
 
-  // Online / Offline monitor
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+  // 4. "මට අනතුරක්" Triple-Tap State
+  const [panicTapCount, setPanicTapCount] = useState<number>(0);
+  const panicTapTimeoutRef = useRef<any>(null);
+
+  // 5. Shake-to-SOS Detection
+  const [isShakeEnabled, setIsShakeEnabled] = useState<boolean>(true);
+
+  // 6. Auto Geofence "Safe Arrival"
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number; name: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_safe_destination');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const [hasTriggeredSafeArrival, setHasTriggeredSafeArrival] = useState<boolean>(false);
+
+  // 7. Dual Dispatch & Siren
+  const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
+  const [pendingSmsUrl, setPendingSmsUrl] = useState<string | null>(null);
+  const [dualDispatchNotice, setDualDispatchNotice] = useState<string | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+
+  // 8. Security Quick PIN & Duress PIN
+  const securityPin = useMemo(() => {
+    return (currentUser as any)?.quickPin || (currentUser as any)?.devicePin || localStorage.getItem('sahaya_security_pin') || '1234';
+  }, [currentUser]);
+
+  const duressPin = useMemo(() => {
+    return localStorage.getItem('sahaya_duress_pin') || '9999';
   }, []);
 
-  // Battery Status API monitor
+  const [showDuressModal, setShowDuressModal] = useState<boolean>(false);
+  const [deactivateTab, setDeactivateTab] = useState<'pin' | 'nic'>('pin');
+  const [enteredPin, setEnteredPin] = useState<string>('');
+  const [enteredNic, setEnteredNic] = useState<string>('');
+  const [enteredPassword, setEnteredPassword] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [autoPurgeNotice, setAutoPurgeNotice] = useState<string | null>(null);
+
+  // 9. UI & Map States
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
+  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
+
+  // References
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const lastSyncTimeRef = useRef<number>(0);
+  const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
+  const hasSentBatteryPingRef = useRef<boolean>(false);
+  const mediaRecorderRef = useRef<any>(null);
+  const isContinuousAudioRunningRef = useRef<boolean>(false);
+
+  const getLangText = (si: string, en: string) => (language === 'en' ? en : si);
+
+  // 🔋 Battery Status listener
   useEffect(() => {
-    let batteryObj: any = null;
-    if ('getBattery' in navigator) {
+    if (typeof navigator !== 'undefined' && (navigator as any).getBattery) {
       (navigator as any).getBattery().then((battery: any) => {
-        batteryObj = battery;
         setBatteryLevel(Math.round(battery.level * 100));
         setIsCharging(battery.charging);
 
-        const updateLevel = () => setBatteryLevel(Math.round(battery.level * 100));
-        const updateCharging = () => setIsCharging(battery.charging);
-
-        battery.addEventListener('levelchange', updateLevel);
-        battery.addEventListener('chargingchange', updateCharging);
-      }).catch((e: any) => {
-        console.warn('Battery status not accessible:', e);
-      });
+        battery.addEventListener('levelchange', () => {
+          setBatteryLevel(Math.round(battery.level * 100));
+        });
+        battery.addEventListener('chargingchange', () => {
+          setIsCharging(battery.charging);
+        });
+      }).catch(() => {});
     }
   }, []);
 
-  // Save trusted contacts to localStorage
-  const saveTrustedContacts = (contacts: TrustedContact[]) => {
-    setTrustedContacts(contacts);
+  // 📡 Construct Live Tracking Share Link
+  const trackingLink = sessionId
+    ? `${window.location.origin}${window.location.pathname}?sos_session=${sessionId}`
+    : `${window.location.origin}${window.location.pathname}`;
+
+  // 🔄 Reverse Geocoding
+  const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      localStorage.setItem('sahaya_trusted_contacts', JSON.stringify(contacts));
-    } catch (e) {}
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`);
+      if (res.ok) {
+        const data = await res.json();
+        const town = data.address?.suburb || data.address?.town || data.address?.city || data.address?.village || data.address?.county;
+        const state = data.address?.state || data.address?.district;
+        if (town) {
+          setLocationName(`${town}${state ? `, ${state}` : ''}`);
+        }
+      }
+    } catch {}
   };
 
-  const handleAddContact = () => {
-    if (!newContactName.trim() || !newContactPhone.trim()) return;
-    const cleanPhone = newContactPhone.replace(/\s+/g, '');
-    const newEntry: TrustedContact = {
-      id: `tc_${Date.now()}`,
-      name: newContactName.trim(),
-      phone: cleanPhone,
-      relationship: newContactRelation,
-      notifyOnStart: true,
-    };
-    const updated = [...trustedContacts, newEntry];
-    saveTrustedContacts(updated);
-    setNewContactName('');
-    setNewContactPhone('');
-    setIsAddContactModalOpen(false);
-  };
-
-  const handleDeleteContact = (id: string) => {
-    const updated = trustedContacts.filter((c) => c.id !== id);
-    saveTrustedContacts(updated);
-  };
-
-  // Reverse geocoding helper (Offline friendly fallback for Katunayake / Ja-Ela)
-  const resolveLocationName = useCallback(async (lat: number, lng: number): Promise<string> => {
-    try {
-      if (lat >= 7.14 && lat <= 7.18 && lng >= 79.86 && lng <= 79.91) {
-        return 'කටුනායක ගුවන් තොටුපළ / ආයෝජන කලාපය (Katunayake FTZ)';
-      }
-      if (lat >= 7.06 && lat <= 7.10 && lng >= 79.87 && lng <= 79.92) {
-        return 'ජා-ඇල නගරය (Ja-Ela Central Road)';
-      }
-      if (lat >= 7.18 && lat <= 7.24 && lng >= 79.82 && lng <= 79.87) {
-        return 'මීගමුව නගර සීමාව (Negombo Beach Road)';
-      }
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
-        { headers: { 'Accept-Language': 'si,en' } }
+  // 📍 Instant Manual / Auto GPS Refresh Helper
+  const refreshGpsLocation = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      setIsLocating(true);
+      setGpsError(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(6));
+          const lng = Number(pos.coords.longitude.toFixed(6));
+          const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 10;
+          setCurrentCoords({ lat, lng });
+          setAccuracy(acc);
+          reverseGeocode(lat, lng);
+          setIsLocating(false);
+        },
+        (err) => {
+          console.warn('GPS single position fetch failed:', err);
+          setIsLocating(false);
+          setGpsError(getLangText('GPS දත්ත ලබාගැනීම ප්‍රමාදයි. සජීවී සිතියම පසුබිමින් යාවත්කාලීන වේ.', 'GPS fix timed out. Background tracker remains active.'));
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
-      if (response.ok) {
-        const data = await response.json();
-        const suburb = data.address?.suburb || data.address?.town || data.address?.city || data.address?.road;
-        if (suburb) return suburb;
-        if (data.display_name) return data.display_name.split(',')[0];
-      }
-    } catch (e) {
-      console.warn('Reverse geocoding fetch failed:', e);
     }
-    return `ස්ථානය: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   }, []);
 
-  // Distance calculation helper (Haversine Formula)
-  const calculateDistanceKm = useCallback((lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Earth radius km
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return parseFloat((R * c).toFixed(2));
-  }, []);
+  // 📡 Auto-Register & Sync SOS Session to Firestore on Open or Location Update
+  const syncInitialSessionToFirestore = useCallback(async (lat: number, lng: number) => {
+    if (!sessionId) return;
+    const nowIso = new Date().toISOString();
+    const sessionPayload: any = {
+      id: sessionId,
+      sessionCode: sessionCode,
+      userId: currentUser?.id || 'guest',
+      userName: currentUser?.name || 'පරිශීලක',
+      userPhone: currentUser?.phone || '',
+      vehicleNumber: vehicleNumber.trim() ? vehicleNumber.trim().toUpperCase() : undefined,
+      vehicleType: vehicleNumber.trim() ? vehicleType : undefined,
+      status: 'active',
+      startedAt: startedAt || nowIso,
+      updatedAt: nowIso,
+      lastLat: lat,
+      lastLng: lng,
+      accuracyMeters: accuracy || 10,
+      speedKmh: speedKmh || 0,
+      headingDegrees: heading,
+      batteryPercent: batteryLevel || undefined,
+      isCharging,
+      locationName,
+      emergencyNote,
+      breadcrumbTrail: breadcrumbsRef.current.slice(-25),
+      isDuressSilent: isDuressActive,
+      isActive: true,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24-hour retention
+    };
 
-  // Sorted nearby facilities based on current GPS
-  const nearbyEmergencyFacilities = useMemo(() => {
-    if (!currentPosition) return SRI_LANKA_EMERGENCY_SERVICES;
-    return [...SRI_LANKA_EMERGENCY_SERVICES]
-      .map((item) => ({
-        ...item,
-        distanceKm: calculateDistanceKm(currentPosition.lat, currentPosition.lng, item.lat, item.lng),
-      }))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [currentPosition, calculateDistanceKm]);
+    try {
+      await createOrUpdateSosLiveSession(sessionPayload);
+    } catch (e) {
+      console.warn('Silent Firestore sync error:', e);
+    }
+  }, [sessionId, sessionCode, currentUser, accuracy, speedKmh, heading, batteryLevel, isCharging, locationName, emergencyNote, startedAt]);
 
-  // Audio Evidence Loop Recorder (20-second rolling chunks)
-  const startContinuousAudioLoop = useCallback(() => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-    isContinuousAudioRunningRef.current = true;
-    setIsRecordingAudio(true);
+  useEffect(() => {
+    if (isOpen) {
+      refreshGpsLocation();
+      syncInitialSessionToFirestore(currentCoords.lat || 7.0782, currentCoords.lng || 79.8920);
+    }
+  }, [isOpen, refreshGpsLocation, syncInitialSessionToFirestore, currentCoords.lat, currentCoords.lng]);
 
-    const recordNextChunk = () => {
-      if (!isContinuousAudioRunningRef.current) return;
+  // 🚨 Dual Dispatch Function (WhatsApp first -> SMS backup)
+  const dispatchDualEmergency = useCallback((
+    reason: 'panic_3tap' | 'duress_pin' | 'battery_low' | 'shake_impact' | 'safe_arrival' | 'manual',
+    coords: { lat: number; lng: number },
+    customAudioUrl?: string
+  ) => {
+    const liveLink = trackingLink;
+    const primaryContact = trustedContacts[0];
+    const vehicleText = vehicleNumber.trim() ? ` (වාහනය: ${vehicleType} ${vehicleNumber.trim().toUpperCase()})` : '';
 
+    let reasonSi = 'හදිසි අනතුරක්!';
+    if (reason === 'panic_3tap') reasonSi = 'පැනික් බටන් 3-වරක් ක්ලික් කිරීම (Panic 3-Tap Trigger)';
+    else if (reason === 'battery_low') reasonSi = 'දුරකථනයේ බැටරිය 10% ට අඩු වීම (Critical Battery Drop)';
+    else if (reason === 'shake_impact') reasonSi = 'දැඩි කම්පනයක් / ගැස්මක් හඳුනාගැනීම (Vehicle Impact / Shake)';
+    else if (reason === 'safe_arrival') reasonSi = 'ගමනාන්තයට ආරක්ෂිතව ළඟා වීම (Safe Arrival Geofence)';
+
+    const waText = encodeURIComponent(
+      `🚨 *හදිසි සහය සේවා (Sahaya Sewa) ආපදා නිවේදනය!*\n` +
+      `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
+      `⚠️ *හේතුව:* ${reasonSi}\n` +
+      (vehicleNumber ? `🚖 *වාහන අංකය:* ${vehicleType} ${vehicleNumber.toUpperCase()}\n` : '') +
+      `📍 *ස්ථානය:* ${locationName}\n` +
+      `🔋 *බැටරිය:* ${batteryLevel !== null ? `${batteryLevel}%` : 'ප්‍රමාණවත්'}\n` +
+      `🔗 *සජීවී GPS ගමන් සිතියම:* ${liveLink}\n\n` +
+      `_කරුණාකර වහාම මෙම සබැඳිය විවෘත කර මා සිටින ස්ථානයට සහය එවන්න._`
+    );
+
+    const smsText = encodeURIComponent(
+      `SOS! ${reasonSi}. මා සිටින සජීවී ස්ථානය:${vehicleText} ${liveLink}`
+    );
+
+    if (primaryContact && primaryContact.phone) {
+      const cleanPhone = primaryContact.phone.replace(/\D/g, '');
+      const fullPhone = cleanPhone.startsWith('0') ? '94' + cleanPhone.slice(1) : cleanPhone;
+      setPendingSmsUrl(`sms:${primaryContact.phone}?body=${smsText}`);
+      setDualDispatchNotice(getLangText(
+        `පළමු පියවර ලෙස ${primaryContact.name} වෙත WhatsApp යැවීමට සූදානම්...`,
+        `Preparing WhatsApp dispatch to ${primaryContact.name}...`
+      ));
+
+      try {
+        window.open(`https://wa.me/${fullPhone}?text=${waText}`, '_blank');
+      } catch {
+        window.location.href = `sms:${primaryContact.phone}?body=${smsText}`;
+      }
+    }
+  }, [trackingLink, trustedContacts, currentUser, vehicleNumber, vehicleType, locationName, batteryLevel, getLangText]);
+
+  // Continuous Audio Recording (Evidence capture)
+  const startAudioRecordingLoop = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      isContinuousAudioRunningRef.current = true;
+      setIsRecordingAudio(true);
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
         const recorder = new MediaRecorder(stream);
         mediaRecorderRef.current = recorder;
-        audioChunksRef.current = [];
-
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) {
-            audioChunksRef.current.push(e.data);
+            const url = URL.createObjectURL(e.data);
+            setRecordedAudioUrl(url);
           }
         };
-
-        recorder.onstop = () => {
-          stream.getTracks().forEach((track) => track.stop());
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          if (audioBlob.size > 0) {
-            setRecordedAudioCount((prev) => prev + 1);
-            console.log(`SOS Audio Chunk recorded: size=${audioBlob.size} bytes`);
-          }
-          if (isContinuousAudioRunningRef.current) {
-            recordNextChunk();
-          }
-        };
-
         recorder.start();
-
-        setTimeout(() => {
-          if (recorder.state === 'recording') {
-            recorder.stop();
-          }
-        }, 20000); // 20-second chunk
-      }).catch((err) => {
-        console.warn('Audio recording permission denied or failed:', err);
+      }).catch(() => {
         setIsRecordingAudio(false);
       });
-    };
-
-    recordNextChunk();
-  }, [sessionId]);
+    }
+  }, []);
 
   const stopAudioRecordingLoop = useCallback(() => {
     isContinuousAudioRunningRef.current = false;
@@ -596,6 +621,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
     setIsRecordingAudio(false);
   }, []);
+
   // 🚨 Master SOS Start Function
   const handleStartSos = useCallback(async (customReason?: any) => {
     setIsLocating(true);
