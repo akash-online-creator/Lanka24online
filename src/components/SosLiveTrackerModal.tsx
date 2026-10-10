@@ -622,7 +622,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     setIsRecordingAudio(false);
   }, []);
 
-  // 🚨 Master SOS Start Function
+    // 🚨 Master SOS Start Function
   const handleStartSos = useCallback(async (customReason?: any) => {
     setIsLocating(true);
     setIsSavingAndLocking(true);
@@ -639,272 +639,237 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
     const activateWithPosition = async (lat: number, lng: number, acc: number = 10, speed: number = 0, head?: number) => {
       try {
-        setSavingStatusStep('📍 ප්‍රදේශයේ නම සහ ලිපිනය තහවුරු කරගනිමින් පවතී...');
-        const resolvedName = await resolveLocationName(lat, lng);
-        setLocationName(resolvedName);
+        setCurrentCoords({ lat, lng });
+        setAccuracy(acc);
+        setSpeedKmh(speed);
+        if (head !== undefined) setHeading(head);
 
-        const initialBreadcrumb: LiveLocationBreadcrumb = {
+        reverseGeocode(lat, lng);
+
+        const initialBreadcrumb: SosBreadcrumbPoint = {
           lat,
           lng,
-          accuracy: acc,
-          speed: speed || null,
-          heading: head || null,
-          altitude: null,
-          timestamp: nowIso,
-          batteryLevel,
-          isCharging,
-          batteryState: batteryLevel !== null && batteryLevel < 20 ? 'critical' : 'normal',
-          signalQuality: 'good',
+          timestampMs: Date.now(),
+          accuracyMeters: acc,
+          speedKmh: speed,
         };
+        breadcrumbsRef.current = [initialBreadcrumb];
+        setBreadcrumbs([initialBreadcrumb]);
 
-        const initialSession: SosSessionSchema = {
+        const initialSession: SosLiveSession = {
           id: activeSessionId,
           sessionCode: activeCode,
-          userId: currentUser.id || 'anonymous_user',
-          userName: currentUser.name || 'පරිශීලක',
-          userPhone: currentUser.phone || '',
-          userEmail: currentUser.email || '',
-          userAvatar: currentUser.avatar || '',
-          vehicleNumber: vehicleNumber.trim() ? vehicleNumber.trim().toUpperCase() : undefined,
-          vehicleType: vehicleNumber.trim() ? vehicleType : undefined,
-          status: 'active',
-          startTime: nowIso,
-          updatedTime: nowIso,
-          emergencyType: selectedEmergencyType,
-          customNotes: emergencyNote,
-          batteryLevel,
+          userId: currentUser?.id || currentUser?.userId || 'guest_user',
+          userName: currentUser?.name || 'පරිශීලක (User)',
+          userPhone: currentUser?.phone || currentUser?.whatsappNumber || '',
+          userNic: currentUser?.nicNumber,
+          latitude: lat,
+          longitude: lng,
+          accuracyMeters: acc,
+          speedKmh: speed,
+          headingDegrees: head,
+          batteryPercent: batteryLevel || undefined,
           isCharging,
-          currentLat: lat,
-          currentLng: lng,
-          accuracy: acc,
-          speed: speed || null,
-          heading: head || null,
-          altitude: null,
-          breadcrumbs: [initialBreadcrumb],
-          chatMessages: [
-            {
-              id: `msg_${Date.now()}`,
-              senderId: 'system',
-              senderName: 'පද්ධතිය (System)',
-              senderRole: 'system',
-              message: `🚨 SOS සජීවී ආපදා විකාශනය ආරම්භ විය (${activeCode}).${
-                vehicleNumber.trim() ? `\n🚖 වාහනය: ${vehicleType} -${vehicleNumber.trim().toUpperCase()}` : ''
-              }\nස්ථානය: ${resolvedName}`,
-              timestamp: nowIso,
-            },
-          ],
-          trustedContactsNotified: [],
-          expiresAtMs: Date.now() + 24 * 60 * 60 * 1000, // 24-Hour Law Enforcement Evidence retention
+          locationName,
+          isActive: true,
+          status: 'active',
+          vehicleNumber: vehicleNumber.trim().toUpperCase() || undefined,
+          vehicleType: vehicleNumber.trim() ? vehicleType : undefined,
+          emergencyReason: customReason || 'manual',
+          emergencyNote,
+          createdAt: nowIso,
+          createdAtMs: Date.now(),
+          lastUpdatedAt: nowIso,
+          lastUpdatedAtMs: Date.now(),
+          breadcrumbTrail: [initialBreadcrumb],
+          audioClips: recordedAudioUrl ? [{ url: recordedAudioUrl, timestampMs: Date.now() }] : [],
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24-hour retention
         };
 
-        // Mandatory cloud write - Save to 'sos_live_sessions'
         setSavingStatusStep('🔒 ආරක්ෂිත SOS සජීවී සැසිය Cloud වෙත සුරකිමින් පවතී...');
-        await setDoc(doc(db, 'sos_live_sessions', activeSessionId), initialSession);
+        await createOrUpdateSosLiveSession(initialSession);
 
-        // Update local states
-        setCurrentPosition({ lat, lng });
-        setAccuracyMeter(acc);
-        setSpeedKmh(speed);
-        setBreadcrumbs([initialBreadcrumb]);
         setIsActive(true);
         setIsDuressActive(false);
-        setDuressDeactivatedFake(false);
-
-        // Start evidence audio recording loop
-        startContinuousAudioLoop();
-
-        // Broadcast to native vibration if supported
-        if ('vibrate' in navigator) {
-          navigator.vibrate([300, 100, 300, 100, 300]);
-        }
-
-        // Successfully saved & locked gate cleared
+        setIsLocating(false);
         setIsSavingAndLocking(false);
         setSavingStatusStep('');
+
+        // Haptic Feedback
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([400, 150, 400, 150, 800]);
+        }
+
+        // Start Evidence Audio Loop
+        startAudioRecordingLoop();
+
+        // Dual dispatch alert to trusted contacts
+        dispatchDualEmergency(customReason || 'manual', { lat, lng }, recordedAudioUrl || undefined);
       } catch (err: any) {
-        console.error('Error activating SOS session to cloud:', err);
-        setSavingError('Cloud දත්ත පද්ධතියට සම්බන්ධ වීමේ දෝෂයක්. කරුණාකර අන්තර්ජාලය පරීක්ෂා කරන්න.');
-        setIsSavingAndLocking(false);
-      } finally {
+        console.error('Failed to activate SOS live session in Firestore:', err);
         setIsLocating(false);
+        setIsSavingAndLocking(false);
+        setGpsError(getLangText('සජීවී දත්ත සේවාදායකයේ තැන්පත් කිරීම අසාර්ථක විය. නැවත උත්සාහ කරන්න.', 'Failed to persist live session. Please retry.'));
       }
     };
 
-    // Fallback to standard geolocation
-    if (navigator.geolocation) {
+    // Obtain High Accuracy Geolocation directly from device hardware
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          await activateWithPosition(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            pos.coords.accuracy || 15,
-            pos.coords.speed ? pos.coords.speed * 3.6 : 0,
-            pos.coords.heading || undefined
-          );
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(6));
+          const lng = Number(pos.coords.longitude.toFixed(6));
+          const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 10;
+          const spd = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+          const head = pos.coords.heading ? Math.round(pos.coords.heading) : undefined;
+          activateWithPosition(lat, lng, acc, spd, head);
         },
-        async (err) => {
-          console.warn('Standard geolocation fallback triggered:', err);
-          // Katunayake / Ja-Ela approximate center
-          const fallbackLat = currentLocation?.lat || 7.0782;
-          const fallbackLng = currentLocation?.lng || 79.8920;
-          await activateWithPosition(fallbackLat, fallbackLng, 50, 0);
+        (err) => {
+          console.warn('GPS initial fix fallback:', err);
+          const fallbackLat = currentCoords.lat || 7.0782;
+          const fallbackLng = currentCoords.lng || 79.8920;
+          activateWithPosition(fallbackLat, fallbackLng, 25, 0);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      const fallbackLat = currentLocation?.lat || 7.0782;
-      const fallbackLng = currentLocation?.lng || 79.8920;
-      await activateWithPosition(fallbackLat, fallbackLng, 50, 0);
+      const fallbackLat = currentCoords.lat || 7.0782;
+      const fallbackLng = currentCoords.lng || 79.8920;
+      activateWithPosition(fallbackLat, fallbackLng, 25, 0);
     }
   }, [
     sessionCode,
     sessionId,
-    resolveLocationName,
+    startedAt,
+    currentUser,
     batteryLevel,
     isCharging,
-    currentUser,
+    locationName,
     vehicleNumber,
     vehicleType,
-    selectedEmergencyType,
     emergencyNote,
-    startContinuousAudioLoop,
-    currentLocation,
+    recordedAudioUrl,
+    startAudioRecordingLoop,
+    dispatchDualEmergency,
+    currentCoords,
+    getLangText,
   ]);
 
-  // Stop / Deactivate SOS
-  const handleStopSos = useCallback(async (reason: string = 'පරිශීලකයා විසින් ආරක්ෂිතව විසඳන ලදී') => {
-    try {
-      stopHighDecibelSiren();
+  // 🛑 Master SOS Stop / Deactivate Function
+  const handleStopSos = useCallback(async (isDuress: boolean = false) => {
+    if (isDuress) {
+      // DURESS SILENT DEACTIVATION
+      setIsDuressActive(true);
+      setIsActive(false);
       stopAudioRecordingLoop();
-      setIsSirenPlaying(false);
+      setIsSirenOn(false);
 
       if (sessionId) {
-        await updateDoc(doc(db, 'sos_live_sessions', sessionId), {
-          status: 'resolved',
-          endTime: new Date().toISOString(),
-          deactivationReason: reason,
-          updatedTime: new Date().toISOString(),
-        });
+        updateSosLiveLocation(sessionId, {
+          isDuressSilent: true,
+          status: 'duress_silent',
+          lastUpdatedAt: new Date().toISOString(),
+          lastUpdatedAtMs: Date.now(),
+        }).catch(() => {});
       }
-    } catch (e) {
-      console.warn('Could not update resolved status on Firestore:', e);
-    } finally {
-      setIsActive(false);
-      setIsDuressActive(false);
-      setDuressDeactivatedFake(false);
-      setIsDuressModalOpen(false);
-      setEnteredPin('');
-      setPinError('');
+      return;
+    }
+
+    // Normal safe deactivation
+    setIsActive(false);
+    setIsDuressActive(false);
+    stopAudioRecordingLoop();
+    setIsSirenOn(false);
+
+    if (sessionId) {
+      try {
+        await stopSosLiveSession(sessionId, 'පරිශීලකයා විසින් ආරක්ෂිතව අවසන් කරන ලදී (User Resolved)');
+      } catch (e) {
+        console.warn('Failed to update stop status on Firestore:', e);
+      }
     }
   }, [sessionId, stopAudioRecordingLoop]);
 
-  // Duress PIN handler (Stealth safety)
-  const handleVerifyDuressPin = () => {
-    if (enteredPin === '9999') {
-      // DURESS SILENT MODE
-      setDuressDeactivatedFake(true);
-      setIsDuressActive(true);
-      setIsDuressModalOpen(false);
-      stopHighDecibelSiren();
-      setIsSirenPlaying(false);
-
-      if (sessionId) {
-        updateDoc(doc(db, 'sos_live_sessions', sessionId), {
-          status: 'duress_silent',
-          deactivationReason: '⚠️ DURESS SILENT ALERT (Stealth PIN 9999 Entered)',
-          updatedTime: new Date().toISOString(),
-        }).catch((e) => console.warn('Duress status update error:', e));
-      }
-    } else if (enteredPin === '1234' || enteredPin === '0000') {
-      // Normal Safe PIN
-      handleStopSos('ආරක්ෂිත PIN කේතය මඟින් විසඳන ලදී');
-    } else {
-      setPinError('වලංගු නොවන PIN අංකයකි. කරුණාකර නැවත උත්සාහ කරන්න.');
-    }
-  };
-
-  // Continuous background GPS breadcrumb watcher
+  // 🛰️ Continuous Realtime Geolocation Breadcrumb Watcher
   useEffect(() => {
     if (!isActive || !sessionId) {
-      if (watchIdRef.current !== null) {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
       return;
     }
 
-    if (navigator.geolocation) {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const acc = pos.coords.accuracy || 10;
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(6));
+          const lng = Number(pos.coords.longitude.toFixed(6));
+          const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 10;
           const spd = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-          const head = pos.coords.heading || null;
-          const alt = pos.coords.altitude || null;
-          const nowIso = new Date().toISOString();
+          const head = pos.coords.heading ? Math.round(pos.coords.heading) : null;
+          const nowMs = Date.now();
 
-          setCurrentPosition({ lat, lng });
-          setAccuracyMeter(acc);
+          setCurrentCoords({ lat, lng });
+          setAccuracy(acc);
           setSpeedKmh(spd);
-          setHeadingDegree(head);
-          setAltitudeMeter(alt);
+          setHeading(head);
 
-          const newBreadcrumb: LiveLocationBreadcrumb = {
+          const newPoint: SosBreadcrumbPoint = {
             lat,
             lng,
-            accuracy: acc,
-            speed: spd,
-            heading: head,
-            altitude: alt,
-            timestamp: nowIso,
-            batteryLevel,
-            isCharging,
-            batteryState: batteryLevel !== null && batteryLevel < 20 ? 'critical' : 'normal',
-            signalQuality: 'good',
+            timestampMs: nowMs,
+            accuracyMeters: acc,
+            speedKmh: spd,
           };
 
-          setBreadcrumbs((prev) => {
-            const nextList = [...prev, newBreadcrumb].slice(-100);
-            return nextList;
-          });
+          breadcrumbsRef.current = [...breadcrumbsRef.current, newPoint].slice(-100);
+          setBreadcrumbs([...breadcrumbsRef.current]);
 
-          // Sync to Cloud Firestore
-          if (sessionId) {
-            updateDoc(doc(db, 'sos_live_sessions', sessionId), {
-              currentLat: lat,
-              currentLng: lng,
-              accuracy: acc,
-              speed: spd,
-              heading: head,
-              altitude: alt,
-              updatedTime: nowIso,
-              batteryLevel,
+          // Update Leaflet marker and polyline smoothly
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
+          }
+          if (accuracyCircleRef.current) {
+            accuracyCircleRef.current.setLatLng([lat, lng]);
+            accuracyCircleRef.current.setRadius(acc);
+          }
+          if (polylineRef.current) {
+            polylineRef.current.setLatLngs(breadcrumbsRef.current.map(b => [b.lat, b.lng]));
+          }
+
+          // Throttle Firestore cloud writes to every 4 seconds to conserve battery & quota
+          if (nowMs - lastSyncTimeRef.current >= 4000) {
+            lastSyncTimeRef.current = nowMs;
+            updateSosLiveLocation(sessionId, {
+              latitude: lat,
+              longitude: lng,
+              accuracyMeters: acc,
+              speedKmh: spd,
+              headingDegrees: head,
+              batteryPercent: batteryLevel || undefined,
               isCharging,
-              breadcrumbs: arrayUnion(newBreadcrumb),
-            }).catch((err) => console.warn('Firestore breadcrumb sync warning:', err));
+              locationName,
+              emergencyNote,
+              breadcrumbTrail: breadcrumbsRef.current.slice(-25),
+              isDuressSilent: isDuressActive,
+              isActive: true,
+              status: 'active',
+            });
           }
         },
-        (err) => {
-          console.warn('Geolocation watch position error:', err);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 2000,
-        }
+        (err) => console.warn('Geolocation watch error:', err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
 
       watchIdRef.current = watchId;
 
       return () => {
-        if (watchIdRef.current !== null) {
-          navigator.geolocation.clearWatch(watchIdRef.current);
-          watchIdRef.current = null;
-        }
+        navigator.geolocation.clearWatch(watchId);
+        watchIdRef.current = null;
       };
     }
-  }, [isActive, sessionId, batteryLevel, isCharging]);
+  }, [isActive, isDuressActive, sessionId, batteryLevel, isCharging, locationName, emergencyNote]);
   // 🗺️ Leaflet Map Setup
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
