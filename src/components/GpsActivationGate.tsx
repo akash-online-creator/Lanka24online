@@ -12,16 +12,14 @@ import {
   Languages, 
   Sparkles,
   Bell,
-  Volume2,
   ChevronRight,
   Crosshair,
-  VolumeX
 } from 'lucide-react';
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { requestNotificationPermission, playNotificationSound } from '../utils/notificationManager';
-import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
+import { stopEmergencySiren } from '../utils/sirenAudio';
 
 interface GpsActivationGateProps {
   onProceedToLogin: (location?: LocationOption) => void;
@@ -44,7 +42,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<'idle' | 'scanning' | 'success' | 'denied' | 'error'>('idle');
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
-  const [isTestingSiren, setIsTestingSiren] = useState(false);
 
   // Process Coordinates from GPS
   const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
@@ -203,27 +200,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     localStorage.setItem('sahaya_permissions_setup_completed', 'true');
   };
 
-  // Test Siren Audio
-  const handleToggleTestSiren = () => {
-    if (isTestingSiren) {
-      stopEmergencySiren();
-      setIsTestingSiren(false);
-    } else {
-      startEmergencySiren();
-      setIsTestingSiren(true);
-      setTimeout(() => {
-        stopEmergencySiren();
-        setIsTestingSiren(false);
-      }, 3500);
-    }
-  };
-
   const handleFinishAndProceed = () => {
     localStorage.setItem('sahaya_permissions_setup_completed', 'true');
     stopEmergencySiren();
     onProceedToLogin(resolvedLocation || undefined);
   };
-
   const handleNextLanguage = () => {
     const langSeq: Language[] = ['si', 'en', 'ta'];
     const currentIndex = langSeq.indexOf(language);
@@ -420,37 +401,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               {notifGranted ? 'Active ✓' : 'Allow'}
             </button>
           </div>
-        </div>
-
-        {/* 🔊 Test Siren Audio Player Button */}
-        <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Volume2 className={`w-4 h-4 text-rose-600 dark:text-rose-400 ${isTestingSiren ? 'animate-bounce' : ''}`} />
-            <span className="text-xs font-bold text-rose-900 dark:text-rose-200">
-              හදිසි අනතුරු සයිරන් නාදය පරීක්ෂා කරන්න:
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleToggleTestSiren}
-            className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
-              isTestingSiren
-                ? 'bg-rose-600 text-white animate-pulse'
-                : 'bg-rose-100 dark:bg-rose-950 text-rose-900 dark:text-rose-200 hover:bg-rose-200'
-            }`}
-          >
-            {isTestingSiren ? (
-              <>
-                <VolumeX className="w-3.5 h-3.5" />
-                <span>නවත්වන්න</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>Play Siren</span>
-              </>
-            )}
-          </button>
         </div>
 
         {/* Bottom Proceed Action Button */}
