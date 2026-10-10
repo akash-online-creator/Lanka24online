@@ -489,23 +489,23 @@ export async function saveSirenSettingsToFirestore(settings: any): Promise<void>
 
 export async function createOrUpdateSosLiveSession(session: any): Promise<string> {
   const id = session.id || `sos_${Date.now()}`;
-  const docRef = doc(db, 'sos_sessions', id);
+  const docRef = doc(db, 'sos_live_sessions', id);
   await setDoc(docRef, sanitizeForFirestore({ ...session, id, updatedAtServer: serverTimestamp() }), { merge: true });
   return id;
 }
 
 export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
-  const docRef = doc(db, 'sos_sessions', sessionId);
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
   await setDoc(docRef, sanitizeForFirestore({ ...locationData, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
 export async function stopSosLiveSession(sessionId: string): Promise<void> {
-  const docRef = doc(db, 'sos_sessions', sessionId);
-  await setDoc(docRef, sanitizeForFirestore({ status: 'ended', updatedAtServer: serverTimestamp() }), { merge: true });
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
+  await setDoc(docRef, sanitizeForFirestore({ status: 'ended', isActive: false, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
 export function subscribeToSosLiveSession(sessionId: string, callback: (session: any) => void): () => void {
-  const docRef = doc(db, 'sos_sessions', sessionId);
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
   return onSnapshot(docRef, (snap) => {
     if (snap.exists()) {
       callback({ id: snap.id, ...snap.data() });
@@ -517,7 +517,7 @@ export function subscribeToSosLiveSession(sessionId: string, callback: (session:
 
 export async function getSosLiveSession(sessionId: string): Promise<any | null> {
   try {
-    const docRef = doc(db, 'sos_sessions', sessionId);
+    const docRef = doc(db, 'sos_live_sessions', sessionId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       return { id: snap.id, ...snap.data() };
