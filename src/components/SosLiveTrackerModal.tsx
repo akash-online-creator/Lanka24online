@@ -436,6 +436,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
   const [savingStatusStep, setSavingStatusStep] = useState<string>('');
+  const [savingError, setSavingError] = useState<string | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
 
