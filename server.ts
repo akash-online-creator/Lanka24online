@@ -7,6 +7,7 @@ import fetch from 'node-fetch';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import admin from 'firebase-admin';
 import { 
   S3Client, 
   PutObjectCommand, 
@@ -17,6 +18,32 @@ import {
 } from '@aws-sdk/client-s3';
 
 dotenv.config();
+
+// -------------------------------------------------------------
+// 🚨 FIREBASE ADMIN & FCM INITIALIZATION FOR 24/7 BACKGROUND ALERTS
+// -------------------------------------------------------------
+if (!admin.apps.length) {
+  try {
+    const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (serviceAccountEnv) {
+      const serviceAccount = JSON.parse(serviceAccountEnv);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id || 'gen-lang-client-0262698872',
+      });
+      console.log('✅ Firebase Admin initialized with Service Account');
+    } else {
+      admin.initializeApp({
+        projectId: process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0262698872',
+      });
+      console.log('✅ Firebase Admin initialized with Project ID');
+    }
+  } catch (err: any) {
+    console.warn('⚠️ Firebase Admin initialization note:', err.message);
+  }
+}
+const adminDb = admin.apps.length ? admin.firestore() : null;
+const adminMessaging = admin.apps.length ? admin.messaging() : null;
 
 // Lazy initialization of GoogleGenAI for server-side Gemini
 let aiClient: GoogleGenAI | null = null;
@@ -271,7 +298,6 @@ async function startServer() {
   // Mount unified & alias endpoints
   app.post('/api/storage/upload', (upload.single('file') as any), handleMediaUpload);
   app.post('/api/telegram/upload', (upload.single('file') as any), handleMediaUpload);
-
   // -------------------------------------------------------------
   // 🎬 2. Cloudflare R2 / S3 File Stream Endpoint (Supports Range Requests)
   // -------------------------------------------------------------
@@ -528,7 +554,6 @@ async function startServer() {
     'gemini-3.8-flash',
     'gemini-3.7-flash',
   ];
-
   app.post('/api/chat', async (req: any, res: any) => {
     try {
       const { message, language = 'si', conversationHistory = [], mode = 'full' } = req.body;
@@ -732,7 +757,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           try {
             const response = await ai.models.generateContent({
               model: modelName,
-              contents: userPrompt,
+              contents,
               config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',
@@ -960,6 +985,129 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   });
 
   // -------------------------------------------------------------
+  // 🚨 EMERGENCY PUSH BROADCAST CONTROLLER (FCM HIGH-PRIORITY SIREN)
+  // -------------------------------------------------------------
+  app.post('/api/push/broadcast', async (req: any, res: any) => {
+    try {
+      const {
+        category,
+        title,
+        body,
+        alertId,
+        postId,
+        groupId,
+        locationName,
+        latitude,
+        longitude,
+        radiusKm = 5.0,
+        badgeText,
+        urgency = 'high',
+        senderName,
+        actionUrl,
+      } = req.body;
+
+      if (!title || !body) {
+        return res.status(400).json({ error: 'Title and body are required' });
+      }
+
+      console.log(`🚨 [Push Broadcast] Dispatching "${category}" alert: ${title}`);
+
+      const isRedAlert = category === 'red_alert';
+      const targetChannelId = isRedAlert ? 'sahaya_emergency_red_alert' : 'sahaya_general';
+      const soundFile = isRedAlert ? 'siren' : 'default';
+
+      const messagePayload = {
+        notification: {
+          title: String(title),
+          body: String(body),
+        },
+        data: {
+          category: String(category || 'admin_broadcast'),
+          alertId: String(alertId || ''),
+          postId: String(postId || ''),
+          groupId: String(groupId || ''),
+          locationName: String(locationName || ''),
+          latitude: String(latitude || ''),
+          longitude: String(longitude || ''),
+          radiusKm: String(radiusKm || '5.0'),
+          urgency: String(urgency),
+          senderName: String(senderName || ''),
+          actionUrl: String(actionUrl || '/'),
+          isEmergencySiren: isRedAlert ? 'true' : 'false',
+        },
+        android: {
+          priority: 'high' as const,
+          ttl: 0,
+          notification: {
+            channelId: targetChannelId,
+            sound: soundFile,
+            defaultSound: !isRedAlert,
+            defaultVibrateTimings: true,
+            priority: 'max' as const,
+            visibility: 'public' as const,
+            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          },
+        },
+      };
+
+      let successCount = 0;
+      let failureCount = 0;
+
+      if (adminMessaging) {
+        try {
+          const topicName = isRedAlert ? 'sahaya_red_alerts' : 'sahaya_all_users';
+          await adminMessaging.send({
+            ...messagePayload,
+            topic: topicName,
+          });
+          console.log(`✅ Push successfully broadcasted to topic: /topics/${topicName}`);
+        } catch (topicErr: any) {
+          console.warn('⚠️ Topic broadcast note:', topicErr.message);
+        }
+      }
+
+      if (adminDb && adminMessaging) {
+        try {
+          const tokensSnapshot = await adminDb.collection('device_push_tokens').get();
+          const tokens: string[] = [];
+
+          tokensSnapshot.forEach((doc: any) => {
+            const data = doc.data();
+            if (data.token && typeof data.token === 'string') {
+              tokens.push(data.token);
+            }
+          });
+
+          if (tokens.length > 0) {
+            const chunkSize = 500;
+            for (let i = 0; i < tokens.length; i += chunkSize) {
+              const chunk = tokens.slice(i, i + chunkSize);
+              const response = await adminMessaging.sendEachForMulticast({
+                ...messagePayload,
+                tokens: chunk,
+              });
+              successCount += response.successCount;
+              failureCount += response.failureCount;
+            }
+            console.log(`✅ Device tokens multicast: ${successCount} sent, ${failureCount} failed.`);
+          }
+        } catch (tokenErr: any) {
+          console.warn('⚠️ Device token multicast note:', tokenErr.message);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Push notification broadcast dispatched successfully',
+        dispatchedCount: successCount,
+      });
+    } catch (err: any) {
+      console.error('❌ Push Broadcast Error:', err);
+      return res.status(500).json({ error: 'Failed to broadcast push notification' });
+    }
+  });
+
+  // -------------------------------------------------------------
   // 🌐 6. Static PWA Assets & Frontend Serving
   // -------------------------------------------------------------
   const publicPath = path.join(process.cwd(), 'public');
@@ -1017,4 +1165,3 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
 }
 
 startServer();
-
