@@ -405,7 +405,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           );
         })}
       </div>
-
       {/* Tab 1: User Management & Approvals */}
       {activeTab === 'users' && (
         <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
@@ -718,7 +717,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
-      {/* Tab 10: Password Reset Requests (යාවත්කාලීන කිරීමට ඇති මුරපද ලැයිස්තුව) */}
+      {/* Tab 10: Password Reset Requests */}
       {activeTab === 'password_resets' && (
         <AdminPasswordResetsManagement
           users={users}
