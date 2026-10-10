@@ -6,14 +6,14 @@ import {
   Sun, 
   Languages, 
   KeyRound, 
-  Contact2,
-  Sparkles,
-  Loader2,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Download
+  Contact2, 
+  Sparkles, 
+  Loader2, 
+  AlertCircle, 
+  Eye, 
+  EyeOff, 
+  Smartphone, 
+  Download 
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
@@ -27,6 +27,7 @@ import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
 import { MarketShop } from '../types';
 import { initialTags } from '../data/initialData';
 import { getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
+import { PasswordResetRequestModal } from './PasswordResetRequestModal';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -66,6 +67,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
   const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
   const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'shop' | 'business'>('shop');
+  const [isResetRequestModalOpen, setIsResetRequestModalOpen] = useState(false);
 
   const handleSaveMarketShop = (newShop: MarketShop) => {
     const currentShops = getStoredMarketShops();
@@ -321,7 +323,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               </label>
               <button
                 type="button"
-                onClick={onNavigateToIssues}
+                onClick={() => setIsResetRequestModalOpen(true)}
                 className="text-[#00a86b] hover:text-[#008d5a] text-[11px] font-semibold hover:underline cursor-pointer transition-colors"
               >
                 {t.forgotCode || 'කේතය වෙනස් කිරීම'}
@@ -515,6 +517,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         allTags={initialTags}
         defaultType={marketplaceShopModalType}
         onSaveShop={handleSaveMarketShop}
+      />
+
+      {/* 🔑 කේතය / මුරපදය වෙනස් කිරීමේ ඉල්ලුම් පත්‍රය (Modal) */}
+      <PasswordResetRequestModal
+        isOpen={isResetRequestModalOpen}
+        onClose={() => setIsResetRequestModalOpen(false)}
+        language={language}
       />
     </div>
   );
