@@ -12,8 +12,6 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
-import { DevicePinSetupModal } from './components/DevicePinSetupModal';
-import { getStoredDevicePin } from './utils/devicePinManager';
 import {
   subscribeToUsers,
   subscribeToHelpPosts,
@@ -25,6 +23,7 @@ import {
   updateUserInFirestore
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
+import { checkIsAdmin } from './utils/postOwnerHelper';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 
@@ -43,10 +42,6 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
-
-  // 🔐 Device PIN Setup Modal State (අලුත් Device එකකින් Login වූ විට PIN එක සකසන තෙක් තබා ගැනීම)
-  const [isDevicePinSetupOpen, setIsDevicePinSetupOpen] = useState(false);
-  const [pendingUserForPin, setPendingUserForPin] = useState<User | null>(null);
 
   // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
@@ -118,9 +113,9 @@ export const App: React.FC = () => {
     if (!postId) return;
     const postObj = typeof target === 'object' ? target : helpPosts.find((p) => p && p.id === postId);
 
-    // 1 & 2. Auto JSON File Download (Device එකට Save වීම)
-    if (postObj) {
-      downloadPostBackupJson(postObj);
+    // 1 & 2. Auto JSON File Download (Admin device එකට පමණක් Save වීම)
+    if (postObj && checkIsAdmin(currentUser)) {
+      downloadPostBackupJson(postObj, currentUser);
     }
 
     // 3. LocalStorage Blacklist & Purge local memory
@@ -139,7 +134,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.warn('Backend delete sync note:', err);
     }
-  }, [helpPosts]);
+  }, [helpPosts, currentUser]);
 
   // Persist User Session to LocalStorage
   useEffect(() => {
@@ -173,11 +168,13 @@ export const App: React.FC = () => {
     });
 
     const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
+      // Purge stale local memory cache
       try {
         localStorage.removeItem('sahaya_help_posts');
       } catch {}
 
       if (dbPosts) {
+        // Firestore is the authoritative source of truth: honor all deletions permanently
         const sanitized = filterNonDeletedPosts(dbPosts);
         setHelpPosts(sanitized);
       }
@@ -232,30 +229,7 @@ export const App: React.FC = () => {
     }
   }, [users, currentUser, activeView]);
 
-  // සාර්ථකව Login වූ පසු Session එක Save කර අදාළ View එක වෙත යොමු කිරීම
-  const completeUserLogin = useCallback((userToLogin: User) => {
-    setCurrentUser(userToLogin);
-    try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(userToLogin));
-    } catch (e) {
-      console.warn(e);
-    }
-
-    if (userToLogin.role === 'admin' || userToLogin.role === 'super_admin') {
-      setActiveView('admin');
-    } else if (userToLogin.status === 'pending') {
-      setActiveView('pending');
-    } else {
-      setActiveView('dashboard');
-    }
-  }, []);
-
-  // 4-Digit PIN අංකය මඟින් සාර්ථකව Login වූ විට ක්‍රියාත්මක වන Handler එක
-  const handleSuccessfulPinLogin = useCallback((authenticatedUser: User) => {
-    completeUserLogin(authenticatedUser);
-  }, [completeUserLogin]);
-
-  // NIC සහ Password මඟින් Login වීමේ Handler එක
+  // Login Handler
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = userIdOrNic.trim();
     const cleanPass = passKey.trim();
@@ -311,27 +285,24 @@ export const App: React.FC = () => {
         };
       }
 
-      // මෙම Device එක සඳහා දැනටමත් මෙම User ගේ PIN එකක් සකසා ඇත්දැයි පරීක්ෂා කිරීම
-      const storedPin = getStoredDevicePin();
-      const hasConfiguredPinForThisUser =
-        storedPin &&
-        (storedPin.userId === matched.id ||
-          storedPin.userId === matched.userId ||
-          storedPin.nicNumber === (matched.nic || matched.nicNumber));
-
-      if (!hasConfiguredPinForThisUser) {
-        // අලුත් Device එකක් නම් හෝ PIN එකක් සකසා නොමැති නම් 4-digit PIN Setup Modal එක විවෘත කිරීම
-        setPendingUserForPin(matched);
-        setIsDevicePinSetupOpen(true);
-        return;
+      setCurrentUser(matched);
+      try {
+        localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(matched));
+      } catch (e) {
+        console.warn(e);
       }
 
-      // දැනටමත් මෙම Device එකෙහි PIN එකක් සකසා ඇත්නම් කෙලින්ම ඇතුල් වීම
-      completeUserLogin(matched);
+      if (matched.role === 'admin' || matched.role === 'super_admin') {
+        setActiveView('admin');
+      } else if (matched.status === 'pending') {
+        setActiveView('pending');
+      } else {
+        setActiveView('dashboard');
+      }
     } else {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
-  }, [users, completeUserLogin]);
+  }, [users]);
 
   // Demo User Direct Login
   const handleUserDemoLogin = useCallback(() => {
@@ -375,8 +346,6 @@ export const App: React.FC = () => {
   // Logout Handler
   const handleLogout = useCallback(() => {
     setCurrentUser(null);
-    setPendingUserForPin(null);
-    setIsDevicePinSetupOpen(false);
     setActiveView('login');
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
@@ -482,7 +451,6 @@ export const App: React.FC = () => {
             theme={theme}
             toggleTheme={toggleTheme}
             users={users}
-            onSuccessfulPinLogin={handleSuccessfulPinLogin}
           />
         )}
 
@@ -588,31 +556,13 @@ export const App: React.FC = () => {
           <ChangePasswordModal
             isOpen={true}
             onClose={() => {
+              // නව මුරපදය නොදා Dialog එක වසා දැමුවහොත් dashboard එකට ඇතුල් වීමට නොදී logout කරවයි
               handleLogout();
             }}
             onSavePassword={handleSaveNewPassword}
             userName={currentUser.name}
             nicNumber={currentUser.nic || currentUser.nicNumber}
             currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
-          />
-        )}
-
-        {/* 🔐 අලුත් Device එකකින් Login වූ විට අංක 4ක PIN එකක් සකස් කිරීමට අසන Modal එක */}
-        {isDevicePinSetupOpen && pendingUserForPin && (
-          <DevicePinSetupModal
-            isOpen={isDevicePinSetupOpen}
-            onClose={() => {
-              setIsDevicePinSetupOpen(false);
-              setPendingUserForPin(null);
-              handleLogout();
-            }}
-            currentUser={pendingUserForPin}
-            language={language}
-            onPinConfigured={(updatedUser) => {
-              setIsDevicePinSetupOpen(false);
-              setPendingUserForPin(null);
-              completeUserLogin(updatedUser);
-            }}
           />
         )}
       </div>
