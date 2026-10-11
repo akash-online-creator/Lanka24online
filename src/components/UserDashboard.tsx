@@ -865,6 +865,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     }
 
+        // Check Auto-Hidden by Reports (5 or more reports received)
+    if (post.isHidden || (post.reportsCount && post.reportsCount >= 5)) {
+      const isViewerAdmin = checkIsAdmin(user);
+      if (!isViewerAdmin) {
+        return false;
+      }
+    }
+
     // Check Hidden by Admin:
     // If hidden by admin, only Admin or the Post Owner can see it (to rectify/respond)
     if (post.isHiddenByAdmin) {
@@ -1885,12 +1893,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 <Mic className="w-4 h-4 text-white animate-pulse" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-white text-purple-800 shadow-md flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-500" /> AI VOICE
+                <Mic className="w-3 h-3 text-emerald-500" /> VOICE HELP
               </span>
             </div>
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('AI හඬ සහය (Voice SOS & Help)', 'AI Voice SOS & Help', 'AI குரல் உதவி')}
+                {getLangText('හඬ සහය (Voice Help)', 'Voice Help', 'குரல் உதவி')}
               </h4>
             </div>
           </button>
@@ -2682,17 +2690,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentLocation={currentLocation}
         lang={language}
         onSubmitHelpPost={handleCreatePost}
-        onOpenQuickServicePrefilled={() => {
-          setIsAiVoiceModalOpen(false);
-          setIsQuickServiceModalOpen(true);
-        }}
-        onOpenFindForMePrefilled={() => {
-          setIsAiVoiceModalOpen(false);
-          setIsFindForMeModalOpen(true);
-        }}
-        onOpenRedAlertPrefilled={() => {
-          setIsAiVoiceModalOpen(false);
-          if (onOpenRedAlert) onOpenRedAlert();
+        onSubmitRedAlert={async (newAlert) => {
+          if (setRedAlerts) {
+            setRedAlerts((prev) => [newAlert, ...(prev || [])]);
+          }
+          if (setSelectedAlertForDetail) {
+            setSelectedAlertForDetail(newAlert);
+          }
         }}
       />
 
