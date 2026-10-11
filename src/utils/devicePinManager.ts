@@ -17,7 +17,7 @@ const DEVICE_ID_KEY = 'sahaya_device_uuid';
 const DEVICE_PIN_KEY = 'sahaya_device_pin_record';
 
 /**
- * Generates or retrieves a unique, persistent identifier for this specific device/browser.
+ * මෙම Device එක/Browser එක සඳහා අනන්‍ය වූ ස්ථිර Device ID එකක් ජනනය කිරීම හෝ ලබා ගැනීම.
  */
 export function getOrCreateDeviceId(): string {
   try {
@@ -37,7 +37,7 @@ export function getOrCreateDeviceId(): string {
 }
 
 /**
- * Computes a SHA-256 hash of the 4-digit PIN combined with a random salt.
+ * අංක 4ක PIN අංකය Random Salt එකක් සමඟ SHA-256 මඟින් ආරක්ෂිතව Hash කිරීම.
  */
 export async function hashPinWithSalt(pin: string, salt: string): Promise<string> {
   const combined = `${salt}::${pin.trim()}::sahaya_pin_secret_v1`;
@@ -48,7 +48,7 @@ export async function hashPinWithSalt(pin: string, salt: string): Promise<string
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // Fallback simple hash
+  // Fallback hash (Crypto Subtle නොමැති පැරණි බ්‍රවුසර සඳහා)
   let hash = 0;
   for (let i = 0; i < combined.length; i++) {
     const char = combined.charCodeAt(i);
@@ -59,7 +59,7 @@ export async function hashPinWithSalt(pin: string, salt: string): Promise<string
 }
 
 /**
- * Retrieves the stored PIN record on this specific device.
+ * මෙම Device එක තුළ LocalStorage හි සුරකින ලද PIN දත්ත වාර්තාව ලබා ගැනීම.
  */
 export function getStoredDevicePin(): StoredDevicePinData | null {
   try {
@@ -78,8 +78,8 @@ export function getStoredDevicePin(): StoredDevicePinData | null {
 }
 
 /**
- * Saves a 4-digit PIN for the user on this device.
- * Returns the generated deviceId and deviceSessionToken to be saved in Firestore/User profile.
+ * මෙම Device එක සඳහා පරිශීලකයාගේ අංක 4ක PIN අංකය සුරැකීම.
+ * Firestore හි සටහන් කිරීම සඳහා Device ID එක සහ Session Token එක ආපසු ලබා දෙයි.
  */
 export async function saveDevicePin(
   user: User,
@@ -114,7 +114,7 @@ export async function saveDevicePin(
 }
 
 /**
- * Clears the PIN configuration from this device.
+ * මෙම Device එකෙහි ඇති PIN දත්ත වාර්තාව ඉවත් කිරීම (Reset).
  */
 export function clearDevicePin(): void {
   try {
@@ -132,8 +132,8 @@ export interface VerifyPinResult {
 }
 
 /**
- * Verifies the entered 4-digit PIN for device PIN quick login.
- * If user switched to another device remotely, resets this device's PIN.
+ * PIN Login View එකේදී ඇතුළත් කළ අංක 4ක PIN අංකය සත්‍යාපනය කිරීම.
+ * පරිශීලකයා වෙනත් දුරකථනයකින් Login වී ඇත්නම්, මෙම ඩිවයිස් එකේ PIN එක Reset කර NIC සහ මුරපදය ඉල්ලයි.
  */
 export async function verifyDevicePin(
   enteredPin: string,
@@ -158,7 +158,7 @@ export async function verifyDevicePin(
     };
   }
 
-  // 1. Verify PIN Hash first
+  // 1. PIN Hash එක නිවැරදි දැයි ප්‍රථමයෙන් පරීක්ෂා කිරීම
   const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
   if (computedHash !== stored.pinHash) {
     return {
@@ -168,7 +168,7 @@ export async function verifyDevicePin(
     };
   }
 
-  // 2. Find user locally
+  // 2. අදාළ පරිශීලකයා හඳුනා ගැනීම
   let user = allUsers.find(
     (u) =>
       u &&
@@ -178,7 +178,7 @@ export async function verifyDevicePin(
         (stored.nicNumber && u.nicNumber && u.nicNumber.toUpperCase() === stored.nicNumber.toUpperCase()))
   );
 
-  // If async fetcher provided, try fetching latest
+  // Firestore වෙතින් අලුත්ම User දත්ත ලබා ගැනීමට උත්සාහ කිරීම
   if (fetchLatestUserFn) {
     try {
       const latest = await fetchLatestUserFn(stored.nicNumber || stored.userId);
@@ -206,22 +206,22 @@ export async function verifyDevicePin(
 
   const currentDeviceId = getOrCreateDeviceId();
 
-  // If this device's stored record matches the current device, allow seamless login
-  if (stored.deviceId === currentDeviceId) {
-    return {
-      success: true,
-      matchedUser: user,
-    };
-  }
-
-  // Only reset if an actual foreign device takeover is detected
+  // 3. ⚠️ වෙනත් දුරකථනයකින් Login වී ඇත්නම්, මෙම ඩිවයිස් එකේ PIN එක ඉවත් කර NIC/මුරපදය ඉල්ලීම
   if (user.activeDeviceId && user.activeDeviceId !== currentDeviceId) {
     clearDevicePin();
     return {
       success: false,
       reason: 'device_mismatch',
       message:
-        '⚠️ ඔබ වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය Reset විය. කරුණාකර ඔබගේ හැඳුනුම්පත් අංකය හා මුරපදය මඟින් නැවත ඇතුල් වන්න.',
+        '⚠️ ඔබගේ ගිණුමට වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය ඉවත් විය. කරුණාකර ඔබගේ හැඳුනුම්පත් අංකය හා මුරපදය මඟින් නැවත ඇතුල් වන්න.',
+    };
+  }
+
+  // 4. මෙම Device එකෙහිම වලංගු PIN එකක් නම් Login වීමට ඉඩ දීම
+  if (stored.deviceId === currentDeviceId) {
+    return {
+      success: true,
+      matchedUser: user,
     };
   }
 
@@ -232,8 +232,7 @@ export async function verifyDevicePin(
 }
 
 /**
- * Verifies if the entered PIN matches the device PIN for the current user during in-app actions (e.g., Red Alert).
- * Fixed: Does not trigger false-positive device mismatch resets on the same device.
+ * යෙදුම තුළදී (උදා: Red Alert හෝ වෙනත් වැදගත් අවස්ථාවල) PIN අංකය සත්‍යාපනය කිරීම.
  */
 export async function verifyCurrentUserPin(
   enteredPin: string,
@@ -249,7 +248,7 @@ export async function verifyCurrentUserPin(
     return { success: false, needsSetup: true, message: 'මෙම Device එක සඳහා තවමත් PIN අංකයක් සකසා නොමැත.' };
   }
 
-  // 1. ප්‍රථමයෙන් ඇතුළත් කළ PIN අංකයේ Hash අගය නිවැරදි දැයි තහවුරු කරන්න
+  // 1. PIN Hash අගය නිවැරදි දැයි තහවුරු කිරීම
   const computedHash = await hashPinWithSalt(cleanPin, stored.salt);
   if (computedHash !== stored.pinHash) {
     return {
@@ -260,13 +259,7 @@ export async function verifyCurrentUserPin(
 
   const currentDeviceId = getOrCreateDeviceId();
 
-  // 2. PIN අංකය සකස් කර ඇත්තේ මෙම Device එකෙහිම නම් (stored.deviceId === currentDeviceId),
-  // State හි ඇති sync ප්‍රමාදයක් නිසා PIN එක Reset නොකර සත්‍යාපනය සාර්ථක කරන්න.
-  if (stored.deviceId === currentDeviceId) {
-    return { success: true };
-  }
-
-  // 3. වෙනත් Device එකකින් පැමිණි අවස්ථාවක් නම් පමණක් Reset කරන්න
+  // 2. වෙනත් Device එකකින් Login වී ඇති අවස්ථාවක් නම් Reset කිරීම
   if (currentUser?.activeDeviceId && currentUser.activeDeviceId !== currentDeviceId) {
     clearDevicePin();
     return {
@@ -274,6 +267,11 @@ export async function verifyCurrentUserPin(
       deviceMismatch: true,
       message: '⚠️ ඔබ වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය Reset විය. කරුණාකර නැවත PIN එකක් සකසන්න.',
     };
+  }
+
+  // 3. මෙම Device එකෙහි PIN එක නිවැරදි නම්
+  if (stored.deviceId === currentDeviceId) {
+    return { success: true };
   }
 
   return { success: true };
