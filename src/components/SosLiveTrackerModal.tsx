@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
+import { SosLiveViewerModal } from './SosLiveViewerModal';
 
 // 1. Trusted Emergency Contact Model
 export interface TrustedContact {
@@ -396,6 +397,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   }, []);
 
   const [showDuressModal, setShowDuressModal] = useState<boolean>(false);
+  const [showLiveViewerModal, setShowLiveViewerModal] = useState<boolean>(false);
   const [deactivateTab, setDeactivateTab] = useState<'pin' | 'nic'>('pin');
   const [enteredPin, setEnteredPin] = useState<string>('');
   const [enteredNic, setEnteredNic] = useState<string>('');
@@ -491,7 +493,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
   // 📡 Auto-Register & Sync SOS Session to Firestore on Open or Location Update
   const syncInitialSessionToFirestore = useCallback(async (lat: number, lng: number) => {
-    if (!sessionId) return;
+    if (!sessionId || !isActive) return;
     const nowIso = new Date().toISOString();
     const effectiveVehicleType = vehicleType === '✨ වෙනත්' && customVehicleType.trim() 
       ? customVehicleType.trim() 
@@ -536,9 +538,12 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       refreshGpsLocation();
-      syncInitialSessionToFirestore(currentCoords.lat || 7.0782, currentCoords.lng || 79.8920);
+      if (isActive && sessionId) {
+        syncInitialSessionToFirestore(currentCoords.lat || 7.0782, currentCoords.lng || 79.8920);
+      }
     }
-  }, [isOpen, refreshGpsLocation, syncInitialSessionToFirestore, currentCoords.lat, currentCoords.lng]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // 🚨 Dual Dispatch Function (WhatsApp first -> SMS backup)
   const dispatchDualEmergency = useCallback((
@@ -614,17 +619,34 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
   const stopAudioRecordingLoop = useCallback(() => {
     isContinuousAudioRunningRef.current = false;
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch {}
     setIsRecordingAudio(false);
   }, []);
+
+  // 🎙️ Dedicated Audio Recording Handler
+  const handleToggleAudioRecording = useCallback(() => {
+    if (isRecordingAudio) {
+      stopAudioRecordingLoop();
+    } else {
+      startAudioRecordingLoop();
+    }
+  }, [isRecordingAudio, startAudioRecordingLoop, stopAudioRecordingLoop]);
   // 🚨 Master SOS Start Function
   const handleStartSos = useCallback(async (customReason?: any) => {
     setIsLocating(true);
     setIsSavingAndLocking(true);
     setSavingStatusStep('🛰️ ඔබ සිටින සැබෑ GPS ස්ථානය ලබාගනිමින් පවතී...');
     setGpsError(null);
+
+    // Safety timeout to prevent freeze if GPS/Firestore takes long
+    setTimeout(() => {
+      setIsSavingAndLocking(false);
+      setIsLocating(false);
+    }, 5000);
 
     const activeCode = sessionCode || `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
     const activeSessionId = sessionId || `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -702,8 +724,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           navigator.vibrate([400, 150, 400, 150, 800]);
         }
 
-        // Start Evidence Audio Loop
-        startAudioRecordingLoop();
+        // Evidence audio recording remains cleanly controllable via dedicated button
 
         // Dual dispatch alert to trusted contacts
         dispatchDualEmergency(customReason || 'manual', { lat, lng }, recordedAudioUrl || undefined);
@@ -758,19 +779,60 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     getLangText,
   ]);
 
+  // Clean up audio siren, recording & gps watch when modal is closed or unmounted
+  useEffect(() => {
+    if (!isOpen) {
+      stopHighDecibelSiren();
+      setIsSirenOn(false);
+      stopAudioRecordingLoop();
+      setIsRecordingAudio(false);
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    }
+  }, [isOpen, stopAudioRecordingLoop]);
+
+  useEffect(() => {
+    return () => {
+      stopHighDecibelSiren();
+      stopAudioRecordingLoop();
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [stopAudioRecordingLoop]);
+
   // 🛑 Master SOS Stop / Deactivate Function
   const handleStopSos = useCallback(async (isDuress: boolean = false) => {
+    // 1. Terminate High Decibel Siren audio generator immediately
+    stopHighDecibelSiren();
+    setIsSirenOn(false);
+
+    // 2. Terminate Audio Recording immediately
+    stopAudioRecordingLoop();
+    setIsRecordingAudio(false);
+
+    // 3. Stop GPS watch to save battery & stop continuous calls
+    if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    setIsLocating(false);
+    setIsSavingAndLocking(false);
+
     if (isDuress) {
-      // DURESS SILENT DEACTIVATION
+      // DURESS SILENT DEACTIVATION: Appear stopped to attacker, silent distress to cloud
       setIsDuressActive(true);
       setIsActive(false);
-      stopAudioRecordingLoop();
-      setIsSirenOn(false);
 
       if (sessionId) {
         updateSosLiveLocation(sessionId, {
           isDuressSilent: true,
           status: 'duress_silent',
+          isActive: false,
           lastUpdatedAt: new Date().toISOString(),
           lastUpdatedAtMs: Date.now(),
         }).catch(() => {});
@@ -781,8 +843,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     // Normal safe deactivation
     setIsActive(false);
     setIsDuressActive(false);
-    stopAudioRecordingLoop();
-    setIsSirenOn(false);
 
     if (sessionId) {
       try {
@@ -1139,41 +1199,64 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </p>
               </div>
 
-              {/* Action Buttons: Siren & SOS Toggle */}
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Action Buttons: 🔔 ඝංඨා නාදය, 🎙️ හඬ පටිගත කිරීම & 🚨 SOS Master Toggle */}
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {/* 1. 🔔 ඝංඨා නාදය (Alarm Siren) වෙනම බොත්තම */}
                 <button
                   type="button"
                   onClick={handleToggleSiren}
-                  className={`px-4 py-3.5 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                  className={`px-3.5 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
                     isSirenOn
-                      ? 'bg-amber-500 text-slate-950 animate-bounce ring-4 ring-amber-400/40'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300'
+                      ? 'bg-amber-500 text-slate-950 animate-bounce ring-4 ring-amber-400/40 shadow-amber-500/50'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700'
                   }`}
-                  title="උස් හඬින් යුත් සයිරන් නාදය"
+                  title="උස් හඬින් යුත් ඝංඨා / සයිරන් නාදය"
                 >
-                  {isSirenOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-                  <span>{isSirenOn ? 'සයිරන් Off' : 'සයිරන් On'}</span>
+                  <Bell className={`w-4 h-4 ${isSirenOn ? 'animate-wiggle text-slate-950' : 'text-amber-500'}`} />
+                  <span>{isSirenOn ? 'ඝංඨා නාදය Off' : 'ඝංඨා නාදය On'}</span>
                 </button>
 
+                {/* 2. 🎙️ හඬ පටිගත කිරීම (Audio Evidence Recording) වෙනම බොත්තම */}
+                <button
+                  type="button"
+                  onClick={handleToggleAudioRecording}
+                  className={`px-3.5 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
+                    isRecordingAudio
+                      ? 'bg-rose-600 text-white animate-pulse ring-4 ring-rose-500/40 shadow-rose-600/50'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                  title="සාක්ෂි සඳහා හඬ පටිගත කිරීම (Recording)"
+                >
+                  {isRecordingAudio ? (
+                    <Mic className="w-4 h-4 text-white animate-ping" />
+                  ) : (
+                    <MicOff className="w-4 h-4 text-slate-400" />
+                  )}
+                  <span>{isRecordingAudio ? 'පටිගත කිරීම Off' : 'හඬ පටිගත කරන්න'}</span>
+                </button>
+
+                {/* 3. 🚨 Master SOS Activation / Deactivation Toggle */}
                 <button
                   type="button"
                   onClick={() => {
                     if (isActive) {
                       setShowDuressModal(true);
                       setEnteredPin('');
+                      setEnteredNic('');
+                      setEnteredPassword('');
                       setPinError(null);
                     } else {
                       handleStartSos();
                     }
                   }}
-                  disabled={isLocating}
-                  className={`px-6 py-3.5 rounded-2xl font-black text-sm sm:text-base flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer ${
+                  disabled={isLocating && !isActive}
+                  className={`px-5 py-3 rounded-2xl font-black text-sm sm:text-base flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white ring-4 ring-red-500/30'
                       : 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white ring-4 ring-emerald-500/20'
                   }`}
                 >
-                  {isLocating ? (
+                  {isLocating && !isActive ? (
                     <>
                       <RefreshCw className="w-5 h-5 animate-spin" />
                       <span>ස්ථානය සොයමින්...</span>
@@ -1192,6 +1275,44 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* 📢 Audio & Siren Conflict Management Banner */}
+            {isSirenOn && isRecordingAudio && (
+              <div className="mt-3 p-2.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-2 animate-pulse">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  ⚠️ ඝංඨා නාදය වාදනය වන විට හඬ පටිගත කිරීම පැහැදිලි නොවිය හැක. සංවාද පැහැදිලිව පටිගත කිරීමට ඝංඨා නාදය තාවකාලිකව Off කරන්න.
+                </span>
+              </div>
+            )}
+
+            {isRecordingAudio && (
+              <div className="mt-3 p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
+                  <span>🔴 හඬ සාක්ෂි සජීවීව පටිගත වෙමින් පවතී (Audio Recording Active)...</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleAudioRecording}
+                  className="text-[11px] px-2.5 py-1 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 cursor-pointer"
+                >
+                  නවත්වන්න
+                </button>
+              </div>
+            )}
+
+            {recordedAudioUrl && (
+              <div className="mt-3 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-slate-800 dark:text-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between font-bold text-emerald-700 dark:text-emerald-400">
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4" /> හඬ සාක්ෂිය සාර්ථකව පටිගත විය (Audio Evidence Saved)
+                  </span>
+                  <span className="text-[10px] text-slate-500">පරීක්ෂා කර සවන් දෙන්න</span>
+                </div>
+                <audio controls src={recordedAudioUrl} className="w-full h-8 rounded-lg" />
+              </div>
+            )}
 
             {/* Active Telemetry Bar */}
             {isActive && (
@@ -1274,6 +1395,19 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                         <span>Copy Link</span>
                       </>
                     )}
+                  </button>
+                </div>
+
+                {/* 🗺️ සජීවී ලොකේෂන් සිතියම සෘජුවම බැලීමට Button (Live Map Viewer) */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowLiveViewerModal(true)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    <span>🗺️ සජීවී ලොකේෂන් සිතියම බලන්න (Live Map Viewer විවෘත කරන්න)</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                   </button>
                 </div>
 
@@ -1566,48 +1700,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
         </div>
 
-        {/* 🔒 MANDATORY LOCATION SAVING GATE (Screen Blurred until Location is Saved) */}
-        {isSavingAndLocking && (
-          <div className="absolute inset-0 z-[200] bg-slate-950/80 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center animate-fadeIn select-none">
-            <div className="bg-white dark:bg-slate-900 border-2 border-red-500 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
-              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/80 text-red-600 flex items-center justify-center mx-auto border-2 border-red-400 animate-pulse">
-                <RefreshCw className="w-8 h-8 animate-spin" />
-              </div>
 
-              <div className="space-y-1.5">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  සජීවී GPS ස්ථානය තහවුරු කරමින් පවතී
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                  ස්ථාන දත්ත සේවාදායකයේ (Cloud) සාර්ථකව තැන්පත් වන තුරු තිරය අගුළුලා ඇත. කරුණාකර තත්පර කිහිපයක් රැඳී සිටින්න.
-                </p>
-              </div>
-
-              {/* Status Step pill */}
-              <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 animate-pulse flex items-center justify-center gap-2">
-                <span>{savingStatusStep || 'දත්ත තහවුරු කරමින් පවතී...'}</span>
-              </div>
-
-              {savingError && (
-                <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-xs text-red-600 font-bold">
-                  {savingError}
-                </div>
-              )}
-
-              {/* Emergency Unlock Bypass in case of prolonged offline failure */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSavingAndLocking(false);
-                  setIsActive(true);
-                }}
-                className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline pt-2 cursor-pointer"
-              >
-                අගුල මඟහැර ඉදිරියට යන්න (Bypass Lock)
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* FOOTER BAR WITH DURESS & CLOSE */}
         <div className="p-4 bg-slate-100 dark:bg-[#06120d] border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
@@ -1626,15 +1719,15 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           </button>
         </div>
 
-        {/* 🔐 DURESS / SECURITY PIN MODAL */}
+        {/* 🔐 DURESS / SECURITY VERIFICATION DEACTIVATION MODAL */}
         {showDuressModal && (
-          <div className="absolute inset-0 z-[150] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white dark:bg-slate-900 border-2 border-rose-600 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-              <div className="flex items-center justify-between">
+          <div className="absolute inset-0 z-[250] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-white dark:bg-slate-900 border-2 border-rose-600 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <Lock className="w-5 h-5 text-rose-600" />
                   <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                    SOS විකාශනය නවත්වන්න
+                    SOS විකාශනය නවත්වන්න (Deactivate SOS)
                   </h4>
                 </div>
                 <button
@@ -1646,34 +1739,87 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-300">
-                ආරක්ෂාව තහවුරු කිරීමට කරුණාකර ඔබගේ ආරක්ෂක PIN අංකය (Security PIN) හෝ ගිණුම් මුරපදය ඇතුළත් කරන්න.
-              </p>
+              {/* Tabs: PIN vs Password / NIC */}
+              <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => { setDeactivateTab('pin'); setPinError(null); }}
+                  className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    deactivateTab === 'pin'
+                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  🔢 ආරක්ෂක PIN (1234)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDeactivateTab('nic'); setPinError(null); }}
+                  className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    deactivateTab === 'nic'
+                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  🔑 මුරපදය / NIC
+                </button>
+              </div>
 
               {pinError && (
-                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 text-rose-600 text-xs font-bold rounded-xl text-center">
+                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-900 text-rose-600 text-xs font-bold rounded-xl text-center">
                   {pinError}
                 </div>
               )}
 
-              {/* PIN input */}
-              <div className="space-y-3">
-                <input
-                  type="password"
-                  maxLength={6}
-                  placeholder="PIN අංකය ඇතුළත් කරන්න"
-                  value={enteredPin}
-                  onChange={(e) => {
-                    setEnteredPin(e.target.value);
-                    setPinError(null);
-                  }}
-                  className="w-full text-center tracking-widest text-lg font-mono font-black p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
-
-                <div className="text-[11px] text-slate-500 text-center">
-                  PIN අමතක නම්: NIC අංකය හෝ මුරපදය යොදා විසඳිය හැක
+              {deactivateTab === 'pin' ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    ආරක්ෂාව තහවුරු කිරීමට ඔබගේ 4-ඉලක්කම් PIN අංකය (පෙරනිමි: 1234) ඇතුළත් කරන්න.
+                  </p>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    placeholder="• • • •"
+                    value={enteredPin}
+                    onChange={(e) => {
+                      setEnteredPin(e.target.value);
+                      setPinError(null);
+                    }}
+                    autoFocus
+                    className="w-full text-center tracking-[0.5em] text-2xl font-mono font-black p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  <div className="text-[11px] text-slate-500 text-center">
+                    බලහත්කාර අවස්ථාවකදී රහසිගත Duress PIN සඳහා: <span className="font-mono font-black text-rose-600">9999</span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    ඔබගේ ගිණුමේ මුරපදය (Password) හෝ ලියාපදිංචි ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න.
+                  </p>
+                  <input
+                    type="password"
+                    placeholder="ගිණුම් මුරපදය (Password)"
+                    value={enteredPassword}
+                    onChange={(e) => {
+                      setEnteredPassword(e.target.value);
+                      setPinError(null);
+                    }}
+                    className="w-full text-sm font-medium p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                  <div className="text-center text-[10px] text-slate-400 font-bold">හෝ</div>
+                  <input
+                    type="text"
+                    placeholder="ජාතික හැඳුනුම්පත් අංකය (NIC)"
+                    value={enteredNic}
+                    onChange={(e) => {
+                      setEnteredNic(e.target.value.toUpperCase());
+                      setPinError(null);
+                    }}
+                    className="w-full text-sm font-mono font-bold uppercase p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
@@ -1686,42 +1832,74 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    // Check Duress PIN (9999)
-                    if (enteredPin === '9999') {
+                    // 1. Silent Duress PIN (9999)
+                    if (deactivateTab === 'pin' && enteredPin === '9999') {
                       setShowDuressModal(false);
-                      handleStopSos(true); // silent duress mode
+                      handleStopSos(true);
                       return;
                     }
 
-                    // Check default or configured PIN
+                    // 2. Normal PIN
                     const validPin = (currentUser as any)?.quickPin || (currentUser as any)?.devicePin || localStorage.getItem('sahaya_security_pin') || '1234';
-                    if (enteredPin === validPin || enteredPin === '1234' || enteredPin === '0000') {
+                    if (deactivateTab === 'pin') {
+                      if (enteredPin === validPin || enteredPin === '1234' || enteredPin === '0000') {
+                        setShowDuressModal(false);
+                        handleStopSos(false);
+                        return;
+                      } else {
+                        setPinError('ඇතුළත් කළ PIN අංකය වැරදියි. (පෙරනිමි: 1234)');
+                        return;
+                      }
+                    }
+
+                    // 3. Password or NIC check
+                    const uPass = (currentUser as any)?.password;
+                    const uNic = (currentUser as any)?.nic || (currentUser as any)?.nicNumber;
+
+                    const isPassValid = Boolean(enteredPassword && (enteredPassword === uPass || enteredPassword === '123456' || enteredPassword === 'admin123' || currentUser?.isDemo));
+                    const isNicValid = Boolean(enteredNic && (enteredNic === uNic || (uNic && enteredNic.toLowerCase() === uNic.toLowerCase()) || enteredNic.length >= 10 || currentUser?.isDemo));
+
+                    if (isPassValid || isNicValid) {
                       setShowDuressModal(false);
                       handleStopSos(false);
                     } else {
-                      const uPass = (currentUser as any)?.password;
-                      const uNic = (currentUser as any)?.nic;
-                      const inputNic = enteredPin;
-                      const inputPass = enteredPin;
-
-                      const isNicValid = Boolean(inputNic && (inputNic === uNic || currentUser?.isDemo || inputNic.length >= 10));
-                      const isPassValid = Boolean(inputPass && (inputPass === uPass || currentUser?.isDemo || inputPass === '123456' || inputPass === 'admin123'));
-
-                      if (isNicValid && isPassValid) {
-                        setShowDuressModal(false);
-                        handleStopSos(false);
-                      } else {
-                        setPinError('ඇතුළත් කළ ජාතික හැඳුනුම්පත් අංකය හෝ Password වැරදියි.');
-                      }
+                      setPinError('ඇතුළත් කළ මුරපදය හෝ NIC අංකය ගැලපෙන්නේ නැත.');
                     }
                   }}
-                  className="py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all cursor-pointer"
+                  className="py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-md"
                 >
                   තහවුරු කර Off කරන්න
                 </button>
               </div>
+
+              {/* Emergency Force Stop Fallback button */}
+              <div className="pt-1 border-t border-slate-200 dark:border-slate-800 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('ඔබ ආරක්ෂිතව පසුවන්නේද? SOS විකාශනය වහාම අක්‍රිය කිරීමට අවශ්‍යද?')) {
+                      setShowDuressModal(false);
+                      handleStopSos(false);
+                    }
+                  }}
+                  className="text-[11px] text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 font-bold underline cursor-pointer"
+                >
+                  මුරපදය අමතකද? ආරක්ෂිතව සෘජුවම අක්‍රිය කරන්න (Emergency Stop)
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* 🗺️ In-Modal Direct Live Viewer Preview */}
+        {showLiveViewerModal && sessionId && (
+          <SosLiveViewerModal
+            isOpen={showLiveViewerModal}
+            sessionId={sessionId}
+            viewerLocation={currentLocation}
+            language={language}
+            onClose={() => setShowLiveViewerModal(false)}
+          />
         )}
 
         {/* 💡 SAFETY FEATURES AWARENESS & GUIDE MODAL */}
