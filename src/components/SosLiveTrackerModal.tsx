@@ -425,6 +425,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
   const hasSentBatteryPingRef = useRef<boolean>(false);
   const mediaRecorderRef = useRef<any>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const isContinuousAudioRunningRef = useRef<boolean>(false);
 
   const getLangText = (si: string, en: string) => (language === 'en' ? en : si);
@@ -596,12 +597,21 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   }, [trackingLink, trustedContacts, currentUser, vehicleNumber, vehicleType, customVehicleType, locationName, batteryLevel, getLangText]);
 
-  // Continuous Audio Recording (Evidence capture)
+  // 🎙️ Continuous Audio Recording (Evidence capture with explicit hardware stream release)
   const startAudioRecordingLoop = useCallback(() => {
     if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // Clean up any stale streams before acquiring a new one
+      if (audioStreamRef.current) {
+        try {
+          audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        } catch {}
+        audioStreamRef.current = null;
+      }
+
       isContinuousAudioRunningRef.current = true;
       setIsRecordingAudio(true);
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        audioStreamRef.current = stream;
         const recorder = new MediaRecorder(stream);
         mediaRecorderRef.current = recorder;
         recorder.ondataavailable = (e) => {
@@ -610,20 +620,63 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             setRecordedAudioUrl(url);
           }
         };
+        recorder.onstop = () => {
+          // Double safeguard: ensure hardware tracks are halted when recording stops
+          if (audioStreamRef.current) {
+            try {
+              audioStreamRef.current.getTracks().forEach((track) => track.stop());
+            } catch {}
+            audioStreamRef.current = null;
+          }
+        };
         recorder.start();
-      }).catch(() => {
+      }).catch((err) => {
+        console.warn('Microphone permission or access error:', err);
         setIsRecordingAudio(false);
+        isContinuousAudioRunningRef.current = false;
+        if (audioStreamRef.current) {
+          try {
+            audioStreamRef.current.getTracks().forEach((track) => track.stop());
+          } catch {}
+          audioStreamRef.current = null;
+        }
       });
     }
   }, []);
 
   const stopAudioRecordingLoop = useCallback(() => {
     isContinuousAudioRunningRef.current = false;
+    
+    // 1. Stop active MediaRecorder instance
     try {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current) {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => {
+            track.stop();
+          });
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('MediaRecorder stop warning:', e);
+    }
+    mediaRecorderRef.current = null;
+
+    // 2. 🛑 CRITICAL: Release hardware microphone tracks immediately
+    // Halts the OS/browser mic indicator so other apps (like Gemini, speech recognition) can use the mic freely!
+    if (audioStreamRef.current) {
+      try {
+        audioStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      } catch (e) {
+        console.warn('Audio tracks stop warning:', e);
+      }
+      audioStreamRef.current = null;
+    }
+
     setIsRecordingAudio(false);
   }, []);
 
