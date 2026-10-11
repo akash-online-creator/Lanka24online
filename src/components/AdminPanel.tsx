@@ -9,11 +9,13 @@ import {
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
 import { MemoryStorageBar } from './MemoryStorageBar';
+import { AudioVoicePlayer } from './AudioVoiceNote';
 import { deduplicateUsers } from '../utils/userUtils';
 import { useUserMode } from '../context/UserModeContext';
 import { 
   deleteUserAccount,
   deleteHelpPostFromFirestore,
+  updateHelpPostInFirestore,
   syncUserProfileToFirestore
 } from '../lib/firebase';
 import { AdminCreditManagement } from './AdminCreditManagement';
@@ -133,6 +135,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ----------------------------------------------------
   // 🗑️ Permanent Post Delete Handler
   // ----------------------------------------------------
+  
+  const handleUnhidePostByAdmin = async (postId: string) => {
+    try {
+      await updateHelpPostInFirestore(postId, {
+        isHidden: false,
+        reportsCount: 0,
+        hiddenReason: null,
+        reviewedByAdminAt: new Date().toISOString()
+      });
+      if (setHelpPosts) {
+        setHelpPosts((prev) => prev.map((p) => p.id === postId ? { ...p, isHidden: false, reportsCount: 0 } : p));
+      }
+      showNotification('✅ දැන්වීම නැවත සාමාන්‍ය පරිශීලකයින්ට පෙනෙන ලෙස සක්‍රිය (Unhide) කරන ලදී!');
+    } catch (err) {
+      console.error('Admin unhide error:', err);
+    }
+  };
+
   const handleDeletePostPermanently = async (postId: string) => {
     const postToDelete = helpPosts.find((p) => p && p.id === postId);
     if (!postToDelete) return;
@@ -641,7 +661,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span className="text-[11px] text-slate-500 font-medium">
                       {post.userName || 'සාමාජිකයෙක්'}
                     </span>
-                    <button
+                    
+                  {/* Reported Status & Audio Player */}
+                  {(Boolean(post.isVoicePost || post.audioUrl)) && (
+                    <div className="my-2 p-2 bg-emerald-50/50 dark:bg-[#04140a] rounded-xl border border-emerald-200 dark:border-emerald-800">
+                      <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-300 block mb-1">🎙️ හඬ සහය ශ්‍රව්‍ය පටය:</span>
+                      <AudioVoicePlayer audioUrl={post.audioUrl || ''} durationSec={post.audioDurationSec || 15} />
+                    </div>
+                  )}
+
+                  {/* Reports & Auto-hidden Alert */}
+                  {(Boolean(post.isHidden || (post.reportsCount && post.reportsCount > 0))) && (
+                    <div className="my-2 p-2.5 bg-rose-50 dark:bg-rose-950/60 rounded-xl border-2 border-rose-400 dark:border-rose-800 text-rose-900 dark:text-rose-200 space-y-1">
+                      <div className="flex items-center justify-between font-black text-[11px]">
+                        <span>⚠️ රිපෝට්: {post.reportsCount || post.reports?.length || 0}ක් ලැබී ඇත</span>
+                        {post.isHidden && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-mono font-bold">
+                            HIDDEN (සඟවා ඇත)
+                          </span>
+                        )}
+                      </div>
+                      {post.reports && Array.isArray(post.reports) && post.reports.length > 0 && (
+                        <div className="text-[10px] space-y-0.5 pt-1 border-t border-rose-200 dark:border-rose-900">
+                          <span className="font-bold text-rose-800 dark:text-rose-300">පරිශීලක අදහස්:</span>
+                          {post.reports.map((r: any, idx: number) => (
+                            <div key={idx} className="italic text-slate-700 dark:text-slate-300">
+                              • "{r.reason}" - <span className="font-medium text-[9px]">{r.userName || 'පරිශීලක'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {post.isHidden && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnhidePostByAdmin(post.id)}
+                          className="mt-1 w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black text-[11px] shadow-xs cursor-pointer active:scale-95"
+                        >
+                          ✓ නැවත ප්‍රදර්ශනය කරන්න (Unhide)
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <button
                       type="button"
                       onClick={() => handleDeletePostPermanently(post.id)}
                       className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
