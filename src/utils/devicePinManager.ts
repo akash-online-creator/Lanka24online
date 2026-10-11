@@ -260,7 +260,12 @@ export async function verifyCurrentUserPin(
   const currentDeviceId = getOrCreateDeviceId();
 
   // 2. වෙනත් Device එකකින් Login වී ඇති අවස්ථාවක් නම් Reset කිරීම
-  if (currentUser?.activeDeviceId && currentUser.activeDeviceId !== currentDeviceId) {
+  // මෙම ඩිවයිස් එකෙහිම වලංගු PIN එකක් පවතී නම් (stored.deviceId === currentDeviceId), memory එකෙහි ඇති පැරණි state එකක් නිසා PIN එක මැකී යාම වළක්වයි
+  if (
+    currentUser?.activeDeviceId &&
+    currentUser.activeDeviceId !== currentDeviceId &&
+    stored.deviceId !== currentDeviceId
+  ) {
     clearDevicePin();
     return {
       success: false,
