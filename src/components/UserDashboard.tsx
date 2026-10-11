@@ -153,7 +153,7 @@ activeRedAlertsCount?: number;
 redAlerts?: RedAlertItem[];
 onViewRedAlertDetail?: (alert: RedAlertItem) => void;
 }
-​export const UserDashboard: React.FC<UserDashboardProps> = ({
+export const UserDashboard: React.FC<UserDashboardProps> = ({
 user: propUser,
 currentUser,
 setCurrentUser,
