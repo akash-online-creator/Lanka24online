@@ -2700,7 +2700,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <SavedPlacesModal
         isOpen={isSavedPlacesModalOpen}
         onClose={() => setIsSavedPlacesModalOpen(false)}
-        currentUser={currentUser}
+        currentUser={user}
         currentLocation={currentLocation}
         language={language}
       />
