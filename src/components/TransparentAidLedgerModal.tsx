@@ -32,7 +32,12 @@ import {
   Info,
   BadgeAlert,
   ArrowRight,
-  Award
+  Award,
+  Waves,
+  Trash2,
+  HeartHandshake,
+  Lock,
+  CheckCircle
 } from 'lucide-react';
 import { 
   AidRecipientCenter, 
@@ -41,6 +46,7 @@ import {
   AidCategory, 
   AidCenterType,
   BroadcastScope,
+  DisasterReliefItem,
   User as UserType, 
   Language 
 } from '../types';
@@ -70,12 +76,27 @@ import {
   subscribeToAidBroadcastsFromFirestore,
 } from '../lib/firebase';
 
+import { 
+  getStoredDisasterReliefItems, 
+  saveDisasterReliefItemsToStorage, 
+  getStoredSupportedDisasterIds, 
+  saveSupportedDisasterIdsToStorage 
+} from '../data/bloodAndDisasterData';
+import { maskName, maskPhone } from '../utils/demoDataMasker';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedDisasterId } from '../utils/deletedPostsManager';
+import { 
+  saveDisasterReliefToFirestore, 
+  deleteDisasterReliefFromFirestore 
+} from '../lib/firebase';
+import { broadcastAppNotification } from '../utils/notificationManager';
 interface TransparentAidLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser?: UserType;
   lang?: Language;
   onRequireRegistration?: () => void;
+  onSubmitHelpPost?: (post: any) => Promise<any>;
 }
 
 export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps> = ({
@@ -84,9 +105,65 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   currentUser,
   lang = 'si',
   onRequireRegistration,
+  onSubmitHelpPost,
 }) => {
-  // Navigation Tabs
+  // Top-Level Mode Selector: 'disaster_requests' vs 'relief_camps' (Default to disaster_requests as requested in prompt)
+  const [mainSection, setMainSection] = useState<'disaster_requests' | 'relief_camps'>('disaster_requests');
+
+  // Navigation Tabs for Relief Camps (සහන කඳවුරු)
   const [activeTab, setActiveTab] = useState<'public_ledger' | 'register_center' | 'log_delivery' | 'recipient_confirm' | 'broadcasts'>('public_ledger');
+
+  // User Privileges & Registration
+  const isDemo = Boolean(currentUser?.isDemo);
+  const isAdmin = !isDemo && checkIsAdmin(currentUser);
+
+  // Disaster Relief Items State
+  const [disasterItems, setDisasterItems] = useState<DisasterReliefItem[]>(() => getStoredDisasterReliefItems());
+  const [supportedDisasterIds, setSupportedDisasterIds] = useState<string[]>(() => getStoredSupportedDisasterIds());
+  const [showAddDisasterForm, setShowAddDisasterForm] = useState(false);
+  const [selectedDisasterDistrict, setSelectedDisasterDistrict] = useState<string>('all');
+  const [disasterSearchQuery, setDisasterSearchQuery] = useState('');
+
+  // Disaster Relief Form state
+  const [reliefTitle, setReliefTitle] = useState('');
+  const [reliefType, setReliefType] = useState<DisasterReliefItem['type']>('meals');
+  const [reliefLocation, setReliefLocation] = useState('');
+  const [reliefDistrict, setReliefDistrict] = useState('ගම්පහ');
+  const [reliefDesc, setReliefDesc] = useState('');
+  const [reliefTargetQty, setReliefTargetQty] = useState('');
+  const [reliefUrgency, setReliefUrgency] = useState<'high' | 'medium' | 'low'>('high');
+  const [reliefContactName, setReliefContactName] = useState(currentUser?.name || '');
+  const [reliefContactPhone, setReliefContactPhone] = useState(currentUser?.phone || '');
+
+  const districtsList = [
+    'all',
+    'කොළඹ',
+    'ගම්පහ',
+    'කළුතර',
+    'මහනුවර',
+    'මාතලේ',
+    'නුවරඑළිය',
+    'ගාල්ල',
+    'මාතර',
+    'හම්බන්තොට',
+    'යාපනය',
+    'කිලිනොච්චිය',
+    'මන්නාරම',
+    'වවුනියාව',
+    'මුලතිව්',
+    'මඩකලපුව',
+    'අම්පාර',
+    'ත්‍රිකුණාමලය',
+    'කුරුණෑගල',
+    'පුත්තලම',
+    'අනුරාධපුරය',
+    'පොළොන්නරුව',
+    'බදුල්ල',
+    'මොණරාගල',
+    'රත්නපුර',
+    'කෑගල්ල',
+  ];
+
 
   // Master Data Stores
   const [centers, setCenters] = useState<AidRecipientCenter[]>(() => getStoredAidCenters());
@@ -518,6 +595,142 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     saveCommunityBroadcastsToStorage(updated);
   };
 
+
+  // Submit Disaster Relief
+  const handleCreateDisasterItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reliefTitle.trim() || !reliefLocation.trim() || !reliefContactPhone.trim()) {
+      alert('කරුණාකර ආපදා තොරතුර, ස්ථානය සහ සම්බන්ධීකාරක අංකය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    const newItem: DisasterReliefItem = {
+      id: `rel_${Date.now()}`,
+      title: reliefTitle,
+      type: reliefType,
+      locationName: reliefLocation,
+      district: reliefDistrict,
+      description: reliefDesc,
+      urgency: reliefUrgency,
+      contactPerson: reliefContactName || 'ආපදා කමිටුව',
+      contactPhone: reliefContactPhone,
+      status: 'collecting',
+      targetQuantity: reliefTargetQty || 'අවශ්‍ය ප්‍රමාණය පරිදි',
+      collectedQuantity: 'ආරම්භක මට්ටමේ',
+      createdAt: 'දැන් (Just now)',
+      createdAtMs: Date.now(),
+      userId: currentUser?.userId || currentUser?.id,
+    };
+
+    const updated = [newItem, ...disasterItems];
+    setDisasterItems(updated);
+    saveDisasterReliefItemsToStorage(updated);
+    saveDisasterReliefToFirestore(newItem).catch((err) => console.warn('saveDisasterReliefToFirestore error:', err));
+
+    broadcastAppNotification({
+      type: 'aid_ledger',
+      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
+      message: `${reliefLocation} (${reliefDistrict}) - ${reliefDesc || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+      locationName: reliefDistrict,
+      badgeText: 'ආපදා සහන',
+      targetModal: 'aid_ledger',
+      targetPostId: newItem.id,
+    });
+
+    setShowAddDisasterForm(false);
+    setSuccessMessage(`✅ ආපදා සහන ඉල්ලීම සාර්ථකව පළකරන ලදී!`);
+
+    if (onSubmitHelpPost) {
+      onSubmitHelpPost({
+        category: 'emergency',
+        tagCategory: 'හදිසි / ආපදා',
+        tagName: `📦 හදිසි ආපදා සහන: ${reliefType}`,
+        whatHappened: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
+        whatIsNeeded: `ආපදා වර්ගය: ${reliefType} • ස්ථානය: ${reliefLocation} • දිස්ත්‍රික්කය: ${reliefDistrict} • අවශ්‍ය ප්‍රමාණය: ${reliefTargetQty || 'අවශ්‍ය පරිදි'} • විස්තර: ${reliefDesc} • සම්බන්ධීකාරක: ${reliefContactName || 'ආපදා කමිටුව'} (${reliefContactPhone})`,
+        locationName: `${reliefLocation}, ${reliefDistrict}`,
+        district: reliefDistrict,
+        priorityLevel: 'emergency',
+        isPinnedEmergency: true,
+        contactNumber: reliefContactPhone,
+        contactPersonName: reliefContactName || 'ආපදා කමිටුව',
+        status: 'open',
+        postCode: `#EMG-${Math.floor(1000 + Math.random() * 9000)}`,
+      }).catch((e) => console.warn('Sync disaster to help posts notice:', e));
+    }
+
+    setReliefTitle('');
+    setReliefLocation('');
+    setReliefDesc('');
+    setReliefTargetQty('');
+  };
+
+  const canDeleteDisaster = (item: DisasterReliefItem) => {
+    if (isAdmin) return true;
+    if (!currentUser || !item) return false;
+    const userPhone = (currentUser.phone || currentUser.whatsappNumber || '').replace(/\D/g, '');
+    const itemPhone = (item.contactPhone || '').replace(/\D/g, '');
+    return Boolean(
+      (userPhone && itemPhone && userPhone === itemPhone) ||
+      (currentUser?.name && item.contactPerson && currentUser?.name.trim().toLowerCase() === item.contactPerson.trim().toLowerCase()) ||
+      (currentUser.userId && item.userId && (currentUser.userId === item.userId || currentUser.id === item.userId)) ||
+      (currentUser.id && item.userId && (currentUser.id === item.userId || currentUser.userId === item.userId)) ||
+      (currentUser.nicNumber && item.userId && currentUser.nicNumber === item.userId)
+    );
+  };
+
+  const handleDeleteDisaster = (id?: string) => {
+    if (!id) return;
+    const confirmMsg = isAdmin
+      ? 'පරිපාලක (Admin) ලෙස මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?'
+      : 'මෙම ආපදා සහනාධාර දැන්වීම පද්ධතියෙන් ස්ථිරවම ඉවත් කිරීමට (Delete) අවශ්‍ය බව තහවුරු කරන්න ද?';
+    if (!window.confirm(confirmMsg)) return;
+    const updated = disasterItems.filter((item) => item.id !== id);
+    setDisasterItems(updated);
+    saveDisasterReliefItemsToStorage(updated);
+    addDeletedDisasterId(id);
+    deleteDisasterReliefFromFirestore(id).catch((err) => {
+      console.warn('Delete disaster item notice:', err);
+    });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+    alert('ආපදා සහනාධාර දැන්වීම සාර්ථකව ඉවත් කරන ලදී.');
+  };
+
+  const handleSupportDisaster = (item: DisasterReliefItem) => {
+    if (!item || !item.id) return;
+    if (!supportedDisasterIds.includes(item.id)) {
+      const nextSupported = [...supportedDisasterIds, item.id];
+      setSupportedDisasterIds(nextSupported);
+      saveSupportedDisasterIdsToStorage(nextSupported);
+
+      const updatedItems = (disasterItems || []).map((d) => {
+        if (d && d.id === item.id) {
+          return { ...d, supportedCount: (d.supportedCount || 0) + 1 };
+        }
+        return d;
+      });
+      setDisasterItems(updatedItems);
+      saveDisasterReliefItemsToStorage(updatedItems);
+    }
+    alert(`ස්තූතියි! ${item.district} (${item.title}) සහනාධාරය සඳහා ඔබ සහය දැක්වීමට ඉදිරිපත් වීම අගය කරමු.\n\n📞 සම්බන්ධීකාරක අංකය: ${item.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා සම්බන්ධීකාරක සමඟ සම්බන්ධ විය හැක)`);
+  };
+
+  const filteredDisasterItems = useMemo(() => {
+    return disasterItems.filter((item) => {
+      if (selectedDisasterDistrict !== 'all' && item.district !== selectedDisasterDistrict) return false;
+      if (disasterSearchQuery.trim()) {
+        const q = disasterSearchQuery.toLowerCase();
+        return (
+          (item.title || '').toLowerCase().includes(q) ||
+          (item.district || '').toLowerCase().includes(q) ||
+          (item.locationName || '').toLowerCase().includes(q) ||
+          (item.description || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [disasterItems, selectedDisasterDistrict, disasterSearchQuery]);
   if (!isOpen) return null;
 
   return (
@@ -533,14 +746,14 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black tracking-tight leading-tight">
-                  ආධාර සහ සම්පත් විනිවිදභාවයේ ලෙජරය
+                  ආපදා සහන සේවය
                 </h3>
                 <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-400 text-emerald-950 uppercase">
-                  Transparent Aid Ledger
+                  Disaster Relief Service
                 </span>
               </div>
               <p className="text-xs text-emerald-100 font-medium">
-                ආධාර එකතු කිරීම්, අංක 6ක මධ්‍යස්ථාන ලැබීම් සහ දෙපැත්තේම තහවුරු කළ වාර්තා
+                ආපදා සහන ඉල්ලීම්, සහන කඳවුරු සහ ආධාර විනිවිදභාවයේ ලෙජරය
               </p>
             </div>
           </div>
@@ -569,7 +782,304 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           </div>
         )}
 
-        {/* Navigation Sub-Buttons (Clean, High-Visibility Responsive Grid / Layout) */}
+                {/* Top-Level Mode Selector (Requirement 3 & 6): 📦 ආපදා සහන ඉල්ලීම් vs ⛺ සහන කඳවුරු */}
+        <div className="p-2.5 sm:p-4 bg-gradient-to-b from-slate-100 to-emerald-50/50 dark:from-[#05140d] dark:to-[#071b12] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+            {/* Mode 1: ආපදා සහන ඉල්ලීම් (Disaster Relief Requests) */}
+            <button
+              type="button"
+              onClick={() => { setMainSection('disaster_requests'); setSuccessMessage(null); }}
+              className={`p-3.5 sm:p-4 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px] relative overflow-hidden active:scale-98 shadow-md ${
+                mainSection === 'disaster_requests'
+                  ? 'bg-gradient-to-br from-teal-600 via-emerald-600 to-teal-700 text-white shadow-xl shadow-teal-600/40 border-2 border-white ring-4 ring-teal-400/50 scale-[1.02]'
+                  : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-2 border-slate-200 dark:border-slate-700 hover:border-teal-400/80 hover:scale-[1.01] opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform ${
+                  mainSection === 'disaster_requests' ? 'bg-white/20 text-white' : 'bg-teal-100 dark:bg-teal-950 text-teal-600 dark:text-teal-300'
+                }`}>
+                  <Waves className="w-5 h-5" />
+                </div>
+                <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black shadow-md ${
+                  mainSection === 'disaster_requests' ? 'bg-white text-teal-800' : 'bg-teal-50 dark:bg-teal-900 text-teal-700 dark:text-teal-200 border border-teal-200 dark:border-teal-700'
+                }`}>
+                  {disasterItems.length} ඉල්ලීම්
+                </span>
+              </div>
+              <div className="min-w-0 mt-2">
+                <h4 className={`text-sm sm:text-base font-black leading-tight flex items-center gap-1.5 ${
+                  mainSection === 'disaster_requests' ? 'text-white' : 'text-slate-900 dark:text-white'
+                }`}>
+                  <span>ආපදා සහන ඉල්ලීම්</span>
+                  {mainSection === 'disaster_requests' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className={`text-[11px] sm:text-xs font-semibold truncate mt-0.5 ${
+                  mainSection === 'disaster_requests' ? 'text-teal-100' : 'text-slate-500 dark:text-slate-400'
+                }`}>
+                  සහන මෙහෙයුම් & ආධාර අවශ්‍යතා
+                </p>
+              </div>
+            </button>
+
+            {/* Mode 2: සහන කඳවුරු (Relief Camps) */}
+            <button
+              type="button"
+              onClick={() => { setMainSection('relief_camps'); setSuccessMessage(null); }}
+              className={`p-3.5 sm:p-4 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px] relative overflow-hidden active:scale-98 shadow-md ${
+                mainSection === 'relief_camps'
+                  ? 'bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 text-white shadow-xl shadow-emerald-700/40 border-2 border-white ring-4 ring-emerald-400/50 scale-[1.02]'
+                  : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-2 border-slate-200 dark:border-slate-700 hover:border-emerald-400/80 hover:scale-[1.01] opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform ${
+                  mainSection === 'relief_camps' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
+                }`}>
+                  <Building className="w-5 h-5" />
+                </div>
+                <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black shadow-md ${
+                  mainSection === 'relief_camps' ? 'bg-white text-emerald-900' : 'bg-emerald-50 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-700'
+                }`}>
+                  {centers.length} කඳවුරු / මධ්‍යස්ථාන
+                </span>
+              </div>
+              <div className="min-w-0 mt-2">
+                <h4 className={`text-sm sm:text-base font-black leading-tight flex items-center gap-1.5 ${
+                  mainSection === 'relief_camps' ? 'text-white' : 'text-slate-900 dark:text-white'
+                }`}>
+                  <span>සහන කඳවුරු</span>
+                  {mainSection === 'relief_camps' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className={`text-[11px] sm:text-xs font-semibold truncate mt-0.5 ${
+                  mainSection === 'relief_camps' ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
+                }`}>
+                  ලියාපදිංචි කඳවුරු & විනිවිදභාවයේ ලෙජරය
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* ==================================================== */}
+        {/* VIEW 1: 📦 ආපදා සහන ඉල්ලීම් (Disaster Relief Requests) */}
+        {/* ==================================================== */}
+        {mainSection === 'disaster_requests' && (
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 bg-slate-50/50 dark:bg-[#05140d]">
+            {/* CTA Button to add new Disaster Relief Request */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isDemo) {
+                  if (onRequireRegistration) onRequireRegistration();
+                  return;
+                }
+                setShowAddDisasterForm(true);
+              }}
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-sm sm:text-base shadow-xl shadow-teal-600/30 hover:shadow-teal-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-teal-300/80 group"
+            >
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Plus className="w-5 h-5 text-white stroke-[3]" />
+              </div>
+              <span className="tracking-wide">+ නව ආපදා සහනාධාර අවශ්‍යතාවක් එක්කරන්න (Post Relief Request)</span>
+              <Waves className="w-5 h-5 text-white animate-pulse" />
+            </button>
+
+            {/* Filter Bar: District & Search */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300">දිස්ත්‍රික්කය:</span>
+                <select
+                  value={selectedDisasterDistrict}
+                  onChange={(e) => setSelectedDisasterDistrict(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-xs"
+                >
+                  {districtsList.map((dist) => (
+                    <option key={`disaster_dist_${dist}`} value={dist}>
+                      {dist === 'all' ? 'සියලු දිස්ත්‍රික්ක' : dist}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={disasterSearchQuery}
+                  onChange={(e) => setDisasterSearchQuery(e.target.value)}
+                  placeholder="නගරය, ආපදාව හෝ අවශ්‍යතාව සොයන්න..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Header info bar */}
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  සක්‍රිය ආපදා සහනාධාර අවශ්‍යතා ({filteredDisasterItems.length})
+                </span>
+              </div>
+              <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                {selectedDisasterDistrict !== 'all' ? `දිස්ත්‍රික්කය: ${selectedDisasterDistrict}` : 'දිවයින පුරා සියලු දිස්ත්‍රික්ක'}
+              </span>
+            </div>
+
+            {/* Disaster Items List */}
+            {filteredDisasterItems.length === 0 ? (
+              <div className="text-center py-12 px-4 bg-white dark:bg-[#071d12] rounded-2xl border border-emerald-100 dark:border-emerald-900/60 space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 flex items-center justify-center mx-auto">
+                  <Package className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">
+                    තෝරාගත් සෙවුමට හෝ දිස්ත්‍රික්කයට අදාළ ආපදා වාර්තා වී නොමැත
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ඔබගේ ප්‍රදේශයේ ආපදාවක් හෝ සහනාධාර අවශ්‍යතාවක් ඇත්නම් ඉහත බොත්තම මඟින් දැනුම්දෙන්න.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              filteredDisasterItems.filter(Boolean).map((item, itmIdx) => {
+                const isSupported = item.id ? supportedDisasterIds.includes(item.id) : false;
+                return (
+                  <div
+                    key={`disaster_item_${item.id || 'itm'}_${itmIdx}`}
+                    className="p-4 sm:p-5 bg-white dark:bg-[#071d12] border-2 border-emerald-200/80 dark:border-emerald-900/80 hover:border-emerald-400 rounded-2xl shadow-xs transition-all space-y-3"
+                  >
+                    {/* Card Top: Badges & Title */}
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                            <span>{item.urgency === 'high' ? '🚨 හදිසි අවශ්‍යතාවක්' : 'සහනාධාර ඉල්ලීමක්'}</span>
+                          </span>
+
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-emerald-600" />
+                            <span>{item.district} ({item.locationName})</span>
+                          </span>
+
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                            {item.type === 'meals' && '🍲 පිසූ ආහාර'}
+                            {item.type === 'dry_rations' && '📦 වියළි සලාක'}
+                            {item.type === 'water_medicine' && '💊 ජලය / ඖෂධ'}
+                            {item.type === 'clothing_blankets' && '👕 ඇඳුම් / ඇතිරිලි'}
+                            {item.type === 'temporary_shelter' && '⛺ තාවකාලික නවාතැන්'}
+                            {item.type === 'other' && '🤝 වෙනත් ආධාර'}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-snug">
+                          {item.title}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Detailed Description */}
+                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/80 dark:border-emerald-950">
+                      {item.description}
+                    </p>
+
+                    {/* Quantity & Status & Support Count Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 bg-emerald-50/50 dark:bg-[#04150d] rounded-xl border border-emerald-100 dark:border-emerald-900/40 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">අවශ්‍ය ප්‍රමාණය / ඉලක්කය:</span>
+                        <span className="font-black text-slate-800 dark:text-slate-200 font-mono">
+                          {item.targetQuantity || 'අවශ්‍ය පරිදි'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">සහන එකතුකිරීමේ තත්ත්වය:</span>
+                        <span className="font-bold text-amber-700 dark:text-amber-300">
+                          {item.status === 'collecting' ? '📦 එකතු කරමින් පවතී' : '🚨 කඩිනමින් අවශ්‍යයි'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">සහය දැක්වූ පිරිස:</span>
+                        <span className="font-bold text-emerald-800 dark:text-emerald-200 flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{item.supportedCount || 0} දෙනෙකු සහය වීමට එක්ව ඇත</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer: Coordinator Info & Action Buttons */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-100 dark:border-emerald-950">
+                      <div className="text-xs">
+                        <span className="text-[10px] text-slate-400 block">සම්බන්ධීකාරක / සංවිධානය:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{maskName(item.contactPerson, isDemo)}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {canDeleteDisaster(item) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDisaster(item.id)}
+                            className="px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+                            title={isAdmin ? "පරිපාලක ලෙස ආපදා දැන්වීම ඉවත් කරන්න (Admin Delete)" : "ආපදා දැන්වීම ඉවත් කරන්න (Delete)"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
+                          </button>
+                        )}
+                        {!isDemo && isSupported ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-emerald-800 dark:text-emerald-200 shadow-xs">
+                              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                              <span className="font-mono font-black">{item.contactPhone}</span>
+                            </div>
+
+                            <a
+                              href={`tel:${item.contactPhone}`}
+                              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Phone className="w-4 h-4" />
+                              <span>අමතන්න</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs sm:text-sm text-slate-500 font-bold">
+                              <Lock className="w-4 h-4 text-slate-400" />
+                              <span className="font-mono tracking-widest">{maskPhone(item.contactPhone, true)}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isDemo) {
+                                  if (onRequireRegistration) onRequireRegistration();
+                                  return;
+                                }
+                                handleSupportDisaster(item);
+                              }}
+                              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border-2 border-emerald-400/80 hover:scale-105"
+                            >
+                              <HeartHandshake className="w-4 h-4 text-emerald-200" />
+                              <span>මම සහය වෙමි</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* ==================================================== */}
+        {/* VIEW 2: ⛺ සහන කඳවුරු (Relief Camps & Aid Ledger)    */}
+        {/* ==================================================== */}
+        {mainSection === 'relief_camps' && (
+          <>
+{/* Navigation Sub-Buttons (Clean, High-Visibility Responsive Grid / Layout) */}
         <div className="p-2.5 sm:p-3.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
             {/* Button 1: පොදු ලෙජරය */}
@@ -1949,6 +2459,9 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
         </div>
 
+                  </>
+        )}
+
         {/* Modal Bottom Footer */}
         <div className="p-3 px-4 sm:px-6 bg-slate-100 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <div className="flex items-center gap-2 font-medium">
@@ -1982,6 +2495,172 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           </div>
         </div>
       )}
+
+      {/* Add Disaster Relief Request Form Modal */}
+      {showAddDisasterForm && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-md bg-white dark:bg-[#071911] border-2 border-teal-500 rounded-3xl p-5 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-teal-100 dark:border-teal-900">
+              <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Waves className="w-4 h-4 text-teal-600" />
+                <span>ආපදා සහන අවශ්‍යතාවක් පලකිරීම</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddDisasterForm(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDisasterItem} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  ආපදා තත්ත්වය / අවශ්‍යතාවය *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={reliefTitle}
+                  onChange={(e) => setReliefTitle(e.target.value)}
+                  placeholder="උදා: ගංවතුරින් පීඩාවට පත් පවුල් සඳහා පිසූ ආහාර"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    සහන වර්ගය (Type)
+                  </label>
+                  <select
+                    value={reliefType}
+                    onChange={(e) => setReliefType(e.target.value as any)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                  >
+                    <option value="meals">🍱 පිසූ ආහාර</option>
+                    <option value="dry_rations">🌾 වියළි සලාක</option>
+                    <option value="water_medicine">💧 පානීය ජලය / බෙහෙත්</option>
+                    <option value="clothing_blankets">🧥 ඇඳුම් / පොරෝන</option>
+                    <option value="temporary_shelter">🏕️ තාවකාලික නවාතැන්</option>
+                    <option value="other">🤝 වෙනත් ආධාර</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    දිස්ත්‍රික්කය
+                  </label>
+                  <select
+                    value={reliefDistrict}
+                    onChange={(e) => setReliefDistrict(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                  >
+                    {districtsList.filter((d) => d !== 'all').map((dist) => (
+                      <option key={`form_dist_${dist}`} value={dist}>{dist}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  ස්ථානය (Location) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={reliefLocation}
+                  onChange={(e) => setReliefLocation(e.target.value)}
+                  placeholder="උදා: කැළණිය ප්‍රදේශය"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    අවශ්‍ය ප්‍රමාණය (Target Qty)
+                  </label>
+                  <input
+                    type="text"
+                    value={reliefTargetQty}
+                    onChange={(e) => setReliefTargetQty(e.target.value)}
+                    placeholder="උදා: ආහාර පැකට් 100"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    අවශ්‍යතාවයේ හදිසි බව
+                  </label>
+                  <select
+                    value={reliefUrgency}
+                    onChange={(e) => setReliefUrgency(e.target.value as any)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-bold"
+                  >
+                    <option value="high">🚨 ඉතා හදිසි (High)</option>
+                    <option value="medium">⚡ මධ්‍යම (Medium)</option>
+                    <option value="low">🌱 සාමාන්‍ය (Low)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    සම්බන්ධීකාරක නම
+                  </label>
+                  <input
+                    type="text"
+                    value={reliefContactName}
+                    onChange={(e) => setReliefContactName(e.target.value)}
+                    placeholder="උදා: කමල් ප්‍රනාන්දු"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    දුරකථන අංකය *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={reliefContactPhone}
+                    onChange={(e) => setReliefContactPhone(e.target.value)}
+                    placeholder="07X XXX XXXX"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  විස්තරය (Description)
+                </label>
+                <textarea
+                  rows={2}
+                  value={reliefDesc}
+                  onChange={(e) => setReliefDesc(e.target.value)}
+                  placeholder="ආපදාවට පත්වූවන් සංඛ්‍යාව හා අවශ්‍ය ප්‍රමුඛතා..."
+                  className="w-full p-2.5 bg-slate-50 dark:bg-[#05140d] border border-slate-300 dark:border-slate-700 rounded-xl"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-800 text-white font-black text-sm sm:text-base shadow-xl shadow-teal-600/30 hover:shadow-teal-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer border-2 border-teal-300/80"
+              >
+                ආපදා සහන අවශ්‍යතාවය පලකරන්න
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
