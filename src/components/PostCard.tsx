@@ -1,992 +1,818 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Heart, 
-  MessageSquare, 
-  Share2, 
-  MoreVertical, 
+  Mic, 
+  Square, 
+  Play, 
+  Pause, 
+  Send, 
   Trash2, 
-  Eye, 
-  CheckCircle, 
-  XCircle, 
+  MapPin, 
   Clock, 
-  Pin,
-  Pencil,
-  Phone,
-  MessageCircle,
-  HelpCircle,
-  Zap,
-  Bookmark,
-  Rocket,
-  ShieldAlert,
-  UserCheck,
-  MapPin,
-  AlertTriangle,
-  Download
+  Calendar, 
+  AlertTriangle, 
+  Zap, 
+  HeartHandshake, 
+  X, 
+  Loader2, 
+  CheckCircle2, 
+  RefreshCw,
+  Globe,
+  Radio,
+  Coins
 } from 'lucide-react';
-import { HelpPost, User, Language, LocationOption } from '../types';
-import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
-import { addDeletedPostId } from '../utils/deletedPostsManager';
-import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/firebase';
-import { maskPhone } from '../utils/demoDataMasker';
-import { AudioVoicePlayer } from './AudioVoiceNote';
-import { X } from 'lucide-react';
+import { HelpPost, Language, LocationOption, User, RedAlertItem } from '../types';
+import { uploadMediaToTelegram } from '../utils/telegramStorage';
+import { resolveExactLocation } from '../utils/geoUtils';
 
-export interface PostCardProps {
-  post: HelpPost | any;
-  currentUser?: User | null;
-  viewerLocation?: LocationOption;
+export type AllowedVoiceCategory = 'quick_services' | 'general_help' | 'red_alert';
+
+interface AiVoiceHelpModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: User;
+  currentLocation: LocationOption;
   lang?: Language;
-  isOwner?: boolean;
-  isSaved?: boolean;
-  onToggleSave?: (post: HelpPost) => void;
-  onOfferSupport?: (post: HelpPost) => void;
-  onEditPost?: (post: HelpPost | any) => void;
-  onDeletePost?: (postIdOrPost: any) => void;
-  onToggleHidePost?: (post: HelpPost | any) => void;
-  onViewPost?: (post: HelpPost) => void;
-  onViewDetails?: (postId: string) => void;
-  onOpenChat?: (post: HelpPost) => void;
-  onOpenConfirm?: (post: HelpPost) => void;
-  onOpenSupportOffers?: (post: HelpPost) => void;
-  onBoostPost?: (post: HelpPost) => void;
-  onRequireRegistration?: () => void;
-  onAdminModerate?: (post: HelpPost) => void;
-  onPosterRespondIssue?: (post: HelpPost) => void;
-  onPinPost?: (postId: string) => void;
-  onLike?: (postId: string) => void;
-  onComment?: (postId: string) => void;
-  onShare?: (postId: string) => void;
-  onApprovePost?: (postId: string) => void;
-  onRejectPost?: (postId: string) => void;
-  isDemo?: boolean;
+  onSubmitHelpPost?: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => Promise<any> | void;
+  onSubmitRedAlert?: (alert: RedAlertItem) => Promise<any> | void;
 }
 
-export const PostCard: React.FC<PostCardProps> = ({
-  post,
+export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
+  isOpen,
+  onClose,
   currentUser,
-  viewerLocation,
+  currentLocation,
   lang = 'si',
-  isOwner,
-  isSaved = false,
-  onToggleSave,
-  onOfferSupport,
-  onEditPost,
-  onDeletePost,
-  onViewPost,
-  onViewDetails,
-  onOpenChat,
-  onOpenConfirm,
-  onOpenSupportOffers,
-  onBoostPost,
-  onRequireRegistration,
-  onAdminModerate,
-  onPosterRespondIssue,
-  onPinPost,
-  onLike,
-  onComment,
-  onShare,
-  onApprovePost,
-  onRejectPost,
-  isDemo: propIsDemo,
+  onSubmitHelpPost,
+  onSubmitRedAlert,
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
-  const [isDeletingLocal, setIsDeletingLocal] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [copiedPhone, setCopiedPhone] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason] = useState('');
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const [reportSuccess, setReportSuccess] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<'si' | 'ta' | 'en'>('si');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  
+  // Real-time Date, Time & GPS Location stamps
+  const [currentDateString, setCurrentDateString] = useState('');
+  const [currentTimeString, setCurrentTimeString] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
 
-  if (!post || isDeletingLocal) return null;
+  // Mandatory Category Selection (Quick Services, Normal Services, Red Alert only)
+  const [selectedCategory, setSelectedCategory] = useState<AllowedVoiceCategory | null>(null);
 
-  const isDemo = Boolean(propIsDemo ?? currentUser?.isDemo);
-  const isAdmin = !isDemo && checkIsAdmin(currentUser);
-  const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
-  const canModify = ownerCheck || isAdmin;
+  // Submission states
+  const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
+  const [submissionSuccess, setSubmissionSuccess] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Auto-hide post if 5 or more reports received (Visible only to Admin)
-  const isHiddenByReports = Boolean(post.isHidden || (post.reportsCount && post.reportsCount >= 5));
-  if (!isAdmin && isHiddenByReports) {
-    return null;
-  }
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const speechRecognitionRef = useRef<any | null>(null);
 
+  // Initialize on open
+  useEffect(() => {
+    if (isOpen) {
+      updateLiveLocationAndDateTime();
+      setTranscript('');
+      setInterimTranscript('');
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setSelectedCategory(null);
+      setSubmissionSuccess(null);
+      setErrorMsg(null);
+      setIsRecording(false);
+      setRecordingSeconds(0);
+    }
+  }, [isOpen]);
 
-  const getLangText = (si: string, en: string, ta: string) => {
-    if (lang === 'en') return en;
-    if (lang === 'ta') return ta;
-    return si;
+  const updateLiveLocationAndDateTime = async () => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('si-LK', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    
+    setCurrentDateString(dateStr);
+    setCurrentTimeString(timeStr);
+
+    if (currentLocation?.nameSi) {
+      setLocationName(currentLocation.nameSi);
+      setCoords({ lat: currentLocation.lat || 6.9271, lng: currentLocation.lng || 79.8612 });
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      setIsResolvingLocation(true);
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setCoords({ lat, lng });
+
+          try {
+            const loc = await resolveExactLocation(lat, lng);
+            if (loc && (loc.townSi || loc.districtSi)) {
+              // ළඟම නගරය පමණක් ලබාගැනීම (නිශ්චිත ස්ථානය සඟවයි)
+              const cityOnly = (loc.townSi || loc.districtSi || currentLocation?.nameSi || '').split('(')[0].trim();
+              setLocationName(cityOnly || 'ළඟම නගරය');
+            } else {
+              const cityOnly = (currentLocation?.nameSi || 'කොළඹ').split('(')[0].trim();
+              setLocationName(cityOnly);
+            }
+          } catch {
+            const cityOnly = (currentLocation?.nameSi || 'නගරය').split('(')[0].trim();
+            setLocationName(cityOnly);
+          } finally {
+            setIsResolvingLocation(false);
+          }
+        },
+        () => {
+          setIsResolvingLocation(false);
+          setLocationName(currentLocation?.nameSi || 'කොළඹ (Colombo)');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
   };
 
-  // Safe Date Formatter
-  const formatPostDate = (dateVal?: any): string => {
-    if (!dateVal) return getLangText('මෑතකදී', 'Recently', 'සමීපත්තිල්');
-    if (typeof dateVal === 'string') {
-      if (dateVal.includes('මීට') || dateVal.includes('පෙර') || dateVal.includes('ago')) {
-        return dateVal;
+  // Setup Web Speech Recognition for fallback transcript
+  const startSpeechRecognition = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      const langCodes: Record<'si' | 'ta' | 'en', string> = {
+        si: 'si-LK',
+        ta: 'ta-LK',
+        en: 'en-US',
+      };
+      recognition.lang = langCodes[selectedLanguage] || 'si-LK';
+
+      recognition.onresult = (event: any) => {
+        let finalStr = '';
+        let interimStr = '';
+
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalStr += event.results[i][0].transcript + ' ';
+          } else {
+            interimStr += event.results[i][0].transcript;
+          }
+        }
+
+        if (finalStr) {
+          setTranscript((prev) => (prev ? `${prev.trim()} ${finalStr.trim()}` : finalStr.trim()));
+        }
+        setInterimTranscript(interimStr);
+      };
+
+      recognition.onerror = () => {};
+      recognition.start();
+      speechRecognitionRef.current = recognition;
+    } catch (err) {
+      console.warn('Speech recognition warning:', err);
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
+    }
+  };
+
+  // START VOICE RECORDING
+  const handleStartRecording = async () => {
+    setErrorMsg(null);
+    setSubmissionSuccess(null);
+    updateLiveLocationAndDateTime();
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setErrorMsg('මයික්‍රෆෝනය භාවිතය ඔබගේ බ්‍රවුසරයේ නොමැත.');
+        return;
       }
-      const parsed = Date.parse(dateVal);
-      if (!isNaN(parsed)) {
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+        setAudioBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setIsRecording(false);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      timerRef.current = window.setInterval(() => {
+        setRecordingSeconds((prev) => {
+          if (prev >= 120) {
+            handleStopRecording();
+            return 120;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+
+      startSpeechRecognition();
+    } catch (err: any) {
+      console.warn('Microphone access notice:', err?.name || err?.message || err);
+      setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීම සඳහා අවසර ලබා දී නොමැත. කරුණාකර Browser Settings පරීක්ෂා කරන්න.');
+    }
+  };
+
+  // STOP RECORDING
+  const handleStopRecording = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    stopSpeechRecognition();
+  };
+
+  // PLAY / PAUSE PREVIEW
+  const handleTogglePlayPreview = () => {
+    if (!audioPreviewRef.current) return;
+    if (isPlayingPreview) {
+      audioPreviewRef.current.pause();
+      setIsPlayingPreview(false);
+    } else {
+      audioPreviewRef.current.play().then(() => setIsPlayingPreview(true)).catch(console.warn);
+    }
+  };
+
+  // SEND VOICE REQUEST WITH MANDATORY CATEGORY SELECTION
+  const handleSendVoiceRequest = async () => {
+    if (!audioBlob && !transcript.trim() && !isRecording && audioChunksRef.current.length === 0) {
+      setErrorMsg('කරුණාකර හඬ පණිවිඩයක් පටිගත කරන්න.');
+      return;
+    }
+
+    if (!selectedCategory) {
+      setErrorMsg('කරුණාකර දැන්වීම පළකිරීම සඳහා පහතින් සේවා කාණ්ඩයක් තෝරන්න (ඉක්මන් සේවා, සාමාන්‍ය සේවා, හෝ ආපදා රතු එළිය).');
+      return;
+    }
+
+    setIsProcessingSubmit(true);
+    setErrorMsg(null);
+    setSubmissionSuccess(null);
+
+    try {
+      let currentBlob = audioBlob;
+      if (isRecording || (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording')) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          try {
+            mediaRecorderRef.current.requestData();
+          } catch {}
+        }
+        handleStopRecording();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      if (!currentBlob && audioChunksRef.current.length > 0) {
+        currentBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+        setAudioBlob(currentBlob);
+      }
+
+      // Convert audioBlob to Base64 data URL
+      let base64AudioUrl = audioUrl || '';
+      if (currentBlob) {
         try {
-          const d = new Date(parsed);
-          return `${d.toLocaleDateString(lang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        } catch {
-          return dateVal;
+          const readerPromise = new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(currentBlob!);
+          });
+          base64AudioUrl = await readerPromise;
+        } catch (b64Err) {
+          console.warn('Base64 conversion notice:', b64Err);
         }
       }
-      return dateVal;
-    }
-    if (typeof dateVal === 'number') {
-      try {
-        const d = new Date(dateVal);
-        return `${d.toLocaleDateString(lang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      } catch {
-        return getLangText('මෑතකදී', 'Recently', 'සමීපත්තිල්');
+
+      let finalAudioUrl = base64AudioUrl || audioUrl || '';
+      let telegramRec: any = undefined;
+
+      if (currentBlob) {
+        try {
+          const uploadRes = await uploadMediaToTelegram({
+            file: currentBlob,
+            fileName: `voice_sos_${Date.now()}.webm`,
+            mimeType: 'audio/webm',
+            mediaType: 'voice',
+            senderName: currentUser?.name || 'Voice User',
+            sourceContext: 'හඬ සහය (Voice Help)',
+            caption: `🎙️ Voice Note (${Math.max(1, recordingSeconds)}s) - ${locationName}`,
+          });
+          if (uploadRes?.url) {
+            finalAudioUrl = uploadRes.url;
+            telegramRec = uploadRes.record;
+          }
+        } catch (upErr) {
+          console.warn('Media upload notice, fallback to local URL:', upErr);
+        }
       }
-    }
-    return getLangText('මෑතකදී', 'Recently', 'සමීපත්තිල්');
-  };
 
-  /**
-   * 1 & 2. Automatic Backup JSON Creator & Downloader Function
-   */
-  const triggerPostBackupDownload = (postData: any) => {
-    // Admin සඳහා පමණක් ක්‍රියාත්මක වේ
-    if (!isAdmin) return;
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const postId = postData.id || 'UNKNOWN';
-      const fileName = `deleted_post_${postId}_${timestamp}.json`;
-
-      const backupContent = {
-        deletedAt: new Date().toISOString(),
-        deletedBy: {
-          id: currentUser?.id || 'unknown',
-          name: currentUser?.name || 'Unknown User',
-          role: isAdmin ? 'Admin' : 'User'
-        },
-        postData: postData
+      const categoryLabels: Record<AllowedVoiceCategory, { si: string; en: string; ta: string; tag: string }> = {
+        quick_services: { si: 'ඉක්මන් සේවා', en: 'Quick Services', ta: 'விரைவு சேவைகள்', tag: 'ඉක්මන් සේවා' },
+        general_help: { si: 'සාමාන්‍ය සේවා', en: 'Normal Services', ta: 'பொது சேவைகள்', tag: 'සාමාන්‍ය සේවා' },
+        red_alert: { si: 'ආපදා / රතු එළිය', en: 'Disaster Red Alert', ta: 'சிவப்பு எச்சரிக்கை', tag: 'රතු එළිය' },
       };
 
-      const jsonString = JSON.stringify(backupContent, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Backup JSON download failed:', error);
-    }
-  };
+      const chosenMeta = categoryLabels[selectedCategory];
 
-  /**
-   * Complete Delete Action Workflow
-   */
-  const handleDelete = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setShowMenu(false);
-    
-    // Step 1: Confirmation Modal
-    const confirmMessage = isAdmin
-      ? getLangText(
-          'පරිපාලක (Admin) ලෙස මෙම දැන්වීම පද්ධතියෙන් සදහටම ඉවත් කිරීමට ඔබට සහතිකද? (දත්ත JSON ගොනුවක් ලෙස ඔබගේ ඩිවයිස් එකට සුරැකෙනු ඇත)',
-          'Are you sure you want to permanently delete this post as Admin? (Data will be downloaded as JSON backup)',
-          'நிர்வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா? (தரவு JSON கோப்பாக பதிவிறக்கப்படும்)'
-        )
-      : getLangText(
-          'මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?',
-          'Are you sure you want to delete this post?',
-          'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'
-        );
+      if (selectedCategory === 'red_alert' && onSubmitRedAlert) {
+        const redAlertItem: RedAlertItem = {
+          id: `red_${Date.now()}`,
+          alertCode: `#RED-${Math.floor(1000 + Math.random() * 9000)}`,
+          disasterType: 'other',
+          disasterTitleSi: '🚨 හදිසි ආපදා හඬ පණිවිඩය (Voice SOS)',
+          disasterTitleEn: 'Emergency Voice SOS Alert',
+          disasterTitleTa: 'அவசர குரல் SOS எச்சரிக்கை',
+          description: `🎙️ හඬ සහය මඟින් යොමු කළ පණිවිඩයකි. (යැවූ දිනය: ${currentDateString}, වේලාව: ${currentTimeString}, ස්ථානය: ${locationName})`,
+          latitude: coords?.lat || currentLocation?.lat || 6.9271,
+          longitude: coords?.lng || currentLocation?.lng || 79.8612,
+          locationName: locationName,
+          incidentDate: currentDateString,
+          incidentTime: currentTimeString,
+          createdAt: new Date().toISOString(),
+          createdAtMs: Date.now(),
+          reportedByUserId: currentUser?.id,
+          reportedByName: currentUser?.name || 'පරිශීලක',
+          reportedByPhone: currentUser?.phone || '',
+          status: 'active',
+          severity: 'high',
+          comments: [],
+          fakeReports: [],
+          audioUrl: finalAudioUrl,
+          audioDurationSec: Math.max(1, recordingSeconds),
+          voiceSentDate: currentDateString,
+          voiceSentTime: currentTimeString,
+          voiceSentLocation: locationName,
+          voiceCoordinates: coords || undefined,
+          isVoiceAlert: true,
+        };
+        await onSubmitRedAlert(redAlertItem);
+        setSubmissionSuccess('🚨 හදිසි ආපදා / රතු එළිය (Voice SOS) සාර්ථකව පළකරන ලදී!');
+      } else if (onSubmitHelpPost) {
+        const basePostMetadata = {
+          title: `🎙️ හඬ සහය (${chosenMeta.si})`,
+          whatHappened: 'හඬ පටය ශ්‍රවණය කර සහය වන්න.',
+          whatIsNeeded: 'හඬ පණිවිඩය අසා අවශ්‍ය සහය ලබා දෙන්න.',
+          conditions: 'හඬ පණිවිඩය අසා තොරතුරු තහවුරු කරගන්න.',
+          specialNotice: `🎙️ හඬ සහය දැන්වීමකි. (යැවූ වේලාව: ${currentTimeString}, දිනය: ${currentDateString}, ස්ථානය: ${locationName})`,
+          transport: 'සාකච්ඡා කර තීරණය කරනු ලැබේ',
+          payment: selectedCategory === 'quick_services' ? 'ගාස්තු ගෙවනු ලැබේ' : 'නොමිලේ / ස්වේච්ඡා',
+          helpersNeeded: 1,
+          helpersAccepted: 0,
+          feeAgreed: true,
+          locationName: locationName || currentLocation?.nameSi || 'ශ්‍රී ලංකාව',
+          distanceKm: 0,
+          lat: coords?.lat || currentLocation?.lat || 6.9271,
+          lng: coords?.lng || currentLocation?.lng || 79.8612,
+          category: selectedCategory,
+          tagName: chosenMeta.tag,
+          tagCategory: chosenMeta.si,
+          userName: currentUser?.name || 'පරිශීලක',
+          userPhone: currentUser?.phone || currentUser?.whatsappNumber || '0771234567',
+          userEmail: currentUser?.email || '',
+          userId: currentUser?.id || currentUser?.userId,
+          status: 'active' as const,
+          mediaType: 'voice' as const,
+          audioUrl: finalAudioUrl,
+          audioDurationSec: Math.max(1, recordingSeconds),
+          voiceSentDate: currentDateString,
+          voiceSentTime: currentTimeString,
+          voiceSentLocation: locationName,
+          voiceCoordinates: coords || undefined,
+          isVoicePost: true,
+          voiceLanguage: selectedLanguage,
+          telegramStorage: telegramRec,
+          reportsCount: 0,
+          reports: [],
+          isHidden: false,
+        };
 
-    if (!window.confirm(confirmMessage)) return;
-
-    const targetId = post.id;
-
-    // Step 2: Automatic Backup JSON Download (Admin සඳහා පමණි)
-    if (isAdmin) {
-      triggerPostBackupDownload(post);
-    }
-
-    // Immediate UI hiding for smooth UX
-    setIsDeletingLocal(true);
-
-    // Step 3: Permanent Cleanup from Cloud DB & Local Storage Blacklist
-    if (targetId) {
-      addDeletedPostId(targetId);
-      try {
-        await updateHelpPostInFirestore(targetId, {
-          isDeleted: true,
-          status: 'deleted',
-          deletedAt: new Date().toISOString(),
-          deletedBy: isAdmin ? `Admin (${currentUser?.name || 'Admin'})` : (currentUser?.name || post.userName || 'User')
-        }).catch(() => {});
-
-        await deleteHelpPostFromFirestore(targetId).catch(() => {});
-      } catch (err) {
-        console.warn('Post delete background notice:', err);
-      }
-    }
-
-    // Step 4: Real-time UI State Refresh Callback
-    if (onDeletePost) {
-      try {
-        onDeletePost(targetId || post);
-      } catch (e) {
-        console.warn('onDeletePost callback notice:', e);
-      }
-    }
-  };
-
-  const handleEdit = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setShowMenu(false);
-    if (onEditPost) {
-      onEditPost(post);
-    }
-  };
-
-  const handleView = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setShowMenu(false);
-    if (onViewPost) {
-      onViewPost(post);
-    } else if (onViewDetails && post.id) {
-      onViewDetails(post.id);
-    }
-  };
-
-  const handleChat = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isDemo && onRequireRegistration) {
-      onRequireRegistration();
-      return;
-    }
-    if (onOpenChat) {
-      onOpenChat(post);
-    }
-  };
-
-  const handleSupport = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isDemo && onRequireRegistration) {
-      onRequireRegistration();
-      return;
-    }
-    // Always open detail modal first so helpers can view details and express willingness
-    if (onOfferSupport) {
-      onOfferSupport(post);
-    } else if (onOpenConfirm) {
-      onOpenConfirm(post);
-    } else if (onOpenChat) {
-      onOpenChat(post);
-    }
-  };
-
-  const handleCopyPhone = (phoneNum?: string) => {
-    if (!phoneNum) return;
-    navigator.clipboard.writeText(phoneNum);
-    setCopiedPhone(true);
-    setTimeout(() => setCopiedPhone(false), 2500);
-  };
-
-  // Determine Author & Details
-  const authorName = post.userName || post.authorName || post.author?.name || getLangText('සහය ඉල්ලුම්කරු', 'Help Seeker', 'உதவி கோருபவர்');
-  const postCode = post.postCode || (post.id ? `#POST-${post.id.replace(/[^0-9]/g, '').slice(-4) || 'HELP'}` : '#HELP');
-  const phoneNumber = post.userPhone || post.contactPhone || post.contactWhatsapp || '';
-  const displayPhone = isDemo ? maskPhone(phoneNumber) : phoneNumber;
-  const locationText = post.locationName || post.incidentLocation || getLangText('ශ්‍රී ලංකාව', 'Sri Lanka', 'இலங்கை');
-  const distance = typeof post.distanceKm === 'number' ? post.distanceKm : null;
-
-  // Check if corrupted / empty post
-  const isCorrupted = !post.whatHappened && !post.whatIsNeeded && !post.title && !post.content && !post.donationItem && !post.itemLostStolenOrSearched;
-
-
-  
-  // Helper to extract ONLY the nearest city/town (නගරය පමණි, නිශ්චිත ස්ථානය සඟවයි)
-  const getCityOnly = (locStr?: string): string => {
-    if (!locStr) return getLangText('නගරය', 'City', 'நகரம்');
-    // If numeric coordinates, fallback to general location name
-    if (/^\d+\.\d+/.test(locStr.trim())) {
-      return viewerLocation?.nameSi?.split('(')[0]?.trim() || getLangText('නගරය', 'City', 'நகரம்');
-    }
-    // Strip village, roads, districts in parentheses: e.g. "කඩවත (ගම්පහ)" -> "කඩවත"
-    const cleaned = locStr.split('(')[0].split(',')[0].trim();
-    return cleaned || locStr;
-  };
-
-  const handleSubmitReport = async () => {
-    if (!reportReason.trim() || !post.id) return;
-    setIsSubmittingReport(true);
-    try {
-      const existingReports = Array.isArray(post.reports) ? post.reports : [];
-      const newReport = {
-        userId: currentUser?.id || currentUser?.userId || 'anonymous',
-        userName: currentUser?.name || 'පරිශීලක',
-        userPhone: currentUser?.phone || '',
-        reason: reportReason.trim(),
-        reportedAt: new Date().toISOString()
-      };
-      const updatedReports = [...existingReports, newReport];
-      const newReportsCount = (post.reportsCount || existingReports.length) + 1;
-      const isNowHidden = newReportsCount >= 5;
-
-      await updateHelpPostInFirestore(post.id, {
-        reports: updatedReports,
-        reportsCount: newReportsCount,
-        isHidden: isNowHidden,
-        hiddenReason: isNowHidden ? '5_reports_received' : undefined,
-        lastReportedAt: new Date().toISOString()
-      });
-
-      post.reports = updatedReports;
-      post.reportsCount = newReportsCount;
-      if (isNowHidden) {
-        post.isHidden = true;
+        const res: any = await onSubmitHelpPost(basePostMetadata);
+        if (res && res.error === 'insufficient_credits') {
+          setIsProcessingSubmit(false);
+          return;
+        }
+        setSubmissionSuccess('✅ ඔබගේ හඬ සහය දැන්වීම සාර්ථකව පළකරන ලදී!');
       }
 
-      setReportSuccess(true);
       setTimeout(() => {
-        setShowReportModal(false);
-        setReportReason('');
-        setReportSuccess(false);
+        setIsProcessingSubmit(false);
+        onClose();
       }, 1500);
-    } catch (err) {
-      console.error('Report submission failed:', err);
-    } finally {
-      setIsSubmittingReport(false);
+    } catch (err: any) {
+      console.error('Send voice request error:', err);
+      setIsProcessingSubmit(false);
+      setErrorMsg('හඬ පණිවිඩය යැවීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   };
 
-  const handleUnhidePost = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!post.id) return;
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        isHidden: false,
-        hiddenReason: null,
-        reportsCount: 0,
-        unhiddenAt: new Date().toISOString(),
-        unhiddenBy: currentUser?.name || 'Admin'
-      });
-      post.isHidden = false;
-      post.reportsCount = 0;
-      setShowMenu(false);
-    } catch (err) {
-      console.error('Unhide post failed:', err);
-    }
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
+
+  if (!isOpen) return null;
 
   return (
-    <div className={`bg-white dark:bg-[#0b1d14] rounded-2xl sm:rounded-3xl shadow-md hover:shadow-xl border-2 transition-all duration-200 overflow-hidden relative ${
-      post.isPinned 
-        ? 'border-amber-400 dark:border-amber-500/80 ring-2 ring-amber-400/20' 
-        : post.adminFlagged 
-          ? 'border-rose-400 dark:border-rose-600/80 bg-rose-50/10' 
-          : isCorrupted
-            ? 'border-red-400 dark:border-red-700 bg-red-50/20'
-            : 'border-slate-100 dark:border-emerald-950/60'
-    }`}>
-
-      {/* Admin Flagged Notice Banner */}
-      {post.adminFlagged && (
-        <div className="bg-rose-500 text-white px-4 py-2 text-xs font-bold flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>{getLangText('පරිපාලක පරීක්ෂාවට ලක්වූ දැන්වීමකි (Flagged)', 'Admin Flagged Notice', 'நிர்வாகியால் கொடியிடப்பட்டது')}</span>
-            {post.adminFlagReason && <span className="opacity-90 font-normal">({post.adminFlagReason})</span>}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+      <div className="relative w-full max-w-xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/80 dark:border-emerald-600/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        
+        {/* Header */}
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shadow-inner">
+              <Mic className="w-6 h-6 text-white animate-pulse" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
+                <span>හඬ සහය (Voice Help)</span>
+              </h2>
+              <p className="text-[11px] sm:text-xs text-emerald-100 font-medium">
+                හඬ පටිගත කර අදාළ කාණ්ඩය තෝරා ක්ෂණිකව දැන්වීම පළකරන්න
+              </p>
+            </div>
           </div>
-          {isAdmin && onAdminModerate && (
-            <button 
-              onClick={() => onAdminModerate(post)}
-              className="bg-white text-rose-700 px-2.5 py-0.5 rounded-lg text-[10px] font-black hover:bg-rose-50 cursor-pointer"
-            >
-              සමාලෝචනය
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer active:scale-95 transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-      )}
 
-      {/* Pinned Post Header */}
-      {post.isPinned && (
-        <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 text-white px-4 py-1.5 text-xs font-black flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Pin className="w-3.5 h-3.5 fill-current" />
-            <span>{getLangText('ඉහළින්ම පෙන්වන දැන්වීමකි (Pinned)', 'Pinned Post', 'முக்கிய இடுகை')}</span>
-          </div>
-          {isAdmin && onPinPost && (
-            <button 
-              onClick={() => onPinPost(post.id)}
-              className="text-[11px] underline hover:text-amber-100 cursor-pointer"
-            >
-              ඉවත් කරන්න
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Corrupted Post Alert Bar */}
-      {isCorrupted && (
-        <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-bold">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-yellow-300 animate-pulse shrink-0" />
-            <span>{getLangText('⚠️ හිස් හෝ අසම්පූර්ණ දැන්වීමක් (Incomplete / Empty Post Record)', '⚠️ Incomplete or Empty Post Document', '⚠️ முழுமையற்ற அல்லது வெற்று இடுகை')}</span>
-          </div>
-          {canModify && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="px-3 py-1.5 bg-white text-red-700 hover:bg-red-50 rounded-xl font-black shadow-md flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{getLangText('වහාම සදහටම ඉවත් කරන්න', 'Delete Post Immediately', 'உடனடியாக நீக்குக')}</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Main Post Header */}
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
+        {/* Modal Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
           
-          {/* User Info & Avatar */}
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="relative shrink-0">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center font-black text-base shadow-md border-2 border-white dark:border-slate-800">
-                {authorName.charAt(0).toUpperCase()}
-              </div>
-              {ownerCheck && (
-                <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs" title="ඔබගේ දැන්වීම">
-                  <UserCheck className="w-3 h-3" />
-                </span>
-              )}
+          {/* 1. Language Selector Tabs */}
+          <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-[#092215] border border-slate-200 dark:border-emerald-900/60">
+            <span className="text-xs font-bold text-slate-600 dark:text-emerald-300 flex items-center gap-1 pl-2">
+              <Globe className="w-3.5 h-3.5" />
+              <span>භාෂාව (Language):</span>
+            </span>
+            <div className="flex items-center gap-1">
+              {(['si', 'ta', 'en'] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setSelectedLanguage(l)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    selectedLanguage === l
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-emerald-900/40'
+                  }`}
+                >
+                  {l === 'si' ? 'සිංහල' : l === 'ta' ? 'தமிழ்' : 'English'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. Live Metadata Stamped Banner (Date, Time, Location) */}
+          <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-[#082216] border border-emerald-200 dark:border-emerald-800/80 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-950 dark:text-emerald-200">
+              <span className="flex items-center gap-1.5">
+                <Radio className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                <span>යවන අවස්ථාවේ තොරතුරු:</span>
+              </span>
+              <button
+                type="button"
+                onClick={updateLiveLocationAndDateTime}
+                className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>යාවත්කාලීන කරන්න</span>
+              </button>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base leading-snug truncate">
-                  {authorName}
-                </h3>
-                
-                {ownerCheck && (
-                  <span className="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
-                    {getLangText('ඔබේ දැන්වීම', 'Your Post', 'உங்கள் இடுகை')}
-                  </span>
-                )}
-
-                {isAdmin && (
-                  <span className="bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-700">
-                    ADMIN
-                  </span>
-                )}
-
-                <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                  {postCode}
-                </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
+              <div className="flex items-center gap-1.5 bg-white dark:bg-[#05130b] p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="font-mono">{currentDateString || 'අද'}</span>
               </div>
 
-              {/* Time & Location Bar */}
-              <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{formatPostDate(post.createdAt || post.createdAtIso || post.createdAtMs)}</span>
+              <div className="flex items-center gap-1.5 bg-white dark:bg-[#05130b] p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                <span className="font-mono">{currentTimeString || 'දැන්'}</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-white dark:bg-[#05130b] p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                <span className="truncate" title={locationName}>නගරය: 
+                  {isResolvingLocation ? 'ස්ථානය සොයමින්...' : locationName || 'ශ්‍රී ලංකාව'}
                 </span>
-
-                <span>•</span>
-
-                <span className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-300">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate max-w-[160px] sm:max-w-[220px]">{locationText}</span>
-                </span>
-
-                {distance !== null && (
-                  <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-md font-mono font-bold text-[10px]">
-                    {distance.toFixed(1)} km
-                  </span>
-                )}
               </div>
             </div>
           </div>
 
-          {/* Top Quick Actions */}
-          <div className="flex items-center gap-1 shrink-0 relative">
+          {/* 3. Central Voice Recorder Box */}
+          <div className="p-6 rounded-3xl bg-gradient-to-b from-slate-50 to-emerald-50/50 dark:from-[#081e13] dark:to-[#05130b] border-2 border-emerald-300 dark:border-emerald-800/80 text-center space-y-4 shadow-inner">
             
-            {/* Quick Edit & Delete */}
-            {canModify && (
-              <div className="flex items-center gap-1">
-                {onEditPost && (
+            {/* Visual Waveform / Pulsing Ring */}
+            <div className="relative inline-flex items-center justify-center my-2">
+              {isRecording && (
+                <>
+                  <span className="w-28 h-28 rounded-full bg-rose-500/20 animate-ping absolute" />
+                  <span className="w-24 h-24 rounded-full bg-rose-500/30 animate-pulse absolute" />
+                </>
+              )}
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                isRecording 
+                  ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white scale-105' 
+                  : audioUrl 
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white' 
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white'
+              }`}>
+                <Mic className={`w-10 h-10 ${isRecording ? 'animate-bounce' : ''}`} />
+              </div>
+            </div>
+
+            {/* Timer & Status */}
+            <div>
+              <p className="text-2xl font-mono font-black text-slate-800 dark:text-zinc-100">
+                {formatTimer(recordingSeconds)} <span className="text-xs font-normal text-slate-500">/ 02:00</span>
+              </p>
+              <p className="text-xs font-bold mt-1 text-slate-600 dark:text-emerald-300">
+                {isRecording ? (
+                  <span className="text-rose-600 dark:text-rose-400 animate-pulse">
+                    🎙️ හඬ පටිගත වෙමින් පවතී... අවශ්‍යතාවය පැහැදිලිව පවසන්න.
+                  </span>
+                ) : audioUrl ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    ✅ හඬ පණිවිඩය සූදානම්! කරුණාකර පහතින් සේවා කාණ්ඩය තෝරන්න.
+                  </span>
+                ) : (
+                  <span>පහත බොත්තම ඔබා ඔබගේ හඬ පටිගත කරන්න</span>
+                )}
+              </p>
+            </div>
+
+            {/* Voice Control Buttons (Record / Stop / Play) */}
+            <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+              {!isRecording ? (
+                <button
+                  type="button"
+                  onClick={handleStartRecording}
+                  disabled={isProcessingSubmit}
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer transition-all disabled:opacity-50"
+                  title="හඬ පටිගත කරන්න"
+                >
+                  <Mic className="w-4 h-4" />
+                  <span>🎙️ Voice (කතා කරන්න)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStopRecording}
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-rose-600/30 active:scale-95 cursor-pointer animate-pulse"
+                  title="පටිගත කිරීම නවතන්න"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                  <span>⏹️ නවතන්න (Stop)</span>
+                </button>
+              )}
+
+              {/* Play / Preview Audio */}
+              {audioUrl && (
+                <>
+                  <audio
+                    ref={audioPreviewRef}
+                    src={audioUrl}
+                    onEnded={() => setIsPlayingPreview(false)}
+                    className="hidden"
+                  />
                   <button
                     type="button"
-                    onClick={handleEdit}
-                    className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 rounded-xl transition-all cursor-pointer"
-                    title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்துக')}
+                    onClick={handleTogglePlayPreview}
+                    disabled={isRecording || isProcessingSubmit}
+                    className="px-4 py-3 rounded-2xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-sky-600/30 active:scale-95 cursor-pointer transition-all"
+                    title="පටිගත කළ හඬ අසා බලන්න"
                   >
-                    <Pencil className="w-4 h-4" />
+                    {isPlayingPreview ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                    <span>{isPlayingPreview ? '⏸️ Pause' : '▶️ Play (අසන්න)'}</span>
                   </button>
-                )}
-                
+                </>
+              )}
+
+              {/* Reset/Trash */}
+              {(audioUrl || transcript) && !isRecording && (
                 <button
                   type="button"
-                  onClick={handleDelete}
-                  className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all cursor-pointer font-bold"
-                  title={getLangText('දැන්වීම සදහටම ඉවත් කරන්න', 'Delete Post Permanently', 'நிரந்தரமாக நீக்குக')}
+                  onClick={() => {
+                    setAudioBlob(null);
+                    setAudioUrl(null);
+                    setTranscript('');
+                    setInterimTranscript('');
+                    setSelectedCategory(null);
+                  }}
+                  className="p-3 rounded-2xl bg-slate-200 dark:bg-emerald-950/80 hover:bg-slate-300 text-slate-700 dark:text-slate-300 text-xs active:scale-95 cursor-pointer"
+                  title="මකන්න (Clear)"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4 text-rose-500" />
                 </button>
-              </div>
-            )}
-
-            {/* Bookmark / Save Button */}
-            {onToggleSave && (
-              <button
-                type="button"
-                onClick={() => onToggleSave(post)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  isSaved 
-                    ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/50' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={getLangText('සුරකින්න', 'Save Post', 'சேமிக்குக')}
-              >
-                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
-              </button>
-            )}
-
-            {/* 3-Dots Dropdown Menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                aria-label="More options"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-
-              {showMenu && (
-                <div 
-                  className="absolute right-0 top-10 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border-2 border-emerald-500/40 py-2 z-30 text-xs font-bold animate-fadeIn"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {(onViewPost || onViewDetails) && (
-                    <button
-                      type="button"
-                      onClick={handleView}
-                      className="w-full text-left px-4 py-2.5 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>{getLangText('විස්තර පරීක්ෂා කරන්න', 'View Details', 'விவரங்களை காண்க')}</span>
-                    </button>
-                  )}
-
-                  {onBoostPost && (
-                    <button
-                      type="button"
-                      onClick={() => { setShowMenu(false); onBoostPost(post); }}
-                      className="w-full text-left px-4 py-2.5 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Rocket className="w-4 h-4 text-amber-500" />
-                      <span>{getLangText('ඉහළට ඔසවන්න (Boost)', 'Boost Post', 'மேலேற்றுக')}</span>
-                    </button>
-                  )}
-
-                  {canModify && onEditPost && (
-                    <button
-                      type="button"
-                      onClick={handleEdit}
-                      className="w-full text-left px-4 py-2.5 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Pencil className="w-4 h-4 text-amber-500" />
-                      <span>{getLangText('සංස්කරණය කරන්න', 'Edit Post', 'திருத்துக')}</span>
-                    </button>
-                  )}
-
-                  {canModify && (
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      className="w-full text-left px-4 py-2.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-600" />
-                      <span>{getLangText('සදහටම ඉවත් කරන්න (Delete)', 'Delete Permanently', 'நிரந்தரமாக நீக்குக')}</span>
-                    </button>
-                  )}
-
-                  {isAdmin && onAdminModerate && (
-                    <button
-                      type="button"
-                      onClick={() => { setShowMenu(false); onAdminModerate(post); }}
-                      className="w-full text-left px-4 py-2.5 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50 flex items-center gap-2.5 cursor-pointer border-t border-slate-100 dark:border-slate-800"
-                    >
-                      <ShieldAlert className="w-4 h-4 text-purple-600" />
-                      <span>{getLangText('පරිපාලක පාලනය (Moderate)', 'Admin Moderate', 'நிர்வாக கட்டுப்பாடு')}</span>
-                    </button>
-                  )}
-                </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Category & Service Tag Badge */}
-        {(post.tagName || post.tagCategory || post.category) && (
-          <div className="mb-3 flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/80">
-              <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{post.tagName || post.tagCategory || post.category}</span>
-            </span>
-            {post.helpersNeeded && post.helpersNeeded > 1 && (
-              <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-900">
-                👥 {getLangText(`සහායකයින් ${post.helpersNeeded}ක් අවශ්‍යයි`, `${post.helpersNeeded} Helpers Needed`, `${post.helpersNeeded} உதவியாளர்கள் தேவை`)}
-              </span>
-            )}
-          </div>
-        )}
-
-                {/* VOICE POST MINIMAL LAYOUT vs STANDARD POST LAYOUT */}
-        {Boolean(post.isVoicePost || post.mediaType === 'voice' || post.audioUrl) ? (
-          <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-b from-emerald-50/40 to-teal-50/20 dark:from-[#06180f] dark:to-[#04120b] rounded-3xl border border-emerald-200/80 dark:border-emerald-900/60 shadow-inner">
-            
-            {/* 🏷️ Voice Post Header: Name, City, Post ID & Category */}
-            <div className="flex items-center justify-between gap-2.5 flex-wrap pb-3 border-b border-emerald-200/80 dark:border-emerald-900/60">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-xs shadow-sm shrink-0">
-                  {authorName.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-black text-slate-900 dark:text-white text-xs sm:text-sm truncate">
-                      {authorName}
-                    </h4>
-                    <span className="font-mono text-[10px] font-black text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
-                      {postCode}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300 font-bold mt-0.5">
-                    <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                    <span className="truncate max-w-[180px] sm:max-w-[240px]">නගරය: {getCityOnly(post.locationName || locationText)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Service Category Badge */}
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-emerald-100 dark:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shadow-2xs">
-                <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{post.tagName || post.tagCategory || (post.category === 'quick_services' ? 'ඉක්මන් සේවා' : post.category === 'red_alert' ? 'ආපදා / රතු එළිය' : 'සාමාන්‍ය සේවා')}</span>
-              </span>
+          {/* 4. MANDATORY CATEGORY SELECTION BUTTONS (ONLY 3 ALLOWED CATEGORIES) */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <span>දැන්වීම පළකළ යුතු සේවා කාණ්ඩය තෝරන්න (අනිවාර්යයි):</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </h3>
+              {selectedCategory && (
+                <span className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+                  ✓ තෝරා ඇත
+                </span>
+              )}
             </div>
 
-            {/* Playable Voice Note Player */}
-            <div className="p-3 bg-white dark:bg-[#071d12] rounded-2xl border-2 border-emerald-400/80 dark:border-emerald-700 shadow-md">
-              <AudioVoicePlayer audioUrl={post.audioUrl || ''} durationSec={post.audioDurationSec || 15} />
-            </div>
-
-            {/* Exactly 3 Buttons Underneath: 1. සහය වෙමි, 2. චැට්, 3. රිපෝට් */}
-            <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/80 dark:border-emerald-900/60">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               
-              {/* Button 1: සහය වෙමි */}
+              {/* Category 1: ඉක්මන් සේවා */}
               <button
                 type="button"
-                onClick={handleSupport}
-                className="py-3 px-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl font-black text-xs sm:text-sm shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-                title="සහය වීමට කැමැත්ත පළකරන්න"
+                onClick={() => setSelectedCategory('quick_services')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'quick_services'
+                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-amber-300'
+                }`}
               >
-                <HelpCircle className="w-4 h-4 shrink-0" />
-                <span className="truncate">{ownerCheck ? getLangText('කැමැත්ත දැක්වූවන්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහය වෙමි', 'I will help', 'உதவுகிறேன்')}</span>
-              </button>
-
-              {/* Button 2: චැට් */}
-              <button
-                type="button"
-                onClick={handleChat}
-                className="py-3 px-2 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/80 dark:hover:bg-sky-900/80 text-sky-800 dark:text-sky-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-sky-300 dark:border-sky-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-                title="දැන්වීම්කරු සමඟ චැට් කරන්න"
-              >
-                <MessageCircle className="w-4 h-4 text-sky-600 shrink-0" />
-                <span className="truncate">{getLangText('චැට්', 'Chat', 'Chat')}</span>
-              </button>
-
-              {/* Button 3: රිපෝට් */}
-              <button
-                type="button"
-                onClick={() => setShowReportModal(true)}
-                className="py-3 px-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/80 dark:hover:bg-rose-900/80 text-rose-800 dark:text-rose-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-rose-300 dark:border-rose-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-                title="දැන්වීම වාර්තා කරන්න"
-              >
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span className="truncate">{getLangText('රිපෝට්', 'Report', 'புகாரளி')}</span>
-              </button>
-
-            </div>
-          </div>
-        ) : (
-{/* Post Content Details */}
-        <div className="space-y-2.5 text-sm sm:text-base">
-          
-          {/* Main Content */}
-          {(post.whatHappened || post.content || post.title || post.itemLostStolenOrSearched || post.donationItem) && (
-            <div className="bg-slate-50 dark:bg-[#06160d] p-3.5 rounded-2xl border border-slate-200/80 dark:border-emerald-950/80">
-              <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                <span>📌 {getLangText('සිදුවී ඇති දේ / විස්තරය:', 'What happened / Description:', 'நடந்தது / விளக்கம்:')}</span>
-              </div>
-              <p className="font-semibold text-slate-900 dark:text-slate-100 whitespace-pre-line leading-relaxed text-sm sm:text-base">
-                {post.whatHappened || post.content || post.title || post.itemLostStolenOrSearched || post.donationItem}
-              </p>
-            </div>
-          )}
-
-          {/* What is Needed */}
-          {post.whatIsNeeded && (
-            <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-3.5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60">
-              <div className="text-xs font-black text-emerald-800 dark:text-emerald-300 mb-1 flex items-center gap-1">
-                <span>🎯 {getLangText('වියයුතු දේ / අවශ්‍ය සහය:', 'What is needed:', 'தேவையான உதவி:')}</span>
-              </div>
-              <p className="font-bold text-emerald-950 dark:text-emerald-100 whitespace-pre-line leading-relaxed text-sm sm:text-base">
-                {post.whatIsNeeded}
-              </p>
-            </div>
-          )}
-
-          {/* Payment & Transport Details */}
-          {(post.payment || post.transport || post.conditions) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs sm:text-sm font-medium">
-              {post.payment && (
-                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-950 dark:text-amber-200 flex items-center gap-2">
-                  <span className="font-black">💰 {getLangText('ගෙවීම්/ත්‍යාගය:', 'Payment/Reward:', 'கட்டணம்:')}</span>
-                  <span className="font-extrabold">{post.payment}</span>
-                </div>
-              )}
-
-              {post.transport && (
-                <div className="p-2.5 bg-sky-50 dark:bg-sky-950/40 rounded-xl border border-sky-200 dark:border-sky-900 text-sky-950 dark:text-sky-200 flex items-center gap-2">
-                  <span className="font-black">🚗 {getLangText('ප්‍රවාහනය:', 'Transport:', 'போக்குவரத்து:')}</span>
-                  <span className="font-bold">{post.transport}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Special Notice */}
-          {post.specialNotice && (
-            <div className="p-2.5 bg-yellow-50 dark:bg-yellow-950/40 rounded-xl border border-yellow-300 dark:border-yellow-800 text-yellow-900 dark:text-yellow-200 text-xs font-bold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0" />
-              <span>{post.specialNotice}</span>
-            </div>
-          )}
-
-          {/* Image Attachment */}
-          {(post.image || post.photoUrl || post.userPhotoUrl) && !imageError && (
-            <div className="mt-3 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-h-72">
-              <img 
-                src={post.image || post.photoUrl || post.userPhotoUrl} 
-                alt="Post evidence" 
-                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                onError={() => setImageError(true)}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Action Bottom Bar */}
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-emerald-950/60 flex flex-wrap items-center justify-between gap-2.5">
-          
-          {/* Contact / Phone Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {displayPhone && (
-              <button
-                type="button"
-                onClick={() => handleCopyPhone(phoneNumber)}
-                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-black flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                title={getLangText('දුරකථන අංකය පිටපත් කරන්න', 'Copy phone number', 'தொலைபேசி எண்ணை நகலெடுக்க')}
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{displayPhone}</span>
-                {copiedPhone && <span className="text-[10px] text-emerald-600 font-bold ml-1">✓ පිටපත් විය</span>}
-              </button>
-            )}
-
-            {(onOpenChat || onViewPost) && (
-              <button
-                type="button"
-                onClick={handleChat}
-                className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/80 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 text-xs font-black flex items-center gap-1.5 cursor-pointer active:scale-95 border border-emerald-300 dark:border-emerald-800 transition-all"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>{getLangText('Chat සංවාදය', 'Chat', 'Chat')}</span>
-                {Boolean(post.repliesCount || post.replies?.length) && (
-                  <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
-                    {post.repliesCount || post.replies?.length}
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 flex items-center gap-0.5">
+                    <Coins className="w-3 h-3" /> රු. 25
                   </span>
-                )}
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    ඉක්මන් සේවා
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    හදිසි කාර්මික / ක්ෂණික සහය
+                  </p>
+                </div>
               </button>
-            )}
-          </div>
 
-          {/* Primary Action Button */}
-          <div className="flex items-center gap-2">
-            {ownerCheck ? (
-              /* Post Owner View: Orange "කැමැත්ත දැක්වූවන්" button with badge counter */
+              {/* Category 2: සාමාන්‍ය සේවා */}
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onOfferSupport) {
-                    onOfferSupport(post);
-                  } else {
-                    handleView(e);
-                  }
-                }}
-                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all border border-orange-400/50"
-                title="සහය වීමට කැමැත්ත පළකළ අයගේ ලැයිස්තුව"
+                onClick={() => setSelectedCategory('general_help')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'general_help'
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 shadow-md ring-2 ring-emerald-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-emerald-300'
+                }`}
               >
-                <UserCheck className="w-4 h-4" />
-                <span>{getLangText('කැමැත්ත දැක්වූවන්', 'Willing Helpers', 'விருப்பம் தெரிவித்தோர்')}</span>
-                {Boolean((post.applicants && post.applicants.length > 0) || (post.replies && post.replies.length > 0) || post.repliesCount) && (
-                  <span className="bg-white text-orange-700 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shadow-xs">
-                    {post.applicants?.length || post.replies?.length || post.repliesCount || 0}
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                    <HeartHandshake className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 flex items-center gap-0.5">
+                    <Coins className="w-3 h-3" /> රු. 25
                   </span>
-                )}
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    සාමාන්‍ය සේවා
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    ප්‍රජා සහය හා පොදු උපකාර
+                  </p>
+                </div>
               </button>
-            ) : (
-              /* Outside Helper View: Green "සහාය වන්න" button */
-              (onOfferSupport || onOpenConfirm) && (
-                <button
-                  type="button"
-                  onClick={handleSupport}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                  <span>{getLangText('සහාය වන්න (Help)', 'Offer Support', 'உதவ முன்வாருங்கள்')}</span>
-                </button>
-              )
-            )}
 
-            {onViewPost && !ownerCheck && (
+              {/* Category 3: ආපදා / රතු එළිය */}
               <button
                 type="button"
-                onClick={handleView}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-black text-xs flex items-center gap-1 cursor-pointer transition-all"
+                onClick={() => setSelectedCategory('red_alert')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'red_alert'
+                    ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/50 shadow-md ring-2 ring-rose-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-rose-300'
+                }`}
               >
-                <Eye className="w-3.5 h-3.5" />
-                <span>{getLangText('විස්තර', 'Details', 'விவரம்')}</span>
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200">
+                    නොමිලේ (Free)
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    ආපදා / රතු එළිය
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    හදිසි අනතුරු / ගංවතුර / ගිනි SOS
+                  </p>
+                </div>
               </button>
-            )}
+
+            </div>
           </div>
+
+          {/* 5. SENT BUTTON */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleSendVoiceRequest}
+              disabled={
+                (!isRecording && !audioBlob && !transcript.trim() && audioChunksRef.current.length === 0) || 
+                !selectedCategory || 
+                isProcessingSubmit
+              }
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl shadow-emerald-700/30 active:scale-[0.98] cursor-pointer transition-all"
+              title="දැන්වීම පළකරන්න"
+            >
+              {isProcessingSubmit ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>දැන්වීම පළවෙමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5" />
+                  <span>
+                    {!selectedCategory 
+                      ? 'පළමුව සේවා කාණ්ඩය තෝරන්න (Select Category)' 
+                      : `දැන්වීම පළකරන්න (${selectedCategory === 'red_alert' ? 'නොමිලේ' : 'ගාස්තුව: රු. 25'})`}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Success Banner */}
+          {submissionSuccess && (
+            <div className="p-4 rounded-2xl bg-emerald-100 dark:bg-emerald-950/90 border border-emerald-400 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 text-xs sm:text-sm font-bold flex items-center gap-2.5 shadow-md animate-bounce">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{submissionSuccess}</span>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {errorMsg && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs sm:text-sm font-bold flex items-center gap-2.5 shadow-md">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
         </div>
 
-        )}
+        {/* Footer */}
+        <div className="p-3.5 bg-slate-100 dark:bg-[#05140b] border-t border-slate-200 dark:border-emerald-900/60 flex items-center justify-between">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            🔒 ආරක්ෂිතයි: හඬ පණිවිඩය සහ කාණ්ඩය පමණක් ප්‍රජාවට පෙන්වයි.
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-emerald-950 dark:hover:bg-emerald-900 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl cursor-pointer active:scale-95"
+          >
+            වසන්න (Close)
+          </button>
+        </div>
 
       </div>
-
-
-      {/* ⚠️ Report Voice Post Modal */}
-      {showReportModal && (
-        <div 
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn" 
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="bg-white dark:bg-[#071e13] border-2 border-rose-500 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-                <AlertTriangle className="w-6 h-6 shrink-0" />
-                <h3 className="text-base font-black text-slate-900 dark:text-white leading-snug">
-                  දැන්වීම වාර්තා කිරීම (Report Post)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setShowReportModal(false); setReportReason(''); }}
-                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/60 rounded-2xl border border-rose-200 dark:border-rose-800/80">
-              <p className="text-sm font-bold text-rose-950 dark:text-rose-200 leading-relaxed">
-                මෙහි ඇති තොරතුරු අසත්‍යද? නැත්නම් මෙහි ඇති ගැටලුව කුමක්ද?
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                ඔබගේ අදහස / හේතුව මෙහි සටහන් කරන්න:
-              </label>
-              <textarea
-                value={reportReason}
-                onChange={(e) => setReportReason(e.target.value)}
-                placeholder="මෙම දැන්වීමේ අසත්‍ය තොරතුරු හෝ ගැටලුව කුමක්දැයි පැහැදිලි කරන්න..."
-                rows={3}
-                className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-[#05130b] border border-slate-300 dark:border-emerald-900 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
-              />
-            </div>
-
-            {reportSuccess && (
-              <div className="p-3 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                <span>වාර්තාව ඇඩ්මින්වරයා වෙත යොමු කරන ලදී!</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => { setShowReportModal(false); setReportReason(''); }}
-                className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer active:scale-95"
-              >
-                අවලංගු කරන්න
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmitReport}
-                disabled={!reportReason.trim() || isSubmittingReport || reportSuccess}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer active:scale-95"
-              >
-                {isSubmittingReport ? (
-                  <span>යවමින්...</span>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>වාර්තා කරන්න (Submit Report)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
-};      {/* Admin Reported / Hidden Notice */}
-      {isAdmin && isHiddenByReports && (
-        <div className="bg-rose-50 dark:bg-rose-950/80 p-3 sm:p-4 border-b-2 border-rose-500 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-rose-800 dark:text-rose-200 text-xs font-black">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>⚠️ රිපෝට් {post.reportsCount || 5}ක් ලැබී සාමාන්‍ය පරිශීලකයින්ට සඟවා ඇත (Hidden for Users)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleUnhidePost}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95"
-            >
-              නැවත පෙන්වන්න (Unhide)
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95"
-            >
-              සදහටම ඉවත් කරන්න (Delete)
-            </button>
-          </div>
-        </div>
-      )}
-
+};
