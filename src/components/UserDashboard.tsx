@@ -226,7 +226,7 @@ const locOpt = toLocationOption(resolved);
 ​if (isMounted) {
 setCurrentLocation(locOpt);
 localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-setAutoLocationMsg(📍 සජීවී ස්ථානය ස්වයංක්‍රීයව හඳුනාගන්නා ලදී: ${resolved.shortDisplaySi});
+setAutoLocationMsg(`📍 සජීවී ස්ථානය ස්වයංක්‍රීයව හඳුනාගන්නා ලදී: ${resolved.shortDisplaySi});
 setTimeout(() => {
 if (isMounted) setAutoLocationMsg(null);
 }, 6000);
