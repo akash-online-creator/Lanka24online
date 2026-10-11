@@ -28,6 +28,8 @@ import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedPostId } from '../utils/deletedPostsManager';
 import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/firebase';
 import { maskPhone } from '../utils/demoDataMasker';
+import { AudioVoicePlayer } from './AudioVoiceNote';
+import { X } from 'lucide-react';
 
 export interface PostCardProps {
   post: HelpPost | any;
@@ -91,6 +93,10 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [isDeletingLocal, setIsDeletingLocal] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
 
   if (!post || isDeletingLocal) return null;
 
@@ -98,6 +104,13 @@ export const PostCard: React.FC<PostCardProps> = ({
   const isAdmin = !isDemo && checkIsAdmin(currentUser);
   const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
   const canModify = ownerCheck || isAdmin;
+
+  // Auto-hide post if 5 or more reports received (Visible only to Admin)
+  const isHiddenByReports = Boolean(post.isHidden || (post.reportsCount && post.reportsCount >= 5));
+  if (!isAdmin && isHiddenByReports) {
+    return null;
+  }
+
 
   const getLangText = (si: string, en: string, ta: string) => {
     if (lang === 'en') return en;
@@ -292,6 +305,82 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   // Check if corrupted / empty post
   const isCorrupted = !post.whatHappened && !post.whatIsNeeded && !post.title && !post.content && !post.donationItem && !post.itemLostStolenOrSearched;
+
+
+  
+  // Helper to extract ONLY the nearest city/town (නගරය පමණි, නිශ්චිත ස්ථානය සඟවයි)
+  const getCityOnly = (locStr?: string): string => {
+    if (!locStr) return getLangText('නගරය', 'City', 'நகரம்');
+    // If numeric coordinates, fallback to general location name
+    if (/^\d+\.\d+/.test(locStr.trim())) {
+      return viewerLocation?.nameSi?.split('(')[0]?.trim() || getLangText('නගරය', 'City', 'நகரம்');
+    }
+    // Strip village, roads, districts in parentheses: e.g. "කඩවත (ගම්පහ)" -> "කඩවත"
+    const cleaned = locStr.split('(')[0].split(',')[0].trim();
+    return cleaned || locStr;
+  };
+
+  const handleSubmitReport = async () => {
+    if (!reportReason.trim() || !post.id) return;
+    setIsSubmittingReport(true);
+    try {
+      const existingReports = Array.isArray(post.reports) ? post.reports : [];
+      const newReport = {
+        userId: currentUser?.id || currentUser?.userId || 'anonymous',
+        userName: currentUser?.name || 'පරිශීලක',
+        userPhone: currentUser?.phone || '',
+        reason: reportReason.trim(),
+        reportedAt: new Date().toISOString()
+      };
+      const updatedReports = [...existingReports, newReport];
+      const newReportsCount = (post.reportsCount || existingReports.length) + 1;
+      const isNowHidden = newReportsCount >= 5;
+
+      await updateHelpPostInFirestore(post.id, {
+        reports: updatedReports,
+        reportsCount: newReportsCount,
+        isHidden: isNowHidden,
+        hiddenReason: isNowHidden ? '5_reports_received' : undefined,
+        lastReportedAt: new Date().toISOString()
+      });
+
+      post.reports = updatedReports;
+      post.reportsCount = newReportsCount;
+      if (isNowHidden) {
+        post.isHidden = true;
+      }
+
+      setReportSuccess(true);
+      setTimeout(() => {
+        setShowReportModal(false);
+        setReportReason('');
+        setReportSuccess(false);
+      }, 1500);
+    } catch (err) {
+      console.error('Report submission failed:', err);
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  const handleUnhidePost = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!post.id) return;
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        isHidden: false,
+        hiddenReason: null,
+        reportsCount: 0,
+        unhiddenAt: new Date().toISOString(),
+        unhiddenBy: currentUser?.name || 'Admin'
+      });
+      post.isHidden = false;
+      post.reportsCount = 0;
+      setShowMenu(false);
+    } catch (err) {
+      console.error('Unhide post failed:', err);
+    }
+  };
 
   return (
     <div className={`bg-white dark:bg-[#0b1d14] rounded-2xl sm:rounded-3xl shadow-md hover:shadow-xl border-2 transition-all duration-200 overflow-hidden relative ${
@@ -559,7 +648,84 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         )}
 
-        {/* Post Content Details */}
+                {/* VOICE POST MINIMAL LAYOUT vs STANDARD POST LAYOUT */}
+        {Boolean(post.isVoicePost || post.mediaType === 'voice' || post.audioUrl) ? (
+          <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-b from-emerald-50/40 to-teal-50/20 dark:from-[#06180f] dark:to-[#04120b] rounded-3xl border border-emerald-200/80 dark:border-emerald-900/60 shadow-inner">
+            
+            {/* 🏷️ Voice Post Header: Name, City, Post ID & Category */}
+            <div className="flex items-center justify-between gap-2.5 flex-wrap pb-3 border-b border-emerald-200/80 dark:border-emerald-900/60">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-xs shadow-sm shrink-0">
+                  {authorName.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-black text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                      {authorName}
+                    </h4>
+                    <span className="font-mono text-[10px] font-black text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
+                      {postCode}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300 font-bold mt-0.5">
+                    <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                    <span className="truncate max-w-[180px] sm:max-w-[240px]">නගරය: {getCityOnly(post.locationName || locationText)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service Category Badge */}
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-emerald-100 dark:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{post.tagName || post.tagCategory || (post.category === 'quick_services' ? 'ඉක්මන් සේවා' : post.category === 'red_alert' ? 'ආපදා / රතු එළිය' : 'සාමාන්‍ය සේවා')}</span>
+              </span>
+            </div>
+
+            {/* Playable Voice Note Player */}
+            <div className="p-3 bg-white dark:bg-[#071d12] rounded-2xl border-2 border-emerald-400/80 dark:border-emerald-700 shadow-md">
+              <AudioVoicePlayer audioUrl={post.audioUrl || ''} durationSec={post.audioDurationSec || 15} />
+            </div>
+
+            {/* Exactly 3 Buttons Underneath: 1. සහය වෙමි, 2. චැට්, 3. රිපෝට් */}
+            <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/80 dark:border-emerald-900/60">
+              
+              {/* Button 1: සහය වෙමි */}
+              <button
+                type="button"
+                onClick={handleSupport}
+                className="py-3 px-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl font-black text-xs sm:text-sm shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
+                title="සහය වීමට කැමැත්ත පළකරන්න"
+              >
+                <HelpCircle className="w-4 h-4 shrink-0" />
+                <span className="truncate">{ownerCheck ? getLangText('කැමැත්ත දැක්වූවන්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහය වෙමි', 'I will help', 'உதவுகிறேன்')}</span>
+              </button>
+
+              {/* Button 2: චැට් */}
+              <button
+                type="button"
+                onClick={handleChat}
+                className="py-3 px-2 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/80 dark:hover:bg-sky-900/80 text-sky-800 dark:text-sky-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-sky-300 dark:border-sky-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
+                title="දැන්වීම්කරු සමඟ චැට් කරන්න"
+              >
+                <MessageCircle className="w-4 h-4 text-sky-600 shrink-0" />
+                <span className="truncate">{getLangText('චැට්', 'Chat', 'Chat')}</span>
+              </button>
+
+              {/* Button 3: රිපෝට් */}
+              <button
+                type="button"
+                onClick={() => setShowReportModal(true)}
+                className="py-3 px-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/80 dark:hover:bg-rose-900/80 text-rose-800 dark:text-rose-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-rose-300 dark:border-rose-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
+                title="දැන්වීම වාර්තා කරන්න"
+              >
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span className="truncate">{getLangText('රිපෝට්', 'Report', 'புகாரளி')}</span>
+              </button>
+
+            </div>
+          </div>
+        ) : (
+{/* Post Content Details */}
         <div className="space-y-2.5 text-sm sm:text-base">
           
           {/* Main Content */}
@@ -714,8 +880,113 @@ export const PostCard: React.FC<PostCardProps> = ({
 
         </div>
 
+        )}
+
       </div>
+
+
+      {/* ⚠️ Report Voice Post Modal */}
+      {showReportModal && (
+        <div 
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn" 
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-white dark:bg-[#071e13] border-2 border-rose-500 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="w-6 h-6 shrink-0" />
+                <h3 className="text-base font-black text-slate-900 dark:text-white leading-snug">
+                  දැන්වීම වාර්තා කිරීම (Report Post)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowReportModal(false); setReportReason(''); }}
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/60 rounded-2xl border border-rose-200 dark:border-rose-800/80">
+              <p className="text-sm font-bold text-rose-950 dark:text-rose-200 leading-relaxed">
+                මෙහි ඇති තොරතුරු අසත්‍යද? නැත්නම් මෙහි ඇති ගැටලුව කුමක්ද?
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                ඔබගේ අදහස / හේතුව මෙහි සටහන් කරන්න:
+              </label>
+              <textarea
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="මෙම දැන්වීමේ අසත්‍ය තොරතුරු හෝ ගැටලුව කුමක්දැයි පැහැදිලි කරන්න..."
+                rows={3}
+                className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-[#05130b] border border-slate-300 dark:border-emerald-900 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+            </div>
+
+            {reportSuccess && (
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                <span>වාර්තාව ඇඩ්මින්වරයා වෙත යොමු කරන ලදී!</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => { setShowReportModal(false); setReportReason(''); }}
+                className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer active:scale-95"
+              >
+                අවලංගු කරන්න
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitReport}
+                disabled={!reportReason.trim() || isSubmittingReport || reportSuccess}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer active:scale-95"
+              >
+                {isSubmittingReport ? (
+                  <span>යවමින්...</span>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>වාර්තා කරන්න (Submit Report)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
-};
+};      {/* Admin Reported / Hidden Notice */}
+      {isAdmin && isHiddenByReports && (
+        <div className="bg-rose-50 dark:bg-rose-950/80 p-3 sm:p-4 border-b-2 border-rose-500 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-rose-800 dark:text-rose-200 text-xs font-black">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>⚠️ රිපෝට් {post.reportsCount || 5}ක් ලැබී සාමාන්‍ය පරිශීලකයින්ට සඟවා ඇත (Hidden for Users)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleUnhidePost}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95"
+            >
+              නැවත පෙන්වන්න (Unhide)
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95"
+            >
+              සදහටම ඉවත් කරන්න (Delete)
+            </button>
+          </div>
+        </div>
+      )}
+
