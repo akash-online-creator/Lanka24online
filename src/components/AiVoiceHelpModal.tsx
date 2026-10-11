@@ -6,41 +6,34 @@ import {
   Pause, 
   Send, 
   Trash2, 
-  Sparkles, 
   MapPin, 
   Clock, 
   Calendar, 
   AlertTriangle, 
   Zap, 
-  Search, 
-  Users, 
   HeartHandshake, 
   X, 
   Loader2, 
   CheckCircle2, 
-  Volume2, 
   RefreshCw,
   Globe,
-  Radio
+  Radio,
+  Coins
 } from 'lucide-react';
-import { HelpPost, Language, LocationOption, User, RedAlertItem, GroupItem } from '../types';
+import { HelpPost, Language, LocationOption, User, RedAlertItem } from '../types';
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { resolveExactLocation } from '../utils/geoUtils';
-import { AudioVoicePlayer } from './AudioVoiceNote';
+
+export type AllowedVoiceCategory = 'quick_services' | 'general_help' | 'red_alert';
 
 interface AiVoiceHelpModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User;
   currentLocation: LocationOption;
-  lang: Language;
+  lang?: Language;
   onSubmitHelpPost?: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => Promise<any> | void;
   onSubmitRedAlert?: (alert: RedAlertItem) => Promise<any> | void;
-  onSubmitGroup?: (group: GroupItem) => Promise<any> | void;
-  onOpenQuickServicePrefilled?: (data: any) => void;
-  onOpenFindForMePrefilled?: (data: any) => void;
-  onOpenRedAlertPrefilled?: (data: any) => void;
-  onOpenGroupWorkPrefilled?: (data: any) => void;
 }
 
 export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
@@ -48,14 +41,9 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   onClose,
   currentUser,
   currentLocation,
-  lang,
+  lang = 'si',
   onSubmitHelpPost,
   onSubmitRedAlert,
-  onSubmitGroup,
-  onOpenQuickServicePrefilled,
-  onOpenFindForMePrefilled,
-  onOpenRedAlertPrefilled,
-  onOpenGroupWorkPrefilled,
 }) => {
   const [selectedLanguage, setSelectedLanguage] = useState<'si' | 'ta' | 'en'>('si');
   const [isRecording, setIsRecording] = useState(false);
@@ -73,9 +61,11 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
 
-  // AI Analysis & Submission states
-  const [isProcessingAi, setIsProcessingAi] = useState(false);
-  const [aiAnalysisResult, setAiAnalysisResult] = useState<any | null>(null);
+  // Mandatory Category Selection (Quick Services, Normal Services, Red Alert only)
+  const [selectedCategory, setSelectedCategory] = useState<AllowedVoiceCategory | null>(null);
+
+  // Submission states
+  const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -85,7 +75,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const speechRecognitionRef = useRef<any | null>(null);
 
-  // Initialize time and location
+  // Initialize on open
   useEffect(() => {
     if (isOpen) {
       updateLiveLocationAndDateTime();
@@ -93,7 +83,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       setInterimTranscript('');
       setAudioBlob(null);
       setAudioUrl(null);
-      setAiAnalysisResult(null);
+      setSelectedCategory(null);
       setSubmissionSuccess(null);
       setErrorMsg(null);
       setIsRecording(false);
@@ -124,14 +114,17 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
           try {
             const loc = await resolveExactLocation(lat, lng);
-            if (loc) {
-              const fullLocName = `${loc.townSi || loc.villageSi || loc.shortDisplaySi || ''} (${loc.districtSi || ''})`.trim();
-              setLocationName(fullLocName || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            if (loc && (loc.townSi || loc.districtSi)) {
+              // ළඟම නගරය පමණක් ලබාගැනීම (නිශ්චිත ස්ථානය සඟවයි)
+              const cityOnly = (loc.townSi || loc.districtSi || currentLocation?.nameSi || '').split('(')[0].trim();
+              setLocationName(cityOnly || 'ළඟම නගරය');
             } else {
-              setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)} (GPS)`);
+              const cityOnly = (currentLocation?.nameSi || 'කොළඹ').split('(')[0].trim();
+              setLocationName(cityOnly);
             }
           } catch {
-            setLocationName(currentLocation?.nameSi || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            const cityOnly = (currentLocation?.nameSi || 'නගරය').split('(')[0].trim();
+            setLocationName(cityOnly);
           } finally {
             setIsResolvingLocation(false);
           }
@@ -145,13 +138,10 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     }
   };
 
-  // Setup Web Speech Recognition
+  // Setup Web Speech Recognition for fallback transcript
   const startSpeechRecognition = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('Web Speech Recognition not supported in this browser.');
-      return;
-    }
+    if (!SpeechRecognition) return;
 
     try {
       const recognition = new SpeechRecognition();
@@ -183,14 +173,11 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         setInterimTranscript(interimStr);
       };
 
-      recognition.onerror = (e: any) => {
-        console.warn('Speech recognition warning:', e.error);
-      };
-
+      recognition.onerror = () => {};
       recognition.start();
       speechRecognitionRef.current = recognition;
     } catch (err) {
-      console.warn('Failed to start speech recognition:', err);
+      console.warn('Speech recognition warning:', err);
     }
   };
 
@@ -203,7 +190,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     }
   };
 
-  // 1. START VOICE RECORDING (Voice Button)
+  // START VOICE RECORDING
   const handleStartRecording = async () => {
     setErrorMsg(null);
     setSubmissionSuccess(null);
@@ -239,7 +226,6 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       setIsRecording(true);
       setRecordingSeconds(0);
 
-      // Start duration counter
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
           if (prev >= 120) {
@@ -253,11 +239,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       startSpeechRecognition();
     } catch (err: any) {
       console.warn('Microphone access notice:', err?.name || err?.message || err);
-      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || String(err?.message || '').toLowerCase().includes('permission')) {
-        setErrorMsg('මයික්‍රෆෝනය භාවිතය සඳහා අවසර ලබා දී නොමැත. කරුණාකර ඔබගේ Browser Settings හි Microphone Allow කරන්න හෝ පහත කොටුවේ විස්තරය කෙලින්ම ලියා යොමු කරන්න.');
-      } else {
-        setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීමේදී ගැටලුවක් මතු විය. කරුණාකර පහතින් ඔබගේ අවශ්‍යතාවය සටහන් කරන්න.');
-      }
+      setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීම සඳහා අවසර ලබා දී නොමැත. කරුණාකර Browser Settings පරීක්ෂා කරන්න.');
     }
   };
 
@@ -273,7 +255,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     stopSpeechRecognition();
   };
 
-  // 2. PLAY / PAUSE PREVIEW (Play Button)
+  // PLAY / PAUSE PREVIEW
   const handleTogglePlayPreview = () => {
     if (!audioPreviewRef.current) return;
     if (isPlayingPreview) {
@@ -284,19 +266,23 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     }
   };
 
-  // 3. SENT BUTTON (Send / Submit Voice Request with Date, Time & Location)
+  // SEND VOICE REQUEST WITH MANDATORY CATEGORY SELECTION
   const handleSendVoiceRequest = async () => {
     if (!audioBlob && !transcript.trim() && !isRecording && audioChunksRef.current.length === 0) {
-      setErrorMsg('කරුණාකර හඬ පණිවිඩයක් පටිගත කරන්න හෝ අවශ්‍යතාවය පවසන්න.');
+      setErrorMsg('කරුණාකර හඬ පණිවිඩයක් පටිගත කරන්න.');
       return;
     }
 
-    setIsProcessingAi(true);
+    if (!selectedCategory) {
+      setErrorMsg('කරුණාකර දැන්වීම පළකිරීම සඳහා පහතින් සේවා කාණ්ඩයක් තෝරන්න (ඉක්මන් සේවා, සාමාන්‍ය සේවා, හෝ ආපදා රතු එළිය).');
+      return;
+    }
+
+    setIsProcessingSubmit(true);
     setErrorMsg(null);
     setSubmissionSuccess(null);
 
     try {
-      // If currently recording, request data and stop cleanly
       let currentBlob = audioBlob;
       if (isRecording || (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording')) {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -313,7 +299,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         setAudioBlob(currentBlob);
       }
 
-      // Convert audioBlob to Base64 data URL as bulletproof persistent fallback
+      // Convert audioBlob to Base64 data URL
       let base64AudioUrl = audioUrl || '';
       if (currentBlob) {
         try {
@@ -329,7 +315,6 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         }
       }
 
-      // 1. Upload audio to Cloud Storage or use Base64 URL
       let finalAudioUrl = base64AudioUrl || audioUrl || '';
       let telegramRec: any = undefined;
 
@@ -341,7 +326,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
             mimeType: 'audio/webm',
             mediaType: 'voice',
             senderName: currentUser?.name || 'Voice User',
-            sourceContext: 'AI Voice SOS & Help Request',
+            sourceContext: 'හඬ සහය (Voice Help)',
             caption: `🎙️ Voice Note (${Math.max(1, recordingSeconds)}s) - ${locationName}`,
           });
           if (uploadRes?.url) {
@@ -349,110 +334,27 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
             telegramRec = uploadRes.record;
           }
         } catch (upErr) {
-          console.warn('Media upload notice, fallback to local Base64 URL:', upErr);
+          console.warn('Media upload notice, fallback to local URL:', upErr);
         }
       }
 
-      // 2. Call AI Voice Parser Endpoint
-      const fullTextToAnalyze = transcript.trim() || interimTranscript.trim() || 'හදිසි හඬ ආධාර ඉල්ලීමකි (Voice Help Request)';
-      
-      let parsedData: any = null;
-      try {
-        const response = await fetch('/api/ai/voice-parse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transcript: fullTextToAnalyze,
-            language: selectedLanguage,
-            locationContext: {
-              name: locationName,
-              lat: coords?.lat,
-              lng: coords?.lng,
-              date: currentDateString,
-              time: currentTimeString,
-            },
-          }),
-        });
-        const resJson = await response.json();
-        if (resJson?.data) {
-          parsedData = resJson.data;
-        }
-      } catch (aiErr) {
-        console.warn('AI Voice Parse API warning:', aiErr);
-      }
-
-      // Default fallback if parsing did not yield data
-      if (!parsedData) {
-        parsedData = {
-          serviceType: 'quick_service',
-          titleSi: fullTextToAnalyze.length > 5 && fullTextToAnalyze !== 'හදිසි හඬ ආධාර ඉල්ලීමකි (Voice Help Request)' ? fullTextToAnalyze.slice(0, 50) : '🎙️ හදිසි හඬ ආධාර ඉල්ලීම',
-          whatHappened: fullTextToAnalyze,
-          whatIsNeeded: 'හඬ පණිවිඩය අසා සහය වන්න (Listen to voice note)',
-          urgency: 'high',
-          suggestedCategory: 'ක්ෂණික උපකාර',
-          payment: 'නොමිලේ',
-          helpersNeeded: 1,
-        };
-      }
-
-      setAiAnalysisResult(parsedData);
-
-      // Resolve valid category identifier
-      let resolvedCategory = 'quick_services';
-      if (parsedData.serviceType === 'find_for_me') resolvedCategory = 'find_for_me';
-      else if (parsedData.serviceType === 'group_work') resolvedCategory = 'group_work';
-      else if (parsedData.serviceType === 'from_me_to_you') resolvedCategory = 'from_me_to_you';
-      else if (parsedData.serviceType === 'blood_disaster') resolvedCategory = 'blood_disaster';
-      else if (parsedData.serviceType === 'professional_services') resolvedCategory = 'professional_services';
-      else if (parsedData.serviceType === 'normal_services') resolvedCategory = 'normal_services';
-
-      // Common Post metadata with exact Date, Time, and Location
-      const basePostMetadata = {
-        title: parsedData.titleSi || (fullTextToAnalyze.length > 5 ? fullTextToAnalyze.slice(0, 60) : '🎙️ ක්ෂණික හඬ ආධාර ඉල්ලීම'),
-        whatHappened: parsedData.whatHappened || fullTextToAnalyze,
-        whatIsNeeded: parsedData.whatIsNeeded || 'හඬ පණිවිඩය අසා සහය වන්න',
-        conditions: 'හඬ පණිවිඩය අසා තොරතුරු තහවුරු කරගන්න.',
-        specialNotice: `🎙️ AI හඬ ආධාර ඉල්ලීමකි. (යැවූ වේලාව: ${currentTimeString}, දිනය: ${currentDateString}, ස්ථානය: ${locationName})`,
-        transport: 'ඔබ පැමිණිය යුතුයි',
-        payment: parsedData.payment || 'නොමිලේ',
-        helpersNeeded: parsedData.helpersNeeded || 1,
-        helpersAccepted: 0,
-        feeAgreed: true,
-        locationName: locationName || currentLocation?.nameSi || 'ශ්‍රී ලංකාව',
-        distanceKm: 0,
-        lat: coords?.lat || currentLocation?.lat || 6.9271,
-        lng: coords?.lng || currentLocation?.lng || 79.8612,
-        category: resolvedCategory,
-        tagName: parsedData.suggestedCategory || 'හඬ සහය',
-        tagCategory: 'ඉක්මන් සේවා',
-        userName: currentUser?.name || 'පරිශීලක',
-        userPhone: currentUser?.phone || currentUser?.whatsappNumber || '0771234567',
-        userEmail: currentUser?.email || '',
-        userId: currentUser?.id || currentUser?.userId,
-        status: 'active' as const,
-        mediaType: 'voice' as const,
-        audioUrl: finalAudioUrl,
-        audioDurationSec: Math.max(1, recordingSeconds),
-        voiceSentDate: currentDateString,
-        voiceSentTime: currentTimeString,
-        voiceSentLocation: locationName,
-        voiceCoordinates: coords || undefined,
-        isVoicePost: true,
-        voiceTranscript: fullTextToAnalyze,
-        voiceLanguage: selectedLanguage,
-        telegramStorage: telegramRec,
+      const categoryLabels: Record<AllowedVoiceCategory, { si: string; en: string; ta: string; tag: string }> = {
+        quick_services: { si: 'ඉක්මන් සේවා', en: 'Quick Services', ta: 'விரைவு சேவைகள்', tag: 'ඉක්මන් සේවා' },
+        general_help: { si: 'සාමාන්‍ය සේවා', en: 'Normal Services', ta: 'பொது சேவைகள்', tag: 'සාමාන්‍ය සේවා' },
+        red_alert: { si: 'ආපදා / රතු එළිය', en: 'Disaster Red Alert', ta: 'சிவப்பு எச்சரிக்கை', tag: 'රතු එළිය' },
       };
 
-      // Direct Routing / Execution based on classified service
-      if (parsedData.serviceType === 'red_alert' && onSubmitRedAlert) {
+      const chosenMeta = categoryLabels[selectedCategory];
+
+      if (selectedCategory === 'red_alert' && onSubmitRedAlert) {
         const redAlertItem: RedAlertItem = {
           id: `red_${Date.now()}`,
           alertCode: `#RED-${Math.floor(1000 + Math.random() * 9000)}`,
-          disasterType: parsedData.disasterType || 'other',
-          disasterTitleSi: parsedData.titleSi || '🚨 හදිසි ආපදා අනතුරු ඇඟවීම (Voice SOS)',
-          disasterTitleEn: parsedData.titleEn || 'Emergency SOS Voice Alert',
-          disasterTitleTa: parsedData.titleTa || 'அவசர SOS குரல் எச்சரிக்கை',
-          description: `${fullTextToAnalyze}\n\n🎙️ [හඬ පණිවිඩය යැවූ දිනය: ${currentDateString}, වේලාව: ${currentTimeString}, ස්ථානය: ${locationName}]`,
+          disasterType: 'other',
+          disasterTitleSi: '🚨 හදිසි ආපදා හඬ පණිවිඩය (Voice SOS)',
+          disasterTitleEn: 'Emergency Voice SOS Alert',
+          disasterTitleTa: 'அவசர குரல் SOS எச்சரிக்கை',
+          description: `🎙️ හඬ සහය මඟින් යොමු කළ පණිවිඩයකි. (යැවූ දිනය: ${currentDateString}, වේලාව: ${currentTimeString}, ස්ථානය: ${locationName})`,
           latitude: coords?.lat || currentLocation?.lat || 6.9271,
           longitude: coords?.lng || currentLocation?.lng || 79.8612,
           locationName: locationName,
@@ -464,7 +366,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
           reportedByName: currentUser?.name || 'පරිශීලක',
           reportedByPhone: currentUser?.phone || '',
           status: 'active',
-          severity: parsedData.urgency === 'critical' ? 'critical' : 'high',
+          severity: 'high',
           comments: [],
           fakeReports: [],
           audioUrl: finalAudioUrl,
@@ -476,19 +378,61 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
           isVoiceAlert: true,
         };
         await onSubmitRedAlert(redAlertItem);
-        setSubmissionSuccess('🚨 හදිසි රතු එළිය (Red Alert SOS) සාර්ථකව පලකරන ලදී!');
+        setSubmissionSuccess('🚨 හදිසි ආපදා / රතු එළිය (Voice SOS) සාර්ථකව පළකරන ලදී!');
       } else if (onSubmitHelpPost) {
-        await onSubmitHelpPost(basePostMetadata);
-        setSubmissionSuccess('✅ ඔබගේ AI හඬ ආධාර ඉල්ලීම (Voice Request) දිනය, වේලාව සහ ස්ථානය සමඟ සාර්ථකව පලකරන ලදී!');
+        const basePostMetadata = {
+          title: `🎙️ හඬ සහය (${chosenMeta.si})`,
+          whatHappened: 'හඬ පටය ශ්‍රවණය කර සහය වන්න.',
+          whatIsNeeded: 'හඬ පණිවිඩය අසා අවශ්‍ය සහය ලබා දෙන්න.',
+          conditions: 'හඬ පණිවිඩය අසා තොරතුරු තහවුරු කරගන්න.',
+          specialNotice: `🎙️ හඬ සහය දැන්වීමකි. (යැවූ වේලාව: ${currentTimeString}, දිනය: ${currentDateString}, ස්ථානය: ${locationName})`,
+          transport: 'සාකච්ඡා කර තීරණය කරනු ලැබේ',
+          payment: selectedCategory === 'quick_services' ? 'ගාස්තු ගෙවනු ලැබේ' : 'නොමිලේ / ස්වේච්ඡා',
+          helpersNeeded: 1,
+          helpersAccepted: 0,
+          feeAgreed: true,
+          locationName: locationName || currentLocation?.nameSi || 'ශ්‍රී ලංකාව',
+          distanceKm: 0,
+          lat: coords?.lat || currentLocation?.lat || 6.9271,
+          lng: coords?.lng || currentLocation?.lng || 79.8612,
+          category: selectedCategory,
+          tagName: chosenMeta.tag,
+          tagCategory: chosenMeta.si,
+          userName: currentUser?.name || 'පරිශීලක',
+          userPhone: currentUser?.phone || currentUser?.whatsappNumber || '0771234567',
+          userEmail: currentUser?.email || '',
+          userId: currentUser?.id || currentUser?.userId,
+          status: 'active' as const,
+          mediaType: 'voice' as const,
+          audioUrl: finalAudioUrl,
+          audioDurationSec: Math.max(1, recordingSeconds),
+          voiceSentDate: currentDateString,
+          voiceSentTime: currentTimeString,
+          voiceSentLocation: locationName,
+          voiceCoordinates: coords || undefined,
+          isVoicePost: true,
+          voiceLanguage: selectedLanguage,
+          telegramStorage: telegramRec,
+          reportsCount: 0,
+          reports: [],
+          isHidden: false,
+        };
+
+        const res: any = await onSubmitHelpPost(basePostMetadata);
+        if (res && res.error === 'insufficient_credits') {
+          setIsProcessingSubmit(false);
+          return;
+        }
+        setSubmissionSuccess('✅ ඔබගේ හඬ සහය දැන්වීම සාර්ථකව පළකරන ලදී!');
       }
 
       setTimeout(() => {
-        setIsProcessingAi(false);
+        setIsProcessingSubmit(false);
         onClose();
-      }, 1600);
+      }, 1500);
     } catch (err: any) {
       console.error('Send voice request error:', err);
-      setIsProcessingAi(false);
+      setIsProcessingSubmit(false);
       setErrorMsg('හඬ පණිවිඩය යැවීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   };
@@ -513,11 +457,10 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                <span>AI හඬ සහය (Voice SOS & Help Requests)</span>
-                <Sparkles className="w-4 h-4 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                <span>හඬ සහය (Voice Help)</span>
               </h2>
               <p className="text-[11px] sm:text-xs text-emerald-100 font-medium">
-                සිංහල, දෙමළ හෝ ඉංග්‍රීසියෙන් කතා කර ක්ෂණිකව සහය ලබාගන්න
+                හඬ පටිගත කර අදාළ කාණ්ඩය තෝරා ක්ෂණිකව දැන්වීම පළකරන්න
               </p>
             </div>
           </div>
@@ -562,7 +505,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
             <div className="flex items-center justify-between text-xs font-bold text-emerald-950 dark:text-emerald-200">
               <span className="flex items-center gap-1.5">
                 <Radio className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-                <span>යවන අවස්ථාවේ තොරතුරු (Auto-stamped on post):</span>
+                <span>යවන අවස්ථාවේ තොරතුරු:</span>
               </span>
               <button
                 type="button"
@@ -587,7 +530,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
               <div className="flex items-center gap-1.5 bg-white dark:bg-[#05130b] p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
                 <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                <span className="truncate" title={locationName}>
+                <span className="truncate" title={locationName}>නගරය: 
                   {isResolvingLocation ? 'ස්ථානය සොයමින්...' : locationName || 'ශ්‍රී ලංකාව'}
                 </span>
               </div>
@@ -628,23 +571,21 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                   </span>
                 ) : audioUrl ? (
                   <span className="text-emerald-600 dark:text-emerald-400">
-                    ✅ හඬ පණිවිඩය සූදානම්! ඔබට එය අසා බලා (Play) හෝ යැවිය (Sent) හැක.
+                    ✅ හඬ පණිවිඩය සූදානම්! කරුණාකර පහතින් සේවා කාණ්ඩය තෝරන්න.
                   </span>
                 ) : (
-                  <span>පහත 'Voice බොත්තම' ඔබා ඔබගේ හදිසි ආධාර ඉල්ලීම හෝ ස්වේච්ඡා දායකත්වය පවසන්න</span>
+                  <span>පහත බොත්තම ඔබා ඔබගේ හඬ පටිගත කරන්න</span>
                 )}
               </p>
             </div>
 
-            {/* 4. THE 3 MANDATORY BUTTONS (Voice, Play, Sent) */}
+            {/* Voice Control Buttons (Record / Stop / Play) */}
             <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
-              
-              {/* BUTTON 1: VOICE (Record / Stop) */}
               {!isRecording ? (
                 <button
                   type="button"
                   onClick={handleStartRecording}
-                  disabled={isProcessingAi}
+                  disabled={isProcessingSubmit}
                   className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer transition-all disabled:opacity-50"
                   title="හඬ පටිගත කරන්න"
                 >
@@ -663,7 +604,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                 </button>
               )}
 
-              {/* BUTTON 2: PLAY (Preview Audio) */}
+              {/* Play / Preview Audio */}
               {audioUrl && (
                 <>
                   <audio
@@ -675,7 +616,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                   <button
                     type="button"
                     onClick={handleTogglePlayPreview}
-                    disabled={isRecording || isProcessingAi}
+                    disabled={isRecording || isProcessingSubmit}
                     className="px-4 py-3 rounded-2xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-sky-600/30 active:scale-95 cursor-pointer transition-all"
                     title="පටිගත කළ හඬ අසා බලන්න"
                   >
@@ -684,27 +625,6 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                   </button>
                 </>
               )}
-
-              {/* BUTTON 3: SENT (Submit Voice Request with Date, Time, Location) */}
-              <button
-                type="button"
-                onClick={handleSendVoiceRequest}
-                disabled={(!isRecording && !audioBlob && !transcript.trim() && audioChunksRef.current.length === 0) || isProcessingAi}
-                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-700 hover:from-amber-600 hover:to-emerald-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-emerald-700/30 active:scale-95 cursor-pointer transition-all disabled:cursor-not-allowed"
-                title="හඬ දැන්වීම දිනය, වේලාව, ස්ථානය සමඟ පළකරන්න"
-              >
-                {isProcessingAi ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>දැන්වීම පළවෙමින්...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>🚀 Sent (දැන්වීමක් ලෙස පළකරන්න)</span>
-                  </>
-                )}
-              </button>
 
               {/* Reset/Trash */}
               {(audioUrl || transcript) && !isRecording && (
@@ -715,7 +635,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                     setAudioUrl(null);
                     setTranscript('');
                     setInterimTranscript('');
-                    setAiAnalysisResult(null);
+                    setSelectedCategory(null);
                   }}
                   className="p-3 rounded-2xl bg-slate-200 dark:bg-emerald-950/80 hover:bg-slate-300 text-slate-700 dark:text-slate-300 text-xs active:scale-95 cursor-pointer"
                   title="මකන්න (Clear)"
@@ -724,23 +644,143 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                 </button>
               )}
             </div>
-
           </div>
 
-          {/* 5. Live Spoken Transcription Display */}
-          {(transcript || interimTranscript) && (
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071b10] border border-slate-200 dark:border-emerald-900/60 space-y-1.5">
-              <span className="text-[11px] font-black text-slate-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>හඳුනාගත් පෙළ (Live Speech Transcript):</span>
-              </span>
-              <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 leading-relaxed bg-white dark:bg-[#05140b] p-3 rounded-xl border border-slate-200/80 dark:border-emerald-900/40">
-                {transcript} <span className="text-slate-400 italic">{interimTranscript}</span>
-              </p>
+          {/* 4. MANDATORY CATEGORY SELECTION BUTTONS (ONLY 3 ALLOWED CATEGORIES) */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <span>දැන්වීම පළකළ යුතු සේවා කාණ්ඩය තෝරන්න (අනිවාර්යයි):</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </h3>
+              {selectedCategory && (
+                <span className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+                  ✓ තෝරා ඇත
+                </span>
+              )}
             </div>
-          )}
 
-          {/* 6. Success Banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              
+              {/* Category 1: ඉක්මන් සේවා */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('quick_services')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'quick_services'
+                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-amber-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 flex items-center gap-0.5">
+                    <Coins className="w-3 h-3" /> රු. 25
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    ඉක්මන් සේවා
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    හදිසි කාර්මික / ක්ෂණික සහය
+                  </p>
+                </div>
+              </button>
+
+              {/* Category 2: සාමාන්‍ය සේවා */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('general_help')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'general_help'
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 shadow-md ring-2 ring-emerald-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-emerald-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                    <HeartHandshake className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 flex items-center gap-0.5">
+                    <Coins className="w-3 h-3" /> රු. 25
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    සාමාන්‍ය සේවා
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    ප්‍රජා සහය හා පොදු උපකාර
+                  </p>
+                </div>
+              </button>
+
+              {/* Category 3: ආපදා / රතු එළිය */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('red_alert')}
+                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedCategory === 'red_alert'
+                    ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/50 shadow-md ring-2 ring-rose-400/30'
+                    : 'border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#071b10] hover:border-rose-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200">
+                    නොමිලේ (Free)
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                    ආපදා / රතු එළිය
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    හදිසි අනතුරු / ගංවතුර / ගිනි SOS
+                  </p>
+                </div>
+              </button>
+
+            </div>
+          </div>
+
+          {/* 5. SENT BUTTON */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleSendVoiceRequest}
+              disabled={
+                (!isRecording && !audioBlob && !transcript.trim() && audioChunksRef.current.length === 0) || 
+                !selectedCategory || 
+                isProcessingSubmit
+              }
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl shadow-emerald-700/30 active:scale-[0.98] cursor-pointer transition-all"
+              title="දැන්වීම පළකරන්න"
+            >
+              {isProcessingSubmit ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>දැන්වීම පළවෙමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5" />
+                  <span>
+                    {!selectedCategory 
+                      ? 'පළමුව සේවා කාණ්ඩය තෝරන්න (Select Category)' 
+                      : `දැන්වීම පළකරන්න (${selectedCategory === 'red_alert' ? 'නොමිලේ' : 'ගාස්තුව: රු. 25'})`}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Success Banner */}
           {submissionSuccess && (
             <div className="p-4 rounded-2xl bg-emerald-100 dark:bg-emerald-950/90 border border-emerald-400 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 text-xs sm:text-sm font-bold flex items-center gap-2.5 shadow-md animate-bounce">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -756,44 +796,12 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
             </div>
           )}
 
-          {/* Supported Services Shortcut Preview */}
-          <div className="pt-2 border-t border-slate-200 dark:border-emerald-900/60">
-            <p className="text-[11px] font-bold text-slate-500 dark:text-emerald-400 mb-2">
-              🌟 හඬ මඟින් ස්වයංක්‍රීයව වර්ගීකරණය වන සේවාවන්:
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center">
-                <Zap className="w-4 h-4 text-amber-600 mx-auto mb-1" />
-                <span className="text-[11px] font-black text-amber-900 dark:text-amber-200 block">ඉක්මන් සේවා</span>
-                <span className="text-[9px] text-slate-500">කාර්මික / අලුත්වැඩියා</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-center">
-                <Search className="w-4 h-4 text-sky-600 mx-auto mb-1" />
-                <span className="text-[11px] font-black text-sky-900 dark:text-sky-200 block">සොයාදෙන්න</span>
-                <span className="text-[9px] text-slate-500">නැතිවූ / සෙවීම්</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-center">
-                <AlertTriangle className="w-4 h-4 text-rose-600 mx-auto mb-1" />
-                <span className="text-[11px] font-black text-rose-900 dark:text-rose-200 block">රතු එළි (SOS)</span>
-                <span className="text-[9px] text-slate-500">හදිසි ආපදා / ගිනි / ජල</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-center">
-                <Users className="w-4 h-4 text-teal-600 mx-auto mb-1" />
-                <span className="text-[11px] font-black text-teal-900 dark:text-teal-200 block">කණ්ඩායම් වැඩ</span>
-                <span className="text-[9px] text-slate-500">ශ්‍රමදාන / ස්වේච්ඡා</span>
-              </div>
-            </div>
-          </div>
-
         </div>
 
         {/* Footer */}
         <div className="p-3.5 bg-slate-100 dark:bg-[#05140b] border-t border-slate-200 dark:border-emerald-900/60 flex items-center justify-between">
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            🔒 ආරක්ෂිතයි: හඬ පණිවිඩය සමඟ දිනය, වේලාව හා ස්ථානය පමණක් ප්‍රජාවට පෙන්වයි.
+            🔒 ආරක්ෂිතයි: හඬ පණිවිඩය සහ කාණ්ඩය පමණක් ප්‍රජාවට පෙන්වයි.
           </span>
           <button
             type="button"
