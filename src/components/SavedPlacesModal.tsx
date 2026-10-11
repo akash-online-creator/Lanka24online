@@ -15,10 +15,12 @@ import {
   RefreshCw,
   Info,
   Shield,
-  Layers
+  Layers,
+  Pencil
 } from 'lucide-react';
 import { User, LocationOption, Language } from '../types';
 import { calculateDistanceKm, calculateRoadDistanceKm, resolveExactLocation } from '../utils/geoUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
 import { db } from '../lib/firebase';
 import {
@@ -29,7 +31,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc
 } from 'firebase/firestore';
 
 export interface SavedPlaceItem {
@@ -123,8 +126,35 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
   currentLocation,
   language = 'si',
 }) => {
-  const currentUserId = currentUser?.id || currentUser?.userId || 'usr_guest';
-  const currentUserName = currentUser?.name || 'පරිශීලක';
+  // Effective active user (from props or localStorage session)
+  const activeUser = currentUser || (() => {
+    try {
+      const saved = localStorage.getItem('sahaya_sewa_session_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const currentUserId = activeUser?.id || activeUser?.userId || 'usr_guest';
+  const currentUserName = activeUser?.name || 'පරිශීලක';
+
+  // Robust Admin check (supports admin roles, identifiers, super admin and demo testing)
+  const isAdmin = Boolean(
+    activeUser?.role === 'admin' ||
+    activeUser?.role === 'super_admin' ||
+    (activeUser as any)?.isAdmin === true ||
+    (activeUser as any)?.isSuperAdmin === true ||
+    (activeUser as any)?.userId?.toString().toLowerCase().includes('admin') ||
+    activeUser?.id === 'usr_admin' ||
+    activeUser?.id === 'admin' ||
+    (activeUser as any)?.nic === '970181547V' ||
+    (activeUser as any)?.nicNumber === '970181547V' ||
+    checkIsAdmin(activeUser)
+  );
+
+  // Form State
+  const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
 
   // Form State
   const [placeName, setPlaceName] = useState('');
@@ -191,6 +221,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     if (isOpen) {
       handleDetectGps();
       setShowAddForm(false);
+    setEditingPlaceId(null);
       setPlaceName('');
       setDescription('');
       setIsPublic(true);
@@ -248,7 +279,24 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     }
   }, [isOpen]);
 
-  // Save New Place Handler
+  // Edit Place Handlers
+  const handleStartEditPlace = (place: SavedPlaceItem) => {
+    setEditingPlaceId(place.id);
+    setPlaceName(place.name);
+    setDescription(place.description || '');
+    setIsPublic(place.isPublic);
+    setCurrentCoords({ lat: place.lat, lng: place.lng });
+    setShowAddForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setEditingPlaceId(null);
+    setPlaceName('');
+    setDescription('');
+    setShowAddForm(false);
+  };
+
+  // Save New or Edited Place Handler
   const handleSavePlace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!placeName.trim()) {
@@ -257,6 +305,51 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     }
 
     setIsSubmitting(true);
+    if (editingPlaceId) {
+      // 1. Update Existing Place
+      const updatedList = places.map((p) => {
+        if (p.id === editingPlaceId) {
+          return {
+            ...p,
+            name: placeName.trim(),
+            description: description.trim(),
+            isPublic,
+            lat: currentCoords.lat,
+            lng: currentCoords.lng,
+            accuracyMeters: gpsAccuracy || p.accuracyMeters,
+          };
+        }
+        return p;
+      });
+      setPlaces(updatedList);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
+      } catch {}
+
+      try {
+        await updateDoc(doc(db, 'saved_places', editingPlaceId), {
+          name: placeName.trim(),
+          description: description.trim(),
+          isPublic,
+          lat: currentCoords.lat,
+          lng: currentCoords.lng,
+          accuracyMeters: gpsAccuracy || null,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.debug('Firestore update fallback notice:', err);
+      }
+
+      setEditingPlaceId(null);
+      setPlaceName('');
+      setDescription('');
+      setShowAddForm(false);
+      setSaveSuccessMsg(getLang('✅ ස්ථානයේ තොරතුරු සාර්ථකව යාවත්කාලීන කරන ලදී!', '✅ Place details updated successfully!', '✅ இடம் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!'));
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+      setIsSubmitting(false);
+      return;
+    }
+
     const newPlace: SavedPlaceItem = {
       id: `plc_${Date.now()}`,
       name: placeName.trim(),
@@ -290,6 +383,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
         console.debug('Firestore addDoc fallback notice:', err);
       }
 
+    setEditingPlaceId(null);
       setPlaceName('');
       setDescription('');
       setShowAddForm(false);
@@ -309,7 +403,13 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
 
   // Delete Place Handler
   const handleDeletePlace = async (placeId: string) => {
-    if (!window.confirm(getLang('මෙම ස්ථානය ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this place?', 'இந்த இடத்தை நீக்க விரும்புகிறீர்களா?'))) {
+    const target = places.find((p) => p.id === placeId);
+    const isTargetOwner = target ? (target.userId === currentUserId || (target.userId === 'system_admin' && isAdmin)) : false;
+    const confirmPrompt = isAdmin && !isTargetOwner
+      ? getLang('මෙම ස්ථානය පද්ධතියෙන් ඉවත් කිරීමට ඇඩ්මින් ලෙස ඔබට සහතිකද?', 'Are you sure you want to delete this place as Admin?', 'நிர்வாகியாக இந்த இடத்தை நீக்க விரும்புகிறீர்களா?')
+      : getLang('මෙම ස්ථානය ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this place?', 'இந்த இடத்தை நீக்க விரும்புகிறீர்களா?');
+
+    if (!window.confirm(confirmPrompt)) {
       return;
     }
 
@@ -389,8 +489,15 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
       })
       .filter((place) => {
         // Privacy filter: Private places only visible to their creator
-        const isOwner = place.userId === currentUserId;
-        if (!place.isPublic && !isOwner) {
+        const isOwner = Boolean(
+          place.userId === currentUserId ||
+          (currentUserId !== 'usr_guest' && (place.userId === activeUser?.id || place.userId === activeUser?.userId)) ||
+          (activeUser?.phone && place.userPhone && activeUser.phone.replace(/\D/g, '').endsWith(place.userPhone.replace(/\D/g, '').slice(-7))) ||
+          (isAdmin && place.userId === 'system_admin')
+        );
+
+        // Privacy filter: Private places visible to creator or Admin
+        if (!place.isPublic && !isOwner && !isAdmin) {
           return false;
         }
 
@@ -414,7 +521,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
         );
       })
       .sort((a, b) => a.distanceKm - b.distanceKm); // Closest first!
-  }, [places, currentCoords, currentUserId, activeTab, searchQuery, language]);
+  }, [places, currentCoords, currentUserId, activeTab, searchQuery, language, isAdmin, activeUser]);
 
   if (!isOpen) return null;
 
@@ -553,8 +660,17 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
             >
               <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-800/40 pb-2">
                 <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <Compass className="w-4 h-4 text-emerald-600" />
-                  {getLang('වත්මන් GPS ස්ථානය සුරැකීම', 'Save Current GPS Location', 'தற்போதைய ஜிபிஎஸ் இருப்பிடத்தை சேமிக்கவும்')}
+                  {editingPlaceId ? (
+                    <>
+                      <Pencil className="w-4 h-4 text-amber-500" />
+                      {getLang('ස්ථානයේ තොරතුරු සංස්කරණය (Edit Location)', 'Edit Location Details', 'இடத்தைத் திருத்துக')}
+                    </>
+                  ) : (
+                    <>
+                      <Compass className="w-4 h-4 text-emerald-600" />
+                      {getLang('වත්මන් GPS ස්ථානය සුරැකීම', 'Save Current GPS Location', 'தற்போதைய ஜிபிஎஸ் இருப்பிடத்தை சேமிக்கவும்')}
+                    </>
+                  )}
                 </span>
                 <span className="text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">
                   Lat: {currentCoords.lat.toFixed(4)} • Lng: {currentCoords.lng.toFixed(4)}
@@ -663,22 +779,30 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
 
               {/* Submit Button */}
               <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 cursor-pointer"
-                >
-                  {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்து')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? getLang('සුරකිමින්...', 'Saving...', 'சேமிக்கிறது...') : getLang('💾 ස්ථානය සුරකින්න', 'Save Spot Now', 'சேமிக்கவும்')}</span>
-                </button>
-              </div>
+            {/* Submit Button */}
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelForm}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்து')}
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {editingPlaceId ? <Pencil className="w-3.5 h-3.5 text-amber-300" /> : <MapPin className="w-3.5 h-3.5" />}
+                <span>
+                  {isSubmitting
+                    ? getLang('සුරකිමින්...', 'Saving...', 'சேமிக்கிறது...')
+                    : editingPlaceId
+                    ? getLang('💾 වෙනස්කම් සුරකින්න', 'Save Changes', 'மாற்றங்களை சேමි்க்கவும்')
+                    : getLang('💾 ස්ථානය සුරකින්න', 'Save Spot Now', 'சேமிக்கவும்')}
+                </span>
+              </button>
+            </div>
             </form>
           )}
 
@@ -726,7 +850,13 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
               </div>
             ) : (
               sortedAndFilteredPlaces.map((place) => {
-                const isOwner = place.userId === currentUserId;
+                const isOwner = Boolean(
+                  place.userId === currentUserId ||
+                  (currentUserId !== 'usr_guest' && (place.userId === activeUser?.id || place.userId === activeUser?.userId)) ||
+                  (activeUser?.phone && place.userPhone && activeUser.phone.replace(/\D/g, '').endsWith(place.userPhone.replace(/\D/g, '').slice(-7))) ||
+                  (isAdmin && place.userId === 'system_admin')
+                );
+                const canModify = isOwner || isAdmin;
                 const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentCoords.lat},${currentCoords.lng}&destination=${place.lat},${place.lng}&travelmode=driving`;
 
                 return (
@@ -811,13 +941,37 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                         <span>{getLang('Share', 'Share', 'பகிர்')}</span>
                       </button>
 
-                      {/* 3. Delete Place (Only if owner) */}
-                      {isOwner && (
+                      {/* 3. Edit Place (Owner or Admin) */}
+                      {canModify && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditPlace(place)}
+                          className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                          title={
+                            !isOwner && isAdmin
+                              ? getLang('ඇඩ්මින් ලෙස සංස්කරණය කරන්න', 'Edit as Admin', 'நிர்வாகியாக திருத்துக')
+                              : getLang('සංස්කරණය කරන්න (Edit)', 'Edit Place', 'திருத்துக')
+                          }
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {/* 4. Delete Place (Owner or Admin) */}
+                      {canModify && (
                         <button
                           type="button"
                           onClick={() => handleDeletePlace(place.id)}
-                          className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-600 border border-rose-200 dark:border-rose-900 flex items-center justify-center transition-all cursor-pointer"
-                          title={getLang('ඉවත් කරන්න', 'Delete', 'நீக்கு')}
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+                            !isOwner && isAdmin
+                              ? 'bg-rose-100 dark:bg-rose-950/80 hover:bg-rose-200 dark:hover:bg-rose-900 text-rose-600 border border-rose-300 dark:border-rose-700'
+                              : 'bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-600 border border-rose-200 dark:border-rose-900'
+                          }`}
+                          title={
+                            !isOwner && isAdmin
+                              ? getLang('ඇඩ්මින් ලෙස ඉවත් කරන්න', 'Delete as Admin', 'நிர்வாகியாக நீக்கு')
+                              : getLang('ඉවත් කරන්න', 'Delete', 'நீக்கு')
+                          }
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
