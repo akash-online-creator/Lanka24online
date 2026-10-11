@@ -84,6 +84,13 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
+  // 📱 Device Quick PIN සහ User දත්ත sync කිරීම සඳහා Local State එක
+  const [activeUser, setActiveUser] = useState<User | null>(currentUser || null);
+
+  useEffect(() => {
+    setActiveUser(currentUser || null);
+  }, [currentUser]);
+
   // Preload current user & location on open
   useEffect(() => {
     if (isOpen) {
@@ -181,7 +188,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
   };
 
   // Effective User for Device PIN Setup & Registration
-  const effectiveUser: User = currentUser || {
+  const effectiveUser: User = activeUser || {
     id: `usr_${Date.now()}`,
     userId: `usr_${Date.now()}`,
     name: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
@@ -271,7 +278,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
 
     try {
       // Verify against existing device PIN
-      const verification = await verifyCurrentUserPin(enteredPin, currentUser || null);
+      const verification = await verifyCurrentUserPin(enteredPin, activeUser || null);
       if (!verification.success) {
         setVerifyError(verification.message || 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
         setVerifyPin('');
@@ -309,7 +316,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
         incidentTime,
         createdAt: new Date().toISOString(),
         createdAtMs: Date.now(),
-        reportedByUserId: currentUser?.userId || currentUser?.id || '',
+        reportedByUserId: activeUser?.userId || activeUser?.id || '',
         reportedByName: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
         reportedByPhone: reporterPhone.trim(),
         status: 'active',
@@ -580,72 +587,6 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
               </div>
             </div>
 
-            {/* 📱 DEVICE QUICK PIN CARD (EXACT METHOD AS IN USER SETTINGS) */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-900/10 via-teal-900/10 to-slate-900/10 dark:from-emerald-950/40 dark:via-teal-950/40 dark:to-slate-950/40 border-2 border-emerald-500/30 dark:border-emerald-500/40 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shadow-md shrink-0">
-                    <Smartphone className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-                      <span>📱 Device Quick PIN (අංක 4ක PIN)</span>
-                      <span className="text-[10px] bg-amber-400/20 text-amber-700 dark:text-amber-300 border border-amber-400/30 font-black px-2 py-0.5 rounded-full">
-                        මෙම Device එකට පමණි
-                      </span>
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-zinc-300 leading-tight">
-                      ව්‍යාජ ආපදා (Fake Alerts) වැළැක්වීමට සහ ක්ෂණික සයිරන් නාදය තහවුරු කිරීමට මෙම Device Quick PIN අංකය භාවිතා වේ.
-                    </p>
-                  </div>
-                </div>
-
-                {/* PIN Status Badge */}
-                <div className="self-start sm:self-center">
-                  {hasStoredPin ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-900/70 border border-emerald-500 text-emerald-900 dark:text-emerald-200 text-xs font-black shadow-sm">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>PIN සක්‍රීයයි (Active)</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/70 border border-amber-500 text-amber-900 dark:text-amber-200 text-xs font-black">
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span>PIN සකසා නැත</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPinSetupModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-95"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  <span>
-                    {hasStoredPin ? '🔢 PIN අංකය වෙනස් කරන්න' : '✨ නව 4-Digit PIN අංකයක් සකසන්න'}
-                  </span>
-                </button>
-
-                {hasStoredPin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm('මෙම Device එකෙන් PIN අංකය ඉවත් කිරීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) {
-                        clearDevicePin();
-                        setHasStoredPin(false);
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                  >
-                    <span>🗑️ PIN ඉවත් කරන්න</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
             {/* Main Submit Button (Opens Dial Box) */}
             <div className="pt-2">
               <button
@@ -682,6 +623,7 @@ export const RedAlertCreateModal: React.FC<RedAlertCreateModalProps> = ({
           isChangeMode={hasStoredPin}
           onPinConfigured={(updatedUser) => {
             setHasStoredPin(true);
+            setActiveUser(updatedUser);
             setShowPinSetupModal(false);
             if (onUpdateUser) {
               onUpdateUser(updatedUser);
