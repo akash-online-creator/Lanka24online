@@ -403,7 +403,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // New Community Features: Blood & Disaster Hub, Offline Directory, Lowest Market Prices
   const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
-  const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors' | 'disaster_relief'>('blood_requests');
+  const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors'>('blood_requests');
   const [isAidLedgerModalOpen, setIsAidLedgerModalOpen] = useState(false);
   const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
   const [isLowestPricesModalOpen, setIsLowestPricesModalOpen] = useState(false);
@@ -1823,7 +1823,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('හදිසි ලේ සහ ආපදා සහන', 'Blood & Disaster Hub', 'இரத்ததானம் & பேரிடர்')}
+                {getLangText('හදිසි ලේ අවශ්ෂතා', 'Emergency Blood Needs', 'அவசர இரத்தத் தேவைகள்')}
               </h4>
             </div>
           </button>
@@ -1845,12 +1845,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 <ShieldCheck className="w-5 h-5 text-emerald-200" />
               </div>
               <span className="px-2 py-0.5 rounded-full font-mono text-[9px] sm:text-[10px] font-black bg-emerald-400 text-emerald-950 shadow-md">
-                6-DIGIT CODE
+                DISASTER RELIEF
               </span>
             </div>
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('ආධාර විනිවිදභාවයේ ලෙජරය', 'Transparent Aid Ledger', 'வெளிப்படையான உதவி')}
+                {getLangText('ආපදා සහන සේවය', 'Disaster Relief Service', 'பேரிடர் நிவாரண சேவை')}
               </h4>
             </div>
           </button>
@@ -1900,6 +1900,72 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                 {getLangText('හඬ සහය (Voice Help)', 'Voice Help', 'குரல் உதவி')}
               </h4>
+            </div>
+          </button>
+        </div>
+      </div>
+      {/* 2. Top Quick Navigation Switcher: "සහය පුවරුව" and "පණිවිඩ & සංවාද" */}
+      <div className="bg-gradient-to-r from-blue-50/95 via-white to-blue-50/95 dark:from-[#071927] dark:via-[#0b2236] dark:to-[#071927] border-2 border-blue-200/90 dark:border-blue-700/60 p-2 sm:p-2.5 rounded-3xl shadow-md shadow-blue-500/5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+          {/* Button 1: සහය පුවරුව (Scrolls to Notice Board) */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('help-notices-feed');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle('');
+              setSelectedTagFilter(null);
+              setSearchQuery('');
+              setFeedDistanceTab('all_sl');
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg shadow-emerald-600/20 border-2 border-emerald-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('සහය පුවරුව', 'Support Board', 'உதவி பலகை')}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white/20 text-white">
+                  {helpPosts.length}
+                </span>
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-emerald-100">
+                {getLangText('සියලු උපකාර දැන්වීම්', 'All Help Notices', 'அனைத்து உதவி அறிவிப்புகள்')}
+              </div>
+            </div>
+          </button>
+
+          {/* Button 2: පණිවිඩ පෙට්ටිය & සජීවී සංවාද (Message Inbox) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                setShowDemoRegisterPrompt(true);
+                return;
+              }
+              setIsInboxModalOpen(true);
+            }}
+            className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl font-black transition-all duration-200 cursor-pointer text-center sm:text-left relative overflow-hidden group bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-700 hover:from-cyan-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg shadow-sky-600/20 border-2 border-sky-400/80 active:scale-[0.99]"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 bg-white/20 text-white shadow-xs">
+              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-sky-200" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-xs sm:text-sm font-black truncate leading-tight flex items-center gap-1.5">
+                <span>{getLangText('පණිවිඩ & චැට්', 'Messages & Inbox', 'செய்திகள் & அரட்டை')}</span>
+                {inboxRepliesCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold bg-white text-blue-900 shadow-xs">
+                    {inboxRepliesCount}
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold truncate leading-tight mt-0.5 text-sky-100">
+                {getLangText('සියලු පිළිතුරු / Chats', 'All Replies / Live Chat', 'அனைத்து பதில்கள்')}
+              </div>
             </div>
           </button>
         </div>
@@ -2479,13 +2545,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onSubmitHelpPost={handleCreatePost}
       />
 
-      {/* 🏛️ Transparent Aid & Resource Ledger Modal (ආධාර විනිවිදභාවයේ ලෙජරය) */}
+      {/* 🏛️ Disaster Relief & Aid Ledger Modal (ආපදා සහන සේවය) */}
       <TransparentAidLedgerModal
         isOpen={isAidLedgerModalOpen}
         onClose={() => setIsAidLedgerModalOpen(false)}
         currentUser={user}
         lang={language}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
+        onSubmitHelpPost={handleCreatePost}
       />
 
       {/* Emergency Services Directory Modal */}
@@ -2809,3 +2876,4 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     </div>
   );
 };
+
