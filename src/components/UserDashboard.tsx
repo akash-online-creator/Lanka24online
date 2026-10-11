@@ -120,7 +120,7 @@ Award,
 Heart,
 Mic
 } from 'lucide-react';
-​interface UserDashboardProps {
+interface UserDashboardProps {
 user?: User;
 currentUser?: User;
 setCurrentUser?: (u: User | null) => void;
