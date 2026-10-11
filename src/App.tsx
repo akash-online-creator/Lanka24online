@@ -5,6 +5,7 @@ import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
 import { GpsActivationGate } from './components/GpsActivationGate';
 import { UserDashboard } from './components/UserDashboard';
+import { SosLiveViewerModal } from './components/SosLiveViewerModal';
 import { AdminPanel } from './components/AdminPanel';
 import { PendingApprovalView } from './components/PendingApprovalView';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
@@ -42,6 +43,20 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
+
+  // 🛰️ URL-based SOS Live Tracker direct link interception
+  const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#\/?/, ''));
+        return params.get('sos_session') || hashParams.get('sos_session') || params.get('sos');
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
 
   // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
@@ -566,7 +581,22 @@ export const App: React.FC = () => {
           />
         )}
       </div>
-    </ErrorBoundary>
+            {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
+        {sosViewerSessionId && (
+          <SosLiveViewerModal
+            isOpen={Boolean(sosViewerSessionId)}
+            sessionId={sosViewerSessionId}
+            language={language}
+            onClose={() => {
+              setSosViewerSessionId(null);
+              try {
+                const cleanUrl = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+              } catch {}
+            }}
+          />
+        )}
+      </ErrorBoundary>
   );
 };
 
