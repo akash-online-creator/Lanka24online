@@ -1,3 +1,4 @@
+import { checkIsAdmin } from './postOwnerHelper';
 import { 
   HelpPost, 
   BloodDonationRequest, 
@@ -384,8 +385,36 @@ export function isPostPermanentlyDeleted(postId: string): boolean {
  * දැන්වීමක් මැකීමට පෙර එහි සියලු දත්ත (ID, Title, Details, Photos, Owner details)
  * `deleted_post_[POST_ID]_[TIMESTAMP].json` ලෙස ස්වයංක්‍රීයව පරිශීලකයාගේ උපකරණයට Save/Download කරවීම.
  */
-export function downloadPostBackupJson(post: HelpPost): boolean {
+const recentlyDownloadedBackupIds = new Set<string>();
+
+export function downloadPostBackupJson(post: HelpPost, user?: User | null): boolean {
   if (!post || typeof window === 'undefined') return false;
+
+  // ඇඩ්මින්වරයෙකු පමණක් දැයි පරීක්ෂා කිරීම (සාමාන්‍ය පරිශීලකයින්ට බාගත නොවේ)
+  let currentUserToCheck = user;
+  if (!currentUserToCheck) {
+    try {
+      const saved = localStorage.getItem('sahaya_sewa_session_user');
+      if (saved) {
+        currentUserToCheck = JSON.parse(saved);
+      }
+    } catch {}
+  }
+
+  if (!checkIsAdmin(currentUserToCheck)) {
+    return false;
+  }
+
+  // එකම දැන්වීම එකවර දෙවරක් බාගත වීම වැළැක්වීම (Deduplication)
+  const safeId = post.id || post.postCode || 'unknown';
+  if (recentlyDownloadedBackupIds.has(safeId)) {
+    return true;
+  }
+  recentlyDownloadedBackupIds.add(safeId);
+  setTimeout(() => {
+    recentlyDownloadedBackupIds.delete(safeId);
+  }, 5000);
+
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const safeId = post.id || post.postCode || 'unknown';
