@@ -33,34 +33,34 @@ interface GroupChatMapPickerModalProps {
   initialLng?: number;
 }
 
-// Modern High-Performance Map Tile Providers (1M+ Users Global CDN, 100% Free, High-DPI Retina)
+// 100% නොමිලේ ක්‍රියාත්මක වන විශ්වාසදායක Map Tile Providers
 const MAP_THEMES = {
   voyager: {
     name: 'Street (නවීන)',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    maxZoom: 20,
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   },
   satellite: {
     name: 'Satellite (චන්ද්‍රිකා)',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     labelUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    subdomains: '',
+    subdomains: [],
     maxZoom: 19,
     attribution: '&copy; Esri, Maxar, Earthstar Geographics',
   },
   dark: {
     name: 'Dark (රාත්‍රී)',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    maxZoom: 20,
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c', 'd'],
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
   },
   humanitarian: {
     name: 'Emergency (ආපදා)',
     url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    subdomains: 'abc',
+    subdomains: ['a', 'b', 'c'],
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors, Humanitarian Team',
   }
@@ -88,7 +88,7 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
 
-  // Modern Map Themes
+  // Map Themes
   const [mapTheme, setMapTheme] = useState<'voyager' | 'satellite' | 'dark' | 'humanitarian'>('voyager');
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
@@ -259,7 +259,7 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
 
     mapInstanceRef.current = map;
 
-    // Bulletproof invalidation triggers to permanently fix broken/shattered tiles
+    // Invalidating map size to ensure all tiles render properly upon modal open
     const runInvalidate = () => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize({ animate: false });
@@ -267,8 +267,8 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
     };
 
     requestAnimationFrame(runInvalidate);
-    const t1 = setTimeout(runInvalidate, 80);
-    const t2 = setTimeout(runInvalidate, 250);
+    const t1 = setTimeout(runInvalidate, 100);
+    const t2 = setTimeout(runInvalidate, 300);
     const t3 = setTimeout(runInvalidate, 600);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -363,25 +363,12 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
-      {/* Scoped CSS to enforce strict bounds on Leaflet map tiles */}
+      {/* Scoped CSS for Leaflet elements */}
       <style>{`
         .leaflet-container {
           width: 100% !important;
           height: 100% !important;
-          z-index: 10 !important;
-          background: #f1f5f9 !important;
-        }
-        .leaflet-tile-pane {
-          z-index: 2 !important;
-        }
-        .leaflet-marker-pane {
-          z-index: 600 !important;
-        }
-        .leaflet-pane {
-          z-index: 10 !important;
-        }
-        .leaflet-control-container {
-          z-index: 20 !important;
+          background: #f1f5f9;
         }
         .modern-pulsing-pin {
           filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
@@ -497,9 +484,9 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
           </div>
         )}
 
-        {/* Interactive Map Area (Strictly Bounded Container) */}
-        <div className="relative flex-1 min-h-[280px] sm:min-h-[350px] w-full overflow-hidden bg-slate-100 dark:bg-zinc-950">
-          <div ref={mapContainerRef} className="w-full h-full" />
+        {/* Interactive Map Area (Strictly Bounded Container with explicit height) */}
+        <div className="relative w-full h-[320px] sm:h-[400px] overflow-hidden bg-slate-100 dark:bg-zinc-950">
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
 
           {/* Floating Tool: Snap to High Precision GPS */}
           <button
