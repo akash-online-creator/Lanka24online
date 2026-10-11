@@ -355,6 +355,25 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
+            {onOpenInbox && (
+              <button
+                type="button"
+                onClick={onOpenInbox}
+                className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title={getLangText('පණිවිඩ (Messages)', 'Message Inbox & Chats', 'செய்திகள் & உரையாடல்கள்')}
+              >
+                <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="hidden md:inline text-xs font-bold">
+                  {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
+                </span>
+                {typeof inboxCount === 'number' && inboxCount > 0 && (
+                  <span className="min-w-[17px] h-4.5 px-1 rounded-full bg-blue-600 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs">
+                    {inboxCount > 9 ? '9+' : inboxCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {(onOpenSavedPlaces || onOpenQuickRegisterHub) && (
               <button
                 type="button"
