@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  ShieldCheck, 
+import {
+  ShieldCheck,
+  Pencil,
+  Ban,
+  ShieldAlert, 
   Package, 
   Building, 
   Truck, 
@@ -68,13 +71,16 @@ import { compressImageFile } from '../utils/imageCompressor';
 import {
   saveAidCenterToFirestore,
   updateAidCenterInFirestore,
+  deleteAidCenterFromFirestore,
   subscribeToAidCentersFromFirestore,
   saveAidDeliveryToFirestore,
   updateAidDeliveryInFirestore,
+  deleteAidDeliveryFromFirestore,
   subscribeToAidDeliveriesFromFirestore,
   saveAidBroadcastToFirestore,
   subscribeToAidBroadcastsFromFirestore,
 } from '../lib/firebase';
+import { addBlockedCredential, removeBlockedCredential } from '../utils/blockedCredentialsManager';
 
 import { 
   getStoredDisasterReliefItems, 
@@ -110,12 +116,43 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   // Top-Level Mode Selector: 'disaster_requests' vs 'relief_camps' (Default to disaster_requests as requested in prompt)
   const [mainSection, setMainSection] = useState<'disaster_requests' | 'relief_camps'>('disaster_requests');
 
-  // Navigation Tabs for Relief Camps (සහන කඳවුරු)
-  const [activeTab, setActiveTab] = useState<'public_ledger' | 'register_center' | 'log_delivery' | 'recipient_confirm' | 'broadcasts'>('public_ledger');
-
   // User Privileges & Registration
   const isDemo = Boolean(currentUser?.isDemo);
   const isAdmin = !isDemo && checkIsAdmin(currentUser);
+
+  // Navigation Tabs for Relief Camps (සහන කඳවුරු) - Strictly Admin-only for public_ledger!
+  const [activeTab, setActiveTab] = useState<'public_ledger' | 'register_center' | 'log_delivery' | 'recipient_confirm' | 'broadcasts'>(
+    isAdmin ? 'public_ledger' : 'register_center'
+  );
+
+  // Admin Surveillance & Audit States
+  const [ledgerSubView, setLedgerSubView] = useState<'deliveries' | 'centers'>('deliveries');
+  const [editingDelivery, setEditingDelivery] = useState<AidDeliveryRecord | null>(null);
+  const [blockingCenterTarget, setBlockingCenterTarget] = useState<AidRecipientCenter | null>(null);
+  const [blockReasonText, setBlockReasonText] = useState('');
+  const [expandedCenterCode, setExpandedCenterCode] = useState<string | null>(null);
+  const [centerAuditSearch, setCenterAuditSearch] = useState('');
+  const [centerAuditStatusFilter, setCenterAuditStatusFilter] = useState<'all' | 'verified' | 'blocked'>('all');
+
+  // Security guard: ensure non-admin users cannot access public_ledger under any circumstances
+  React.useEffect(() => {
+    if (!isAdmin && activeTab === 'public_ledger') {
+      setActiveTab('register_center');
+    }
+  }, [isAdmin, activeTab]);
+
+  // Auto-scroll to Notice Feed when opening modal or changing mainSection
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      const targetId = mainSection === 'disaster_requests' ? 'disaster-requests-feed' : 'relief-camps-nav';
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [isOpen, mainSection]);
 
   // Disaster Relief Items State
   const [disasterItems, setDisasterItems] = useState<DisasterReliefItem[]>(() => getStoredDisasterReliefItems());
@@ -395,13 +432,137 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     setSuccessMessage(`🎉 අංක ${new6DigitCode} යටතේ ආධාර මධ්‍යස්ථානය සාර්ථකව විවෘත කරන ලදි!`);
   };
 
+  // Admin Operations: Delete, Clear All, Edit, Block Center
+  const handleDeleteDelivery = async (deliveryId: string) => {
+    if (!isAdmin || !deliveryId) return;
+    if (!window.confirm('⚠️ මෙම ආධාර වාර්තාව ලෙජරයෙන් ස්ථිරවම මකා දැමීමට අවශ්‍ය බව සහතිකද?')) return;
+
+    const updated = deliveries.filter(d => d.id !== deliveryId);
+    setDeliveries(updated);
+    saveAidDeliveriesToStorage(updated);
+    try {
+      await deleteAidDeliveryFromFirestore(deliveryId);
+      setSuccessMessage('✅ ආධාර වාර්තාව ලෙජරයෙන් සාර්ථකව මකා දමන ලදි.');
+    } catch (err) {
+      console.warn('Error deleting delivery from Firestore:', err);
+    }
+  };
+
+  const handleClearAllDeliveries = async () => {
+    if (!isAdmin) return;
+    const confirmText = prompt('⚠️ අනතුරු ඇඟවීමයි: ලෙජරයේ ඇති සියලුම බෙදාහැරීම් වාර්තා මැකීමට අවශ්‍ය නම් "CLEAR" ලෙස ටයිප් කරන්න:');
+    if (confirmText !== 'CLEAR') {
+      alert('ක්‍රියාවලිය අවලංගු කරන ලදි.');
+      return;
+    }
+
+    const toDelete = [...deliveries];
+    setDeliveries([]);
+    saveAidDeliveriesToStorage([]);
+    for (const d of toDelete) {
+      if (d.id) {
+        deleteAidDeliveryFromFirestore(d.id).catch(console.warn);
+      }
+    }
+    setSuccessMessage('🧹 ලෙජරයේ සියලු බෙදාහැරීම් වාර්තා සාර්ථකව Clear කරන ලදි.');
+  };
+
+  const handleSaveEditedDelivery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !editingDelivery) return;
+
+    const updated = deliveries.map(d => d.id === editingDelivery.id ? editingDelivery : d);
+    setDeliveries(updated);
+    saveAidDeliveriesToStorage(updated);
+    try {
+      await updateAidDeliveryInFirestore(editingDelivery.id, editingDelivery);
+      setSuccessMessage('✅ ආධාර වාර්තාව සාර්ථකව සංශෝධනය කරන ලදි.');
+    } catch (err) {
+      console.warn('Error updating delivery in Firestore:', err);
+    }
+    setEditingDelivery(null);
+  };
+
+  const handleConfirmBlockCenter = async () => {
+    if (!isAdmin || !blockingCenterTarget) return;
+    const reason = blockReasonText.trim() || 'වංචා සහගත ක්‍රියාකාරකම් හෝ පැමිණිලි හේතුවෙන් පරිපාලක විසින් අත්හිටුවන ලදි.';
+    const nowIso = new Date().toISOString();
+
+    const updatedCenter: AidRecipientCenter = {
+      ...blockingCenterTarget,
+      status: 'blocked',
+      notes: `${blockingCenterTarget.notes ? blockingCenterTarget.notes + ' | ' : ''}[අවහිර කළා: ${reason}]`,
+    };
+
+    const updatedCenters = centers.map(c => c.id === blockingCenterTarget.id ? updatedCenter : c);
+    setCenters(updatedCenters);
+    saveAidCentersToStorage(updatedCenters);
+    if (blockingCenterTarget.id) {
+      updateAidCenterInFirestore(blockingCenterTarget.id, {
+        status: 'blocked',
+        notes: updatedCenter.notes,
+      }).catch(console.warn);
+    }
+
+    addBlockedCredential({
+      id: `block_center_${blockingCenterTarget.id}`,
+      userId: blockingCenterTarget.coordinatorUserId,
+      phone: blockingCenterTarget.coordinatorPhone,
+      nicNumber: blockingCenterTarget.coordinatorNic,
+      userName: blockingCenterTarget.coordinatorName,
+      reason: `සහන මධ්‍යස්ථාන වංචා චෝදනා (#${blockingCenterTarget.centerCode} - ${blockingCenterTarget.centerName}): ${reason}`,
+      blockedAt: nowIso,
+    });
+
+    setSuccessMessage(`🚫 අංක ${blockingCenterTarget.centerCode} මධ්‍යස්ථානය සහ සම්බන්ධීකාරක සාර්ථකව අවහිර (Blocked) කරන ලදි.`);
+    setBlockingCenterTarget(null);
+    setBlockReasonText('');
+  };
+
+  const handleUnblockCenter = async (center: AidRecipientCenter) => {
+    if (!isAdmin || !center.id) return;
+    if (!window.confirm(`මෙම මධ්‍යස්ථානය (#${center.centerCode}) නැවත සක්‍රීය (Restore / Unblock) කිරීමට අවශ්‍යද?`)) return;
+
+    const updatedCenter: AidRecipientCenter = {
+      ...center,
+      status: 'verified',
+    };
+
+    const updatedCenters = centers.map(c => c.id === center.id ? updatedCenter : c);
+    setCenters(updatedCenters);
+    saveAidCentersToStorage(updatedCenters);
+    updateAidCenterInFirestore(center.id, { status: 'verified' }).catch(console.warn);
+
+    if (center.coordinatorPhone) removeBlockedCredential(center.coordinatorPhone);
+    if (center.coordinatorNic) removeBlockedCredential(center.coordinatorNic);
+    if (center.coordinatorUserId) removeBlockedCredential(center.coordinatorUserId);
+
+    setSuccessMessage(`✅ අංක ${center.centerCode} මධ්‍යස්ථානය නැවත සක්‍රීය කරන ලදි.`);
+  };
+
+  const handleDeleteCenter = async (centerId: string) => {
+    if (!isAdmin || !centerId) return;
+    if (!window.confirm('⚠️ මෙම මධ්‍යස්ථානය පද්ධතියෙන් ස්ථිරවම මකා දැමීමට අවශ්‍ය බව සහතිකද?')) return;
+
+    const updatedCenters = centers.filter(c => c.id !== centerId);
+    setCenters(updatedCenters);
+    saveAidCentersToStorage(updatedCenters);
+    deleteAidCenterFromFirestore(centerId).catch(console.warn);
+    setSuccessMessage('✅ මධ්‍යස්ථානය සාර්ථකව මකා දමන ලදි.');
+  };
+
   // 2. Donor Code Lookup
   const handleLookupDonorCode = (code: string) => {
     setDonorTargetCode(code);
     setCodeLookupError(null);
     if (code.trim().length === 6) {
-      const found = findAidCenterByCode(code);
+      const found = findAidCenterByCode(code) || centers.find(c => c.centerCode === code.trim());
       if (found) {
+        if (found.status === 'blocked') {
+          setMatchedCenter(null);
+          setCodeLookupError('🚫 මෙම සහන මධ්‍යස්ථානය පරිපාලක විසින් තාවකාලිකව අත්හිටුවා ඇත (Blocked/Suspended). ආධාර භාරදීම අවහිර කර ඇත.');
+          return;
+        }
         setMatchedCenter(found);
       } else {
         setMatchedCenter(null);
@@ -914,8 +1075,8 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
               </div>
             </div>
 
-            {/* Header info bar */}
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+            {/* Header info bar (Anchor for auto-scroll) */}
+            <div id="disaster-requests-feed" className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs scroll-mt-4">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
                 <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -1079,104 +1240,84 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
         {/* ==================================================== */}
         {mainSection === 'relief_camps' && (
           <>
-{/* Navigation Sub-Buttons (Clean, High-Visibility Responsive Grid / Layout) */}
-        <div className="p-2.5 sm:p-3.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
-            {/* Button 1: පොදු ලෙජරය */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('public_ledger'); setSuccessMessage(null); }}
-              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
-                activeTab === 'public_ledger'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                activeTab === 'public_ledger' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
-              }`}>
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <span className="leading-tight truncate">📊 පොදු ලෙජරය</span>
-            </button>
+{/* Navigation Sub-Buttons (Compact, High-Visibility Responsive Bar) */}
+        <div id="relief-camps-nav" className="p-2 sm:p-2.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Admin-Only Tab: 📊 පොදු ලෙජරය (පරිපාලක සඳහා පමණි) */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => { setActiveTab('public_ledger'); setSuccessMessage(null); }}
+                className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
+                  activeTab === 'public_ledger'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30 ring-2 ring-emerald-400/40'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span>📊 ලෙජරය (Admin)</span>
+              </button>
+            )}
 
-            {/* Button 2: ස්ථානයක් ලියාපදිංචි කිරිම */}
+            {/* Button 2: 🏢 ස්ථානයක් ලියාපදිංචි කිරිම */}
             <button
               type="button"
               onClick={() => { setActiveTab('register_center'); setSuccessMessage(null); }}
-              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+              className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
                 activeTab === 'register_center'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30'
                   : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                activeTab === 'register_center' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
-              }`}>
-                <Building className="w-4 h-4" />
-              </div>
-              <span className="leading-tight truncate">🏢 ස්ථානයක් ලියාපදිංචි කිරිම</span>
+              <Building className="w-3.5 h-3.5 text-blue-500" />
+              <span>🏢 මධ්‍යස්ථාන ලියාපදිංචිය</span>
             </button>
 
-            {/* Button 3: ආධාර ලබාදුන් පසු සටහන් කිරීම */}
+            {/* Button 3: 🚚 ආධාර සටහන් කිරීම */}
             <button
               type="button"
               onClick={() => { setActiveTab('log_delivery'); setSuccessMessage(null); }}
-              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+              className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
                 activeTab === 'log_delivery'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30'
                   : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                activeTab === 'log_delivery' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
-              }`}>
-                <Truck className="w-4 h-4" />
-              </div>
-              <span className="leading-tight truncate">🚚 ආධාර සටහන් කිරීම</span>
+              <Truck className="w-3.5 h-3.5 text-amber-500" />
+              <span>🚚 ආධාර සටහන් කිරීම</span>
             </button>
 
-            {/* Button 4: ආධාර ලැබීම තහවුරු කිරීම */}
+            {/* Button 4: 📥 ආධාර ලැබීම් තහවුරුව */}
             <button
               type="button"
               onClick={() => { setActiveTab('recipient_confirm'); setSuccessMessage(null); }}
-              className={`p-2.5 sm:p-3 rounded-2xl flex items-center justify-between gap-1.5 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] ${
+              className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
                 activeTab === 'recipient_confirm'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30'
                   : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  activeTab === 'recipient_confirm' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
-                }`}>
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <span className="leading-tight truncate">📥 ආධාර ලැබීම තහවුරුව</span>
-              </div>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>📥 ලැබීම් තහවුරුව</span>
               {pendingDeliveries.length > 0 && (
-                <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-black animate-pulse shrink-0">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center font-black animate-pulse">
                   {pendingDeliveries.length}
                 </span>
               )}
             </button>
 
-            {/* Button 5: ප්‍රජා නිවේදන */}
+            {/* Button 5: 📢 ප්‍රජා නිවේදන */}
             <button
               type="button"
               onClick={() => { setActiveTab('broadcasts'); setSuccessMessage(null); }}
-              className={`p-2.5 sm:p-3 rounded-2xl flex items-center gap-2 transition-all cursor-pointer font-extrabold text-xs sm:text-sm text-left border-2 shadow-xs active:scale-[0.98] col-span-2 sm:col-span-1 ${
+              className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
                 activeTab === 'broadcasts'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-md shadow-emerald-700/25'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30'
                   : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                activeTab === 'broadcasts' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300'
-              }`}>
-                <Radio className="w-4 h-4" />
-              </div>
-              <span className="leading-tight truncate">📢 ප්‍රජා නිවේදන</span>
+              <Radio className="w-3.5 h-3.5 text-purple-500" />
+              <span>📢 ප්‍රජා නිවේදන</span>
             </button>
           </div>
         </div>
@@ -1185,229 +1326,457 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
         <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-6">
 
           {/* ==================================================== */}
-          {/* TAB 1: 📊 PUBLIC VERIFIED AID LEDGER                 */}
+          {/* TAB 1: 📊 ADMIN AUDIT & VERIFIED AID LEDGER (Strictly Admin Only) */}
           {/* ==================================================== */}
-          {activeTab === 'public_ledger' && (
+          {activeTab === 'public_ledger' && isAdmin && (
             <div className="space-y-6">
-              {/* Metric Summary Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
-                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800 shadow-xs">
-                  <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-                    <span className="text-xs font-black uppercase">තහවුරු කළ ආධාර</span>
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div className="text-xl sm:text-2xl font-black text-emerald-950 dark:text-emerald-100">
-                    {verifiedDeliveries.length}
-                  </div>
-                  <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">දෙපැත්තෙන්ම තහවුරු කළ</p>
+              {/* Page Header Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-600/15 via-teal-600/10 to-transparent border border-emerald-500/30 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                    <span>📊 පරිපාලක අධීක්ෂණ සහන ලෙජරය (Admin Audit Ledger)</span>
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    *මෙම ලෙජරය පරිපාලක (Admin) සඳහා පමණක් විවෘත වේ. සියලු ආධාර ගනුදෙනු, මධ්‍යස්ථාන නිරීක්ෂණය සහ වංචා පාලනය.
+                  </p>
                 </div>
-
-                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800 shadow-xs">
-                  <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
-                    <span className="text-xs font-black uppercase">ඇස්තමේන්තු වටිනාකම</span>
-                    <DollarSign className="w-4 h-4" />
-                  </div>
-                  <div className="text-lg sm:text-xl font-black text-blue-950 dark:text-blue-100">
-                    රු. {totalVerifiedValue.toLocaleString()}
-                  </div>
-                  <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">මුළු බෙදාහැරි වටිනාකම</p>
-                </div>
-
-                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-200 dark:border-amber-800 shadow-xs">
-                  <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-                    <span className="text-xs font-black uppercase">අංක 6ක මධ්‍යස්ථාන</span>
-                    <Building className="w-4 h-4" />
-                  </div>
-                  <div className="text-xl sm:text-2xl font-black text-amber-950 dark:text-amber-100">
-                    {centers.length}
-                  </div>
-                  <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">ලියාපදිංචි කඳවුරු/ස්ථාන</p>
-                </div>
-
-                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/40 dark:to-pink-950/40 border border-purple-200 dark:border-purple-800 shadow-xs">
-                  <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-1">
-                    <span className="text-xs font-black uppercase">ප්‍රතිලාභී පිරිස</span>
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div className="text-xl sm:text-2xl font-black text-purple-950 dark:text-purple-100">
-                    {totalPeopleBenefited}+
-                  </div>
-                  <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">ආධාර ලැබෙන ජනතාව</p>
-                </div>
+                {/* Admin Clear All Button */}
+                <button
+                  type="button"
+                  onClick={handleClearAllDeliveries}
+                  className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>සියලු දත්ත Clear කරන්න</span>
+                </button>
               </div>
 
-              {/* Filters & Search Toolbar */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="අංක 6, මධ්‍යස්ථානය හෝ ආධාරය සොයන්න..."
-                      className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <select
-                    value={selectedCategoryFilter}
-                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                    className="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-semibold"
-                  >
-                    <option value="all">සියලු ආධාර කාණ්ඩ (All Categories)</option>
-                    {AID_CATEGORIES.map(c => (
-                      <option key={c.id} value={c.id}>{c.icon} {c.titleSi}</option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={selectedDistrictFilter}
-                    onChange={(e) => setSelectedDistrictFilter(e.target.value)}
-                    className="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-semibold"
-                  >
-                    <option value="all">සියලු දිස්ත්‍රික්ක (All Districts)</option>
-                    {districts.filter(d => d !== 'all').map(d => (
-                      <option key={d} value={d}>📍 {d}</option>
-                    ))}
-                  </select>
-                </div>
+              {/* Sub-view switcher: Deliveries vs Centers Audit */}
+              <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setLedgerSubView('deliveries')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
+                    ledgerSubView === 'deliveries'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>📦 ආධාර බෙදාහැරීම් වාර්තා ({filteredDeliveries.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLedgerSubView('centers')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
+                    ledgerSubView === 'centers'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <Building className="w-4 h-4" />
+                  <span>🏢 මධ්‍යස්ථාන නිරීක්ෂණය & Audit ({centers.length})</span>
+                </button>
               </div>
 
-              {/* Verified Ledger Stream */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                    <span>විනිවිදභාවයෙන් යුත් ආධාර බෙදාහැරීම් වාර්තා ({filteredDeliveries.length})</span>
-                  </h4>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    *මධ්‍යස්ථාන විසින් නිල වශයෙන් තහවුරු කළ වාර්තා
-                  </span>
-                </div>
+              {ledgerSubView === 'deliveries' ? (
+                <>
+                  {/* Metric Summary Cards (No Estimated Monetary Value Card) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800 shadow-xs">
+                      <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
+                        <span className="text-xs font-black uppercase">තහවුරු කළ ආධාර</span>
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-emerald-950 dark:text-emerald-100">
+                        {verifiedDeliveries.length}
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">දෙපැත්තෙන්ම තහවුරු කළ</p>
+                    </div>
 
-                {filteredDeliveries.length === 0 ? (
-                  <div className="text-center py-12 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                    <Package className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs text-slate-500 font-bold">ගැලපෙන ආධාර වාර්තා කිසිවක් හමු නොවිණි.</p>
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-200 dark:border-amber-800 shadow-xs">
+                      <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
+                        <span className="text-xs font-black uppercase">බලාපොරොත්තුවෙන්</span>
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-amber-950 dark:text-amber-100">
+                        {pendingDeliveries.length}
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">තහවුරු වීමට ඇති</p>
+                    </div>
+
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800 shadow-xs">
+                      <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
+                        <span className="text-xs font-black uppercase">ලියාපදිංචි මධ්‍යස්ථාන</span>
+                        <Building className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-blue-950 dark:text-blue-100">
+                        {centers.length}
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">අංක 6ක ස්ථාන</p>
+                    </div>
+
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/40 dark:to-pink-950/40 border border-purple-200 dark:border-purple-800 shadow-xs">
+                      <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-1">
+                        <span className="text-xs font-black uppercase">ප්‍රතිලාභී පිරිස</span>
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-purple-950 dark:text-purple-100">
+                        {totalPeopleBenefited}+
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">ආධාර ලැබෙන ජනතාව</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3.5">
-                    {filteredDeliveries.map((record) => {
-                      const isConfirmed = record.status === 'confirmed_received';
-                      return (
-                        <div 
-                          key={record.id}
-                          className="p-4 rounded-2xl bg-white dark:bg-slate-800/90 border-2 border-slate-200/80 dark:border-slate-700 shadow-sm hover:shadow-md transition-all space-y-3"
-                        >
-                          {/* Top Row */}
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200 flex items-center gap-1.5">
-                                  <Building className="w-3.5 h-3.5" />
-                                  <span>කේතය: {record.centerCode}</span>
-                                </span>
-                                <span className="text-xs font-black text-slate-900 dark:text-white">
-                                  {record.centerName}
-                                </span>
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-rose-500" />
-                                  {record.centerTown} ({record.centerDistrict})
-                                </span>
-                              </div>
-                            </div>
 
-                            {/* Verification Badge */}
-                            <div>
-                              {isConfirmed ? (
-                                <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                  <span>ලබාගත් බව තහවුරු කළා (VERIFIED)</span>
-                                </span>
-                              ) : (
-                                <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-xs">
-                                  <Clock className="w-3.5 h-3.5" />
-                                  <span>මධ්‍යස්ථාන තහවුරුව බලාපොරොත්තුවෙන්</span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                  {/* Filters & Search Toolbar */}
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="අංක 6, මධ්‍යස්ථානය හෝ ආධාරය සොයන්න..."
+                          className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
 
-                          {/* Item & Quantity Details Grid */}
-                          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                            <div>
-                              <span className="text-slate-400 block font-bold text-[10px] uppercase">ආධාර කාණ්ඩය:</span>
-                              <span className="font-black text-emerald-700 dark:text-emerald-400">
-                                {record.categoryTitleSi}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block font-bold text-[10px] uppercase">ලබාදුන් ප්‍රමාණය:</span>
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
-                                {record.quantity}
-                              </span>
-                            </div>
-                            {record.monetaryValueEstimate && (
-                              <div>
-                                <span className="text-slate-400 block font-bold text-[10px] uppercase">ඇස්තමේන්තු වටිනාකම:</span>
-                                <span className="font-black text-blue-600 dark:text-blue-400">
-                                  රු. {record.monetaryValueEstimate.toLocaleString()}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                      <select
+                        value={selectedCategoryFilter}
+                        onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                        className="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-semibold"
+                      >
+                        <option value="all">සියලු ආධාර කාණ්ඩ (All Categories)</option>
+                        {AID_CATEGORIES.map(c => (
+                          <option key={c.id} value={c.id}>{c.icon} {c.titleSi}</option>
+                        ))}
+                      </select>
 
-                          {/* Full Description & Donor Notes */}
-                          <div className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
-                            <p className="font-medium"><strong className="text-slate-900 dark:text-white">විස්තරය:</strong> {record.itemDescription}</p>
-                            {record.donorNotes && (
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                                <strong>පරිත්‍යාගශීලියාගේ සටහන:</strong> "{record.donorNotes}"
-                              </p>
-                            )}
-                          </div>
+                      <select
+                        value={selectedDistrictFilter}
+                        onChange={(e) => setSelectedDistrictFilter(e.target.value)}
+                        className="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-semibold"
+                      >
+                        <option value="all">සියලු දිස්ත්‍රික්ක (All Districts)</option>
+                        {districts.filter(d => d !== 'all').map(d => (
+                          <option key={d} value={d}>📍 {d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
-                          {/* Photo Proofs */}
-                          {record.photos && record.photos.length > 0 && (
-                            <div className="flex items-center gap-2 pt-1">
-                              {record.photos.map((img, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => setPreviewPhotoUrl(img)}
-                                  className="relative group rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 hover:scale-105 transition-transform"
-                                >
-                                  <img src={img} alt="Aid proof" className="w-16 h-16 object-cover" />
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold">
-                                    <Eye className="w-4 h-4" />
+                  {/* Verified Ledger Stream */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        <span>විනිවිදභාවයෙන් යුත් ආධාර බෙදාහැරීම් වාර්තා ({filteredDeliveries.length})</span>
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        *පරිපාලක අධීක්ෂණ දත්ත
+                      </span>
+                    </div>
+
+                    {filteredDeliveries.length === 0 ? (
+                      <div className="text-center py-12 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                        <Package className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-50" />
+                        <p className="text-xs text-slate-500 font-bold">ගැලපෙන ආධාර වාර්තා කිසිවක් හමු නොවිණි.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3.5">
+                        {filteredDeliveries.map((record) => {
+                          const isConfirmed = record.status === 'confirmed_received';
+                          return (
+                            <div 
+                              key={record.id}
+                              className="p-4 rounded-2xl bg-white dark:bg-slate-800/90 border-2 border-slate-200/80 dark:border-slate-700 shadow-sm hover:shadow-md transition-all space-y-3"
+                            >
+                              {/* Top Row */}
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200 flex items-center gap-1.5">
+                                      <Building className="w-3.5 h-3.5" />
+                                      <span>කේතය: {record.centerCode}</span>
+                                    </span>
+                                    <span className="text-xs font-black text-slate-900 dark:text-white">
+                                      {record.centerName}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-rose-500" />
+                                      {record.centerTown} ({record.centerDistrict})
+                                    </span>
                                   </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {isConfirmed ? (
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                      <span>ලබාගත් බව තහවුරු කළා</span>
+                                    </span>
+                                  ) : (
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500 text-white flex items-center gap-1 shadow-xs">
+                                      <Clock className="w-3.5 h-3.5" />
+                                      <span>මධ්‍යස්ථාන තහවුරුව බලාපොරොත්තුවෙන්</span>
+                                    </span>
+                                  )}
+
+                                  {/* Admin Actions: Edit & Delete */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingDelivery(record)}
+                                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1"
+                                    title="වාර්තාව සංශෝධනය (Edit)"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDelivery(record.id)}
+                                    className="p-1.5 rounded-lg bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 text-rose-700 dark:text-rose-200 text-xs font-bold flex items-center gap-1"
+                                    title="වාර්තාව මකන්න (Delete)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Item & Quantity Details Grid (Estimated value removed) */}
+                              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                                <div>
+                                  <span className="text-slate-400 block font-bold text-[10px] uppercase">ආධාර කාණ්ඩය:</span>
+                                  <span className="font-black text-emerald-700 dark:text-emerald-400">
+                                    {record.categoryTitleSi}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block font-bold text-[10px] uppercase">ලබාදුන් ප්‍රමාණය:</span>
+                                  <span className="font-bold text-slate-900 dark:text-slate-100">
+                                    {record.quantity}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Full Description & Donor Notes */}
+                              <div className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                                <p className="font-medium"><strong className="text-slate-900 dark:text-white">විස්තරය:</strong> {record.itemDescription}</p>
+                                {record.donorNotes && (
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                                    <strong>පරිත්‍යාගශීලියාගේ සටහන:</strong> "{record.donorNotes}"
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Photo Proofs */}
+                              {record.photos && record.photos.length > 0 && (
+                                <div className="flex items-center gap-2 pt-1">
+                                  {record.photos.map((img, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => setPreviewPhotoUrl(img)}
+                                      className="relative group rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 hover:scale-105 transition-transform"
+                                    >
+                                      <img src={img} alt="Aid proof" className="w-16 h-16 object-cover" />
+                                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] font-bold">
+                                        <Eye className="w-4 h-4" />
+                                      </div>
+                                    </button>
+                                  ))}
+                                  <span className="text-[11px] text-slate-400 font-medium">📷 ආධාර භාරදීමේ ඡායාරූප සාක්ෂි</span>
+                                </div>
+                              )}
+
+                              {/* Dual Confirmation Proof Box */}
+                              <div className="pt-2 border-t border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 flex-wrap text-[11px]">
+                                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-semibold">
+                                  <span>🚚 ලබාදුන්නේ: <strong>{record.donorName}</strong> {record.donorOrganization ? `(${record.donorOrganization})` : ''}</span>
+                                  <span>• {record.deliveryDate} {record.deliveryTime}</span>
+                                </div>
+
+                                {isConfirmed && record.confirmedByRecipientName && (
+                                  <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>භාරගත්තේ: {record.confirmedByRecipientName} ({record.confirmedAt})</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* Centers Audit & Surveillance View */
+                <div className="space-y-4">
+                  {/* Surveillance Filters */}
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-wrap gap-2.5 items-center justify-between">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        value={centerAuditSearch}
+                        onChange={(e) => setCenterAuditSearch(e.target.value)}
+                        placeholder="කේතය, මධ්‍යස්ථානය, භාරකරු, NIC හෝ දුරකථනය සොයන්න..."
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={centerAuditStatusFilter}
+                        onChange={(e: any) => setCenterAuditStatusFilter(e.target.value)}
+                        className="px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold"
+                      >
+                        <option value="all">සියලු තත්ත්වයන් (All Status)</option>
+                        <option value="verified">✅ සක්‍රීය මධ්‍යස්ථාන පමණක්</option>
+                        <option value="blocked">🚫 අවහිර කළ (Blocked) පමණක්</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Centers List */}
+                  <div className="space-y-3">
+                    {centers
+                      .filter(c => {
+                        if (centerAuditStatusFilter === 'verified' && c.status === 'blocked') return false;
+                        if (centerAuditStatusFilter === 'blocked' && c.status !== 'blocked') return false;
+                        if (!centerAuditSearch.trim()) return true;
+                        const q = centerAuditSearch.trim().toLowerCase();
+                        return (
+                          (c.centerCode && c.centerCode.toLowerCase().includes(q)) ||
+                          (c.centerName && c.centerName.toLowerCase().includes(q)) ||
+                          (c.coordinatorName && c.coordinatorName.toLowerCase().includes(q)) ||
+                          (c.coordinatorPhone && c.coordinatorPhone.includes(q)) ||
+                          (c.coordinatorNic && c.coordinatorNic.toLowerCase().includes(q)) ||
+                          (c.town && c.town.toLowerCase().includes(q))
+                        );
+                      })
+                      .map(center => {
+                        const isBlocked = center.status === 'blocked';
+                        const centerDeliveries = deliveries.filter(d => d.centerCode === center.centerCode);
+                        const isExpanded = expandedCenterCode === center.centerCode;
+
+                        return (
+                          <div
+                            key={center.id}
+                            className={`p-4 rounded-2xl border-2 transition-all space-y-3 ${
+                              isBlocked
+                                ? 'bg-red-50/50 dark:bg-red-950/20 border-red-300 dark:border-red-900'
+                                : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3 flex-wrap">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200 flex items-center gap-1">
+                                    <Building className="w-3.5 h-3.5" />
+                                    <span>කේතය: {center.centerCode}</span>
+                                  </span>
+                                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                    {center.centerName}
+                                  </h4>
+                                  <span className="text-xs text-slate-500">
+                                    📍 {center.town} ({center.district})
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-3 flex-wrap pt-0.5">
+                                  <span>👤 භාරකරු: <strong>{center.coordinatorName}</strong></span>
+                                  <span>📞 {center.coordinatorPhone}</span>
+                                  {center.coordinatorNic && <span>🆔 NIC: {center.coordinatorNic}</span>}
+                                  <span>👥 ජනගහනය: {center.peopleCount} (පවුල් {center.familiesCount})</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {isBlocked ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-red-600 text-white flex items-center gap-1 shadow-xs">
+                                    <Ban className="w-3.5 h-3.5" />
+                                    <span>🚫 අවහිර කළ මධ්‍යස්ථානයක්</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    <span>✅ සක්‍රීයයි</span>
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedCenterCode(isExpanded ? null : center.centerCode)}
+                                  className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>ගනුදෙනු ({centerDeliveries.length})</span>
                                 </button>
-                              ))}
-                              <span className="text-[11px] text-slate-400 font-medium">📷 ආධාර භාරදීමේ ඡායාරූප සාක්ෂි</span>
-                            </div>
-                          )}
 
-                          {/* Dual Confirmation Proof Box */}
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 flex-wrap text-[11px]">
-                            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 font-semibold">
-                              <span>🚚 ලබාදුන්නේ: <strong>{record.donorName}</strong> {record.donorOrganization ? `(${record.donorOrganization})` : ''}</span>
-                              <span>• {record.deliveryDate} {record.deliveryTime}</span>
+                                {isBlocked ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnblockCenter(center)}
+                                    className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                                  >
+                                    නැවත සක්‍රීය (Restore)
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setBlockingCenterTarget(center)}
+                                    className="px-2.5 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1"
+                                  >
+                                    <Ban className="w-3.5 h-3.5" />
+                                    <span>අවහිර කරන්න (Block)</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCenter(center.id)}
+                                  className="p-1.5 rounded-xl bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 text-rose-700 dark:text-rose-200 text-xs font-bold"
+                                  title="මධ්‍යස්ථානය මකන්න"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
 
-                            {isConfirmed && record.confirmedByRecipientName && (
-                              <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>භාරගත්තේ: {record.confirmedByRecipientName} ({record.confirmedAt})</span>
+                            {/* Expanded Center Transaction Ledger */}
+                            {isExpanded && (
+                              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                <h5 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase">
+                                  📜 මෙම මධ්‍යස්ථානයට ලැබුණු ආධාර ගනුදෙනු ඉතිහාසය ({centerDeliveries.length})
+                                </h5>
+                                {centerDeliveries.length === 0 ? (
+                                  <p className="text-xs text-slate-400 italic">මෙම මධ්‍යස්ථානයට තවමත් ආධාර බෙදාහැරීම් වාර්තා වී නොමැත.</p>
+                                ) : (
+                                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {centerDeliveries.map(d => (
+                                      <div key={d.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between gap-2 flex-wrap">
+                                        <div>
+                                          <span className="font-black text-emerald-700 dark:text-emerald-400">{d.categoryTitleSi}</span>
+                                          <span className="ml-2 font-bold text-slate-900 dark:text-white">ප්‍රමාණය: {d.quantity}</span>
+                                          <p className="text-[11px] text-slate-500 mt-0.5">{d.itemDescription}</p>
+                                        </div>
+                                        <div className="text-right text-[11px] text-slate-500">
+                                          <span>🚚 {d.donorName}</span>
+                                          <span className="block">{d.deliveryDate} {d.deliveryTime}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1416,6 +1785,18 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           {/* ==================================================== */}
           {activeTab === 'register_center' && (
             <div className="max-w-3xl mx-auto space-y-6">
+              {/* Page Header Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-600/15 via-teal-600/10 to-transparent border border-blue-500/30 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Building className="w-5 h-5 text-blue-600" />
+                    <span>🏢 සහන මධ්‍යස්ථානයක් / කඳවුරක් ලියාපදිංචි කිරීම</span>
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    ආධාර ලබාගැනීම සඳහා අංක 6ක නිල කේතයක් ලබාගෙන ඔබගේ කඳවුර සක්‍රීය කරන්න.
+                  </p>
+                </div>
+              </div>
               
               {/* Generated Result Card if just created */}
               {registeredNewCenter ? (
@@ -1459,12 +1840,21 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
                     >
                       තවත් මධ්‍යස්ථානයක් ලියාපදිංචි කරන්න
                     </button>
-                    <button
-                      onClick={() => setActiveTab('public_ledger')}
-                      className="px-6 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-all cursor-pointer"
-                    >
-                      ලෙජරය බලන්න
-                    </button>
+                    {isAdmin ? (
+                      <button
+                        onClick={() => setActiveTab('public_ledger')}
+                        className="px-6 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        ලෙජරය බලන්න
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setActiveTab('recipient_confirm')}
+                        className="px-6 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        ආධාර ලැබීම් පුවරුව
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -2058,9 +2448,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
                                   </div>
 
                                   <div className="text-right">
-                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 block">
-                                      {item.monetaryValueEstimate ? `රු. ${item.monetaryValueEstimate.toLocaleString()}` : ''}
-                                    </span>
+                                    
                                     <span className="text-[10px] text-slate-400">
                                       {item.deliveryDate} {item.deliveryTime}
                                     </span>
@@ -2660,7 +3048,163 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           </div>
         </div>
       )}
+      {/* ========================================== */}
+      {/* ADMIN EDIT DELIVERY MODAL                  */}
+      {/* ========================================== */}
+      {editingDelivery && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-blue-500" />
+                <span>ආධාර වාර්තාව සංශෝධනය (Edit Aid Delivery)</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setEditingDelivery(null)}
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedDelivery} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ආධාර කාණ්ඩය:</label>
+                <select
+                  value={editingDelivery.category}
+                  onChange={(e) => {
+                    const catObj = AID_CATEGORIES.find(c => c.id === e.target.value);
+                    setEditingDelivery({
+                      ...editingDelivery,
+                      category: e.target.value as AidCategory,
+                      categoryTitleSi: catObj?.titleSi || editingDelivery.categoryTitleSi,
+                    });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
+                >
+                  {AID_CATEGORIES.map(c => (
+                    <option key={c.id} value={c.id}>{c.icon} {c.titleSi}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ලබාදුන් ප්‍රමාණය:</label>
+                <input
+                  type="text"
+                  value={editingDelivery.quantity}
+                  onChange={(e) => setEditingDelivery({ ...editingDelivery, quantity: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">භාණ්ඩ විස්තරය:</label>
+                <textarea
+                  value={editingDelivery.itemDescription}
+                  onChange={(e) => setEditingDelivery({ ...editingDelivery, itemDescription: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">පරිත්‍යාගශීලියා / සංවිධානය:</label>
+                <input
+                  type="text"
+                  value={editingDelivery.donorName}
+                  onChange={(e) => setEditingDelivery({ ...editingDelivery, donorName: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">පරිත්‍යාගශීලියාගේ සටහන:</label>
+                <input
+                  type="text"
+                  value={editingDelivery.donorNotes || ''}
+                  onChange={(e) => setEditingDelivery({ ...editingDelivery, donorNotes: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingDelivery(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold"
+                >
+                  අවලංගු කරන්න
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black"
+                >
+                  සංශෝධනය සුරකින්න
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* ADMIN BLOCK CENTER CONFIRMATION MODAL      */}
+      {/* ========================================== */}
+      {blockingCenterTarget && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 max-w-md w-full border-2 border-red-500/50 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-red-600 font-black text-sm">
+              <ShieldAlert className="w-5 h-5 shrink-0" />
+              <span>සහන මධ්‍යස්ථානයක් අවහිර කිරීම (Block Center)</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-xs text-red-900 dark:text-red-200 space-y-1">
+              <p><strong>කේතය:</strong> #{blockingCenterTarget.centerCode}</p>
+              <p><strong>නම:</strong> {blockingCenterTarget.centerName}</p>
+              <p><strong>භාරකරු:</strong> {blockingCenterTarget.coordinatorName} ({blockingCenterTarget.coordinatorPhone})</p>
+              <p className="text-[11px] text-red-700 dark:text-red-300 pt-1">
+                ⚠️ මෙම මධ්‍යස්ථානය අවහිර කළ පසු පරිත්‍යාගශීලීන්ට මෙම අංකයට ආධාර ලොග් කිරීමට නොහැකි වන අතර සම්බන්ධීකාරකගේ අංකය Blacklist කරනු ලැබේ.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                අවහිර කිරීමට හේතුව (Reason for Blocking):
+              </label>
+              <textarea
+                value={blockReasonText}
+                onChange={(e) => setBlockReasonText(e.target.value)}
+                placeholder="උදා: වංචනික තොරතුරු සැපයීම හෝ ආධාර අවභාවිතා කිරීම පිළිබඳ පැමිණිලි..."
+                rows={2}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => { setBlockingCenterTarget(null); setBlockReasonText(''); }}
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold"
+              >
+                අවලංගු කරන්න
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBlockCenter}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md flex items-center gap-1.5"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span>අවහිර කිරීම තහවුරු කරන්න</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
