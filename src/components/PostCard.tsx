@@ -138,6 +138,8 @@ export const PostCard: React.FC<PostCardProps> = ({
    * 1 & 2. Automatic Backup JSON Creator & Downloader Function
    */
   const triggerPostBackupDownload = (postData: any) => {
+    // Admin සඳහා පමණක් ක්‍රියාත්මක වේ
+    if (!isAdmin) return;
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const postId = postData.id || 'UNKNOWN';
@@ -193,8 +195,10 @@ export const PostCard: React.FC<PostCardProps> = ({
 
     const targetId = post.id;
 
-    // Step 2: Automatic Backup JSON Download (Admin සඳහා හෝ Post Owner සඳහා)
-    triggerPostBackupDownload(post);
+    // Step 2: Automatic Backup JSON Download (Admin සඳහා පමණි)
+    if (isAdmin) {
+      triggerPostBackupDownload(post);
+    }
 
     // Immediate UI hiding for smooth UX
     setIsDeletingLocal(true);
@@ -356,6 +360,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           )}
         </div>
       )}
+
       {/* Main Post Header */}
       <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
