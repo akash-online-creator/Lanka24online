@@ -307,23 +307,13 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             {onOpenInstallApp && (
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
-                    const res = await triggerNativeInstallPrompt();
-                    if (res.outcome !== 'accepted') {
-                      onOpenInstallApp();
-                    }
-                  } catch {
-                    onOpenInstallApp();
-                  }
-                }}
+                onClick={onOpenInstallApp}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={getLangText('App එක Download කරගන්න', 'Download Sahaya Sewa App', 'செயலியை நிறுவுக')}
+                title={getLangText('App එක Download / Update කරගන්න', 'Download & Update Sahaya Sewa App', 'செயலியை பதிவிறக்குக / புதுப்பிக்க')}
               >
                 <span className="text-xs">📲</span>
                 <span className="font-black text-xs">
-                  {language === 'en' ? 'Download' : language === 'ta' ? 'Download' : 'Download'}
+                  {language === 'en' ? 'Download & Update' : language === 'ta' ? 'Download & Update' : 'Download & Update'}
                 </span>
               </button>
             )}
@@ -388,17 +378,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {onOpenAppQr && (
-              <button
-                type="button"
-                onClick={onOpenAppQr}
-                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title="Web QR Code"
-              >
-                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline font-extrabold text-xs">QR Code</span>
-              </button>
-            )}
+
 
             {onOpenShortcutHub && (
               <button
