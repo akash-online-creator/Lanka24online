@@ -1,4 +1,6 @@
-import { Language } from '../types';
+import { Language, LocationOption, VerifiedAiKnowledgeItem } from '../types';
+import { subscribeToVerifiedAiKnowledge, savePendingAiQuery } from '../lib/firebase';
+import { searchSriLankanPlacesAndRoads, calculateRoadDistanceKm } from './geoUtils';
 
 export interface AssistantAction {
   type:
@@ -124,21 +126,251 @@ export async function translateText(
  * Intelligent response generator covering all Sahaya Seva sectors with action buttons,
  * with dedicated support-only mode for Login & Registration screens.
  */
+
+// -------------------------------------------------------------
+// 🧠 0. ACTIVE VERIFIED KNOWLEDGE CACHE & SMART LOCATION ENGINE
+// -------------------------------------------------------------
+let cachedVerifiedKnowledge: VerifiedAiKnowledgeItem[] = [];
+let isKnowledgeSubscribed = false;
+
+export function initAiKnowledgeCache(): void {
+  if (isKnowledgeSubscribed) return;
+  isKnowledgeSubscribed = true;
+  try {
+    subscribeToVerifiedAiKnowledge((items) => {
+      cachedVerifiedKnowledge = items || [];
+    });
+  } catch (e) {
+    console.warn('AI Knowledge cache subscription notice:', e);
+  }
+}
+
+/**
+ * Smart Location & Real-World Road Distance Resolver (100% Free & Local)
+ * Automatically detects inquiries about places, distances, directions, and travel times.
+ */
+export async function resolveLocationAndDistanceQuery(
+  cleanQuery: string,
+  lowerQuery: string,
+  userLocation?: { lat: number; lng: number; nameSi?: string; districtSi?: string } | LocationOption,
+  lang: Language = 'si'
+): Promise<{ text: string; actions?: AssistantAction[]; quickChips?: string[] } | null> {
+  const isLocationOrDistanceQuery =
+    lowerQuery.includes('කොහෙද') ||
+    lowerQuery.includes('කොහේද') ||
+    lowerQuery.includes('තියෙන්නේ කොහෙද') ||
+    lowerQuery.includes('තියෙන්නෙ කොහෙද') ||
+    lowerQuery.includes('යන්නේ කොහොමද') ||
+    lowerQuery.includes('යන්නෙ කොහොමද') ||
+    lowerQuery.includes('දුර') ||
+    lowerQuery.includes('කොච්චර දුර') ||
+    lowerQuery.includes('පාර කියන්න') ||
+    lowerQuery.includes('මාර්ගය') ||
+    lowerQuery.includes('ස්ථානය') ||
+    lowerQuery.includes('where is') ||
+    lowerQuery.includes('how far') ||
+    lowerQuery.includes('how to go') ||
+    lowerQuery.includes('route to') ||
+    lowerQuery.includes('distance to') ||
+    lowerQuery.includes('direction to') ||
+    lowerQuery.includes('எங்கே') ||
+    lowerQuery.includes('தூரம்') ||
+    lowerQuery.includes('செல்வது எப்படி');
+
+  if (!isLocationOrDistanceQuery) return null;
+
+  // Clean out common intent keywords to isolate the place name entity
+  let placeNameCandidate = cleanQuery
+    .replace(/(?:කොහෙද|කොහේද|තියෙන්නේ|තියෙන්නෙ|යන්නේ|යන්නෙ|කොහොමද|කොච්චර|දුරයිද|දුරද|දුර|කීයද|පාර|කියන්න|මාර්ගය|ස්ථානය|විස්තර|ගැන|තොරතුරු|පිහිටීම)/gi, '')
+    .replace(/(?:where is|how far|how to go to|how to go|distance to|route to|direction to|located at|location of|place)/gi, '')
+    .replace(/(?:எங்கே|தூரம்|செல்வது எப்படி|எப்படி போவது)/gi, '')
+    .replace(/[?.,!:-]/g, '')
+    .trim();
+
+  // If candidate ends with "ට" (Sinhala dative suffix, e.g. "කොළඹට" -> "කොළඹ")
+  if (placeNameCandidate.endsWith('ට') && placeNameCandidate.length > 2) {
+    placeNameCandidate = placeNameCandidate.slice(0, -1).trim();
+  }
+
+  if (!placeNameCandidate || placeNameCandidate.length < 2) {
+    return null;
+  }
+
+  try {
+    const searchResults = await searchSriLankanPlacesAndRoads(placeNameCandidate);
+    if (!searchResults || searchResults.length === 0) {
+      return null;
+    }
+
+    const targetPlace = searchResults[0];
+    const defaultOrigin = { lat: 6.9271, lng: 79.8612, name: 'කොළඹ' }; // Colombo default if GPS disabled
+    const originLat = userLocation?.lat || defaultOrigin.lat;
+    const originLng = userLocation?.lng || defaultOrigin.lng;
+    const originName = userLocation?.nameSi || (userLocation as any)?.districtSi || defaultOrigin.name;
+
+    const roadDistanceKm = calculateRoadDistanceKm(originLat, originLng, targetPlace.lat, targetPlace.lng);
+    const estMinutes = Math.max(2, Math.round((roadDistanceKm / 38) * 60)); // Avg 38 km/h real-world speed
+    const hours = Math.floor(estMinutes / 60);
+    const mins = estMinutes % 60;
+    const timeFormatted = hours > 0 ? `${hours} පැය ${mins} මිනිත්තු` : `${mins} මිනිත්තු`;
+
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${targetPlace.lat},${targetPlace.lng}`;
+
+    if (lang === 'en') {
+      return {
+        text: `📍 **${targetPlace.titleEn || targetPlace.titleSi}** (${targetPlace.townEn || targetPlace.districtEn || 'Sri Lanka'})
+
+🛣️ **Road Distance from ${originName}**: **${roadDistanceKm.toFixed(1)} km**
+⏱️ **Estimated Travel Time**: **approx. ${timeFormatted}** (via motor vehicle/taxi)
+📌 **Location**: ${targetPlace.roadEn || targetPlace.townEn || ''}, ${targetPlace.districtEn || 'Western Province'}
+
+🗺️ [View Live Directions on Google Maps](${mapsUrl})`,
+        actions: [
+          { type: 'open_quick', label: '🚗 Quick Transport & Drivers' },
+          { type: 'open_directory', label: '📞 Emergency Roadside Help' },
+        ],
+        quickChips: ['Nearby fuel stations', 'Calculate travel fare', 'Traffic updates'],
+      };
+    } else if (lang === 'ta') {
+      return {
+        text: `📍 **${targetPlace.titleSi || targetPlace.titleEn}** (${targetPlace.townEn || 'இலங்கை'})
+
+🛣️ **${originName} இலிருந்து சாலை தூரம்**: **${roadDistanceKm.toFixed(1)} கி.மீ**
+⏱️ **பயண நேரம்**: **சுமார் ${timeFormatted}**
+📌 **அமைவிடம்**: ${targetPlace.townEn || ''}, ${targetPlace.districtEn || ''}
+
+🗺️ [கூகிள் வரைபடத்தில் வழியைக் காண்க (Google Maps)](${mapsUrl})`,
+        actions: [
+          { type: 'open_quick', label: '🚗 விரைவு போக்குவரத்து' },
+          { type: 'open_directory', label: '📞 அவசர உதவி' },
+        ],
+        quickChips: ['எரிபொருள் நிலையங்கள்', 'பயணக் கட்டணம்'],
+      };
+    } else {
+      return {
+        text: `📍 **${targetPlace.titleSi || targetPlace.titleEn}** (${targetPlace.shortDisplaySi || targetPlace.townSi || targetPlace.districtSi || 'ශ්‍රී ලංකාව'})
+
+🛣️ **${originName} සිට සැබෑ මාර්ග දුර**: **කි.මී. ${roadDistanceKm.toFixed(1)}**
+⏱️ **ආසන්න ගමන් කාලය**: **${timeFormatted} පමණ** (සාමාන්‍ය රථවාහන වේගය අනුව)
+📌 **පිහිටීම**: ${targetPlace.roadSi || targetPlace.villageSi || targetPlace.townSi || ''}, ${targetPlace.districtSi || 'බස්නාහිර පළාත'}
+
+🗺️ [Google Maps ඔස්සේ සජීවී මාර්ගය (Directions) බලන්න](${mapsUrl})`,
+        actions: [
+          { type: 'open_quick', label: '🚗 ප්‍රවාහන / රියදුරු සේවා' },
+          { type: 'open_directory', label: '📞 හදිසි ඇමතුම් සේවා' },
+        ],
+        quickChips: ['ළඟම ඉන්ධන පිරවුම්හල්', 'ප්‍රවාහන ගාස්තුව ගණනය කිරීම', 'හදිසි ඇමතුම්'],
+      };
+    }
+  } catch (err) {
+    console.warn('Location resolver notice:', err);
+    return null;
+  }
+}
+
+/**
+ * Match user query against Admin Verified Knowledge Base items
+ */
+export function matchVerifiedKnowledge(
+  cleanQuery: string,
+  lowerQuery: string,
+  lang: Language = 'si'
+): { text: string; actions?: AssistantAction[]; quickChips?: string[] } | null {
+  if (!cachedVerifiedKnowledge || cachedVerifiedKnowledge.length === 0) return null;
+
+  const queryWords = lowerQuery
+    .replace(/[?.,!:-]/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+
+  for (const item of cachedVerifiedKnowledge) {
+    const itemQuestionLower = (item.question || '').toLowerCase();
+    
+    // 1. Direct question match
+    if (lowerQuery.includes(itemQuestionLower) || itemQuestionLower.includes(lowerQuery)) {
+      const actionsObj = resolveActionsFromText(item.answer, lang);
+      return {
+        text: item.answer,
+        actions: actionsObj.actions,
+        quickChips: item.keywords && item.keywords.length > 0 ? item.keywords.slice(0, 4) : actionsObj.chips,
+      };
+    }
+
+    // 2. Keyword tag match
+    if (Array.isArray(item.keywords)) {
+      for (const kw of item.keywords) {
+        const cleanKw = (kw || '').trim().toLowerCase();
+        if (cleanKw && cleanKw.length > 2 && lowerQuery.includes(cleanKw)) {
+          const actionsObj = resolveActionsFromText(item.answer, lang);
+          return {
+            text: item.answer,
+            actions: actionsObj.actions,
+            quickChips: item.keywords.slice(0, 4),
+          };
+        }
+      }
+    }
+
+    // 3. Word Token Overlap Match (Fuzzy semantic token overlap)
+    if (queryWords.length > 0) {
+      let matchCount = 0;
+      for (const w of queryWords) {
+        if (itemQuestionLower.includes(w) || (item.keywords && item.keywords.some((k) => k.toLowerCase().includes(w)))) {
+          matchCount++;
+        }
+      }
+      if (matchCount >= Math.min(2, queryWords.length)) {
+        const actionsObj = resolveActionsFromText(item.answer, lang);
+        return {
+          text: item.answer,
+          actions: actionsObj.actions,
+          quickChips: item.keywords && item.keywords.length > 0 ? item.keywords.slice(0, 4) : actionsObj.chips,
+        };
+      }
+    }
+  }
+
+  return null;
+}
 export async function askAssistant(
   userQuery: string,
   userLang: Language,
   history: Array<{ role: 'user' | 'model'; text: string }> = [],
-  mode: 'auth' | 'full' = 'full'
+  mode: 'auth' | 'full' = 'full',
+  currentLocation?: LocationOption | { lat: number; lng: number; nameSi?: string; districtSi?: string }
 ): Promise<{ text: string; actions?: AssistantAction[]; quickChips?: string[] }> {
   const clean = userQuery.trim();
   const lower = clean.toLowerCase();
+
+  // Initialize background cache for admin-verified Q&A
+  initAiKnowledgeCache();
 
   // If in Auth Mode (Login / Registration / Pending / Issues Screen), strictly provide login/reg guidance
   if (mode === 'auth') {
     return resolveAuthKnowledge(clean, lower, userLang);
   }
 
-  // 1. First try server-side Gemini 3.8 Flash
+  // 1. Check Smart Location & Real-World Road Distance Resolver (100% Free & Instant)
+  try {
+    const locationAnswer = await resolveLocationAndDistanceQuery(clean, lower, currentLocation, userLang);
+    if (locationAnswer) {
+      return locationAnswer;
+    }
+  } catch (err) {
+    console.warn('Location query resolution error:', err);
+  }
+
+  // 2. Check Admin-Verified Knowledge Base (Approved Answers - Instant & 0 Cost)
+  try {
+    const verifiedAnswer = matchVerifiedKnowledge(clean, lower, userLang);
+    if (verifiedAnswer) {
+      return verifiedAnswer;
+    }
+  } catch (err) {
+    console.warn('Verified knowledge match error:', err);
+  }
+
+  // 3. Query Server-side Gemini AI Model Cascade
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -148,12 +380,21 @@ export async function askAssistant(
         language: userLang,
         conversationHistory: history,
         mode: mode,
+        locationContext: (currentLocation as any)?.nameSi || (currentLocation as any)?.districtSi || '',
       }),
     });
 
     if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       if (data.reply && !data.fallback) {
+        // Automatically submit novel question & Gemini answer to Admin Panel for review
+        savePendingAiQuery({
+          question: clean,
+          answer: data.reply,
+          detectedLang: userLang,
+          locationContext: (currentLocation as any)?.nameSi || (currentLocation as any)?.districtSi || '',
+        }).catch((e) => console.warn('Auto-log pending AI query notice:', e));
+
         // Extract relevant action buttons based on content
         const extractedActions = resolveActionsFromText(clean, userLang);
         return {
@@ -167,13 +408,10 @@ export async function askAssistant(
     // Network or server offline, gracefully use local knowledge engine
   }
 
-  // 2. High-Fidelity Local Knowledge Engine (covers all 8 app sectors natively in SI, EN, TA)
+  // 4. High-Fidelity Local Knowledge Engine (covers all 8 app sectors natively in SI, EN, TA)
   return resolveLocalKnowledge(clean, lower, userLang);
 }
 
-/**
- * Dedicated Knowledge Engine for Login & Registration Support only (Hides all post/feed information)
- */
 function resolveAuthKnowledge(
   query: string,
   lower: string,
