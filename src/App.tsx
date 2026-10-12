@@ -13,6 +13,8 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { AppUpdateModal } from './components/AppUpdateModal';
+import { checkForAppUpdate, AppUpdateInfo } from './utils/apkDownloadHelper';
 import {
   subscribeToUsers,
   subscribeToHelpPosts,
@@ -89,6 +91,31 @@ export const App: React.FC = () => {
   const [issues, setIssues] = useState<Issue[]>([]);
 
   // Current User Session & Navigation View
+  // 🚀 In-App Version Update Check State
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Check for updates 1.5s after app launch
+    const updateTimer = setTimeout(async () => {
+      try {
+        const info = await checkForAppUpdate();
+        if (info && info.hasUpdate) {
+          const lastDismissed = localStorage.getItem('sahaya_update_dismissed_time');
+          // Only show if not dismissed in the last 6 hours
+          if (!lastDismissed || Date.now() - parseInt(lastDismissed, 10) > 6 * 3600 * 1000) {
+            setUpdateInfo(info);
+            setIsUpdateModalOpen(true);
+          }
+        }
+      } catch (err) {
+        console.debug('In-app update check note:', err);
+      }
+    }, 1500);
+
+    return () => clearTimeout(updateTimer);
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
@@ -581,7 +608,22 @@ export const App: React.FC = () => {
           />
         )}
       </div>
-            {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
+            {/* 🚀 In-App Version Update Notification Modal */}
+      {updateInfo && (
+        <AppUpdateModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => {
+            setIsUpdateModalOpen(false);
+            try {
+              localStorage.setItem('sahaya_update_dismissed_time', Date.now().toString());
+            } catch {}
+          }}
+          updateInfo={updateInfo}
+          language={language}
+        />
+      )}
+
+      {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
         {sosViewerSessionId && (
           <SosLiveViewerModal
             isOpen={Boolean(sosViewerSessionId)}
