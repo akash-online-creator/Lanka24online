@@ -29,7 +29,7 @@ jobs:
           node-version: 20
 
       - name: Install Web Dependencies
-        run: npm install --no-audit
+        run: npm install --legacy-peer-deps --no-audit
 
       - name: Build Web Application
         run: npm run build
