@@ -1276,3 +1276,28 @@ export interface SosLiveSession {
   endedAt?: string;
   alertReason?: string;
 }
+// -------------------------------------------------------------
+// 🤖 AI KNOWLEDGE BASE & PENDING Q&A REVIEW TYPES
+// -------------------------------------------------------------
+export interface PendingAiQuery {
+  id: string;
+  question: string;
+  answer: string;
+  detectedLang?: 'si' | 'en' | 'ta';
+  askedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  locationContext?: string;
+  userPhone?: string;
+}
+
+export interface VerifiedAiKnowledgeItem {
+  id: string;
+  question: string;
+  answer: string;
+  keywords: string[];
+  category?: string;
+  lang?: 'si' | 'en' | 'ta';
+  updatedAt: string;
+  approvedBy?: string;
+  hitCount?: number;
+}
