@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
+import { verifyCurrentUserPin } from '../utils/devicePinManager';
 import { SosLiveViewerModal } from './SosLiveViewerModal';
 
 // 1. Trusted Emergency Contact Model
@@ -1803,7 +1804,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
-                  🔢 ආරක්ෂක PIN (1234)
+                  🔢 ආරක්ෂක PIN
                 </button>
                 <button
                   type="button"
@@ -1827,7 +1828,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               {deactivateTab === 'pin' ? (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    ආරක්ෂාව තහවුරු කිරීමට ඔබගේ 4-ඉලක්කම් PIN අංකය (පෙරනිමි: 1234) ඇතුළත් කරන්න.
+                    ආරක්ෂාව තහවුරු කිරීමට ඔබගේ අංක 4ක ආරක්ෂක PIN අංකය ඇතුළත් කරන්න.
                   </p>
                   <input
                     type="password"
@@ -1884,7 +1885,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     // 1. Silent Duress PIN (9999)
                     if (deactivateTab === 'pin' && enteredPin === '9999') {
                       setShowDuressModal(false);
@@ -1892,15 +1893,31 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       return;
                     }
 
-                    // 2. Normal PIN
-                    const validPin = (currentUser as any)?.quickPin || (currentUser as any)?.devicePin || localStorage.getItem('sahaya_security_pin') || '1234';
+                    // 2. Normal Device PIN Verification
                     if (deactivateTab === 'pin') {
-                      if (enteredPin === validPin || enteredPin === '1234' || enteredPin === '0000') {
-                        setShowDuressModal(false);
-                        handleStopSos(false);
-                        return;
-                      } else {
-                        setPinError('ඇතුළත් කළ PIN අංකය වැරදියි. (පෙරනිමි: 1234)');
+                      try {
+                        const pinResult = await verifyCurrentUserPin(enteredPin, currentUser);
+                        if (pinResult.success) {
+                          setShowDuressModal(false);
+                          handleStopSos(false);
+                          return;
+                        } else {
+                          // Fallback for demo user
+                          if (currentUser?.isDemo && (enteredPin === '1234' || enteredPin === '0000')) {
+                            setShowDuressModal(false);
+                            handleStopSos(false);
+                            return;
+                          }
+                          setPinError(pinResult.message || 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
+                          return;
+                        }
+                      } catch (err) {
+                        if (currentUser?.isDemo) {
+                          setShowDuressModal(false);
+                          handleStopSos(false);
+                          return;
+                        }
+                        setPinError('PIN සත්‍යාපනය කිරීමේදී දෝෂයක් සිදු විය.');
                         return;
                       }
                     }
