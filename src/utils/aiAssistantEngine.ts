@@ -158,38 +158,64 @@ export async function resolveLocationAndDistanceQuery(
   const isLocationOrDistanceQuery =
     lowerQuery.includes('කොහෙද') ||
     lowerQuery.includes('කොහේද') ||
-    lowerQuery.includes('තියෙන්නේ කොහෙද') ||
-    lowerQuery.includes('තියෙන්නෙ කොහෙද') ||
-    lowerQuery.includes('යන්නේ කොහොමද') ||
-    lowerQuery.includes('යන්නෙ කොහොමද') ||
+    lowerQuery.includes('තියෙන්නේ') ||
+    lowerQuery.includes('තියෙන්නෙ') ||
+    lowerQuery.includes('යන්නේ') ||
+    lowerQuery.includes('යන්නෙ') ||
     lowerQuery.includes('දුර') ||
-    lowerQuery.includes('කොච්චර දුර') ||
-    lowerQuery.includes('පාර කියන්න') ||
+    lowerQuery.includes('කොච්චර') ||
+    lowerQuery.includes('පාර') ||
     lowerQuery.includes('මාර්ගය') ||
     lowerQuery.includes('ස්ථානය') ||
+    lowerQuery.includes('පිහිටීම') ||
     lowerQuery.includes('where is') ||
     lowerQuery.includes('how far') ||
     lowerQuery.includes('how to go') ||
-    lowerQuery.includes('route to') ||
-    lowerQuery.includes('distance to') ||
-    lowerQuery.includes('direction to') ||
+    lowerQuery.includes('route') ||
+    lowerQuery.includes('distance') ||
+    lowerQuery.includes('direction') ||
     lowerQuery.includes('எங்கே') ||
     lowerQuery.includes('தூரம்') ||
     lowerQuery.includes('செல்வது எப்படி');
 
   if (!isLocationOrDistanceQuery) return null;
 
-  // Clean out common intent keywords to isolate the place name entity
-  let placeNameCandidate = cleanQuery
-    .replace(/(?:කොහෙද|කොහේද|තියෙන්නේ|තියෙන්නෙ|යන්නේ|යන්නෙ|කොහොමද|කොච්චර|දුරයිද|දුරද|දුර|කීයද|පාර|කියන්න|මාර්ගය|ස්ථානය|විස්තර|ගැන|තොරතුරු|පිහිටීම)/gi, '')
-    .replace(/(?:where is|how far|how to go to|how to go|distance to|route to|direction to|located at|location of|place)/gi, '')
-    .replace(/(?:எங்கே|தூரம்|செல்வது எப்படி|எப்படி போவது)/gi, '')
-    .replace(/[?.,!:-]/g, '')
-    .trim();
+  // 1. Remove punctuation
+  let norm = cleanQuery.replace(/[?.,!:-]/g, ' ');
 
-  // If candidate ends with "ට" (Sinhala dative suffix, e.g. "කොළඹට" -> "කොළඹ")
+  // 2. Comprehensive noise removal for Sri Lankan conversational queries
+  const removePhrases = [
+    'මම ඉන්න තැන ඉදන්', 'මම ඉන්න තැන ඉඳන්', 'මං ඉන්න තැන ඉදන්', 'මං ඉන්න තැන ඉඳන්',
+    'අපි ඉන්න තැන ඉදන්', 'අපි ඉන්න තැන ඉඳන්', 'මගේ තැන ඉඳන්', 'මගේ තැන ඉදන්',
+    'මෙතන ඉදන්', 'මෙතන ඉඳන්', 'මෙතැන ඉදන්', 'මෙතැන ඉඳන්', 'මෙතන සිට', 'මෙතැන සිට',
+    'from my location', 'from here',
+    'කොච්චර දුරයිද', 'කොච්චර දුරද', 'කොච්චර දුර', 'දුර කොච්චරද', 'දුර කීයද', 'දුර කීයක්ද', 'දුර ප්‍රමාණය',
+    'යන්නේ කොහොමද', 'යන්නෙ කොහොමද', 'යන්නේ කොහොම', 'යන්නෙ කොහොම', 'යන්න පාර', 'යන්න විදිය', 'යන විදිය',
+    'තියෙන්නේ කොහෙද', 'තියෙන්නෙ කොහෙද', 'තියෙන්නේ කොහේද', 'තියෙන්නෙ කොහේද',
+    'කොහෙද තියෙන්නේ', 'කොහෙද තියෙන්නෙ', 'කොහේද තියෙන්නේ', 'කොහේද තියෙන්නෙ',
+    'පාර කියන්න', 'පාර මොකක්ද', 'පාර කොහොමද',
+    'how far is it', 'how far', 'distance to', 'what is the distance', 'where is', 'route to',
+    'how to go to', 'how to go', 'direction to', 'located at', 'location of',
+    'எவ்வளவு தூரம்', 'எப்படி போவது', 'எங்கே உள்ளது', 'எங்கே',
+    'ඉදන්', 'ඉඳන්', 'සිට', 'දුරයිද', 'දුරද', 'දුර', 'කොහෙද', 'කොහේද', 'කොච්චරද', 'කීයද'
+  ];
+
+  // Remove longer phrases first to preserve short tokens
+  for (const phrase of removePhrases.sort((a, b) => b.length - a.length)) {
+    norm = norm.replace(new RegExp(phrase, 'gi'), ' ');
+  }
+
+  const tokens = norm.split(/\s+/).map(t => t.trim()).filter(t => t.length > 0);
+  if (!tokens || tokens.length === 0) return null;
+
+  let placeNameCandidate = tokens.join(' ').trim();
+
+  // Strip trailing dative 'ට' (e.g. 'කොළඹට' -> 'කොළඹ', 'නුවරට' -> 'නුවර')
   if (placeNameCandidate.endsWith('ට') && placeNameCandidate.length > 2) {
     placeNameCandidate = placeNameCandidate.slice(0, -1).trim();
+  }
+  if (placeNameCandidate.toLowerCase().startsWith('to ')) {
+    placeNameCandidate = placeNameCandidate.slice(3).trim();
   }
 
   if (!placeNameCandidate || placeNameCandidate.length < 2) {
@@ -203,7 +229,7 @@ export async function resolveLocationAndDistanceQuery(
     }
 
     const targetPlace = searchResults[0];
-    const defaultOrigin = { lat: 6.9271, lng: 79.8612, name: 'කොළඹ' }; // Colombo default if GPS disabled
+    const defaultOrigin = { lat: 7.0786, lng: 79.8913, name: 'ජා-ඇල' }; // Default Sri Lanka active user center
     const originLat = userLocation?.lat || defaultOrigin.lat;
     const originLng = userLocation?.lng || defaultOrigin.lng;
     const originName = userLocation?.nameSi || (userLocation as any)?.districtSi || defaultOrigin.name;
@@ -217,29 +243,37 @@ export async function resolveLocationAndDistanceQuery(
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${targetPlace.lat},${targetPlace.lng}`;
 
     if (lang === 'en') {
+      const isAlreadyThere = roadDistanceKm < 1.5;
       return {
         text: `📍 **${targetPlace.titleEn || targetPlace.titleSi}** (${targetPlace.townEn || targetPlace.districtEn || 'Sri Lanka'})
 
-🛣️ **Road Distance from ${originName}**: **${roadDistanceKm.toFixed(1)} km**
-⏱️ **Estimated Travel Time**: **approx. ${timeFormatted}** (via motor vehicle/taxi)
-📌 **Location**: ${targetPlace.roadEn || targetPlace.townEn || ''}, ${targetPlace.districtEn || 'Western Province'}
+${
+  isAlreadyThere
+    ? `📍 **You are currently in/near this location** (less than 1.5 km away).`
+    : `🛣️ **Road Distance from ${originName}**: **${roadDistanceKm.toFixed(1)} km**\n⏱️ **Estimated Travel Time**: **approx. ${timeFormatted}** (via motor vehicle/taxi)`
+}
+📌 **Location Details**: ${targetPlace.roadEn || targetPlace.townEn || ''}, ${targetPlace.districtEn || 'Western Province'}
 
-🗺️ [View Live Directions on Google Maps](${mapsUrl})`,
+🗺️ [View Live Route & Directions on Google Maps](${mapsUrl})`,
         actions: [
           { type: 'open_quick', label: '🚗 Quick Transport & Drivers' },
           { type: 'open_directory', label: '📞 Emergency Roadside Help' },
         ],
-        quickChips: ['Nearby fuel stations', 'Calculate travel fare', 'Traffic updates'],
+        quickChips: ['Nearby fuel stations', 'Calculate travel fare', 'Emergency Contacts'],
       };
     } else if (lang === 'ta') {
+      const isAlreadyThere = roadDistanceKm < 1.5;
       return {
         text: `📍 **${targetPlace.titleSi || targetPlace.titleEn}** (${targetPlace.townEn || 'இலங்கை'})
 
-🛣️ **${originName} இலிருந்து சாலை தூரம்**: **${roadDistanceKm.toFixed(1)} கி.மீ**
-⏱️ **பயண நேரம்**: **சுமார் ${timeFormatted}**
+${
+  isAlreadyThere
+    ? `📍 **நீங்கள் தற்போது இந்த இடத்தின் அருகில் உள்ளீர்கள்** (1.5 கி.மீ க்கும் குறைவான தூரம்).`
+    : `🛣️ **${originName} இலிருந்து சாலை தூரம்**: **${roadDistanceKm.toFixed(1)} கி.மீ**\n⏱️ **பயண நேரம்**: **சுமார் ${timeFormatted}**`
+}
 📌 **அமைவிடம்**: ${targetPlace.townEn || ''}, ${targetPlace.districtEn || ''}
 
-🗺️ [கூகிள் வரைபடத்தில் வழியைக் காண்க (Google Maps)](${mapsUrl})`,
+🗺️ [கூகிள் வரைபடத்தில் வழියைக் காண்க (Google Maps)](${mapsUrl})`,
         actions: [
           { type: 'open_quick', label: '🚗 விரைவு போக்குவரத்து' },
           { type: 'open_directory', label: '📞 அவசர உதவி' },
@@ -247,11 +281,15 @@ export async function resolveLocationAndDistanceQuery(
         quickChips: ['எரிபொருள் நிலையங்கள்', 'பயணக் கட்டணம்'],
       };
     } else {
+      const isAlreadyThere = roadDistanceKm < 1.5;
       return {
         text: `📍 **${targetPlace.titleSi || targetPlace.titleEn}** (${targetPlace.shortDisplaySi || targetPlace.townSi || targetPlace.districtSi || 'ශ්‍රී ලංකාව'})
 
-🛣️ **${originName} සිට සැබෑ මාර්ග දුර**: **කි.මී. ${roadDistanceKm.toFixed(1)}**
-⏱️ **ආසන්න ගමන් කාලය**: **${timeFormatted} පමණ** (සාමාන්‍ය රථවාහන වේගය අනුව)
+${
+  isAlreadyThere
+    ? `📍 **ඔබ මේ වන විට සිටින්නේද මෙම ස්ථානය ආසන්නයේමය** (කි.මී. 1.5 ට අඩු දුරක්).`
+    : `🛣️ **${originName} සිට සැබෑ මාර්ග දුර**: **කි.මී. ${roadDistanceKm.toFixed(1)}**\n⏱️ **ආසන්න ගමන් කාලය**: **${timeFormatted} පමණ** (සාමාන්‍ය රථවාහන වේගය අනුව)`
+}
 📌 **පිහිටීම**: ${targetPlace.roadSi || targetPlace.villageSi || targetPlace.townSi || ''}, ${targetPlace.districtSi || 'බස්නාහිර පළාත'}
 
 🗺️ [Google Maps ඔස්සේ සජීවී මාර්ගය (Directions) බලන්න](${mapsUrl})`,
@@ -268,9 +306,6 @@ export async function resolveLocationAndDistanceQuery(
   }
 }
 
-/**
- * Match user query against Admin Verified Knowledge Base items
- */
 export function matchVerifiedKnowledge(
   cleanQuery: string,
   lowerQuery: string,
