@@ -28,6 +28,8 @@ import { AdminPresenceDashboard } from './AdminPresenceDashboard';
 import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
+import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
+import { Sparkles } from 'lucide-react';
 import { 
   Users, 
   CheckCircle2, 
@@ -89,7 +91,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets'
+    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'
   >('users');
 
   const [userSearch, setUserSearch] = useState('');
@@ -400,6 +402,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'trust', label: 'විශ්වාසනීයතා ලාංඡන', icon: Award },
           { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
           { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
+          { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
