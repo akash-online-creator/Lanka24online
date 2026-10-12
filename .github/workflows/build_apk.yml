@@ -27,7 +27,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Web Dependencies
         run: npm install --no-audit
@@ -65,7 +64,6 @@ jobs:
         with:
           flutter-version: '3.24.5'
           channel: 'stable'
-          cache: true
 
       - name: Get Flutter Packages
         run: flutter pub get
