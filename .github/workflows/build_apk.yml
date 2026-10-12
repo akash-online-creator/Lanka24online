@@ -112,13 +112,13 @@ jobs:
 
           # 4. Copy flutter_embedding jar directly to android/app/libs for Kotlin resolution
           mkdir -p android/app/libs
-          JAR_FILE=\$(find "\$FLUTTER_DIR/bin/cache/artifacts/engine" -name "flutter_embedding_release.jar" 2>/dev/null | head -n 1)
-          if [ -z "\$JAR_FILE" ]; then
-            JAR_FILE=\$(find "\$FLUTTER_DIR" -name "flutter_embedding_*.jar" 2>/dev/null | head -n 1)
+          JAR_FILE=$(find "$FLUTTER_DIR/bin/cache/artifacts/engine" -name "flutter_embedding_release.jar" 2>/dev/null | head -n 1)
+          if [ -z "$JAR_FILE" ]; then
+            JAR_FILE=$(find "$FLUTTER_DIR" -name "flutter_embedding_*.jar" 2>/dev/null | head -n 1)
           fi
-          if [ -n "\$JAR_FILE" ]; then
-            cp "\$JAR_FILE" android/app/libs/flutter_embedding.jar
-            echo "Copied \$JAR_FILE to android/app/libs/flutter_embedding.jar"
+          if [ -n "$JAR_FILE" ]; then
+            cp "$JAR_FILE" android/app/libs/flutter_embedding.jar
+            echo "Copied $JAR_FILE to android/app/libs/flutter_embedding.jar"
           fi
 
       - name: Build Android Release APK
