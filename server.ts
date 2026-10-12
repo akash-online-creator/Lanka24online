@@ -545,18 +545,14 @@ async function startServer() {
   // 🤖 3. AI Smart Assistant Proxy (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
   const GEMINI_MODELS = [
-    'gemini-flash-lite-latest',
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-3.6-flash',
-    'gemini-flash-latest',
-    'gemini-3.5-flash',
-    'gemini-3.8-flash',
-    'gemini-3.7-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
+    'gemini-1.5-pro',
   ];
   app.post('/api/chat', async (req: any, res: any) => {
     try {
-      const { message, language = 'si', conversationHistory = [], mode = 'full' } = req.body;
+      const { message, language = 'si', conversationHistory = [], mode = 'full', locationContext = '' } = req.body;
       if (!message || typeof message !== 'string') {
         return res.status(400).json({ error: 'Message is required' });
       }
@@ -651,7 +647,7 @@ async function startServer() {
 Guidelines:
 - Language: Respond naturally and fluently in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}. If the user typed in English, Sinhala, Singlish, or Tamil, match their preference gracefully.
 - Tone: Warm, empathetic, respectful, intelligent, and encouraging.
-- Mode: ${mode}. Always address what the user actually asked first!`;
+- Mode: ${mode}. User's Current Location: ${locationContext || 'Sri Lanka'}. Always address what the user actually asked first!`;
 
       const contents: any[] = [];
       if (Array.isArray(conversationHistory)) {
