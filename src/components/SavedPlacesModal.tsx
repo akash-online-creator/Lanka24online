@@ -155,8 +155,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
 
   // Form State
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
-
-  // Form State
   const [placeName, setPlaceName] = useState('');
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(true); // true = Public, false = Private
@@ -221,7 +219,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     if (isOpen) {
       handleDetectGps();
       setShowAddForm(false);
-    setEditingPlaceId(null);
       setPlaceName('');
       setDescription('');
       setIsPublic(true);
@@ -296,7 +293,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     setShowAddForm(false);
   };
 
-  // Save New or Edited Place Handler
+  // Save New Place Handler
   const handleSavePlace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!placeName.trim()) {
@@ -305,8 +302,9 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     }
 
     setIsSubmitting(true);
+
     if (editingPlaceId) {
-      // 1. Update Existing Place
+      // Update existing place
       const updatedList = places.map((p) => {
         if (p.id === editingPlaceId) {
           return {
@@ -383,7 +381,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
         console.debug('Firestore addDoc fallback notice:', err);
       }
 
-    setEditingPlaceId(null);
       setPlaceName('');
       setDescription('');
       setShowAddForm(false);
@@ -488,7 +485,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
         };
       })
       .filter((place) => {
-        // Privacy filter: Private places only visible to their creator
         const isOwner = Boolean(
           place.userId === currentUserId ||
           (currentUserId !== 'usr_guest' && (place.userId === activeUser?.id || place.userId === activeUser?.userId)) ||
@@ -668,7 +664,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                   ) : (
                     <>
                       <Compass className="w-4 h-4 text-emerald-600" />
-                      {getLang('වත්මන් GPS ස්ථානය සුරැකීම', 'Save Current GPS Location', 'தற்போதைய ஜிபிஎஸ் இருப்பிடத்தை சேமிக்கவும்')}
+                      {getLang('වත්මන් GPS ස්ථානය සුරැකීම', 'Save Current GPS Location', 'தற்பෝதைய ஜிපිஎஸ் இருப்பிடத்தை சேமிக்கவும்')}
                     </>
                   )}
                 </span>
@@ -779,30 +775,28 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
 
               {/* Submit Button */}
               <div className="pt-2 flex items-center justify-end gap-2">
-            {/* Submit Button */}
-            <div className="pt-2 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleCancelForm}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 cursor-pointer"
-              >
-                {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்து')}
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {editingPlaceId ? <Pencil className="w-3.5 h-3.5 text-amber-300" /> : <MapPin className="w-3.5 h-3.5" />}
-                <span>
-                  {isSubmitting
-                    ? getLang('සුරකිමින්...', 'Saving...', 'சேமிக்கிறது...')
-                    : editingPlaceId
-                    ? getLang('💾 වෙනස්කම් සුරකින්න', 'Save Changes', 'மாற்றங்களை சேමි்க்கவும்')
-                    : getLang('💾 ස්ථානය සුරකින්න', 'Save Spot Now', 'சேமிக்கவும்')}
-                </span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleCancelForm}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 cursor-pointer"
+                >
+                  {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்து')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {editingPlaceId ? <Pencil className="w-3.5 h-3.5 text-amber-300" /> : <MapPin className="w-3.5 h-3.5" />}
+                  <span>
+                    {isSubmitting
+                      ? getLang('සුරකිමින්...', 'Saving...', 'சேமிக்கிறது...')
+                      : editingPlaceId
+                      ? getLang('💾 වෙනස්කම් සුරකින්න', 'Save Changes', 'மாற்றங்களை சேமிக்கவும்')
+                      : getLang('💾 ස්ථානය සුරකින්න', 'Save Spot Now', 'சேமிக்கவும்')}
+                  </span>
+                </button>
+              </div>
             </form>
           )}
 
@@ -976,7 +970,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-
                     </div>
                   </div>
                 );
