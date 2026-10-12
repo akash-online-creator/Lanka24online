@@ -2580,6 +2580,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <OmniAssistantChatBox
         currentLanguage={language}
         onLanguageChange={setLanguage}
+        currentLocation={currentLocation}
         isOpen={isAssistantChatOpen}
         onOpenChange={setIsAssistantChatOpen}
         onOpenBloodAndDisaster={() => {
