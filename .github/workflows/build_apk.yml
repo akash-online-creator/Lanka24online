@@ -45,13 +45,16 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Prepare Android Configuration
+      - name: Prepare Android Configuration & Fix Resource Conflicts
         run: |
           if [ -f scripts/prepare_android.py ]; then
             python3 scripts/prepare_android.py
           else
             echo "scripts/prepare_android.py not found, skipping."
           fi
+          echo "Removing duplicate ic_launcher.xml files to resolve mergeReleaseResources conflict..."
+          find android/app/src/main/res -type f -name "ic_launcher.xml" -delete || true
+          find android/app/src/main/res/mipmap-* -type f -name "*.xml" -not -path "*/mipmap-anydpi*/*" -delete || true
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
