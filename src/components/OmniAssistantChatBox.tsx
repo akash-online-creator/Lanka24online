@@ -40,6 +40,7 @@ interface OmniAssistantChatBoxProps {
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   mode?: 'auth' | 'full';
+  currentLocation?: LocationOption | { lat: number; lng: number; nameSi?: string; districtSi?: string };
   // Sector action triggers from parent
   onOpenBloodAndDisaster?: () => void;
   onOpenQuickServices?: () => void;
@@ -65,6 +66,7 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
   isOpen: externalIsOpen,
   onOpenChange,
   mode = 'full',
+  currentLocation,
   onOpenBloodAndDisaster,
   onOpenQuickServices,
   onOpenFindForMe,
@@ -240,7 +242,7 @@ export const OmniAssistantChatBox: React.FC<OmniAssistantChatBoxProps> = ({
         text: m.text,
       }));
 
-      const res = await askAssistant(textToSend, chatLanguage, history, mode === 'auth' ? 'auth' : 'full');
+      const res = await askAssistant(textToSend, chatLanguage, history, mode === 'auth' ? 'auth' : 'full', currentLocation);
 
       const assistantMsgId = `asst_${Date.now()}`;
       const assistantMsg: ChatMessageItem = {
