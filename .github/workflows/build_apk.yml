@@ -45,17 +45,6 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Prepare Android Configuration & Fix Resource Conflicts
-        run: |
-          if [ -f scripts/prepare_android.py ]; then
-            python3 scripts/prepare_android.py
-          else
-            echo "scripts/prepare_android.py not found, skipping."
-          fi
-          echo "Removing duplicate ic_launcher.xml files to resolve mergeReleaseResources conflict..."
-          find android/app/src/main/res -type f -name "ic_launcher.xml" -delete || true
-          find android/app/src/main/res/mipmap-* -type f -name "*.xml" -not -path "*/mipmap-anydpi*/*" -delete || true
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -68,11 +57,75 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Get Flutter Packages
-        run: flutter pub get
+      - name: Precache Flutter Android Artifacts
+        run: flutter precache --android
+
+      - name: Configure Android Build & Fix Dependencies
+        run: |
+          if [ -f scripts/prepare_android.py ]; then
+            python3 scripts/prepare_android.py
+          fi
+
+          # 1. Clean up duplicate launcher icons
+          find android/app/src/main/res -type f -name "ic_launcher.xml" -delete || true
+          find android/app/src/main/res/mipmap-* -type f -name "*.xml" -not -path "*/mipmap-anydpi*/*" -delete || true
+
+          # 2. Ensure Flutter SDK path in local.properties
+          FLUTTER_BIN=$(which flutter)
+          FLUTTER_DIR=$(dirname $(dirname "$FLUTTER_BIN"))
+          echo "flutter.sdk=$FLUTTER_DIR" > android/local.properties
+
+          # 3. Add Flutter Maven repository & libs support to gradle files
+          python3 -c "
+          import os
+
+          # Update root build.gradle
+          if os.path.exists('android/build.gradle'):
+              with open('android/build.gradle', 'r') as f:
+                  content = f.read()
+              if 'download.flutter.io' not in content:
+                  content = content.replace('mavenCentral()', \"mavenCentral()\\n        maven { url 'https://storage.googleapis.com/download.flutter.io' }\")
+                  with open('android/build.gradle', 'w') as f:
+                      f.write(content)
+                  print('Added download.flutter.io to android/build.gradle')
+
+          # Update app/build.gradle
+          if os.path.exists('android/app/build.gradle'):
+              with open('android/app/build.gradle', 'r') as f:
+                  app_content = f.read()
+              if 'fileTree' not in app_content or 'libs' not in app_content:
+                  app_content = app_content.replace('dependencies {', \"dependencies {\\n    compileOnly fileTree(dir: 'libs', include: ['*.jar'])\")
+                  with open('android/app/build.gradle', 'w') as f:
+                      f.write(app_content)
+                  print('Added compileOnly libs to android/app/build.gradle')
+
+          # Update settings.gradle if dependencyResolutionManagement is used
+          if os.path.exists('android/settings.gradle'):
+              with open('android/settings.gradle', 'r') as f:
+                  st = f.read()
+              if 'dependencyResolutionManagement' in st and 'download.flutter.io' not in st:
+                  st = st.replace('mavenCentral()', \"mavenCentral()\\n        maven { url 'https://storage.googleapis.com/download.flutter.io' }\")
+                  with open('android/settings.gradle', 'w') as f:
+                      f.write(st)
+                  print('Added download.flutter.io to android/settings.gradle')
+          "
+
+          # 4. Copy flutter_embedding jar directly to android/app/libs for Kotlin resolution
+          mkdir -p android/app/libs
+          JAR_FILE=\$(find "\$FLUTTER_DIR/bin/cache/artifacts/engine" -name "flutter_embedding_release.jar" 2>/dev/null | head -n 1)
+          if [ -z "\$JAR_FILE" ]; then
+            JAR_FILE=\$(find "\$FLUTTER_DIR" -name "flutter_embedding_*.jar" 2>/dev/null | head -n 1)
+          fi
+          if [ -n "\$JAR_FILE" ]; then
+            cp "\$JAR_FILE" android/app/libs/flutter_embedding.jar
+            echo "Copied \$JAR_FILE to android/app/libs/flutter_embedding.jar"
+          fi
 
       - name: Build Android Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build apk --release --no-tree-shake-icons
 
       - name: Stage APK Files & Generate Version Manifest
         run: |
