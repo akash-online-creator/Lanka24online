@@ -815,7 +815,327 @@ function resolveLocalKnowledge(
   lang: Language
 ): { text: string; actions: AssistantAction[]; quickChips: string[] } {
   // -------------------------------------------------------------
-  // 0. DATA PRIVACY & INFORMATION SECURITY (දත්ත සහ තොරතුරු ආරක්ෂාව)
+  // 1. APP PURPOSE & WHAT DOES THIS APP DO (මේ ඇප් එකෙන් වෙන්නේ කුමක්ද / ඇප් එක ගැන)
+  // -------------------------------------------------------------
+  const isAppPurposeQuery =
+    lower.includes('වෙන්නේ කුමක්ද') ||
+    lower.includes('කරන්නේ කුමක්ද') ||
+    lower.includes('වෙන්නෙ මොකක්ද') ||
+    lower.includes('කරන්නෙ මොකක්ද') ||
+    lower.includes('මොකක්ද මේ ඇප්') ||
+    lower.includes('මොකක්ද මේක') ||
+    lower.includes('මේ ඇප් එක ගැන') ||
+    lower.includes('ඇප් එක ගැන') ||
+    lower.includes('වෙන්නේ මොනවාද') ||
+    lower.includes('තියෙන්නේ මොනවාද') ||
+    lower.includes('කරන්න පුළුවන් මොනවද') ||
+    lower.includes('ඇප් එක මොකටද') ||
+    lower.includes('සහය සේවා කියන්නේ') ||
+    lower.includes('ඇප් එකේ විස්තර') ||
+    lower.includes('what is this app') ||
+    lower.includes('what does this app do') ||
+    lower.includes('about this app') ||
+    lower.includes('about sahaya sewa') ||
+    lower.includes('purpose of this app') ||
+    lower.includes('செயலி என்ன செய்கிறது');
+
+  if (isAppPurposeQuery) {
+    if (lang === 'en') {
+      return {
+        text: `🌟 **Welcome to Sahaya Sewa (සහය සේවා)!**
+Sri Lanka's premier community mutual aid, emergency response, and verified services network.
+
+Here is what you can do through this app:
+1. 🩸 **Emergency Blood Radar**: Match with verified blood donors across your district in real time.
+2. ⚡ **24/7 Quick Artisan Services**: Connect with electricians, plumbers, and mechanics within a 15km radar.
+3. 🚨 **5km Red Alert Sirens**: Instant community alerts for floods, accidents, and sudden hazards.
+4. 📦 **Transparent Aid Ledger**: Track flood/disaster relief donations with 6-digit security PINs to eliminate fraud.
+5. 🔍 **Find For Me (Lost & Found)**: Community search network for lost national ID cards, driving licenses, and pets.
+6. 🎁 **From Me To You Free Gifts**: Give away books, clothes, and medical equipment with zero monetary exchange.
+7. 🛒 **Lowest Market Prices Index**: Compare daily grocery and vegetable price gaps across local shops.
+8. 🤝 **Group Work & Shramadana**: Organize neighborhood cleanups and community volunteering projects.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 Post a Help Request' },
+          { type: 'open_quick', label: '⚡ 24/7 Quick Services' },
+          { type: 'open_blood', label: '🩸 Blood & Disaster Radar' },
+          { type: 'open_market', label: '🛒 Lowest Market Prices' },
+        ],
+        quickChips: [
+          'How to post a request?',
+          'How does Blood Radar work?',
+          'How are helpers verified?',
+          'Check Market Prices',
+        ],
+      };
+    } else if (lang === 'ta') {
+      return {
+        text: `🌟 **சகாய சேவா (Sahaya Sewa) தளத்திற்கு வரவேற்கிறோம்!**
+இலங்கையின் முதன்மை பரஸ்பர உதவி மற்றும் அவசர சேவை வலையமைப்பு.
+
+இந்த செயலியின் மூலம் நீங்கள் செய்யக்கூடியவை:
+1. 🩸 **அவசர இரத்த தானம்**: உங்கள் மாவட்டத்தில் உள்ள இரத்தக் கொடையாளர்களை உடனுக்குடன் கண்டறியலாம்.
+2. ⚡ **24/7 விரைவு சேவைகள்**: 15 கி.மீ சுற்றளவில் உள்ள எலக்ட்ரீஷியன், பிளம்பர் போன்ற கைவினைஞர்களை இணைத்தல்.
+3. 🚨 **5 கி.மீ அவசர எச்சரிக்கைகள்**: இயற்கை அனர்த்தங்கள், விபத்துக்கள் குறித்த அவசர எச்சரிக்கைகள்.
+4. 📦 **வெளிப்படையான நிவாரண லெட்ஜர்**: நிவாரணப் பொருட்களை ஏமாற்றுதலின்றி விநியோகிக்கும் முறைமை.
+5. 🔍 **தொலைந்தவை தேடல்**: அடையாள அட்டை, ஓட்டுநர் உரிமம் போன்றவற்றைத் தேடும் தளம்.
+6. 🎁 **இலவச அன்பளிப்புகள்**: புத்தகங்கள், உபகரணங்களை இலவசமாகப் பகிர்தல்.
+7. 🛒 **குறைந்தபட்ச சந்தை விலைகள்**: அத்தியாவசியப் பொருட்களின் குறைந்தபட்ச விலைகளை ஒப்பிடுதல்.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 உதவி கோரிக்கையை இடுக' },
+          { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
+          { type: 'open_blood', label: '🩸 இரத்த தானம்' },
+        ],
+        quickChips: ['உதவி கோருவது எப்படி?', 'இரத்த தானம் எவ்வாறு இயங்குகிறது?'],
+      };
+    } else {
+      return {
+        text: `🌟 **සහය සේවා (Sahaya Sewa) යනු ශ්‍රී ලාංකික අපේම ප්‍රජා සත්කාරක සහ හදිසි සේවා ජාලයයි!**
+
+මෙම ඇප් එක හරහා ඔබට පහත ප්‍රධාන සේවාවන් 8 සම්පූර්ණයෙන්ම ලබාගත හැක:
+
+1. 🩸 **හදිසි ලේ බැංකු රේඩාර් (Emergency Blood Radar)**:
+   රෝගීන්ට අවශ්‍ය ලේ වර්ගයට අදාළ ඔබගේ දිස්ත්‍රික්කයේ සිටින සත්‍යාපිත ලේ පරිත්‍යාගශීලීන් රේඩාර් මඟින් ක්ෂණිකව සම්බන්ධ කරගැනීම.
+2. ⚡ **24/7 ක්ෂණික කාර්මික සේවා (Quick Services)**:
+   කි.මී. 15 සීමාවේ සිටින විදුලි, නල, වාහන කාර්මිකයන් නිවසටම ගෙන්වා ගැනීම සහ සාධාරණ බිල්පත් ගෙවීම.
+3. 🚨 **කි.මී. 5 රතු නිවේදන (Red Alert Hazard Sirens)**:
+   ගංවතුර, නායයෑම්, හදිසි අනතුරු පිළිබඳව අවට කි.මී. 5ක අසල්වැසියන්ට ක්ෂණික සයිරන් අනතුරු ඇඟවීම් නිකුත් කිරීම.
+4. 📦 **විනිවිදභාවයේ ආධාර ලෙජරය (Transparent Aid Ledger)**:
+   ආපදා සහන කඳවුරු සහ පවුල් වෙත ආධාර බෙදාදීම අංක 6ක රහස් PIN එකකින් සත්‍යාපනය කර වංචාවලින් තොරව ප්‍රසිද්ධ ලෙජරයක සටහන් කිරීම.
+5. 🔍 **සොයාදෙන්න (Lost & Found)**:
+   නැතිවූ ජාතික හැඳුනුම්පත්, රියදුරු බලපත්‍ර, සුරතල් සතුන් හෝ ලියකියවිලි ප්‍රජාව සමඟ එක්ව සොයාගැනීම.
+6. 🎁 **මා වෙතින් ඔබට නොමිලේ දීමනා (From Me To You Free Gifts)**:
+   පොත්පත්, ඇඳුම්, රෝද පුටු වැනි දෑ අවශ්‍යතා සහිත අයට මුදල් අය කිරීමකින් තොරව 100% නොමිලේ පරිත්‍යාග කිරීම.
+7. 🛒 **වෙළඳපල අඩුම මිල දර්ශකය (Lowest Market Prices)**:
+   අත්‍යවශ්‍ය භාණ්ඩ හා එළවළු සඳහා නගරයේ සාප්පු වල අඩුම මිල ගණන් සහ ඉතිරි කරගත හැකි ලාභ පරතරය සංසන්දනය.
+8. 🤝 **ශ්‍රමදාන සහ කණ්ඩායම් වැඩ (Group Work)**:
+   ප්‍රදේශයේ පන්සල්, පාසල් හෝ ගම්මාන ශ්‍රමදාන කටයුතු සංවිධානය කර ස්වේච්ඡා සහායකයින් එක්රැස් කිරීම.`,
+        actions: [
+          { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
+          { type: 'open_quick', label: '⚡ 24/7 ක්ෂණික කාර්මික සේවා' },
+          { type: 'open_blood', label: '🩸 හදිසි ලේ & ආපදා රේඩාර්' },
+          { type: 'open_market', label: '🛒 වෙළඳපල අඩුම මිල ගණන්' },
+        ],
+        quickChips: [
+          'පෝරම පුරවන්නේ කොහොමද?',
+          'ලේ ඉල්ලුම් කරන්නේ කොහොමද?',
+          'කාර්මික සේවා ලබාගන්නේ කොහොමද?',
+          'තොරතුරු ආරක්ෂිතද?',
+        ],
+      };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 2. EMERGENCY BLOOD INQUIRIES (හදිසි ලේ බැංකු රේඩාර්)
+  // -------------------------------------------------------------
+  const isBloodQuery =
+    lower.includes('ලේ') ||
+    lower.includes('රුධිර') ||
+    lower.includes('blood') ||
+    lower.includes('පට්ටිකා') ||
+    lower.includes('platelet') ||
+    lower.includes('இரத்தம்');
+
+  if (isBloodQuery) {
+    if (lang === 'en') {
+      return {
+        text: `🩸 **Emergency Blood Assistance Radar**
+Our real-time radar immediately alerts registered, verified blood donors of the requested blood group (A+, A-, B+, B-, O+, O-, AB+, Platelets) in your district.
+
+**How to Request Blood**:
+1. Click **"Request Blood"** below.
+2. Select Patient Name, Required Blood Group, and Hospital.
+3. Submit to broadcast an instant emergency notification to matching donors.`,
+        actions: [
+          { type: 'open_blood', label: '🩸 Open Blood Request Form' },
+          { type: 'open_directory', label: '📞 National Blood Bank (011-2698891)' },
+        ],
+        quickChips: ['Who can donate blood?', 'Check donor radar', 'Emergency ambulance 1990'],
+      };
+    } else {
+      return {
+        text: `🩸 **හදිසි ලේ බැංකු රේඩාර් සහ පරිත්‍යාගශීලීන් (Emergency Blood Hub)**
+
+රෝගියෙකුට හදිසියේ ලේ (Blood) හෝ පට්ටිකා (Platelets) අවශ්‍ය වූ විට අපගේ රේඩාර් පද්ධතිය ක්‍රියාත්මක වන්නේ මෙසේය:
+
+1. **ඉල්ලීමක් පළකිරීම**: පහත **"හදිසි ලේ ඉල්ලුම් පෝරමය"** බොත්තම ඔබා රෝගියාගේ නම, රෝහල, සහ අවශ්‍ය ලේ වර්ගය (A+, A-, B+, B-, O+, O-, AB+) ඇතුළත් කරන්න.
+2. **ක්ෂණික රේඩාර් දැනුම්දීම**: ඉල්ලුම පළකළ සැනින් ඔබගේ දිස්ත්‍රික්කයේ සිටින එම ලේ වර්ගය සහිත සියලුම සත්‍යාපිත පරිත්‍යාගශීලීන්ගේ දුරකථන වලට හදිසි Push Notification එකක් නිකුත් වේ.
+3. **සෘජු සම්බන්ධීකරණය**: පරිත්‍යාගශීලීන් ඔබට In-App Chat හෝ සෘජු WhatsApp හරහා සම්බන්ධ වී රෝහල වෙත පැමිණෙනු ඇත.`,
+        actions: [
+          { type: 'open_blood', label: '🩸 හදිසි ලේ ඉල්ලුම් පෝරමය' },
+          { type: 'open_directory', label: '📞 ජාතික රුධිර පාරවිලයන සේවය (011-2698891)' },
+        ],
+        quickChips: ['ලේ දිය හැක්කේ කාටද?', 'රේඩාර් ක්‍රියාකරන්නේ කොහොමද?', 'සුවසැරිය ගිලන් රථ (1990)'],
+      };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 3. QUICK ARTISAN SERVICES (ක්ෂණික කාර්මික සේවා)
+  // -------------------------------------------------------------
+  const isQuickServiceQuery =
+    lower.includes('කාර්මික') ||
+    lower.includes('විදුලි') ||
+    lower.includes('නල') ||
+    lower.includes('ප්ලම්බර්') ||
+    lower.includes('වයරිං') ||
+    lower.includes('electrician') ||
+    lower.includes('plumber') ||
+    lower.includes('mechanic') ||
+    lower.includes('quick service') ||
+    lower.includes('ක්ෂණික සේවා') ||
+    lower.includes('ඉක්මන් සේවා');
+
+  if (isQuickServiceQuery) {
+    return {
+      text: `⚡ **24/7 ක්ෂණික කාර්මික සේවා (24/7 Quick Artisan Services)**
+
+නිවසේ හෝ ආයතනයේ හදිසි කාර්මික දෝෂ (විදුලි කාර්මික, නල කාර්මික, වාහන කාර්මික, පෙදරේරු) විසඳාගැනීමට:
+
+1. පහත **"ක්ෂණික සේවා පෝරමය"** ඔබා සිදුවී ඇති දෝෂය සහ ඔබ සිටින ස්ථානය තෝරන්න.
+2. ඔබගේ ස්ථානයේ සිට **කි.මී. 15 සීමාවේ** සිටින සත්‍යාපිත කාර්මික ශිල්පීන්ට වහාම දැනුම්දීම ලැබී ඔවුන්ගේ මිල ගණන් සහ පැමිණෙන වේලාවන් ඔබට ලැබෙනු ඇත.
+3. කාර්මිකයා පැමිණි පසු **අංක 4ක Start PIN** එක ලබා දී වැඩ ආරම්භ කර, අවසානයේ නිල ඩිජිටල් ඉන්වොයිසිය මඟින් ගෙවීම් සම්පූර්ණ කළ හැක.`,
+      actions: [
+        { type: 'open_quick', label: '⚡ ක්ෂණික සේවා ඉල්ලුම් කරන්න' },
+        { type: 'open_pro_services', label: '👷 ලියාපදිංචි වෘත්තිකයන් බලන්න' },
+      ],
+      quickChips: ['විදුලි කාර්මිකයෙකු අවශ්‍යයි', 'නල කාර්මිකයෙකු අවශ්‍යයි', 'ගමන් ගාස්තු ගණනය කිරීම'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 4. RED ALERT & DISASTER RADAR (රතු නිවේදන සහ ආපදා)
+  // -------------------------------------------------------------
+  const isRedAlertQuery =
+    lower.includes('රතු නිවේදන') ||
+    lower.includes('රතු නිවේදනය') ||
+    lower.includes('red alert') ||
+    lower.includes('ආපදා') ||
+    lower.includes('ගංවතුර') ||
+    lower.includes('නාය') ||
+    lower.includes('disaster') ||
+    lower.includes('අනතුරු') ||
+    lower.includes('සයිරන්');
+
+  if (isRedAlertQuery) {
+    return {
+      text: `🚨 **කි.මී. 5 රතු නිවේදන පද්ධතිය (Red Alert Hazard Radar)**
+
+ගංවතුර, නායයෑම්, ගින්නක් හෝ හදිසි මාර්ග අවහිරයක් දුටු විට:
+• **තත්පර 10කින් අනතුරු ඇඟවීම**: ඔබ අනතුර පළකළ සැනින් අවට **කි.මී. 5 සීමාවේ** සිටින සියලුම පරිශීලකයින්ගේ දුරකථන වලට හඬ නඟන සයිරන් අනතුරු ඇඟවීමක් නිකුත් වේ.
+• **සජීවී සිතියම**: අනතුර පිහිටි නිශ්චිත GPS ස්ථානය සහ විකල්ප ආරක්ෂිත මාර්ග සිතියමෙහි රතු පැහැයෙන් දිස්වේ.`,
+      actions: [
+        { type: 'open_red_alert_create', label: '🚨 හදිසි රතු නිවේදනයක් නිකුත් කරන්න' },
+        { type: 'open_directory', label: '📞 ආපදා කළමනාකරණ මධ්‍යස්ථානය (117)' },
+      ],
+      quickChips: ['ළඟම රතු නිවේදන පරීක්ෂා කරන්න', 'ආරක්ෂිත උපදෙස්', 'හදිසි ඇමතුම්'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 5. TRANSPARENT AID LEDGER (ආධාර ලෙජරය)
+  // -------------------------------------------------------------
+  const isAidLedgerQuery =
+    lower.includes('ආධාර') ||
+    lower.includes('ලෙජරය') ||
+    lower.includes('aid ledger') ||
+    lower.includes('කඳවුරු') ||
+    lower.includes('සහන');
+
+  if (isAidLedgerQuery) {
+    return {
+      text: `📦 **විනිවිදභාවයේ ආධාර ලෙජරය (Transparent Aid Ledger)**
+
+ආපදා සහන බෙදාහැරීමේදී එකම කඳවුරකට හෝ පවුලකට ආධාර ගොඩගැසීම වැළැක්වීමට සහ විනිවිදභාවය තහවුරු කිරීමට:
+1. **කඳවුරු/ස්ථාන ලියාපදිංචිය**: පාසලක් හෝ පන්සලක් ලියාපදිංචි කර අංක 6ක රහස් ආරක්ෂක PIN එකක් ලබාදේ.
+2. **ආධාර ලැබීම සටහන් කිරීම**: පරිත්‍යාගශීලීන් ගෙනා ආහාර, ජලය, බෙහෙත් ප්‍රමාණය සටහන් කර භාරකරුගේ PIN එකෙන් තහවුරු කරයි.
+3. **ප්‍රසිද්ධ ලෙජරය**: සියලුම තොරතුරු කාටත් පෙනෙන පරිදි ප්‍රසිද්ධ ලෙජරයේ සටහන් වන බැවින් ආධාර වංචා සම්පූර්ණයෙන්ම වැළකේ.`,
+      actions: [
+        { type: 'open_help_post', label: '📦 ආධාර ලෙජරය විවෘත කරන්න' },
+      ],
+      quickChips: ['කඳවුරක් ලියාපදිංචි කරන්නේ කෙසේද?', 'ආධාර ලැබීම තහවුරු කරන්නේ කෙසේද?'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 6. MARKETPLACE & LOWEST PRICES (වෙළඳපල අඩුම මිල ගණන්)
+  // -------------------------------------------------------------
+  const isMarketplaceQuery =
+    lower.includes('වෙළඳපල') ||
+    lower.includes('අඩුම මිල') ||
+    lower.includes('මිල') ||
+    lower.includes('market') ||
+    lower.includes('බඩු මිල') ||
+    lower.includes('සාප්පු') ||
+    lower.includes('lowest price') ||
+    lower.includes('price');
+
+  if (isMarketplaceQuery) {
+    return {
+      text: `🛒 **වෙළඳපල අඩුම මිල දර්ශකය (Lowest Market Prices & Price Gap)**
+
+දෛනික අත්‍යවශ්‍ය භාණ්ඩ (සහල්, සීනි, එළවළු, ගෑස්) සඳහා නගරයේ අඩුම මිල ඇති වෙළඳසැල් සොයාගැනීමට:
+• දවසේ සාමාන්‍ය වෙළඳපල මිලට වඩා රුපියල් 50-200 දක්වා අඩුවෙන් විකුණන ප්‍රදේශයේ සාප්පු සහ ඒවායේ ලිපිනයන් මෙහි සටහන් වේ.
+• ඔබට ඉතිරි කරගත හැකි ලාභ පරතරය (Savings Gap) සජීවීව පෙන්වයි.`,
+      actions: [
+        { type: 'open_market', label: '🛒 අඩුම මිල ගණන් පරීක්ෂා කරන්න' },
+      ],
+      quickChips: ['සහල් අඩුම මිල කොහෙද?', 'එළවළු මිල ගණන්', 'සාප්පුවක් ලියාපදිංචි කිරීම'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 7. LOST AND FOUND (සොයාදෙන්න)
+  // -------------------------------------------------------------
+  const isLostFoundQuery =
+    lower.includes('සොයාදෙන්න') ||
+    lower.includes('නැතිවූ') ||
+    lower.includes('නැතිවුණ') ||
+    lower.includes('lost') ||
+    lower.includes('found');
+
+  if (isLostFoundQuery) {
+    return {
+      text: `🔍 **සොයාදෙන්න (Find For Me / Lost & Found)**
+
+ඔබගේ ජාතික හැඳුනුම්පත (NIC), රියදුරු බලපත්‍රය, මුදල් පසුම්බිය හෝ සුරතල් සතෙකු නැතිවූ විට:
+1. නැතිවූ ද්‍රව්‍යයේ ඡායාරූපයක් සහ නැතිවූ ප්‍රදේශය සඳහන් කර දැන්වීමක් පළකරන්න.
+2. අවශ්‍ය නම් සොයාදෙන්නා සඳහා ත්‍යාග මුදලක් (Reward) ද නියම කළ හැක.
+3. ප්‍රජාවේ අයෙකුට එය හමුවූ විට In-App Chat හරහා ඔබට දැනුම් දෙනු ඇත.`,
+      actions: [
+        { type: 'open_find', label: '🔍 සොයාදෙන්න දැන්වීමක් පළකරන්න' },
+      ],
+      quickChips: ['හැඳුනුම්පත නැතිවුණා', 'බලපත්‍රය නැතිවුණා', 'සුරතල් සතෙකු නැතිවුණා'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 8. FREE DONATIONS (මා වෙතින් ඔබට නොමිලේ දීමනා)
+  // -------------------------------------------------------------
+  const isDonationQuery =
+    lower.includes('නොමිලේ') ||
+    lower.includes('දීමනා') ||
+    lower.includes('පරිත්‍යාග') ||
+    lower.includes('donation') ||
+    lower.includes('free') ||
+    lower.includes('from me to you');
+
+  if (isDonationQuery) {
+    return {
+      text: `🎁 **මා වෙතින් ඔබට (From Me To You Free Donations)**
+
+ඔබ සතුව ඇති පාවිච්චි කළ හැකි අමතර පොත්පත්, පාසල් උපකරණ, රෝද පුටු හෝ ඇඳුම් පැළඳුම් අවශ්‍යතා ඇති අයෙකුට 100% නොමිලේ පරිත්‍යාග කිරීමට:
+• කිසිදු මුදල් අය කිරීමක් නොමැතිව පරිත්‍යාගයක් ලෙස පළකරන්න.
+• අවශ්‍ය අයදුම්කරුට එය රැගෙන යාමට අවස්ථාව සලසා දෙන්න.`,
+      actions: [
+        { type: 'open_from_you', label: '🎁 නොමිලේ දීමනාවක් පළකරන්න' },
+      ],
+      quickChips: ['පාසල් පොත් පරිත්‍යාගය', 'රෝද පුටු / වෛද්‍ය උපකරණ'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 9. DATA PRIVACY & INFORMATION SECURITY (දත්ත ආරක්ෂාව)
   // -------------------------------------------------------------
   const isSafetyQuery =
     lower.includes('ආරක්ෂිත') ||
@@ -825,691 +1145,104 @@ function resolveLocalKnowledge(
     lower.includes('privacy') ||
     lower.includes('රහස්‍ය') ||
     lower.includes('දත්ත') ||
-    lower.includes('data') ||
-    lower.includes('பாதுகாப்ப') ||
-    lower.includes('තොරතුරු ආරක්ෂිත');
+    lower.includes('data');
 
   if (isSafetyQuery) {
-    if (lang === 'en') {
-      return {
-        text: `🔒 **Is your data and information completely secure on Sahaya Sewa?**
+    return {
+      text: `🔒 **සහය සේවා පද්ධතිය තුළ ඔබගේ තොරතුරු 100% ආරක්ෂිතයි!**
 
-**Yes, 100%!** We enforce strict institutional-grade data privacy and protection:
-
-1. 🔒 **Confidentiality & Privacy**: Your National Identity Card (NIC) photo, phone number, and private credentials are **never publicly visible or shared**. Only authorized system administrators inspect registration photos for community safety verification.
-2. 🛡️ **Cloud Encryption (SSL/TLS)**: All database communications are encrypted in transit and at rest using modern SSL protocols and protected with granular Firestore Security Rules.
-3. 🚫 **Zero Third-Party Sharing**: We do NOT sell, lease, or distribute your personal contact details, location logs, or messages to advertisers, external corporations, or commercial entities.
-4. 🤝 **Safe & Fraud-Free Community**: Strict verification safeguards all members against scammers, spam, and identity theft.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 Post a Help Request' },
-          { type: 'open_quick', label: '⚡ Explore Quick Services' },
-        ],
-        quickChips: ['How are helpers verified?', 'How does 5km Red Alert work?', 'How to fill forms?'],
-      };
-    } else if (lang === 'ta') {
-      return {
-        text: `🔒 **சகாய சேவா தளத்தில் உங்கள் தகவல்கள் பாதுகாப்பானதா?**
-
-**ஆம், 100% முற்றிலும் பாதுகாப்பானது!**
-
-1. 🔒 **தகவல் ரகசியம்**: உங்கள் தேசிய அடையாள அட்டை (NIC) மற்றும் தனிப்பட்ட விபரங்கள் பொதுமக்களுக்குக் காட்டப்படாது.
-2. 🛡️ **குறியாக்கம் (SSL Encryption)**: அனைத்து தகவல்களும் குறியாக்கம் செய்யப்பட்டு பாதுகாப்பாக சேமிக்கப்படுகின்றன.
-3. 🚫 **மூன்றாம் தரப்பினருக்கு வழங்கப்படாது**: உங்கள் தொலைபேசி எண்கள் அல்லது விபரங்கள் எவருக்கும் விற்கப்படவோ பகிரப்படவோ மாட்டாது.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 உதவி கோரிக்கை' },
-          { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
-        ],
-        quickChips: ['படிவம் நிரப்புவது எப்படி?', 'தகவல் பாதுகாப்பு விபரங்கள்'],
-      };
-    } else {
-      return {
-        text: `🔒 **සහය සේවා පද්ධතිය තුළ ඔබගේ තොරතුරු ආරක්ෂිතද?**
-
-**ඔව්, 100% ක්ම සුරක්ෂිතයි!** සහය සේවා (Sahaya Sewa) පද්ධතිය තුළ ඔබගේ සියලුම පුද්ගලික දත්ත සහ තොරතුරු ඉහළම ආරක්ෂාවක් සහිතව (Highly Secure & Encrypted) පවත්වාගෙන යනු ලැබේ:
-
-1. 🔒 **හැඳුනුම්පත් (NIC) සහ තොරතුරු රහස්‍යභාවය**: ඔබ ලබාදෙන ජාතික හැඳුනුම්පත් (NIC) ඡායාරූප හෝ පුද්ගලික රහස්‍ය තොරතුරු **කිසිදු සාමාන්‍ය පරිශීලකයෙකුට හෝ ප්‍රසිද්ධියට පත් නොවේ (Never Publicly Visible)**. ඒවා භාවිතා කරන්නේ ගිණුම සත්‍යාපනය (Verification) සඳහා බලයලත් Admin වරුන් විසින් පමණි.
-2. 🛡️ **Cloud Encryption & Security Rules**: සියලුම දත්ත Cloud Firestore සහ ආරක්ෂිත Cloud Server තුළ SSL/TLS 256-bit Encryption මඟින් සංකේතනය කර සුරක්ෂිතව තබා ඇත. අනවසර ප්‍රවේශයන් සම්පූර්ණයෙන්ම වළක්වා ඇත.
-3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදීම (No Third-Party Sharing)**: ඔබගේ දුරකථන අංක, ලිපිනයන් හෝ පුද්ගලික දත්ත කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට හෝ තෙවන පාර්ශ්වයකට කිසිසේත්ම විකුණන්නේ හෝ ලබා දෙන්නේ නැත.
-4. 🤝 **ව්‍යාජ ගිණුම්වලින් තොර සත්‍යාපිත සමාජයක්**: ප්‍රජා උපකාර, ආධාර බෙදාහැරීම් සහ ලේ පරිත්‍යාග විශ්වාසනීයව සිදු කිරීමට සහ වංචනිකයන් වැළැක්වීමට පමණක් මෙම සත්‍යාපනය ක්‍රියාත්මක වේ.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
-          { type: 'open_quick', label: '⚡ ඉක්මන් සේවා විවෘත කරන්න' },
-        ],
-        quickChips: [
-          'පෝරම පුරවන්නේ කොහොමද?',
-          'රතු එළිය 5km රේඩාර් ක්‍රියාකරන්නේ කොහොමද?',
-          'විනිවිදභාවයේ ලෙජරය යනු කුමක්ද?',
-        ],
-      };
-    }
+1. 🔒 **තොරතුරු රහස්‍යභාවය**: ඔබගේ ජාතික හැඳුනුම්පත් (NIC) ඡායාරූපය සාමාන්‍ය පරිශීලකයන්ට කිසිසේත්ම නොපෙනේ. ඒවා භාවිතා කරන්නේ ගිණුම සත්‍යාපනය සඳහා ඇඩ්මින්වරුන් පමණි.
+2. 🛡️ **Cloud Encryption**: සියලුම දත්ත Cloud Firestore තුළ SSL/TLS Encryption මඟින් සුරක්ෂිතව තබා ඇත.
+3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදේ**: ඔබගේ දුරකථන අංක කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට විකුණන්නේ හෝ ලබා දෙන්නේ නැත.`,
+      actions: [
+        { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
+        { type: 'open_quick', label: '⚡ ක්ෂණික සේවා' },
+      ],
+      quickChips: ['හැඳුනුම්පත් ඡායාරූප අවශ්‍ය ඇයි?', 'ගිණුම් සත්‍යාපනය කරන්නේ කෙසේද?'],
+    };
   }
 
   // -------------------------------------------------------------
-  // 1. FORM FILLING GUIDANCE (පෝරම පුරවන ආකාරය - පියවරෙන් පියවර)
+  // 10. FORM FILLING GUIDANCE (පෝරම පුරවන ආකාරය)
   // -------------------------------------------------------------
   const isFormFillingQuery =
     lower.includes('පෝරම') ||
+    lower.includes('පුරවන්නේ') ||
     lower.includes('form') ||
-    lower.includes('පුරව') ||
-    lower.includes('fill') ||
-    lower.includes('ලියන්නේ කොහොමද') ||
-    lower.includes('ලියාපදිංචි කරන්නේ') ||
-    lower.includes('படிவம்');
+    lower.includes('ලේඛන');
 
-  // 1.0 Aid Ledger / Relief Center Registration & Delivery Forms (ආධාර ලෙජරය සහ ස්ථාන ලියාපදිංචිය)
-  if (isFormFillingQuery && (lower.includes('ස්ථාන') || lower.includes('center') || lower.includes('ලෙජර') || lower.includes('ledger') || lower.includes('ආධාර සටහන්') || lower.includes('aid') || lower.includes('බෙදාහැරීම'))) {
-    if (lang === 'en') {
-      return {
-        text: `🏢 **How to Register a Center & Log Aid on the Transparent Aid Ledger (Step-by-Step)**:
-
-1. **🏢 Center Registration Form (ස්ථානයක් ලියාපදිංචි කිරීම)**:
-   • **Center Name & Type**: Enter the location (e.g. *"Vidyaloka Maha Vidyalaya Relief Camp"*, *"St. Mary's Community Hall"*).
-   • **6-Digit Security PIN (අංක 6ක රහස් PIN අංකය)**: Choose a secure 6-digit PIN known only to the center head/Gramasewaka. This is required later to confirm incoming deliveries.
-   • **Location**: Choose District, DS Division, GPS location, and sheltered people/family count.
-   • **Contact Person**: Verified mobile number of the responsible officer.
-
-2. **🚚 Aid Delivery Logging Form (ආධාර සටහන් කිරීම)**:
-   • Select the verified Center ID from the list.
-   • Choose Category (Dry Rations, Drinking Water, Cooked Meals, Medicine, Clothes).
-   • Enter Quantity & Unit (packs, kg, liters, boxes), Donor Name, and Vehicle Number.
-   • Upload 1-2 handover photos as proof.
-
-3. **📥 Aid Recipient Confirmation (ආධාර ලැබීම තහවුරු කිරීම)**:
-   • Center officials enter their 6-digit secret PIN to verify and lock the record permanently on the immutable public ledger.`,
-        actions: [
-          { type: 'open_blood', label: '📊 Open Aid & Disaster Ledger' },
-        ],
-        quickChips: ['How does 6-digit PIN work?', 'How to confirm aid received?', 'Is the Aid Ledger public?'],
-      };
-    } else {
-      return {
-        text: `🏢 **ආධාර සහ සම්පත් විනිවිදභාවයේ ලෙජරයේ පෝරම පුරවන ආකාරය (පියවරෙන් පියවර)**:
-
-1. **🏢 ස්ථානයක් ලියාපදිංචි කිරීමේ පෝරමය (Register Relief Center)**:
-   • **ස්ථානයේ නම සහ වර්ගය**: පාසල, පන්සල, පල්ලිය, ප්‍රජා ශාලාව හෝ සහන කඳවුරේ නම ඇතුළත් කරන්න (උදා: *"විද්‍යාලෝක මහා විද්‍යාලයීය සහන කඳවුර"*).
-   • **අංක 6ක රහස් PIN අංකය**: ස්ථාන භාරකරුට/ග්‍රාම නිලධාරීට පමණක් හිමි රහස් අංක 6ක් සකසන්න. ආධාර ලැබීම තහවුරු කිරීමට මෙය අත්‍යවශ්‍ය වේ.
-   • **ස්ථාන විස්තර**: දිස්ත්‍රික්කය, ප්‍රාදේශීය ලේකම් කොට්ඨාසය, GPS පිහිටීම සහ රැඳී සිටින පවුල්/පුද්ගල ගණන සඳහන් කරන්න.
-   • **භාරකරුගේ දුරකථන අංකය**: සත්‍යාපිත දුරකථන අංකයක් ඇතුළත් කරන්න.
-
-2. **🚚 ආධාර ලබාදුන් පසු සටහන් කිරීමේ පෝරමය (Log Delivery)**:
-   • ලැයිස්තුවෙන් අදාළ ස්ථානය (Center ID) තෝරන්න.
-   • කාණ්ඩය තෝරන්න (වියලි ආහාර, පානීය ජලය, පිසූ ආහාර, බෙහෙත්, ඇඳුම්).
-   • ප්‍රමාණය සහ ඒකකය (පැකට්, කිලෝ, ලීටර්, පෙට්ටි), පරිත්‍යාගකරුගේ නම සහ ප්‍රවාහන රථ අංකය ඇතුළත් කරන්න.
-   • භාරදුන් අවස්ථාවේ ඡායාරූප 1-2ක් සාක්ෂි ලෙස එක්කරන්න.
-
-3. **📥 ආධාර ලැබීම තහවුරු කිරීම (Recipient Confirmation)**:
-   • ස්ථාන භාරකරු විසින් අංක 6ක රහස් PIN අංකය ඇතුළත් කර භාණ්ඩ නිවැරදිව ලැබුණු බව තහවුරු කරයි. ඉන්පසු එම සටහන පොදු ලෙජරයේ ස්ථිරව සටහන් වේ.`,
-        actions: [
-          { type: 'open_blood', label: '📊 විනිවිදභාවයේ ලෙජරය විවෘත කරන්න' },
-        ],
-        quickChips: ['අංක 6ක PIN එක ක්‍රියාකරන්නේ කොහොමද?', 'ආධාර ලැබීම තහවුරු කරන්නේ කෙසේද?', 'පොදු ලෙජරය යනු කුමක්ද?'],
-      };
-    }
-  }
-
-  // 1.1 Help Post Request Form (උපකාර ඉල්ලුම් පෝරමය)
-  if (isFormFillingQuery && (lower.includes('උපකාර') || lower.includes('help') || lower.includes('දැන්වීම') || lower.includes('post') || lower.includes('request'))) {
-    if (lang === 'en') {
-      return {
-        text: `📝 **How to Fill the Community Help Request Form (Step-by-Step)**:
-
-1. **Title (මාතෘකාව)**:
-   • Write a short, clear headline. (e.g. *"Urgent electric circuit breakdown in home - need electrician"*).
-2. **Category (කාණ්ඩය)**:
-   • Select the category matching your need: Electricity, Plumbing, Medical, Transport, Education, Masonry, etc.
-3. **Description (සම්පූර්ණ විස්තරය)**:
-   • Explain the exact issue in 2-3 sentences. Mention when you need the help, what tools are required, and whether it is paid assistance or volunteer help.
-4. **Location & District (දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය)**:
-   • Choose your District (e.g. Colombo, Kandy, Galle) and local Police Division so nearby community members can find it quickly.
-5. **Contact Channel (සම්බන්ධතා ක්‍රමය)**:
-   • Enable WhatsApp or In-App Chat so helpers can message you directly.
-6. **Upload Photos (ඡායාරූප)**:
-   • Attach 1-3 clear photos showing the problem or requirement.
-7. **Submit & Offers**:
-   • Click **Publish Post**. Registered helpers will send you offers which appear in your notifications!`,
-        actions: [
-          { type: 'open_help_post', label: '📝 Open Help Post Form' },
-          { type: 'open_wallet', label: '💳 Check Wallet Balance' },
-        ],
-        quickChips: ['How do helpers contact me?', 'How to accept an offer?', 'Is there a posting fee?'],
-      };
-    } else if (lang === 'ta') {
-      return {
-        text: `📝 **உதவி கோரிக்கை படிவத்தை நிரப்புவது எப்படி (படிபடியாக)**:
-
-1. **தலைப்பு (Title)**: தேவையான உதவியை சுருக்கமாக எழுதவும் (உதா: *"வீட்டு மின்சார பழுது - மின்சார வல்லுநர் தேவை"*).
-2. **பிரிவு (Category)**: மின்சாரம், குழாய், மருத்துவம் அல்லது போக்குவரத்து போன்ற பொருத்தமான பிரிவைத் தேர்ந்தெடுக்கவும்.
-3. **முழு விபரம் (Description)**: சிக்கல், தேவைப்படும் நேரம் மற்றும் கட்டணம் பற்றி தெளிவாக விவரிக்கவும்.
-4. **மாவட்டம் & பகுதி (Location)**: உங்கள் மாவட்டம் மற்றும் பொலிஸ் பிரிவைத் தேர்ந்தெடுக்கவும்.
-5. **புகைப்படங்கள் (Photos)**: பிரச்சனையைக் காட்டும் 1-3 படங்களைப் பதிவேற்றவும்.
-6. **சமர்ப்பித்தல்**: **விளம்பரத்தை இடுக** பொத்தானைக் கிளிக் செய்யவும்.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 உதவி படிவத்தைத் திறக்கவும்' },
-        ],
-        quickChips: ['உதவியாளர்கள் எவ்வாறு தொடர்புகொள்வார்கள்?', 'பதிவுக் கட்டணம் உள்ளதா?'],
-      };
-    } else {
-      return {
-        text: `📝 **ප්‍රජා උපකාර ඉල්ලුම් පෝරමය නිවැරදිව පුරවන ආකාරය (පියවරෙන් පියවර)**:
-
-1. **මාතෘකාව (Title)**:
-   • ඔබගේ අවශ්‍යතාව කෙටියෙන් සහ පැහැදිලිව ලියන්න. (උදා: *"නිවසේ විදුලි පද්ධතියේ හදිසි කාන්දුවක් - විදුලි කාර්මිකයෙකු අවශ්‍යයි"*).
-2. **කාණ්ඩය (Category)**:
-   • අවශ්‍යතාවයට අදාළ අංශය තෝරන්න (විදුලි, නල, වෛද්‍ය, ප්‍රවාහන, මේසන්, අධ්‍යාපනික ආදිය).
-3. **සම්පූර්ණ විස්තරය (Description)**:
-   • ගැටලුව කුමක්ද, අවශ්‍ය දිනය/වේලාව, සහ ඔබ ගෙවීමට බලාපොරොත්තු වන මුදල හෝ ස්වේච්ඡා සහයක්ද යන්න පැහැදිලිව විස්තර කරන්න.
-4. **දිස්ත්‍රික්කය සහ පොලිස් වසම (Location)**:
-   • ඔබගේ දිස්ත්‍රික්කය සහ ළඟම පොලිස් බලප්‍රදේශය තෝරන්න. එවිට ළඟම සිටින අයට පණිවිඩය ක්ෂණිකව ලැබේ.
-5. **සම්බන්ධතා ක්‍රමය (Contact)**:
-   • WhatsApp හෝ In-App Chat ක්‍රමය සක්‍රියව තබන්න.
-6. **ඡායාරූප (Photos)**:
-   • ගැටලුව හෝ අවශ්‍යතාව පැහැදිලිව පෙනෙන ඡායාරූප 1-3ක් ඇතුළත් කරන්න.
-7. **පළකිරීම (Submit)**:
-   • **දැන්වීම පළකරන්න** බොත්තම ඔබන්න. උදවු කිරීමට කැමති අයගෙන් ලැබෙන Help Offers ඔබගේ Notification වලට ක්ෂණිකව ලැබේ!`,
-        actions: [
-          { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය විවෘත කරන්න' },
-          { type: 'open_wallet', label: '💳 Wallet එක සහ Credits පරීක්ෂා කරන්න' },
-        ],
-        quickChips: ['උදවුකරුවන් මාව සම්බන්ධ කරගන්නේ කෙසේද?', 'Offer එකක් පිළිගන්නේ කෙසේද?', 'දැන්වීම් ගාස්තු විස්තර'],
-      };
-    }
-  }
-
-  // 1.2 Blood & Disaster Request Form (ලේ සහ ආපදා ඉල්ලුම් පෝරමය)
-  if (isFormFillingQuery && (lower.includes('ලේ') || lower.includes('blood') || lower.includes('donor') || lower.includes('இரத்தம்') || lower.includes('ආපදා'))) {
-    if (lang === 'en') {
-      return {
-        text: `🩸 **How to Fill the Urgent Blood & Disaster Request Form**:
-
-1. **Patient / Recipient Name**: Enter the patient's full name.
-2. **Blood Group (රුධිර කාණ්ඩය)**: Select the exact blood type required (A+, A-, B+, B-, O+, O-, AB+, AB-, or Platelets/පට්ටිකා).
-3. **Hospital & Blood Bank (රෝහල)**: Enter the hospital name (e.g. National Hospital Colombo, Karapitiya, Kandy).
-4. **Required Units (ඒකක ගණන)**: Mention how many units/pints are required.
-5. **Urgency Timeline**: Select *Immediate (පැය කිහිපයක් ඇතුළත)* or *Within Today (අද දින තුළ)*.
-6. **Contact Person & Phone**: Enter the verified phone number of the patient's guardian/doctor.
-7. **Submission**: Click **Broadcast Blood Alert**. Registered volunteer donors of that specific blood group within the district will receive an immediate notification!`,
-        actions: [
-          { type: 'open_blood', label: '🩸 Open Blood & Disaster Hub' },
-          { type: 'open_directory', label: '📞 National Blood Bank Hotline' },
-        ],
-        quickChips: ['How does Blood Radar work?', 'Register as a Blood Donor', 'National Blood Bank Phone'],
-      };
-    } else {
-      return {
-        text: `🩸 **හදිසි රුධිර සහ ආපදා ඉල්ලුම් පෝරමය පුරවන ආකාරය (පියවරෙන් පියවර)**:
-
-1. **රෝගියාගේ නම (Patient Name)**: රෝගියාගේ සම්පූර්ණ නම ඇතුළත් කරන්න.
-2. **අවශ්‍ය රුධිර කාණ්ඩය (Blood Group)**: නිවැරදි කාණ්ඩය තෝරන්න (A+, A-, B+, B-, O+, O-, AB+, AB- හෝ Platelets/පට්ටිකා).
-3. **රෝහල සහ ලේ බැංකුව (Hospital)**: රෝගියා ප්‍රතිකාර ලබන රෝහලේ නම (උදා: ජාතික රෝහල කොළඹ, කරාපිටිය, මහනුවර).
-4. **අවශ්‍ය ඒකක ගණන (Units Needed)**: අවශ්‍ය රුධිර බෝතල්/ඒකක ගණන සඳහන් කරන්න.
-5. **හදිසි මට්ටම (Urgency)**: *ක්ෂණිකව (පැය කිහිපයක් ඇතුළත)* හෝ *අද දින තුළ* යන්න තෝරන්න.
-6. **භාරකරුගේ දුරකථන අංකය (Contact Phone)**: රෝගියාගේ ළඟම ඥාතියෙකුගේ සක්‍රිය දුරකථන අංකය ලබාදෙන්න.
-7. **නිකුත් කිරීම (Broadcast)**: **Alert එක නිකුත් කරන්න** බොත්තම ඔබන්න. එම දිස්ත්‍රික්කයේ සිටින අදාළ රුධිර කාණ්ඩයේ ලියාපදිංචි ස්වේච්ඡා දායකයන්ට ක්ෂණිකව දැනුම්දීමක් (Radar Alert) යයි!`,
-        actions: [
-          { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය විවෘත කරන්න' },
-          { type: 'open_directory', label: '📞 ලේ බැංකු සහ හදිසි අංක (1990/119)' },
-        ],
-        quickChips: ['ලේ පරිත්‍යාග රේඩාර් ක්‍රියාකරන්නේ කොහොමද?', 'ලේ දන් දෙන්නෙක් ලෙස ලියාපදිංචි වන්නේ කෙසේද?'],
-      };
-    }
-  }
-
-  // 1.3 Quick Services Request Form (ඉක්මන් සේවා පෝරමය)
-  if (isFormFillingQuery && (lower.includes('කාර්මික') || lower.includes('quick') || lower.includes('electric') || lower.includes('plumb') || lower.includes('සේවා'))) {
-    if (lang === 'en') {
-      return {
-        text: `⚡ **How to Fill the 24/7 Quick Service Request Form**:
-
-1. **Service Type**: Select the trade required (Electrician, Plumber, Vehicle Breakdown Mechanic, AC Repair, Mason).
-2. **Issue Summary**: Briefly explain what broke down (e.g. *"Main water pipe burst under kitchen sink"*).
-3. **Urgency**: Select *Urgent Breakdown (Now)* or *Today*.
-4. **Address / 15km Radar**: Confirm your current location so verified artisans within 15km can respond immediately.
-5. **Direct Call / WhatsApp**: Choose whether artisans should call you directly on mobile or send a quote via chat.`,
-        actions: [
-          { type: 'open_quick', label: '⚡ Post Quick Service Request' },
-        ],
-        quickChips: ['How are artisans verified?', 'What are typical charges?'],
-      };
-    } else {
-      return {
-        text: `⚡ **24/7 ඉක්මන් කාර්මික සේවා පෝරමය පුරවන ආකාරය**:
-
-1. **සේවා ක්ෂේත්‍රය (Service Category)**: ඔබට අවශ්‍ය කාර්මිකයා තෝරන්න (විදුලි, නල, වාහන කාර්මික, AC අලුත්වැඩියා, මේසන්).
-2. **ගැටලුව කෙටියෙන් (Issue Summary)**: අලුත්වැඩියා කළයුතු දේ සඳහන් කරන්න (උදා: *"ප්‍රධාන ජල නලය පුපුරා ජලය ගලා යයි"*).
-3. **හදිසි මට්ටම (Urgency)**: *ක්ෂණිකව (දැන්ම)* හෝ *අද දින තුළ* යන්න තෝරන්න.
-4. **ස්ථානය (Location - 15km)**: ඔබගේ නිවසේ/ස්ථානයේ ලිපිනය තහවුරු කරන්න. එවිට 15km රේඩාර් සීමාව තුළ සිටින කාර්මිකයන්ට පණිවිඩය යයි.
-5. **සම්බන්ධවීම (Contact Method)**: දුරකථන ඇමතුමකින්ද WhatsApp මඟින්ද සම්බන්ධ විය යුත්තේ යන්න තෝරා Submit කරන්න.`,
-        actions: [
-          { type: 'open_quick', label: '⚡ ඉක්මන් සේවා පෝරමය විවෘත කරන්න' },
-        ],
-        quickChips: ['කාර්මිකයන්ගේ සත්‍යාපනය පරීක්ෂා කරන්නේ කොහොමද?', 'ගාස්තු තීරණය වන්නේ කෙසේද?'],
-      };
-    }
-  }
-
-  // 1.4 Find For Me / Lost Item Form (සොයාදෙන්න පෝරමය)
-  if (isFormFillingQuery && (lower.includes('නැති') || lower.includes('lost') || lower.includes('found') || lower.includes('සොයා') || lower.includes('find'))) {
-    return {
-      text: `🔍 **නැතිවූ හෝ සොයන දේ (Find For Me) පෝරමය පුරවන ආකාරය**:
-
-1. **නැතිවූ භාණ්ඩයේ වර්ගය (Item Category)**: ජාතික හැඳුනුම්පත (NIC), රියදුරු බලපත්‍රය, මුදල් පසුම්බිය, සුරතල් සතෙකු හෝ වෙනත් ලියකියවිලි.
-2. **මාතෘකාව (Title)**: භාණ්ඩයේ නම සහ හඳුනාගැනීමේ විස්තර (උදා: *"කළු පැහැති Leather Wallet එකක් - NIC සහ ATM කාඩ්පත් සමඟ"*).
-3. **නැතිවූ ස්ථානය සහ දිනය (Lost Location & Date)**: අවසන් වරට තිබූ ස්ථානය, බස් රථ අංකය, හෝ නගරය.
-4. **ත්‍යාග මුදලක් (Optional Reward)**: සොයාදෙන කෙනෙකුට ලබාදෙන ත්‍යාග මුදලක් ඇත්නම් සඳහන් කරන්න (උදා: රු. 2,000/=).
-5. **ඡායාරූපය (Photo)**: භාණ්ඩයේ හෝ සුරතලාගේ පැහැදිලි ඡායාරූපයක් ඇතුළත් කරන්න.
-6. **Submit**: දැන්වීම පළවූ පසු මුළු දිවයිනටම විකාශය වන අතර යමෙකුට හමුවූ විට ඔබට ක්ෂණිකව පණිවිඩයක් එවනු ඇත.`,
-      actions: [{ type: 'open_find', label: '🔍 සොයාදෙන්න පෝරමය විවෘත කරන්න' }],
-      quickChips: ['හැඳුනුම්පතක් නැතිවූ විට කළයුතු දේ', 'ත්‍යාග මුදල් ගෙවන්නේ කෙසේද?'],
-    };
-  }
-
-  // 1.5 From Me To You / Free Donation Form (නොමිලේ පරිත්‍යාග පෝරමය)
-  if (isFormFillingQuery && (lower.includes('දීමන') || lower.includes('donate') || lower.includes('නොමිලේ') || lower.includes('from me') || lower.includes('පරිත්‍යාග'))) {
-    return {
-      text: `🎁 **නොමිලේ දීමනා සහ පරිත්‍යාග (From Me To You) පෝරමය පුරවන ආකාරය**:
-
-1. **දීමනා භාණ්ඩයේ නම (Item Name)**: පරිත්‍යාග කරන ද්‍රව්‍ය (උදා: *"10-11 ශ්‍රේණි පෙළපොත් කට්ටලය"*, *"පාවිච්චි කළ රෝද පුටුවක්"*).
-2. **භාණ්ඩයේ තත්ත්වය (Condition)**: *ඉතා හොඳ තත්ත්වයේ (Good)*, *සුළු වශයෙන් පාවිච්චි කළ (Used)*.
-3. **ලබාගැනීමේ ක්‍රමය (Pickup/Delivery)**: ඔබගේ නිවසින් පැමිණ රැගෙන යා යුතුද, නැතහොත් තැපැල්/කුරියර් මඟින් යැවිය හැකිද යන්න සඳහන් කරන්න.
-4. **ඡායාරූපය (Photo)**: භාණ්ඩයේ සත්‍ය ඡායාරූපයක් එක්කරන්න.
-5. **පළකිරීම**: අවශ්‍යතාව ඇති කෙනෙකු ඔබ හා සම්බන්ධ වී එය ලබාගනු ඇත. කිසිදු මුදලක් අය නොකෙරේ.`,
-      actions: [{ type: 'open_from_you', label: '🎁 නොමිලේ දීමනා පෝරමය විවෘත කරන්න' }],
-      quickChips: ['පොත්පත් පරිත්‍යාගයක්', 'ආධාර උපකරණ පරිත්‍යාගයක්'],
-    };
-  }
-
-  // 1.6 General Form Filling Guide (පොදුවේ සියලු පෝරම පිළිබඳ මඟපෙන්වීම)
   if (isFormFillingQuery) {
     return {
-      text: `📝 **සහය සේවා පද්ධතියේ පෝරම සහ ලේඛන පුරවන ආකාරය පිළිබඳ සම්පූර්ණ මඟපෙන්වීම**:
+      text: `📝 **පෝරම නිවැරදිව පිරවීමට පියවරෙන් පියවර මඟපෙන්වීම**:
 
-ඔබට අවශ්‍ය පෝරමය පහතින් තෝරන්න. එක් එක් පෝරමය සඳහා පියවරෙන් පියවර උපදෙස් ලබාදීමට මම සූදානම්:
-
-1. **📝 ප්‍රජා උපකාර ඉල්ලුම් පෝරමය (Community Help Request)**: නිවසේ අලුත්වැඩියා, වෛද්‍ය ආධාර, ප්‍රවාහන උදවු ආදිය සඳහා.
-2. **🩸 හදිසි රුධිර & ආපදා සහන පෝරමය (Blood & Disaster Request)**: ලේ අවශ්‍යතා සහ ආපදා ආධාර සඳහා.
-3. **⚡ 24/7 ඉක්මන් කාර්මික සේවා පෝරමය (Quick Services)**: විදුලි, නල, වාහන කාර්මිකයන් 15km දුරින් ගෙන්වා ගැනීමට.
-4. **🔍 සොයාදෙන්න / නැතිවූ දේ පෝරමය (Find For Me / Lost & Found)**: NIC, Wallet, සුරතල් සතුන් සෙවීමට.
-5. **🎁 මගෙන් ඔබට නොමිලේ දීමනා පෝරමය (From Me To You)**: පොත්, ඇඳුම්, උපකරණ පරිත්‍යාග කිරීමට.
-6. **🛒 වෙළඳපල භාණ්ඩ / සාප්පු පෝරමය (Marketplace)**: අඩුම මිලට භාණ්ඩ විකිණීමට හෝ සාප්පුවක් ලියාපදිංචි කිරීමට.
-7. **🚨 හදිසි රතු නිවේදන පෝරමය (Red Alert Hazard Report)**: ගංවතුර, ගිනිගැනීම් ආපදා සයිරන් නිකුත් කිරීමට.`,
+1. **උපකාර ඉල්ලුම් පෝරමය (Community Help Form)**:
+   - මාතෘකාව: ගැටලුව කෙටියෙන් ලියන්න.
+   - කාණ්ඩය: විදුලි, නල, වෛද්‍ය, ප්‍රවාහන ආදී සුදුසු කාණ්ඩය තෝරන්න.
+   - ගෙවීම්: ස්වේච්ඡා (නොමිලේ) ද ගෙවීම් සහිත ද යන්න සඳහන් කරන්න.
+   - ස්ථානය: ඔබගේ දිස්ත්‍රික්කය සහ පොලිස් වසම තෝරන්න.
+2. **ක්ෂණික සේවා පෝරමය (Quick Services)**:
+   - සිදුවී ඇති දෝෂය සහ අවශ්‍ය කාර්මිකයා තෝරන්න.
+3. **හදිසි ලේ ඉල්ලුම් පෝරමය**:
+   - රෝගියාගේ නම, රෝහල සහ ලේ වර්ගය තෝරන්න.`,
       actions: [
         { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
-        { type: 'open_blood', label: '🩸 ලේ & ආපදා පෝරමය' },
-        { type: 'open_quick', label: '⚡ ඉක්මන් සේවා පෝරමය' },
-        { type: 'open_find', label: '🔍 සොයාදෙන්න පෝරමය' },
+        { type: 'open_blood', label: '🩸 ලේ ඉල්ලුම් පෝරමය' },
       ],
-      quickChips: [
-        'උපකාර පෝරමය පුරවන්නේ කොහොමද?',
-        'ලේ ඉල්ලුම් පෝරමය පුරවන්නේ කොහොමද?',
-        'ඉක්මන් සේවා පෝරමය පුරවන්නේ කොහොමද?',
-        'නැතිවූ දේ පෝරමය පුරවන්නේ කොහොමද?',
-      ],
+      quickChips: ['ඡායාරූප Upload කරන්නේ කෙසේද?', 'Start PIN එක යනු කුමක්ද?'],
     };
   }
 
   // -------------------------------------------------------------
-  // 2. HOW TO CONNECT & COMMUNICATE (සම්බන්ධ වන්නේ කෙසේද?)
+  // Default Comprehensive App Guidance
   // -------------------------------------------------------------
-  const isConnectQuery =
-    lower.includes('සම්බන්ධ') ||
-    lower.includes('connect') ||
-    lower.includes('contact') ||
-    lower.includes('කතා කරන්නේ') ||
-    lower.includes('පණිවිඩ යවන්නේ') ||
-    lower.includes('chat') ||
-    lower.includes('தொடர்பு');
-
-  if (isConnectQuery) {
-    if (lang === 'en') {
-      return {
-        text: `🤝 **How to Connect with Services & Community Members**:
-
-1. **💬 In-App Private Chat**:
-   • Click the **Message / Chat icon** on any Help Post, Service Provider, or Shop profile to start an encrypted, secure direct chat.
-2. **📞 Direct WhatsApp & Phone Call**:
-   • Verified posts include a direct WhatsApp call/chat button for instant contact.
-3. **🚨 Emergency Radar & Sirens**:
-   • Red Alerts automatically broadcast proximity sirens to all active users within 5km.
-4. **📍 GPS & Police Division Location Match**:
-   • The system matches you with helpers and artisans located closest to your verified District & Police Division.
-5. **📞 24/7 National Emergency Helplines**:
-   • Police (119), Suwa Seriya Ambulance (1990), Disaster Management (117). Available offline.`,
-        actions: [
-          { type: 'open_directory', label: '📞 Emergency Helplines (1990/119)' },
-          { type: 'open_quick', label: '⚡ Quick Services' },
-        ],
-        quickChips: ['How to start in-app chat?', 'How to find helpers near me?'],
-      };
-    } else {
-      return {
-        text: `🤝 **සේවාවන් සහ ප්‍රජා සාමාජිකයන් සමඟ සම්බන්ධ වන්නේ කෙසේද?**:
-
-1. **💬 පද්ධතිය තුළ පෞද්ගලික චැට් (In-App Direct Chat)**:
-   • ඕනෑම උපකාර දැන්වීමක, කාර්මිකයෙකුගේ හෝ සාප්පුවක ඇති **Message (පණිවිඩ)** බොත්තම එබූ විට පෞද්ගලිකව කතාබස් කළ හැකි ආරක්ෂිත Chat එකක් විවෘත වේ.
-2. **📞 සෘජු WhatsApp සහ දුරකථන ඇමතුම්**:
-   • සත්‍යාපිත සාමාජිකයන්ගේ දැන්වීම්වල ඇති WhatsApp හෝ Call බොත්තමෙන් කෙළින්ම දුරකථනයෙන් සම්බන්ධ විය හැක.
-3. **🚨 හදිසි රතු නිවේදන සයිරන් (5km Proximity Radar)**:
-   • ඔබ සිටින ස්ථානයේ සිට 5km ඇතුළත හදිසි ආපදාවක් වාර්තා වූ විට ඔබගේ දුරකථනයේ හදිසි අනතුරු ඇඟවීමේ සයිරන් ශබ්දයක් වාදනය වේ.
-4. **📍 GPS සහ දිස්ත්‍රික්ක ස්ථාන ගැලපීම**:
-   • ඔබගේ දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය අනුව ළඟම සිටින කාර්මිකයන් සහ උදවුකරුවන් පද්ධතිය විසින් ස්වයංක්‍රීයව පෙන්වයි.
-5. **📞 ජාතික නොබැඳි හදිසි දුරකථන අංක**:
-   • පොලිස් හදිසි ඇමතුම් (119), සුවසැරිය ගිලන්රථ (1990), ආපදා කළමනාකරණ (117) ඕනෑම වේලාවක නොමිලේ අමතන්න.`,
-        actions: [
-          { type: 'open_directory', label: '📞 හදිසි දුරකථන අංක නාමාවලිය' },
-          { type: 'open_quick', label: '⚡ ළඟම සිටින කාර්මිකයන් බලන්න' },
-        ],
-        quickChips: ['චැට් කරන්නේ කොහොමද?', '15km රේඩාර් ක්‍රියාකරන්නේ කොහොමද?', 'හදිසි ඇමතුම් අංක'],
-      };
-    }
-  }
-
-  // -------------------------------------------------------------
-  // 3. HOW IT WORKS / WORKFLOW BREAKDOWNS (ක්‍රියාකරන්නේ කෙසේද?)
-  // -------------------------------------------------------------
-  const isHowItWorksQuery =
-    lower.includes('ක්‍රියා') ||
-    lower.includes('වැඩ කරන්නේ') ||
-    lower.includes('how it work') ||
-    lower.includes('workflow') ||
-    lower.includes('process') ||
-    lower.includes('இயங்குகிறது');
-
-  if (isHowItWorksQuery) {
-    if (lang === 'en') {
-      return {
-        text: `🔄 **How the Sahaya Seva Platform Works (Core System Workflows)**:
-
-1. **Community Help Request Lifecycle**:
-   • **Post Request** ➔ **Locality Broadcast** (Firestore) ➔ **Helpers submit Offers** ➔ **You Accept Offer** ➔ **Task Done & Bill Settled**.
-2. **Emergency Blood Donor Radar**:
-   • **Blood Request Created** ➔ **Instant District Radar matches blood type** ➔ **Donors alerted** ➔ **Direct hospital coordinate**.
-3. **24/7 Quick Services (15km Distance Matrix)**:
-   • **Urgent Issue Posted** ➔ **Verified Artisans within 15km notified** ➔ **Direct Call / Chat** ➔ **On-site Fix**.
-4. **Marketplace Lowest Prices & Price Gaps**:
-   • Suppliers list daily prices ➔ System calculates lowest price & savings gap ➔ Buyers purchase at verified cheapest rates.
-5. **User Trust Score & Badges**:
-   • Every user profile has Trust Scores based on verified NIC, successful help completed, and authentic reviews.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 Post a Help Request' },
-          { type: 'open_market', label: '🛒 View Lowest Market Prices' },
-          { type: 'open_blood', label: '🩸 Blood & Disaster Hub' },
-        ],
-        quickChips: ['How does Blood Radar work?', 'How does 15km quick service work?', 'How do Trust Scores work?'],
-      };
-    } else {
-      return {
-        text: `🔄 **සහය සේවා පද්ධතිය ක්‍රියාත්මක වන ආකාරය (සම්පූර්ණ ක්‍රියාවලිය)**:
-
-1. **ප්‍රජා උපකාර දැන්වීම් ක්‍රියාවලිය (Help Request Lifecycle)**:
-   • **ඔබ ඉල්ලීමක් පළකරයි** ➔ **ප්‍රදේශයේ අයට විකාශය වේ** ➔ **උදවුකරුවන් Offers එවයි** ➔ **ඔබ සුදුසු කෙනා තෝරාගනී** ➔ **කාර්යය අවසන් කර තහවුරු කරයි**.
-2. **හදිසි ලේ පරිත්‍යාග රේඩාර් ක්‍රියාවලිය (Blood Radar)**:
-   • **ලේ ඉල්ලීමක් නිකුත් කරයි** ➔ **අදාළ දිස්ත්‍රික්කයේ ගැලපෙන ලේ වර්ගයේ පරිත්‍යාගශීලීන්ට ක්ෂණික Alert එකක් යයි** ➔ **රෝහලේදී ලේ දන් දෙයි**.
-3. **ඉක්මන් කාර්මික සේවා (15km Quick Services)**:
-   • **කාර්මික අවශ්‍යතාව පළකරයි** ➔ **15km ඇතුළත සිටින සත්‍යාපිත කාර්මිකයන්ට පණිවිඩය යයි** ➔ **කෙළින්ම කතාබස් කර පැමිණේ**.
-4. **වෙළඳපල අඩුම මිල දර්ශකය (Marketplace Price Gaps)**:
-   • වෙළෙන්දන් භාණ්ඩ මිල ඇතුළත් කරයි ➔ පද්ධතිය අඩුම මිල සහ ඉතිරි කරගත හැකි ලාභ ප්‍රතිශතය (Price Gap) සසඳා පෙන්වයි.
-5. **විශ්වාසනීය ලකුණු (Trust Score & Badges)**:
-   • NIC සත්‍යාපනය, ලබාදුන් සාර්ථක සහය සහ පරිශීලක ඇගයීම් මත සෑම සාමාජිකයෙකුටම Trust Score එකක් හිමිවේ.`,
-        actions: [
-          { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
-          { type: 'open_market', label: '🛒 අඩුම මිල ගණන් සහ මිල පරතරය' },
-          { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය' },
-        ],
-        quickChips: [
-          'ලේ පරිත්‍යාග රේඩාර් ක්‍රියාකරන්නේ කොහොමද?',
-          'ඉක්මන් සේවා ක්‍රියාකරන්නේ කොහොමද?',
-          'පෝරම පුරවන්නේ කොහොමද?',
-        ],
-      };
-    }
-  }
-
-  // -------------------------------------------------------------
-  // 4. SECTOR-SPECIFIC DETAILED RESPONSES
-  // -------------------------------------------------------------
-
-  // Blood & Disaster
-  if (lower.includes('ලේ') || lower.includes('blood') || lower.includes('இரத்தம்') || lower.includes('ආපදා') || lower.includes('disaster')) {
-    return {
-      text: `🩸 **හදිසි රුධිර සහ ආපදා සහන කේන්ද්‍රය (Blood & Disaster Hub)**:
-
-• **සම්බන්ධ වන ආකාරය**: හදිසි ලේ අවශ්‍යතාවක් ඇතිවිට පෝරමය පුරවා Submit කරන්න. දිස්ත්‍රික්කයේ සිටින ගැලපෙන ලේ වර්ගය ඇති ස්වේච්ඡා දායකයන්ට ක්ෂණිකව Alert එකක් යයි.
-• **ලේ පරිත්‍යාගශීලියෙකු ලෙස ලියාපදිංචි වීම**: 'ලේ පරිත්‍යාගශීලියෙකු වන්න' බොත්තම ඔබා ඔබගේ ලේ වර්ගය සහ දිස්ත්‍රික්කය ඇතුළත් කරන්න.
-• **පෝරමය පිරවීමට**: රෝගියාගේ නම, රුධිර වර්ගය (A+, B+, O+, AB+, Platelets), රෝහල, අවශ්‍ය ඒකක ගණන සහ දුරකථන අංකය ඇතුළත් කරන්න.`,
-      actions: [
-        { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය විවෘත කරන්න' },
-        { type: 'open_directory', label: '📞 නොබැඳි හදිසි අංක (1990/119)' },
-      ],
-      quickChips: ['ලේ ඉල්ලුම් පෝරමය පුරවන හැටි', 'O+ ලේ අවශ්‍යයි', 'ලේ දන් දෙන්නෙක් ලෙස ලියාපදිංචි වන්න'],
-    };
-  }
-
-  // Quick Services
-  if (lower.includes('කාර්මික') || lower.includes('electric') || lower.includes('plumb') || lower.includes('mechanic') || lower.includes('ඉක්මන්') || lower.includes('quick') || lower.includes('repair')) {
-    return {
-      text: `⚡ **පැය 24 පුරා ක්‍රියාත්මක ඉක්මන් කාර්මික සේවා (24/7 Quick Services)**:
-
-• **සම්බන්ධ වන ආකාරය**: ඔබගේ ප්‍රදේශයේ සිටින (15km රේඩාර් සීමාවේ) විදුලි, නල, වාහන කාර්මිකයන් හෝ මේසන්වරුන් කෙළින්ම දුරකථනයෙන් හෝ චැට් මඟින් සම්බන්ධ කරගන්න.
-• **ක්‍රියාකරන ආකාරය**: ඔබගේ හදිසි ගැටලුව පළකළ විට ළඟම සිටින සත්‍යාපිත කාර්මිකයන් වෙත ක්ෂණික Notification එකක් යයි. ඔවුන් ඔබව කෙළින්ම අමතයි.
-• **පෝරමය පිරවීමට**: සේවා වර්ගය තෝරා, ගැටලුව විස්තර කර, ලිපිනය තහවුරු කරන්න.`,
-      actions: [
-        { type: 'open_quick', label: '⚡ ඉක්මන් සේවා පෝරමය විවෘත කරන්න' },
-      ],
-      quickChips: ['ඉක්මන් සේවා පෝරමය පුරවන හැටි', 'විදුලි කාර්මිකයෙක් අවශ්‍යයි', 'නල කාර්මිකයෙක් අවශ්‍යයි'],
-    };
-  }
-
-  // Find For Me
-  if (lower.includes('නැති') || lower.includes('lost') || lower.includes('found') || lower.includes('සොයා') || lower.includes('தொலைந்த') || lower.includes('wallet') || lower.includes('nic')) {
-    return {
-      text: `🔍 **සොයාදෙන්න - නැතිවූ හෝ සොයන දේ (Find For Me)**:
-
-• **සම්බන්ධ වන ආකාරය**: නැතිවූ මුදල් පසුම්බිය, ජාතික හැඳුනුම්පත (NIC), රියදුරු බලපත්‍රය, සුරතල් සතුන් හෝ ලියකියවිලි ගැන ඡායාරූප සමඟ දැන්වීමක් පළකරන්න.
-• **ක්‍රියාකරන ආකාරය**: දැන්වීම දිවයින පුරා සිටින පරිශීලකයන්ට විකාශය වේ. යමෙකුට එම භාණ්ඩය හමුවුවහොත් ඔවුන් ඔබට පද්ධතිය හරහා පණිවිඩයක් එවනු ඇත.
-• **පෝරමය පිරවීමට**: භාණ්ඩයේ වර්ගය, නැතිවූ ස්ථානය/දිනය, ඡායාරූපය සහ කැමති නම් ත්‍යාග මුදලක් (Reward) සඳහන් කරන්න.`,
-      actions: [{ type: 'open_find', label: '🔍 සොයාදෙන්න පෝරමය විවෘත කරන්න' }],
-      quickChips: ['නැතිවූ දේ පෝරමය පුරවන හැටි', 'මුදල් පසුම්බිය / NIC නැතිවුණා', 'සුරතල් සතෙක් නැතිවුණා'],
-    };
-  }
-
-  // From Me To You
-  if (lower.includes('දීමන') || lower.includes('donate') || lower.includes('give') || lower.includes('නොමිලේ') || lower.includes('தானம்') || lower.includes('පරිත්‍යාග')) {
-    return {
-      text: `🎁 **මගෙන් ඔබට - නොමිලේ දීමනා සහ පරිත්‍යාග (From Me To You)**:
-
-• **සම්බන්ධ වන ආකාරය**: ඔබ සතුව ඇති අමතර පාසල් පොත්පත්, ඇඳුම්, ගෘහ උපකරණ හෝ ආධාර උපකරණ (රෝද පුටු, කිහිලි කරු) අවශ්‍යතා ඇති අයට නොමිලේ පරිත්‍යාග කිරීමට මෙහි පළකරන්න.
-• **ක්‍රියාකරන ආකාරය**: අවශ්‍යතාව ඇති කෙනෙකු ඔබ හා පෞද්ගලිකව චැට් මඟින් සම්බන්ධ වී එය ලබාගැනීමට කටයුතු සම්පාදනය කරනු ඇත.`,
-      actions: [{ type: 'open_from_you', label: '🎁 නොමිලේ දීමනා පෝරමය විවෘත කරන්න' }],
-      quickChips: ['නොමිලේ දීමනා පෝරමය පුරවන හැටි', 'පොත්පත් පරිත්‍යාගයක්', 'රෝද පුටුවක් පරිත්‍යාගයක්'],
-    };
-  }
-
-  // Marketplace & Lowest Prices
-  if (lower.includes('මිල') || lower.includes('price') || lower.includes('market') || lower.includes('හාල්') || lower.includes('සීනි') || lower.includes('වෙළඳපල') || lower.includes('අඩුම') || lower.includes('පරතර')) {
-    return {
-      text: `🛒 **වෙළඳපල අඩුම මිල ගණන් සහ මිල පරතරය සංසන්දනය**:
-
-• **ක්‍රියාකරන ආකාරය**: සෑම භාණ්ඩයකම වෙළෙන්දන් අතර ඇති අවම මිල, උපරිම මිල සහ ඉතිරි කරගත හැකි ලාභ පරතරය (Price Gap) පද්ධතිය මඟින් ස්වයංක්‍රීයව සසඳා පෙන්වයි.
-• **සම්බන්ධ වන ආකාරය**: අඩුම මිලට භාණ්ඩ ලබාදෙන වෙළෙන්දාගේ නම, දුරකථන අංකය සහ සාප්පු ලිපිනය පරීක්ෂා කර සෘජුවම මිලදී ගන්න.`,
-      actions: [{ type: 'open_market', label: '🛒 අඩුම මිල ගණන් සහ මිල පරතරය බලන්න' }],
-      quickChips: ['වෙළඳපල ක්‍රියාකරන්නේ කොහොමද?', 'කීරි සම්බා සහල් මිල', 'පොල්තෙල් මිල සංසන්දනය'],
-    };
-  }
-
-  // Wallet & Credits
-  if (lower.includes('credit') || lower.includes('limit') || lower.includes('wallet') || lower.includes('ණය') || lower.includes('මුදල්') || lower.includes('ශේෂ') || lower.includes('සීමා')) {
-    return {
-      text: `💳 **සහය මිතුරා සහ Wallet Credits විස්තර**:
-
-• **සහය මිතුරා (AI Assistant)**: භාවිතා කිරීමට කිසිදු සීමාවක් (No Limit) හෝ කිසිදු Credit මුදලක් වැය නොවේ (100% සම්පූර්ණයෙන්ම නොමිලේ).
-• **Wallet Credits වැය වන ආකාරය**: ඔබ පද්ධතිය තුළ වාණිජ හෝ ප්‍රවර්ධන දැන්වීම් පළකරන විට පමණක් Wallet එකෙන් සුළු මුදලක් වැය වේ.
-• **Credits ලබාගැනීම**: නව ලියාපදිංචියේදී නොමිලේ Welcome Credits හිමිවන අතර Wallet එකෙන් Top-up කළ හැක.`,
-      actions: [{ type: 'open_wallet', label: '💳 Wallet එක විවෘත කර ශේෂය බලන්න' }],
-      quickChips: ['පෝරම පුරවන්නේ කොහොමද?', 'ණය මුදල් තැන්පත් කරන්නේ කෙසේද?'],
-    };
-  }
-
-  // -------------------------------------------------------------
-  // 5. IN-APP TROUBLESHOOTING & ISSUE RESOLUTION (ගැටලු විසඳා ගැනීම)
-  // -------------------------------------------------------------
-  const isTroubleQuery =
-    lower.includes('ගැටලු') ||
-    lower.includes('problem') ||
-    lower.includes('issue') ||
-    lower.includes('error') ||
-    lower.includes('බැහැ') ||
-    lower.includes('නොහැක') ||
-    lower.includes('වැඩ කරන්නේ නැහැ') ||
-    lower.includes('gps') ||
-    lower.includes('ස්ථානය') ||
-    lower.includes('upload') ||
-    lower.includes('photo') ||
-    lower.includes('චැට්') ||
-    lower.includes('මුරපද') ||
-    lower.includes('password') ||
-    lower.includes('ප්‍රශ්න');
-
-  if (isTroubleQuery) {
-    if (lower.includes('gps') || lower.includes('ස්ථාන') || lower.includes('location')) {
-      return {
-        text: `📍 **GPS සහ ස්ථානය හඳුනාගැනීමේ ගැටලුව විසඳා ගැනීම (Troubleshooting)**:
-
-1. **ස්ථාන අවසරය (Location Permission)**: ඔබගේ Browser එකේ (Chrome/Safari) URL තීරුවේ ඇති අගුලේ සලකුණ (Lock icon) ඔබා **Location: Allow** කර Reload කරන්න.
-2. **Device GPS සක්‍රිය කිරීම**: ඔබගේ දුරකථනයේ හෝ පරිගණකයේ Location / GPS සක්‍රිය කර ඇත්දැයි බලන්න.
-3. **ස්වයංක්‍රීයව වෙනුවට අතින් තේරීම**: GPS සංඥා දුර්වල නම්, ඉහළ ඇති Location තීරුවෙන් ඔබගේ **දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය** සෘජුවම තෝරාගත හැක.`,
-        actions: [
-          { type: 'open_issues_help', label: '❓ තාක්ෂණික ගැටලු වාර්තා කරන්න' },
-        ],
-        quickChips: ['GPS හරිගස්සන්නේ කොහොමද?', 'පෝරම පුරවන්නේ කොහොමද?', 'පරිපාලකට පණිවිඩයක් යවන්න'],
-      };
-    }
-
-    if (lower.includes('photo') || lower.includes('upload') || lower.includes('ඡායාරූප')) {
-      return {
-        text: `📷 **ඡායාරූප Upload වීමේ ගැටලු විසඳා ගැනීම**:
-
-1. **කැමරා අවසර (Camera Permission)**: Browser එකෙන් කැමරාව සහ Gallery සඳහා අවසර (Allow) ලබාදී ඇත්දැයි පරීක්ෂා කරන්න.
-2. **ස්වයංක්‍රීය සම්පීඩනය (Auto Compress)**: අපගේ පද්ධතිය ඡායාරූප ස්වයංක්‍රීයව සුළු ප්‍රමාණයකට සම්පීඩනය (Compress) කරයි. ඔබගේ අන්තර්ජාලය දුර්වල අවස්ථාවකදී තත්පර කිහිපයක් රැඳී සිටින්න.
-3. **ආලෝකය සහ ගුණාත්මකභාවය**: ඡායාරූපය නොසෙල්වී, පැහැදිලි ආලෝකයකින් ලබාගන්න.`,
-        actions: [{ type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' }],
-        quickChips: ['NIC ඡායාරූප ගන්නේ කොහොමද?', 'පෝරම පුරවන්නේ කොහොමද?'],
-      };
-    }
-
-    if (lower.includes('credit') || lower.includes('ණය') || lower.includes('ශේෂ')) {
-      return {
-        text: `💳 **Wallet Credits සහ ශේෂ ගැටලු විසඳා ගැනීම**:
-
-1. **නොමිලේ සේවාවන්**: **සහය මිතුරා (AI Assistant)**, හදිසි ලේ ඉල්ලීම් සහ ආපදා සයිරන් සඳහා කිසිදු Credit මුදලක් වැය නොවේ (100% නොමිලේ).
-2. **Credits ඉපයීම**: අන් අයට උදවු කිරීමෙන් සහ ප්‍රජා සේවාවන් සම්පූර්ණ කිරීමෙන් නොමිලේ Credits උපයාගත හැක.
-3. **Top-Up කිරීම**: අවශ්‍ය නම් Wallet Modal එකෙන් Credits ලබාගැනීමට ඉල්ලුම් කළ හැක.`,
-        actions: [{ type: 'open_wallet', label: '💳 Wallet ශේෂය පරීක්ෂා කරන්න' }],
-        quickChips: ['Credits උපයන්නේ කොහොමද?', 'Wallet ශේෂය බලන්න'],
-      };
-    }
-
-    // General Troubleshooting Guide
-    return {
-      text: `🛠️ **ඇප් එකේ ගැටලු විසඳාගැනීමේ මඟපෙන්වීම (Troubleshooting Hub)**:
-
-ඔබ මුහුණදෙන ගැටලුව තෝරන්න. එය විසඳාගන්නා ආකාරය පියවරෙන් පියවර කියාදීමට මම සූදානම්:
-
-1. **📍 GPS සහ ස්ථාන අවසර ගැටලු**: Location සක්‍රිය කිරීම සහ දිස්ත්‍රික්කය අතින් තේරීම.
-2. **📷 ඡායාරූප Upload ගැටලු**: පැහැදිලි ඡායාරූප ගැනීම සහ Camera permissions.
-3. **🔑 Login සහ මුරපද ගැටලු**: තාවකාලික මුරපදය ස්ථිර මුරපදයක් බවට පත්කිරීම.
-4. **📢 දැන්වීම් වලට ප්‍රතිචාර නොලැබීම**: මාතෘකාව, විස්තරය සහ ඡායාරූප නිවැරදි කර Boost කිරීම.
-5. **❓ පරිපාලක සහය ලබාගැනීම**: තාක්ෂණික සහය සඳහා Issues Help Desk වෙත පණිවිඩයක් යැවීම.`,
-      actions: [
-        { type: 'open_issues_help', label: '❓ ගැටලු & තාක්ෂණික උපකාර' },
-        { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
-      ],
-      quickChips: [
-        'GPS ගැටලුවක් විසඳන්නේ කොහොමද?',
-        'ඡායාරූප Upload වෙන්නේ නැහැ',
-        'මුරපදය මාරු කරන්නේ කොහොමද?',
-        'පෝරම පුරවන්නේ කොහොමද?',
-      ],
-    };
-  }
-
-  // General Welcome & Guidance
   if (lang === 'en') {
     return {
-      text: `👋 Hello! I am **Sahaya Mithura (සහය මිතුරා)** — your personal guide and step-by-step instructor.
+      text: `👋 Hello! I am **Sahaya Mithura (සහය මිතුරා)** — your official guide for the Sahaya Sewa platform.
 
-I am here to teach and guide you on:
-• 📝 **How to Fill Forms**: Step-by-step field guides for Help Requests, Blood Bank, Quick Services & Lost Items.
-• 🤝 **How to Connect**: In-app private chat, direct WhatsApp calls, and emergency sirens.
-• 🔄 **How Services Work**: Complete workflows from posting to offer matching and task completion.
-• 🩸 **Emergency Blood & Disaster Hub**: Radar matching for urgent blood donors.
-• ⚡ **24/7 Quick Services**: Electricians, Plumbers, Mechanics within 15km.
-• 🛒 **Marketplace Price Gaps**: Finding the lowest daily commodity prices.
+I am here to guide you on any service or feature:
+• 🩸 **Emergency Blood Radar**: Instant matching for urgent blood donors.
+• ⚡ **24/7 Quick Services**: Connect with nearby verified electricians, plumbers, and mechanics.
+• 🚨 **5km Red Alert Sirens**: Instant disaster alerts and live GPS maps.
+• 🛒 **Lowest Market Prices**: Compare grocery prices across local shops.
+• 📝 **Form Guides**: How to post requests, register relief centers, and verify help.
 
-What would you like me to guide you through today?`,
+What would you like assistance with today?`,
       actions: [
         { type: 'open_help_post', label: '📝 Post a Help Request' },
         { type: 'open_quick', label: '⚡ Quick Services' },
+        { type: 'open_blood', label: '🩸 Blood Radar' },
         { type: 'open_market', label: '🛒 Lowest Prices' },
-        { type: 'open_blood', label: '🩸 Blood & Disaster' },
       ],
       quickChips: [
-        'How to fill Help Request Form?',
-        'How do I connect with helpers?',
+        'What does this app do?',
+        'How to fill forms?',
         'How does Blood Radar work?',
         'Check Lowest Market Prices',
-      ],
-    };
-  } else if (lang === 'ta') {
-    return {
-      text: `👋 வணக்கம்! நான் **சகாய மித்துரா (Sahaya Mithura)** — உங்கள் தனிப்பட்ட வழிகாட்டி மற்றும் பயிற்றுவிப்பாளர்.
-
-நான் உங்களுக்கு உதவ தயாராக உள்ளேன்:
-• 📝 **படிவங்களை நிரப்புவது எப்படி**: உதவி கோரிக்கைகள், இரத்த தானம், விரைவு சேவைகள் படிவ வழிகாட்டல்கள்.
-• 🤝 **தொடர்புகொள்வது எப்படி**: நேரடி அரட்டை (In-App Chat), வாட்ஸ்அப் அழைப்புகள் மற்றும் அவசர எச்சரிக்கைகள்.
-• 🔄 **சேவைகள் எவ்வாறு இயங்குகின்றன**: கோரிக்கை முதல் உதவி முடிவடையும் வரையிலான முழுமையான வழிமுறை.
-• 🩸 **அவசர இரத்தம் மற்றும் பேரழிவு நிவாரணம்**.
-• ⚡ **24/7 விரைவு சேவைகள்** (மின்சாரம், குழாய், மெக்கானிக்).
-• 🛒 **குறைந்தபட்ச சந்தை விலைகள் ஒப்பீடு**.
-
-இன்று உங்களுக்கு என்ன வழிகாட்டல் தேவை?`,
-      actions: [
-        { type: 'open_help_post', label: '📝 உதவி படிவத்தைத் திறக்கவும்' },
-        { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
-        { type: 'open_market', label: '🛒 சந்தை விலைகள்' },
-        { type: 'open_blood', label: '🩸 இரத்த தானம்' },
-      ],
-      quickChips: [
-        'படிவம் நிரப்புவது எப்படி?',
-        'தொடர்புகொள்வது எப்படி?',
-        'இரத்த தானம் எவ்வாறு இயங்குகிறது?',
-        'சந்தை விலைகள்',
       ],
     };
   } else {
     return {
       text: `👋 ආයුබෝවන්! මම ඔබගේ **සහය මිතුරා (Sahaya Mithura)** — පද්ධතියේ නිල මඟපෙන්වන්නා සහ උපදේශකයා.
 
-පද්ධතියේ සේවාවන් සමඟ **සම්බන්ධ වන්නේ කෙසේද**, **ක්‍රියාකරන්නේ කෙසේද** සහ **පෝරම පුරවන්නේ කෙසේද** යන්න නිවැරදිව කියාදීමට මම සූදානම්:
+පද්ධතියේ සේවාවන් පිළිබඳව ඔබ කැමති ඕනෑම දෙයක් මාගෙන් විමසිය හැක:
+• 🌟 **"මේ ඇප් එකෙන් වෙන්නේ කුමක්ද?"** — ඇප් එකේ ප්‍රධාන සේවාවන් 8 පිළිබඳ සම්පූර්ණ විස්තරය.
+• 🩸 **"ලේ ඕනෙ වුණොත් මොකද කරන්නේ?"** — දිස්ත්‍රික්කයේ ලේ පරිත්‍යාගශීලීන් සම්බන්ධ කරගැනීම.
+• ⚡ **"කාර්මිකයෙක් හොයාගන්නේ කොහොමද?"** — කි.මී. 15 සීමාවේ විදුලි, නල, වාහන කාර්මික සේවා.
+• 🚨 **"රතු නිවේදන කියන්නේ මොනවාද?"** — හදිසි අනතුරු සහ ගංවතුර පිළිබඳ කි.මී. 5 සයිරන් අනතුරු ඇඟවීම්.
+• 📍 **"කොළඹට / නුවරට දුර කොච්චරද?"** — ඔබ සිටින තැන සිට සැබෑ මාර්ග දුර සහ Google Maps මාර්ගය.
 
-• 📝 **පෝරම සහ ලේඛන පුරවන ආකාරය**: උපකාර ඉල්ලීම්, හදිසි ලේ, ඉක්මන් සේවා, නැතිවූ දේ පෝරම පියවරෙන් පියවර පිරවීම.
-• 🤝 **සම්බන්ධ වන ආකාරය**: In-App Chat, සෘජු WhatsApp ඇමතුම්, සහ හදිසි සයිරන් මඟින් සම්බන්ධවීම.
-• 🔄 **ක්‍රියාකරන ආකාරය**: දැන්වීමක් පළකිරීමේ සිට උදවු ලැබීම, සත්‍යාපනය සහ ගෙවීම් දක්වා සම්පූර්ණ ක්‍රියාවලිය.
-• 🩸 **හදිසි රුධිර & ආපදා සහන**: ගැලපෙන ලේ වර්ගයේ පරිත්‍යාගශීලීන් රේඩාර් මඟින් සම්බන්ධ කිරීම.
-• ⚡ **24/7 ඉක්මන් කාර්මික සේවා**: 15km සීමාවේ විදුලි, නල, වාහන කාර්මිකයන්.
-• 🛒 **වෙළඳපල අඩුම මිල දර්ශකය**: දවසේ අඩුම මිල සහ ඉතිරි කරගත හැකි ලාභ පරතරය සංසන්දනය.
-
-ඔබට අද මගෙන් අවශ්‍ය මඟපෙන්වීම කුමක්ද?`,
+ඔබට අවශ්‍ය සහය කුමක්ද?`,
       actions: [
         { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
-        { type: 'open_quick', label: '⚡ ඉක්මන් සේවා' },
-        { type: 'open_market', label: '🛒 අඩුම මිල ගණන්' },
-        { type: 'open_blood', label: '🩸 හදිසි ලේ කේන්ද්‍රය' },
+        { type: 'open_quick', label: '⚡ ක්ෂණික කාර්මික සේවා' },
+        { type: 'open_blood', label: '🩸 හදිසි ලේ & ආපදා' },
+        { type: 'open_market', label: '🛒 වෙළඳපල අඩුම මිල ගණන්' },
       ],
       quickChips: [
-        'පෝරම පුරවන්නේ කොහොමද?',
-        'සම්බන්ධ වන්නේ කොහොමද?',
-        'ක්‍රියාකරන්නේ කොහොමද?',
-        'ලේ ඉල්ලුම් පෝරමය පුරවන හැටි',
+        'මේ ඇප් එකෙන් වෙන්නේ කුමක්ද?',
+        'ලේ ඉල්ලුම් කරන්නේ කොහොමද?',
+        'කාර්මික සේවා ලබාගන්නේ කොහොමද?',
+        'තොරතුරු ආරක්ෂිතද?',
       ],
     };
   }
