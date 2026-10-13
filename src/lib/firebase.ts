@@ -863,9 +863,9 @@ export async function deletePasswordResetRequestFromFirestore(id: string): Promi
 }
 
 
-// -------------------------------------------------------------
-// 🤖 AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
-// -------------------------------------------------------------
+// ==============================================================
+// 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
+// ==============================================================
 export const PENDING_AI_QUERIES_COLLECTION = 'pending_ai_queries';
 export const VERIFIED_AI_KNOWLEDGE_COLLECTION = 'verified_ai_knowledge';
 
@@ -985,54 +985,5 @@ export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
     await deleteDoc(docRef);
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
-  }
-}
-
-// ==============================================================
-// 🗑️ GLOBAL DELETED RECORDS SYNCHRONIZER (ACROSS ALL CLIENTS)
-// ==============================================================
-export const SYSTEM_SETTINGS_COLLECTION = 'system_metadata';
-export const DELETED_RECORDS_DOC = 'deleted_records';
-
-export interface DeletedRecordsMap {
-  deletedPostIds?: string[];
-  deletedUserIds?: string[];
-  deletedBloodIds?: string[];
-  deletedDisasterIds?: string[];
-  deletedDonorIds?: string[];
-  deletedRedAlertIds?: string[];
-  deletedMarketplaceIds?: string[];
-  deletedMarketShopIds?: string[];
-  deletedProServiceIds?: string[];
-  deletedGroupIds?: string[];
-}
-
-export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap): Promise<void> {
-  try {
-    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
-    await setDoc(docRef, sanitizeForFirestore({
-      ...records,
-      updatedAtServer: serverTimestamp(),
-    }), { merge: true });
-  } catch (err) {
-    console.warn('saveDeletedRecordsToFirestore warning:', err);
-  }
-}
-
-export function subscribeToDeletedRecordsFromFirestore(callback: (records: DeletedRecordsMap | null) => void): () => void {
-  try {
-    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
-    return onSnapshot(docRef, (snap) => {
-      if (snap.exists()) {
-        callback(snap.data() as DeletedRecordsMap);
-      } else {
-        callback(null);
-      }
-    }, (err) => {
-      console.warn('subscribeToDeletedRecordsFromFirestore warning:', err);
-    });
-  } catch (err) {
-    console.warn('subscribeToDeletedRecordsFromFirestore setup warning:', err);
-    return () => {};
   }
 }
