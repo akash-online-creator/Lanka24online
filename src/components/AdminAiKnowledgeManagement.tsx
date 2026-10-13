@@ -9,17 +9,20 @@ import {
   deleteVerifiedAiKnowledgeItem,
 } from '../lib/firebase';
 import {
-  Brain,
+  Sparkles,
   CheckCircle2,
   Edit3,
   Trash2,
   Plus,
   Search,
+  Brain,
   Clock,
   MapPin,
   Tag,
+  Languages,
   X,
-  Sparkles,
+  AlertCircle,
+  HelpCircle,
   Save,
   Check,
 } from 'lucide-react';
@@ -30,6 +33,7 @@ interface AdminAiKnowledgeManagementProps {
 }
 
 export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProps> = ({
+  language = 'si',
   currentUser,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'pending' | 'verified'>('pending');
@@ -53,6 +57,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     setTimeout(() => setNotificationMsg(null), 4000);
   };
 
+  // Real-time Subscriptions
   useEffect(() => {
     const unsubPending = subscribeToPendingAiQueries((queries) => {
       setPendingQueries(queries || []);
@@ -67,6 +72,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     };
   }, []);
 
+  // Filtered Verified Items
   const filteredVerified = useMemo(() => {
     if (!searchQuery.trim()) return verifiedItems;
     const q = searchQuery.toLowerCase().trim();
@@ -79,8 +85,10 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     );
   }, [verifiedItems, searchQuery]);
 
+  // Handle Quick Approve
   const handleQuickApprove = async (queryItem: PendingAiQuery) => {
     try {
+      // Auto-extract keywords from question
       const autoKeywords = queryItem.question
         .replace(/[?.,!:-]/g, '')
         .split(/\s+/)
@@ -100,6 +108,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     }
   };
 
+  // Handle Reject
   const handleReject = async (pendingId: string) => {
     if (!window.confirm('මෙම ප්‍රශ්නය ප්‍රතික්ෂේප කර ඉවත් කිරීමට ඔබට සහතිකද?')) return;
     try {
@@ -110,6 +119,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     }
   };
 
+  // Handle Delete Verified
   const handleDeleteVerified = async (id: string) => {
     if (!window.confirm('මෙම දැනුම් සටහන ස්ථිරවම මකා දැමීමට ඔබට සහතිකද?')) return;
     try {
@@ -120,6 +130,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     }
   };
 
+  // Open Edit for Pending Query
   const openEditPending = (item: PendingAiQuery) => {
     setEditingPendingId(item.id);
     setEditingKnowledgeId(null);
@@ -137,6 +148,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     setIsEditModalOpen(true);
   };
 
+  // Open Edit for Verified Item
   const openEditVerified = (item: VerifiedAiKnowledgeItem) => {
     setEditingKnowledgeId(item.id);
     setEditingPendingId(null);
@@ -148,6 +160,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     setIsEditModalOpen(true);
   };
 
+  // Open Add New Verified Item
   const openAddNew = () => {
     setEditingKnowledgeId(null);
     setEditingPendingId(null);
@@ -159,6 +172,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
     setIsEditModalOpen(true);
   };
 
+  // Save Modal Form
   const handleSaveModalForm = async () => {
     if (!formQuestion.trim() || !formAnswer.trim()) {
       alert('කරුණාකර ප්‍රශ්නය සහ පිළිතුර ඇතුළත් කරන්න.');
@@ -172,6 +186,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
 
     try {
       if (editingPendingId) {
+        // Approve pending with modified edits
         await approveAiQuery(editingPendingId, {
           question: formQuestion.trim(),
           answer: formAnswer.trim(),
@@ -182,6 +197,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         });
         showNotice('✅ සංස්කරණය කරන ලද ප්‍රශ්නය සාර්ථකව අනුමත කර සුරකින ලදී!');
       } else if (editingKnowledgeId) {
+        // Update existing verified item
         await saveVerifiedAiKnowledgeItem({
           id: editingKnowledgeId,
           question: formQuestion.trim(),
@@ -193,6 +209,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         });
         showNotice('✅ ස්ථිර දැනුම් සටහන යාවත්කාලීන කරන ලදී!');
       } else {
+        // Create brand new item
         await saveVerifiedAiKnowledgeItem({
           question: formQuestion.trim(),
           answer: formAnswer.trim(),
@@ -211,6 +228,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
 
   return (
     <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-[#173a26]/60">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl shadow-md">
@@ -226,6 +244,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
           </div>
         </div>
 
+        {/* Action Button: Add New Q&A */}
         <button
           onClick={openAddNew}
           className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md transition-all active:scale-95"
@@ -235,13 +254,15 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         </button>
       </div>
 
+      {/* Notification Banner */}
       {notificationMsg && (
-        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-2xl text-sm font-bold flex items-center gap-2">
+        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-2xl text-sm font-bold flex items-center gap-2 animate-fadeIn">
           <Check className="w-4 h-4 shrink-0" />
           <span>{notificationMsg}</span>
         </div>
       )}
 
+      {/* Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-[#173a26]">
         <button
           onClick={() => setActiveSubTab('pending')}
@@ -274,23 +295,25 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         </button>
       </div>
 
+      {/* SUB-TAB 1: PENDING AI QUERIES */}
       {activeSubTab === 'pending' && (
         <div className="space-y-4">
           <div className="p-4 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 rounded-2xl text-xs sm:text-sm text-amber-900 dark:text-amber-300 font-medium">
-            💡 <strong>ක්‍රියාකාරීත්වය:</strong> පරිශීලකයින් අසන ලද සහ Gemini AI මඟින් පිළිතුරු දුන් නව ප්‍රශ්න මෙහි පෙන්වයි. නිවැරදි නම් <strong>'තහවුරු කර සුරකින්න'</strong> ඔබන්න. ප්‍රශ්නය හෝ පිළිතුර සංස්කරණය කිරීමට <strong>'සංස්කරණය කර සුරකින්න'</strong> ඔබන්න.
+            💡 <strong>ක්‍රියාකාරීත්වය:</strong> පරිශීලකයින් විසින් අසන ලද සහ Gemini AI මඟින් පිළිතුරු දුන් නව ප්‍රශ්න මෙහි ලැයිස්තුගත වේ. පිළිතුර නිවැරදි නම් <strong>'තහවුරු කර සුරකින්න'</strong> ඔබන්න. ප්‍රශ්නය හෝ පිළිතුර වෙනස් කිරීමට අවශ්‍ය නම් <strong>'සංස්කරණය කර සුරකින්න'</strong> ඔබන්න. එවිට අනාගතයේදී එම ප්‍රශ්නය අසන ඕනෑම කෙනෙකුට ස්ථිර පිළිතුර නොමිලේ ක්ෂණිකව ලැබේ!
           </div>
 
           {pendingQueries.length === 0 ? (
             <div className="text-center py-12 text-slate-400 dark:text-slate-500 font-bold text-sm">
-              ✨ අනුමැතිය සඳහා දැනට නව ප්‍රශ්න නොමැත. සියලුම ප්‍රශ්න සත්‍යාපනය කර ඇත!
+              ✨ අනුමැතිය සඳහා දැනට නව ප්‍රශ්න කිසිවක් නොමැත. සියලුම ප්‍රශ්න සත්‍යාපනය කර ඇත!
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {pendingQueries.map((item) => (
                 <div
                   key={item.id}
-                  className="p-4 sm:p-5 bg-slate-50 dark:bg-[#0c1f15] border border-slate-200/80 dark:border-[#173a26] rounded-2xl space-y-3 shadow-sm"
+                  className="p-4 sm:p-5 bg-slate-50 dark:bg-[#0c1f15] border border-slate-200/80 dark:border-[#173a26] rounded-2xl space-y-3 hover:border-emerald-500/50 transition-all shadow-sm"
                 >
+                  {/* Top Metadata */}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-emerald-600 font-semibold">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 uppercase font-black">
@@ -306,6 +329,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
                     <span>{item.askedAt ? new Date(item.askedAt).toLocaleString('si-LK') : 'මෑතකදී'}</span>
                   </div>
 
+                  {/* Question */}
                   <div>
                     <span className="text-xs font-black uppercase text-slate-400 dark:text-emerald-500 tracking-wider">
                       පරිශීලකයා ඇසූ ප්‍රශ්නය:
@@ -315,6 +339,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
                     </h3>
                   </div>
 
+                  {/* Gemini Answer */}
                   <div className="p-3.5 bg-white dark:bg-[#0a1710] rounded-xl border border-slate-200/60 dark:border-[#173a26]/80 text-xs sm:text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                     <div className="flex items-center gap-1.5 text-xs font-black text-emerald-600 dark:text-emerald-400 mb-1">
                       <Sparkles className="w-3.5 h-3.5" />
@@ -323,6 +348,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
                     {item.answer}
                   </div>
 
+                  {/* Action Buttons */}
                   <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200/50 dark:border-[#173a26]/50">
                     <button
                       onClick={() => handleReject(item.id)}
@@ -355,8 +381,10 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         </div>
       )}
 
+      {/* SUB-TAB 2: VERIFIED KNOWLEDGE BASE */}
       {activeSubTab === 'verified' && (
         <div className="space-y-4">
+          {/* Search Box */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
@@ -377,8 +405,9 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               {filteredVerified.map((item) => (
                 <div
                   key={item.id}
-                  className="p-4 sm:p-5 bg-slate-50 dark:bg-[#0c1f15] border border-slate-200/80 dark:border-[#173a26] rounded-2xl space-y-3 shadow-sm"
+                  className="p-4 sm:p-5 bg-slate-50 dark:bg-[#0c1f15] border border-slate-200/80 dark:border-[#173a26] rounded-2xl space-y-3 hover:border-emerald-500/50 transition-all shadow-sm"
                 >
+                  {/* Top Category & Language */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs font-black uppercase">
@@ -407,14 +436,17 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
                     </div>
                   </div>
 
+                  {/* Question */}
                   <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                     {item.question}
                   </h3>
 
+                  {/* Answer */}
                   <div className="p-3.5 bg-white dark:bg-[#0a1710] rounded-xl border border-slate-200/60 dark:border-[#173a26]/80 text-xs sm:text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                     {item.answer}
                   </div>
 
+                  {/* Keywords Tags */}
                   {item.keywords && item.keywords.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <Tag className="w-3 h-3 text-slate-400" />
@@ -435,9 +467,11 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
         </div>
       )}
 
+      {/* EDIT / ADD MODAL */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-2xl bg-white dark:bg-[#0b1d12] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#173a26]">
               <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
                 {editingPendingId
@@ -454,6 +488,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               </button>
             </div>
 
+            {/* Question Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-black uppercase text-slate-600 dark:text-emerald-400">
                 ප්‍රශ්නය (Question / Pattern):
@@ -467,6 +502,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               />
             </div>
 
+            {/* Answer Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-black uppercase text-slate-600 dark:text-emerald-400">
                 නිවැරදි පිළිතුර (Verified Answer in Markdown):
@@ -480,9 +516,10 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               />
             </div>
 
+            {/* Keywords / Synonyms Field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-black uppercase text-slate-600 dark:text-emerald-400">
-                සමාන වචන / සෙවුම් පද (Search Keywords & Synonyms - කොමා වලින් වෙන් කරන්න):
+              <label className="text-xs font-black uppercase text-slate-600 dark:text-emerald-400 flex items-center justify-between">
+                <span>සමාන වචන / සෙවුම් පද (Search Keywords & Synonyms - කොමා වලින් වෙන් කරන්න):</span>
               </label>
               <input
                 type="text"
@@ -496,6 +533,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               </p>
             </div>
 
+            {/* Language & Category Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="space-y-1">
                 <label className="text-xs font-black uppercase text-slate-600 dark:text-emerald-400">
@@ -532,6 +570,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
               </div>
             </div>
 
+            {/* Modal Actions */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#173a26]">
               <button
                 type="button"
