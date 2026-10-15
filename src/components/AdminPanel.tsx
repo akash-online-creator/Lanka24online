@@ -51,7 +51,6 @@ import {
   Rocket,
   Loader2
 } from 'lucide-react';
-import { getAppUpdateSettings, saveAppUpdateSettings } from '../utils/apkDownloadHelper';
 
 // Safely inline UserModeContext to prevent missing module import build failures
 interface UserModeContextType {
