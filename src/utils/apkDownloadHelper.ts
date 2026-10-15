@@ -1,3 +1,4 @@
+src/utils/apkDownloadHelper.ts
 /**
  * APK Direct Download & In-App Update Helper
  * Dynamically resolves the latest release APK from GitHub Releases for Lanka24online
@@ -8,9 +9,9 @@ export const GITHUB_REPO_NAME = 'Lanka24online';
 
 /**
  * The current version of the installed app.
- * Increment this when releasing a new version in your source code (e.g. 'v1.0' -> 'v1.1').
+ * Set to 'v1.0.8' to match the latest release and disable unwanted update alerts.
  */
-export const CURRENT_APP_VERSION = 'v1.0';
+export const CURRENT_APP_VERSION = 'v1.0.8';
 
 export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
 export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`;
@@ -73,11 +74,10 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
       const data = await response.json();
       const assets = data.assets || [];
       
-      // Find asset that ends with .apk
       const apkAsset = assets.find((a: any) => a.name && a.name.toLowerCase().endsWith('.apk')) || assets[0];
       
       return {
-        tagName: data.tag_name || 'v1.0',
+        tagName: data.tag_name || 'v1.0.8',
         apkDownloadUrl: apkAsset?.browser_download_url || `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/download/${data.tag_name}/app-release.apk`,
         name: data.name || data.tag_name,
         publishedAt: data.published_at,
@@ -88,25 +88,9 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
     console.warn('Could not fetch latest release from GitHub API, falling back to direct release download:', err);
   }
 
-  // Fallback to local /apk/version.json if GitHub API is unavailable
-  try {
-    const localRes = await fetch('/apk/version.json');
-    if (localRes.ok) {
-      const localData = await localRes.json();
-      return {
-        tagName: `v${localData.versionName || '1.0'}`,
-        apkDownloadUrl: localData.downloadPath || FALLBACK_APK_DIRECT_URL,
-        name: localData.appName,
-        body: localData.releaseNotes,
-        publishedAt: localData.updatedAt,
-      };
-    }
-  } catch (_) {}
-
-  // Final fallback to standard GitHub latest direct download endpoint
   return {
     apkDownloadUrl: FALLBACK_APK_DIRECT_URL,
-    tagName: 'v1.0',
+    tagName: 'v1.0.8',
   };
 }
 
@@ -116,7 +100,7 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
 export async function checkForAppUpdate(): Promise<AppUpdateInfo> {
   try {
     const latest = await fetchLatestApkDownloadUrl();
-    const latestTag = latest.tagName || 'v1.0';
+    const latestTag = latest.tagName || 'v1.0.8';
     const isNewer = compareVersions(latestTag, CURRENT_APP_VERSION) > 0;
 
     return {
@@ -146,7 +130,6 @@ export async function triggerDirectApkDownload(explicitUrl?: string): Promise<vo
   try {
     const downloadUrl = explicitUrl || (await fetchLatestApkDownloadUrl()).apkDownloadUrl || FALLBACK_APK_DIRECT_URL;
 
-    // Trigger direct file download
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.setAttribute('download', 'SahayaSewa.apk');
