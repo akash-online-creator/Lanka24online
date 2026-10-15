@@ -180,8 +180,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   late final WebViewController _controller;
   bool _isLoading = true;
   double _loadProgress = 0.0;
-  bool _isLocalFallback = false;
-  Timer? _loadingSafetyTimer;
   
   double? _lastLat;
   double? _lastLng;
@@ -197,36 +195,39 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
 
   @override
   void dispose() {
-    _loadingSafetyTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _assetServer.stop();
     FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     super.dispose();
   }
 
-  Future<void> _loadLocalFallback() async {
-    if (_isLocalFallback) return;
-    _isLocalFallback = true;
-    debugPrint('⚠️ Falling back to local embedded web assets server...');
-    try {
-      final port = await _assetServer.start();
-      if (mounted && port > 0) {
-        await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
-      } else if (mounted) {
-        await _controller.loadFlutterAsset('assets/web/index.html');
-      }
-    } catch (e) {
-      debugPrint('Local fallback loading error: $e');
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('📱 [Sahaya App Resumed] Checking & syncing native permissions...');
+      _syncNativePermissionsToWebView();
+      _fetchAndInjectCurrentLocation();
     }
   }
 
   Future<void> _loadAppContent() async {
     try {
-      debugPrint('🌐 Loading live application from https://www.supporservice.online/');
-      await _controller.loadRequest(Uri.parse('https://www.supporservice.online/'));
+      final String htmlContent = await rootBundle.loadString('assets/web/index.html');
+      await _controller.loadHtmlString(htmlContent, baseUrl: 'https://supporservice.online');
     } catch (e) {
-      debugPrint('Error loading online URL: $e, falling back to local asset');
-      await _loadLocalFallback();
+      debugPrint('loadHtmlString notice: $e, trying LocalAssetServer...');
+      try {
+        final port = await _assetServer.start();
+        if (mounted && port > 0) {
+          await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
+        } else {
+          await _controller.loadFlutterAsset('assets/web/index.html');
+        }
+      } catch (err) {
+        try {
+          await _controller.loadFlutterAsset('assets/web/index.html');
+        } catch (_) {}
+      }
     }
   }
 
@@ -236,14 +237,14 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0F172A))
-      ..setUserAgent('Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
+      ..setUserAgent('Mozilla/5.0 (Linux; Android 13; Mobile App SahayaSewa) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
             if (mounted) {
               setState(() {
                 _loadProgress = progress / 100.0;
-                if (progress >= 80) {
+                if (progress >= 25) {
                   _isLoading = false;
                 }
               });
@@ -253,27 +254,23 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             if (mounted) {
               setState(() => _isLoading = true);
             }
-            _loadingSafetyTimer?.cancel();
-            _loadingSafetyTimer = Timer(const Duration(seconds: 8), () {
+            Future.delayed(const Duration(milliseconds: 1500), () {
               if (mounted && _isLoading) {
                 setState(() => _isLoading = false);
               }
             });
           },
           onPageFinished: (String url) {
-            _loadingSafetyTimer?.cancel();
             if (mounted) {
               setState(() => _isLoading = false);
             }
+            _syncNativePermissionsToWebView();
             if (_lastLat != null && _lastLng != null) {
               _injectLocationIntoWebView(_lastLat!, _lastLng!, 10.0);
             }
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('Local WebView Resource Notice: ${error.errorCode} - ${error.description}');
-            if (error.isForMainFrame == true) {
-              _loadLocalFallback();
-            }
           },
           onNavigationRequest: (NavigationRequest request) async {
             final url = request.url;
@@ -313,6 +310,37 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             _triggerEmergencySirenNotification(message.message);
           }
         },
+      )
+      ..addJavaScriptChannel(
+        'SahayaPermissionChannel',
+        onMessageReceived: (JavaScriptMessage message) async {
+          debugPrint('📱 [SahayaPermissionChannel] Message received: ${message.message}');
+          if (message.message == 'CHECK_PERMISSIONS') {
+            await _syncNativePermissionsToWebView();
+          } else if (message.message == 'REQUEST_NOTIFICATION') {
+            final status = await Permission.notification.request();
+            if (status.isPermanentlyDenied) {
+              await openAppSettings();
+            }
+            await _syncNativePermissionsToWebView();
+          } else if (message.message == 'REQUEST_LOCATION') {
+            final status = await Permission.location.request();
+            if (status.isGranted) {
+              try {
+                await Permission.locationAlways.request();
+              } catch (_) {}
+              await _fetchAndInjectCurrentLocation();
+            } else if (status.isPermanentlyDenied) {
+              await openAppSettings();
+            }
+            await _syncNativePermissionsToWebView();
+          } else if (message.message == 'REQUEST_ALL') {
+            await _requestAndStartBackgroundServices();
+            await _syncNativePermissionsToWebView();
+          } else if (message.message == 'OPEN_SETTINGS') {
+            await openAppSettings();
+          }
+        },
       );
 
     if (controller.platform is AndroidWebViewController) {
@@ -330,6 +358,36 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     }
 
     _controller = controller;
+  }
+
+  Future<void> _syncNativePermissionsToWebView() async {
+    try {
+      final bool notifGranted = await Permission.notification.isGranted;
+      final bool locGranted = await Permission.location.isGranted;
+      debugPrint('📱 Native permissions status: Notif=$notifGranted, Location=$locGranted');
+
+      final String jsCode = '''
+        (function() {
+          window.__sahaya_is_native_app = true;
+          window.__sahaya_native_notif_granted = $notifGranted;
+          window.__sahaya_native_location_granted = $locGranted;
+          if ($notifGranted && $locGranted) {
+            try {
+              localStorage.setItem('sahaya_permissions_setup_completed', 'true');
+            } catch (e) {}
+          }
+          if (window.onNativePermissionsUpdated) {
+            window.onNativePermissionsUpdated({
+              notification: $notifGranted,
+              location: $locGranted
+            });
+          }
+        })();
+      ''';
+      await _controller.runJavaScript(jsCode);
+    } catch (e) {
+      debugPrint('Error syncing native permissions to webview: $e');
+    }
   }
 
   void _triggerEmergencySirenNotification(String payload) {
@@ -382,6 +440,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       _startBackgroundForegroundTask();
 
       _fetchAndInjectCurrentLocation();
+      await _syncNativePermissionsToWebView();
     } catch (e) {
       debugPrint('Background service setup notice: $e');
     }
@@ -502,5 +561,3 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     );
   }
 }
-
-
