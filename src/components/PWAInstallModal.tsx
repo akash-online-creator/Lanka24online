@@ -18,7 +18,8 @@ import {
   Globe,
   QrCode,
   Store,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { 
   canPromptInstall, 
@@ -29,7 +30,11 @@ import {
   isFullscreenActive, 
   subscribeToInstallPrompt 
 } from '../utils/pwaHelper';
-import { triggerDirectApkDownload } from '../utils/apkDownloadHelper';
+import { 
+  triggerDirectApkDownload, 
+  CURRENT_APP_VERSION, 
+  FALLBACK_APK_DIRECT_URL 
+} from '../utils/apkDownloadHelper';
 import { Language } from '../types';
 
 interface PWAInstallModalProps {
@@ -118,23 +123,26 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
   };
 
   const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supporservice.online';
+  const apkDownloadUrl = FALLBACK_APK_DIRECT_URL;
 
   const handleCopyLink = async () => {
     try {
       if (navigator.clipboard) {
-        await navigator.clipboard.writeText(directUrl);
+        await navigator.clipboard.writeText(apkDownloadUrl);
         setIsCopied(true);
         setTimeout(() => setIsCopied(false), 3000);
       }
-    } catch {}
+    } catch {
+      // fallback
+    }
   };
 
   const handleOpenInBrowser = () => {
     window.open(directUrl, '_blank');
   };
 
-  // QR Code URL & Download
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(directUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
+  // QR Code URL & Download (Direct APK download with High Error Correction &ecc=H)
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(apkDownloadUrl)}&color=064e3b&bgcolor=ffffff&margin=1&ecc=H`;
 
   const handleDownloadQr = () => {
     const canvas = document.createElement('canvas');
@@ -220,7 +228,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
             </div>
           )}
 
-          {/* 🌟 METHOD 01: Direct APK Download & Update (ඉහළින්ම Direct APK එක බාගත කර Update කරගැනීම) */}
+          {/* 🌟 METHOD 01: Direct APK Download & Update */}
           <div className="p-4 sm:p-4.5 rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-800 text-white space-y-3 shadow-xl border-2 border-emerald-400/60 relative overflow-hidden">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-inner">
@@ -270,7 +278,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
 
             <div className="flex items-center gap-1.5 text-[10px] text-emerald-100/90 font-medium pt-0.5">
               <ShieldCheck className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>{getLang('ආරක්ෂිතයි • ඔබගේ පිවිසුම් (Login) හෝ දත්ත කිසිවක් මැකී නොයයි.', 'Safe • No login sessions or saved data will be lost.', 'பாதுகாப்பானது • தரவுகள் அழியாது.')}</span>
+              <span>{getLang('ආරක්ෂිතයි • ඔබගේ පිවිසුම් (Login) හෝ දැන්වීම් කිසිවක් මැකී නොයයි.', 'Safe • No login sessions or saved data will be lost.', 'பாதுகாப்பானது • தரவுகள் அழියாது.')}</span>
             </div>
           </div>
 
@@ -338,8 +346,8 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
                   )}
                 </button>
 
-                <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate font-mono bg-slate-100 dark:bg-zinc-900/60 p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800">
-                  {directUrl}
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate font-mono bg-slate-100 dark:bg-zinc-900/60 p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800" title={apkDownloadUrl}>
+                  {apkDownloadUrl}
                 </div>
               </div>
             </div>
@@ -412,3 +420,4 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     </div>
   );
 };
+
