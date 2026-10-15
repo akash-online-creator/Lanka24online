@@ -1,24 +1,25 @@
 import { AccommodationListing, AccommodationFilterOptions } from '../types/accommodation';
-import { initialAccommodations } from '../data/mockAccommodations';
 
+// සැබෑ දත්ත පමණක් සුරකින LocalStorage යතුර
 const STORAGE_KEY = 'sahaya_accommodations_data_v1';
 
+// ආරම්භයේදී කිසිදු Dummy දත්තයක් නැතිව හිස් Array එකකින් ([]) ආරම්භ වේ
 export const getStoredAccommodations = (): AccommodationListing[] => {
-  if (typeof window === 'undefined') return initialAccommodations;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(initialAccommodations));
-      return initialAccommodations;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialAccommodations;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.warn('LocalStorage error reading accommodations:', e);
-    return initialAccommodations;
+    return [];
   }
 };
 
+// පරිශීලකයා ඇතුළත් කරන සැබෑ දැන්වීම් සුරැකීම
 export const saveAccommodationListing = (listing: AccommodationListing): AccommodationListing[] => {
   const current = getStoredAccommodations();
   const updated = [listing, ...current];
@@ -32,6 +33,7 @@ export const saveAccommodationListing = (listing: AccommodationListing): Accommo
   return updated;
 };
 
+// දුර ගණනය කිරීම (Haversine Formula)
 export const calculateDistanceKm = (
   lat1?: number,
   lon1?: number,
@@ -47,7 +49,7 @@ export const calculateDistanceKm = (
     return 15;
   }
 
-  const R = 6371;
+  const R = 6371; // km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -73,6 +75,7 @@ export interface TravelEstimate {
   isTuk30: boolean;
 }
 
+// ඇවිදින සහ ත්‍රීවීල් ගමන් වේලාවන් ගණනය කිරීම
 export const getTravelEstimate = (distKm: number): TravelEstimate => {
   const walkingMinutes = Math.max(1, Math.round(distKm * 13.5));
   const tukMinutes = Math.max(1, Math.round(distKm * 2.5));
@@ -92,6 +95,7 @@ export const getTravelEstimate = (distKm: number): TravelEstimate => {
   };
 };
 
+// සෙවුම්, පෙරහන් සහ දුර අනුව පෙළගැස්වීම
 export const filterAccommodations = (
   items: AccommodationListing[],
   filter: AccommodationFilterOptions,
