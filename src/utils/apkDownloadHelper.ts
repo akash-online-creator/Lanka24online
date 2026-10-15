@@ -1,4 +1,3 @@
-src/utils/apkDownloadHelper.ts
 /**
  * APK Direct Download & In-App Update Helper
  * Dynamically resolves the latest release APK from GitHub Releases for Lanka24online
