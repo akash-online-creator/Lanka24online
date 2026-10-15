@@ -16,6 +16,7 @@ import { CategoryGrid } from './CategoryGrid';
 import { ProfessionalServicesView } from './ProfessionalServicesView';
 import { GroupWorkView } from './GroupWorkView';
 import { MarketplaceView } from './MarketplaceView';
+import { AccommodationView } from './AccommodationView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
@@ -1073,7 +1074,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       </div>
 
       {/* Live Tag Search Bar (only for main feed) */}
-      {!boardCategoryFilter || (boardCategoryFilter !== 'professional_services' && boardCategoryFilter !== 'group_work' && boardCategoryFilter !== 'marketplace') ? (
+      {!boardCategoryFilter || (boardCategoryFilter !== 'professional_services' && boardCategoryFilter !== 'group_work' && boardCategoryFilter !== 'marketplace' && boardCategoryFilter !== 'accommodation') ? (
         <TagSearchBar
           allTags={allTags}
           selectedTagFilter={selectedTagFilter}
@@ -1084,11 +1085,25 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           filteredPostsCount={newsFeedSortedPosts.length}
           posts={helpPosts}
           language={language}
+          onOpenAccommodation={() => {
+            setBoardCategoryFilter('accommodation');
+            setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
+          }}
         />
       ) : null}
 
-      {/* Professional Services View (if active) */}
-      {boardCategoryFilter === 'professional_services' ? (
+      {/* Accommodation View (if active) */}
+      {boardCategoryFilter === 'accommodation' ? (
+        <AccommodationView
+          userLat={currentLocation?.lat}
+          userLng={currentLocation?.lng}
+          userCityName={currentLocation?.nameSi}
+          onBackToBoard={() => {
+            setBoardCategoryFilter('');
+            setSelectedCategoryTitle('');
+          }}
+        />
+      ) : boardCategoryFilter === 'professional_services' ? (
         <ProfessionalServicesView
           user={user}
           language={language}
@@ -1424,3 +1439,4 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     </div>
   );
 };
+
