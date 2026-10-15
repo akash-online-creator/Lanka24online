@@ -189,7 +189,13 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _setupWebView();
-    _loadAppContent();
+      Future<void> _loadAppContent() async {
+    try {
+      await _controller.loadRequest(Uri.parse('https://supporservice.online'));
+    } catch (e) {
+      debugPrint('Error loading site: $e');
+    }
+      }
     _requestAndStartBackgroundServices();
   }
 
