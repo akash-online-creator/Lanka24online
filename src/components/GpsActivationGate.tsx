@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MapPin, 
   Radio, 
@@ -13,7 +13,8 @@ import {
   Sparkles,
   Bell,
   ChevronRight,
-  Crosshair,
+  Settings,
+  ArrowRight,
 } from 'lucide-react';
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
@@ -43,10 +44,25 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [statusType, setStatusType] = useState<'idle' | 'scanning' | 'success' | 'denied' | 'error'>('idle');
   const [resolvedLocation, setResolvedLocation] = useState<LocationOption | null>(null);
   const [isAutoProceeding, setIsAutoProceeding] = useState(false);
+  const [isNativeApp, setIsNativeApp] = useState(false);
+  const [showSettingsButton, setShowSettingsButton] = useState(false);
   const hasProceededRef = useRef(false);
 
+  // Helper to communicate with Native Flutter Bridge
+  const sendNativeMessage = useCallback((channel: string, message: string) => {
+    try {
+      if (typeof window !== 'undefined' && (window as any)[channel]) {
+        (window as any)[channel].postMessage(message);
+        return true;
+      }
+    } catch (e) {
+      console.debug(`Native channel ${channel} notice:`, e);
+    }
+    return false;
+  }, []);
+
   // Process Coordinates from GPS
-  const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
+  const processCoords = useCallback(async (latitude: number, longitude: number, accuracy: number) => {
     try {
       const geo = await resolveExactLocation(latitude, longitude);
       const locOpt = toLocationOption(geo);
@@ -83,25 +99,71 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       setStatusMessage(`📍 GPS ස්ථානය: ${fallback.nameSi}`);
       setIsScanningGps(false);
     }
-  };
+  }, []);
 
-  // Check initial permissions
+  // Check initial permissions & hook into native app bridge
   useEffect(() => {
-    // 1. Notification Permission Check
+    // 1. Detect if running inside Native Flutter App Wrapper
+    const checkNative = () => {
+      const isNative = Boolean(
+        (window as any).__sahaya_is_native_app === true ||
+        (window as any).SahayaPermissionChannel ||
+        (window as any).SahayaGpsChannel
+      );
+      setIsNativeApp(isNative);
+
+      if ((window as any).__sahaya_native_notif_granted === true) {
+        setNotifGranted(true);
+      }
+      if ((window as any).__sahaya_native_location_granted === true) {
+        setLocationGranted(true);
+      }
+
+      // Ask Flutter to verify and sync permissions directly
+      if ((window as any).SahayaPermissionChannel) {
+        (window as any).SahayaPermissionChannel.postMessage('CHECK_PERMISSIONS');
+      }
+    };
+
+    checkNative();
+
+    // 2. Register Callback for Flutter Native Bridge Updates
+    (window as any).onNativePermissionsUpdated = (data: { notification: boolean; location: boolean }) => {
+      if (data.notification) {
+        setNotifGranted(true);
+        setShowSettingsButton(false);
+      }
+      if (data.location) {
+        setLocationGranted(true);
+      }
+      if (data.notification && data.location) {
+        setStatusType('success');
+        setStatusMessage('✅ අවසර 2ම සක්‍රීය විය! ආරක්ෂිතව ඇප් එකට පිවිසෙමින් පවතී...');
+      }
+    };
+
+    // 3. Register Callback for Live GPS updates from Flutter
+    (window as any).onGpsLocationUpdated = (lat: number, lng: number, acc: number) => {
+      processCoords(lat, lng, acc);
+    };
+
+    // 4. Web Browser Notification Permission Check
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'granted') {
         setNotifGranted(true);
+      } else if (Notification.permission === 'denied') {
+        setShowSettingsButton(true);
       }
     }
 
-    // 2. Service Worker Check & Auto Registration for background push
+    // 5. Service Worker Check for Web Push
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => {
         console.debug('Service worker registration note:', err);
       });
     }
 
-    // 3. Check Native GPS from Android / Flutter wrapper
+    // 6. Check Native GPS from Android / Flutter
     if (typeof window !== 'undefined' && (window as any).__sahaya_native_gps) {
       const { lat, lng, accuracy } = (window as any).__sahaya_native_gps;
       if (lat && lng) {
@@ -109,7 +171,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }
     }
 
-    // 4. Check Geolocation Permission
+    // 7. Check Geolocation Permission
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((permissionStatus) => {
         if (permissionStatus.state === 'granted') {
@@ -118,15 +180,33 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }).catch(() => {});
     }
 
-    // 🚀 Auto-Request both permissions on load
+    // 8. Re-check permissions when user resumes back to app from phone settings
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        if ((window as any).SahayaPermissionChannel) {
+          (window as any).SahayaPermissionChannel.postMessage('CHECK_PERMISSIONS');
+        }
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          setNotifGranted(true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    // Auto-Request both permissions on load
     const autoReqTimer = setTimeout(() => {
       handleAllowBothPermissions();
-    }, 600);
+    }, 500);
 
-    return () => clearTimeout(autoReqTimer);
-  }, []);
+    return () => {
+      clearTimeout(autoReqTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [processCoords]);
 
-  // 🚀 Auto-Proceed as soon as BOTH permissions are granted
+  // Auto-Proceed as soon as BOTH permissions are granted
   useEffect(() => {
     if (locationGranted && notifGranted && !hasProceededRef.current) {
       hasProceededRef.current = true;
@@ -136,41 +216,70 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
       const proceedTimer = setTimeout(() => {
         handleFinishAndProceed();
-      }, 1000);
+      }, 700);
 
       return () => clearTimeout(proceedTimer);
     }
   }, [locationGranted, notifGranted]);
 
-  // Request Notification Permission
+  // Request Notification Permission (Native App Aware)
   const handleRequestNotification = async () => {
+    // A. Native Flutter Hybrid App execution
+    if ((window as any).SahayaPermissionChannel) {
+      sendNativeMessage('SahayaPermissionChannel', 'REQUEST_NOTIFICATION');
+      setStatusType('scanning');
+      setStatusMessage('🔔 හදිසි දැනුම්දීම් සක්‍රීය කරමින් පවතී...');
+      return true;
+    }
+
+    // B. Standard Web Browser execution
     const granted = await requestNotificationPermission();
     if (granted) {
       setNotifGranted(true);
+      setShowSettingsButton(false);
       playNotificationSound('general');
       setStatusType('success');
       setStatusMessage('🔔 හදිසි දැනුම්දීම් සාර්ථකව සක්‍රීය කරන ලදී.');
     } else {
-      if (Notification.permission === 'denied') {
-        setStatusType('denied');
-        setStatusMessage('⚠️ දැනුම්දීම් අවසරය අවහිර කර ඇත (Denied). ඉහළ URL අසල Lock ලකුණ ඔබා Allow කරන්න.');
-      }
+      setShowSettingsButton(true);
+      setStatusType('denied');
+      setStatusMessage('⚠️ දැනුම්දීම් අවසරය ලබාදී නැත. Settings වෙත ගොස් අවසර ලබාදෙන්න.');
     }
     return granted;
   };
 
+  // Open App Permission Settings directly
+  const handleOpenAppSettings = () => {
+    if ((window as any).SahayaPermissionChannel) {
+      sendNativeMessage('SahayaPermissionChannel', 'OPEN_SETTINGS');
+      setStatusMessage('📱 දුරකථනයේ Settings පිටුව විවෘත කෙරේ. Permissions > Notifications සහ Location සක්‍රීය කරන්න.');
+    } else {
+      setStatusMessage('⚠️ දුරකථනයේ Settings > Apps > Sahaya Sewa වෙත ගොස් Permissions සක්‍රීය කරන්න.');
+    }
+  };
+
   // Start High-Accuracy GPS Scanning
   const handleStartGps = (isSilent = false) => {
+    // If in Native app, request through Native GPS Channel
+    if ((window as any).SahayaPermissionChannel) {
+      sendNativeMessage('SahayaPermissionChannel', 'REQUEST_LOCATION');
+    }
+    if ((window as any).SahayaGpsChannel) {
+      sendNativeMessage('SahayaGpsChannel', 'GET_GPS');
+    }
+
     if (!navigator.geolocation) {
-      setStatusType('error');
-      setStatusMessage('ඔබගේ උපාංගය හෝ බ්‍රවුසරය GPS ස්ථාන සේවා සඳහා සහාය නොදක්වයි.');
+      if (!isNativeApp) {
+        setStatusType('error');
+        setStatusMessage('ඔබගේ උපාංගය හෝ බ්‍රවුසරය GPS ස්ථාන සේවා සඳහා සහාය නොදක්වයි.');
+      }
       return;
     }
 
     setIsScanningGps(true);
     setStatusType('scanning');
     if (!isSilent) {
-      setStatusMessage('🛰️ සජීවී GPS චන්ද්‍රිකා සංඥාව ලබාගනිමින් පවතී... (කරුණාකර "Allow" ඔබන්න)');
+      setStatusMessage('🛰️ සජීවී GPS චන්ද්‍රිකා සංඥාව ලබාගනිමින් පවතී...');
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -179,7 +288,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         processCoords(latitude, longitude, accuracy);
       },
       () => {
-        // Fallback with standard settings
         navigator.geolocation.getCurrentPosition(
           (fallbackPos) => {
             const { latitude, longitude, accuracy } = fallbackPos.coords;
@@ -189,13 +297,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             setIsScanningGps(false);
             if (finalErr.code === finalErr.PERMISSION_DENIED) {
               setStatusType('denied');
-              setStatusMessage('⚠️ GPS අවසරය ලබාදී නැත (Location Denied). කරුණාකර දුරකථනයේ Location සක්‍රීය කර Allow කරන්න.');
-            } else if (finalErr.code === finalErr.POSITION_UNAVAILABLE) {
-              setStatusType('denied');
-              setStatusMessage('⚠️ GPS සංඥා දුර්වලයි. දුරකථනයේ Location (GPS) සක්‍රීය කර නැවත උත්සාහ කරන්න.');
+              setShowSettingsButton(true);
+              setStatusMessage('⚠️ GPS අවසරය ලබාදී නැත. කරුණාකර දුරකථනයේ Location සක්‍රීය කරන්න.');
             } else {
               setStatusType('error');
-              setStatusMessage('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාද විය. නැවත උත්සාහ කරන්න.');
+              setStatusMessage('⚠️ GPS සංඥාව ප්‍රමාද විය. නැවත උත්සාහ කරන්න.');
             }
           },
           { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
@@ -205,13 +311,19 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     );
   };
 
-  // ⚡ Master One-Click Action: Request Both Essential Permissions
+  // Master Action: Request Both Essential Permissions
   const handleAllowBothPermissions = async () => {
     setIsScanningGps(true);
     setStatusType('scanning');
     setStatusMessage('⚡ අවසරයන් සක්‍රීය කරමින් පවතී...');
 
-    // 1. Request Notifications
+    // 1. Native App Priority
+    if ((window as any).SahayaPermissionChannel) {
+      sendNativeMessage('SahayaPermissionChannel', 'REQUEST_ALL');
+      return;
+    }
+
+    // 2. Web Browser Fallback
     try {
       const ok = await requestNotificationPermission();
       if (ok) {
@@ -219,22 +331,24 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       }
     } catch {}
 
-    // 2. Request GPS
     handleStartGps(false);
-
     localStorage.setItem('sahaya_permissions_setup_completed', 'true');
   };
 
+  // Finish and proceed to app
   const handleFinishAndProceed = () => {
-    if (!locationGranted || !notifGranted) {
-      setStatusType('denied');
-      setStatusMessage('⚠️ ඔබගේ ආරක්ෂාව උදෙසා GPS සහ දැනුම්දීම් අවසර 2ම සක්‍රීය කිරීම අනිවාර්ය වේ.');
-      return;
-    }
     localStorage.setItem('sahaya_permissions_setup_completed', 'true');
     stopEmergencySiren();
     onProceedToLogin(resolvedLocation || undefined);
   };
+
+  // Graceful Emergency Bypass for disaster situations
+  const handleEmergencyBypass = () => {
+    localStorage.setItem('sahaya_permissions_setup_completed', 'true');
+    stopEmergencySiren();
+    onProceedToLogin(resolvedLocation || undefined);
+  };
+
   const handleNextLanguage = () => {
     const langSeq: Language[] = ['si', 'en', 'ta'];
     const currentIndex = langSeq.indexOf(language);
@@ -305,12 +419,12 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           </p>
         </div>
 
-        {/* 🌟 1-Click Master Action Button */}
+        {/* 1-Click Master Action Button */}
         <div className="pt-1">
           <button
             type="button"
             onClick={handleAllowBothPermissions}
-            disabled={isScanningGps}
+            disabled={isScanningGps || isAutoProceeding}
             className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm sm:text-base text-white shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${
               isBothComplete
                 ? 'bg-emerald-600 border border-emerald-300'
@@ -352,9 +466,19 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             {statusType === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />}
             {(statusType === 'denied' || statusType === 'error') && <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
             {statusType === 'scanning' && <Radio className="w-4 h-4 text-teal-500 shrink-0 mt-0.5 animate-pulse" />}
-            <div className="leading-relaxed">
+            <div className="leading-relaxed flex-1">
               <p>{statusMessage}</p>
             </div>
+            {showSettingsButton && (
+              <button
+                type="button"
+                onClick={handleOpenAppSettings}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-black flex items-center gap-1 shadow-sm transition-all"
+              >
+                <Settings className="w-3 h-3" />
+                <span>Settings</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -421,23 +545,25 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
             <button
               type="button"
-              onClick={handleRequestNotification}
+              onClick={showSettingsButton && !notifGranted ? handleOpenAppSettings : handleRequestNotification}
               className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
                 notifGranted
                   ? 'bg-emerald-600 text-white shadow-xs'
+                  : showSettingsButton
+                  ? 'bg-red-600 hover:bg-red-700 text-white shadow-xs'
                   : 'bg-amber-500 hover:bg-amber-600 text-white shadow-xs'
               }`}
             >
-              {notifGranted ? 'Active ✓' : 'Allow'}
+              {notifGranted ? 'Active ✓' : showSettingsButton ? 'Settings ⚙️' : 'Allow'}
             </button>
           </div>
         </div>
 
-        {/* Bottom Proceed Action Button (Strictly Locked Until Both Active) */}
+        {/* Bottom Proceed Action Button */}
         <div className="pt-2 border-t border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2.5">
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center sm:text-left flex items-center gap-1">
             <Lock className="w-3 h-3 text-amber-500 inline shrink-0" />
-            <span>ආරක්ෂිත හේතුන් මත අවසර 2ම නොමැතිව ඇප් එකට පිවිසිය නොහැක.</span>
+            <span>ආරක්ෂිත හේතුන් මත අවසර 2ම නිර්දේශ කෙරේ.</span>
           </p>
 
           <button
@@ -458,6 +584,20 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Graceful Emergency Bypass Option */}
+        {!isBothComplete && (
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              onClick={handleEmergencyBypass}
+              className="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors inline-flex items-center gap-1 cursor-pointer"
+            >
+              <span>හදිසි අවස්ථාවකදී සීමිත පහසුකම් සමඟ ඉදිරියට යන්න</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
 
       </div>
     </div>
