@@ -1,4 +1,8 @@
-import React, { useState, useMemo, useEffect, createContext, useContext } from 'react';
+
+
+
+
+import React, { useState, useMemo } from 'react';
 import { 
   User, 
   Issue, 
@@ -47,23 +51,8 @@ import {
   Activity,
   Award,
   Edit,
-  KeyRound,
-  Rocket,
-  Loader2
+  KeyRound
 } from 'lucide-react';
-
-// Safely inline UserModeContext to prevent missing module import build failures
-interface UserModeContextType {
-  isUserMode: boolean;
-  toggleUserMode: () => void;
-}
-
-const UserModeContext = createContext<UserModeContextType>({
-  isUserMode: false,
-  toggleUserMode: () => {},
-});
-
-export const useUserMode = () => useContext(UserModeContext);
 
 interface AdminPanelProps {
   currentUser?: User | null;
@@ -98,77 +87,102 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onLogout,
   onSwitchToUserMode,
   onNavigate,
+  onDeletePost
 }) => {
-  const { isUserMode, toggleUserMode } = useUserMode();
+  const isUserMode = false;
+  const toggleUserMode = () => {
+    if (onSwitchToUserMode) onSwitchToUserMode();
+  };
   const t = translations[language] || translations.si;
-
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
-
-  const [activeTab, setActiveTab] = useState<
-    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge' | 'app_update'
-  >('users');
-
+  const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'>('users');
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
   const [postSearch, setPostSearch] = useState('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
-
-  // User inspection and editing modal states
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-
-  // App Update Notification Control States
-  const [isUpdateEnabled, setIsUpdateEnabled] = useState(false);
-  const [showOnWeb, setShowOnWeb] = useState(false);
-  const [targetVersion, setTargetVersion] = useState('v1.0.8');
-  const [apkDownloadUrl, setApkDownloadUrl] = useState('');
-  const [updateReleaseNotes, setUpdateReleaseNotes] = useState('සහය සේවා නවතම සංස්කරණය (Direct APK Download & Update Support)');
-  const [isSavingUpdateConfig, setIsSavingUpdateConfig] = useState(false);
-
-  useEffect(() => {
-    getAppUpdateSettings().then((cfg) => {
-      setIsUpdateEnabled(cfg.enabled);
-      setShowOnWeb(cfg.showOnWeb);
-      if (cfg.targetVersion) setTargetVersion(cfg.targetVersion);
-      if (cfg.downloadUrl) setApkDownloadUrl(cfg.downloadUrl);
-      if (cfg.releaseNotes) setUpdateReleaseNotes(cfg.releaseNotes);
-    }).catch(() => {});
-  }, []);
-
-  const handleSaveUpdateSettings = async () => {
-    setIsSavingUpdateConfig(true);
-    try {
-      await saveAppUpdateSettings({
-        enabled: isUpdateEnabled,
-        showOnWeb,
-        targetVersion: targetVersion.trim(),
-        downloadUrl: apkDownloadUrl.trim(),
-        releaseNotes: updateReleaseNotes.trim(),
-      });
-      showNotification(
-        isUpdateEnabled
-          ? '✅ යාවත්කාලීන නිවේදනය සාර්ථකව සක්‍රීය කරන ලදී!'
-          : '🛑 යාවත්කාලීන නිවේදනය සම්පූර්ණයෙන්ම අක්‍රිය (OFF) කරන ලදී!'
-      );
-    } catch (err: any) {
-      showNotification('❌ සුරැකීම අසාර්ථක විය: ' + (err?.message || 'දෝෂයක් සිදු විය'));
-    } finally {
-      setIsSavingUpdateConfig(false);
-    }
-  };
-
   const showNotification = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 4000);
   };
-
-  // Helper counts
   const pendingUsersCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
   const activeAlertsCount = useMemo(() => redAlerts.length, [redAlerts]);
   const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending').length, [issues]);
-
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      const matchesSearch = (u.fullName || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.phone || '').includes(userSearch);
+      const matchesFilter = userFilter === 'all' ? true : u.status === userFilter;
+      return matchesSearch && matchesFilter;
+    });
+  }, [users, userSearch, userFilter]);
+  const filteredHelpPosts = useMemo(() => {
+    return helpPosts.filter(p => (p.title || '').toLowerCase().includes(postSearch.toLowerCase()) || (p.description || '').toLowerCase().includes(postSearch.toLowerCase()));
+  }, [helpPosts, postSearch]);
+  const handleApproveUser = async (user: User) => {
+    const updated = { ...user, status: 'approved' as const };
+    if (setUsers) setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
+    await syncUserProfileToFirestore(updated);
+    showNotification(`User ${user.fullName} approved`);
+  };
+  const handleBlockUser = async (user: User) => {
+    const updated = { ...user, status: 'blocked' as const };
+    if (setUsers) setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
+    await syncUserProfileToFirestore(updated);
+    showNotification(`User ${user.fullName} blocked`);
+  };
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) return;
+    if (setUsers) setUsers(prev => prev.filter(u => u.id !== userId));
+    await deleteUserAccount(userId);
+    showNotification('User account deleted');
+  };
+  const handleDeletePostInternal = async (postId: string) => {
+    if (!window.confirm('Delete this post?')) return;
+    if (onDeletePost) onDeletePost(postId);
+    if (setHelpPosts) setHelpPosts(prev => prev.filter(p => p.id !== postId));
+    await deleteHelpPostFromFirestore(postId);
+    showNotification('Post removed');
+  };
   return (
     <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+      {/* Top Header Bar */}
+      <div className="bg-white dark:bg-[#07170e] rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-200 dark:border-[#153422] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <AppLogo className="w-12 h-12" />
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-slate-900 dark:text-white">පාලක පුවරුව (Admin Panel)</h1>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                {currentUser?.role || 'Administrator'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">පද්ධති කළමනාකරණය සහ අධීක්ෂණය</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+          <button
+            type="button"
+            onClick={toggleUserMode}
+            className="px-4 py-2 bg-slate-100 dark:bg-[#12281b] hover:bg-slate-200 dark:hover:bg-[#153422] text-slate-700 dark:text-slate-200 text-xs font-bold rounded-2xl transition-all cursor-pointer flex items-center gap-2"
+          >
+            <Users className="w-4 h-4 text-emerald-600" />
+            <span>පරිශීලක මාදිලියට</span>
+          </button>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl hover:bg-rose-100 transition-all cursor-pointer"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Memory Storage Bar */}
+      <MemoryStorageBar />
       {/* Toast Notification */}
       {notificationMsg && (
         <div className="fixed top-5 right-5 z-[999999] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 animate-bounce">
@@ -176,7 +190,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <span className="text-xs sm:text-sm font-bold">{notificationMsg}</span>
         </div>
       )}
-
       {/* Navigation Tabs Bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {[
@@ -191,7 +204,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
           { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
           { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
-          { id: 'app_update', label: 'ඇප් යාවත්කාලීන', icon: Rocket },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -208,159 +220,191 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
               <span>{tab.label}</span>
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white animate-pulse">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-
-      {/* Tab 11: App Update Notification Control */}
-      {activeTab === 'app_update' && (
-        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-[#173d27]">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
-                <Rocket className="w-6 h-6 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>ඇප් යාවත්කාලීන නිවේදන පාලනය (In-App Update Alert)</span>
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  පරිශීලකයින්ට නව Update Popup එක පෙන්වීම හෝ සම්පූර්ණයෙන්ම අක්‍රිය (OFF) කිරීම මෙතැනින් කළ හැක.
-                </p>
-              </div>
-            </div>
-
-            {/* Master Toggle Status Badge */}
-            <div className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 border ${
-              isUpdateEnabled
-                ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-400'
-                : 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border-rose-400'
-            }`}>
-              <span className={`w-2.5 h-2.5 rounded-full ${isUpdateEnabled ? 'bg-emerald-500 animate-ping' : 'bg-rose-500'}`} />
-              <span>{isUpdateEnabled ? '🟢 නොටිෆිකේෂන් එක සක්‍රීයයි (ON)' : '🔴 නොටිෆිකේෂන් එක අක්‍රියයි (OFF)'}</span>
-            </div>
-          </div>
-
-          {/* Master ON/OFF Switch Card */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#07130b] border border-slate-200 dark:border-[#153422] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                ප්‍රධාන නොටිෆිකේෂන් ස්විචය (Master Update Notification Switch)
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-lg">
-                මෙය <strong className="text-rose-600 dark:text-rose-400">OFF (අක්‍රිය)</strong> කළ විට, කිසිදු පරිශීලකයෙකුට (Web අඩවියේදී හෝ Mobile App එකේදී) "නව යාවත්කාලීන කිරීමක් ඇත" යනුවෙන් කිසිදු Popup එකක් මතු නොවේ.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsUpdateEnabled(!isUpdateEnabled)}
-              className={`relative inline-flex h-9 w-20 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isUpdateEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-8 w-8 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
-                  isUpdateEnabled ? 'translate-x-11 text-emerald-700' : 'translate-x-0 text-slate-500'
-                }`}
-              >
-                {isUpdateEnabled ? 'ON' : 'OFF'}
-              </span>
-            </button>
-          </div>
-
-          {/* Web Browser Display Switch */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07130b] border border-slate-200 dark:border-[#153422] flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                වෙබ් අඩවියේදී (Web Browser) පෙන්වන්නද?
-              </h5>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                අක්‍රිය කළ විට වෙබ් බ්‍රවුසරයෙන් එන අයට මේ Popup එක නොපෙනී, App එක තුළ පමණක් පෙනේ.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              disabled={!isUpdateEnabled}
-              onClick={() => setShowOnWeb(!showOnWeb)}
-              className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-40 ${
-                showOnWeb ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out ${
-                  showOnWeb ? 'translate-x-7' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Config Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                නවතම Version අංකය (Target Version)
-              </label>
+      {/* Tab Contents */}
+      {activeTab === 'users' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-[#07170e] p-4 rounded-3xl border border-slate-200 dark:border-[#153422]">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                value={targetVersion}
-                onChange={(e) => setTargetVersion(e.target.value)}
-                placeholder="උදා: v1.0.8"
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white focus:outline-none"
+                placeholder="නම හෝ දුරකථන අංකය..."
+                value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-[#12281b] border border-slate-200 dark:border-[#153422] rounded-2xl text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
               />
             </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                සෘජු APK Download Link එක (Direct URL)
-              </label>
-              <input
-                type="url"
-                value={apkDownloadUrl}
-                onChange={(e) => setApkDownloadUrl(e.target.value)}
-                placeholder="https://github.com/.../releases/..."
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none"
-              />
+            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+              {[
+                { id: 'all', label: 'සියල්ල' },
+                { id: 'pending', label: 'අනුමැතිය බලපොරොත්තුවෙන්' },
+                { id: 'approved', label: 'අනුමත කළ' },
+                { id: 'blocked', label: 'අවහිර කළ' },
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setUserFilter(f.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    userFilter === f.id
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-[#12281b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
           </div>
-
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-              අලුතින් එක් කළ විශේෂාංග (What's New විස්තරය)
-            </label>
-            <textarea
-              rows={3}
-              value={updateReleaseNotes}
-              onChange={(e) => setUpdateReleaseNotes(e.target.value)}
-              placeholder="යාවත්කාලීන කිරීමේදී පරිශීලකයින්ට පෙනෙන විස්තරය..."
-              className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none"
-            />
-          </div>
-
-          {/* Save Button */}
-          <div className="pt-2 flex justify-end">
-            <button
-              type="button"
-              disabled={isSavingUpdateConfig}
-              onClick={handleSaveUpdateSettings}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-[#007a4b] hover:from-emerald-500 hover:to-[#00663e] text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSavingUpdateConfig ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>සුරැකෙමින් පවතී...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>සැකසුම් සුරකින්න (Save Settings)</span>
-                </>
-              )}
-            </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredUsers.map(u => (
+              <div key={u.id} className="bg-white dark:bg-[#07170e] p-5 rounded-3xl border border-slate-200 dark:border-[#153422] shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-slate-900 dark:text-white">{u.fullName}</h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                      u.status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                      u.status === 'approved' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                      'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                    }`}>
+                      {u.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                    {u.phone}
+                  </p>
+                  {u.district && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      {u.district}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-[#12281b]">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setInspectingUser(u)}
+                      className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#12281b] rounded-xl transition-all cursor-pointer"
+                      title="පරීක්ෂා කරන්න"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingUser(u)}
+                      className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#12281b] rounded-xl transition-all cursor-pointer"
+                      title="සංස්කරණය"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUser(u.id)}
+                      className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
+                      title="ඉවත් කරන්න"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {u.status !== 'approved' && (
+                      <button
+                        onClick={() => handleApproveUser(u)}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        අනුමත කරන්න
+                      </button>
+                    )}
+                    {u.status !== 'blocked' && (
+                      <button
+                        onClick={() => handleBlockUser(u)}
+                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        අවහිර කරන්න
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+      )}
+      {activeTab === 'posts' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-[#07170e] p-4 rounded-3xl border border-slate-200 dark:border-[#153422]">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="දැන්වීම් සෙවුම..."
+                value={postSearch}
+                onChange={e => setPostSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-[#12281b] border border-slate-200 dark:border-[#153422] rounded-2xl text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredHelpPosts.map(p => (
+              <div key={p.id} className="bg-white dark:bg-[#07170e] p-5 rounded-3xl border border-slate-200 dark:border-[#153422] shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      {p.type}
+                    </span>
+                    <button
+                      onClick={() => handleDeletePostInternal(p.id)}
+                      className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">{p.title}</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3">{p.description}</p>
+                </div>
+                <div className="text-[10px] text-slate-400 flex items-center justify-between pt-3 border-t border-slate-100 dark:border-[#12281b]">
+                  <span>කර්තෘ: {p.authorName}</span>
+                  <span>{p.location}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {activeTab === 'credits' && <AdminCreditManagement users={users} setUsers={setUsers} />}
+      {activeTab === 'emergency' && <AdminEmergencyDirectoryManagement />}
+      {activeTab === 'red_alerts' && <AdminRedAlertManagement redAlerts={redAlerts} setRedAlerts={setRedAlerts} />}
+      {activeTab === 'issues' && <AdminIssuesManagement issues={issues} setIssues={setIssues} />}
+      {activeTab === 'dictionary' && <AdminSearchDictionaryManager />}
+      {activeTab === 'trust' && <AdminTrustManagement users={users} setUsers={setUsers} />}
+      {activeTab === 'presence' && <AdminPresenceDashboard />}
+      {activeTab === 'password_resets' && <AdminPasswordResetsManagement />}
+      {activeTab === 'ai_knowledge' && <AdminAiKnowledgeManagement />}
+      {/* Modals */}
+      {inspectingUser && (
+        <AdminUserInspectionModal
+          user={inspectingUser}
+          onClose={() => setInspectingUser(null)}
+        />
+      )}
+      {editingUser && (
+        <AdminEditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={async (updated) => {
+            if (setUsers) setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+            await syncUserProfileToFirestore(updated);
+            showNotification('පරිශීලක තොරතුරු යාවත්කාලීන විය');
+            setEditingUser(null);
+          }}
+        />
       )}
     </div>
   );
