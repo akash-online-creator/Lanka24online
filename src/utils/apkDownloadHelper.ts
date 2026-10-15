@@ -142,3 +142,28 @@ export async function triggerDirectApkDownload(explicitUrl?: string): Promise<vo
     window.location.href = explicitUrl || FALLBACK_APK_DIRECT_URL;
   }
 }
+
+/**
+ * Compatibility exports for AdminPanel update settings
+ */
+export async function getAppUpdateSettings() {
+  const settings = {
+    enabled: false,
+    showOnWeb: false,
+    targetVersion: 'v1.0.8',
+    releaseNotes: '',
+    downloadUrl: FALLBACK_APK_DIRECT_URL,
+  };
+  return settings;
+}
+if (typeof window !== 'undefined') {
+  (window as any).getAppUpdateSettings = getAppUpdateSettings;
+}
+
+export async function saveAppUpdateSettings(_settings: any) {
+  return Promise.resolve();
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).saveAppUpdateSettings = saveAppUpdateSettings;
+}
