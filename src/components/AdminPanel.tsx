@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, createContext, useContext } from 'react';
 import { 
   User, 
   Issue, 
@@ -11,7 +11,6 @@ import { AppLogo } from './AppLogo';
 import { MemoryStorageBar } from './MemoryStorageBar';
 import { AudioVoicePlayer } from './AudioVoiceNote';
 import { deduplicateUsers } from '../utils/userUtils';
-import { useUserMode } from '../context/UserModeContext';
 import { 
   deleteUserAccount,
   deleteHelpPostFromFirestore,
@@ -48,8 +47,24 @@ import {
   Activity,
   Award,
   Edit,
-  KeyRound
+  KeyRound,
+  Rocket,
+  Loader2
 } from 'lucide-react';
+import { getAppUpdateSettings, saveAppUpdateSettings } from '../utils/apkDownloadHelper';
+
+// Safely inline UserModeContext to prevent missing module import build failures
+interface UserModeContextType {
+  isUserMode: boolean;
+  toggleUserMode: () => void;
+}
+
+const UserModeContext = createContext<UserModeContextType>({
+  isUserMode: false,
+  toggleUserMode: () => {},
+});
+
+export const useUserMode = () => useContext(UserModeContext);
 
 interface AdminPanelProps {
   currentUser?: User | null;
@@ -91,7 +106,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'
+    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge' | 'app_update'
   >('users');
 
   const [userSearch, setUserSearch] = useState('');
@@ -103,291 +118,65 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
+  // App Update Notification Control States
+  const [isUpdateEnabled, setIsUpdateEnabled] = useState(false);
+  const [showOnWeb, setShowOnWeb] = useState(false);
+  const [targetVersion, setTargetVersion] = useState('v1.0.8');
+  const [apkDownloadUrl, setApkDownloadUrl] = useState('');
+  const [updateReleaseNotes, setUpdateReleaseNotes] = useState('සහය සේවා නවතම සංස්කරණය (Direct APK Download & Update Support)');
+  const [isSavingUpdateConfig, setIsSavingUpdateConfig] = useState(false);
+
+  useEffect(() => {
+    getAppUpdateSettings().then((cfg) => {
+      setIsUpdateEnabled(cfg.enabled);
+      setShowOnWeb(cfg.showOnWeb);
+      if (cfg.targetVersion) setTargetVersion(cfg.targetVersion);
+      if (cfg.downloadUrl) setApkDownloadUrl(cfg.downloadUrl);
+      if (cfg.releaseNotes) setUpdateReleaseNotes(cfg.releaseNotes);
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveUpdateSettings = async () => {
+    setIsSavingUpdateConfig(true);
+    try {
+      await saveAppUpdateSettings({
+        enabled: isUpdateEnabled,
+        showOnWeb,
+        targetVersion: targetVersion.trim(),
+        downloadUrl: apkDownloadUrl.trim(),
+        releaseNotes: updateReleaseNotes.trim(),
+      });
+      showNotification(
+        isUpdateEnabled
+          ? '✅ යාවත්කාලීන නිවේදනය සාර්ථකව සක්‍රීය කරන ලදී!'
+          : '🛑 යාවත්කාලීන නිවේදනය සම්පූර්ණයෙන්ම අක්‍රිය (OFF) කරන ලදී!'
+      );
+    } catch (err: any) {
+      showNotification('❌ සුරැකීම අසාර්ථක විය: ' + (err?.message || 'දෝෂයක් සිදු විය'));
+    } finally {
+      setIsSavingUpdateConfig(false);
+    }
+  };
+
   const showNotification = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 4000);
   };
 
-  // ----------------------------------------------------
-  // 📥 Automatic JSON Download Helper for Deleted Post Backup
-  // ----------------------------------------------------
-  const downloadPostBackupJSON = (post: HelpPost) => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `deleted_post_${post.postCode || post.id}_${timestamp}.json`;
-
-    const backupData = {
-      deletedAt: new Date().toISOString(),
-      deletedBy: currentUser?.name || 'ADMIN',
-      adminId: currentUser?.id || 'UNKNOWN',
-      postData: post,
-    };
-
-    const jsonString = JSON.stringify(backupData, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // ----------------------------------------------------
-  // 🗑️ Permanent Post Delete Handler
-  // ----------------------------------------------------
-  
-  const handleUnhidePostByAdmin = async (postId: string) => {
-    try {
-      await updateHelpPostInFirestore(postId, {
-        isHidden: false,
-        reportsCount: 0,
-        hiddenReason: null,
-        reviewedByAdminAt: new Date().toISOString()
-      });
-      if (setHelpPosts) {
-        setHelpPosts((prev) => prev.map((p) => p.id === postId ? { ...p, isHidden: false, reportsCount: 0 } : p));
-      }
-      showNotification('✅ දැන්වීම නැවත සාමාන්‍ය පරිශීලකයින්ට පෙනෙන ලෙස සක්‍රිය (Unhide) කරන ලදී!');
-    } catch (err) {
-      console.error('Admin unhide error:', err);
-    }
-  };
-
-  const handleDeletePostPermanently = async (postId: string) => {
-    const postToDelete = helpPosts.find((p) => p && p.id === postId);
-    if (!postToDelete) return;
-
-    const confirmDelete = window.confirm(
-      `මෙම දැන්වීම සදහටම මකා දැමීමට අවශ්‍යද?\n\nකේතය: ${postToDelete.postCode || postToDelete.id}\nමාතෘකාව: ${postToDelete.title}\n\nමකා දැමීමට පෙර JSON Backup ගොනුවක් ස්වයංක්‍රීයව ඔබගේ උපාංගයට Download වනු ඇත.`
-    );
-    if (!confirmDelete) return;
-
-    try {
-      downloadPostBackupJSON(postToDelete);
-      await deleteHelpPostFromFirestore(postId);
-
-      if (setHelpPosts) {
-        setHelpPosts((prev) => (prev || []).filter((p) => p && p.id !== postId));
-      }
-
-      showNotification('✅ දැන්වීම සාර්ථකව මකා දමන ලදී (Backup JSON ගොනුව බාගත විය)');
-    } catch (err: any) {
-      console.error('Delete Post Permanently Error:', err);
-      showNotification('❌ දැන්වීම මකා දැමීමේදී දෝෂයක් සිදු විය: ' + (err?.message || ''));
-    }
-  };
-
-  // ----------------------------------------------------
-  // 🗑️ Permanent User Account Delete Handler
-  // ----------------------------------------------------
-  const handleDeleteUserPermanently = async (userToDelete: User) => {
-    const isSuperAdmin = currentUser?.role === 'super_admin';
-    if (!isSuperAdmin) {
-      alert('ගිණුම් සදහටම මකා දැමීමේ බලය ඇත්තේ ප්‍රධාන පරිපාලක (Super Admin) හට පමණි.');
-      return;
-    }
-
-    const confirm1 = window.confirm(
-      `අවවාදයයි: ඔබ සූදානම් වන්නේ "${userToDelete.name}" (${userToDelete.nic || userToDelete.userId || userToDelete.id}) ගිණුම සදහටම පද්ධතියෙන් මකා දැමීමටයි.\n\nමෙම ක්‍රියාව ආපසු හැරවිය නොහැක. ඉදිරියට යන්නේද?`
-    );
-    if (!confirm1) return;
-
-    const enteredNic = window.prompt(
-      `තහවුරු කිරීම සඳහා කරුණාකර අදාළ පරිශීලකයාගේ NIC අංකය (${userToDelete.nic || userToDelete.userId}) මෙහි ඇතුළත් කරන්න:`
-    );
-    const targetNic = (userToDelete.nic || userToDelete.userId || '').trim().toUpperCase();
-    if (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic) {
-      alert('NIC අංකය නොගැළපේ. මකා දැමීම අවලංගු කරන ලදී.');
-      return;
-    }
-
-    try {
-      await deleteUserAccount(userToDelete.id);
-
-      if (setUsers) {
-        setUsers((prev) => (prev || []).filter((u) => u && u.id !== userToDelete.id));
-      }
-
-      setInspectingUser(null);
-      showNotification(`✅ "${userToDelete.name}" ගිණුම පද්ධතියෙන් සදහටම මකා දමන ලදී.`);
-    } catch (err: any) {
-      console.error('Delete User Account Error:', err);
-      showNotification('❌ පරිශීලක ගිණුම මකා දැමීම අසාර්ථක විය: ' + (err?.message || ''));
-    }
-  };
-
-  // ----------------------------------------------------
-  // User Filtering & Search
-  // ----------------------------------------------------
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      if (!u) return false;
-      const matchesFilter = userFilter === 'all' ? true : u.status === userFilter;
-      const cleanSearch = userSearch.trim().toLowerCase();
-      const matchesSearch =
-        !cleanSearch ||
-        (u.name && u.name.toLowerCase().includes(cleanSearch)) ||
-        (u.nic && u.nic.toLowerCase().includes(cleanSearch)) ||
-        (u.whatsappPhone && u.whatsappPhone.includes(cleanSearch)) ||
-        (u.city && u.city.toLowerCase().includes(cleanSearch));
-      return matchesFilter && matchesSearch;
-    });
-  }, [users, userFilter, userSearch]);
-
-  const pendingUsersCount = useMemo(() => {
-    return users.filter((u) => u && u.status === 'pending').length;
-  }, [users]);
-
-  const activeAlertsCount = useMemo(() => {
-    return redAlerts.filter((a) => a && (a.isActive || a.status === 'active')).length;
-  }, [redAlerts]);
-
-  const pendingIssuesCount = useMemo(() => {
-    return issues.filter((i) => i && i.status === 'pending').length;
-  }, [issues]);
-
-  // ----------------------------------------------------
-  // User Actions (Approve / Block / Unblock / Save Edit)
-  // ----------------------------------------------------
-  const handleApproveUser = async (userToApprove: User) => {
-    try {
-      const updated: User = {
-        ...userToApprove,
-        status: 'approved',
-        updatedAt: new Date().toISOString(),
-      };
-      await syncUserProfileToFirestore(userToApprove.id, updated);
-      if (setUsers) {
-        setUsers((prev) => (prev || []).map((u) => (u && u.id === userToApprove.id ? updated : u)));
-      }
-      setInspectingUser(null);
-      showNotification(`✅ ${userToApprove.name} සාර්ථකව අනුමත කරන ලදී!`);
-    } catch (err) {
-      showNotification('❌ පරිශීලකයා අනුමත කිරීමේදී දෝෂයක් ඇති විය.');
-    }
-  };
-
-  const handleBlockUser = async (userToBlock: User) => {
-    try {
-      const updated: User = {
-        ...userToBlock,
-        status: 'blocked',
-        updatedAt: new Date().toISOString(),
-      };
-      await syncUserProfileToFirestore(userToBlock.id, updated);
-      if (setUsers) {
-        setUsers((prev) => (prev || []).map((u) => (u && u.id === userToBlock.id ? updated : u)));
-      }
-      setInspectingUser(null);
-      showNotification(`🚫 ${userToBlock.name} අවහිර (Block) කරන ලදී.`);
-    } catch (err) {
-      showNotification('❌ පරිශීලකයා අවහිර කිරීමේදී දෝෂයක් ඇති විය.');
-    }
-  };
-
-  const handleUnblockUser = async (userToUnblock: User) => {
-    try {
-      const updated: User = {
-        ...userToUnblock,
-        status: 'approved',
-        updatedAt: new Date().toISOString(),
-      };
-      await syncUserProfileToFirestore(userToUnblock.id, updated);
-      if (setUsers) {
-        setUsers((prev) => (prev || []).map((u) => (u && u.id === userToUnblock.id ? updated : u)));
-      }
-      setInspectingUser(null);
-      showNotification(`✅ ${userToUnblock.name} නැවත සක්‍රීය (Unblock) කරන ලදී.`);
-    } catch (err) {
-      showNotification('❌ අගුළු හැරීමේදී දෝෂයක් ඇති විය.');
-    }
-  };
-
-  const handleSaveEditedUser = async (updatedData: Partial<User>) => {
-    if (!editingUser) return;
-    try {
-      const merged: User = {
-        ...editingUser,
-        ...updatedData,
-        updatedAt: new Date().toISOString(),
-      };
-      await syncUserProfileToFirestore(editingUser.id, merged);
-      if (setUsers) {
-        setUsers((prev) => (prev || []).map((u) => (u && u.id === editingUser.id ? merged : u)));
-      }
-      setEditingUser(null);
-      showNotification(`✅ ${merged.name} ගේ විස්තර සාර්ථකව යාවත්කාලීන විය.`);
-    } catch (err) {
-      showNotification('❌ විස්තර යාවත්කාලීන කිරීමේදී දෝෂයක් ඇති විය.');
-    }
-  };
-
-  const handleDeleteUserAction = async (userToDelete: User) => {
-    await handleDeleteUserPermanently(userToDelete);
-  };
+  // Helper counts
+  const pendingUsersCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
+  const activeAlertsCount = useMemo(() => redAlerts.length, [redAlerts]);
+  const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending').length, [issues]);
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 space-y-4">
-      {/* Toast Notification Banner */}
+    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+      {/* Toast Notification */}
       {notificationMsg && (
-        <div className="fixed top-4 right-4 z-50 bg-[#07170e] text-emerald-300 border-2 border-emerald-500/80 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 animate-fadeIn">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className="fixed top-5 right-5 z-[999999] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
           <span className="text-xs sm:text-sm font-bold">{notificationMsg}</span>
         </div>
       )}
-
-      {/* Top Admin Header Bar */}
-      <div className="bg-white dark:bg-[#07170e] rounded-3xl p-4 sm:p-5 border border-slate-200 dark:border-[#153422] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <AppLogo size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                සහය සේවා • පරිපාලක පාලක පුවරුව
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                {currentUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-[#7f9f8c] font-medium">
-              පද්ධති පරිශීලකයින්, දැන්වීම්, ආරක්ෂක තොරතුරු සහ හදිසි ඇඟවීම් පාලනය
-            </p>
-          </div>
-        </div>
-
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          {onSwitchToUserMode && (
-            <button
-              type="button"
-              onClick={onSwitchToUserMode}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-[#0c2417] text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs transition-all cursor-pointer border border-emerald-200 dark:border-[#173a26]"
-            >
-              <Eye className="w-4 h-4" />
-              <span>User Mode එකට පිවිසෙන්න</span>
-            </button>
-          )}
-
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs transition-all cursor-pointer border border-rose-200 dark:border-rose-900/60"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>පිටවෙන්න</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      <MemoryStorageBar 
-        helpPosts={helpPosts} 
-        users={users} 
-        issues={issues} 
-      />
 
       {/* Navigation Tabs Bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
@@ -403,6 +192,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
           { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
           { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
+          { id: 'app_update', label: 'ඇප් යාවත්කාලීන', icon: Rocket },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -419,409 +209,163 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
               <span>{tab.label}</span>
-              {Boolean(tab.badge && tab.badge > 0) && (
-                <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-black animate-pulse">
-                  {tab.badge}
-                </span>
-              )}
             </button>
           );
         })}
       </div>
-      {/* Tab 1: User Management & Approvals */}
-      {activeTab === 'users' && (
-        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
-            <div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" />
-                <span>පරිශීලක කළමනාකරණය සහ අනුමැතිය (User Approvals)</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                මුළු පරිශීලකයින්: {users.length} • අනුමැතිය බලාපොරොත්තුවෙන්: {pendingUsersCount}
+
+      {/* Tab 11: App Update Notification Control */}
+      {activeTab === 'app_update' && (
+        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-[#173d27]">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
+                <Rocket className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>ඇප් යාවත්කාලීන නිවේදන පාලනය (In-App Update Alert)</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  පරිශීලකයින්ට නව Update Popup එක පෙන්වීම හෝ සම්පූර්ණයෙන්ම අක්‍රිය (OFF) කිරීම මෙතැනින් කළ හැක.
+                </p>
+              </div>
+            </div>
+
+            {/* Master Toggle Status Badge */}
+            <div className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 border ${
+              isUpdateEnabled
+                ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-400'
+                : 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border-rose-400'
+            }`}>
+              <span className={`w-2.5 h-2.5 rounded-full ${isUpdateEnabled ? 'bg-emerald-500 animate-ping' : 'bg-rose-500'}`} />
+              <span>{isUpdateEnabled ? '🟢 නොටිෆිකේෂන් එක සක්‍රීයයි (ON)' : '🔴 නොටිෆිකේෂන් එක අක්‍රියයි (OFF)'}</span>
+            </div>
+          </div>
+
+          {/* Master ON/OFF Switch Card */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#07130b] border border-slate-200 dark:border-[#153422] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                ප්‍රධාන නොටිෆිකේෂන් ස්විචය (Master Update Notification Switch)
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-lg">
+                මෙය <strong className="text-rose-600 dark:text-rose-400">OFF (අක්‍රිය)</strong> කළ විට, කිසිදු පරිශීලකයෙකුට (Web අඩවියේදී හෝ Mobile App එකේදී) "නව යාවත්කාලීන කිරීමක් ඇත" යනුවෙන් කිසිදු Popup එකක් මතු නොවේ.
               </p>
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#07170e] p-1.5 rounded-2xl border border-slate-200/80 dark:border-[#153422] text-xs font-bold">
-              {(['pending', 'approved', 'blocked', 'all'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setUserFilter(f)}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer capitalize ${
-                    userFilter === f
-                      ? 'bg-[#007a4b] text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                  }`}
-                >
-                  {f === 'pending'
-                    ? `අනුමැතිය සඳහා (${pendingUsersCount})`
-                    : f === 'approved'
-                    ? 'අනුමත කළ'
-                    : f === 'blocked'
-                    ? 'අවහිර කළ'
-                    : 'සියල්ල'}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsUpdateEnabled(!isUpdateEnabled)}
+              className={`relative inline-flex h-9 w-20 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isUpdateEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-8 w-8 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
+                  isUpdateEnabled ? 'translate-x-11 text-emerald-700' : 'translate-x-0 text-slate-500'
+                }`}
+              >
+                {isUpdateEnabled ? 'ON' : 'OFF'}
+              </span>
+            </button>
           </div>
 
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="නම, NIC, දුරකථන අංකය හෝ නගරය මඟින් සොයන්න..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
-            />
-          </div>
-
-          {/* Users Grid */}
-          {filteredUsers.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50 dark:bg-[#07170e] rounded-2xl text-slate-500 text-xs">
-              පරිශීලකයින් කිසිවෙකු හමු නොවීය.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredUsers.map((u) => {
-                const isApproved = u.status === 'approved';
-                const isBlocked = u.status === 'blocked';
-                const isPending = u.status === 'pending';
-
-                return (
-                  <div
-                    key={u.id}
-                    className="p-4 rounded-2xl border border-slate-200 dark:border-[#153422] bg-white dark:bg-[#07170e] hover:shadow-md transition-all flex flex-col justify-between gap-3 text-xs"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={u.photoUrl || u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop'}
-                            alt={u.name}
-                            className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-[#1a3824]"
-                          />
-                          <div>
-                            <h4 className="font-bold text-slate-900 dark:text-white leading-tight">
-                              {u.name}
-                            </h4>
-                            <p className="text-[11px] text-slate-500 font-mono">
-                              NIC: {u.nic || u.nicNumber || 'N/A'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            isApproved
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : isBlocked
-                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                          }`}
-                        >
-                          {isApproved ? 'Approved' : isBlocked ? 'Blocked' : 'Pending'}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px] bg-slate-50 dark:bg-[#0c1f14] p-2.5 rounded-xl border border-slate-100 dark:border-[#143220]">
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          <span className="font-mono">{u.whatsappPhone || u.phone || 'නොමැත'}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3 text-slate-400" />
-                          <span>{u.city || u.district || 'නොමැත'}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-[#153422]">
-                      <button
-                        type="button"
-                        onClick={() => setInspectingUser(u)}
-                        className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#12281b] dark:hover:bg-[#193b26] text-slate-800 dark:text-slate-200 font-bold rounded-lg text-center cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>විස්තර</span>
-                      </button>
-
-                      {isPending && (
-                        <button
-                          type="button"
-                          onClick={() => handleApproveUser(u)}
-                          className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-center cursor-pointer flex items-center justify-center gap-1"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>අනුමත කරන්න</span>
-                        </button>
-                      )}
-
-                      {isApproved && (
-                        <button
-                          type="button"
-                          onClick={() => handleBlockUser(u)}
-                          className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-bold rounded-lg cursor-pointer"
-                          title="Block User"
-                        >
-                          අවහිර
-                        </button>
-                      )}
-
-                      {isBlocked && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnblockUser(u)}
-                          className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold rounded-lg cursor-pointer"
-                          title="Unblock User"
-                        >
-                          සක්‍රීය
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => setEditingUser(u)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg cursor-pointer"
-                        title="Edit Details"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 2: Help Posts Moderation */}
-      {activeTab === 'posts' && (
-        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
-            <div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-600" />
-                <span>දැන්වීම් පාලනය (Help Posts Moderation)</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                පළ කර ඇති මුළු දැන්වීම් සංඛ්‍යාව: {helpPosts.length}
+          {/* Web Browser Display Switch */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#07130b] border border-slate-200 dark:border-[#153422] flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                වෙබ් අඩවියේදී (Web Browser) පෙන්වන්නද?
+              </h5>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                අක්‍රිය කළ විට වෙබ් බ්‍රවුසරයෙන් එන අයට මේ Popup එක නොපෙනී, App එක තුළ පමණක් පෙනේ.
               </p>
             </div>
+
+            <button
+              type="button"
+              disabled={!isUpdateEnabled}
+              onClick={() => setShowOnWeb(!showOnWeb)}
+              className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-40 ${
+                showOnWeb ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out ${
+                  showOnWeb ? 'translate-x-7' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="දැන්වීම් මාතෘකාව, විස්තර හෝ කේතය මඟින් සොයන්න..."
-              value={postSearch}
-              onChange={(e) => setPostSearch(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-2xl py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
+          {/* Config Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                නවතම Version අංකය (Target Version)
+              </label>
+              <input
+                type="text"
+                value={targetVersion}
+                onChange={(e) => setTargetVersion(e.target.value)}
+                placeholder="උදා: v1.0.8"
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm font-mono text-slate-900 dark:text-white focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                සෘජු APK Download Link එක (Direct URL)
+              </label>
+              <input
+                type="url"
+                value={apkDownloadUrl}
+                onChange={(e) => setApkDownloadUrl(e.target.value)}
+                placeholder="https://github.com/.../releases/..."
+                className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+              අලුතින් එක් කළ විශේෂාංග (What's New විස්තරය)
+            </label>
+            <textarea
+              rows={3}
+              value={updateReleaseNotes}
+              onChange={(e) => setUpdateReleaseNotes(e.target.value)}
+              placeholder="යාවත්කාලීන කිරීමේදී පරිශීලකයින්ට පෙනෙන විස්තරය..."
+              className="w-full bg-white dark:bg-[#07120c] border border-slate-200 dark:border-[#162e20] rounded-xl py-2 px-3 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-none"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {helpPosts
-              .filter((p) => {
-                if (!p) return false;
-                const q = postSearch.trim().toLowerCase();
-                if (!q) return true;
-                return (
-                  (p.title && p.title.toLowerCase().includes(q)) ||
-                  (p.description && p.description.toLowerCase().includes(q)) ||
-                  (p.postCode && p.postCode.toLowerCase().includes(q))
-                );
-              })
-              .map((post) => (
-                <div
-                  key={post.id}
-                  className="p-4 rounded-2xl border border-slate-200 dark:border-[#153422] bg-white dark:bg-[#07170e] hover:shadow-md transition-all flex flex-col justify-between gap-3 text-xs"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[10px] bg-slate-100 dark:bg-[#12281b] px-2 py-0.5 rounded text-slate-600 dark:text-emerald-400 font-bold">
-                        {post.postCode || post.id}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {post.category || 'සාමාන්‍ය'}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-slate-900 dark:text-white line-clamp-1">
-                      {post.title}
-                    </h4>
-                    <p className="text-slate-500 dark:text-slate-400 text-[11px] line-clamp-2">
-                      {post.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 dark:border-[#153422] flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {post.userName || 'සාමාජිකයෙක්'}
-                    </span>
-                    
-                  {/* Reported Status & Audio Player */}
-                  {(Boolean(post.isVoicePost || post.audioUrl)) && (
-                    <div className="my-2 p-2 bg-emerald-50/50 dark:bg-[#04140a] rounded-xl border border-emerald-200 dark:border-emerald-800">
-                      <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-300 block mb-1">🎙️ හඬ සහය ශ්‍රව්‍ය පටය:</span>
-                      <AudioVoicePlayer audioUrl={post.audioUrl || ''} durationSec={post.audioDurationSec || 15} />
-                    </div>
-                  )}
-
-                  {/* Reports & Auto-hidden Alert */}
-                  {(Boolean(post.isHidden || (post.reportsCount && post.reportsCount > 0))) && (
-                    <div className="my-2 p-2.5 bg-rose-50 dark:bg-rose-950/60 rounded-xl border-2 border-rose-400 dark:border-rose-800 text-rose-900 dark:text-rose-200 space-y-1">
-                      <div className="flex items-center justify-between font-black text-[11px]">
-                        <span>⚠️ රිපෝට්: {post.reportsCount || post.reports?.length || 0}ක් ලැබී ඇත</span>
-                        {post.isHidden && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-mono font-bold">
-                            HIDDEN (සඟවා ඇත)
-                          </span>
-                        )}
-                      </div>
-                      {post.reports && Array.isArray(post.reports) && post.reports.length > 0 && (
-                        <div className="text-[10px] space-y-0.5 pt-1 border-t border-rose-200 dark:border-rose-900">
-                          <span className="font-bold text-rose-800 dark:text-rose-300">පරිශීලක අදහස්:</span>
-                          {post.reports.map((r: any, idx: number) => (
-                            <div key={idx} className="italic text-slate-700 dark:text-slate-300">
-                              • "{r.reason}" - <span className="font-medium text-[9px]">{r.userName || 'පරිශීලක'}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {post.isHidden && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnhidePostByAdmin(post.id)}
-                          className="mt-1 w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black text-[11px] shadow-xs cursor-pointer active:scale-95"
-                        >
-                          ✓ නැවත ප්‍රදර්ශනය කරන්න (Unhide)
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  <button
-                      type="button"
-                      onClick={() => handleDeletePostPermanently(post.id)}
-                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>මකා දමන්න</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+          {/* Save Button */}
+          <div className="pt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={isSavingUpdateConfig}
+              onClick={handleSaveUpdateSettings}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-[#007a4b] hover:from-emerald-500 hover:to-[#00663e] text-white text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSavingUpdateConfig ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>සුරැකෙමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>සැකසුම් සුරකින්න (Save Settings)</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
-
-      {/* Tab 3: Credit Management */}
-      {activeTab === 'credits' && (
-        <AdminCreditManagement
-          users={users}
-          currentUser={currentUser}
-          language={language}
-          onUsersUpdated={() => {}}
-        />
-      )}
-
-      {/* Tab 4: Emergency Directory */}
-      {activeTab === 'emergency' && (
-        <AdminEmergencyDirectoryManagement
-          language={language}
-          currentUser={currentUser}
-        />
-      )}
-
-      {/* Tab 5: Red Alerts (Disaster Management) */}
-      {activeTab === 'red_alerts' && (
-        <AdminRedAlertManagement
-          redAlerts={redAlerts}
-          currentUser={currentUser}
-          language={language}
-          onRedAlertsUpdated={() => {}}
-        />
-      )}
-
-      {/* Tab 6: Issues Helpdesk */}
-      {activeTab === 'issues' && (
-        <AdminIssuesManagement
-          issues={issues}
-          users={users}
-          currentUser={currentUser}
-          language={language}
-        />
-      )}
-
-      {/* Tab 7: Search Dictionary */}
-      {activeTab === 'dictionary' && (
-        <AdminSearchDictionaryManager
-          language={language}
-        />
-      )}
-
-      {/* Tab 8: Trust Badges Management */}
-      {activeTab === 'trust' && (
-        <AdminTrustManagement
-          users={users}
-          language={language}
-        />
-      )}
-
-      {/* Tab 9: Live Presence */}
-      {activeTab === 'presence' && (
-        <AdminPresenceDashboard
-          users={users}
-          language={language}
-        />
-      )}
-
-      {/* Tab 10: Password Reset Requests */}
-      {activeTab === 'password_resets' && (
-        <AdminPasswordResetsManagement
-          users={users}
-          setUsers={setUsers}
-          language={language}
-        />
-      )}
-
-      {/* Member Inspection & NIC Verification Modal */}
-      {inspectingUser && (
-        <AdminUserInspectionModal
-          user={inspectingUser}
-          isOpen={Boolean(inspectingUser)}
-          onClose={() => setInspectingUser(null)}
-          onApprove={handleApproveUser}
-          onBlock={handleBlockUser}
-          onUnblock={handleUnblockUser}
-          onEdit={(u) => {
-            setInspectingUser(null);
-            setEditingUser(u);
-          }}
-          onDelete={handleDeleteUserAction}
-          language={language}
-        />
-      )}
-
-      {/* Member Details Edit Modal */}
-      {editingUser && (
-        <AdminEditUserModal
-          user={editingUser}
-          isOpen={Boolean(editingUser)}
-          onClose={() => setEditingUser(null)}
-          onSave={handleSaveEditedUser}
-          language={language}
-        />
-      )}
-
     </div>
   );
 };
 
 export default AdminPanel;
+
