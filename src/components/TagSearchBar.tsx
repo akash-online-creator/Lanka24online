@@ -42,6 +42,7 @@ interface TagSearchBarProps {
   users?: User[];
   onSelectEntityMatch?: (match: UniversalEntityMatch) => void;
   language?: Language;
+  onOpenAccommodation?: () => void;
 }
 
 export const TagSearchBar: React.FC<TagSearchBarProps> = ({
@@ -58,6 +59,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
   users = [],
   onSelectEntityMatch,
   language = 'si',
+  onOpenAccommodation,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dismissedSynonyms, setDismissedSynonyms] = useState<string[]>([]);
@@ -225,6 +227,27 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
               <X className="w-4 h-4" />
             </button>
           )}
+        </div>
+
+        {/* Quick Clickable Hashtags under Search Bar */}
+        <div className="flex items-center gap-2 pt-2 px-1 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenAccommodation) {
+                onOpenAccommodation();
+              } else {
+                onSearchQueryChange('#නවාතැන');
+              }
+            }}
+            className="group px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/30 hover:from-emerald-500/30 hover:to-teal-500/40 border-2 border-emerald-500/70 hover:border-emerald-500 text-emerald-950 dark:text-emerald-200 text-xs font-black flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+          >
+            <span className="text-amber-500 text-sm">🏡</span>
+            <span className="font-mono text-emerald-800 dark:text-emerald-300">#නවාතැන</span>
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 hidden sm:inline">
+              (කුලී නිවාස, බෝඩින්, හොටල්)
+            </span>
+          </button>
         </div>
 
         {/* LIVE DROPDOWN: Matching @ Entities or Tags */}
