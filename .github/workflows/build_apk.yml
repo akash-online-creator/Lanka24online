@@ -22,11 +22,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create Firebase Config from Secret
+      - name: Setup Firebase Config
         run: |
-          cat << 'EOF' > firebase-applet-config.json
-          ${{ secrets.FIREBASE_CONFIG }}
-          EOF
+          if [ -n "${{ secrets.FIREBASE_CONFIG }}" ]; then
+            echo "${{ secrets.FIREBASE_CONFIG }}" > firebase-applet-config.json
+          fi
+          python3 -c "
+          import json, os
+          valid = False
+          if os.path.exists('firebase-applet-config.json'):
+              try:
+                  with open('firebase-applet-config.json') as f:
+                      d = json.load(f)
+                      if isinstance(d, dict) and d.get('projectId'):
+                          valid = True
+              except Exception:
+                  pass
+          if not valid:
+              cfg = {
+                  'projectId': 'gen-lang-client-0262698872',
+                  'appId': '1:503381962483:web:4bda294cd68823f579d186',
+                  'apiKey': 'AIzaSyBtTtuWnl4-orEHh9JkPHtkE5_z794EhpQ',
+                  'authDomain': 'gen-lang-client-0262698872.firebaseapp.com',
+                  'firestoreDatabaseId': 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f',
+                  'storageBucket': 'gen-lang-client-0262698872.firebasestorage.app',
+                  'messagingSenderId': '503381962483',
+                  'measurementId': '',
+                  'oAuthClientId': '503381962483-rh75ngs14tg41fd5728i5ef7rcjk86dn.apps.googleusercontent.com',
+                  'recaptchaSiteKey': ''
+              }
+              with open('firebase-applet-config.json', 'w') as f:
+                  json.dump(cfg, f, indent=2)
+              print('Generated valid firebase-applet-config.json')
+          "
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -62,13 +90,11 @@ jobs:
 
       - name: Configure Android Build & Fix Dependencies
         run: |
-          # 0. Pin geolocator_android to fix transitive Flutter 3.27 build crash
           flutter pub add geolocator_android:4.6.1 --dev || true
           if [ -f scripts/prepare_android.py ]; then
             python3 scripts/prepare_android.py
           fi
 
-          # Patch settings.gradle for plugin management if necessary
           python3 -c "
           import os
           p = 'android/settings.gradle'
@@ -80,11 +106,9 @@ jobs:
                   with open(p, 'w') as f:
                       f.write(c)
           "
-          # 1. Remove broken XML launcher icons and old plugin registrant
           find android/app/src/main/res -name "ic_launcher*.xml" -delete || true
           rm -rf android/app/src/main/java/io
 
-          # 2. Generate clean valid Android PNG launcher icons
           python3 -m pip install pillow --quiet
           python3 -c "
           import os
@@ -104,7 +128,6 @@ jobs:
               Image.new('RGBA', (size, size), (0, 122, 75, 255)).save(p, 'PNG')
           "
 
-          # 3. Setup clean Java MainActivity
           mkdir -p android/app/src/main/java/com/sahayasewa/app
           cat << 'EOF' > android/app/src/main/java/com/sahayasewa/app/MainActivity.java
           package com.sahayasewa.app;
@@ -116,7 +139,6 @@ jobs:
           EOF
           rm -rf android/app/src/main/kotlin
 
-          # 4. Configure local.properties and gradle repositories
           FLUTTER_BIN=$(which flutter)
           FLUTTER_DIR=$(dirname $(dirname "$FLUTTER_BIN"))
           echo "flutter.sdk=$FLUTTER_DIR" > android/local.properties
@@ -174,3 +196,4 @@ jobs:
             public/apk/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
