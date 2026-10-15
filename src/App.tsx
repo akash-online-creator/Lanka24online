@@ -14,8 +14,6 @@ import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { AppUpdateModal } from './components/AppUpdateModal';
-import { DevicePinSetupModal } from './components/DevicePinSetupModal';
-import { getStoredDevicePin } from './utils/devicePinManager';
 import { checkForAppUpdate, AppUpdateInfo } from './utils/apkDownloadHelper';
 import {
   subscribeToUsers,
@@ -47,7 +45,6 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
-  const [isPinSetupRequired, setIsPinSetupRequired] = useState<boolean>(false);
 
   // 🛰️ URL-based SOS Live Tracker direct link interception
   const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
@@ -140,7 +137,11 @@ export const App: React.FC = () => {
 
       // Check if permissions setup has been completed on initial launch
       const isPermDone = localStorage.getItem('sahaya_permissions_setup_completed');
-      if (!isPermDone) {
+      const isNativeReady = typeof window !== 'undefined' && 
+        (window as any).__sahaya_native_notif_granted === true && 
+        (window as any).__sahaya_native_location_granted === true;
+
+      if (!isPermDone && !isNativeReady) {
         return 'permissions';
       }
     } catch {}
@@ -337,14 +338,6 @@ export const App: React.FC = () => {
         console.warn(e);
       }
 
-      // Check if 4-digit device PIN is already configured for this device and user
-      const storedPin = getStoredDevicePin();
-      const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
-      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
-        setIsPinSetupRequired(true);
-        return;
-      }
-
       if (matched.role === 'admin' || matched.role === 'super_admin') {
         setActiveView('admin');
       } else if (matched.status === 'pending') {
@@ -356,24 +349,6 @@ export const App: React.FC = () => {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   }, [users]);
-
-  // Device PIN Login Success Handler
-  const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
-    setCurrentUser(authenticatedUser);
-    try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
-    } catch (e) {
-      console.warn(e);
-    }
-
-    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
-      setActiveView('admin');
-    } else if (authenticatedUser.status === 'pending') {
-      setActiveView('pending');
-    } else {
-      setActiveView('dashboard');
-    }
-  }, []);
 
   // Demo User Direct Login
   const handleUserDemoLogin = useCallback(() => {
@@ -513,7 +488,6 @@ export const App: React.FC = () => {
         {activeView === 'login' && (
           <LoginForm
             onLogin={handleLogin}
-            onSuccessfulPinLogin={handlePinLoginSuccess}
             onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setActiveView('register')}
             onNavigateToIssues={() => setActiveView('issues')}
@@ -638,28 +612,7 @@ export const App: React.FC = () => {
           />
         )}
       </div>
-            {/* 🔢 Mandatory Device PIN Setup Modal after first-time login */}
-        {isPinSetupRequired && currentUser && (
-          <DevicePinSetupModal
-            isOpen={isPinSetupRequired}
-            onClose={() => {}} // Mandatory setup on first login
-            currentUser={currentUser}
-            language={language}
-            onPinConfigured={(updatedUser) => {
-              setCurrentUser(updatedUser);
-              setIsPinSetupRequired(false);
-              setActiveView(
-                updatedUser.role === 'admin' || updatedUser.role === 'super_admin'
-                  ? 'admin'
-                  : updatedUser.status === 'pending'
-                  ? 'pending'
-                  : 'dashboard'
-              );
-            }}
-          />
-        )}
-
-        {/* 🚀 In-App Version Update Notification Modal */}
+            {/* 🚀 In-App Version Update Notification Modal */}
       {updateInfo && (
         <AppUpdateModal
           isOpen={isUpdateModalOpen}
