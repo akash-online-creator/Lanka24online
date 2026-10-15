@@ -180,6 +180,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   late final WebViewController _controller;
   bool _isLoading = true;
   double _loadProgress = 0.0;
+  bool _isLocalFallback = false;
+  Timer? _loadingSafetyTimer;
   
   double? _lastLat;
   double? _lastLng;
@@ -189,37 +191,42 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _setupWebView();
-      Future<void> _loadAppContent() async {
-    try {
-      await _controller.loadRequest(Uri.parse('https://supporservice.online'));
-    } catch (e) {
-      debugPrint('Error loading site: $e');
-    }
-      }
+    _loadAppContent();
     _requestAndStartBackgroundServices();
   }
 
   @override
   void dispose() {
+    _loadingSafetyTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _assetServer.stop();
     FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
     super.dispose();
   }
+
+  Future<void> _loadLocalFallback() async {
+    if (_isLocalFallback) return;
+    _isLocalFallback = true;
+    debugPrint('⚠️ Falling back to local embedded web assets server...');
+    try {
+      final port = await _assetServer.start();
+      if (mounted && port > 0) {
+        await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
+      } else if (mounted) {
+        await _controller.loadFlutterAsset('assets/web/index.html');
+      }
+    } catch (e) {
+      debugPrint('Local fallback loading error: $e');
+    }
+  }
+
   Future<void> _loadAppContent() async {
     try {
-      debugPrint('🌐 Loading live application from https://supporservice.online');
-      await _controller.loadRequest(Uri.parse('https://supporservice.online'));
+      debugPrint('🌐 Loading live application from https://www.supporservice.online/');
+      await _controller.loadRequest(Uri.parse('https://www.supporservice.online/'));
     } catch (e) {
       debugPrint('Error loading online URL: $e, falling back to local asset');
-      try {
-        final port = await _assetServer.start();
-        if (mounted && port > 0) {
-          await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
-        } else {
-          await _controller.loadFlutterAsset('assets/web/index.html');
-        }
-      } catch (_) {}
+      await _loadLocalFallback();
     }
   }
 
@@ -229,14 +236,14 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0F172A))
-      ..setUserAgent('Mozilla/5.0 (Linux; Android 13; Mobile App SahayaSewa) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
+      ..setUserAgent('Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
             if (mounted) {
               setState(() {
                 _loadProgress = progress / 100.0;
-                if (progress >= 25) {
+                if (progress >= 80) {
                   _isLoading = false;
                 }
               });
@@ -246,13 +253,15 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             if (mounted) {
               setState(() => _isLoading = true);
             }
-            Future.delayed(const Duration(milliseconds: 1500), () {
+            _loadingSafetyTimer?.cancel();
+            _loadingSafetyTimer = Timer(const Duration(seconds: 8), () {
               if (mounted && _isLoading) {
                 setState(() => _isLoading = false);
               }
             });
           },
           onPageFinished: (String url) {
+            _loadingSafetyTimer?.cancel();
             if (mounted) {
               setState(() => _isLoading = false);
             }
@@ -262,6 +271,9 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('Local WebView Resource Notice: ${error.errorCode} - ${error.description}');
+            if (error.isForMainFrame == true) {
+              _loadLocalFallback();
+            }
           },
           onNavigationRequest: (NavigationRequest request) async {
             final url = request.url;
