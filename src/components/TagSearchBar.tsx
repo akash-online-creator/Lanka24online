@@ -9,7 +9,8 @@ import {
   Sparkles, 
   Filter, 
   AtSign, 
-  Briefcase, 
+  Briefcase,
+  Home, 
   Store, 
   Building2, 
   User as UserIcon, 
@@ -43,6 +44,7 @@ interface TagSearchBarProps {
   onSelectEntityMatch?: (match: UniversalEntityMatch) => void;
   language?: Language;
   onOpenAccommodation?: () => void;
+  onOpenJobs?: () => void;
 }
 
 export const TagSearchBar: React.FC<TagSearchBarProps> = ({
@@ -60,6 +62,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
   onSelectEntityMatch,
   language = 'si',
   onOpenAccommodation,
+  onOpenJobs,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dismissedSynonyms, setDismissedSynonyms] = useState<string[]>([]);
@@ -229,27 +232,6 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
           )}
         </div>
 
-        {/* Quick Clickable Hashtags under Search Bar */}
-        <div className="flex items-center gap-2 pt-2 px-1 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenAccommodation) {
-                onOpenAccommodation();
-              } else {
-                onSearchQueryChange('#නවාතැන');
-              }
-            }}
-            className="group px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/30 hover:from-emerald-500/30 hover:to-teal-500/40 border-2 border-emerald-500/70 hover:border-emerald-500 text-emerald-950 dark:text-emerald-200 text-xs font-black flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-          >
-            <span className="text-amber-500 text-sm">🏡</span>
-            <span className="font-mono text-emerald-800 dark:text-emerald-300">#නවාතැන</span>
-            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 hidden sm:inline">
-              (කුලී නිවාස, බෝඩින්, හොටල්)
-            </span>
-          </button>
-        </div>
-
         {/* LIVE DROPDOWN: Matching @ Entities or Tags */}
         {isDropdownOpen && searchQuery.trim().length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white dark:bg-[#071a12] border-2 border-emerald-500 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto animate-fadeIn">
@@ -368,6 +350,40 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
             )}
           </div>
         )}
+      </div>
+
+      {/* Quick Hashtags Navigation Bar (#නවාතැන & #රැකියා) */}
+      <div className="flex items-center gap-2 pt-2.5 pb-0.5 overflow-x-auto scrollbar-none">
+        <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <span>{getLangText('ක්ෂණික සේවා:', 'Quick Services:', 'விரைவு சேவைகள்:')}</span>
+        </span>
+
+        {/* #නවාතැන Hashtag Button */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenAccommodation) onOpenAccommodation();
+          }}
+          className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer border border-emerald-400/50 shrink-0 hover:scale-105"
+          title={getLangText('නවාතැන් සොයන්න හෝ පළ කරන්න', 'Accommodation Search & Post', 'தங்குமிடம்')}
+        >
+          <Home className="w-3.5 h-3.5 text-emerald-200" />
+          <span>#නවාතැන</span>
+        </button>
+
+        {/* #රැකියා Hashtag Button */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenJobs) onOpenJobs();
+          }}
+          className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer border border-amber-300 shrink-0 animate-pulse hover:scale-105"
+          title={getLangText('රැකියා සොයන්න හෝ පළ කරන්න', 'Jobs & Careers Search & Post', 'வேலைவாய்ப்பு')}
+        >
+          <Briefcase className="w-3.5 h-3.5 text-slate-950" />
+          <span>#රැකියා</span>
+        </button>
       </div>
 
       {/* Selected Tag Active Filter Badge */}
