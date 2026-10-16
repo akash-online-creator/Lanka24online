@@ -91,31 +91,6 @@ export const App: React.FC = () => {
   const [issues, setIssues] = useState<Issue[]>([]);
 
   // Current User Session & Navigation View
-  // 🚀 In-App Version Update Check State
-  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-
-  useEffect(() => {
-    // Check for updates 1.5s after app launch
-    const updateTimer = setTimeout(async () => {
-      try {
-        const info = await checkForAppUpdate();
-        if (info && info.hasUpdate) {
-          const lastDismissed = localStorage.getItem('sahaya_update_dismissed_time');
-          // Only show if not dismissed in the last 6 hours
-          if (!lastDismissed || Date.now() - parseInt(lastDismissed, 10) > 6 * 3600 * 1000) {
-            setUpdateInfo(info);
-            setIsUpdateModalOpen(true);
-          }
-        }
-      } catch (err) {
-        console.debug('In-app update check note:', err);
-      }
-    }, 1500);
-
-    return () => clearTimeout(updateTimer);
-  }, []);
-
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
@@ -178,7 +153,7 @@ export const App: React.FC = () => {
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
-      console.warn('Backend delete sync note:', err);
+      console.warn('Backend delete sync notice:', err);
     }
   }, [helpPosts, currentUser]);
 
@@ -248,37 +223,47 @@ export const App: React.FC = () => {
     if (!currentUser) return;
 
     const freshUser = users.find(
-      (u) =>
-        u.id === currentUser.id ||
+      (u) => 
+        (u.id && u.id === currentUser.id) || 
         (u.userId && u.userId === currentUser.userId) ||
-        (u.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic || ''))
+        (u.nicNumber && u.nicNumber === currentUser.nicNumber)
     );
 
     if (freshUser) {
-      const isRoleDifferent = freshUser.role !== currentUser.role;
-      const isStatusDifferent = freshUser.status !== currentUser.status;
-      const isCreditsDifferent = freshUser.credits !== currentUser.credits;
-
-      if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
+      // Check if user status or critical data updated
+      if (JSON.stringify(freshUser) !== JSON.stringify(currentUser)) {
         setCurrentUser(freshUser);
-
-        if (freshUser.status === 'blocked') {
-          handleLogout();
-          alert('ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.');
-          return;
-        }
-
-        if (isStatusDifferent && activeView === 'pending' && freshUser.status === 'approved') {
-          setActiveView(freshUser.role === 'admin' || freshUser.role === 'super_admin' ? 'admin' : 'dashboard');
+        try {
+          localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(freshUser));
+        } catch (e) {
+          console.warn(e);
         }
       }
-    }
-  }, [users, currentUser, activeView]);
 
-  // Login Handler
+      // 🚨 Force Kick if Blocked by Admin
+      if (freshUser.status === 'blocked') {
+        alert(
+          language === 'en' 
+            ? '⚠️ Your account has been suspended by the administrator.' 
+            : language === 'ta'
+            ? '⚠️ உங்கள் கணக்கு நிர்வாகியால் இடைநிறுத்தப்பட்டுள்ளது.'
+            : '⚠️ ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.'
+        );
+        setCurrentUser(null);
+        localStorage.removeItem('sahaya_sewa_session_user');
+        setActiveView('login');
+      }
+    }
+  }, [users, currentUser, language]);
+
+  // Secure User Log In Handler (Hardcoded Passwords & Admin Bypass Removed)
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = userIdOrNic.trim();
     const cleanPass = passKey.trim();
+
+    if (!cleanId || !cleanPass) {
+      throw new Error('කරුණාකර ඔබගේ හැඳුනුම්පත් අංකය සහ මුරපදය ඇතුළත් කරන්න.');
+    }
 
     const norm = normalizeNIC(cleanId);
     let matched = users.find(
@@ -294,10 +279,7 @@ export const App: React.FC = () => {
           u.temporaryPassword === cleanPass || 
           (u as any).tempPassword === cleanPass || 
           u.password === cleanPass || 
-          (u as any).key === cleanPass || 
-          cleanPass === '1691@@Devhas' || 
-          cleanPass === 'testPass123' || 
-          cleanPass === '545554'
+          (u as any).key === cleanPass
         )
     );
 
@@ -305,15 +287,12 @@ export const App: React.FC = () => {
       try {
         const remoteUser = await getUserFromFirestore(cleanId);
         if (remoteUser) {
-          matched = remoteUser;
+          const storedPass = remoteUser.password || remoteUser.temporaryPassword || (remoteUser as any).key || (remoteUser as any).tempPassword;
+          if (storedPass && String(storedPass).trim() === cleanPass) {
+            matched = remoteUser;
+          }
         }
       } catch (_) {}
-    }
-
-    if (!matched) {
-      if (cleanId.toLowerCase().includes('admin') || cleanId === '970181547V' || cleanId === '000000000V' || norm === '970181547V') {
-        matched = users.find((u) => u.role === 'admin' || u.role === 'super_admin' || u.id === 'usr_admin') || initialUsers[0];
-      }
     }
 
     if (matched) {
@@ -321,8 +300,7 @@ export const App: React.FC = () => {
       if (
         matched.isTemporaryPassword || 
         (matched as any).tempPassword === cleanPass || 
-        matched.temporaryPassword === cleanPass || 
-        cleanPass === '545554'
+        matched.temporaryPassword === cleanPass
       ) {
         matched = {
           ...matched,
@@ -450,176 +428,188 @@ export const App: React.FC = () => {
       createdAt: new Date().toISOString(),
       status: 'pending',
     };
-
-    setIssues((prev) => [created, ...(prev || [])]);
+    setIssues((prev) => [created, ...prev]);
   }, []);
 
-  const handleBackFromIssues = useCallback(() => {
-    if (!currentUser) {
-      setActiveView('login');
-    } else if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
-      setActiveView('admin');
-    } else {
-      setActiveView('dashboard');
-    }
-  }, [currentUser]);
+  const handleUpdateIssueStatus = useCallback((issueId: string, status: Issue['status'], adminReply?: string) => {
+    setIssues((prev) =>
+      prev.map((iss) => (iss.id === issueId ? { ...iss, status, adminReply: adminReply ?? iss.adminReply } : iss))
+    );
+  }, []);
+
+  // 🚀 Android In-App Update Verification Logic
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Check for APK update asynchronously in background on mount
+    const verifyAppVersion = async () => {
+      try {
+        const info = await checkForAppUpdate();
+        if (info && info.hasUpdate) {
+          setUpdateInfo(info);
+          setIsUpdateModalOpen(true);
+        }
+      } catch (e) {
+        // Silent update check notice
+      }
+    };
+
+    const timer = setTimeout(() => {
+      verifyAppVersion();
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <ErrorBoundary>
-      <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#060d09] text-white' : 'bg-slate-50 text-slate-900'} font-sans antialiased transition-colors duration-200`}>
-        {/* Real-time Disaster Watcher & Live Proximity Audio Monitor */}
-        <RedAlertLiveManager
-          currentUser={currentUser}
-          redAlerts={redAlerts}
+      {/* 🚀 First-Launch GPS Permission & City Locking Gate */}
+      {activeView === 'permissions' && (
+        <GpsActivationGate
+          onProceedToLogin={() => setActiveView('login')}
           language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
+      )}
 
-        {/* View Router */}
-        {activeView === 'permissions' && (
-          <GpsActivationGate
-            onProceedToLogin={() => setActiveView('login')}
-            language={language}
-            setLanguage={setLanguage}
-            theme={theme}
-            toggleTheme={toggleTheme}
-          />
-        )}
+      {/* 📱 24/7 Red Alert Live Proximity Siren & Notification Engine */}
+      <RedAlertLiveManager
+        redAlerts={redAlerts}
+        language={language}
+        activeView={activeView}
+      />
 
-        {activeView === 'login' && (
-          <LoginForm
-            onLogin={handleLogin}
-            onUserDemoLogin={handleUserDemoLogin}
-            onNavigateToRegister={() => setActiveView('register')}
-            onNavigateToIssues={() => setActiveView('issues')}
-            onNavigateToPermissions={() => setActiveView('permissions')}
-            language={language}
-            setLanguage={setLanguage}
-            theme={theme}
-            toggleTheme={toggleTheme}
-            users={users}
-          />
-        )}
+      {/* 💬 Global Omnipresent AI Assistant Bot */}
+      <OmniAssistantChatBox
+        language={language}
+        currentUser={currentUser}
+      />
 
-        {activeView === 'register' && (
-          <RegisterForm
-            onRegister={handleRegister}
-            onNavigateToLogin={() => setActiveView('login')}
-            language={language}
-          />
-        )}
+      {/* 🔐 Authentication & Onboarding Views */}
+      {activeView === 'login' && (
+        <LoginForm
+          onLogin={handleLogin}
+          onUserDemoLogin={handleUserDemoLogin}
+          onNavigateToRegister={() => setActiveView('register')}
+          onNavigateToIssues={() => setActiveView('issues')}
+          onNavigateToPermissions={() => setActiveView('permissions')}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          showDemoUserLogin={true}
+          users={users}
+          onSuccessfulPinLogin={(user) => {
+            setCurrentUser(user);
+            setActiveView('dashboard');
+          }}
+        />
+      )}
 
-        {activeView === 'pending' && currentUser && (
-          <PendingApprovalView
-            user={currentUser}
-            language={language}
-            onRefreshStatus={() => {
-              if (currentUser.status === 'approved') setActiveView('dashboard');
-            }}
-            onNavigateToIssues={() => setActiveView('issues')}
-            onBackToLogin={handleLogout}
-          />
-        )}
+      {activeView === 'register' && (
+        <RegisterForm
+          onRegisterSuccess={handleRegister}
+          onNavigateToLogin={() => setActiveView('login')}
+          onNavigateToIssues={() => setActiveView('issues')}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
 
-        {activeView === 'admin' && currentUser && (
-          <AdminPanel
-            currentUser={currentUser}
-            users={users}
-            setUsers={setUsers}
-            helpPosts={helpPosts}
-            setHelpPosts={setHelpPosts}
-            onDeletePost={handleDeletePost}
-            issues={issues}
-            setIssues={setIssues}
-            redAlerts={redAlerts}
-            setRedAlerts={setRedAlerts}
-            language={language}
-            setLanguage={setLanguage}
-            onLogout={handleLogout}
-            onSwitchToUserMode={() => setActiveView('dashboard')}
-            onNavigate={handleNavigate}
-          />
-        )}
+      {activeView === 'pending' && currentUser && (
+        <PendingApprovalView
+          user={currentUser}
+          onLogout={handleLogout}
+          onNavigateToIssues={() => setActiveView('issues')}
+          onCheckStatusAgain={async () => {
+            try {
+              const fresh = await getUserFromFirestore(currentUser.id);
+              if (fresh && fresh.status === 'approved') {
+                setCurrentUser(fresh);
+                setActiveView('dashboard');
+              }
+            } catch {}
+          }}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
 
-        {activeView === 'dashboard' && currentUser && (
-          <UserDashboard
-            user={currentUser}
-            currentUser={currentUser}
-            setCurrentUser={setCurrentUser}
-            onUpdateUser={(updated) => setCurrentUser(updated)}
-            users={users}
-            setUsers={setUsers}
-            helpPosts={helpPosts}
-            setHelpPosts={setHelpPosts}
-            onDeletePost={handleDeletePost}
-            issues={issues}
-            setIssues={setIssues}
-            redAlerts={redAlerts}
-            setRedAlerts={setRedAlerts}
-            language={language}
-            setLanguage={setLanguage}
-            theme={theme}
-            setTheme={setTheme}
-            toggleTheme={toggleTheme}
-            onLogout={handleLogout}
-            onNavigateToIssues={() => setActiveView('issues')}
-            onNavigate={handleNavigate}
-            onOpenAdminPanel={() => setActiveView('admin')}
-            onPermanentDeletePost={(postId) => {
-              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
-            }}
-            onUpdatePost={(updated) => {
-              setHelpPosts((prev) => prev.map((p) => p && p.id === updated.id ? updated : p));
-            }}
-          />
-        )}
+      {activeView === 'issues' && (
+        <IssuesHelpPage
+          onBack={() => setActiveView(currentUser ? (checkIsAdmin(currentUser) ? 'admin' : 'dashboard') : 'login')}
+          onSubmitIssue={handleCreateIssue}
+          currentUser={currentUser}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
 
-        {activeView === 'issues' && (
-          <IssuesHelpPage
-            issues={issues}
-            users={users}
-            currentUser={currentUser}
-            onSubmitIssue={handleCreateIssue}
-            onBackToLogin={handleBackFromIssues}
-            language={language}
-          />
-        )}
+      {/* 🛡️ Administrator Operations Dashboard */}
+      {activeView === 'admin' && currentUser && (
+        <AdminPanel
+          currentUser={currentUser}
+          users={users}
+          setUsers={setUsers}
+          helpPosts={helpPosts}
+          setHelpPosts={setHelpPosts}
+          redAlerts={redAlerts}
+          setRedAlerts={setRedAlerts}
+          issues={issues}
+          onUpdateIssueStatus={handleUpdateIssueStatus}
+          onLogout={handleLogout}
+          onSwitchToUserView={() => setActiveView('dashboard')}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
 
-        {/* Global Floating AI Assistant for Auth and non-dashboard pages */}
-        {activeView !== 'dashboard' && (
-          <OmniAssistantChatBox
-            currentLanguage={language}
-            onLanguageChange={setLanguage}
-            mode={currentUser ? 'full' : 'auth'}
-            onSwitchToRegister={() => setActiveView('register')}
-            onSwitchToLogin={() => setActiveView('login')}
-            onOpenIssuesHelp={() => setActiveView('issues')}
-            onDemoLogin={handleUserDemoLogin}
-          />
-        )}
+      {/* 🤝 Community User Dashboard & Help Board Feed */}
+      {activeView === 'dashboard' && currentUser && (
+        <UserDashboard
+          user={currentUser}
+          currentUser={currentUser}
+          setCurrentUser={setCurrentUser}
+          users={users}
+          setUsers={setUsers}
+          helpPosts={helpPosts}
+          setHelpPosts={setHelpPosts}
+          redAlerts={redAlerts}
+          setRedAlerts={setRedAlerts}
+          issues={issues}
+          setIssues={setIssues}
+          onLogout={handleLogout}
+          onDeletePost={handleDeletePost}
+          onPermanentDeletePost={handleDeletePost}
+          onOpenAdminPanel={() => setActiveView('admin')}
+          onNavigateToIssues={() => setActiveView('issues')}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
 
-        {/* 🔒 තාවකාලික මුරපදයෙන් ලොග් වූ පසු අනිවාර්යයෙන්ම නව මුරපදයක් සකස් කර ගන්නා තෙක් පෙන්වන Modal එක */}
-        {currentUser && Boolean(currentUser.isTemporaryPassword) && (
-          <ChangePasswordModal
-            isOpen={true}
-            onClose={() => {
-              // නව මුරපදය නොදා Dialog එක වසා දැමුවහොත් dashboard එකට ඇතුල් වීමට නොදී logout කරවයි
-              handleLogout();
-            }}
-            onSavePassword={handleSaveNewPassword}
-            userName={currentUser.name}
-            nicNumber={currentUser.nic || currentUser.nicNumber}
-            currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
-          />
-        )}
-      </div>
-            {/* 🚀 In-App Version Update Notification Modal */}
-      {updateInfo && (
+      {/* 🚀 In-App Version Update Notification Modal */}
+      {isUpdateModalOpen && updateInfo && (
         <AppUpdateModal
           isOpen={isUpdateModalOpen}
-          onClose={() => {
+          onClose={() => setIsUpdateModalOpen(false)}
+          onDismiss={() => {
             setIsUpdateModalOpen(false);
             try {
-              localStorage.setItem('sahaya_update_dismissed_time', Date.now().toString());
+              localStorage.setItem('sahaya_dismissed_update_version', updateInfo.latestVersion);
             } catch {}
           }}
           updateInfo={updateInfo}
@@ -628,21 +618,32 @@ export const App: React.FC = () => {
       )}
 
       {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
-        {sosViewerSessionId && (
-          <SosLiveViewerModal
-            isOpen={Boolean(sosViewerSessionId)}
-            sessionId={sosViewerSessionId}
-            language={language}
-            onClose={() => {
-              setSosViewerSessionId(null);
-              try {
-                const cleanUrl = window.location.origin + window.location.pathname;
-                window.history.replaceState({}, document.title, cleanUrl);
-              } catch {}
-            }}
-          />
-        )}
-      </ErrorBoundary>
+      {sosViewerSessionId && (
+        <SosLiveViewerModal
+          isOpen={Boolean(sosViewerSessionId)}
+          sessionId={sosViewerSessionId}
+          language={language}
+          onClose={() => {
+            setSosViewerSessionId(null);
+            try {
+              const cleanUrl = window.location.origin + window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            } catch {}
+          }}
+        />
+      )}
+
+      {/* 🔑 First-time Temporary Password Change Dialog */}
+      {currentUser && Boolean(currentUser.isTemporaryPassword) && (
+        <ChangePasswordModal
+          isOpen={Boolean(currentUser.isTemporaryPassword)}
+          onClose={() => {}}
+          onSave={handleSaveNewPassword}
+          language={language}
+          userNic={currentUser.nic || currentUser.nicNumber || currentUser.userId}
+        />
+      )}
+    </ErrorBoundary>
   );
 };
 
