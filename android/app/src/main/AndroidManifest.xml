@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 📸 Image Upload & Camera Permissions (Fixes Registration Upload) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     
     <!-- 🚨 Display Over Other Apps & Full-Screen Emergency Intent (Lockscreen Waker) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -54,7 +59,7 @@
     </queries>
 
     <application
-        android:label="සහය සේවා"
+        android:label="සහාය සේවා"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
