@@ -1,192 +1,166 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Language, RegistrationConfig } from '../types';
+import { User, Language, Theme } from '../types';
 import { translations } from '../data/translations';
+import { 
+  SRI_LANKA_DISTRICTS, 
+  SRI_LANKA_POLICE_DIVISIONS 
+} from '../data/sriLankaGeoData';
+import { compressImageFile } from '../utils/imageCompressor';
+import { 
+  User as UserIcon, 
+  CreditCard, 
+  Phone, 
+  MapPin, 
+  Lock, 
+  Upload, 
+  CheckCircle2, 
+  ArrowLeft, 
+  Loader2, 
+  FileText, 
+  Eye, 
+  EyeOff, 
+  X, 
+  AlertTriangle,
+  HelpCircle,
+  Camera
+} from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
-import { RegistrationSuccessModal } from './RegistrationSuccessModal';
-import { NicSpecimenCard } from './NicSpecimenCard';
-import { compressImageFile } from '../utils/imageCompressor';
-import { scanUserNicSecurity } from '../utils/aiSecurityScanner';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth, getUserFromFirestore } from '../lib/firebase'; // ඔබගේ Firebase Auth Instance එක මෙතැනින් Import වේ
-import { getAuthEmail, normalizeNIC } from '../utils/userUtils';
-import { 
-  UserPlus, 
-  Upload, 
-  ArrowLeft, 
-  CheckCircle2, 
-  AlertTriangle, 
-  FileText, 
-  Calendar, 
-  MapPin, 
-  PhoneCall, 
-  CreditCard, 
-  Camera, 
-  Building2,
-  Sparkles,
-  X,
-  Navigation,
-  Globe,
-  Lock,
-  Loader2,
-  Eye,
-  ShieldCheck,
-  Info
-} from 'lucide-react';
+import { FontSizeController } from './FontSizeController';
+import { getSystemTermsAndConditions } from '../lib/firebase';
 
 interface RegisterFormProps {
-  onRegister: (newUser: Omit<User, 'id' | 'registeredAt'>) => void;
+  onRegisterSuccess: (newUser: User) => void;
   onNavigateToLogin: () => void;
+  onNavigateToIssues: () => void;
   language: Language;
-  registrationConfig?: RegistrationConfig;
+  setLanguage?: (lang: Language) => void;
+  theme?: Theme;
+  toggleTheme?: () => void;
 }
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({
-  onRegister,
+  onRegisterSuccess,
   onNavigateToLogin,
+  onNavigateToIssues,
   language,
-  registrationConfig,
+  setLanguage,
+  theme = 'light',
+  toggleTheme,
 }) => {
-  const t = translations[language];
+  const t = (translations[language] || translations.si) as any;
 
-  const mainTitle = registrationConfig?.mainTitle?.[language] || (language === 'en' ? 'Register Now' : language === 'ta' ? 'பதிவு செய்க' : 'ලියාපදිංචි වන්න');
-  const subtitle = registrationConfig?.subtitle?.[language] || 'කරුණාකර ඔබගේ නිවැරදි තොරතුරු ඇතුළත් කර පද්ධතියට සම්බන්ධ වන්න';
-  const noticeBanner = registrationConfig?.noticeBanner?.[language];
-  const termsAndConditions = registrationConfig?.termsAndConditions?.[language];
-
-  // Form State
-  const [surname, setSurname] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [address, setAddress] = useState('');
-  const [birthDate, setBirthDate] = useState('');
+  // 10 Key Profile State Variables
+  const [fullName, setFullName] = useState('');
   const [nicNumber, setNicNumber] = useState('');
-  const [nearestTown, setNearestTown] = useState('');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [password, setPassword] = useState('');
-
-  // UI Status State
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Real-time GPS Location & IP Address Tracking State
-  const [trackedLat, setTrackedLat] = useState<number | null>(null);
-  const [trackedLng, setTrackedLng] = useState<number | null>(null);
-  const [trackedAccuracy, setTrackedAccuracy] = useState<number | null>(null);
-  const [trackedLocationName, setTrackedLocationName] = useState<string>('');
-  const [ipAddress, setIpAddress] = useState<string>('');
-  const [deviceInfo, setDeviceInfo] = useState<string>('');
-  const [locationStatus, setLocationStatus] = useState<'detecting' | 'detected' | 'fallback' | 'denied'>('detecting');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [selectedDistrict, setSelectedDistrict] = useState('Gampaha');
+  const [selectedPoliceDivision, setSelectedPoliceDivision] = useState('Katunayake');
+  const [address, setAddress] = useState('');
+  const [key, setKey] = useState(''); // Password / Pin
+  const [confirmKey, setConfirmKey] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Photos State (Front of NIC is sufficient)
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
-  const [showNicGuideModal, setShowNicGuideModal] = useState(false);
+
   const nicFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Registration Submission Notification Modal
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [pendingUserData, setPendingUserData] = useState<Omit<User, 'id' | 'registeredAt'> | null>(null);
+  // UI Flow & Validation State
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showNicGuideModal, setShowNicGuideModal] = useState(false);
+  const [showPhoneHelpModal, setShowPhoneHelpModal] = useState(false);
+  const [showPasswordHelpModal, setShowPasswordHelpModal] = useState(false);
+  const [termsAndConditions, setTermsAndConditions] = useState<string>('');
 
-  // Auto-track GPS coordinates, IP address, and device type on mount
+  // Load Dynamic System Terms & Conditions from Firebase
   useEffect(() => {
-    // 1. Detect Device Information
-    const ua = navigator.userAgent || '';
-    let dev = 'Web Browser';
-    if (/android/i.test(ua)) dev = 'Android Device';
-    else if (/iphone|ipad|ipod/i.test(ua)) dev = 'iOS Device';
-    else if (/windows/i.test(ua)) dev = 'Windows PC';
-    else if (/macintosh|mac os x/i.test(ua)) dev = 'Mac Desktop';
-    else if (/linux/i.test(ua)) dev = 'Linux System';
-    setDeviceInfo(dev);
-
-    // 2. Fetch Client IP Address
-    const getIp = async () => {
-      try {
-        const res = await fetch('https://api.ipify.org?format=json');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ip) {
-            setIpAddress(data.ip);
-            return;
-          }
+    let isMounted = true;
+    getSystemTermsAndConditions()
+      .then((terms) => {
+        if (isMounted && terms) {
+          setTermsAndConditions(terms);
         }
-      } catch (err) {
-        // Fallback
-      }
-      try {
-        const res2 = await fetch('https://api.db-ip.com/v2/free/myip');
-        if (res2.ok) {
-          const data2 = await res2.json();
-          if (data2.ipAddress) {
-            setIpAddress(data2.ipAddress);
-            return;
-          }
-        }
-      } catch (err) {
-        // Fallback
-      }
-      setIpAddress(`112.134.${Math.floor(10 + Math.random() * 80)}.${Math.floor(10 + Math.random() * 200)}`);
+      })
+      .catch((err) => {
+        console.warn('System terms load notice:', err);
+      });
+    return () => {
+      isMounted = false;
     };
-    getIp();
-
-    // 3. Track Precise GPS Coordinates
-    if ('geolocation' in navigator) {
-      setLocationStatus('detecting');
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          const accuracy = position.coords.accuracy;
-          setTrackedLat(lat);
-          setTrackedLng(lng);
-          setTrackedAccuracy(Math.round(accuracy));
-          setLocationStatus('detected');
-
-          try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-            if (geoRes.ok) {
-              const geoData = await geoRes.json();
-              const place = geoData.address?.suburb || geoData.address?.city || geoData.address?.town || geoData.address?.county || geoData.display_name;
-              if (place) {
-                setTrackedLocationName(place);
-                return;
-              }
-            }
-          } catch (e) {
-            // Ignore reverse geocode failure
-          }
-          setTrackedLocationName(`${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`);
-        },
-        (error) => {
-          console.warn('GPS location tracking error:', error.message);
-          setLocationStatus(error.code === error.PERMISSION_DENIED ? 'denied' : 'fallback');
-          setTrackedLat(6.9271);
-          setTrackedLng(79.8612);
-          setTrackedLocationName('Colombo / Gampaha GPS Grid');
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      setLocationStatus('fallback');
-      setTrackedLat(6.9271);
-      setTrackedLng(79.8612);
-      setTrackedLocationName('Colombo / Gampaha GPS Grid');
-    }
   }, []);
 
+  // Update Police Divisions list when District changes
+  const availableDivisions = SRI_LANKA_POLICE_DIVISIONS[selectedDistrict] || [];
+  useEffect(() => {
+    if (availableDivisions.length > 0 && !availableDivisions.includes(selectedPoliceDivision)) {
+      setSelectedPoliceDivision(availableDivisions[0]);
+    }
+  }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
+
+  // NIC Helper Validator & Gender Evaluator
+  const evaluateNicInfo = (nic: string) => {
+    const clean = nic.trim().toUpperCase();
+    if (!clean) return null;
+
+    let birthYear: number | null = null;
+    let dayOfYear: number | null = null;
+    let gender: 'male' | 'female' = 'male';
+
+    if (/^[0-9]{9}[VX]$/.test(clean)) { birthYear = 1900 + parseInt(clean.substring(0, 2), 10); dayOfYear = parseInt(clean.substring(2, 5), 10); } else if (/^[0-9]{12}$/.test(clean)) {
+      birthYear = parseInt(clean.substring(0, 4), 10);
+      dayOfYear = parseInt(clean.substring(4, 7), 10);
+    }
+
+    if (dayOfYear !== null) {
+      if (dayOfYear > 500) {
+        gender = 'female';
+        dayOfYear = dayOfYear - 500;
+      }
+      return { valid: true, birthYear, gender, cleanNic: clean };
+    }
+
+    return { valid: false, cleanNic: clean };
+  };
+
+  const nicInfo = evaluateNicInfo(nicNumber);
+
+  // Password / Key Strength Evaluator (Minimum 6 Characters)
+  const isKeyValid = key.trim().length >= 6;
+  const doKeysMatch = key === confirmKey && key.trim() !== '';
+
+  // Phone Sanitizer for Sri Lankan Numbers
+  const sanitizePhone = (val: string) => {
+    let clean = val.replace(/[^0-9+]/g, '');
+    if (clean.startsWith('+94')) {
+      clean = '0' + clean.substring(3);
+    } else if (clean.startsWith('94') && clean.length === 11) {
+      clean = '0' + clean.substring(2);
+    }
+    return clean;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitized = sanitizePhone(e.target.value);
+    setWhatsappPhone(sanitized);
+  };
+
+  // Image Compressor & Light Data URL Generator
   const processImageFile = async (file: File): Promise<string> => {
     try {
       return await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.82,
-        maxSizeBytes: 200 * 1024,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        quality: 0.8,
+        maxSizeMB: 0.5,
       });
     } catch {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve((e.target?.result as string) || '');
-        reader.onerror = () => resolve('');
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
         reader.readAsDataURL(file);
       });
     }
@@ -194,21 +168,21 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: React.Dispatch<React.SetStateAction<string>>
+    setter: (val: string) => void
   ) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
         const processed = await processImageFile(file);
-        if (processed) {
-          setter(processed);
-        }
+        setter(processed);
       } catch (err) {
         console.error('Error processing photo:', err);
+        setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් සිදුවිය. කරුණාකර වෙනත් ඡායාරූපයක් තෝරන්න.');
       }
     }
   };
 
+  // Form Submission & Account Creation Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -216,439 +190,473 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     // 1. Mandatory NIC Front Photo Validation
     if (!nicFrontPhoto || nicFrontPhoto.trim() === '') {
       setErrorMessage('කරුණාකර ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය (NIC Front Photo) උඩුගත කරන්න.');
+      window.scrollTo({ top: 300, behavior: 'smooth' });
+      return;
+    }
+
+    // 2. Full Name Validation
+    if (!fullName.trim() || fullName.trim().length < 3) {
+      setErrorMessage('කරුණාකර ඔබගේ සම්පූර්ණ නම නිවැරදිව ඇතුළත් කරන්න (අවම වශයෙන් අකුරු 3ක්).');
+      return;
+    }
+
+    // 3. NIC Number Validation
+    if (!nicInfo || !nicInfo.valid) {
+      setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකයක් ඇතුළත් කරන්න (පැරණි: 970181547V හෝ නව: 199701815470).');
+      return;
+    }
+
+    // 4. Phone Number Validation
+    const cleanPhone = whatsappPhone.trim();
+    if (!/^(07[0-9]{8}|01[0-9]{8}|0[0-9]{9})$/.test(cleanPhone)) {
+      setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකයක් ඇතුළත් කරන්න (උදා: 0771234567).');
+      return;
+    }
+
+    // 5. Address Validation
+    if (!address.trim() || address.trim().length < 5) {
+      setErrorMessage('කරුණාකර ඔබගේ ස්ථීර ලිපිනය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    // 6. Security Key / Password Validation
+    if (!isKeyValid) {
+      setErrorMessage('මුරපදය සඳහා අවම වශයෙන් අකුරු හෝ අංක 6ක් ඇතුළත් කරන්න.');
+      return;
+    }
+
+    if (key !== confirmKey) {
+      setErrorMessage('තහවුරු කිරීමේ මුරපදය නොගැලපේ. කරුණාකර නැවත පරීක්ෂා කරන්න.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const cleanNic = normalizeNIC(nicNumber);
-      const cleanNicLower = cleanNic.toLowerCase();
+      const nowStr = new Date().toISOString();
+      const cleanNic = nicInfo.cleanNic;
 
-      // 2. Prevent duplicate registrations with the same NIC Number
-      // A. Local storage duplicate check
-      const savedUsersRaw = localStorage.getItem('sahaya_users');
-      if (savedUsersRaw) {
-        try {
-          const localUsers: User[] = JSON.parse(savedUsersRaw);
-          const isDuplicate = localUsers.some(
-            (u) =>
-              (u.nicNumber && normalizeNIC(u.nicNumber) === cleanNic) ||
-              (u.userId && normalizeNIC(u.userId) === cleanNic)
-          );
-          if (isDuplicate) {
-            setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // Continue
-        }
-      }
-
-      // B. Firestore database duplicate check (with 2s fast-fail timeout)
-      try {
-        const firestoreCheckPromise = getUserFromFirestore(cleanNic);
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
-        const existingInFirestore = await Promise.race([firestoreCheckPromise, timeoutPromise]);
-        if (existingInFirestore) {
-          setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එකම හැඳුනුම්පත් අංකයෙන් ගිණුම් දෙකක් සැකසිය නොහැක.');
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.warn('Firestore duplicate check skipped/timeout:', err);
-      }
-
-      // NIC එක ඊමේල් එකක් බවට පරිවර්තනය කිරීම (NIC@app.com)
-      const userAuthEmail = getAuthEmail(cleanNic);
-
-      // 3. Firebase Auth හි ගිණුම සෑදීම (With 2.5s fast-fail timeout, non-blocking)
-      try {
-        const authPromise = createUserWithEmailAndPassword(auth, userAuthEmail, password);
-        const authTimeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2500));
-        await Promise.race([authPromise, authTimeoutPromise]);
-      } catch (authErr: any) {
-        console.warn('Firebase Auth creation notice (proceeding with user account):', authErr?.message || authErr);
-      }
-
-      const fullFullName = `${surname} ${firstName} ${lastName}`.trim();
-      const nicDigits = nicNumber.replace(/[^0-9]/g, '');
-      const generatedUserId = nicDigits || Math.floor(100000000 + Math.random() * 900000000).toString();
-
-      const currentLat = trackedLat ?? 6.9271;
-      const currentLng = trackedLng ?? 79.8612;
-      const resolvedLocationName = trackedLocationName || `${nearestTown || 'Sri Lanka'} (GPS: ${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
-
-      // 4. Run AI Security Scan with 1.5s timeout
-      let aiScanResult = undefined;
-      try {
-        let localUsers: User[] = [];
-        if (savedUsersRaw) {
-          try {
-            localUsers = JSON.parse(savedUsersRaw);
-          } catch {
-            // ignore
-          }
-        }
-        const scanPromise = scanUserNicSecurity(
-          {
-            id: generatedUserId,
-            userId: generatedUserId,
-            name: fullFullName || firstName || 'පරිශීලක',
-            email: userAuthEmail,
-            nicNumber: cleanNic,
-            phone: whatsappNumber,
-            role: 'user',
-            status: 'pending',
-            registeredAt: new Date().toISOString(),
-            photoUrl: nicFrontPhoto || '',
-            idCardPhotoUrl: nicFrontPhoto || '',
-            nicFrontPhotoUrl: nicFrontPhoto || '',
-          },
-          localUsers
-        );
-        const scanTimeout = new Promise((resolve) => setTimeout(() => resolve(undefined), 1500));
-        aiScanResult = await Promise.race([scanPromise, scanTimeout]);
-      } catch (scanErr) {
-        console.warn('Initial registration AI scan skipped:', scanErr);
-      }
-
-      // 5. ඩේටාබේස් එකේ (Firestore) සේව් වන පරිශීලක දත්ත Payload එක සාදා ගැනීම
-      // මුල් තත්ත්වය 'pending' ලෙස තබා පරිපාලක අනුමැතිය (Admin Approval) බලාපොරොත්තුවෙන් තැබීම
-      const userPayload: Omit<User, 'id' | 'registeredAt'> = {
-        userId: generatedUserId,
-        userNumericId: generatedUserId,
-        credits: 0,
-        name: fullFullName || firstName || 'පරිශීලක',
-        surname,
-        firstName,
-        lastName,
-        email: userAuthEmail,
+      // Primary User Profile Model
+      const newUser: User = {
+        id: `usr_${Date.now()}`,
+        userId: cleanNic,
         nicNumber: cleanNic,
-        phone: whatsappNumber,
-        address,
-        birthDate,
-        nearestTown,
-        whatsappNumber,
-        key: password,
-        password: password,
-        isPasswordChanged: true,
-        isTemporaryPassword: false,
+        nic: cleanNic,
+        name: fullName.trim(),
+        phone: cleanPhone,
+        whatsappPhone: cleanPhone,
+        address: address.trim(),
+        district: selectedDistrict,
+        policeDivision: selectedPoliceDivision,
+        gender: nicInfo.gender || 'male',
         role: 'user',
-        status: 'pending', // Admin review required before accessing dashboard
+        status: 'pending',
+        credits: 50, // 50 Welcome Free Credits
+        trustScore: 85,
+        rating: 5.0,
+        completedHelpCount: 0,
+        registeredAt: nowStr,
+        createdAt: nowStr,
+        password: key.trim(),
+        key: key.trim() as any,
+        temporaryPassword: '',
+        isTemporaryPassword: false,
+        isPasswordChanged: true,
         photoUrl: nicFrontPhoto || '',
         idCardPhotoUrl: nicFrontPhoto || '',
         nicFrontPhotoUrl: nicFrontPhoto || '',
         nicBackPhotoUrl: '',
         facePhotoUrl: '',
-        ipAddress: ipAddress || '112.134.120.45',
-        registrationLat: currentLat,
-        registrationLng: currentLng,
-        registrationLocationName: resolvedLocationName,
-        registrationAccuracy: trackedAccuracy ?? 12,
-        locationTimestamp: new Date().toISOString(),
-        deviceInfo: deviceInfo || 'Web Browser',
-        loginHistory: [],
-        aiScanResult: aiScanResult as any,
       };
 
-      setPendingUserData(userPayload);
-      setShowSuccessModal(true);
-    } catch (error: any) {
-      console.error('Registration Processing Error:', error);
-      if (error?.code === 'auth/email-already-in-use') {
-        setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) මගින් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.');
-      } else if (error?.code === 'auth/weak-password') {
-        setErrorMessage('මුරපදය අවම වශයෙන් අක්ෂර 6 කින් යුක්ත විය යුතුය.');
-      } else {
-        setErrorMessage(error?.message || 'ලියාපදිංචි වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
-      }
+      onRegisterSuccess(newUser);
+    } catch (err: any) {
+      console.error('Registration processing error:', err);
+      setErrorMessage(err.message || 'ලියාපදිංචි කිරීමේදී දෝෂයක් සිදුවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleModalConfirm = () => {
-    setShowSuccessModal(false);
-    if (pendingUserData) {
-      onRegister(pendingUserData);
-    } else {
-      onNavigateToLogin();
-    }
-  };
+  // Localized Titles
+  const mainTitle = language === 'en' 
+    ? 'Create New Member Account' 
+    : language === 'ta' 
+    ? 'புதிய உறுப்பினர் கணக்கை உருவாக்கவும்' 
+    : 'නව සාමාජික ගිණුමක් සකසන්න';
+
+  const subtitle = language === 'en'
+    ? 'Provide accurate details for admin verification and identity confirmation'
+    : language === 'ta'
+    ? 'நிர்வாகி சரிபார்ப்புக்காக துல்லியமான தகவல்களை வழங்கவும்'
+    : 'පරිපාලක අනුමැතිය සහ අනන්‍යතාව තහවුරු කිරීම සඳහා නිවැරදි තොරතුරු ඇතුළත් කරන්න';
 
   return (
-    <div className="w-full max-w-2xl mx-auto py-6 px-2 sm:px-4">
-      {/* Registration Success Notification Modal */}
-      <RegistrationSuccessModal
-        isOpen={showSuccessModal}
-        onConfirm={handleModalConfirm}
-        whatsappNumber={whatsappNumber}
-        userName={`${firstName} ${lastName}`.trim()}
-      />
+    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 py-6 px-3 sm:px-6 flex flex-col justify-center items-center">
+      {/* Top Bar with Language & Back to Login */}
+      <div className="w-full max-w-2xl mb-4 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onNavigateToLogin}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm active:scale-95"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>{language === 'en' ? 'Back to Login' : language === 'ta' ? 'உள்நுழைவுக்குத் திரும்பு' : 'ආපසු පිවිසුමට'}</span>
+        </button>
 
-      {/* 3D Card Container */}
-      <div className="bg-white border-2 border-emerald-500 rounded-3xl p-6 sm:p-8 shadow-[0_20px_50px_rgba(16,185,129,0.18)] transition-all relative overflow-hidden">
-        
+        <div className="flex items-center gap-2">
+          {setLanguage && (
+            <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setLanguage('si')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'si' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                සිං
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'en' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('ta')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'ta' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                தமிழ்
+              </button>
+            </div>
+          )}
+          <FontSizeController language={language} />
+        </div>
+      </div>
+
+      {/* Main Registration Card Container */}
+      <div className="w-full max-w-2xl bg-white rounded-3xl p-5 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.45)] border-2 border-emerald-500/80 relative overflow-hidden">
         {/* Top Decorative Green Accent Bar */}
-        <div className="absolute top-0 left-0 right-0 h-3 bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-600" />
+        <div className="absolute top-0 left-0 right-0 h-2.5 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600" />
 
         {/* Header Section */}
-        <div className="text-center mb-6 pt-2">
+        <div className="text-center mb-6 pt-1">
           <div className="mb-3 flex justify-center">
             <AppLogo size="lg" showGlow animated />
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-emerald-950 tracking-tight mb-1">
             {mainTitle}
           </h2>
-          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-800 border border-amber-500/30 text-xs font-bold mb-2">
-            <span>සහය සේවා • සැමට පිහිට</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold mb-2">
+            <span>සහාය සේවා • සැමට පිහිට</span>
           </div>
           <p className="text-slate-600 text-xs sm:text-sm font-semibold max-w-md mx-auto">
             {subtitle}
           </p>
         </div>
-
         {/* Error Alert Message */}
         {errorMessage && (
-          <div className="mb-6 bg-rose-50 border-2 border-rose-300 p-4 rounded-2xl flex items-center gap-3 text-rose-950 text-xs font-bold shadow-sm">
+          <div className="mb-6 bg-rose-50 border-2 border-rose-300 p-4 rounded-2xl flex items-center gap-3 text-rose-900 text-xs sm:text-sm font-bold shadow-sm animate-shake">
             <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* Dynamic Admin Notice Banner */}
-        {noticeBanner && (
-          <div className="mb-6 bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl flex items-start gap-3 text-amber-950 text-xs leading-relaxed shadow-sm">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="font-bold">
-              {noticeBanner.replace(/^⚠️\s*(සලකන්න|Notice|குறிப்பு)?\s*:?\s*/i, '').trim()}
-            </div>
-          </div>
-        )}
-
-        {/* Free Tier Model Welcome Gift Banner */}
-        <div className="mb-6 bg-gradient-to-r from-emerald-800 via-[#006e40] to-teal-800 border-2 border-emerald-400/50 p-4 rounded-2xl text-white shadow-lg flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-2xl shrink-0 shadow-md">
-            🎁
-          </div>
-          <div className="text-xs leading-relaxed">
-            <div className="flex items-center gap-2">
-              <span className="font-black text-sm text-amber-300">
-                රුපියල් 100 නොමිලේ (Free Tier Model)
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[10px] font-bold">
-                Welcome Bonus
-              </span>
-            </div>
-            <p className="text-emerald-100 mt-0.5">
-              ලියාපදිංචි වන සෑම නව සාමාජිකයෙකුට සහ සේවා සපයන්නෙකුටම රු. 100 ක ආරම්භක ක්‍රෙඩිට් නොමිලේ හිමිවේ! කිසිදු මූලික වියදමකින් තොරව දැන්වීම් පළකර සහය ජාලය අත්විඳින්න.
-            </p>
-          </div>
-        </div>
-
-        {/* Registration Form */}
+        {/* Main Form Fields */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          
-          {/* Section A: Personal Details */}
-          <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200 space-y-4">
-            <h3 className="font-black text-emerald-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2 border-b border-emerald-200 pb-2">
-              <Sparkles className="w-4 h-4 text-emerald-700" />
-              <span>පුද්ගලික තොරතුරු</span>
+          {/* Section A: Personal & Identity Information */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              A. මූලික තොරතුරු සහ අනන්‍යතාව
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 1. වාසගම */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <span>1. වාසගම *</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="වාසගම..."
-                  value={surname}
-                  onChange={(e) => setSurname(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-                />
-              </div>
-
-              {/* 2. මුල් නම */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <span>2. මුල් නම *</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="මුල් නම..."
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-                />
-              </div>
-
-              {/* 3. අවසාන නම */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <span>3. අවසාන නම *</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="අවසාන නම..."
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-                />
-              </div>
-            </div>
-
-            {/* 4. ලිපිනය */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                <span>4. ලිපිනය *</span>
+            {/* 1. Full Name */}
+            <div className="space-y-1.5">
+              <label className="block text-xs sm:text-sm font-black text-slate-800">
+                1. සම්පූර්ණ නම (Full Name) *
               </label>
-              <input
-                type="text"
-                required
-                placeholder="සම්පූර්ණ ලිපිනය ඇතුලත් කරන්න..."
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 5. උපන් වර්ෂය */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>5. උපන් වර්ෂය *</span>
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner cursor-pointer"
-                />
-              </div>
-
-              {/* 6. ජාතික හැඳුනුම්පත් අංකය */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>6. ජාතික හැඳුනුම්පත් අංකය *</span>
-                </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <UserIcon className="w-4 h-4 text-emerald-600" />
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="199801240982 / 980124098V"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="උදා: කේ. ඒ. නිමල් පෙරේරා"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* 2. NIC Number & Real-time Gender/Validity Card */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  2. ජාතික හැඳුනුම්පත් අංකය (NIC Number) *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowNicGuideModal(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>හැඳුනුම්පත් උදවු</span>
+                </button>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                </div>
+                <input
+                  type="text"
+                  required
                   value={nicNumber}
-                  onChange={(e) => setNicNumber(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-emerald-600 shadow-inner uppercase"
+                  onChange={(e) => setNicNumber(e.target.value.trim().toUpperCase())}
+                  placeholder="උදා: 970181547V හෝ 199701815470"
+                  maxLength={12}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
                 />
               </div>
 
-              {/* 7. ගම සඳහන් කරන්න */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>7. ගම සඳහන් කරන්න *</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="උදා: ඔබගේ ගම / ප්‍රදේශය..."
-                  value={nearestTown}
-                  onChange={(e) => setNearestTown(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-                />
-              </div>
+              {/* NIC Validation Badge */}
+              {nicNumber.trim() !== '' && (
+                <div className="pt-1">
+                  {nicInfo && nicInfo.valid ? (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>
+                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Section B: WhatsApp & Security / Auth */}
-          <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* 8. වට්සැප් අංකය */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <PhoneCall className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>8. වට්සැප් අංකය *</span>
+            {/* 3. Phone / WhatsApp Number */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  3. දුරකථන / WhatsApp අංකය *
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPhoneHelpModal(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>අංක ආකෘතිය</span>
+                </button>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                </div>
                 <input
                   type="tel"
                   required
-                  placeholder="0771234567"
-                  value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
-                />
-              </div>
-
-              {/* 9. මුරපදය (Firebase Auth සදහා) */}
-              <div className="space-y-1">
-                <label className="text-xs font-black text-emerald-950 flex items-center gap-1">
-                  <Lock className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>9. මුරපදය (Password) *</span>
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="අවම වශයෙන් අක්ෂර 6 ක්..."
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white border-2 border-emerald-200 rounded-xl py-2.5 px-3.5 text-slate-900 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-600 shadow-inner"
+                  value={whatsappPhone}
+                  onChange={handlePhoneChange}
+                  placeholder="උදා: 0771234567"
+                  maxLength={10}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
                 />
               </div>
             </div>
           </div>
 
-          {/* Section C: Photo Uploads */}
-          <div className="bg-emerald-50/50 p-4 sm:p-5 rounded-2xl border border-emerald-200 space-y-4">
-            <div className="border-b border-emerald-200 pb-2.5 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-black text-emerald-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                <Camera className="w-4 h-4 text-emerald-700" />
-                <span>ඡායාරූප උඩුගත කිරීම</span>
-              </h3>
+          {/* Section B: Residential & Location Information */}
+          <div className="space-y-4 pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              B. පදිංචි ප්‍රදේශය සහ ලිපිනය
+            </h3>
 
+            {/* 4. District & Police Division Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  4. දිස්ත්‍රික්කය (District) *
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedDistrict}
+                    onChange={(e) => setSelectedDistrict(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  >
+                    {SRI_LANKA_DISTRICTS.map((dist) => (
+                      <option key={dist} value={dist}>
+                        {dist}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  5. පොලිස් බලප්‍රදේශය (Police Division) *
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedPoliceDivision}
+                    onChange={(e) => setSelectedPoliceDivision(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  >
+                    {availableDivisions.map((div) => (
+                      <option key={div} value={div}>
+                        {div}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Permanent Residential Address */}
+            <div className="space-y-1.5">
+              <label className="block text-xs sm:text-sm font-black text-slate-800">
+                6. ස්ථීර පදිංචි ලිපිනය (Address) *
+              </label>
+              <div className="relative">
+                <div className="absolute top-3.5 left-3.5 flex items-center pointer-events-none text-slate-400">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                </div>
+                <textarea
+                  required
+                  rows={2}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="නො: 123, ගංගාරාම පාර, කෝවින්න, කටුනායක"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section C: Security Key & Passwords */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+                C. පිවිසුම් මුරපදය (Security Password)
+              </h3>
               <button
                 type="button"
-                onClick={() => setShowNicGuideModal(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 text-[11px] font-black transition-colors cursor-pointer shadow-xs"
+                onClick={() => setShowPasswordHelpModal(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
               >
-                <Eye className="w-3.5 h-3.5 text-emerald-700" />
-                <span>ආදර්ශ හැඳුනුම්පත් ඡායාරූපය බලන්න</span>
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>මුරපද නීති</span>
               </button>
             </div>
 
-            {/* Security Notice for ID Card Verification */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-3 text-amber-950 text-xs">
-              <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              <div className="space-y-1 text-[11px] leading-relaxed">
-                <p className="font-bold text-amber-900">
-                  ජාතික හැඳුනුම්පත් සත්‍යාපනය (NIC Front Verification):
-                </p>
-                <p className="text-amber-800">
-                  පරිපාලක (Admin) විසින් ඔබගේ හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය සහ ඇතුළත් කළ අංකය සත්‍යාපනය කර අනුමත (Approve) කරන තුරු නව ගිණුම සක්‍රීය නොවේ. කරුණාකර පැහැදිලි ඡායාරූපයක් ලබා දෙන්න.
-                </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 7. Password / Key */}
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  7. නව මුරපදය (Password) *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    placeholder="අවම අකුරු 6ක්"
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 8. Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  8. මුරපදය තහවුරු කරන්න *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmKey}
+                    onChange={(e) => setConfirmKey(e.target.value)}
+                    placeholder="මුරපදය නැවත ඇතුළත් කරන්න"
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* Password Match Status Indicator */}
+            {confirmKey && (
+              <div className="pt-0.5">
+                {doKeysMatch ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    මුරපද දෙකම නිවැරදිව ගැලපේ
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    මුරපද දෙක එකිනෙකට නොගැලපේ
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section D: Photo Upload (Fixed Image Upload with Native Overlay) */}
+          <div className="space-y-4 pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              D. අනන්‍යතා ඡායාරූපය උඩුගත කිරීම
+            </h3>
 
             {/* Single Prominent NIC Front Photo Upload Card */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 space-y-3 shadow-sm hover:border-emerald-500 transition-colors">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="block text-xs sm:text-sm font-black text-emerald-950">
-                    10. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
+                    9. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
                   </label>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    හැඳුනුම්පත් අංකය සහ ඔබගේ ඡායාරූපය හොඳින් පෙනෙන සේ ඉදිරිපස පමණක් උඩුගත කරන්න.
+                    හැඳුනුම්පත් අංකය සහ ඔබගේ ඡායාරූපය පැහැදිලිව පෙනෙන පරිදි ඉදිරිපස පමණක් උඩුගත කරන්න.
                   </p>
                 </div>
                 <button
@@ -661,12 +669,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </button>
               </div>
 
-              <div 
-                onClick={() => nicFileInputRef.current?.click()}
-                className="w-full min-h-[160px] sm:min-h-[190px] rounded-2xl overflow-hidden bg-gradient-to-b from-pink-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/20 relative group mx-auto flex flex-col items-center justify-center p-3 shadow-inner cursor-pointer active:scale-[0.99] transition-all"
-              >
+              {/* Upload Drop Zone / Button with Native Overlay Input */}
+              <div className="relative w-full min-h-[170px] sm:min-h-[200px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/30 via-white to-emerald-50/30 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/20 flex flex-col items-center justify-center p-3 shadow-inner transition-all">
                 {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
-                  <div className="relative w-full h-full max-h-56 flex items-center justify-center">
+                  <div className="relative w-full h-full max-h-56 flex items-center justify-center z-10">
                     <img
                       src={nicFrontPhoto}
                       alt="NIC Front"
@@ -676,35 +682,48 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.preventDefault();
                         setNicFrontPhoto('');
                         if (nicFileInputRef.current) {
                           nicFileInputRef.current.value = '';
                         }
                       }}
-                      className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1.5 shadow-lg transition-colors cursor-pointer"
+                      className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-2 shadow-lg transition-colors cursor-pointer z-30"
                       title="ඡායාරූපය ඉවත් කරන්න"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 py-4 text-center pointer-events-none">
-                    <MedicalPlusBadge size="lg" showGlow animated />
-                    <span className="text-xs font-black text-emerald-900 tracking-tight">
-                      ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනට එක් කරන්න (අනිවාර්යයි *)
-                    </span>
-                    <span className="text-[11px] text-slate-500 max-w-xs">
-                      පැහැදිලිව ඡායාරූපයක් ගන්න හෝ ගැලරියෙන් තෝරන්න (JPG, PNG)
-                    </span>
-                  </div>
+                  <>
+                    {/* Native invisible file input spanning entire card */}
+                    <input
+                      ref={nicFileInputRef}
+                      id="nic-front-file-input"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                      title="ජාතික හැඳුනුම්පත් ඡායාරූපය තෝරන්න"
+                    />
+                    <div className="flex flex-col items-center justify-center gap-2 py-4 text-center pointer-events-none z-10">
+                      <div className="p-3 bg-emerald-100 text-emerald-800 rounded-full shadow-sm">
+                        <Upload className="w-7 h-7 animate-bounce" />
+                      </div>
+                      <span className="text-sm font-black text-emerald-950 tracking-tight">
+                        ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනින් එක් කරන්න (අනිවාර්යයි *)
+                      </span>
+                      <span className="text-xs text-slate-500 max-w-xs font-medium">
+                        කැමරාවෙන් ඡායාරූපයක් ගැනීමට හෝ ගැලරියෙන් තෝරාගැනීමට මෙතැන ස්පර්ශ (Tap) කරන්න (JPG, PNG)
+                      </span>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold shadow-sm mt-1">
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>කැමරාව / ගැලරිය විවෘත කරන්න</span>
+                      </div>
+                    </div>
+                  </>
                 )}
-                <input
-                  ref={nicFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
-                  className="hidden"
-                />
               </div>
             </div>
           </div>
@@ -731,83 +750,150 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-6 h-6 animate-spin text-white" />
-                  <span>ගිණුම සාදමින් පවතී...</span>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>ලියාපදිංචි වෙමින් පවතී...</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-6 h-6 text-white" />
-                  <span>ලියාපදිංචිය යොමු කරන්න.</span>
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>ලියාපදිංචිය යොමු කරන්න</span>
                 </>
               )}
             </button>
           </div>
-        </form>
 
-        {/* Back to Login Link */}
-        <div className="text-center mt-5 pt-3 border-t border-slate-100">
-          <button
-            onClick={onNavigateToLogin}
-            className="text-xs font-extrabold text-emerald-800 hover:text-emerald-950 transition-colors cursor-pointer inline-flex items-center gap-1.5"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>දැනටමත් ගිණුමක් තිබේද? Login වන්න</span>
-          </button>
-        </div>
+          {/* Footer Navigation */}
+          <div className="text-center pt-2 space-y-2">
+            <p className="text-xs font-bold text-slate-600">
+              දැනටමත් ගිණුමක් තිබේද?{' '}
+              <button
+                type="button"
+                onClick={onNavigateToLogin}
+                className="text-emerald-700 hover:text-emerald-900 underline font-black cursor-pointer"
+              >
+                ඇතුළුවන්න (Sign In)
+              </button>
+            </p>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={onNavigateToIssues}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-emerald-800 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>ලියාපදිංචි වීමේදී ගැටලුවක්ද? පරිපාලක සහාය ලබාගන්න</span>
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
 
-      {/* Sample National ID Reference Guide Modal */}
+      {/* 1. Modal: NIC Guide Sample Photo */}
       {showNicGuideModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-emerald-500 flex flex-col">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-emerald-800 to-teal-900 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-300" />
-                <h3 className="font-black text-sm">ජාතික හැඳුනුම්පත් ආදර්ශ ඡායාරූපය</h3>
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-emerald-950">ආදර්ශ ජාතික හැඳුනුම්පත</h4>
               <button
                 type="button"
                 onClick={() => setShowNicGuideModal(false)}
-                className="p-1 rounded-full hover:bg-white/20 text-white transition-colors cursor-pointer"
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {/* Modal Body */}
-            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* Visual Card Sample of Sri Lanka NIC */}
-              <div className="flex justify-center py-1">
-                <NicSpecimenCard />
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
+              <CreditCard className="w-12 h-12 text-emerald-600 mx-auto" />
+              <div className="text-xs font-extrabold text-emerald-950">
+                හැඳුනුම්පතේ ඉදිරිපස පමණක් උඩුගත කරන්න
               </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                හැඳුනුම්පත් අංකය, ඔබගේ ඡායාරූපය සහ නම පැහැදිලිව කියවිය හැකි වන සේ ආලෝකය ඇති ස්ථානයක තබා ඡායාරූපය ලබාගන්න.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNicGuideModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              තේරුම් ගත්තා
+            </button>
+          </div>
+        </div>
+      )}
 
-              {/* Instructions */}
-              <div className="space-y-2 text-xs text-slate-700">
-                <h4 className="font-black text-emerald-950 flex items-center gap-1.5 text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>ඡායාරූපය ලබා ගැනීමේ නිවැරදි උපදෙස්:</span>
-                </h4>
-                <ul className="space-y-1.5 text-[11px] list-disc list-inside font-medium text-slate-600 pl-1">
-                  <li>හැඳුනුම්පතේ ඉදිරිපස ඇති සියලුම අකුරු සහ ඡායාරූපය පැහැදිලිව කියවිය හැකි විය යුතුය.</li>
-                  <li>හැඳුනුම්පත තිරස්ව (Landscape) තබා කොන් 4 ම ආවරණය නොවී සම්පූර්ණ කාඩ්පත පෙනෙන සේ ඡායාරූපය ගන්න.</li>
-                  <li>ෆ්ලෑෂ් හෝ ආලෝක පරාවර්තන (Glare) නිසා තොරතුරු නොපෙනී යාම වළක්වා ගන්න.</li>
-                  <li><strong>පරිපාලක (Admin) වරයා විසින් ඔබගේ හැඳුනුම්පත් අංකය හා මෙම ඡායාරූපය පරීක්ෂා කර තහවුරු (Accept) කරන තුරු පද්ධතියට ප්‍රවේශ විය නොහැක.</strong></li>
-                </ul>
-              </div>
-
-              {/* Close Button */}
+      {/* 2. Modal: Phone Number Format Help */}
+      {showPhoneHelpModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-emerald-950">දුරකථන අංක ආකෘතිය</h4>
               <button
                 type="button"
-                onClick={() => setShowNicGuideModal(false)}
-                className="w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs transition-colors cursor-pointer shadow-md"
+                onClick={() => setShowPhoneHelpModal(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
               >
-                තේරුම් ගතිමි (Close)
+                <X className="w-5 h-5" />
               </button>
             </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
+              <div className="font-bold text-emerald-950">වලංගු ආකෘති:</div>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
+                <li>0771234567 (සාමාන්‍ය ජංගම අංකය)</li>
+                <li>0712345678 (Mobitel)</li>
+                <li>0781234567 (Hutch)</li>
+                <li>0112345678 (ස්ථාවර දුරකථන)</li>
+              </ul>
+              <p className="text-[10px] text-slate-500 pt-1">
+                * +94 හෝ හිස්තැන් ඇතුළත් කිරීම අවශ්‍ය නොවේ. පද්ධතිය විසින් එය ස්වයංක්‍රීයව සකසයි.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPhoneHelpModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              හරි
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Modal: Password Policy Help */}
+      {showPasswordHelpModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-emerald-950">මුරපද ආරක්ෂක උපදෙස්</h4>
+              <button
+                type="button"
+                onClick={() => setShowPasswordHelpModal(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
+              <div className="font-bold text-emerald-950">මුරපද නීති:</div>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
+                <li>අවම වශයෙන් අකුරු හෝ අංක 6ක් තිබිය යුතුය.</li>
+                <li>ඔබට පහසුවෙන් මතක තබාගත හැකි අංකයක් හෝ වචනයක් යොදන්න.</li>
+                <li>තහවුරු කිරීමේ මුරපදය සමඟ හරියටම සමාන විය යුතුය.</li>
+              </ul>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPasswordHelpModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              තේරුම් ගත්තා
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+export default RegisterForm;
