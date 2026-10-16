@@ -74,12 +74,26 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     return si;
   };
 
-  // Check if query is an @ search or serial query (e.g., @555, @3728, 555)
+  // Safe handler to open Accommodation view
+  const handleOpenAccommodation = () => {
+    if (onOpenAccommodation) {
+      onOpenAccommodation();
+    }
+    window.dispatchEvent(new CustomEvent('sahaya_open_accommodation_view'));
+  };
+
+  // Safe handler to open Jobs view
+  const handleOpenJobs = () => {
+    if (onOpenJobs) {
+      onOpenJobs();
+    }
+    window.dispatchEvent(new CustomEvent('sahaya_open_jobs_view'));
+  };
+
   const isAtQuery = useMemo(() => {
     return searchQuery.trim().startsWith('@') || /^\d{2,6}$/.test(searchQuery.trim());
   }, [searchQuery]);
 
-  // Universal Entity Matches for @ serial numbers (Posts, Businesses, Shops, Users, Professionals)
   const universalMatches = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return searchUniversalEntitiesByAtQuery(searchQuery, {
@@ -90,13 +104,11 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     });
   }, [searchQuery, posts, shops, professionals, users]);
 
-  // Live search matching tags (with synonym expansion fallback)
   const matchingTags = useMemo(() => {
     if (!searchQuery.trim() || isAtQuery) return [];
     const direct = searchTags(searchQuery, Array.isArray(allTags) ? allTags : []);
     if (direct.length > 0) return direct;
 
-    // Check expanded synonyms
     const expandedKeywords = getExpandedSearchKeywords(searchQuery);
     if (expandedKeywords.length <= 1) return [];
 
@@ -116,7 +128,6 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     return synMatches;
   }, [searchQuery, allTags, isAtQuery]);
 
-  // Determine if we should show the "ඔබ සොයන්නේ [සහල්] නේද? [ඔව්] [නැත]" prompt
   const synonymPrompt = useMemo(() => {
     if (isAtQuery) return null;
     const qTrim = searchQuery.trim().toLowerCase();
@@ -139,7 +150,6 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     );
   }, [searchQuery, posts, allTags, dismissedSynonyms, isAtQuery]);
 
-  // Close dropdown if user clicks outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -236,7 +246,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
         {isDropdownOpen && searchQuery.trim().length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white dark:bg-[#071a12] border-2 border-emerald-500 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto animate-fadeIn">
             
-            {/* 1. UNIVERSAL @ SERIAL MATCHES (Posts, Businesses, Shops, Users, Professionals) */}
+            {/* 1. UNIVERSAL @ SERIAL MATCHES */}
             {universalMatches.length > 0 && (
               <div className="border-b border-emerald-200 dark:border-emerald-800">
                 <div className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-[11px] font-black flex items-center justify-between shadow-xs">
@@ -302,7 +312,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
               </div>
             )}
 
-            {/* 2. MATCHING TAGS (Keywords) */}
+            {/* 2. MATCHING TAGS */}
             {!isAtQuery && (
               <>
                 <div className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-200 dark:border-emerald-800/60 text-[11px] font-extrabold text-emerald-900 dark:text-emerald-300 flex items-center justify-between">
@@ -352,20 +362,13 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
         )}
       </div>
 
-      {/* Quick Hashtags Navigation Bar (#නවාතැන & #රැකියා) */}
-      <div className="flex items-center gap-2 pt-2.5 pb-0.5 overflow-x-auto scrollbar-none">
-        <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>{getLangText('ක්ෂණික සේවා:', 'Quick Services:', 'விரைவு சேவைகள்:')}</span>
-        </span>
-
+      {/* Quick Hashtags Navigation Bar (#නවාතැන & #රැකියා - Clean without "ක්ෂණික සේවා:" text) */}
+      <div className="flex items-center gap-2 pt-2 pb-0.5 overflow-x-auto scrollbar-none">
         {/* #නවාතැන Hashtag Button */}
         <button
           type="button"
-          onClick={() => {
-            if (onOpenAccommodation) onOpenAccommodation();
-          }}
-          className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer border border-emerald-400/50 shrink-0 hover:scale-105"
+          onClick={handleOpenAccommodation}
+          className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer border border-emerald-400/50 shrink-0 hover:scale-105"
           title={getLangText('නවාතැන් සොයන්න හෝ පළ කරන්න', 'Accommodation Search & Post', 'தங்குமிடம்')}
         >
           <Home className="w-3.5 h-3.5 text-emerald-200" />
@@ -375,10 +378,8 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
         {/* #රැකියා Hashtag Button */}
         <button
           type="button"
-          onClick={() => {
-            if (onOpenJobs) onOpenJobs();
-          }}
-          className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer border border-amber-300 shrink-0 animate-pulse hover:scale-105"
+          onClick={handleOpenJobs}
+          className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer border border-amber-300 shrink-0 hover:scale-105 animate-pulse"
           title={getLangText('රැකියා සොයන්න හෝ පළ කරන්න', 'Jobs & Careers Search & Post', 'வேலைவாய்ப்பு')}
         >
           <Briefcase className="w-3.5 h-3.5 text-slate-950" />
@@ -407,7 +408,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
         </div>
       )}
 
-      {/* SMART SYNONYM PROMPT: "ඔබ සොයන්නේ සහල් නේද? [ඔව්] [නැත]" */}
+      {/* SMART SYNONYM PROMPT */}
       {synonymPrompt && (
         <SmartSearchSynonymPrompt
           prompt={synonymPrompt}
