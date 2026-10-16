@@ -1,28 +1,12 @@
 import { JobListing, JobFilters, ProximityFilterType } from '../types/job';
-import { INITIAL_MOCK_JOBS } from '../data/mockJobs';
+import { calculateDistanceKm } from './geoUtils';
 
 const LOCAL_STORAGE_KEY = 'sahaya_jobs_v1';
 
-/**
- * Calculates straight line distance in Kilometers between two coordinates
- */
-export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 999999;
-  const R = 6371; // Earth's radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+export { calculateDistanceKm };
 
 /**
- * Converts distance in km into walking and tuk-tuk estimated travel times
+ * Formats distance into localized display strings and travel time estimations
  */
 export function formatProximityDisplay(distanceKm: number): {
   distanceStr: string;
@@ -42,28 +26,27 @@ export function formatProximityDisplay(distanceKm: number): {
     distanceStr,
     walkMinutes,
     tuktukMinutes,
-    isWalkable: distanceKm <= 2.5, // 30 mins walk
-    isTuktukClose: distanceKm <= 12.0 // 30 mins tuktuk
+    isWalkable: distanceKm <= 2.5,
+    isTuktukClose: distanceKm <= 12.0
   };
 }
 
 /**
- * Retrieves all stored jobs from LocalStorage or seed defaults
+ * Retrieves all stored jobs from LocalStorage. Starts completely clean without mock data.
  */
 export function getStoredJobs(): JobListing[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch (e) {
     console.warn('Error reading jobs from localStorage:', e);
   }
-  saveJobsToStorage(INITIAL_MOCK_JOBS);
-  return INITIAL_MOCK_JOBS;
+  return [];
 }
 
 /**
@@ -79,13 +62,13 @@ export function saveJobsToStorage(jobs: JobListing[]): void {
 }
 
 /**
- * Adds a new job to storage
+ * Adds a new job listing to storage
  */
 export function addJobListing(newJob: Omit<JobListing, 'id' | 'createdAtMs'>): JobListing {
   const existing = getStoredJobs();
   const created: JobListing = {
     ...newJob,
-    id: `job_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     createdAtMs: Date.now(),
     viewsCount: 1,
   };
@@ -113,7 +96,7 @@ export function filterJobListings(
   userLng?: number
 ): JobListing[] {
   return jobs.filter((job) => {
-    // 1. Scope filter
+    // 1. Scope filter (All, Local, Overseas)
     if (filters.scope !== 'all' && job.scope !== filters.scope) {
       return false;
     }
