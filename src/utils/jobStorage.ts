@@ -1,7 +1,8 @@
-import { JobListing, JobFilters, ProximityFilterType } from '../types/job';
+import { JobListing, JobFilters, ProximityFilterType, JobComment } from '../types/job';
 import { calculateDistanceKm } from './geoUtils';
 
 const LOCAL_STORAGE_KEY = 'sahaya_jobs_v1';
+const COMMENTS_STORAGE_KEY = 'sahaya_job_comments_v1';
 
 export { calculateDistanceKm };
 
@@ -71,6 +72,7 @@ export function addJobListing(newJob: Omit<JobListing, 'id' | 'createdAtMs'>): J
     id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     createdAtMs: Date.now(),
     viewsCount: 1,
+    commentsCount: 0,
   };
   const updated = [created, ...existing];
   saveJobsToStorage(updated);
@@ -84,6 +86,52 @@ export function deleteJobListing(jobId: string): void {
   const existing = getStoredJobs();
   const filtered = existing.filter((j) => j.id !== jobId);
   saveJobsToStorage(filtered);
+}
+
+/**
+ * Retrieves all public comments for a specific job
+ */
+export function getJobComments(jobId: string): JobComment[] {
+  try {
+    const raw = localStorage.getItem(`${COMMENTS_STORAGE_KEY}_${jobId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Error reading job comments:', e);
+  }
+  return [];
+}
+
+/**
+ * Adds a new public comment to a job listing
+ */
+export function addJobComment(jobId: string, authorName: string, text: string, userId?: string): JobComment {
+  const comments = getJobComments(jobId);
+  const newComment: JobComment = {
+    id: `cmt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    jobId,
+    userId: userId || 'guest_user',
+    userName: authorName.trim() || 'පරිශීලක',
+    text: text.trim(),
+    createdAtMs: Date.now(),
+    createdAtStr: 'දැන් සුළු මොහොතකට පෙර',
+  };
+  const updated = [newComment, ...comments];
+  try {
+    localStorage.setItem(`${COMMENTS_STORAGE_KEY}_${jobId}`, JSON.stringify(updated));
+    const jobs = getStoredJobs();
+    const jIdx = jobs.findIndex(j => j.id === jobId);
+    if (jIdx !== -1) {
+      jobs[jIdx].commentsCount = (jobs[jIdx].commentsCount || 0) + 1;
+      saveJobsToStorage(jobs);
+    }
+    window.dispatchEvent(new CustomEvent('sahaya_job_comments_updated', { detail: { jobId, count: updated.length } }));
+  } catch (e) {
+    console.error('Error saving comment:', e);
+  }
+  return newComment;
 }
 
 /**
