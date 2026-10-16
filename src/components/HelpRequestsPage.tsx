@@ -70,7 +70,7 @@ import {
   Mic,
   ArrowLeftRight
 } from 'lucide-react';
-  
+
 interface HelpRequestsPageProps {
   user: User;
   language: Language;
@@ -115,7 +115,7 @@ interface HelpRequestsPageProps {
   onViewRedAlertDetail?: (alert: RedAlertItem) => void;
   onOpenRedAlert?: () => void;
 }
-  
+
 export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   user,
   language,
@@ -162,13 +162,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 }) => {
   // Boost Modal State
   const [boostingPost, setBoostingPost] = useState<HelpPost | null>(null);
-  
+
   // Feed Filter Tab: 'all' | 'emergency' | 'quick_services' | 'saved'
   const [activeFeedTab, setActiveFeedTab] = useState<'all' | 'emergency' | 'quick_services' | 'saved'>('all');
   
-  // Show / Hide Category Grid toggle
+  // Show / Hide Category Grid toggle (strictly closed by default so user always lands directly on Posts Feed)
   const [showCategoryGrid, setShowCategoryGrid] = useState(false);
-  
+
   // Guarantee that on mount or when boardCategoryFilter is cleared, category grid is closed and activeFeedTab is 'all'
   useEffect(() => {
     if (!boardCategoryFilter) {
@@ -176,19 +176,19 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       setActiveFeedTab('all');
     }
   }, [boardCategoryFilter]);
-  
-  // Pagination / Auto Infinite Scroll (8 items per batch)
+
+  // Pagination / Auto Infinite Scroll (8 items per batch; loads next 8 as soon as reaching the last 2 items)
   const PAGE_SIZE = 8;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const observerTargetRef = useRef<HTMLDivElement | null>(null);
-  
+
   // Reset pagination when category, tag or tab filters change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [boardCategoryFilter, selectedTagFilter, searchQuery, activeFeedTab, feedDistanceTab]);
-  
-  // Saved Posts State
+
+  // Saved Posts State (Synced with Firestore in real-time + localStorage cache fallback)
   const userIdentifier = user?.userId || user?.id || user?.phone || '';
   const savedStorageKey = `sahaya_saved_posts_${userIdentifier || 'guest'}`;
   const [savedPostIds, setSavedPostIds] = useState<string[]>(() => {
@@ -199,7 +199,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       return [];
     }
   });
-  
+
   // Subscribe to real-time Firestore saved posts
   useEffect(() => {
     if (!userIdentifier) return;
@@ -216,21 +216,21 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
     return () => unsubscribe();
   }, [userIdentifier, savedStorageKey]);
-  
+
   // Toast message state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isBoardGuideOpen, setIsBoardGuideOpen] = useState(false);
-  
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
     }, 3500);
   };
-  
-  // Real-time listener for newly submitted posts
+
+  // Real-time listener for newly submitted posts across users: Auto focus directly to Notice Board
   useEffect(() => {
-    const handleNewPostEvent = () => {
+    const handleNewPostEvent = (e: any) => {
       setVisibleCount((prev) => Math.max(prev, PAGE_SIZE));
       const el = document.getElementById('help-notices-feed');
       if (el) {
@@ -238,13 +238,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       }
       showToast('✨ නව දැන්වීමක් දැන්වීම් පුවරුවේ ඉහළින්ම පූරණය විය!');
     };
-  
+
     window.addEventListener('sahaya_new_post_published', handleNewPostEvent);
     return () => {
       window.removeEventListener('sahaya_new_post_published', handleNewPostEvent);
     };
   }, []);
-  
+
   // Toggle Save Post with Firestore sync
   const handleToggleSavePost = (post: HelpPost) => {
     if (!post || !post.id) return;
@@ -254,18 +254,18 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
     const isAlreadySaved = savedPostIds.includes(post.id);
     const nextSavedState = !isAlreadySaved;
-  
+
     setSavedPostIds((prev) => {
       const next = isAlreadySaved
         ? prev.filter((id) => id !== post.id)
         : [...prev, post.id];
-  
+
       if (isAlreadySaved) {
         showToast('🗑️ දැන්වීම සුරැකි ලැයිස්තුවෙන් ඉවත් කරන ලදී.');
       } else {
         showToast('🔖 දැන්වීම සාර්ථකව සුරකින ලදී! ඔබට ඕනෑම වේලාවක "සුරකින ලද දැන්වීම්" ටැබ් එකෙන් මෙය නැරඹිය හැක.');
       }
-  
+
       try {
         localStorage.setItem(savedStorageKey, JSON.stringify(next));
       } catch (err) {
@@ -273,12 +273,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       }
       return next;
     });
-  
+
     if (userIdentifier && post?.id) {
       toggleSavePostInFirestore(userIdentifier, post.id, nextSavedState);
     }
   };
-  
+
   const handleLoadMore = useCallback(() => {
     setIsLoadingMore((currentlyLoading) => {
       if (currentlyLoading) return true;
@@ -289,13 +289,14 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       return true;
     });
   }, []);
-  
+
   const getLangText = (si: string, en: string, ta: string) => {
     if (language === 'en') return en;
     if (language === 'ta') return ta;
     return si;
   };
-  
+
+  // Helper to determine if a post is a high-priority / emergency community alert
   const isEmergencyOrHighPriority = (post: HelpPost): boolean => {
     if (!post) return false;
     if (post.isPinnedEmergency) return true;
@@ -319,7 +320,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
     return false;
   };
-  
+
+  // Helper to determine if a post is a quick service
   const isQuickService = (post: HelpPost): boolean => {
     if (!post) return false;
     if (post.category === 'quick_services' || post.category === 'quick') return true;
@@ -327,7 +329,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     if (post.customFieldValues?.f_urgency?.toString().includes('Immediate') || post.customFieldValues?.f_urgency?.toString().includes('හදිසි')) return true;
     return false;
   };
-  
+
+  // Parse time for accurate chronological sorting
   const getPostTimestamp = (post: HelpPost): number => {
     if (post.createdAtMs && !isNaN(Number(post.createdAtMs)) && Number(post.createdAtMs) > 0) {
       return Number(post.createdAtMs);
@@ -347,7 +350,13 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
     return 0;
   };
-  
+
+  // Process and sort News Feed posts:
+  // 1. Pinned Emergency & High Priority Community Alerts ALWAYS come first
+  // 2. Boosted Top Ads come next
+  // 3. Quick Services come next
+  // 4. All other posts are sorted chronologically (newest first)
+  // 5. Tab filter applied (All / Emergency only / Quick Services only / Saved posts only)
   const newsFeedSortedPosts = useMemo(() => {
     const isAdminUser = Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
     const sourceList = (filteredPosts || []).filter((p): p is HelpPost => {
@@ -363,9 +372,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       }
       return true;
     });
-  
+
     let result = sourceList;
-  
+
+    // Apply active feed tab filter
     if (activeFeedTab === 'emergency') {
       result = result.filter((p) => isEmergencyOrHighPriority(p));
     } else if (activeFeedTab === 'quick_services') {
@@ -373,48 +383,59 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     } else if (activeFeedTab === 'saved') {
       result = result.filter((p) => p?.id && savedPostIds.includes(p.id));
     }
-  
+
+    // Sort: Emergency & Pinned first, then Boosted, then Quick Services, then chronological newest first
     return result.sort((a, b) => {
       if (!a || !b) return 0;
       const aIsEmerg = isEmergencyOrHighPriority(a);
       const bIsEmerg = isEmergencyOrHighPriority(b);
       if (aIsEmerg && !bIsEmerg) return -1;
       if (!aIsEmerg && bIsEmerg) return 1;
-  
+
       const aIsBoosted = Boolean(a.isBoosted);
       const bIsBoosted = Boolean(b.isBoosted);
       if (aIsBoosted && !bIsBoosted) return -1;
       if (!aIsBoosted && bIsBoosted) return 1;
-  
+
       const aIsQuick = isQuickService(a);
       const bIsQuick = isQuickService(b);
       if (aIsQuick && !bIsQuick) return -1;
       if (!aIsQuick && bIsQuick) return 1;
-  
+
+      // If both or neither, sort by post time (descending)
       const timeA = getPostTimestamp(a);
       const timeB = getPostTimestamp(b);
       return timeB - timeA;
     });
   }, [filteredPosts, activeFeedTab, savedPostIds]);
-  
+
+  // Automatic Infinite Scroll: Auto-load next 8 posts as soon as user views the last 2 posts
   useEffect(() => {
     if (visibleCount >= newsFeedSortedPosts.length) return;
+
     const target = observerTargetRef.current;
     if (!target) return;
-  
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
           handleLoadMore();
         }
       },
-      { root: null, rootMargin: '120px', threshold: 0.1 }
+      {
+        root: null,
+        rootMargin: '120px',
+        threshold: 0.1,
+      }
     );
-  
+
     observer.observe(target);
-    return () => observer.disconnect();
+
+    return () => {
+      observer.disconnect();
+    };
   }, [visibleCount, newsFeedSortedPosts.length, handleLoadMore]);
-  
+
   const categoryCounts = useMemo(() => {
     const posts = helpPosts || [];
     return {
@@ -430,14 +451,16 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       saved: savedPostIds.length,
     };
   }, [helpPosts, savedPostIds]);
-  
+
   const activeRedAlerts = useMemo(() => {
     return (redAlerts || []).filter((a) => a.status === 'active' && !a.isFlaggedFake);
   }, [redAlerts]);
-  
+
+  // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
-  
+
+  // Auto-advance through alerts every 5.5 seconds if multiple exist
   useEffect(() => {
     if (activeRedAlerts.length <= 1 || isAlertCarouselPaused) return;
     const interval = setInterval(() => {
@@ -445,17 +468,18 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }, 5500);
     return () => clearInterval(interval);
   }, [activeRedAlerts.length, isAlertCarouselPaused]);
-  
+
+  // Reset index if out of bounds
   useEffect(() => {
     if (activeAlertIndex >= activeRedAlerts.length && activeRedAlerts.length > 0) {
       setActiveAlertIndex(0);
     }
   }, [activeRedAlerts.length, activeAlertIndex]);
-  
+
   const currentRedAlert = activeRedAlerts.length > 0
     ? activeRedAlerts[activeAlertIndex % activeRedAlerts.length]
     : null;
-  
+
   const getAlertDistanceDisplay = useCallback((alert: RedAlertItem) => {
     if (
       !currentLocation ||
@@ -476,7 +500,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return `කි.මී. ${distanceKm.toFixed(1)}`;
   }, [currentLocation]);
 
-  // Real-time listener for direct #රැකියා and #නවාතැන click events
+  // Real-time listener for direct #රැකියා and #නවාතැන custom events
   useEffect(() => {
     const handleOpenJobsEvent = () => {
       setBoardCategoryFilter('jobs');
@@ -524,6 +548,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       />
     );
   }
+
   return (
     <div className="w-full max-w-3xl mx-auto py-3 sm:py-5 space-y-4 sm:space-y-6 animate-fadeIn pb-16">
       {/* Toast Notification Alert */}
@@ -613,7 +638,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
                     {currentRedAlert.incidentTime && (
                       <span className="bg-black/20 px-2 py-1 rounded-lg font-mono text-[11px] text-red-100 flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-yellow-300" />
+                        <Clock className="w-3 h-3 text-yellow-300" />
                         <span>{currentRedAlert.incidentDate} • {currentRedAlert.incidentTime}</span>
                       </span>
                     )}
@@ -627,7 +652,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                 </div>
               </div>
 
-              {/* Right Controls */}
+              {/* Right Controls: View Details CTA & Carousel Navigation Buttons */}
               <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
                 <button
                   type="button"
@@ -643,6 +668,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
+                {/* Carousel Interactive Controls for Multiple Alerts */}
                 {activeRedAlerts.length > 1 && (
                   <div 
                     onClick={(e) => e.stopPropagation()} 
@@ -652,11 +678,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       type="button"
                       onClick={() => setActiveAlertIndex((prev) => (prev - 1 + activeRedAlerts.length) % activeRedAlerts.length)}
                       className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
-                      title="පෙර ආපදාව"
+                      title="පෙර ආපදාව (Previous Alert)"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
 
+                    {/* Clickable indicator dots */}
                     <div className="flex items-center gap-1 px-1">
                       {activeRedAlerts.map((_, dotIdx) => (
                         <button
@@ -668,6 +695,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                               ? 'w-5 bg-yellow-300 shadow-xs'
                               : 'w-2 bg-white/40 hover:bg-white/70'
                           }`}
+                          title={`ආපදා ඇඟවීම ${dotIdx + 1}`}
                         />
                       ))}
                     </div>
@@ -676,7 +704,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       type="button"
                       onClick={() => setActiveAlertIndex((prev) => (prev + 1) % activeRedAlerts.length)}
                       className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
-                      title="ඊළඟ ආපදාව"
+                      title="ඊළඟ ආපදාව (Next Alert)"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -685,7 +713,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                       type="button"
                       onClick={() => setIsAlertCarouselPaused(!isAlertCarouselPaused)}
                       className="p-1 rounded-lg hover:bg-white/20 text-yellow-300 ml-0.5 transition-colors cursor-pointer"
-                      title={isAlertCarouselPaused ? "Play" : "Pause"}
+                      title={isAlertCarouselPaused ? "ස්වයංක්‍රීයව මාරු වීම අරඹන්න (Play)" : "මාරු වීම නවත්වන්න (Pause)"}
                     >
                       {isAlertCarouselPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
                     </button>
@@ -726,21 +754,23 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           </div>
         </div>
 
-        {/* Universal Guide Button */}
+        {/* Universal Guide & Examples Button */}
         <button
           type="button"
           onClick={() => setIsBoardGuideOpen(true)}
           className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-amber-950 font-black text-xs sm:text-sm transition-all cursor-pointer shadow-md shadow-amber-500/20 flex items-center gap-2 border-2 border-amber-300/80 active:scale-95 hover:scale-105"
         >
           <Lightbulb className="w-4 h-4 text-amber-950 fill-amber-300 animate-bounce" />
-          <span>{getLangText('💡 පිටුව ක්‍රියාත්මක වන ආකාරය', '💡 Guide & Examples', '💡 வழிகாட்டி')}</span>
+          <span>{getLangText('💡 පිටුව ක්‍රියාත්මක වන ආකාරය (උදාහරණ)', '💡 Guide & Examples', '💡 வழிகாட்டி & உதாரணங்கள்')}</span>
         </button>
       </div>
 
-      {/* Feed Filter Tabs & Controls */}
+      {/* Compact Feed Filter Tabs & Controls */}
       <div className="bg-white dark:bg-[#071710] border-2 border-slate-200 dark:border-[#132a1d] rounded-3xl p-3.5 sm:p-4.5 shadow-sm space-y-3.5">
+        
+        {/* Tier 1: 4 Core Primary Feed Tabs (Large, High-Contrast, Crisp, Zero Blur) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-          {/* Tab 1: සියලු දැන්වීම් */}
+          {/* Tab 1: සියලු දැන්වීම් (All Posts) */}
           <button
             type="button"
             onClick={() => {
@@ -748,7 +778,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               setSelectedCategoryTitle('');
               setActiveFeedTab('all');
             }}
-            className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-1.5 text-xs sm:text-sm text-left active:scale-[0.98] ${
+            className={`p-3 sm:p-4 rounded-2xl font-black text-xs sm:text-sm md:text-base transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 border-2 shadow-sm text-left active:scale-[0.98] ${
               !boardCategoryFilter && activeFeedTab === 'all'
                 ? 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white border-emerald-500 shadow-md shadow-emerald-600/25 scale-[1.01]'
                 : 'bg-slate-50 dark:bg-[#0d1e15] hover:bg-emerald-50/70 dark:hover:bg-[#122b1e] text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
@@ -768,20 +798,20 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
             <div className="min-w-0">
               <span className="block font-black leading-tight tracking-tight">
-                {getLangText('සියලු දැන්වීම්', 'All Notices', 'அனைத்தும்')}
+                {getLangText('සියලු දැන්වීම්', 'All Posts', 'அனைத்து விளம்பரங்கள்')}
               </span>
             </div>
           </button>
 
-          {/* Tab 2: වෙළඳපොල */}
+          {/* Tab 2: වෙළඳපොල (Marketplace) */}
           <button
             type="button"
             onClick={() => {
               setActiveFeedTab('all');
               setBoardCategoryFilter('marketplace');
-              setSelectedCategoryTitle(getLangText('වෙළඳපොළ', 'Marketplace', 'சந்தை'));
+              setSelectedCategoryTitle(getLangText('වෙළඳපොල', 'Marketplace', 'சந்தை'));
             }}
-            className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-1.5 text-xs sm:text-sm text-left active:scale-[0.98] ${
+            className={`p-3 sm:p-4 rounded-2xl font-black text-xs sm:text-sm md:text-base transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 border-2 shadow-sm text-left active:scale-[0.98] ${
               boardCategoryFilter === 'marketplace'
                 ? 'bg-gradient-to-br from-rose-600 to-red-700 text-white border-rose-500 shadow-md shadow-rose-600/25 scale-[1.01]'
                 : 'bg-slate-50 dark:bg-[#0d1e15] hover:bg-rose-50/70 dark:hover:bg-[#201015] text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
@@ -806,15 +836,19 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
           </button>
 
-          {/* Tab 3: කණ්ඩායම් වැඩ */}
+          {/* Tab 3: කණ්ඩායම් වැඩ (Group Work) */}
           <button
             type="button"
             onClick={() => {
+              if (user?.isDemo) {
+                if (onRequireRegistration) onRequireRegistration();
+                return;
+              }
               setActiveFeedTab('all');
               setBoardCategoryFilter('group_work');
-              setSelectedCategoryTitle(getLangText('ශ්‍රමදාන / කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை'));
+              setSelectedCategoryTitle(getLangText('කණ්ඩායම් වැඩ', 'Group Work', 'குழு வேலை'));
             }}
-            className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-1.5 text-xs sm:text-sm text-left active:scale-[0.98] ${
+            className={`p-3 sm:p-4 rounded-2xl font-black text-xs sm:text-sm md:text-base transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 border-2 shadow-sm text-left active:scale-[0.98] ${
               boardCategoryFilter === 'group_work'
                 ? 'bg-gradient-to-br from-teal-600 to-emerald-700 text-white border-teal-500 shadow-md shadow-teal-600/25 scale-[1.01]'
                 : 'bg-slate-50 dark:bg-[#0d1e15] hover:bg-teal-50/70 dark:hover:bg-[#0f2820] text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
@@ -839,15 +873,15 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
           </button>
 
-          {/* Tab 4: ඉක්මන් සේවා */}
+          {/* Tab 4: ක්ෂණික සේවා (Quick Services) */}
           <button
             type="button"
             onClick={() => {
-              setBoardCategoryFilter('');
-              setSelectedCategoryTitle(getLangText('⚡ ඉක්මන් සේවා', '⚡ Quick Services', '⚡ விரைவு சேவைகள்'));
               setActiveFeedTab('quick_services');
+              setBoardCategoryFilter('quick_services');
+              setSelectedCategoryTitle(getLangText('ක්ෂණික සේවා', 'Quick Services', 'விரைவு சேவை'));
             }}
-            className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-1.5 text-xs sm:text-sm text-left active:scale-[0.98] ${
+            className={`p-3 sm:p-4 rounded-2xl font-black text-xs sm:text-sm md:text-base transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 border-2 shadow-sm text-left active:scale-[0.98] ${
               activeFeedTab === 'quick_services' || boardCategoryFilter === 'quick_services'
                 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-400 shadow-md shadow-amber-500/25 scale-[1.01]'
                 : 'bg-slate-50 dark:bg-[#0d1e15] hover:bg-amber-50/70 dark:hover:bg-[#251d08] text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700'
@@ -867,178 +901,153 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
             <div className="min-w-0">
               <span className="block font-black leading-tight tracking-tight">
-                {getLangText('ඉක්මන් සේවා', 'Quick Services', 'விரைவு')}
+                {getLangText('ක්ෂණික සේවා', 'Quick Services', 'விரைவு சேவைகள்')}
               </span>
             </div>
           </button>
         </div>
 
-        {/* Toggleable Categories Grid Accordion */}
-        <div className="border-t border-slate-200/90 dark:border-[#132a1d] pt-3">
+        {/* Category Selection Header & Distance Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-slate-200 dark:border-[#132a1d]">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">
+            <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>{getLangText('අනෙකුත් සේවා කාණ්ඩ', 'More Categories', 'மற்ற பிரிவுகள்')}</span>
+          </div>
+
+          {/* Distance Toggle (<15 KM vs All SL) */}
+          <div className="flex items-center p-1 bg-slate-100 dark:bg-[#0c2217] rounded-2xl border border-slate-300 dark:border-[#132a1d]">
+            <button
+              type="button"
+              onClick={() => setFeedDistanceTab('local')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                feedDistanceTab === 'local'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="මගේ ප්‍රදේශය (<15 KM)"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>{'<15 KM'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFeedDistanceTab('all_sl')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                feedDistanceTab === 'all_sl'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="සමස්ත ශ්‍රී ලංකාවම"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>{getLangText('සමස්ත ලංකා', 'All SL', 'இலங்கை')}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 6 Category Buttons - Permanently Displayed on Screen */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+          {/* Category 1: 🚨 හදිසි / ආපදා */}
           <button
             type="button"
-            onClick={() => setShowCategoryGrid(!showCategoryGrid)}
-            className="w-full py-2.5 px-3 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 dark:bg-[#0b2216] dark:hover:bg-[#102d1e] text-slate-700 dark:text-slate-300 text-xs font-extrabold flex items-center justify-between transition-colors cursor-pointer"
+            onClick={() => {
+              setBoardCategoryFilter('');
+              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency Alerts', '🚨 அவசர அறிவிப்புகள்'));
+              setActiveFeedTab('emergency');
+            }}
+            className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
+              activeFeedTab === 'emergency'
+                ? 'bg-red-600 text-white border-red-500 shadow-md'
+                : 'bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-950 dark:text-red-200 border-red-200 dark:border-red-900/60'
+            }`}
           >
-            <span className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{getLangText('අනෙකුත් සේවා කාණ්ඩ', 'Other Service Categories', 'பிற வகைகள்')}</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full">
-                7 කාණ්ඩ
-              </span>
-              {showCategoryGrid ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+              <span className="truncate">{getLangText('හදිසි / ආපදා', 'Emergency', 'அவசரம்')}</span>
             </div>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-red-900 text-red-950 dark:text-red-100">
+              {categoryCounts.emergency}
+            </span>
           </button>
 
-          {showCategoryGrid && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-3 animate-fadeIn">
-              {/* Category: හදිසි / ආපදා */}
-              <button
-                type="button"
-                onClick={() => {
-                  setBoardCategoryFilter('');
-                  setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency Alerts', '🚨 அவசர'));
-                  setActiveFeedTab('emergency');
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  activeFeedTab === 'emergency'
-                    ? 'bg-red-600 text-white border-red-500 shadow-md'
-                    : 'bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-950 dark:text-red-200 border-red-200 dark:border-red-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
-                  <span className="truncate">{getLangText('හදිසි / ආපදා', 'Emergency', 'அவசரம்')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-red-900 text-red-950 dark:text-red-100">
-                  {categoryCounts.emergency}
-                </span>
-              </button>
-
-              {/* Category: සාමාන්‍ය සේවා */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveFeedTab('all');
-                  setBoardCategoryFilter('normal_services');
-                  setSelectedCategoryTitle(getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான சேவைகள்'));
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  boardCategoryFilter === 'normal_services'
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                    : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-950 dark:text-blue-200 border-blue-200 dark:border-blue-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Wrench className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                  <span className="truncate">{getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-blue-900 text-blue-950 dark:text-blue-100">
-                  {categoryCounts.normal_services}
-                </span>
-              </button>
-
-              {/* Category: වෘත්තීය සේවා */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveFeedTab('all');
-                  setBoardCategoryFilter('professional_services');
-                  setSelectedCategoryTitle(getLangText('වෘත්තීය සේවා', 'Professional Services', 'தொழில்முறை'));
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  boardCategoryFilter === 'professional_services'
-                    ? 'bg-purple-600 text-white border-purple-500 shadow-md'
-                    : 'bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 text-purple-950 dark:text-purple-200 border-purple-200 dark:border-purple-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Briefcase className="w-4 h-4 shrink-0 text-purple-600 dark:text-purple-400" />
-                  <span className="truncate">{getLangText('වෘත්තීය සේවා', 'Professional', 'தொழில்முறை')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-purple-900 text-purple-950 dark:text-purple-100">
-                  {categoryCounts.professional_services}
-                </span>
-              </button>
-
-              {/* Category: සොයාදෙන්න */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveFeedTab('all');
-                  setBoardCategoryFilter('find_for_me');
-                  setSelectedCategoryTitle(getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடித்துத் தருக'));
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  boardCategoryFilter === 'find_for_me'
-                    ? 'bg-cyan-600 text-white border-cyan-500 shadow-md'
-                    : 'bg-cyan-50 dark:bg-cyan-950/40 hover:bg-cyan-100 text-cyan-950 dark:text-cyan-200 border-cyan-200 dark:border-cyan-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Search className="w-4 h-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
-                  <span className="truncate">{getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடிக்க')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-cyan-900 text-cyan-950 dark:text-cyan-100">
-                  {categoryCounts.find_for_me}
-                </span>
-              </button>
-
-              {/* Category: මගෙන් ඔබට */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (user?.isDemo) {
-                    if (onRequireRegistration) onRequireRegistration();
-                    return;
-                  }
-                  setActiveFeedTab('all');
-                  setBoardCategoryFilter('from_me_to_you');
-                  setSelectedCategoryTitle(getLangText('මගෙන් ඔබට (නොමිලේ)', 'From Me To You', 'இலவசம்'));
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  boardCategoryFilter === 'from_me_to_you'
-                    ? 'bg-pink-600 text-white border-pink-500 shadow-md'
-                    : 'bg-pink-50 dark:bg-pink-950/40 hover:bg-pink-100 text-pink-950 dark:text-pink-200 border-pink-200 dark:border-pink-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Gift className="w-4 h-4 shrink-0 text-pink-600 dark:text-pink-400" />
-                  <span className="truncate">{getLangText('මගෙන් ඔබට', 'From Me To You', 'இலவசம்')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-pink-900 text-pink-950 dark:text-pink-100">
-                  {categoryCounts.from_me_to_you}
-                </span>
-              </button>
-
-              {/* Category: සුරැකි දැන්වීම් */}
-              <button
-                type="button"
-                onClick={() => {
-                  setBoardCategoryFilter('');
-                  setSelectedCategoryTitle(getLangText('🔖 සුරැකි දැන්වීම්', '🔖 Saved Notices', '🔖 சேமிக்கப்பட்டவை'));
-                  setActiveFeedTab('saved');
-                }}
-                className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-                  activeFeedTab === 'saved'
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
-                    : 'bg-amber-50/70 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-950 dark:text-amber-200 border-amber-200 dark:border-amber-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Bookmark className="w-4 h-4 shrink-0 text-amber-600" />
-                  <span className="truncate">{getLangText('සුරැකි දැන්වීම්', 'Saved', 'சேமித்தவை')}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/40 text-slate-950">
-                  {categoryCounts.saved}
-                </span>
-              </button>
+          {/* Category 2: 🔧 සාමාන්‍ය සේවා */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveFeedTab('all');
+              setBoardCategoryFilter('normal_services');
+              setSelectedCategoryTitle(getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான சேவைகள்'));
+            }}
+            className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
+              boardCategoryFilter === 'normal_services'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-950 dark:text-blue-200 border-blue-200 dark:border-blue-900/60'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Wrench className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+              <span className="truncate">{getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான')}</span>
             </div>
-          )}
-        </div>
-      </div>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-blue-900 text-blue-950 dark:text-blue-100">
+              {categoryCounts.normal_services}
+            </span>
+          </button>
+
+          {/* Category 3: 💼 වෘත්තීය සේවා */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveFeedTab('all');
+              setBoardCategoryFilter('professional_services');
+              setSelectedCategoryTitle(getLangText('වෘත්තීය සේවා', 'Professional Services', 'தொழில்முறை'));
+            }}
+            className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
+              boardCategoryFilter === 'professional_services'
+                ? 'bg-purple-600 text-white border-purple-500 shadow-md'
+                : 'bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 text-purple-950 dark:text-purple-200 border-purple-200 dark:border-purple-900/60'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Briefcase className="w-4 h-4 shrink-0 text-purple-600 dark:text-purple-400" />
+              <span className="truncate">{getLangText('වෘත්තීය සේවා', 'Professional', 'தொழில்முறை')}</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-purple-900 text-purple-950 dark:text-purple-100">
+              {categoryCounts.professional_services}
+            </span>
+          </button>
+
+          {/* Category 4: 🔍 සොයාදෙන්න */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveFeedTab('all');
+              setBoardCategoryFilter('find_for_me');
+              setSelectedCategoryTitle(getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடித்துத் தருக'));
+            }}
+            className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
+              boardCategoryFilter === 'find_for_me'
+                ? 'bg-cyan-600 text-white border-cyan-500 shadow-md'
+                : 'bg-cyan-50 dark:bg-cyan-950/40 hover:bg-cyan-100 text-cyan-950 dark:text-cyan-200 border-cyan-200 dark:border-cyan-900/60'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="w-4 h-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
+              <span className="truncate">{getLangText('සොයාදෙන්න', 'Find For Me', 'கண்டுபிடிக்க')}</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-black bg-white/30 dark:bg-cyan-900 text-cyan-950 dark:text-cyan-100">
+              {categoryCounts.find_for_me}
+            </span>
+          </button>
+
+          {/* Category 5: 🎁 මගෙන් ඔබට */}
+          <button
+            type="button"
+            onClick={() => {
+              if (user?.isDemo) {
+                if (onRequireRegistration) onRequireRegistration();
+                return;
+              }
               setActiveFeedTab('all');
               setBoardCategoryFilter('from_me_to_you');
               setSelectedCategoryTitle(getLangText('මගෙන් ඔබට', 'From Me To You', 'என்னிடமிருந்து உங்களுக்கு'));
@@ -1086,7 +1095,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           </button>
         </div>
 
-        {/* Active Category Filter Chip */}
+        {/* Active Category Filter Chip (if active) */}
         {boardCategoryFilter && 
          boardCategoryFilter !== 'quick_services' && 
          boardCategoryFilter !== 'professional_services' && 
@@ -1114,7 +1123,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         )}
       </div>
 
-      {/* Live Tag Search Bar */}
+      {/* Live Tag Search Bar (only for main feed) */}
       {!boardCategoryFilter || (boardCategoryFilter !== 'professional_services' && boardCategoryFilter !== 'group_work' && boardCategoryFilter !== 'marketplace') ? (
         <TagSearchBar
           allTags={allTags}
@@ -1268,7 +1277,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-2xl shadow-md transition-all cursor-pointer active:scale-95"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>{getLangText('අලුත් දැන්වීමක් පළ කරන්න', 'Publish Request', 'கோரிக்கையை வெளியிடு')}</span>
+                    <span>{getLangText('අලුත් දැන්වීමක් පළ කරන්න', 'Publish Request', 'கோரிக்கையை வெளியිடு')}</span>
                   </button>
                 </div>
               )}
@@ -1318,7 +1327,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                                 </span>
                                 {distStr && (
                                   <span className="bg-white/20 px-2.5 py-1 rounded-lg font-mono font-bold text-white flex items-center gap-1">
-                                    <Navigation className="w-3.5 h-3.5 text-amber-200" />
+                                    <Navigation className="w-3 h-3 text-amber-200" />
                                     <span>{getLangText(`ඔබේ දුර: ${distStr}`, `Distance: ${distStr}`, `தூரம்: ${distStr}`)}</span>
                                   </span>
                                 )}
@@ -1364,7 +1373,9 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               </div>
 
               {newsFeedSortedPosts.slice(0, visibleCount).map((post, idx, arr) => {
+                // Attach the observer trigger ref to the 2nd-to-last item in the current batch
                 const isTrigger = idx === Math.max(0, arr.length - 2);
+
                 const isPostOwner = checkIsPostOwner(user, post);
 
                 return (
@@ -1477,7 +1488,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
         }}
       />
 
-      {/* Boost Ad Modal */}
+      {/* Boost Ad Modal (Rs. 250 Top Priority) */}
       <BoostPostModal
         isOpen={Boolean(boostingPost)}
         onClose={() => setBoostingPost(null)}
