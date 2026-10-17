@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { X } from 'lucide-react';
 import { 
   subscribeToRedAlerts, 
   markRedAlertAsResolved, 
@@ -18,6 +19,7 @@ interface Props {
   currentUser?: User | null;
   redAlerts?: RedAlertItem[];
   language?: Language;
+  activeView?: string;
 }
 
 export const RedAlertLiveManager: React.FC<Props> = ({ 
@@ -33,9 +35,44 @@ export const RedAlertLiveManager: React.FC<Props> = ({
   const [showUpdateBox, setShowUpdateBox] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSirenActive, setIsSirenActive] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   const prevAlertRef = useRef<RedAlertItem | null>(null);
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync dismissal state with current alert ID
+  useEffect(() => {
+    if (activeAlert?.id) {
+      try {
+        const key = "sahaya_dismissed_alerts_" + currentUserId;
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        setIsDismissed(Array.isArray(existing) && existing.includes(activeAlert.id));
+      } catch {
+        setIsDismissed(false);
+      }
+    } else {
+      setIsDismissed(false);
+    }
+  }, [activeAlert?.id, currentUserId]);
+
+  // Handle Dismiss (Close) Alert Card
+  const handleDismissCard = () => {
+    setIsDismissed(true);
+    if (activeAlert?.id) {
+      try {
+        const key = "sahaya_dismissed_alerts_" + currentUserId;
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!existing.includes(activeAlert.id)) {
+          existing.push(activeAlert.id);
+          localStorage.setItem(key, JSON.stringify(existing));
+        }
+      } catch (e) {
+        console.warn("Failed to save dismissed alert to storage:", e);
+      }
+    }
+    stopEmergencySiren(true);
+    setIsSirenActive(false);
+  };
 
   // 🔔 තිරය මත Popup එක පෙන්වීම සහ Local Notification එකක් යැවීම
   const triggerPopup = (msg: string) => {
@@ -48,7 +85,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     triggerBrowserNotification({
       id: `alert-update-${Date.now()}`,
       type: 'red_alert',
-      title: '🚨 රතුවෙලිය ආපදා අනතුරු ඇඟවීම!',
+      title: '🚨 රතු එළිය ආපදා අනතුරු ඇඟවීම!',
       message: msg,
       timestamp: new Date().toISOString(),
       isRead: false,
@@ -84,11 +121,10 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       return { lat: 6.9271, lng: 79.8612 }; // Colombo default
     };
 
-    // 1. Capacitor Push Notification Listener (App එක Foreground එකේ ඇති විට ලැබෙන Data සඳහා)
+    // 1. Capacitor Push Notification Listener
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       const disasterName = notification.data?.disasterType || notification.title || 'හදිසි ආපදාවක්';
       triggerPopup(`🚨 අවධානය දෙන්න: ${disasterName} වාර්තා වී ඇත!`);
-      
       startEmergencySiren();
       setIsSirenActive(true);
     }).then((handle) => {
@@ -106,36 +142,33 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       const isBrandNewAlert = currentActive && (!prevAlert || currentActive.id !== prevAlert.id);
 
       if (isBrandNewAlert) {
-        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට: සයිරනය ක්‍රියාත්මක කිරීම
+        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට
         const userCoords = getUserCoordinates();
         const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 6.9271;
         const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.8612;
         const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
 
-        let isDismissed = false;
+        let isDismissedStored = false;
         try {
-          const dismissedIds = JSON.parse(localStorage.getItem(`rathuweliya_dismissed_alerts_${currentUserId}`) || '[]');
-          isDismissed = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
+          const dismissedIds = JSON.parse(localStorage.getItem(`sahaya_dismissed_alerts_${currentUserId}`) || '[]');
+          isDismissedStored = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
         } catch {}
 
         const isReporter = currentActive.reportedByUserId === currentUserId;
 
-        if ((distanceKm <= 15 || isReporter) && !isDismissed) {
+        if ((distanceKm <= 15 || isReporter) && !isDismissedStored) {
           startEmergencySiren();
           setIsSirenActive(true);
           triggerPopup(`🚨 අවධානය දෙන්න: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
-        } else if (!isDismissed) {
+        } else if (!isDismissedStored) {
           triggerBrowserNotification({
             id: `alert-new-${currentActive.id || Date.now()}`,
             type: 'red_alert',
-            title: `🚨 නව ආපදා අනතුරු ඇඟවීමක්: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
-            message: `📍 ${currentActive.locationName || 'ශ්‍රී ලංකාව'} ප්‍රදේශයෙන් හදිසි ආපදාවක් වාර්තා වී ඇත.`,
-            locationName: currentActive.locationName,
+            title: `🚨 රතු එළිය: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
+            message: `ස්ථානය: ${currentActive.locationName || 'නොදනී'} (දුර: කි.මී. ${distanceKm.toFixed(1)})`,
             timestamp: new Date().toISOString(),
             isRead: false,
             badgeText: 'SOS',
-            targetModal: 'red_alert',
-            targetPostId: currentActive.id,
           });
         }
       } else if (prevAlert) {
@@ -145,7 +178,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
         if (prevAlert.status === 'active' && updatedAlertInList?.status === 'resolved') {
           triggerPopup(
             updatedAlertInList.statusChangeMessage || 
-            '✅ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.'
+            '✅ දැනුම්දීම පළකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.'
           );
           stopEmergencySiren(true);
           setIsSirenActive(false);
@@ -154,7 +187,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
         else if (prevAlert.status === 'active' && updatedAlertInList?.status === 'cancelled') {
           triggerPopup(
             updatedAlertInList.statusChangeMessage || 
-            'ℹ️ දැනුම්දීම පලකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.'
+            'ℹ️ දැනුම්දීම පළකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.'
           );
           stopEmergencySiren(true);
           setIsSirenActive(false);
@@ -256,15 +289,25 @@ export const RedAlertLiveManager: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 🚨 B. ACTIVE "රතුවෙලිය" ALERT BANNER */}
-      {activeAlert && (
-        <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-4 sm:p-5 rounded-3xl shadow-[0_0_40px_rgba(239,68,68,0.6)] border-2 border-red-300">
+      {/* 🚨 B. ACTIVE "රතු එළිය" ALERT BANNER (With Close / Dismiss Button) */}
+      {!isDismissed && activeAlert && (
+        <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-4 sm:p-5 rounded-3xl shadow-[0_0_40px_rgba(239,68,68,0.6)] border-2 border-red-300 relative animate-fadeIn">
           
           <div className="flex items-center justify-between gap-2">
             <span className="bg-white text-red-700 font-black px-2.5 py-0.5 rounded-full text-[11px] uppercase tracking-wider animate-pulse">
-              🚨 රතුවෙලිය: {activeAlert.alertCode || 'EMERGENCY'}
+              🚨 රතු එළිය: {activeAlert.alertCode || 'EMERGENCY'}
             </span>
             <div className="flex items-center gap-2">
+              {/* Close / Dismiss Button */}
+              <button
+                type="button"
+                onClick={handleDismissCard}
+                className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95"
+                title="දැනුම්දීම සඟවන්න (Dismiss)"
+                aria-label="Close alert"
+              >
+                <X className="w-4 h-4" />
+              </button>
               {isSirenActive && (
                 <button
                   type="button"
@@ -374,3 +417,5 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     </div>
   );
 };
+
+export default RedAlertLiveManager;
