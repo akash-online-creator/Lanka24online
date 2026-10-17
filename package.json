@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && node -e \"const fs=require('fs'); fs.mkdirSync('assets/web', {recursive:true}); fs.cpSync('dist', 'assets/web', {recursive:true});\"",
+    "build": "vite build",
     "start": "node dist/server.cjs",
     "preview": "vite preview --port=3000 --host=0.0.0.0",
     "lint": "tsc --noEmit"
