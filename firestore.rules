@@ -2,133 +2,198 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ආරක්ෂක සහයක ශ්‍රිත (Helper Functions)
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // 👤 REGISTERED USER PROFILES (/users/{userId})
-    match /users/{userId} {
-      allow read: if true;
-      allow create: if request.resource.data.role != 'admin'
-                    && request.resource.data.status != 'approved';
-      allow update: if (resource.data.role == 'admin' || request.resource.data.role != 'admin')
-                    && (!('nicNumber' in resource.data) || request.resource.data.nicNumber == resource.data.nicNumber)
-                    && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId);
-      allow delete: if false;
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // 🚨 RED ALERTS (රතු එළිය ආපදා සයිරන්) (/red_alerts/{alertId})
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'admin';
+    }
+
+    // 👤 පරිශීලක ගිණුම් (/users/{userId})
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isSignedIn() 
+                    && request.auth.uid == userId
+                    && request.resource.data.role != 'admin';
+      allow update: if (isOwner(userId) && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status'])))
+                    || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 🚨 රතු එළිය - හදිසි ආපදා අනතුරු ඇඟවීම් (/red_alerts/{alertId})
     match /red_alerts/{alertId} {
       allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow create, update, delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read: if true;
+        allow write: if isAdmin();
       }
     }
 
-    // 🤝 HELP POSTS & COMMUNITY NOTICES
+    // ⚙️ පද්ධති සැකසුම් (QR Pay ඇතුළු Admin පාලන) (/system_settings/{settingId})
+    match /system_settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /system_metadata/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 🤝 ප්‍රජා සටහන් සහ උදවු (Help Posts & Community Notices)
     match /help_posts/{postId} {
-      allow read, create, update, delete: if true;
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+
       match /{subcollection=**} {
-        allow read, create, update, delete: if true;
+        allow read: if true;
+        allow write: if isSignedIn();
       }
     }
 
     match /posts/{postId} {
-      allow read, create, update, delete: if true;
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+
       match /{subcollection=**} {
-        allow read, create, update, delete: if true;
+        allow read: if true;
+        allow write: if isSignedIn();
       }
     }
 
-    // 📋 ISSUES & SUPPORT TICKETS (/issues/{issueId})
+    // 📋 තාක්ෂණික ගැටලු සහ Support Tickets (/issues/{issueId})
     match /issues/{issueId} {
-      allow read, create, update: if true;
-      allow delete: if false;
+      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn();
+      allow update: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // 🛒 MARKETPLACE & SHOPS
+    // 🛒 වෙළඳපොළ (Marketplace & Shops)
     match /marketplace/{itemId} {
-      allow read, create, update, delete: if true;
-    }
-    match /marketplace_items/{itemId} {
-      allow read, create, update, delete: if true;
-    }
-    match /market_shops/{shopId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // 🩸 BLOOD BANK & DISASTER RELIEF
-    match /blood_requests/{reqId} {
-      allow read, create, update, delete: if true;
-    }
-    match /disaster_relief/{reliefId} {
-      allow read, create, update, delete: if true;
-    }
-    match /volunteer_donors/{donorId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // 🛠️ PROFESSIONAL SERVICES & ARTISANS
-    match /professional_services/{serviceId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // 👥 GROUP WORK / ශ්‍රමදාන
-    match /groups/{groupId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // 🏥 AID RECIPIENT CENTERS & DELIVERIES
-    match /aid_centers/{centerId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-    match /aid_recipient_centers/{centerId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-    match /aid_deliveries/{deliveryId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-    match /aid_broadcasts/{broadcastId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-
-    // ⚙️ SYSTEM SETTINGS & METADATA
-    match /system_metadata/{settingId} {
-      allow read, write: if true;
-    }
-    match /system_settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    // 🔖 BOOKMARKS, REVIEWS, QR PAYMENTS & SOS SESSIONS
-    match /saved_posts/{saveId} {
-      allow read, write: if true;
-    }
-    match /reviews/{reviewId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-    match /qr_transactions/{txId} {
-      allow read, create, update: if true;
-      allow delete: if false;
-    }
-    match /online_users/{sessionId} {
-      allow read, write: if true;
-    }
-    match /sos_live_sessions/{sessionId} {
-      allow read, write: if true;
-    }
-
-    // 🔒 DEFAULT FALLBACK
-    match /{document=**} {
       allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.sellerId == request.auth.uid) || isAdmin();
+    }
+
+    match /marketplace_items/{itemId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.sellerId == request.auth.uid) || isAdmin();
+    }
+
+    match /market_shops/{shopId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+
+    // 🩸 ලේ බැංකුව සහ ආපදා ආධාර (Blood Bank & Relief)
+    match /blood_requests/{reqId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.requesterId == request.auth.uid) || isAdmin();
+    }
+
+    match /disaster_relief/{reliefId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    match /volunteer_donors/{donorId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // 🛠️ වෘත්තීය සේවා (Professional Services)
+    match /professional_services/{serviceId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.providerId == request.auth.uid) || isAdmin();
+    }
+
+    // 👥 සමූහ වැඩ (Groups)
+    match /groups/{groupId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.creatorId == request.auth.uid) || isAdmin();
+    }
+
+    // 🏥 ආධාර මධ්‍යස්ථාන (Aid Centers)
+    match /aid_centers/{centerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /aid_recipient_centers/{centerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 🔖 තැන්පත් කිරීම්, සමාලෝචන, QR ගනුදෙනු සහ SOS සැසි
+    match /saved_posts/{saveId} {
+      allow read, write: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if (isSignedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+    }
+
+    match /qr_transactions/{txId} {
+      allow read: if isSignedIn() && (
+        resource.data.payerId == request.auth.uid || 
+        resource.data.merchantId == request.auth.uid || 
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /online_users/{sessionId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /sos_live_sessions/{sessionId} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // පෙරනිමි ආරක්ෂිත අවහිරය (Default Deny)
+    match /{document=**} {
+      allow read: if isSignedIn();
       allow write: if false;
     }
   }
