@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { UserRegistration } from '../types';
 import { NicSpecimenCard } from './NicSpecimenCard';
+import { IdPhotoUploadSection } from './IdPhotoUploadSection';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -472,88 +473,18 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               </span>
             </div>
 
-            {/* Hidden Input Triggered Directly by Clicking the Box */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleFileChange(e, false)}
-            />
+            <IdPhotoUploadSection
+  nicFrontPreview={idCardFrontImage}
+  nicBackPreview={idCardBackImage}
+  onFrontPhotoSelect={(file, base64) => {
+    setIdCardFrontImage(base64);
+    if (errors.idCardFrontImage) {
+      setErrors(prev => ({ ...prev, idCardFrontImage: undefined }));
+    }
+  }}
+  onBackPhotoSelect={(file, base64) => setIdCardBackImage(base64)}
+/>
 
-            {/* The Main Clickable Upload Box */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={handleDrop}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
-              className={`relative cursor-pointer group rounded-2xl border-2 border-dashed transition-all p-6 text-center flex flex-col items-center justify-center min-h-[160px] overflow-hidden ${
-                errors.idCardFrontImage
-                  ? 'border-red-500 bg-red-950/20 animate-field-error'
-                  : isDragOver
-                  ? 'border-emerald-400 bg-emerald-950/30 scale-[1.01]'
-                  : idCardFrontImage
-                  ? 'border-emerald-500/80 bg-slate-800/60'
-                  : 'border-slate-700 bg-slate-800/40 hover:border-emerald-500/80 hover:bg-slate-800/80'
-              }`}
-            >
-              {idCardFrontImage ? (
-                <div className="w-full flex flex-col sm:flex-row items-center gap-4 justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={idCardFrontImage}
-                      alt="Uploaded Front NIC"
-                      className="w-20 h-14 object-cover rounded-lg border border-emerald-500 shadow-md shrink-0"
-                    />
-                    <div className="text-left">
-                      <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 font-sinhala">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>ඡායාරූපය සාර්ථකව ඇතුළත් විය</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-sinhala mt-0.5">
-                        වෙනස් කිරීමට කොටුව නැවත ක්ලික් කරන්න
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1.5 bg-emerald-600/30 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs font-semibold font-sinhala">
-                      වෙනස් කරන්න
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIdCardFrontImage(null);
-                      }}
-                      className="p-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                      title="ඉවත් කරන්න"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2 py-2">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-                    <Upload className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-100 font-sinhala">
-                      හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනට එක් කරන්න
-                    </p>
-                    <p className="text-xs text-slate-400 font-sinhala mt-1">
-                      (ක්ලික් කරන්න හෝ ඡායාරූපය මෙතැනට Drag & Drop කරන්න)
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Inline Field Error Under Box */}
             {errors.idCardFrontImage && (
               <p className="text-[11px] text-red-400 font-medium font-sinhala flex items-center gap-1 mt-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
