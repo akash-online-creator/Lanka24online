@@ -59,10 +59,11 @@ function getGenAI(): GoogleGenAI | null {
 // -------------------------------------------------------------
 // ☁️ CLOUDFLARE R2 / S3 OBJECT STORAGE INITIALIZATION
 // -------------------------------------------------------------
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || 'f364700afa52f73997da91920e0f4e52';
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || '3cddd8ad4c0bc64544aeca32b3f2d0d7';
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'ffecd5f5930f7e11a54564849bd365f933e5f6f4b438133a2e2c45c614673bae';
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || process.env.AWS_BUCKET_NAME || 'sahaya-storage';
+// Cloudflare R2 Storage Credentials (රහස්‍ය අගයන් .env ගොනුවෙන් පමණක් කියවීම)
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '';
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '';
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '';
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'sahaya-storage';
 const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN || process.env.R2_CUSTOM_DOMAIN;
 
 let s3Client: S3Client | null = null;
