@@ -28,6 +28,7 @@ import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
 import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
+import { AdminSystemSettingsToggle } from './AdminSystemSettingsToggle';
 import { Sparkles } from 'lucide-react';
 import { 
   Users, 
@@ -179,6 +180,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       </div>
       {/* Memory Storage Bar */}
       <MemoryStorageBar />
+      {/* QR Pay සහ පද්ධති පාලන Toggle Card එක */}
+      <AdminSystemSettingsToggle adminUid={currentUser?.uid || 'admin'} />
       {/* Toast Notification */}
       {notificationMsg && (
         <div className="fixed top-5 right-5 z-[999999] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 animate-bounce">
