@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { subscribeToSystemSettings } from '../utils/systemSettingsManager';
 
 interface UnifiedDashboardHeaderProps {
   user: User;
@@ -111,6 +112,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [enableQrPay, setEnableQrPay] = useState(true);
 
   useEffect(() => {
     const updateUnread = () => {
@@ -125,6 +127,10 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
       window.removeEventListener('sahaya_notifications_updated', updateUnread);
       window.removeEventListener('sahaya_new_notification', updateUnread);
     };
+    
+    useEffect(() => {
+  const unsubscribe = subscribeToSystemSettings((s) => setEnableQrPay(s.enableQrPay));
+  return () => unsubscribe();
   }, []);
 
   const creditBalance = user ? getUserCreditBalance(user) : 0;
@@ -543,7 +549,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </button>
 
-          {!isVisitor && onOpenQrPay && (
+          {!isVisitor && onOpenQrPay && enableQrPay && (
             <button
               type="button"
               onClick={() => onOpenQrPay('scan_pay')}
