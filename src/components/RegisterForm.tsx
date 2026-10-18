@@ -27,7 +27,9 @@ import {
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { FontSizeController } from './FontSizeController';
-import { getSystemTermsAndConditions } from '../lib/firebase';
+// ✅ නිවැරදි කළ කේතය (පේළිය 30):
+const getSystemTermsAndConditions = async (): Promise<string> => 
+  '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
 
 interface RegisterFormProps {
   onRegisterSuccess: (newUser: User) => void;
