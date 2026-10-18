@@ -882,13 +882,24 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   currentLocation,
   language = 'si',
 }) => {
-  // 0. Preset Emergency Messages
+  // 0. Preset Emergency Messages (1st is strictly mandated by user)
   const PRESET_MESSAGES = [
-    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!',
-    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
+    'මා ගැන හා මම සිටින ස්ථානය සෙවීමට මේ ලින්ක් එක භාවිතා කරන්න.',
+    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. මගේ සජීවී ස්ථානය බලා වහාම සහය එවන්න!',
     '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
-    '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
+    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
   ];
+
+  const [selectedPresetIndex, setSelectedPresetIndex] = useState<number>(0);
+  const [isCustomMessage, setIsCustomMessage] = useState<boolean>(false);
+  const [customMessageText, setCustomMessageText] = useState<string>('');
+
+  const effectiveEmergencyMessage = useMemo(() => {
+    if (isCustomMessage && customMessageText.trim()) {
+      return customMessageText.trim();
+    }
+    return PRESET_MESSAGES[selectedPresetIndex] || PRESET_MESSAGES[0];
+  }, [isCustomMessage, customMessageText, selectedPresetIndex]);
 
   // 1. Session States
   const [isActive, setIsActive] = useState<boolean>(false);
@@ -1118,7 +1129,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
 
-  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER
+  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER (SYNCED AS BASE64 TO CLOUD FOR RECIPIENT)
   const startAudioRecordingLoop = useCallback(async () => {
     if (isContinuousAudioRunningRef.current) return;
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -1150,8 +1161,20 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       recorder.onstop = () => {
         if (audioChunksRef.current.length > 0) {
           const finalBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-          const audioUrl = URL.createObjectURL(finalBlob);
-          setRecordedAudioUrl(audioUrl);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64DataUrl = reader.result as string;
+            setRecordedAudioUrl(base64DataUrl);
+            if (sessionId) {
+              updateSosLiveLocation(sessionId, {
+                audioUrl: base64DataUrl,
+                latestAudioBase64: base64DataUrl,
+                hasAudioEvidence: true,
+                lastAudioTimestampMs: Date.now(),
+              }).catch(() => {});
+            }
+          };
+          reader.readAsDataURL(finalBlob);
         }
       };
 
@@ -1168,7 +1191,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       setIsRecordingAudio(false);
       isContinuousAudioRunningRef.current = false;
     }
-  }, []);
+  }, [sessionId]);
 
   const stopAudioRecordingLoop = useCallback(() => {
     isContinuousAudioRunningRef.current = false;
@@ -1279,7 +1302,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           batteryLevel: batteryLevel,
           isCharging: isCharging,
           locationName: locationName || 'කටුනායක / ජා-ඇල ප්‍රදේශය',
-          emergencyNote: emergencyNote || (typeof customReason === 'string' ? customReason : 'හදිසි ආපදාවක පසුවෙමි'),
+          emergencyNote: effectiveEmergencyMessage || (typeof customReason === 'string' ? customReason : 'හදිසි ආපදාවක පසුවෙමි'),
           vehicleNumber: vehicleNumber || '',
           vehicleType: effectiveVehicleType,
           isActive: true,
@@ -1345,7 +1368,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     batteryLevel,
     isCharging,
     locationName,
-    emergencyNote,
+    effectiveEmergencyMessage,
     vehicleNumber,
     vehicleType,
     customVehicleType,
@@ -1501,7 +1524,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           headingDegrees: heading,
           batteryLevel: batteryLevel,
           isCharging: isCharging,
-          emergencyNote: emergencyNote || 'හදිසි ආපදාවක පසුවෙමි',
+          emergencyNote: effectiveEmergencyMessage || 'හදිසි ආපදාවක පසුවෙමි',
           vehicleNumber: vehicleNumber || '',
           vehicleType: effectiveVehicleType,
           isSirenActive: isSirenOn,
@@ -1519,7 +1542,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [isActive, sessionId, currentCoords, accuracy, speedKmh, heading, batteryLevel, isCharging, emergencyNote, vehicleNumber, vehicleType, customVehicleType, isSirenOn]);
+  }, [isActive, sessionId, currentCoords, accuracy, speedKmh, heading, batteryLevel, isCharging, effectiveEmergencyMessage, vehicleNumber, vehicleType, customVehicleType, isSirenOn]);
 
   // Leaflet Map Initialization
   useEffect(() => {
@@ -1640,32 +1663,27 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   };
 
-  // 💬 WhatsApp Share Helper
+  // 💬 WhatsApp Share Helper with Custom Message & Live Audio Link Notice
   const handleWhatsAppShare = () => {
-    const text = `🚨 *හදිසි ආපදා ඇමතුමයි (SOS EMERGENCY ALERT)*\n` +
+    const text = `🚨 *සහය සේවා (SAHAYA SEWA - EMERGENCY ALERT)*\n` +
       `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
       `📍 *ස්ථානය:* ${locationName || 'කටුනායක / ජා-ඇල'}\n` +
       `🌐 *GPS:* ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)} (±${accuracy || 10}m)\n` +
-      `⚡ *හදිසි පණිවිඩය:* ${emergencyNote}\n\n` +
-      `🔴 *සජීවී සිතියම් සබැඳිය:*\n${shareUrl}\n\n` +
-      `කරුණාකර මා සිටින තැන සිතියමෙන් බලා වහාම උදව් කරන්න!`;
+      `💬 *පණිවිඩය:* ${effectiveEmergencyMessage}\n\n` +
+      `🔴 *සජීවී සිතියම හා පසුබිම් හඬ ඇසීමේ සබැඳිය:*\n${shareUrl}\n\n` +
+      `කරුණාකර මා සිටින තැන සිතියමෙන් බලා, සජීවීව පසුබිම් හඬට සවන් දී වහාම උදව් කරන්න!`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  // 📱 3. SMS SHARE HELPER (DIRECT SMS BUTTON)
+  // 📱 3. SMS Share Helper with Custom Message & Audio Link Notice
   const handleSmsShare = () => {
-    const text = `🚨 SOS හදිසි අනතුරු ඇඟවීමයි! මා අනාරක්ෂිත අවස්ථාවක පසුවෙමි. මගේ සජීවී GPS ස්ථානය: ${shareUrl}`;
+    const text = `🚨 SOS හදිසි ඇමතුමයි! ${effectiveEmergencyMessage}\nසජීවී සිතියම හා හඬ ඇසීමේ සබැඳිය: ${shareUrl}`;
     window.open(`sms:?body=${encodeURIComponent(text)}`, '_self');
   };
 
-  // 🛑 5. DEACTIVATE BUTTON TRIGGER (SMART & RELIABLE)
+  // 🛑 5. DEACTIVATE BUTTON TRIGGER (ALWAYS PROMPTS FOR PIN)
   const handleInitiateDeactivation = () => {
-    if (!isActive) {
-      // SOS එක සක්‍රිය වී නැතිනම් (Preview / Test තත්ත්වයේ නම්) සෘජුවම Modal එක Close කරන්න
-      onClose();
-      return;
-    }
-    // SOS සක්‍රියව ඇත්නම් ආරක්ෂක PIN තිරය විවෘත කරන්න
+    // පරිශීලකයා 'මම දැන් ආරක්ෂිතයි' එබූ සැණින් අනිවාර්යයෙන්ම ආරක්ෂක PIN අංකය ඉල්ලයි
     setEnteredPin('');
     setEnteredPassword('');
     setEnteredNic('');
@@ -1889,8 +1907,69 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-              ඔබ රාත්‍රී හෝ අනාරක්ෂිත ගමනක් යාමට පෙර මෙම සජීවී සිතියම් ලින්ක් එක ඔබගේ පවුලේ අයට හෝ මිතුරන්ට යවන්න. ඔවුන්ට සිතියම මත ඔබ ගමන් කරන මාර්ගය සජීවීව බලාගත හැක.
+              ඔබ රාත්‍රී හෝ අනාරක්ෂිත ගමනක් යාමට පෙර මෙම සජීවී සිතියම් ලින්ක් එක ඔබගේ පවුලේ අයට හෝ මිතුරන්ට යවන්න. ඔවුන්ට සිතියම මත ඔබ ගමන් කරන මාර්ගය සහ පසුබිම් හඬ සජීවීව බලාගත හැක.
             </p>
+
+            {/* 💬 Quick Message Selector & Custom Type Box */}
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
+                💬 යැවිය යුතු හදිසි පණිවිඩය තෝරන්න (Select Message):
+              </span>
+
+              <div className="space-y-1.5">
+                {PRESET_MESSAGES.map((msg, idx) => (
+                  <label
+                    key={idx}
+                    onClick={() => { setSelectedPresetIndex(idx); setIsCustomMessage(false); }}
+                    className={`flex items-start gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                      !isCustomMessage && selectedPresetIndex === idx
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 font-bold text-emerald-900 dark:text-emerald-200 shadow-2xs'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="preset_msg"
+                      checked={!isCustomMessage && selectedPresetIndex === idx}
+                      onChange={() => { setSelectedPresetIndex(idx); setIsCustomMessage(false); }}
+                      className="mt-0.5 accent-emerald-600"
+                    />
+                    <span className="leading-relaxed">{msg}</span>
+                  </label>
+                ))}
+
+                {/* Custom Message Option */}
+                <label
+                  onClick={() => setIsCustomMessage(true)}
+                  className={`flex items-start gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                    isCustomMessage
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 font-bold text-emerald-900 dark:text-emerald-200 shadow-2xs'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="preset_msg"
+                    checked={isCustomMessage}
+                    onChange={() => setIsCustomMessage(true)}
+                    className="mt-0.5 accent-emerald-600"
+                  />
+                  <span>✍️ වෙනත් පණිවිඩයක් Type කරන්න (Custom Message)</span>
+                </label>
+              </div>
+
+              {isCustomMessage && (
+                <div className="pt-1 animate-in fade-in duration-200">
+                  <textarea
+                    rows={2}
+                    placeholder="ඔබගේ පණිවිඩය මෙහි ලියන්න (උදා: මම කොළඹ සිට නිවසට එමින් සිටිමි)..."
+                    value={customMessageText}
+                    onChange={(e) => setCustomMessageText(e.target.value)}
+                    className="w-full p-2.5 bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              )}
+            </div>
 
             {/* URL Input Box (Always Populated with Real URL) */}
             <div className="flex flex-col sm:flex-row gap-2">
@@ -1901,7 +1980,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 className="flex-1 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl text-xs font-mono text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 truncate select-all font-bold"
               />
               <div className="flex items-center gap-1.5 flex-wrap">
-                {/* 📋 Copy Button with Visual Feedback */}
+                {/* 📋 Copy Button */}
                 <button
                   type="button"
                   onClick={handleCopyShareLink}
@@ -2040,7 +2119,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
           </div>
 
-          {/* 🎙️ 6. SURROUNDINGS AUDIO RECORDING & AUDIO PLAYER (Listen & Download) */}
+          {/* 🎙️ 6. SURROUNDINGS AUDIO EVIDENCE STATUS (Streamed to Cloud for recipient) */}
           <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -2066,29 +2145,21 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               )}
             </div>
 
-            {/* 🎧 In-App Audio Evidence Player (හඬට සවන් දීම සහ බාගත කිරීම) */}
+            {/* 🎧 Audio Evidence Status for Victim (No local noise, streamed directly to recipient) */}
             {recordedAudioUrl && (
-              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl border border-amber-300/60 dark:border-amber-900/60 space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white">
-                  <span className="flex items-center gap-1 text-emerald-600">
-                    <CheckCircle className="w-4 h-4" /> හඬ සාක්ෂිය පටිගත විය (Audio Saved)
-                  </span>
-                  <a
-                    href={recordedAudioUrl}
-                    download={`sahaya_audio_evidence_${Date.now()}.webm`}
-                    className="text-blue-600 hover:text-blue-700 text-[11px] font-bold flex items-center gap-1"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>බාගත කරන්න (Download)</span>
-                  </a>
+              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl border border-emerald-300/60 dark:border-emerald-900/60 space-y-1 animate-in fade-in duration-200">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>හඬ සාක්ෂිය Cloud වෙත සුරැකිණි (Audio Evidence Streamed)</span>
                 </div>
-
-                <audio controls src={recordedAudioUrl} className="w-full h-9 rounded-xl outline-none" />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium pl-5.5">
+                  ඔබගේ ආරක්ෂාව උදෙසා ඔබගේ දුරකථනයෙන් හඬ නිකුත් නොවේ. සජීවී සබැඳිය (Live Link) ලබන හිතවතාට එම හඬට සජීවීව සවන් දිය හැක.
+                </p>
               </div>
             )}
           </div>
 
-          {/* 🛑 5. FOOTER DEACTIVATE BUTTON (Works reliably) */}
+          {/* 🛑 5. FOOTER DEACTIVATE BUTTON (ALWAYS PROMPTS FOR PIN) */}
           <div className="pt-2">
             <button
               type="button"
