@@ -221,7 +221,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return parseFloat((R * c).toFixed(1));
   };
 
-  // 1. Session States
+  // 1. Session States (Full Complete Declarations)
   const [isActive, setIsActive] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>(() => {
     return `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -237,6 +237,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [customVehicleType, setCustomVehicleType] = useState<string>('');
   const [isCloudSaved, setIsCloudSaved] = useState<boolean>(false);
   const [showFeaturesGuideModal, setShowFeaturesGuideModal] = useState<boolean>(false);
+
+  // 📡 Live Sharing & Locking States (Restored)
+  const [shareUrl, setShareUrl] = useState<string>('');
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
+  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
+  const [gpsError, setGpsError] = useState<string | null>(null);
 
   // 2. Realtime Telemetry (Instant 0ms Cache Loading)
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>(() => {
@@ -262,6 +270,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [isCharging, setIsCharging] = useState<boolean>(false);
   const [locationName, setLocationName] = useState<string>(currentLocation?.nameSi || 'ජා-ඇල / කටුනායක (Katunayake / Ja-Ela)');
   const [breadcrumbs, setBreadcrumbs] = useState<SosBreadcrumbPoint[]>([]);
+  const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
 
   // 3. Trusted Emergency Contacts
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>(() => {
@@ -271,9 +280,11 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     } catch {}
     return [];
   });
+  const [showAddContactModal, setShowAddContactModal] = useState<boolean>(false);
   const [showAddContact, setShowAddContact] = useState<boolean>(false);
   const [newContactName, setNewContactName] = useState<string>('');
   const [newContactPhone, setNewContactPhone] = useState<string>('');
+  const [newContactRelation, setNewContactRelation] = useState<string>('Family');
   const [newContactRel, setNewContactRel] = useState<string>('පවුලේ සාමාජික');
 
   useEffect(() => {
@@ -299,12 +310,13 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   });
   const [hasTriggeredSafeArrival, setHasTriggeredSafeArrival] = useState<boolean>(false);
 
-  // 7. Dual Dispatch & Siren (Declarations Restored)
+  // 7. Dual Dispatch & Siren
   const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
   const [pendingSmsUrl, setPendingSmsUrl] = useState<string | null>(null);
   const [dualDispatchNotice, setDualDispatchNotice] = useState<string | null>(null);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
 
   // 8. Security Quick PIN & Duress PIN
   const securityPin = useMemo(() => {
@@ -344,9 +356,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return () => clearInterval(timer);
   }, [cooldownRemainingSec, sessionId, onClose]);
 
-  // 9. Audio Recording & Hardware Refs
+  // 9. Hardware & Audio Refs
   const recordingTimerRef = useRef<any>(null);
-  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -357,7 +368,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const markerRef = useRef<L.Marker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
-  const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
   const facilitiesLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const syncIntervalRef = useRef<any>(null);
@@ -449,8 +459,10 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const toggleSiren = useCallback(() => {
     if (isSirenOn) {
       stopHighDecibelSiren();
+      setIsSirenOn(false);
     } else {
       startHighDecibelSiren();
+      setIsSirenOn(true);
     }
   }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
 
