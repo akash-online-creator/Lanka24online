@@ -221,7 +221,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return parseFloat((R * c).toFixed(1));
   };
 
-  // 1. Session States (Full Declarations)
+  // 1. Session States
   const [isActive, setIsActive] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>(() => {
     return `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -263,52 +263,60 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [locationName, setLocationName] = useState<string>(currentLocation?.nameSi || 'ජා-ඇල / කටුනායක (Katunayake / Ja-Ela)');
   const [breadcrumbs, setBreadcrumbs] = useState<SosBreadcrumbPoint[]>([]);
 
-  // 3. Audio Evidence Recording
-  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
-  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
-  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-  const recordingTimerRef = useRef<any>(null);
-  const isContinuousAudioRunningRef = useRef<boolean>(false);
-
-  // 4. Map & Hardware Refs
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const accuracyCircleRef = useRef<L.Circle | null>(null);
-  const polylineRef = useRef<L.Polyline | null>(null);
-  const facilitiesLayerGroupRef = useRef<L.LayerGroup | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const syncIntervalRef = useRef<any>(null);
-  const sirenAudioContextRef = useRef<AudioContext | null>(null);
-  const sirenOscillatorRef = useRef<OscillatorNode | null>(null);
-  const sirenGainRef = useRef<GainNode | null>(null);
-  const sirenModulatorRef = useRef<OscillatorNode | null>(null);
-
-  // 5. Trusted Contacts State
+  // 3. Trusted Emergency Contacts
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>(() => {
     try {
       const saved = localStorage.getItem('sahaya_trusted_contacts');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      { id: 'tc_1', name: 'පවුලේ සාමාජිකයා (Home)', phone: '0771234567', relationship: 'Family' },
-      { id: 'tc_2', name: 'මිතුරා (Friend)', phone: '0719876543', relationship: 'Friend' },
-    ];
+    return [];
   });
-  const [showAddContactModal, setShowAddContactModal] = useState<boolean>(false);
+  const [showAddContact, setShowAddContact] = useState<boolean>(false);
   const [newContactName, setNewContactName] = useState<string>('');
   const [newContactPhone, setNewContactPhone] = useState<string>('');
-  const [newContactRelation, setNewContactRelation] = useState<string>('Family');
+  const [newContactRel, setNewContactRel] = useState<string>('පවුලේ සාමාජික');
 
-  // 6. Security & Deactivation State
+  useEffect(() => {
+    try {
+      localStorage.setItem('sahaya_trusted_contacts', JSON.stringify(trustedContacts));
+    } catch {}
+  }, [trustedContacts]);
+
+  // 4. "මට අනතුරක්" Triple-Tap State
+  const [panicTapCount, setPanicTapCount] = useState<number>(0);
+  const panicTapTimeoutRef = useRef<any>(null);
+
+  // 5. Shake-to-SOS Detection
+  const [isShakeEnabled, setIsShakeEnabled] = useState<boolean>(true);
+
+  // 6. Auto Geofence "Safe Arrival"
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number; name: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('sahaya_safe_destination');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const [hasTriggeredSafeArrival, setHasTriggeredSafeArrival] = useState<boolean>(false);
+
+  // 7. Dual Dispatch & Siren (Declarations Restored)
+  const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
+  const [pendingSmsUrl, setPendingSmsUrl] = useState<string | null>(null);
+  const [dualDispatchNotice, setDualDispatchNotice] = useState<string | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+
+  // 8. Security Quick PIN & Duress PIN
+  const securityPin = useMemo(() => {
+    return (currentUser as any)?.quickPin || (currentUser as any)?.devicePin || localStorage.getItem('sahaya_security_pin') || '1234';
+  }, [currentUser]);
+
+  const duressPin = useMemo(() => {
+    return localStorage.getItem('sahaya_duress_pin') || '9999';
+  }, []);
+
   const [showDuressModal, setShowDuressModal] = useState<boolean>(false);
-  const [enteredPin, setEnteredPin] = useState<string>('');
-  const [enteredPassword, setEnteredPassword] = useState<string>('');
-  const [enteredNic, setEnteredNic] = useState<string>('');
-  const [pinError, setPinError] = useState<string | null>(null);
+  const [showLiveViewerModal, setShowLiveViewerModal] = useState<boolean>(false);
   const [deactivateTab, setDeactivateTab] = useState<'pin' | 'nic'>('pin');
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
 
@@ -336,26 +344,30 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return () => clearInterval(timer);
   }, [cooldownRemainingSec, sessionId, onClose]);
 
-  // 7. Map Visual Layer State
+  // 9. Audio Recording & Hardware Refs
+  const recordingTimerRef = useRef<any>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const isContinuousAudioRunningRef = useRef<boolean>(false);
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
+  const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
+  const facilitiesLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const syncIntervalRef = useRef<any>(null);
+  const sirenAudioContextRef = useRef<AudioContext | null>(null);
+  const sirenOscillatorRef = useRef<OscillatorNode | null>(null);
+  const sirenGainRef = useRef<GainNode | null>(null);
+  const sirenModulatorRef = useRef<OscillatorNode | null>(null);
+
   const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
   const [showFacilities, setShowFacilities] = useState<boolean>(true);
-
-  // Battery Status API Listener
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
-      (navigator as any).getBattery().then((battery: any) => {
-        setBatteryLevel(Math.round(battery.level * 100));
-        setIsCharging(battery.charging);
-
-        battery.addEventListener('levelchange', () => {
-          setBatteryLevel(Math.round(battery.level * 100));
-        });
-        battery.addEventListener('chargingchange', () => {
-          setIsCharging(battery.charging);
-        });
-      }).catch(() => {});
-    }
-  }, []);
 
   // Format MM:SS for audio timer
   const formatDuration = (totalSeconds: number) => {
@@ -524,7 +536,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     mediaRecorderRef.current = null;
 
     // 2. 🛑 CRITICAL: Release hardware microphone tracks immediately
-    // Halts the OS/browser mic indicator so other apps (like Gemini, speech recognition) can use the mic freely!
     if (audioStreamRef.current) {
       try {
         audioStreamRef.current.getTracks().forEach((track) => {
