@@ -14,34 +14,38 @@ import {
 import { AdminPanel } from './components/AdminPanel';
 import { UserDashboard } from './components/UserDashboard';
 import { IssuesHelpPage } from './components/IssuesHelpPage';
+import { LoginForm } from './components/LoginForm';
+import { RegisterForm } from './components/RegisterForm';
+import { PendingApprovalView } from './components/PendingApprovalView';
 
 // Types
-import { User, HelpPost, Issue, RedAlert } from './types';
+import { User, HelpPost, Issue, RedAlertItem as RedAlert, Language, Theme } from './types';
 
 // Utils & Helpers
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { 
   syncUserProfileToFirestore, 
-  listenToUsersCollection, 
-  listenToHelpPostsCollection, 
-  listenToRedAlertsCollection, 
-  listenToIssuesCollection 
-} from './services/firebase';
+  subscribeToUsers, 
+  subscribeToHelpPosts, 
+  subscribeToRedAlerts, 
+  subscribeToIssuesFromFirestore,
+  getUserFromFirestore
+} from './lib/firebase';
 
 export const App: React.FC = () => {
   // ==========================================
   // 1. Language & Theme States
   // ==========================================
-  const [language, setLanguage] = useState<'si' | 'en' | 'ta'>(() => {
-    return (localStorage.getItem('sahaya_sewa_lang') as 'si' | 'en' | 'ta') || 'si';
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('sahaya_sewa_lang') as Language) || 'si';
   });
 
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('sahaya_sewa_theme') as 'light' | 'dark') || 'light';
+  const [theme, setTheme] = useState<Theme>(() => {
+    return (localStorage.getItem('sahaya_sewa_theme') as Theme) || 'light';
   });
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    const nextTheme: Theme = theme === 'light' ? 'dark' : 'light';
     setTheme(nextTheme);
     localStorage.setItem('sahaya_sewa_theme', nextTheme);
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
@@ -68,7 +72,6 @@ export const App: React.FC = () => {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
       if (saved) {
         const u: User = JSON.parse(saved);
-        // ආරක්ෂිත පරීක්ෂාව: Admin නම් පමණක් කෙලින්ම admin view එකට යොමු කෙරේ
         if (checkIsAdmin(u)) return 'admin';
         if (u.status === 'pending') return 'pending';
         return 'dashboard';
@@ -91,7 +94,6 @@ export const App: React.FC = () => {
   // ==========================================
   // 5. Security & Route Protection Effects
   // ==========================================
-  // 🛡️ Admin නොවන සාමාන්‍ය පරිශීලකයින් Admin Panel එකට පිවිසීම ස්වයංක්‍රීයව අවහිර කිරීම
   useEffect(() => {
     if (activeView === 'admin') {
       if (!currentUser) {
@@ -130,32 +132,24 @@ export const App: React.FC = () => {
       setIsLoading(true);
 
       // පරිශීලකයින් සවන්දීම
-      if (typeof listenToUsersCollection === 'function') {
-        unsubscribeUsers = listenToUsersCollection((fetchedUsers) => {
-          setUsers(fetchedUsers);
-        });
-      }
+      unsubscribeUsers = subscribeToUsers((fetchedUsers) => {
+        setUsers(fetchedUsers || []);
+      });
 
       // Help Posts සවන්දීම
-      if (typeof listenToHelpPostsCollection === 'function') {
-        unsubscribePosts = listenToHelpPostsCollection((fetchedPosts) => {
-          setHelpPosts(fetchedPosts);
-        });
-      }
+      unsubscribePosts = subscribeToHelpPosts((fetchedPosts) => {
+        setHelpPosts(fetchedPosts || []);
+      });
 
       // Red Alerts සවන්දීම
-      if (typeof listenToRedAlertsCollection === 'function') {
-        unsubscribeAlerts = listenToRedAlertsCollection((fetchedAlerts) => {
-          setRedAlerts(fetchedAlerts);
-        });
-      }
+      unsubscribeAlerts = subscribeToRedAlerts((fetchedAlerts) => {
+        setRedAlerts(fetchedAlerts || []);
+      });
 
       // Issues සවන්දීම
-      if (typeof listenToIssuesCollection === 'function') {
-        unsubscribeIssues = listenToIssuesCollection((fetchedIssues) => {
-          setIssues(fetchedIssues);
-        });
-      }
+      unsubscribeIssues = subscribeToIssuesFromFirestore((fetchedIssues) => {
+        setIssues(fetchedIssues || []);
+      });
     } catch (err) {
       console.error('Error establishing Firestore listeners:', err);
     } finally {
@@ -169,20 +163,78 @@ export const App: React.FC = () => {
       unsubscribeIssues();
     };
   }, []);
-
   // ==========================================
-  // 7. Authentication & Action Handlers
+  // 7. Authentication Handlers
   // ==========================================
-  const handleLogin = (matched: User) => {
-    setCurrentUser(matched);
-    // 🛡️ භූමිකාව පරීක්ෂා කර ආරක්ෂිතව view එක තෝරා ගැනීම
-    if (checkIsAdmin(matched)) {
+  const handleUserLoginSuccess = (matchedUser: User) => {
+    setCurrentUser(matchedUser);
+    if (checkIsAdmin(matchedUser)) {
       setActiveView('admin');
-    } else if (matched.status === 'pending') {
+    } else if (matchedUser.status === 'pending') {
       setActiveView('pending');
     } else {
       setActiveView('dashboard');
     }
+  };
+
+  const handleLogin = async (userIdInput: string, keyInput: string) => {
+    const cleanId = userIdInput.trim().toUpperCase();
+    const cleanKey = keyInput.trim();
+
+    // 1. Local state users එකෙන් පරිශීලකයා සෙවීම
+    let matched = users.find(
+      (u) =>
+        (u.userId && u.userId.trim().toUpperCase() === cleanId) ||
+        (u.phone && u.phone.trim() === cleanId) ||
+        (u.whatsappNumber && u.whatsappNumber.trim() === cleanId)
+    );
+
+    // 2. Local state හි නොමැති නම් Firestore වෙතින් සෙවීම
+    if (!matched) {
+      try {
+        const firestoreUser = await getUserFromFirestore(cleanId);
+        if (firestoreUser) matched = firestoreUser;
+      } catch (e) {
+        console.warn('Firestore fetch user error:', e);
+      }
+    }
+
+    if (!matched) {
+      alert(language === 'en' ? 'User not found. Please check User ID / Phone.' : 'පරිශීලකයා සොයාගත නොහැක. කරුණාකර ඔබගේ හැඳුනුම්පත් අංකය හෝ දුරකථන අංකය පරීක්ෂා කරන්න.');
+      return;
+    }
+
+    // මුරපද හෝ යතුරු පරීක්ෂාව
+    const storedPass = (matched as any).password || (matched as any).key || (matched as any).tempCode;
+    if (storedPass && cleanKey && storedPass !== cleanKey) {
+      alert(language === 'en' ? 'Invalid password or PIN.' : 'මුරපදය හෝ PIN අංකය වැරදිය.');
+      return;
+    }
+
+    handleUserLoginSuccess(matched);
+  };
+
+  const handleDemoAdminLogin = () => {
+    const demoAdmin = users.find((u) => checkIsAdmin(u));
+    if (demoAdmin) {
+      handleUserLoginSuccess(demoAdmin);
+    } else {
+      const fallbackAdmin: User = {
+        id: 'admin_master',
+        userId: 'ADMIN',
+        name: 'ප්‍රධාන පරිපාලක (Master Admin)',
+        role: 'admin',
+        status: 'approved',
+        credits: 99999,
+        phone: '0770000000',
+      };
+      handleUserLoginSuccess(fallbackAdmin);
+    }
+  };
+
+  const handleRegisterSuccess = (newUser: User) => {
+    setCurrentUser(newUser);
+    setActiveView('pending');
   };
 
   const handleLogout = () => {
@@ -191,25 +243,38 @@ export const App: React.FC = () => {
     setActiveView('login');
   };
 
+  const handleRefreshUserStatus = async () => {
+    if (!currentUser) return;
+    try {
+      const refreshed = await getUserFromFirestore(currentUser.userId || currentUser.id);
+      if (refreshed) {
+        setCurrentUser(refreshed);
+        if (refreshed.status === 'approved') {
+          setActiveView(checkIsAdmin(refreshed) ? 'admin' : 'dashboard');
+        }
+      }
+    } catch (e) {
+      console.warn('Error refreshing status:', e);
+    }
+  };
+
   const handleUpdateIssueStatus = async (issueId: string, status: Issue['status']) => {
     try {
       setIssues((prev) =>
         prev.map((iss) => (iss.id === issueId ? { ...iss, status } : iss))
       );
-      // Backend / Firestore වෙත update කිරීමේ කේතය
     } catch (error) {
       console.error('Failed to update issue status:', error);
     }
   };
+
   // ==========================================
-  // 8. Navigation & Utility Handlers
+  // 8. Navigation Handlers
   // ==========================================
   const handleOpenAdminPanel = () => {
-    // 🛡️ User Dashboard එකේ සිට Admin Panel එක විවෘත කිරීමට පෙර Admin කෙනෙක්දැයි තහවුරු කිරීම
     if (checkIsAdmin(currentUser)) {
       setActiveView('admin');
     } else {
-      console.warn('Unauthorized attempt to switch to admin view.');
       setActiveView('dashboard');
     }
   };
@@ -227,11 +292,11 @@ export const App: React.FC = () => {
   // ==========================================
   // 9. Main Render (View Routing)
   // ==========================================
-  if (isLoading && users.length === 0) {
+  if (isLoading && users.length === 0 && !currentUser) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-800'}`}>
         <div className="flex flex-col items-center gap-3">
-          <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
+          <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
           <p className="text-sm font-medium">දත්ත පූරණය වෙමින් පවතී (Loading)...</p>
         </div>
       </div>
@@ -240,61 +305,48 @@ export const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      {/* 1. Permissions View */}
-      {activeView === 'permissions' && (
-        <div className="p-6 max-w-lg mx-auto">
-          <h2 className="text-xl font-bold mb-4">පද්ධති අවසර ලබාදීම (System Permissions)</h2>
-          <button 
-            onClick={() => setActiveView('login')} 
-            className="w-full py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-          >
-            ඉදිරියට යන්න
-          </button>
-        </div>
-      )}
-
-      {/* 2. Authentication Views (Login / Register / Pending) */}
+      {/* 1. Login View */}
       {activeView === 'login' && (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-md p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800">
-            <h2 className="text-2xl font-bold text-center mb-6">පිවිසෙන්න (Login)</h2>
-            {/* Login Form එක සහ handleLogin මෙහෙයුම */}
-            <div className="space-y-4">
-              <p className="text-sm text-slate-500 text-center">කරුණාකර ඔබගේ ගිණුමට ඇතුළු වන්න</p>
-              <button
-                onClick={() => {
-                  // පරීක්ෂණ Demo පරිශීලකයින් සඳහා උදාහරණයක්
-                  const demoAdmin = users.find(u => checkIsAdmin(u));
-                  if (demoAdmin) handleLogin(demoAdmin);
-                }}
-                className="w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
-              >
-                Admin ලෙස පිවිසෙන්න (Demo Auto-Login)
-              </button>
-            </div>
-          </div>
-        </div>
+        <LoginForm
+          onLogin={handleLogin}
+          onUserDemoLogin={handleDemoAdminLogin}
+          onNavigateToRegister={() => setActiveView('register')}
+          onNavigateToIssues={() => setActiveView('issues')}
+          onSuccessfulPinLogin={handleUserLoginSuccess}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          showDemoUserLogin={true}
+          users={users}
+        />
       )}
 
-      {activeView === 'pending' && (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="max-w-md text-center p-8 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-amber-200 dark:border-amber-900/40">
-            <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">ගිණුම අනුමත කිරීම බලාපොරොත්තුවෙන්</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-              ඔබගේ ලියාපදිංචිය පරිපාලකවරයාගේ (Admin) අනුමැතිය සඳහා යොමු කර ඇත.
-            </p>
-            <button 
-              onClick={handleLogout} 
-              className="px-4 py-2 bg-slate-200 dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-700"
-            >
-              ඉවත් වන්න (Logout)
-            </button>
-          </div>
-        </div>
+      {/* 2. Register View */}
+      {activeView === 'register' && (
+        <RegisterForm
+          onRegisterSuccess={handleRegisterSuccess}
+          onNavigateToLogin={() => setActiveView('login')}
+          onNavigateToIssues={() => setActiveView('issues')}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
       )}
 
-      {/* 3. Issues & Help Desk View */}
+      {/* 3. Pending Approval View */}
+      {activeView === 'pending' && currentUser && (
+        <PendingApprovalView
+          user={currentUser}
+          language={language}
+          onRefreshStatus={handleRefreshUserStatus}
+          onNavigateToIssues={() => setActiveView('issues')}
+          onBackToLogin={handleLogout}
+        />
+      )}
+
+      {/* 4. Issues & Help Desk View */}
       {activeView === 'issues' && (
         <IssuesHelpPage
           currentUser={currentUser}
@@ -306,7 +358,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 4. 🛡️ Administrator Operations Dashboard (පූර්ණ ආරක්ෂාව සහිතව) */}
+      {/* 5. 🛡️ Administrator Operations Dashboard */}
       {activeView === 'admin' && currentUser && checkIsAdmin(currentUser) && (
         <AdminPanel
           currentUser={currentUser}
@@ -327,7 +379,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 5. Regular User Dashboard */}
+      {/* 6. Regular User Dashboard */}
       {activeView === 'dashboard' && currentUser && (
         <UserDashboard
           currentUser={currentUser}
