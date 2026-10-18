@@ -1,14 +1,35 @@
-const CACHE_NAME = 'sahaya-sewa-v5';
+const CACHE_NAME = 'sahaya-sewa-v6';
+
+// අත්‍යවශ්‍ය මූලික ගොනු පමණක් Precache කිරීම
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/logo.jpg',
-  '/mixkit-manual-siren-fire-alert-1652.wav'
+  '/mixkit-manual-siren-fire-alert-1652.wav',
+  '/siren.wav'
 ];
+
+// ==============================================================
+// 1. Service Worker Lifecycle (Safe Precache & Instant Activation)
+// ==============================================================
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // Promise.allSettled මඟින් එක් ගොනුවක් හෝ අස්ථානගත වුවහොත් Install වීම අසාර්ථක වීම වළක්වයි
+      const results = await Promise.allSettled(
+        PRECACHE_ASSETS.map((asset) => cache.add(asset))
+      );
+      results.forEach((res, idx) => {
+        if (res.status === 'rejected') {
+          console.warn(`[SW] Precache skipped for: ${PRECACHE_ASSETS[idx]}`);
+        }
+      });
+    })
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -17,6 +38,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log(`[SW] Deleting legacy cache: ${key}`);
             return caches.delete(key);
           }
         })
@@ -26,10 +48,75 @@ self.addEventListener('activate', (event) => {
 });
 
 // ==============================================================
-// 🚨 24/7 BACKGROUND PUSH & EMERGENCY DISASTER ALERT HANDLERS
+// 2. Intelligent Network-First Strategy (Stale-Cache Trap වැළැක්වීම)
 // ==============================================================
 
-// 1. Push Event (FCM / Web Push alerts when app is in background or screen is OFF)
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // API calls, Firebase සහ WebSocket ඉල්ලීම් කිසිවිටෙකත් Cache නොකිරීම (Always Live Network)
+  if (
+    url.pathname.startsWith('/api') ||
+    url.hostname.includes('firestore') ||
+    url.hostname.includes('googleapis') ||
+    url.hostname.includes('firebase')
+  ) {
+    return;
+  }
+
+  // 1. Navigation (HTML පිටු): Network First - අලුත්ම කේතය ක්ෂණිකව ලබාගැනීම සඳහා
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // අන්තර්ජාලය නොමැති (Offline) අවස්ථාවකදී පමණක් Cache එකෙන් index.html ලබාදීම
+          return caches.match('/index.html') || caches.match('/');
+        })
+    );
+    return;
+  }
+
+  // 2. Static Assets (ශ්‍රව්‍ය ගොනු, පින්තූර, අකුරු): Cache First with Background Update
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).then((networkResponse) => {
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+        if (
+          url.pathname.endsWith('.wav') ||
+          url.pathname.endsWith('.mp3') ||
+          url.pathname.endsWith('.png') ||
+          url.pathname.endsWith('.jpg') ||
+          url.pathname.endsWith('.svg') ||
+          url.pathname.endsWith('.woff2')
+        ) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      });
+    })
+  );
+});
+// ==============================================================
+// 3. 🚨 24/7 Background Push Notification & Siren Broadcast Engine
+// ==============================================================
+
 self.addEventListener('push', (event) => {
   let data = {};
   if (event.data) {
@@ -42,20 +129,20 @@ self.addEventListener('push', (event) => {
 
   const payload = data.data || data;
   const category = payload.category || 'admin_broadcast';
-  const title = payload.title || data.notification?.title || data.title || '🚨 සහය සේවා (Sahaya Seva)';
+  const title = payload.title || data.notification?.title || data.title || '🚨 සහය සේවා (Sahaya Sewa)';
   const body = payload.body || payload.message || data.notification?.body || data.body || 'හදිසි ආපදාවක් හෝ නව ප්‍රජා ඉල්ලීමක් ඇත.';
   const locationName = payload.locationName || '';
 
-  // Determine category-specific vibration patterns and action buttons
+  // ආපදා සහ හදිසි අවස්ථා සඳහා සයිරන් කම්පන රටාව (Continuous SOS Vibration Pattern)
   let vibrationPattern = [300, 100, 300];
   let requireInteraction = false;
   let actions = [
-    { action: 'open', title: '👁️ විස්තර බලන්න (Open)' },
+    { action: 'open', title: '👁️ විස්තර බලන්න' },
     { action: 'dismiss', title: 'ඉවත් කරන්න' }
   ];
 
   if (category === 'red_alert') {
-    // Continuous SOS Emergency Vibration pattern to wake up sleeping user
+    // පරිශීලකයා නිදා සිටියත් අවදි වන තීව්‍ර SOS Vibration රටාව
     vibrationPattern = [1000, 200, 1000, 200, 1500, 300, 2000];
     requireInteraction = true;
     actions = [
@@ -72,13 +159,7 @@ self.addEventListener('push', (event) => {
   } else if (category === 'quick_service') {
     vibrationPattern = [250, 100, 250];
     actions = [
-      { action: 'open_quick_service', title: '⚡ ක්ෂණික සේවය බලන්න' },
-      { action: 'dismiss', title: 'පසුවට' }
-    ];
-  } else if (category === 'group_work') {
-    vibrationPattern = [200, 100, 200];
-    actions = [
-      { action: 'open_group_work', title: '👥 ශ්‍රමදානයට එක්වන්න' },
+      { action: 'open_quick_service', title: '⚡ සේවය බලන්න' },
       { action: 'dismiss', title: 'පසුවට' }
     ];
   }
@@ -97,7 +178,7 @@ self.addEventListener('push', (event) => {
       alertId: payload.alertId,
       postId: payload.postId,
       groupId: payload.groupId,
-      targetModal: category === 'red_alert' ? 'red_alert' : category === 'sos_live' ? 'red_alert' : category === 'quick_service' ? 'quick_service' : category === 'group_work' ? 'group_work' : 'admin'
+      targetModal: category === 'red_alert' ? 'red_alert' : category === 'sos_live' ? 'red_alert' : category === 'quick_service' ? 'quick_service' : 'admin'
     },
     vibrate: vibrationPattern,
     requireInteraction,
@@ -106,7 +187,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(title, options).then(() => {
-      // Broadcast to any open windows/tabs
+      // දැනට විවෘතව ඇති Tabs / Windows වෙත සංඥා කිරීම
       return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
         for (const client of clients) {
           client.postMessage({
@@ -119,10 +200,14 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// 2. Notification Click Event (Wakes up and opens App on click or stops siren)
+// ==============================================================
+// 4. Notification Click & Audio Dismiss Handlers
+// ==============================================================
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
+  // සයිරන් ශබ්දය නැවැත්වීමේ ක්‍රියාව (Mute Action)
   if (event.action === 'stop' || event.action === 'dismiss') {
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -142,7 +227,6 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open, focus it and dispatch modal navigation
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           client.focus();
@@ -154,7 +238,6 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      // Otherwise open new window
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
@@ -162,37 +245,15 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// 3. Network Fetch Handler with Offline Cache Fallback
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // Exclude API requests and Firebase WebSockets from caching
-  if (url.pathname.startsWith('/api') || url.hostname.includes('firebaseio.com') || url.hostname.includes('googleapis.com')) {
-    return;
+// Window/Tab වෙතින් එන පණිවුඩ හසුරුවන්නා
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'TRIGGER_NOTIFICATION') {
+    const { title, options } = event.data;
+    self.registration.showNotification(title || '🚨 සහය සේවා', {
+      icon: '/logo.jpg',
+      badge: '/logo.jpg',
+      vibrate: [300, 100, 300],
+      ...options
+    });
   }
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
-        // Cache static audio and images
-        if (url.pathname.endsWith('.wav') || url.pathname.endsWith('.mp3') || url.pathname.endsWith('.png') || url.pathname.endsWith('.jpg')) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
-    })
-  );
 });
