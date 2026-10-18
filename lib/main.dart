@@ -1,5 +1,5 @@
-// File: lib/main.dart (Optimized Battery & Emergency Siren Architecture)
-// ----------------------------------------------------------------------
+// File: lib/main.dart (Optimized Battery, High-Precision GPS & Emergency Siren Architecture)
+// ------------------------------------------------------------------------------------------
 
 import 'dart:async';
 import 'dart:io';
@@ -14,7 +14,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 // ==============================================================
-// 🌐 LOCAL ASSET SERVER (Offline Safe Single-Port Loopback)
+// 🌐 1. LOCAL ASSET SERVER (Offline Safe Single-Port Loopback)
 // ==============================================================
 class LocalAssetServer {
   HttpServer? _server;
@@ -33,25 +33,35 @@ class LocalAssetServer {
             final ByteData data = await rootBundle.load(assetPath);
             final List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 
+            // සියලුම වෙබ්, ශ්‍රව්‍ය (Audio) සහ රූප ආකෘති සඳහා නිවැරදි MIME Types
             String mimeType = 'text/html; charset=utf-8';
             if (path.endsWith('.js')) mimeType = 'application/javascript; charset=utf-8';
             else if (path.endsWith('.css')) mimeType = 'text/css; charset=utf-8';
             else if (path.endsWith('.json')) mimeType = 'application/json; charset=utf-8';
             else if (path.endsWith('.png')) mimeType = 'image/png';
             else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) mimeType = 'image/jpeg';
+            else if (path.endsWith('.webp')) mimeType = 'image/webp';
             else if (path.endsWith('.svg')) mimeType = 'image/svg+xml';
             else if (path.endsWith('.woff2')) mimeType = 'font/woff2';
+            else if (path.endsWith('.mp3')) mimeType = 'audio/mpeg';
+            else if (path.endsWith('.wav')) mimeType = 'audio/wav';
+            else if (path.endsWith('.ogg')) mimeType = 'audio/ogg';
 
             request.response.headers.contentType = ContentType.parse(mimeType);
             request.response.headers.add('Access-Control-Allow-Origin', '*');
             request.response.add(bytes);
             await request.response.close();
           } catch (_) {
-            // SPA Fallback to index.html
-            final ByteData fallback = await rootBundle.load('assets/web/index.html');
-            request.response.headers.contentType = ContentType.parse('text/html; charset=utf-8');
-            request.response.add(fallback.buffer.asUint8List());
-            await request.response.close();
+            // Extension එකක් නොමැති SPA Routes සඳහා පමණක් index.html වෙත යොමු කිරීම (SyntaxError වැළැක්වීමට)
+            if (!path.contains('.')) {
+              final ByteData fallback = await rootBundle.load('assets/web/index.html');
+              request.response.headers.contentType = ContentType.parse('text/html; charset=utf-8');
+              request.response.add(fallback.buffer.asUint8List());
+              await request.response.close();
+            } else {
+              request.response.statusCode = HttpStatus.notFound;
+              await request.response.close();
+            }
           }
         } catch (_) {
           request.response.statusCode = HttpStatus.internalServerError;
@@ -68,7 +78,7 @@ class LocalAssetServer {
 }
 
 // ==============================================================
-// 🚨 ON-DEMAND SOS LIVE TRACKING TASK (Only Runs When SOS is Pressed)
+// 🚨 2. ON-DEMAND SOS LIVE TRACKING TASK (Only Runs When SOS is Active)
 // ==============================================================
 @pragma('vm:entry-point')
 void startSosCallback() {
@@ -137,7 +147,6 @@ class SahayaSewaApp extends StatelessWidget {
     );
   }
 }
-
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
 
@@ -166,7 +175,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.dispose();
   }
 
-  // High-Priority Emergency Notification Channel Initialization
+  // 3. High-Priority Emergency Notification Channel Initialization
   void _initEmergencySirenChannel() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -196,6 +205,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     }
   }
 
+  // 4. WebView Setup, External App Launchers & Native Channels
   void _setupWebView() {
     final WebViewController controller = WebViewController();
 
@@ -207,10 +217,19 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
           onPageFinished: (_) => setState(() => _isLoading = false),
           onNavigationRequest: (request) async {
             final url = request.url;
-            if (url.startsWith('whatsapp:') || url.startsWith('tel:') || url.contains('wa.me')) {
+            // WhatsApp, Phone, SMS, Google Maps බාහිර ඇප්ස් මඟින් විවෘත කිරීම
+            if (url.startsWith('whatsapp:') || 
+                url.startsWith('tel:') || 
+                url.startsWith('mailto:') || 
+                url.startsWith('geo:') ||
+                url.contains('wa.me') ||
+                url.contains('maps.google.com') ||
+                url.contains('goo.gl/maps')) {
               try {
                 final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
               } catch (_) {}
               return NavigationDecision.prevent;
             }
@@ -255,11 +274,20 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     _controller = controller;
   }
 
+  // 5. Native GPS Location Retrieval and Injection to Web Layer
   Future<void> _fetchAndInjectCurrentLocation() async {
     try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
       if (!await Geolocator.isLocationServiceEnabled()) return;
+
       Position pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
+        desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 6),
       );
       _controller.runJavaScript("""
