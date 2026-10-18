@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X } from 'lucide-react';
-import { 
-  subscribeToRedAlerts, 
-  markRedAlertAsResolved, 
-  cancelRedAlertByReporter, 
-  addReporterUpdateToRedAlert, 
-  RedAlertItem 
+import { X, VolumeX } from 'lucide-react';
+import {
+  subscribeToRedAlerts,
+  markRedAlertAsResolved,
+  cancelRedAlertByReporter,
+  addReporterUpdateToRedAlert,
+  RedAlertItem
 } from '../lib/firebase';
 import { triggerBrowserNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
@@ -22,31 +22,120 @@ interface Props {
   activeView?: string;
 }
 
-export const RedAlertLiveManager: React.FC<Props> = ({ 
-  currentUserId: propUserId, 
+export const RedAlertLiveManager: React.FC<Props> = ({
+  currentUserId: propUserId,
   currentUserName: propUserName,
   currentUser,
+  redAlerts,
+  language = 'si',
+  activeView
 }) => {
   const currentUserId = propUserId || currentUser?.id || currentUser?.userId || 'usr_guest';
-  const currentUserName = propUserName || currentUser?.name || 'පරිශීලක';
+
   const [activeAlert, setActiveAlert] = useState<RedAlertItem | null>(null);
+  const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [isSirenActive, setIsSirenActive] = useState<boolean>(false);
   const [popupMessage, setPopupMessage] = useState<string | null>(null);
-  const [updateText, setUpdateText] = useState('');
-  const [showUpdateBox, setShowUpdateBox] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSirenActive, setIsSirenActive] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showUpdateBox, setShowUpdateBox] = useState<boolean>(false);
+  const [updateText, setUpdateText] = useState<string>('');
+
+  // 👆 Swipe Gesture States
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [translateX, setTranslateX] = useState<number>(0);
+  const [translateY, setTranslateY] = useState<number>(0);
+  const [isSwiping, setIsSwiping] = useState<boolean>(false);
 
   const prevAlertRef = useRef<RedAlertItem | null>(null);
-  const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const popupTimeoutRef = useRef<any>(null);
 
-  // Sync dismissal state with current alert ID
+  const triggerPopup = (msg: string) => {
+    setPopupMessage(msg);
+    if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
+    popupTimeoutRef.current = setTimeout(() => {
+      setPopupMessage(null);
+    }, 8000);
+  };
+
+  // 🔇 මෙම ඩිවයිස් එකේ පමණක් Siren එක නැවැත්වීම සහ Banner එක Dismiss කිරීම
+  const handleDismissCard = () => {
+    setIsDismissed(true);
+
+    // 1. මෙම ඩිවයිස් එකේ සයිරන් එක සහ vibration ක්ෂණිකව නවත්වන්න
+    try {
+      stopEmergencySiren(true);
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(0);
+      }
+    } catch (e) {
+      console.warn('Siren stop failed:', e);
+    }
+    setIsSirenActive(false);
+
+    // 2. මෙම Alert ID එක මෙම ඩිවයිස් එකේ localStorage තුළ සටහන් කරන්න
+    if (activeAlert?.id) {
+      try {
+        const keys = ['sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${currentUserId}`];
+        keys.forEach((storageKey) => {
+          const raw = localStorage.getItem(storageKey);
+          const list: string[] = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(list) && !list.includes(activeAlert.id)) {
+            list.push(activeAlert.id);
+            localStorage.setItem(storageKey, JSON.stringify(list));
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to save dismissed alert to storage:', e);
+      }
+    }
+  };
+
+  // 📱 Touch / Swipe Handlers (පැත්තට හෝ උඩට තල්ලු කර ඉවත් කිරීම)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+    setTouchStartY(e.touches[0].clientY);
+    setIsSwiping(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX === null || touchStartY === null) return;
+    const diffX = e.touches[0].clientX - touchStartX;
+    const diffY = e.touches[0].clientY - touchStartY;
+    setTranslateX(diffX);
+    setTranslateY(diffY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping) return;
+    // තිරස් අතට 75px හෝ ඉහළට 60px swipe කළ විට dismiss වේ
+    if (Math.abs(translateX) > 75 || translateY < -60) {
+      handleDismissCard();
+    }
+    setTranslateX(0);
+    setTranslateY(0);
+    setTouchStartX(null);
+    setTouchStartY(null);
+    setIsSwiping(false);
+  };
+
+  // 🔄 Alert එක කලින් dismiss කර ඇත්දැයි localStorage මඟින් පරීක්ෂා කිරීම
   useEffect(() => {
     if (activeAlert?.id) {
       try {
-        const key = "sahaya_dismissed_alerts_" + currentUserId;
-        const existing = JSON.parse(localStorage.getItem(key) || "[]");
-        setIsDismissed(Array.isArray(existing) && existing.includes(activeAlert.id));
+        const general = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+        const userSpecific = JSON.parse(localStorage.getItem(`sahaya_dismissed_alerts_${currentUserId}`) || '[]');
+        const wasDismissed =
+          (Array.isArray(general) && general.includes(activeAlert.id)) ||
+          (Array.isArray(userSpecific) && userSpecific.includes(activeAlert.id));
+
+        if (wasDismissed) {
+          setIsDismissed(true);
+          stopEmergencySiren(true);
+          setIsSirenActive(false);
+        } else {
+          setIsDismissed(false);
+        }
       } catch {
         setIsDismissed(false);
       }
@@ -55,59 +144,10 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     }
   }, [activeAlert?.id, currentUserId]);
 
-  // Handle Dismiss (Close) Alert Card
-  const handleDismissCard = () => {
-    setIsDismissed(true);
-    if (activeAlert?.id) {
-      try {
-        const key = "sahaya_dismissed_alerts_" + currentUserId;
-        const existing = JSON.parse(localStorage.getItem(key) || "[]");
-        if (!existing.includes(activeAlert.id)) {
-          existing.push(activeAlert.id);
-          localStorage.setItem(key, JSON.stringify(existing));
-        }
-      } catch (e) {
-        console.warn("Failed to save dismissed alert to storage:", e);
-      }
-    }
-    stopEmergencySiren(true);
-    setIsSirenActive(false);
-  };
-
-  // 🔔 තිරය මත Popup එක පෙන්වීම සහ Local Notification එකක් යැවීම
-  const triggerPopup = (msg: string) => {
-    if (popupTimeoutRef.current) {
-      clearTimeout(popupTimeoutRef.current);
-    }
-
-    setPopupMessage(msg);
-
-    triggerBrowserNotification({
-      id: `alert-update-${Date.now()}`,
-      type: 'red_alert',
-      title: '🚨 රතු එළිය ආපදා අනතුරු ඇඟවීම!',
-      message: msg,
-      timestamp: new Date().toISOString(),
-      isRead: false,
-      badgeText: 'SOS',
-    });
-
-    // තත්පර 8කට පසු Popup එක ස්වයංක්‍රීයව ඉවත් කිරීම
-    popupTimeoutRef.current = setTimeout(() => {
-      setPopupMessage(null);
-    }, 8000);
-  };
-
-  // 🔇 සයිරන් නාදය Mute කිරීමේ ක්‍රියාවලිය
-  const handleSilenceSiren = () => {
-    stopEmergencySiren(true);
-    setIsSirenActive(false);
-  };
-
+  // 📡 Real-time Listener සහ අලුත් Alert පමණක් siren සහිතව පෙන්වීම
   useEffect(() => {
     let pushListenerHandle: any = null;
 
-    // Helper: වත්මන් පරිශීලකයාගේ GPS ස්ථානය ලබා ගැනීම
     const getUserCoordinates = (): { lat: number; lng: number } => {
       try {
         const savedLoc = localStorage.getItem('sahaya_current_location');
@@ -118,31 +158,31 @@ export const RedAlertLiveManager: React.FC<Props> = ({
           }
         }
       } catch {}
-      return { lat: 6.9271, lng: 79.8612 }; // Colombo default
+      return { lat: 6.9271, lng: 79.8612 };
     };
 
-    // 1. Capacitor Push Notification Listener
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      const disasterName = notification.data?.disasterType || notification.title || 'හදිසි ආපදාවක්';
-      triggerPopup(`🚨 අවධානය දෙන්න: ${disasterName} වාර්තා වී ඇත!`);
+      const disasterName = notification.data?.disasterType || notification.title || 'Red Alert';
+      triggerPopup(`🚨 RED ALERT: ${disasterName}!`);
       startEmergencySiren();
       setIsSirenActive(true);
-    }).then((handle) => {
-      pushListenerHandle = handle;
-    }).catch((err) => {
-      console.warn('Capacitor Push Notifications listener registration failed:', err);
-    });
+    })
+      .then((handle) => {
+        pushListenerHandle = handle;
+      })
+      .catch((err) => {
+        console.warn('Push Notifications listener registration failed:', err);
+      });
 
-    // 2. Firestore Real-time Alert Sync පරීක්ෂාව
     const unsubscribe = subscribeToRedAlerts((alerts) => {
       const alertList = alerts || [];
       const currentActive = alertList.find((a) => a && a.status === 'active') || null;
       const prevAlert = prevAlertRef.current;
 
+      // නව Alert ID එකක් පැමිණි විට පමණක් ක්‍රියාත්මක වේ
       const isBrandNewAlert = currentActive && (!prevAlert || currentActive.id !== prevAlert.id);
 
       if (isBrandNewAlert) {
-        // අලුතින්ම සක්‍රිය ආපදාවක් පැමිණි විට
         const userCoords = getUserCoordinates();
         const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 6.9271;
         const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.8612;
@@ -150,57 +190,37 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
         let isDismissedStored = false;
         try {
-          const dismissedIds = JSON.parse(localStorage.getItem(`sahaya_dismissed_alerts_${currentUserId}`) || '[]');
-          isDismissedStored = Array.isArray(dismissedIds) && dismissedIds.includes(currentActive.id);
+          const general = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+          const userSpecific = JSON.parse(localStorage.getItem(`sahaya_dismissed_alerts_${currentUserId}`) || '[]');
+          isDismissedStored =
+            (Array.isArray(general) && general.includes(currentActive.id)) ||
+            (Array.isArray(userSpecific) && userSpecific.includes(currentActive.id));
         } catch {}
 
         const isReporter = currentActive.reportedByUserId === currentUserId;
 
+        // මෙම ඩිවයිස් එකේ dismiss කර නැත්නම් පමණක් siren නාද කර බැනරය පෙන්වන්න
         if ((distanceKm <= 15 || isReporter) && !isDismissedStored) {
           startEmergencySiren();
           setIsSirenActive(true);
-          triggerPopup(`🚨 අවධානය දෙන්න: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'} වාර්තා විය!`);
+          triggerPopup(`🚨 රතු නිවේදනය: ${currentActive.disasterTitleSi || 'ආපදා අනතුරු ඇඟවීමක්'} ක්‍රියාත්මකයි!`);
         } else if (!isDismissedStored) {
           triggerBrowserNotification({
             id: `alert-new-${currentActive.id || Date.now()}`,
             type: 'red_alert',
-            title: `🚨 රතු එළිය: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
+            title: `🚨 Red Alert: ${currentActive.disasterTitleSi || 'හදිසි ආපදාවක්'}`,
             message: `ස්ථානය: ${currentActive.locationName || 'නොදනී'} (දුර: කි.මී. ${distanceKm.toFixed(1)})`,
             timestamp: new Date().toISOString(),
             isRead: false,
-            badgeText: 'SOS',
+            badgeText: 'SOS'
           });
         }
       } else if (prevAlert) {
         const updatedAlertInList = alertList.find((a) => a && a.id === prevAlert.id);
-
-        // A. ආපදාව විසඳුනු බව සටහන් කළ විට
-        if (prevAlert.status === 'active' && updatedAlertInList?.status === 'resolved') {
-          triggerPopup(
-            updatedAlertInList.statusChangeMessage || 
-            '✅ දැනුම්දීම පළකළ තැනැත්තා විසින් මෙම ආපදාව විසඳුනු බව සටහන් කළේය.'
-          );
+        if (prevAlert.status === 'active' && (updatedAlertInList?.status === 'resolved' || updatedAlertInList?.status === 'cancelled')) {
+          triggerPopup(updatedAlertInList.statusChangeMessage || '✅ අනතුරු ඇඟවීම ඉවත් කර ඇත.');
           stopEmergencySiren(true);
           setIsSirenActive(false);
-        }
-        // B. දැනුම්දීම ඉවත් කරගත් විට
-        else if (prevAlert.status === 'active' && updatedAlertInList?.status === 'cancelled') {
-          triggerPopup(
-            updatedAlertInList.statusChangeMessage || 
-            'ℹ️ දැනුම්දීම පළකළ තැනැත්තා විසින් මෙම ආපදා නිවේදනය ඉවත් කරගන්නා ලදී.'
-          );
-          stopEmergencySiren(true);
-          setIsSirenActive(false);
-        }
-        // C. පළකළ අය විසින් අලුත් විස්තරයක් එක් කළ විට
-        else if (
-          currentActive && 
-          currentActive.id === prevAlert.id &&
-          currentActive.latestReporterUpdate?.createdAt !== prevAlert.latestReporterUpdate?.createdAt
-        ) {
-          if (currentActive.latestReporterUpdate?.notificationText) {
-            triggerPopup(currentActive.latestReporterUpdate.notificationText);
-          }
         }
       }
 
@@ -210,78 +230,59 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     return () => {
       unsubscribe();
-      if (pushListenerHandle) {
-        pushListenerHandle.remove();
-      }
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
-      }
+      if (pushListenerHandle) pushListenerHandle.remove();
+      if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
     };
   }, [currentUserId]);
 
-  // 1. "ආපදාව විසඳුනා" Button Action
   const handleResolve = async () => {
     if (!activeAlert?.id || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await markRedAlertAsResolved(activeAlert.id);
-      stopEmergencySiren(true);
-      setIsSirenActive(false);
-    } catch {
-      alert('තත්ත්වය වෙනස් කිරීමට නොහැකි විය.');
+      await markRedAlertAsResolved(activeAlert.id, currentUserId, 'තත්ත්වය යහපත් අතට හැරී ඇත');
+      handleDismissCard();
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // 2. "අනතුර ඉවත් කරන්න" Button Action
   const handleCancel = async () => {
     if (!activeAlert?.id || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await cancelRedAlertByReporter(activeAlert.id);
-      stopEmergencySiren(true);
-      setIsSirenActive(false);
-    } catch {
-      alert('ඉවත් කිරීමට නොහැකි විය.');
+      await cancelRedAlertByReporter(activeAlert.id, currentUserId, 'අනතුරු ඇඟවීම අවලංගු කරන ලදී');
+      handleDismissCard();
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // 3. "තව අදහසක් / Update එකක් දාන්න" Submit Action
   const handleSendUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeAlert?.id || !updateText.trim() || isSubmitting) return;
-
     setIsSubmitting(true);
     try {
-      await addReporterUpdateToRedAlert(activeAlert.id, updateText.trim(), {
-        reporterId: currentUserId,
-        reporterName: currentUserName || activeAlert.reportedByName,
-      });
+      await addReporterUpdateToRedAlert(activeAlert.id, currentUserId, propUserName || 'Reporter', updateText.trim());
       setUpdateText('');
       setShowUpdateBox(false);
-    } catch {
-      alert('යාවත්කාලීන කිරීමට නොහැකි විය.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isReporter = activeAlert?.reportedByUserId === currentUserId;
+  const isReporter = Boolean(activeAlert?.reportedByUserId && activeAlert.reportedByUserId === currentUserId);
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl space-y-3 pointer-events-auto">
-      
-      {/* 🔔 A. සජීවී POPUP NOTIFICATION */}
+    // 💡 pointer-events-none මඟින් බැනරය නැති විට හෝ බැනරය දෙපස ඇති UI element ක්ලික් කිරීමට කිසිදු බාධාවක් ඇති නොවේ
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl space-y-2 pointer-events-none">
+      {/* 🔔 Popup Toast Message */}
       {popupMessage && (
-        <div className="bg-slate-900 text-white border-2 border-emerald-500 p-4 rounded-2xl shadow-2xl flex items-center justify-between animate-bounce">
+        <div className="pointer-events-auto bg-slate-900 text-white border-2 border-emerald-500 p-3 sm:p-4 rounded-2xl shadow-2xl flex items-center justify-between">
           <p className="text-xs sm:text-sm font-bold leading-relaxed">{popupMessage}</p>
-          <button 
+          <button
             type="button"
             onClick={() => setPopupMessage(null)}
-            className="ml-3 text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+            className="ml-3 p-2 text-slate-400 hover:text-white font-black text-lg cursor-pointer"
             aria-label="Close notification"
           >
             ✕
@@ -289,133 +290,129 @@ export const RedAlertLiveManager: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 🚨 B. ACTIVE "රතු එළිය" ALERT BANNER (With Close / Dismiss Button) */}
+      {/* 🚨 Active Emergency Banner Card (With Swipe & Big Close Button) */}
       {!isDismissed && activeAlert && (
-        <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white p-4 sm:p-5 rounded-3xl shadow-[0_0_40px_rgba(239,68,68,0.6)] border-2 border-red-300 relative animate-fadeIn">
-          
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            transform: `translate(${translateX}px, ${translateY}px)`,
+            opacity: 1 - Math.abs(translateX) / 250 - Math.abs(translateY) / 180,
+            transition: isSwiping ? 'none' : 'transform 0.25s ease-out, opacity 0.25s ease-out'
+          }}
+          className="pointer-events-auto bg-gradient-to-r from-red-600 via-rose-700 to-red-800 text-white p-4 sm:p-5 rounded-3xl shadow-[0_10px_35px_rgba(225,29,72,0.5)] border-2 border-red-300 relative overflow-hidden select-none"
+        >
+          {/* Header Row */}
           <div className="flex items-center justify-between gap-2">
-            <span className="bg-white text-red-700 font-black px-2.5 py-0.5 rounded-full text-[11px] uppercase tracking-wider animate-pulse">
-              🚨 රතු එළිය: {activeAlert.alertCode || 'EMERGENCY'}
+            <span className="bg-white text-red-700 font-black px-2.5 py-1 rounded-full text-[11px] uppercase tracking-wider shadow">
+              🚨 ACTIVE: {activeAlert.alertCode || 'EMERGENCY'}
             </span>
-            <div className="flex items-center gap-2">
-              {/* Close / Dismiss Button */}
-              <button
-                type="button"
-                onClick={handleDismissCard}
-                className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95"
-                title="දැනුම්දීම සඟවන්න (Dismiss)"
-                aria-label="Close alert"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* 🔇 Silence Siren Button */}
               {isSirenActive && (
                 <button
                   type="button"
-                  onClick={handleSilenceSiren}
-                  className="bg-black/40 hover:bg-black/60 text-amber-300 text-[11px] font-bold px-2 py-1 rounded-lg border border-amber-300/40 transition-all flex items-center gap-1 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stopEmergencySiren(true);
+                    setIsSirenActive(false);
+                  }}
+                  className="bg-black/60 hover:bg-black/80 text-amber-300 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow cursor-pointer active:scale-95"
                 >
-                  🔇 සයිරනය නවතන්න
+                  <VolumeX className="w-3.5 h-3.5" />
+                  <span>Silence</span>
                 </button>
               )}
-              <span className="text-xs text-red-100 font-mono font-medium">
-                🕒 {activeAlert.incidentTime}
-              </span>
+
+              {/* ❌ කැපී පෙනෙන Touch-Friendly Close Button (40px Target) */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDismissCard();
+                }}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 border border-white/20"
+                title="ඉවත් කරන්න (Dismiss)"
+                aria-label="Close alert"
+              >
+                <X className="w-5 h-5 font-bold" />
+              </button>
             </div>
           </div>
 
-          <h3 className="text-base sm:text-lg font-black mt-2">
-            {activeAlert.disasterTitleSi}
-          </h3>
+          {/* Swipe Hint */}
+          <div className="text-[10px] text-red-200 mt-1 flex justify-between items-center opacity-80">
+            <span>⏰ {activeAlert.incidentTime}</span>
+            <span>👈 අයින් කිරීමට පැත්තට swipe කරන්න</span>
+          </div>
 
-          <p className="text-xs sm:text-sm mt-1 opacity-90 leading-relaxed">
+          {/* Body */}
+          <h3 className="text-base sm:text-lg font-black mt-1.5 leading-snug">
+            {activeAlert.disasterTitleSi || activeAlert.disasterTitle || 'හදිසි අනතුරු ඇඟවීමයි'}
+          </h3>
+          <p className="text-xs sm:text-sm mt-1 opacity-95 leading-relaxed line-clamp-3">
             {activeAlert.description}
           </p>
 
-          <div className="mt-2 text-[11px] text-red-100 flex flex-wrap gap-x-4 gap-y-1 font-medium">
-            <span>📍 ස්ථානය: {activeAlert.locationName}</span>
-            <span>📡 වපසරිය: කි.මී. 5 ඇතුළත</span>
+          <div className="mt-2 text-[11px] text-red-100 flex flex-wrap gap-x-3 gap-y-1 font-medium">
+            <span>📍 {activeAlert.locationName}</span>
+            <span>📡 {activeAlert.source || 'Official Source'}</span>
           </div>
 
-          {/* 💬 කමෙන්ට්ස් සහ යාවත්කාලීන කිරීම් */}
-          {activeAlert.comments && activeAlert.comments.length > 0 && (
-            <div className="mt-3 bg-black/30 p-3 rounded-xl border border-white/10 space-y-1 max-h-32 overflow-y-auto">
-              <span className="text-[11px] font-bold text-amber-300 block">💬 සජීවී යාවත්කාලීන කිරීම්:</span>
-              {activeAlert.comments.map((c, i) => (
-                <p key={i} className="text-xs text-slate-100">
-                  <span className="font-semibold text-amber-200">{c.authorName}:</span> {c.text}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* 🎛️ C. පළ කළ කෙනාට (REPORTER) පමණක් පෙනෙන OPTIONS */}
+          {/* Reporter Controls (පාලන බොත්තම්) */}
           {isReporter && (
-            <div className="mt-4 pt-3 border-t border-white/20 space-y-2">
-              <span className="text-[11px] font-bold text-red-100 block">
-                🛠️ ඔබ පළ කළ දැනුම්දීම පාලනය:
-              </span>
-
-              <div className="flex flex-wrap gap-2">
-                {/* Option 1: විසඳුනා */}
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={handleResolve}
-                  className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 active:scale-95 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  ✅ ආපදාව විසඳුනා
-                </button>
-
-                {/* Option 2: අනතුර ඉවත් කරන්න */}
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={handleCancel}
-                  className="bg-slate-800 hover:bg-slate-900 disabled:opacity-50 active:scale-95 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  🗑️ අනතුර ඉවත් කරන්න
-                </button>
-
-                {/* Option 3: තව අදහසක් දක්වන්න */}
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => setShowUpdateBox((prev) => !prev)}
-                  className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 active:scale-95 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  💬 තව අදහසක් දක්වන්න
-                </button>
-              </div>
-
-              {/* Option 3 Input Box */}
-              {showUpdateBox && (
-                <form onSubmit={handleSendUpdate} className="pt-2 flex gap-2">
-                  <input
-                    type="text"
-                    value={updateText}
-                    onChange={(e) => setUpdateText(e.target.value)}
-                    placeholder="අලුත් තොරතුර සටහන් කරන්න..."
-                    disabled={isSubmitting}
-                    className="flex-1 bg-white text-slate-900 font-medium text-xs px-3 py-2 rounded-xl border border-red-300 focus:outline-none"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-white hover:bg-slate-100 disabled:opacity-50 text-red-700 font-black text-xs px-3 py-2 rounded-xl cursor-pointer"
-                  >
-                    {isSubmitting ? '...' : 'යවන්න'}
-                  </button>
-                </form>
-              )}
+            <div className="mt-3 pt-2 border-t border-red-400/40 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleResolve}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow cursor-pointer"
+              >
+                ✅ විසඳන ලදී
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleCancel}
+                className="bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow cursor-pointer"
+              >
+                🗑 අවලංගු කරන්න
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setShowUpdateBox((prev) => !prev)}
+                className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow cursor-pointer"
+              >
+                💬 Update යවන්න
+              </button>
             </div>
           )}
 
+          {isReporter && showUpdateBox && (
+            <form onSubmit={handleSendUpdate} className="pt-2 flex gap-2">
+              <input
+                type="text"
+                value={updateText}
+                onChange={(e) => setUpdateText(e.target.value)}
+                placeholder="නව තොරතුරක් යවන්න..."
+                disabled={isSubmitting}
+                className="flex-1 bg-white text-slate-900 font-medium text-xs px-3 py-2 rounded-xl"
+                required
+              />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-white text-red-700 font-black text-xs px-3 py-2 rounded-xl"
+              >
+                Send
+              </button>
+            </form>
+          )}
         </div>
       )}
-
     </div>
   );
 };
-
-export default RedAlertLiveManager;
