@@ -477,6 +477,9 @@ export const App: React.FC = () => {
 
       {/* 📱 24/7 Red Alert Live Proximity Siren & Notification Engine */}
       <RedAlertLiveManager
+        currentUser={currentUser}
+        currentUserId={currentUser?.id}
+        currentUserName={currentUser?.name}
         redAlerts={redAlerts}
         language={language}
         activeView={activeView}
