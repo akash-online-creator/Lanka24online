@@ -107,18 +107,30 @@ export const App: React.FC = () => {
     }
   });
 
-  const [activeView, setActiveView] = useState<'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
+  // 🛡️ Proper Permissions -> Login Flow Router State
+  const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
       if (saved) {
-        const u = JSON.parse(saved);
+        const u: User = JSON.parse(saved);
         if (u.role === 'admin' || u.role === 'super_admin') return 'admin';
         if (u.status === 'pending') return 'pending';
         return 'dashboard';
       }
+
+      // Check if permissions setup has been completed on initial launch
+      const isPermDone = localStorage.getItem('sahaya_permissions_setup_completed');
+      if (!isPermDone) {
+        return 'permissions';
+      }
     } catch {}
     return 'login';
   });
+
+  // Global Navigation Handler
+  const handleNavigate = useCallback((view: 'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => {
+    setActiveView(view);
+  }, []);
 
   // Password change mandatory modal state
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState<boolean>(false);
@@ -133,7 +145,7 @@ export const App: React.FC = () => {
   }, [currentUser]);
 
   // Handle Permanent Soft Deletion with Auto Backup & Multi-Source Sync
-  const handleDeletePostPermanently = useCallback(async (postId: string) => {
+  const handleDeletePost = useCallback(async (postId: string) => {
     const postObj = helpPosts.find((p) => p.id === postId);
 
     // 1 & 2. Auto JSON File Download (Admin device එකට පමණක් Save වීම)
@@ -181,7 +193,7 @@ export const App: React.FC = () => {
 
   // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
-    // 🛡️ Initialize FCM & Background Push Worker (Clean Safe Call without .catch)
+    // 🛡️ Initialize FCM & Background Push Worker
     let unsubscribeFcm: any = null;
     try {
       unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
@@ -259,9 +271,9 @@ export const App: React.FC = () => {
   }, [users, currentUser, activeView]);
 
   // Handle User Login
-  const handleUserLogin = useCallback(async (userIdOrNic: string, passwordInput: string) => {
+  const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = userIdOrNic.trim();
-    const cleanPass = passwordInput.trim();
+    const cleanPass = passKey.trim();
     const norm = normalizeNIC(cleanId);
 
     // First check local/state users
@@ -376,22 +388,6 @@ export const App: React.FC = () => {
     setActiveView('login');
   }, []);
 
-  // Post Deletion Handler (Permanent Soft-delete via Blacklist & Firestore)
-  const handleDeletePost = useCallback(async (postId: string) => {
-    // 1. Immediately add to LocalStorage permanent blacklist
-    addDeletedPostId(postId);
-
-    // 2. Remove immediately from React state
-    setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
-
-    // 3. Remove permanently from Firestore
-    try {
-      await deleteHelpPostFromFirestore(postId);
-    } catch (e) {
-      console.warn('Firestore post deletion notice:', e);
-    }
-  }, []);
-
   // Update Existing User Details (Profile / Credits / Approval)
   const handleUpdateUser = useCallback(async (updated: User) => {
     setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
@@ -410,6 +406,11 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
+  // Toggle Theme Handler
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
+
   // Handle mandatory password change completion
   const handlePasswordChangedSuccessfully = useCallback((updatedUser: User) => {
     setCurrentUser(updatedUser);
@@ -427,138 +428,146 @@ export const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      {/* 🔐 Mandatory Temporary Password Change Modal */}
-      {showPasswordChangeModal && currentUser && (
-        <ChangePasswordModal
-          user={currentUser}
-          isOpen={showPasswordChangeModal}
-          onSuccess={handlePasswordChangedSuccessfully}
-          onLogout={handleLogout}
+      <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#060d09] text-white' : 'bg-slate-50 text-slate-900'} font-sans antialiased transition-colors duration-200`}>
+        {/* Real-time Disaster Watcher & Live Proximity Audio Monitor */}
+        <RedAlertLiveManager
+          currentUser={currentUser}
+          redAlerts={redAlerts}
           language={language}
         />
-      )}
 
-      {/* 🌍 1. Public SOS / GPS Activation Gate */}
-      {activeView === 'login' && !currentUser && (
-        <GpsActivationGate
-          language={language}
-          theme={theme}
-          onProceedToLogin={() => setActiveView('login')}
-        >
-          <LoginForm
+        {/* View Router */}
+        {/* 🌍 1. Permissions Setup Gate (පළමු වරට ඇප් එකට එන විට පමණක්) */}
+        {activeView === 'permissions' && (
+          <GpsActivationGate
+            onProceedToLogin={() => setActiveView('login')}
             language={language}
+            setLanguage={setLanguage}
             theme={theme}
-            onLogin={handleUserLogin}
-            onDemoLogin={handleUserDemoLogin}
-            onToggleLanguage={() => setLanguage((l) => (l === 'si' ? 'en' : 'si'))}
-            onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+            toggleTheme={toggleTheme}
+          />
+        )}
+
+        {/* 🔑 2. Login Form (අවසර ලැබුණු සැණින් ස්වයංක්‍රීයව මෙතැනට මාරු වේ) */}
+        {activeView === 'login' && (
+          <LoginForm
+            onLogin={handleLogin}
+            onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setActiveView('register')}
             onNavigateToIssues={() => setActiveView('issues')}
             onNavigateToPermissions={() => setActiveView('permissions')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            users={users}
           />
-        </GpsActivationGate>
-      )}
+        )}
 
-      {/* 📝 2. User Registration Form */}
-      {activeView === 'register' && (
-        <RegisterForm
-          language={language}
-          theme={theme}
-          onRegister={handleRegister}
-          onToggleLanguage={() => setLanguage((l) => (l === 'si' ? 'en' : 'si'))}
-          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-          onNavigateToLogin={() => setActiveView('login')}
-        />
-      )}
+        {/* 📝 3. Registration Form */}
+        {activeView === 'register' && (
+          <RegisterForm
+            onRegister={handleRegister}
+            onNavigateToLogin={() => setActiveView('login')}
+            language={language}
+          />
+        )}
 
-      {/* ⏳ 3. Pending Account Approval Screen */}
-      {activeView === 'pending' && currentUser && (
-        <PendingApprovalView
-          user={currentUser}
-          language={language}
-          theme={theme}
-          onLogout={handleLogout}
-          onCheckStatus={() => {
-            if (currentUser.status === 'approved') setActiveView('dashboard');
-          }}
-          onNavigateToIssues={() => setActiveView('issues')}
-        />
-      )}
+        {/* ⏳ 4. Pending Account Approval Screen */}
+        {activeView === 'pending' && currentUser && (
+          <PendingApprovalView
+            user={currentUser}
+            language={language}
+            onRefreshStatus={() => {
+              if (currentUser.status === 'approved') setActiveView('dashboard');
+            }}
+            onNavigateToIssues={() => setActiveView('issues')}
+            onBackToLogin={handleLogout}
+          />
+        )}
 
-      {/* 🛡️ 4. Administrator Panel */}
-      {activeView === 'admin' && currentUser && (
-        <AdminPanel
-          currentUser={currentUser}
-          users={users}
-          helpPosts={helpPosts}
-          issues={issues}
-          redAlerts={redAlerts}
-          language={language}
-          theme={theme}
-          onToggleLanguage={() => setLanguage((l) => (l === 'si' ? 'en' : 'si'))}
-          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-          onLogout={handleLogout}
-          onDeletePost={handleDeletePost}
-          onUpdateUser={handleUpdateUser}
-          onBackupPosts={() => downloadPostBackupJson(helpPosts)}
-          onSwitchToUserMode={() => setActiveView('dashboard')}
-        />
-      )}
+        {/* 🛡️ 5. Administrator Panel */}
+        {activeView === 'admin' && currentUser && (
+          <AdminPanel
+            currentUser={currentUser}
+            users={users}
+            setUsers={setUsers}
+            helpPosts={helpPosts}
+            setHelpPosts={setHelpPosts}
+            onDeletePost={handleDeletePost}
+            issues={issues}
+            setIssues={setIssues}
+            redAlerts={redAlerts}
+            setRedAlerts={setRedAlerts}
+            language={language}
+            setLanguage={setLanguage}
+            onLogout={handleLogout}
+            onSwitchToUserMode={() => setActiveView('dashboard')}
+            onNavigate={handleNavigate}
+          />
+        )}
 
-      {/* 📊 5. Main Unified User Dashboard */}
-      {activeView === 'dashboard' && currentUser && (
-        <UserDashboard
-          currentUser={currentUser}
-          users={users}
-          helpPosts={helpPosts}
-          issues={issues}
-          redAlerts={redAlerts}
-          language={language}
-          theme={theme}
-          onToggleLanguage={() => setLanguage((l) => (l === 'si' ? 'en' : 'si'))}
-          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-          onLogout={handleLogout}
-          onDeletePost={handleDeletePost}
-          onUpdateUser={handleUpdateUser}
-          onNavigateToIssues={() => setActiveView('issues')}
-          isAdminUser={checkIsAdmin(currentUser)}
-          onOpenAdminPanel={() => setActiveView('admin')}
-        />
-      )}
+        {/* 📊 6. Main User Dashboard */}
+        {activeView === 'dashboard' && currentUser && (
+          <UserDashboard
+            currentUser={currentUser}
+            users={users}
+            helpPosts={helpPosts}
+            issues={issues}
+            redAlerts={redAlerts}
+            language={language}
+            theme={theme}
+            onLogout={handleLogout}
+            onDeletePost={handleDeletePost}
+            onUpdateUser={handleUpdateUser}
+            onNavigateToIssues={() => setActiveView('issues')}
+            onOpenAdminPanel={() => setActiveView('admin')}
+          />
+        )}
 
-      {/* 🛠️ 6. System Issues & Help Reporting Page */}
-      {activeView === 'issues' && (
-        <IssuesHelpPage
-          currentUser={currentUser}
-          language={language}
-          theme={theme}
-          onBack={() => {
-            if (currentUser) {
-              if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
-                setActiveView('admin');
-              } else if (currentUser.status === 'pending') {
-                setActiveView('pending');
+        {/* 🛠️ 7. System Issues & Help Reporting Page */}
+        {activeView === 'issues' && (
+          <IssuesHelpPage
+            currentUser={currentUser}
+            language={language}
+            theme={theme}
+            onBack={() => {
+              if (currentUser) {
+                if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
+                  setActiveView('admin');
+                } else if (currentUser.status === 'pending') {
+                  setActiveView('pending');
+                } else {
+                  setActiveView('dashboard');
+                }
               } else {
-                setActiveView('dashboard');
+                setActiveView('login');
               }
-            } else {
-              setActiveView('login');
-            }
-          }}
-          onSwitchToRegister={() => setActiveView('register')}
-          onSwitchToLogin={() => setActiveView('login')}
-          onOpenIssuesHelp={() => setActiveView('issues')}
+            }}
+            onSwitchToRegister={() => setActiveView('register')}
+            onSwitchToLogin={() => setActiveView('login')}
+            onOpenIssuesHelp={() => setActiveView('issues')}
+          />
+        )}
+
+        {/* 🤖 Omni-Channel AI Support Assistant Floating Widget */}
+        <OmniAssistantChatBox
+          currentUser={currentUser}
+          language={language}
         />
-      )}
 
-      {/* 🚨 Red Alert Live Audio Broadcast Manager */}
-      <RedAlertLiveManager />
-
-      {/* 🤖 Omni-Channel AI Support Assistant Floating Widget */}
-      <OmniAssistantChatBox
-        currentUser={currentUser}
-        language={language}
-      />
+        {/* 🔐 Mandatory Password Change Modal */}
+        {showPasswordChangeModal && currentUser && (
+          <ChangePasswordModal
+            isOpen={showPasswordChangeModal}
+            onClose={() => setShowPasswordChangeModal(false)}
+            onPasswordChanged={handlePasswordChangedSuccessfully}
+            userId={currentUser.userId || currentUser.id}
+            nicNumber={currentUser.nic || currentUser.nicNumber}
+            currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
+          />
+        )}
+      </div>
 
       {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
       {sosViewerSessionId && (
