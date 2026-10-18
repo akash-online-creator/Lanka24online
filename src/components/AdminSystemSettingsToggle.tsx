@@ -8,7 +8,7 @@ import {
 import { QrCode, CheckCircle2, XCircle, BellRing, RefreshCw } from 'lucide-react';
 
 interface Props {
-  adminUid: string;
+  adminUid?: string;
 }
 
 export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
@@ -25,12 +25,18 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
   }, []);
 
   const handleToggle = async (field: keyof SystemSettings, currentValue: boolean) => {
+    const nextValue = !currentValue;
+    // 1. Optimistic instant UI update (බටනය වහාම තිරය මත මාරු වේ)
+    setSettings((prev) => ({ ...prev, [field]: nextValue }));
+    setSavingField(field as string);
+
     try {
-      setSavingField(field);
-      await updateSystemSettings({ [field]: !currentValue }, adminUid);
-    } catch (error) {
+      await updateSystemSettings({ [field]: nextValue }, adminUid || 'admin_user');
+    } catch (error: any) {
       console.error(`Failed to update ${field}:`, error);
-      alert('සැකසුම් යාවත්කාලීන කිරීම අසාර්ථක විය.');
+      // දෝෂයක් ආවොත් පමණක් පැරණි තත්ත්වයට ආපසු හරවයි
+      setSettings((prev) => ({ ...prev, [field]: currentValue }));
+      alert('සැකසුම් යාවත්කාලීන කිරීම අසාර්ථක විය. (Firebase Console හි Firestore Rules මඟින් system_settings සඳහා අවසර ලබා දී ඇත්දැයි බලන්න)');
     } finally {
       setSavingField(null);
     }
@@ -54,7 +60,7 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
             පද්ධති පාලන සැකසුම් (System Controls)
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            යෙදුමේ විශේෂාංග පරිපාලක (Admin) මඟින් සක්‍රිය හෝ අක්‍රිය කිරීම
+            යෙදුමේ ප්‍රධාන විශේෂාංග පරිපාලක (Admin) මඟින් සක්‍රිය හෝ අක්‍රිය කිරීම
           </p>
         </div>
         {settings.updatedAt && (
@@ -65,7 +71,7 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
       </div>
 
       <div className="space-y-4">
-        {/* QR PAY TOGGLE */}
+        {/* 1. QR PAY TOGGLE */}
         <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-700">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 mt-0.5">
@@ -85,7 +91,7 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
                 )}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-md">
-                මෙය අක්‍රිය කළ විට සාමාන්‍ය පරිශීලකයන්ට Header හෝ Dashboard තුළ QR Pay බොත්තම දිස් නොවේ.
+                මෙය අක්‍රිය කළ විට සාමාන්‍ය පරිශීලකයන්ට Header හෝ Marketplace තුළ QR Pay බොත්තම දිස් නොවේ.
               </p>
             </div>
           </div>
@@ -107,7 +113,7 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
           </button>
         </div>
 
-        {/* DISASTER SIRENS TOGGLE */}
+        {/* 2. DISASTER SIRENS TOGGLE */}
         <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-700">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 mt-0.5">
@@ -122,12 +128,12 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
                   </span>
                 ) : (
                   <span className="text-xs bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
-                    <XCircle className="w-3 h-3" /> නිහඬයි
+                    <XCircle className="w-3 h-3" /> නිහඬ කර ඇත
                   </span>
                 )}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-md">
-                රතු එළිය නිවේදන නිකුත් වන විට සයිරන් නාදය නාද වීම පාලනය කරයි.
+                රතු එළිය නිවේදන සමඟ දුරකථනයේ සයිරන් ශබ්දය නාද වීම පාලනය කරයි.
               </p>
             </div>
           </div>
@@ -139,7 +145,7 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
             className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
               settings.enableDisasterSirens ? 'bg-red-600' : 'bg-gray-300 dark:bg-gray-600'
             }`}
-            aria-label="Toggle Sirens"
+            aria-label="Toggle Disaster Sirens"
           >
             <span
               className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
@@ -152,4 +158,5 @@ export const AdminSystemSettingsToggle: React.FC<Props> = ({ adminUid }) => {
     </div>
   );
 };
+
 export default AdminSystemSettingsToggle;
