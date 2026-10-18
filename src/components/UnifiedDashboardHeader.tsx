@@ -127,6 +127,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
       window.removeEventListener('sahaya_notifications_updated', updateUnread);
       window.removeEventListener('sahaya_new_notification', updateUnread);
     };
+  }, []); //
     
     useEffect(() => {
   const unsubscribe = subscribeToSystemSettings((s) => setEnableQrPay(s.enableQrPay));
