@@ -4,58 +4,61 @@ import sys
 
 print("Configuring Android scaffold, manifest, gradle, and assets for Sahaya Seva 24/7...")
 
-# 1. Update AndroidManifest.xml
+# 1. Update AndroidManifest.xml with Clean & Play-Store Compliant Permissions
 manifest_path = "android/app/src/main/AndroidManifest.xml"
 if os.path.exists(manifest_path):
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    permissions = """
+    # Google Play Store නීතිවලට අනුකූල, හදිසි අනතුරු ඇඟවීමේ සයිරන් සහ GPS සඳහා පමණක් සීමා වූ අවසර
+    clean_permissions = """
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     """
 
     if "<uses-permission" not in content:
-        content = content.replace("<application", permissions + "\n    <application")
+        content = content.replace("<application", clean_permissions + "\n    <application")
     
-    # Add usesCleartextTraffic and hardwareAccelerated to application tag if missing
+    # Add usesCleartextTraffic, hardwareAccelerated, and lockscreen attributes to application/activity
     if 'android:usesCleartextTraffic="true"' not in content:
         content = content.replace('<application', '<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"')
 
+    # Android 14+ Foreground Service Crash වැළැක්වීම සඳහා Service Type අර්ථ දැක්වීම
+    service_declaration = """
+        <!-- Flutter Foreground Task Service with Location Type for Android 14+ -->
+        <service 
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false"
+            android:stopWithTask="false" />
+    """
+
+    if "com.pravera.flutter_foreground_task.service.ForegroundService" not in content:
+        content = content.replace("</application>", service_declaration + "\n    </application>")
+
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Updated AndroidManifest.xml with permissions & cleartext traffic settings.")
-
+    print("Updated AndroidManifest.xml with clean permissions, FGS location service & audio settings.")
 # 2. Update android/app/build.gradle
 gradle_path = "android/app/build.gradle"
 if os.path.exists(gradle_path):
     with open(gradle_path, "r", encoding="utf-8") as f:
         g_content = f.read()
 
-    # Enable multidex and adjust compileSdk / minSdk
+    # Enable multidex
     if "multiDexEnabled" not in g_content:
         g_content = g_content.replace("defaultConfig {", "defaultConfig {\n        multiDexEnabled true")
-    
+
     with open(gradle_path, "w", encoding="utf-8") as f:
         f.write(g_content)
     print("Updated android/app/build.gradle with multiDex.")
