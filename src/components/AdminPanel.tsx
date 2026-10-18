@@ -1,408 +1,594 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  User, 
-  Issue, 
-  Language, 
-  HelpPost, 
-  RedAlertItem 
-} from '../types';
-import { translations } from '../data/translations';
-import { AppLogo } from './AppLogo';
-import { MemoryStorageBar } from './MemoryStorageBar';
-import { AudioVoicePlayer } from './AudioVoiceNote';
-import { deduplicateUsers } from '../utils/userUtils';
+  Users, 
+  FileText, 
+  AlertTriangle, 
+  ShieldAlert, 
+  PhoneCall, 
+  Coins, 
+  HelpCircle, 
+  Radio, 
+  BookOpen, 
+  KeyRound, 
+  Brain, 
+  Settings, 
+  LogOut, 
+  CheckCircle2, 
+  XCircle, 
+  Trash2, 
+  Edit3, 
+  Eye, 
+  Search, 
+  Filter, 
+  Sun, 
+  Moon, 
+  ArrowLeft 
+} from 'lucide-react';
+
+// Types
+import { User, HelpPost, Issue, RedAlert } from '../types';
+
+// Utils & Helpers
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
-  deleteUserAccount,
-  deleteHelpPostFromFirestore,
-  updateHelpPostInFirestore,
-  syncUserProfileToFirestore
-} from '../lib/firebase';
+  syncUserProfileToFirestore, 
+  deleteUserAccount, 
+  deleteHelpPostFromFirestore 
+} from '../services/firebase';
+
+// Subsystem Components
+import { AdminEditUserModal } from './AdminEditUserModal';
+import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
-import { AdminIssuesManagement } from './AdminIssuesManagement';
 import { AdminRedAlertManagement } from './AdminRedAlertManagement';
+import { AdminIssuesManagement } from './AdminIssuesManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminTrustManagement } from './AdminTrustManagement';
 import { AdminPresenceDashboard } from './AdminPresenceDashboard';
-import { AdminUserInspectionModal } from './AdminUserInspectionModal';
-import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
 import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
 import { AdminSystemSettingsToggle } from './AdminSystemSettingsToggle';
-import { Sparkles } from 'lucide-react';
-import { 
-  Users, 
-  CheckCircle2, 
-  MessageSquare, 
-  Search, 
-  Trash2, 
-  Phone, 
-  MapPin, 
-  AlertTriangle, 
-  Coins, 
-  Radio, 
-  BookOpen, 
-  Eye, 
-  LogOut,
-  FileText,
-  Activity,
-  Award,
-  Edit,
-  KeyRound
-} from 'lucide-react';
 
-interface AdminPanelProps {
+export interface AdminPanelProps {
   currentUser?: User | null;
   users?: User[];
   setUsers?: React.Dispatch<React.SetStateAction<User[]>>;
   helpPosts?: HelpPost[];
   setHelpPosts?: React.Dispatch<React.SetStateAction<HelpPost[]>>;
+  redAlerts?: RedAlert[];
+  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlert[]>>;
   issues?: Issue[];
-  setIssues?: React.Dispatch<React.SetStateAction<Issue[]>>;
-  redAlerts?: RedAlertItem[];
-  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
-  language?: Language;
-  setLanguage?: (lang: Language) => void;
+  onUpdateIssueStatus?: (issueId: string, status: Issue['status']) => void;
   onLogout?: () => void;
-  onSwitchToUserMode?: () => void;
-  onNavigate?: (view: any) => void;
-  onDeletePost?: (postId: string) => void;
+  onSwitchToUserView?: () => void;
+  language?: 'si' | 'en' | 'ta';
+  setLanguage?: (lang: 'si' | 'en' | 'ta') => void;
+  theme?: 'light' | 'dark';
+  toggleTheme?: () => void;
 }
 
+type AdminTab = 
+  | 'users' 
+  | 'posts' 
+  | 'credits' 
+  | 'emergency' 
+  | 'alerts' 
+  | 'issues' 
+  | 'dictionary' 
+  | 'trust' 
+  | 'presence' 
+  | 'resets' 
+  | 'ai';
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  currentUser = null,
-  users: rawUsers = [],
+  currentUser,
+  users = [],
   setUsers,
   helpPosts = [],
   setHelpPosts,
-  issues = [],
-  setIssues,
   redAlerts = [],
   setRedAlerts,
+  issues = [],
+  onUpdateIssueStatus,
+  onLogout,
+  onSwitchToUserView,
   language = 'si',
   setLanguage,
-  onLogout,
-  onSwitchToUserMode,
-  onNavigate,
-  onDeletePost
+  theme = 'light',
+  toggleTheme,
 }) => {
-  const isUserMode = false;
-  const toggleUserMode = () => {
-    if (onSwitchToUserMode) onSwitchToUserMode();
-  };
-  const t = translations[language] || translations.si;
-  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
-  const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'>('users');
-  const [userSearch, setUserSearch] = useState('');
-  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
-  const [postSearch, setPostSearch] = useState('');
-  const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+  // ==========================================
+  // 1. 🛡️ අභ්‍යන්තර ආරක්ෂක පරීක්ෂාව (Internal Role Guard)
+  // ==========================================
+  if (!currentUser || !checkIsAdmin(currentUser)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-950">
+        <div className="max-w-md w-full text-center p-8 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-red-200 dark:border-red-900/50">
+          <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-2">ප්‍රවේශය අවහිර කර ඇත</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+            මෙම පරිපාලක පුවරුවට (Admin Panel) පිවිසීමට ඔබට අවසර නොමැත. කරුණාකර Admin ගිණුමකින් ලොග් වන්න.
+          </p>
+          <button
+            onClick={onSwitchToUserView}
+            className="w-full py-2.5 bg-slate-800 dark:bg-slate-700 text-white rounded-xl hover:bg-slate-900 text-sm font-medium transition-colors"
+          >
+            ආපසු Dashboard වෙත යන්න
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // 2. Component States
+  // ==========================================
+  const [activeTab, setActiveTab] = useState<AdminTab>('users');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('all');
+  
+  // Modals & Action States
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const showNotification = (msg: string) => {
-    setNotificationMsg(msg);
-    setTimeout(() => setNotificationMsg(null), 4000);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
+
+  // Notification Toast State
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
   };
-  const pendingUsersCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
+
+  // ==========================================
+  // 3. Robust Handlers (Try/Catch + Rollback Fix)
+  // ==========================================
+
+  // A. පරිශීලකයින් අනුමත කිරීම (Approve User)
+  const handleApproveUser = async (targetUser: User) => {
+    if (!setUsers) return;
+    const previousUsers = [...users];
+    const updatedUser: User = { ...targetUser, status: 'approved' };
+
+    // Optimistic UI Update
+    setUsers(prev => prev.map(u => (u.id === targetUser.id ? updatedUser : u)));
+    setIsProcessing(targetUser.id);
+
+    try {
+      await syncUserProfileToFirestore(updatedUser);
+      showToast(`${targetUser.fullName || targetUser.username || 'පරිශීලකයා'} සාර්ථකව අනුමත කරන ලදී.`, 'success');
+    } catch (error) {
+      console.error('Failed to approve user in Firestore:', error);
+      // Rollback on failure
+      setUsers(previousUsers);
+      showToast('අනුමත කිරීම අසාර්ථක විය. කරුණාකර ජාල සම්බන්ධතාවය පරීක්ෂා කරන්න.', 'error');
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  // B. පරිශීලකයින් අවහිර කිරීම (Block / Unblock User)
+  const handleToggleBlockUser = async (targetUser: User) => {
+    if (!setUsers) return;
+    const previousUsers = [...users];
+    const nextStatus = targetUser.status === 'blocked' ? 'approved' : 'blocked';
+    const updatedUser: User = { ...targetUser, status: nextStatus };
+
+    setUsers(prev => prev.map(u => (u.id === targetUser.id ? updatedUser : u)));
+    setIsProcessing(targetUser.id);
+
+    try {
+      await syncUserProfileToFirestore(updatedUser);
+      showToast(`පරිශීලක තත්ත්වය සාර්ථකව වෙනස් කරන ලදී.`, 'success');
+    } catch (error) {
+      console.error('Failed to update user status in Firestore:', error);
+      setUsers(previousUsers);
+      showToast('තත්ත්වය යාවත්කාලීන කිරීම අසාර්ථක විය.', 'error');
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  // C. පරිශීලක ගිණුමක් මැකීම (Delete User)
+  const handleDeleteUser = async (targetUser: User) => {
+    const confirmMessage = `${targetUser.fullName || targetUser.username} ගේ ගිණුම ස්ථිරවම මකා දැමීමට අවශ්‍ය බව සහතිකද?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    if (!setUsers) return;
+    const previousUsers = [...users];
+
+    setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+    setIsProcessing(targetUser.id);
+
+    try {
+      await deleteUserAccount(targetUser.id);
+      showToast('පරිශීලක ගිණුම සාර්ථකව මකා දමන ලදී.', 'success');
+    } catch (error) {
+      console.error('Failed to delete user account:', error);
+      setUsers(previousUsers);
+      showToast('ගිණුම මකා දැමීම අසාර්ථක විය.', 'error');
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  // D. Help Post එකක් මැකීම (Delete Post)
+  const handleDeletePost = async (postId: string) => {
+    if (!window.confirm('මෙම Post එක ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) return;
+
+    if (!setHelpPosts) return;
+    const previousPosts = [...helpPosts];
+
+    setHelpPosts(prev => prev.filter(p => p.id !== postId));
+
+    try {
+      await deleteHelpPostFromFirestore(postId);
+      showToast('Post එක සාර්ථකව මකා දමන ලදී.', 'success');
+    } catch (error) {
+      console.error('Failed to delete post in Firestore:', error);
+      setHelpPosts(previousPosts);
+      showToast('Post එක මකා දැමීම අසාර්ථක විය.', 'error');
+    }
+  };
+
+  // E. User Profile එක සංස්කරණය කර සුරැකීම
+  const handleSaveEditedUser = async (updated: User) => {
+    if (!setUsers) return;
+    const previousUsers = [...users];
+
+    setUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
+    setEditingUser(null);
+
+    try {
+      await syncUserProfileToFirestore(updated);
+      showToast('පරිශීලක තොරතුරු සාර්ථකව යාවත්කාලීන විය.', 'success');
+    } catch (error) {
+      console.error('Failed to save edited user:', error);
+      setUsers(previousUsers);
+      showToast('යාවත්කාලීන කිරීම අසාර්ථක විය.', 'error');
+    }
+  };
+  // ==========================================
+  // 4. Filters & Computed Data
+  // ==========================================
+  const pendingCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
   const activeAlertsCount = useMemo(() => redAlerts.length, [redAlerts]);
-  const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending').length, [issues]);
+  const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending' || i.status === 'open').length, [issues]);
+
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
-      const matchesSearch = (u.fullName || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.phone || '').includes(userSearch);
-      const matchesFilter = userFilter === 'all' ? true : u.status === userFilter;
-      return matchesSearch && matchesFilter;
+      const matchesSearch = 
+        (u.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.nicNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.phone || '').includes(searchQuery);
+
+      const matchesStatus = 
+        statusFilter === 'all' ? true : u.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
     });
-  }, [users, userSearch, userFilter]);
-  const filteredHelpPosts = useMemo(() => {
-    return helpPosts.filter(p => (p.title || '').toLowerCase().includes(postSearch.toLowerCase()) || (p.description || '').toLowerCase().includes(postSearch.toLowerCase()));
-  }, [helpPosts, postSearch]);
-  const handleApproveUser = async (user: User) => {
-    const updated = { ...user, status: 'approved' as const };
-    if (setUsers) setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
-    await syncUserProfileToFirestore(updated);
-    showNotification(`User ${user.fullName} approved`);
-  };
-  const handleBlockUser = async (user: User) => {
-    const updated = { ...user, status: 'blocked' as const };
-    if (setUsers) setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
-    await syncUserProfileToFirestore(updated);
-    showNotification(`User ${user.fullName} blocked`);
-  };
-  const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
-    if (setUsers) setUsers(prev => prev.filter(u => u.id !== userId));
-    await deleteUserAccount(userId);
-    showNotification('User account deleted');
-  };
-  const handleDeletePostInternal = async (postId: string) => {
-    if (!window.confirm('Delete this post?')) return;
-    if (onDeletePost) onDeletePost(postId);
-    if (setHelpPosts) setHelpPosts(prev => prev.filter(p => p.id !== postId));
-    await deleteHelpPostFromFirestore(postId);
-    showNotification('Post removed');
-  };
+  }, [users, searchQuery, statusFilter]);
+
+  const filteredPosts = useMemo(() => {
+    return helpPosts.filter(p => 
+      (p.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [helpPosts, searchQuery]);
+
+  // ==========================================
+  // 5. Main JSX Return
+  // ==========================================
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
-      {/* Top Header Bar */}
-      <div className="bg-white dark:bg-[#07170e] rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-200 dark:border-[#153422] flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <AppLogo className="w-12 h-12" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-slate-900 dark:text-white">පාලක පුවරුව (Admin Panel)</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
-                {currentUser?.role || 'Administrator'}
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
+      
+      {/* 🔔 Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 transition-all ${
+          notification.type === 'success' 
+            ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200' 
+            : 'bg-red-50 dark:bg-red-950/80 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
+        }`}>
+          {notification.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
+          <span className="text-sm font-medium">{notification.message}</span>
+        </div>
+      )}
+
+      {/* 🛡️ Header Bar */}
+      <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg leading-tight">Lanka24online Admin</h1>
+              <p className="text-xs text-slate-500">පද්ධති කළමනාකරණ පුවරුව</p>
+            </div>
+          </div>
+
+          {/* Header Badges & Actions */}
+          <div className="flex items-center gap-2">
+            {pendingCount > 0 && (
+              <span className="px-2.5 py-1 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-full border border-amber-200 dark:border-amber-900">
+                {pendingCount} Pending
               </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">පද්ධති කළමනාකරණය සහ අධීක්ෂණය</p>
+            )}
+            
+            <button
+              onClick={onSwitchToUserView}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> User Mode
+            </button>
+
+            {toggleTheme && (
+              <button
+                onClick={toggleTheme}
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              title="System Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          <button
-            type="button"
-            onClick={toggleUserMode}
-            className="px-4 py-2 bg-slate-100 dark:bg-[#12281b] hover:bg-slate-200 dark:hover:bg-[#153422] text-slate-700 dark:text-slate-200 text-xs font-bold rounded-2xl transition-all cursor-pointer flex items-center gap-2"
-          >
-            <Users className="w-4 h-4 text-emerald-600" />
-            <span>පරිශීලක මාදිලියට</span>
-          </button>
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl hover:bg-rose-100 transition-all cursor-pointer"
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          )}
+
+        {/* 📑 Tab Navigation */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 overflow-x-auto py-2 scrollbar-none">
+          {[
+            { id: 'users', label: 'පරිශීලකයින්', icon: Users, count: users.length },
+            { id: 'posts', label: 'Help Posts', icon: FileText, count: helpPosts.length },
+            { id: 'alerts', label: 'Red Alerts', icon: AlertTriangle, count: activeAlertsCount },
+            { id: 'issues', label: 'ගැටළු (Issues)', icon: HelpCircle, count: pendingIssuesCount },
+            { id: 'credits', label: 'ණය කළමනාකරණය', icon: Coins },
+            { id: 'emergency', label: 'හදිසි අංක', icon: PhoneCall },
+            { id: 'dictionary', label: 'ශබ්දකෝෂය', icon: BookOpen },
+            { id: 'trust', label: 'විශ්වාසනීයත්වය', icon: ShieldAlert },
+            { id: 'presence', label: 'ක්‍රියාකාරීත්වය', icon: Radio },
+            { id: 'resets', label: 'මුරපද යළි පිහිටුවීම්', icon: KeyRound },
+            { id: 'ai', label: 'AI දැනුම', icon: Brain },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id as AdminTab);
+                  setSearchQuery('');
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && tab.count > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    isActive ? 'bg-blue-800 text-blue-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
-      </div>
-      {/* Memory Storage Bar */}
-      <MemoryStorageBar />
-      {/* QR Pay සහ පද්ධති පාලන Toggle Card එක */}
-      <AdminSystemSettingsToggle adminUid={currentUser?.uid || 'admin'} />
-      {/* Toast Notification */}
-      {notificationMsg && (
-        <div className="fixed top-5 right-5 z-[999999] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          <span className="text-xs sm:text-sm font-bold">{notificationMsg}</span>
-        </div>
-      )}
-      {/* Navigation Tabs Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {[
-          { id: 'users', label: 'පරිශීලකයින්', icon: Users, badge: pendingUsersCount },
-          { id: 'posts', label: 'දැන්වීම් පාලනය', icon: FileText, count: helpPosts.length },
-          { id: 'credits', label: 'ක්‍රෙඩිට් කළමනාකරණය', icon: Coins },
-          { id: 'emergency', label: 'හදිසි නාමාවලිය', icon: Phone },
-          { id: 'red_alerts', label: 'රතු එළිය (Disaster)', icon: Radio, badge: activeAlertsCount },
-          { id: 'issues', label: 'ගැටලු & උපකාර', icon: MessageSquare, badge: pendingIssuesCount },
-          { id: 'dictionary', label: 'සෙවුම් ඩික්ෂනරිය', icon: BookOpen },
-          { id: 'trust', label: 'විශ්වාසනීයතා ලාංඡන', icon: Award },
-          { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
-          { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
-          { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer shrink-0 shadow-xs ${
-                isActive
-                  ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white shadow-md shadow-emerald-700/30'
-                  : 'bg-white dark:bg-[#07170e] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#12281b] border border-slate-200 dark:border-[#153422]'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
-              <span>{tab.label}</span>
-              {tab.badge !== undefined && tab.badge > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white animate-pulse">
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {/* Tab Contents */}
-      {activeTab === 'users' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-[#07170e] p-4 rounded-3xl border border-slate-200 dark:border-[#153422]">
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="නම හෝ දුරකථන අංකය..."
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-[#12281b] border border-slate-200 dark:border-[#153422] rounded-2xl text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-              />
-            </div>
-            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
-              {[
-                { id: 'all', label: 'සියල්ල' },
-                { id: 'pending', label: 'අනුමැතිය බලපොරොත්තුවෙන්' },
-                { id: 'approved', label: 'අනුමත කළ' },
-                { id: 'blocked', label: 'අවහිර කළ' },
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setUserFilter(f.id as any)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                    userFilter === f.id
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-[#12281b] text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                  }`}
+      </header>
+
+      {/* 📦 Tab Content Body */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        
+        {/* TAB 1: USERS */}
+        {activeTab === 'users' && (
+          <div className="space-y-4">
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="නම, NIC හෝ දුරකථන අංකයෙන් සොයන්න..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value as any)}
+                  className="text-xs bg-slate-50 dark:bg-slate-800 py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700"
                 >
-                  {f.label}
-                </button>
-              ))}
+                  <option value="all">සියලු පරිශීලකයින් ({users.length})</option>
+                  <option value="pending">අනුමැතිය අපේක්ෂිත ({pendingCount})</option>
+                  <option value="approved">අනුමත කළ අය</option>
+                  <option value="blocked">අවහිර කළ අය</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                    <tr>
+                      <th className="p-3">පරිශීලකයා</th>
+                      <th className="p-3">තත්ත්වය (Status)</th>
+                      <th className="p-3">NIC / දුරකථනය</th>
+                      <th className="p-3">කාර්යභාරය (Role)</th>
+                      <th className="p-3 text-right">ක්‍රියාමාර්ග (Actions)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-slate-400">
+                          පරිශීලකයින් කිසිවෙකු හමු නොවීය.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map(user => (
+                        <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="p-3">
+                            <div className="font-semibold">{user.fullName || user.username || 'නමක් නැත'}</div>
+                            <div className="text-[11px] text-slate-400">{user.email || user.username}</div>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              user.status === 'approved' 
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' 
+                                : user.status === 'pending'
+                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                            }`}>
+                              {user.status || 'unknown'}
+                            </span>
+                          </td>
+                          <td className="p-3 font-mono text-[11px]">
+                            <div>{user.nicNumber || '-'}</div>
+                            <div className="text-slate-400">{user.phone || '-'}</div>
+                          </td>
+                          <td className="p-3 capitalize">{user.role || 'user'}</td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setInspectingUser(user)}
+                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded"
+                                title="Inspect"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingUser(user)}
+                                className="p-1.5 text-slate-500 hover:text-amber-600 rounded"
+                                title="Edit"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              {user.status === 'pending' && (
+                                <button
+                                  disabled={isProcessing === user.id}
+                                  onClick={() => handleApproveUser(user)}
+                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded"
+                                  title="Approve"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                disabled={isProcessing === user.id}
+                                onClick={() => handleToggleBlockUser(user)}
+                                className={`p-1.5 rounded ${user.status === 'blocked' ? 'text-emerald-600' : 'text-amber-600'}`}
+                                title={user.status === 'blocked' ? 'Unblock' : 'Block'}
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                              <button
+                                disabled={isProcessing === user.id}
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredUsers.map(u => (
-              <div key={u.id} className="bg-white dark:bg-[#07170e] p-5 rounded-3xl border border-slate-200 dark:border-[#153422] shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900 dark:text-white">{u.fullName}</h3>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                      u.status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
-                      u.status === 'approved' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
-                      'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                    }`}>
-                      {u.status}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                    {u.phone}
-                  </p>
-                  {u.district && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                      {u.district}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-[#12281b]">
-                  <div className="flex items-center gap-1">
+        )}
+
+        {/* TAB 2: POSTS */}
+        {activeTab === 'posts' && (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredPosts.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">Help Posts කිසිවක් හමු නොවීය.</div>
+              ) : (
+                filteredPosts.map(post => (
+                  <div key={post.id} className="p-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-sm">{post.title}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{post.description}</p>
+                    </div>
                     <button
-                      onClick={() => setInspectingUser(u)}
-                      className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#12281b] rounded-xl transition-all cursor-pointer"
-                      title="පරීක්ෂා කරන්න"
+                      onClick={() => handleDeletePost(post.id)}
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-xs flex items-center gap-1"
                     >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setEditingUser(u)}
-                      className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#12281b] rounded-xl transition-all cursor-pointer"
-                      title="සංස්කරණය"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(u.id)}
-                      className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
-                      title="ඉවත් කරන්න"
-                    >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" /> මකන්න
                     </button>
                   </div>
-                  <div className="flex items-center gap-1">
-                    {u.status !== 'approved' && (
-                      <button
-                        onClick={() => handleApproveUser(u)}
-                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
-                      >
-                        අනුමත කරන්න
-                      </button>
-                    )}
-                    {u.status !== 'blocked' && (
-                      <button
-                        onClick={() => handleBlockUser(u)}
-                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
-                      >
-                        අවහිර කරන්න
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {activeTab === 'posts' && (
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-[#07170e] p-4 rounded-3xl border border-slate-200 dark:border-[#153422]">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="දැන්වීම් සෙවුම..."
-                value={postSearch}
-                onChange={e => setPostSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-[#12281b] border border-slate-200 dark:border-[#153422] rounded-2xl text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-              />
+                ))
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredHelpPosts.map(p => (
-              <div key={p.id} className="bg-white dark:bg-[#07170e] p-5 rounded-3xl border border-slate-200 dark:border-[#153422] shadow-sm flex flex-col justify-between space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                      {p.type}
-                    </span>
-                    <button
-                      onClick={() => handleDeletePostInternal(p.id)}
-                      className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <h3 className="font-bold text-slate-900 dark:text-white">{p.title}</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3">{p.description}</p>
-                </div>
-                <div className="text-[10px] text-slate-400 flex items-center justify-between pt-3 border-t border-slate-100 dark:border-[#12281b]">
-                  <span>කර්තෘ: {p.authorName}</span>
-                  <span>{p.location}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {activeTab === 'credits' && <AdminCreditManagement users={users} setUsers={setUsers} />}
-      {activeTab === 'emergency' && <AdminEmergencyDirectoryManagement />}
-      {activeTab === 'red_alerts' && <AdminRedAlertManagement redAlerts={redAlerts} setRedAlerts={setRedAlerts} />}
-      {activeTab === 'issues' && <AdminIssuesManagement issues={issues} setIssues={setIssues} />}
-      {activeTab === 'dictionary' && <AdminSearchDictionaryManager />}
-      {activeTab === 'trust' && <AdminTrustManagement users={users} setUsers={setUsers} />}
-      {activeTab === 'presence' && <AdminPresenceDashboard />}
-      {activeTab === 'password_resets' && <AdminPasswordResetsManagement />}
-      {activeTab === 'ai_knowledge' && <AdminAiKnowledgeManagement />}
-      {/* Modals */}
+        )}
+
+        {/* SUBSYSTEM TABS (Props ආරක්ෂිතව ලබා දීම) */}
+        {activeTab === 'alerts' && <AdminRedAlertManagement redAlerts={redAlerts} setRedAlerts={setRedAlerts} />}
+        {activeTab === 'issues' && <AdminIssuesManagement issues={issues} onUpdateStatus={onUpdateIssueStatus} />}
+        {activeTab === 'credits' && <AdminCreditManagement users={users} setUsers={setUsers} />}
+        {activeTab === 'emergency' && <AdminEmergencyDirectoryManagement />}
+        {activeTab === 'dictionary' && <AdminSearchDictionaryManager />}
+        {activeTab === 'trust' && <AdminTrustManagement users={users} />}
+        {activeTab === 'presence' && <AdminPresenceDashboard users={users} />}
+        {activeTab === 'resets' && <AdminPasswordResetsManagement />}
+        {activeTab === 'ai' && <AdminAiKnowledgeManagement />}
+      </main>
+
+      {/* 🔍 User Inspection Modal */}
       {inspectingUser && (
         <AdminUserInspectionModal
           user={inspectingUser}
           onClose={() => setInspectingUser(null)}
         />
       )}
+
+      {/* ✏️ User Edit Modal */}
       {editingUser && (
         <AdminEditUserModal
           user={editingUser}
+          onSave={handleSaveEditedUser}
           onClose={() => setEditingUser(null)}
-          onSave={async (updated) => {
-            if (setUsers) setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
-            await syncUserProfileToFirestore(updated);
-            showNotification('පරිශීලක තොරතුරු යාවත්කාලීන විය');
-            setEditingUser(null);
-          }}
+        />
+      )}
+
+      {/* ⚙️ System Settings Modal */}
+      {isSettingsOpen && (
+        <AdminSystemSettingsToggle
+          onClose={() => setIsSettingsOpen(false)}
         />
       )}
     </div>
@@ -410,4 +596,3 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 };
 
 export default AdminPanel;
-
