@@ -621,7 +621,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           batteryLevel: batteryLevel,
           isCharging: isCharging,
           locationName: locationName || 'ජා-ඇල / කටුනායක ප්‍රදේශය',
-          emergencyNote: emergencyNote || (typeof customReason === 'string' ? customReason : sosReason),
+          emergencyNote: emergencyNote || (typeof customReason === 'string' ? customReason : 'හදිසි ආපදාවක පසුවෙමි'),
           vehicleNumber: vehicleNumber || '',
           vehicleType: effectiveVehicleType,
           isActive: true,
@@ -698,7 +698,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     isCharging,
     locationName,
     emergencyNote,
-    sosReason,
     vehicleNumber,
     vehicleType,
     customVehicleType,
@@ -872,7 +871,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           headingDegrees: heading,
           batteryLevel: batteryLevel,
           isCharging: isCharging,
-          emergencyNote: emergencyNote || sosReason,
+          emergencyNote: emergencyNote || 'හදිසි ආපදාවක පසුවෙමි',
           vehicleNumber: vehicleNumber || '',
           vehicleType: effectiveVehicleType,
           isSirenActive: isSirenOn,
@@ -900,7 +899,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     batteryLevel,
     isCharging,
     emergencyNote,
-    sosReason,
     vehicleNumber,
     vehicleType,
     customVehicleType,
@@ -1171,7 +1169,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 onClick={onClose}
                 className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer text-white"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
