@@ -30,11 +30,12 @@ import { User, HelpPost, Issue, RedAlert } from '../types';
 
 // Utils & Helpers
 import { checkIsAdmin } from '../utils/postOwnerHelper';
+// ✅ නිවැරදි කළ කේතය:
 import { 
   syncUserProfileToFirestore, 
   deleteUserAccount, 
   deleteHelpPostFromFirestore 
-} from '../services/firebase';
+} from '../lib/firebase';
 
 // Subsystem Components
 import { AdminEditUserModal } from './AdminEditUserModal';
