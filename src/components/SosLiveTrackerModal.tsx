@@ -22,29 +22,29 @@ import {
   RefreshCw, 
   Layers, 
   MessageCircle, 
-  Send,
-  Sparkles,
-  Info,
-  Clock,
-  HeartHandshake,
-  Mic,
-  MicOff,
-  Home,
-  UserCheck,
-  ShieldCheck,
-  Flame,
-  Plus,
-  Trash2,
-  KeyRound,
-  Bell,
-  Hourglass,
-  Smartphone,
-  Car,
-  PhoneCall,
-  Stethoscope,
-  Building2,
-  Lock,
-  Users,
+  Send, 
+  Sparkles, 
+  Info, 
+  Clock, 
+  HeartHandshake, 
+  Mic, 
+  MicOff, 
+  Home, 
+  UserCheck, 
+  ShieldCheck, 
+  Flame, 
+  Plus, 
+  Trash2, 
+  KeyRound, 
+  Bell, 
+  Hourglass, 
+  Smartphone, 
+  Car, 
+  PhoneCall, 
+  Stethoscope, 
+  Building2, 
+  Lock, 
+  Users, 
   HelpCircle,
   RotateCcw,
   Activity,
@@ -198,21 +198,42 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   currentLocation,
   language = 'si',
 }) => {
-  // 1. Core SOS Session State
-  const [isActive, setIsActive] = useState<boolean>(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionCode, setSessionCode] = useState<string>('');
-  const [shareUrl, setShareUrl] = useState<string>('');
-  const [isCopied, setIsCopied] = useState<boolean>(false);
+  // 0. Preset Emergency Messages
+  const PRESET_MESSAGES = [
+    '🚨 හදිසි ආපදාවක / අනතුරක පසුවෙමි. කරුණාකර මගේ සජීවී ස්ථානය පරීක්ෂා කර සහය එවන්න!',
+    '🚗 මගේ වාහනය කාර්මික දෝෂයකට ලක්විය. මා සිටින ස්ථානයට පැමිණෙන්න.',
+    '⚠️ අනාරක්ෂිත තත්ත්වයක පසුවෙමි. මා ගමන් කරන මාර්ගය සජීවීව නිරීක්ෂණය කරන්න.',
+    '📍 මා සිටින ස්ථානය නිවැරදිව සොයාගැනීම සඳහා මෙම සජීවී සබැඳිය භාවිතා කරන්න.',
+  ];
 
-  // Status & Lock UX
-  const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
-  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
-  const [gpsError, setGpsError] = useState<string | null>(null);
-  const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
+  // 🗺️ දුර ගණනය කිරීමේ සූත්‍රය (Distance Calculator - Self-contained)
+  const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth radius in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return parseFloat((R * c).toFixed(1));
+  };
+
+  // 1. Session States (Full Declarations)
+  const [isActive, setIsActive] = useState<boolean>(false);
+  const [sessionId, setSessionId] = useState<string>(() => {
+    return `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  });
+  const [sessionCode, setSessionCode] = useState<string>(() => {
+    return `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
+  });
+  const [startedAt, setStartedAt] = useState<string>('');
+  const [emergencyNote, setEmergencyNote] = useState<string>(PRESET_MESSAGES[0]);
   const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
-  const [sosReason, setSosReason] = useState<string>('හදිසි අනතුරක් / සහය අවශ්‍යයි (Emergency Distress)');
+  const [vehicleNumber, setVehicleNumber] = useState<string>('');
+  const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
   const [customVehicleType, setCustomVehicleType] = useState<string>('');
   const [isCloudSaved, setIsCloudSaved] = useState<boolean>(false);
   const [showFeaturesGuideModal, setShowFeaturesGuideModal] = useState<boolean>(false);
