@@ -132,86 +132,131 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // 1. Live Firestore Sync for Users
-  useEffect(() => {
-    const unsubscribe = subscribeToUsers((firestoreUsers) => {
-      if (firestoreUsers && firestoreUsers.length > 0) {
-        setUsers(() => {
-          const combined = deduplicateUsers([...initialUsers, ...firestoreUsers]);
-          return combined;
-        });
+  // Handle Permanent Soft Deletion with Auto Backup & Multi-Source Sync
+  const handleDeletePostPermanently = useCallback(async (postId: string) => {
+    const postObj = helpPosts.find((p) => p.id === postId);
 
-        // Update current session user in-memory if changed in Firestore
-        setCurrentUser((prev) => {
-          if (!prev) return null;
-          const updated = firestoreUsers.find((u) => u.id === prev.id || normalizeNIC(u.nic) === normalizeNIC(prev.nic));
-          if (updated) {
-            const merged = { ...prev, ...updated };
-            try {
-              localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(merged));
-            } catch {}
-            return merged;
-          }
-          return prev;
-        });
+    // 1 & 2. Auto JSON File Download (Admin device එකට පමණක් Save වීම)
+    if (postObj && checkIsAdmin(currentUser)) {
+      downloadPostBackupJson(postObj, currentUser);
+    }
+
+    // 3. LocalStorage Blacklist & Purge local memory
+    addDeletedPostId(postId);
+    try {
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
+
+    // 4. Real-time UI State Refresh
+    setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+
+    // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
+    try {
+      await deleteHelpPostFromFirestore(postId);
+    } catch (err) {
+      console.warn('Backend delete sync note:', err);
+    }
+  }, [helpPosts, currentUser]);
+
+  // Persist User Session to LocalStorage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('sahaya_sewa_session_user');
+    }
+  }, [currentUser]);
+
+  // Global Event Listener for Post Deletions triggered across components
+  useEffect(() => {
+    const handleGlobalPostDeleted = () => {
+      setHelpPosts((prev) => filterNonDeletedPosts(prev));
+    };
+    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    return () => {
+      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    };
+  }, []);
+
+  // Real-time Firestore Sync Listeners (Mounts once)
+  useEffect(() => {
+    // 🛡️ Initialize FCM & Background Push Worker (Clean Safe Call without .catch)
+    let unsubscribeFcm: any = null;
+    try {
+      unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
+    } catch (err) {
+      console.warn('FCM Background Notification Registration Notice:', err);
+    }
+
+    const unsubscribeUsers = subscribeToUsers((dbUsers) => {
+      if (dbUsers && dbUsers.length > 0) {
+        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
       }
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+    const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
+      // Purge stale local memory cache
+      try {
+        localStorage.removeItem('sahaya_help_posts');
+      } catch {}
 
-  // 2. Live Firestore Sync for Help Posts (Guarded with Permanent Deletion Filter)
-  useEffect(() => {
-    const unsubscribe = subscribeToHelpPosts((firestorePosts) => {
-      setHelpPosts(() => {
-        const nonDeletedInitial = filterNonDeletedPosts(initialHelpPosts);
-        const nonDeletedFirestore = filterNonDeletedPosts(firestorePosts || []);
-        
-        const map = new Map<string, HelpPost>();
-        nonDeletedInitial.forEach((p) => map.set(p.id, p));
-        nonDeletedFirestore.forEach((p) => map.set(p.id, p));
-        
-        return Array.from(map.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      });
+      if (dbPosts) {
+        // Firestore is the authoritative source of truth: honor all deletions permanently
+        const sanitized = filterNonDeletedPosts(dbPosts);
+        setHelpPosts(sanitized);
+      }
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // 3. Live Firestore Sync for Red Alerts
-  useEffect(() => {
-    const unsubscribe = subscribeToRedAlerts((alerts) => {
+    const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
       setRedAlerts(alerts || []);
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // 4. Live Firestore Sync for System Issues / Tickets
-  useEffect(() => {
-    const unsubscribe = subscribeToIssuesFromFirestore((firestoreIssues) => {
-      setIssues(firestoreIssues || []);
+    const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
+      setIssues(dbIssues || []);
     });
 
     return () => {
-      unsubscribe();
+      if (typeof unsubscribeFcm === 'function') unsubscribeFcm();
+      unsubscribeUsers?.();
+      unsubscribePosts?.();
+      unsubscribeAlerts?.();
+      unsubscribeIssues?.();
     };
   }, []);
 
-  // 5. Initialize Firebase Cloud Messaging (FCM) Push Notifications
+  // Synchronize currentUser with real-time user state changes and manage auto-redirects
   useEffect(() => {
-    initFcmNotificationService().catch((err) => {
-      console.warn('FCM Background Notification Registration Notice:', err);
-    });
-  }, []);
+    if (!currentUser) return;
+
+    const freshUser = users.find(
+      (u) =>
+        u.id === currentUser.id ||
+        (u.userId && u.userId === currentUser.userId) ||
+        (u.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic || ''))
+    );
+
+    if (freshUser) {
+      const isRoleDifferent = freshUser.role !== currentUser.role;
+      const isStatusDifferent = freshUser.status !== currentUser.status;
+      const isCreditsDifferent = freshUser.credits !== currentUser.credits;
+
+      if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
+        setCurrentUser(freshUser);
+        try {
+          localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(freshUser));
+        } catch {}
+
+        if (freshUser.role === 'admin' || freshUser.role === 'super_admin') {
+          setActiveView('admin');
+        } else if (freshUser.status === 'pending') {
+          setActiveView('pending');
+        } else if (freshUser.status === 'approved' && activeView === 'pending') {
+          setActiveView('dashboard');
+        }
+      }
+    }
+  }, [users, currentUser, activeView]);
 
   // Handle User Login
   const handleUserLogin = useCallback(async (userIdOrNic: string, passwordInput: string) => {
