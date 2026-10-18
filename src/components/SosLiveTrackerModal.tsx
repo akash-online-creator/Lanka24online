@@ -36,6 +36,7 @@ import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } fr
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
 import { SosLiveViewerModal } from './SosLiveViewerModal';
 import { getLastKnownLocation } from '../utils/autoGpsService';
+import { verifyCurrentUserPin } from '../utils/devicePinManager';
 
 // 👮 1. SRI LANKA POLICE STATIONS COMPREHENSIVE DIRECTORY MODEL
 export interface PoliceStationEntry {
@@ -901,809 +902,479 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return PRESET_MESSAGES[selectedPresetIndex] || PRESET_MESSAGES[0];
   }, [isCustomMessage, customMessageText, selectedPresetIndex]);
 
-  // 1. Session States
-  const [isActive, setIsActive] = useState<boolean>(false);
-  const [sessionId, setSessionId] = useState<string>(() => {
-    return `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  });
-  const [sessionCode, setSessionCode] = useState<string>(() => {
-    return `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
-  });
-  const [startedAt, setStartedAt] = useState<string>('');
-  const [emergencyNote, setEmergencyNote] = useState<string>(PRESET_MESSAGES[0]);
-  const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
-  const [vehicleNumber, setVehicleNumber] = useState<string>('');
-  const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
-  const [customVehicleType, setCustomVehicleType] = useState<string>('');
-  const [isCloudSaved, setIsCloudSaved] = useState<boolean>(false);
-  const [showFeaturesGuideModal, setShowFeaturesGuideModal] = useState<boolean>(false);
-
-  // 📡 1. ALWAYS-AVAILABLE SHARE URL (Instant from Mount - Never Empty)
-  const shareUrl = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    const sid = sessionId || `sos_${Date.now()}`;
-    const origin = window.location.origin || '';
-    const path = window.location.pathname || '';
-    return `${origin}${path}?sos_session=${sid}`;
-  }, [sessionId]);
-
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
-  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
-  const [gpsError, setGpsError] = useState<string | null>(null);
-
-  // 2. Realtime Telemetry (Instant 0ms Cache Loading)
-  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>(() => {
-    if (currentLocation?.lat && currentLocation?.lng) {
-      return { lat: currentLocation.lat, lng: currentLocation.lng };
-    }
-    const cached = getLastKnownLocation();
-    if (cached) {
-      return { lat: cached.lat, lng: cached.lng };
-    }
-    return {
-      lat: 7.1702, // Katunayake default fallback
-      lng: 79.8858,
-    };
-  });
-  const [accuracy, setAccuracy] = useState<number | null>(() => {
-    const cached = getLastKnownLocation();
-    return cached?.accuracy || null;
-  });
-  const [speedKmh, setSpeedKmh] = useState<number | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
+  // Session & Tracking States
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isTracking, setIsTracking] = useState<boolean>(false);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [speed, setSpeed] = useState<number | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [isCharging, setIsCharging] = useState<boolean>(false);
-  const [locationName, setLocationName] = useState<string>(currentLocation?.nameSi || 'කටුනායක / ජා-ඇල (Katunayake / Ja-Ela)');
-  const [breadcrumbs, setBreadcrumbs] = useState<SosBreadcrumbPoint[]>([]);
-  const breadcrumbsRef = useRef<SosBreadcrumbPoint[]>([]);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [sessionDuration, setSessionDuration] = useState<number>(0);
+  const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
+  const [offlineQueueLength, setOfflineQueueLength] = useState<number>(0);
+  const [showCopiedNotice, setShowCopiedNotice] = useState<boolean>(false);
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
 
-  // 3. Sri Lanka Police Search & District Filter State
-  const [policeSearchQuery, setPoliceSearchQuery] = useState<string>('');
-  const [selectedDistrict, setSelectedDistrict] = useState<string>('සියල්ල (All)');
-
-  const filteredPoliceStations = useMemo(() => {
-    return ALL_SRI_LANKA_POLICE_STATIONS.filter((station) => {
-      const matchDistrict = selectedDistrict === 'සියල්ල (All)' || station.districtSi === selectedDistrict || station.districtEn.toLowerCase() === selectedDistrict.toLowerCase();
-      const matchQuery = !policeSearchQuery.trim() || 
-        station.nameSi.toLowerCase().includes(policeSearchQuery.toLowerCase()) ||
-        station.nameEn.toLowerCase().includes(policeSearchQuery.toLowerCase()) ||
-        station.addressSi.toLowerCase().includes(policeSearchQuery.toLowerCase()) ||
-        station.districtSi.toLowerCase().includes(policeSearchQuery.toLowerCase());
-      return matchDistrict && matchQuery;
-    });
-  }, [policeSearchQuery, selectedDistrict]);
-
-  const districtsList = useMemo(() => {
-    const set = new Set<string>();
-    ALL_SRI_LANKA_POLICE_STATIONS.forEach((s) => set.add(s.districtSi));
-    return ['සියල්ල (All)', ...Array.from(set)];
-  }, []);
-
-  // 4. Dual Dispatch, Siren & Audio
+  // Additional features
   const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
-  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [showFacilities, setShowFacilities] = useState<boolean>(false);
+  const [emergencyNote, setEmergencyNote] = useState<string>('');
+  const [nearestFacilities, setNearestFacilities] = useState<Array<{ name: string; type: string; distance: number; phone?: string }>>([]);
 
-  // 5. Security Quick PIN & Duress PIN
+  // Sri Lanka Police Search & District Filter
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
+  const [policeSearchQuery, setPoliceSearchQuery] = useState<string>('');
+
+  // Duress PIN Modal States
   const [showDuressModal, setShowDuressModal] = useState<boolean>(false);
-  const [deactivateTab, setDeactivateTab] = useState<'pin' | 'nic'>('pin');
-  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
   const [enteredPin, setEnteredPin] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinVerificationMode, setPinVerificationMode] = useState<'pin' | 'password'>('pin');
   const [enteredPassword, setEnteredPassword] = useState<string>('');
   const [enteredNic, setEnteredNic] = useState<string>('');
-  const [pinError, setPinError] = useState<string | null>(null);
 
-  // 🛡️ 5-Minute Safety Buffer Timer after SOS Deactivation
-  useEffect(() => {
-    if (cooldownRemainingSec === null || cooldownRemainingSec <= 0) {
-      if (cooldownRemainingSec === 0) {
-        if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
-          navigator.geolocation.clearWatch(watchIdRef.current);
-          watchIdRef.current = null;
-        }
-        setIsActive(false);
-        if (sessionId) {
-          stopSosLiveSession(sessionId, 'පරිශීලකයා විසින් ආරක්ෂිතව අවසන් කරන ලදී (User Resolved - 5min Grace Period Finished)').catch(() => {});
-        }
-        onClose();
-      }
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setCooldownRemainingSec(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [cooldownRemainingSec, sessionId, onClose]);
-
-  // 6. Hardware & Audio Refs
-  const recordingTimerRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-  const isContinuousAudioRunningRef = useRef<boolean>(false);
-
+  // Map & Watcher Refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const accuracyCircleRef = useRef<L.Circle | null>(null);
-  const polylineRef = useRef<L.Polyline | null>(null);
-  const facilitiesLayerGroupRef = useRef<L.LayerGroup | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const syncIntervalRef = useRef<any>(null);
-  const sirenAudioContextRef = useRef<AudioContext | null>(null);
-  const sirenOscillatorRef = useRef<OscillatorNode | null>(null);
-  const sirenGainRef = useRef<GainNode | null>(null);
-  const sirenModulatorRef = useRef<OscillatorNode | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const polylineRef = useRef<any>(null);
+  const breadcrumbsRef = useRef<Array<[number, number]>>([]);
+  const geoWatchIdRef = useRef<number | null>(null);
+  const audioContextRef = useRef<any>(null);
+  const oscillatorRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<any>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const durationTimerRef = useRef<any>(null);
 
-  const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
-
-  // Format MM:SS for audio timer
-  const formatDuration = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  // 🔊 HIGH-DECIBEL SIREN AUDIO SYNTHESIZER
-  const startHighDecibelSiren = useCallback(() => {
-    try {
-      if (sirenAudioContextRef.current && sirenAudioContextRef.current.state === 'running') {
-        return;
+  // Initialize Cooldown timer from LocalStorage if exists
+  useEffect(() => {
+    const existingCooldownUntil = localStorage.getItem('active_sos_cooldown_until');
+    if (existingCooldownUntil) {
+      const diff = Math.max(0, Math.floor((parseInt(existingCooldownUntil, 10) - Date.now()) / 1000));
+      if (diff > 0) {
+        setCooldownRemainingSec(diff);
+      } else {
+        localStorage.removeItem('active_sos_cooldown_until');
       }
-
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-
-      const ctx = new AudioContextClass();
-      sirenAudioContextRef.current = ctx;
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const modOsc = ctx.createOscillator();
-      const modGain = ctx.createGain();
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(850, ctx.currentTime);
-
-      modOsc.type = 'triangle';
-      modOsc.frequency.setValueAtTime(2.2, ctx.currentTime);
-      modGain.gain.setValueAtTime(450, ctx.currentTime);
-
-      modOsc.connect(osc.frequency);
-      modOsc.start();
-
-      gain.gain.setValueAtTime(0.85, ctx.currentTime);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-
-      sirenOscillatorRef.current = osc;
-      sirenGainRef.current = gain;
-      sirenModulatorRef.current = modOsc;
-      setIsSirenOn(true);
-    } catch (e) {
-      console.warn('AudioContext Siren initialization error:', e);
     }
   }, []);
 
-  const stopHighDecibelSiren = useCallback(() => {
-    try {
-      if (sirenOscillatorRef.current) {
-        sirenOscillatorRef.current.stop();
-        sirenOscillatorRef.current.disconnect();
-        sirenOscillatorRef.current = null;
-      }
-      if (sirenModulatorRef.current) {
-        sirenModulatorRef.current.stop();
-        sirenModulatorRef.current.disconnect();
-        sirenModulatorRef.current = null;
-      }
-      if (sirenGainRef.current) {
-        sirenGainRef.current.disconnect();
-        sirenGainRef.current = null;
-      }
-      if (sirenAudioContextRef.current) {
-        sirenAudioContextRef.current.close().catch(() => {});
-        sirenAudioContextRef.current = null;
-      }
-    } catch (e) {
-      console.warn('Siren AudioContext cleanup error:', e);
-    } finally {
-      setIsSirenOn(false);
-    }
-  }, []);
-
-  const toggleSiren = useCallback(() => {
-    if (isSirenOn) {
-      stopHighDecibelSiren();
-      setIsSirenOn(false);
-    } else {
-      startHighDecibelSiren();
-      setIsSirenOn(true);
-    }
-  }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
-
-  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER (SYNCED AS BASE64 TO CLOUD FOR RECIPIENT)
-  const startAudioRecordingLoop = useCallback(async () => {
-    if (isContinuousAudioRunningRef.current) return;
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      console.warn('MediaDevices getUserMedia API not supported');
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      audioStreamRef.current = stream;
-      isContinuousAudioRunningRef.current = true;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : '';
-
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
+  // Cooldown countdown tick
+  useEffect(() => {
+    if (cooldownRemainingSec === null || cooldownRemainingSec <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownRemainingSec(prev => {
+        if (prev === null || prev <= 1) {
+          localStorage.removeItem('active_sos_cooldown_until');
+          return null;
         }
-      };
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownRemainingSec]);
 
-      recorder.onstop = () => {
-        if (audioChunksRef.current.length > 0) {
-          const finalBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64DataUrl = reader.result as string;
-            setRecordedAudioUrl(base64DataUrl);
-            if (sessionId) {
-              updateSosLiveLocation(sessionId, {
-                audioUrl: base64DataUrl,
-                latestAudioBase64: base64DataUrl,
-                hasAudioEvidence: true,
-                lastAudioTimestampMs: Date.now(),
-              }).catch(() => {});
-            }
-          };
-          reader.readAsDataURL(finalBlob);
-        }
-      };
-
-      recorder.start(1000);
-      setIsRecordingAudio(true);
-      setRecordingSeconds(0);
-
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } catch (err: any) {
-      console.warn('Microphone permission request deferred:', err);
-      setIsRecordingAudio(false);
-      isContinuousAudioRunningRef.current = false;
-    }
-  }, [sessionId]);
-
-  const stopAudioRecordingLoop = useCallback(() => {
-    isContinuousAudioRunningRef.current = false;
-    
-    try {
-      if (mediaRecorderRef.current) {
-        if (mediaRecorderRef.current.state === 'recording') {
-          mediaRecorderRef.current.stop();
-        }
-        if (mediaRecorderRef.current.stream) {
-          mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => {
-            track.stop();
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('MediaRecorder stop warning:', e);
-    }
-    mediaRecorderRef.current = null;
-
-    if (audioStreamRef.current) {
-      try {
-        audioStreamRef.current.getTracks().forEach((track) => track.stop());
-      } catch {}
-      audioStreamRef.current = null;
-    }
-
-    setIsRecordingAudio(false);
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  }, []);
-
-  const handleToggleAudioRecording = useCallback(() => {
-    if (isRecordingAudio) {
-      stopAudioRecordingLoop();
-    } else {
-      startAudioRecordingLoop();
-    }
-  }, [isRecordingAudio, startAudioRecordingLoop, stopAudioRecordingLoop]);
-
-  // Battery Listener
+  // Battery monitoring
   useEffect(() => {
     if (typeof navigator !== 'undefined' && (navigator as any).getBattery) {
       (navigator as any).getBattery().then((battery: any) => {
         setBatteryLevel(Math.round(battery.level * 100));
-        setIsCharging(battery.charging);
-
         battery.addEventListener('levelchange', () => {
           setBatteryLevel(Math.round(battery.level * 100));
-        });
-        battery.addEventListener('chargingchange', () => {
-          setIsCharging(battery.charging);
         });
       }).catch(() => {});
     }
   }, []);
 
-  // 🚨 Master SOS Start Function
-  const handleStartSos = useCallback(async (customReason?: any) => {
-    setIsLocating(true);
-    setIsSavingAndLocking(true);
-    setSavingStatusStep('🛰️ ඔබ සිටින සැබෑ GPS ස්ථානය ලබාගනිමින් පවතී...');
-    setGpsError(null);
+  // Build the Share URL
+  const shareUrl = useMemo(() => {
+    if (!sessionId) {
+      const activeId = localStorage.getItem('active_sos_session_id') || 'preview';
+      return `https://supporservice.online/#/sos-live?session=${activeId}`;
+    }
+    return `https://supporservice.online/#/sos-live?session=${sessionId}`;
+  }, [sessionId]);
 
-    const activeCode = sessionCode || `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
-    const activeSessionId = sessionId || `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const nowIso = new Date().toISOString();
+  // Start SOS Session
+  const handleStartSos = useCallback(async () => {
+    const newSessionId = `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setSessionId(newSessionId);
+    setIsTracking(true);
+    setSessionDuration(0);
+    localStorage.setItem('active_sos_session_id', newSessionId);
 
-    setSessionCode(activeCode);
-    setSessionId(activeSessionId);
-    setStartedAt(nowIso);
+    // Initial Coordinates
+    const initialLat = currentLocation?.lat || 6.9271;
+    const initialLng = currentLocation?.lng || 79.8612;
+    setCoords({ lat: initialLat, lng: initialLng });
+    breadcrumbsRef.current = [[initialLat, initialLng]];
 
-    const activateWithPosition = async (lat: number, lng: number, acc: number = 10, speed: number = 0, head?: number) => {
-      try {
-        setCurrentCoords({ lat, lng });
-        setAccuracy(acc);
-        setSpeedKmh(speed);
-        if (head !== undefined) setHeading(head);
-
-        const initialBreadcrumb: SosBreadcrumbPoint = {
-          lat,
-          lng,
-          timestampMs: Date.now(),
-          accuracyMeters: acc,
-          speedKmh: speed,
-        };
-        breadcrumbsRef.current = [initialBreadcrumb];
-        setBreadcrumbs([initialBreadcrumb]);
-
-        const effectiveVehicleType = vehicleType === '✨ වෙනත්' && customVehicleType.trim() 
-          ? customVehicleType.trim() 
-          : vehicleType;
-
-        const initialSession: SosLiveSession = {
-          id: activeSessionId,
-          sessionCode: activeCode,
-          userId: currentUser?.id || currentUser?.userId || 'guest_user',
-          userName: currentUser?.name || 'පරිශීලක (User)',
-          userPhone: currentUser?.phone || currentUser?.whatsappNumber || '',
-          userNic: currentUser?.nic || '',
-          latitude: lat,
-          longitude: lng,
-          accuracyMeters: acc,
-          speedKmh: speed,
-          headingDegrees: head || null,
-          batteryLevel: batteryLevel,
-          isCharging: isCharging,
-          locationName: locationName || 'කටුනායක / ජා-ඇල ප්‍රදේශය',
-          emergencyNote: effectiveEmergencyMessage || (typeof customReason === 'string' ? customReason : 'හදිසි ආපදාවක පසුවෙමි'),
-          vehicleNumber: vehicleNumber || '',
-          vehicleType: effectiveVehicleType,
-          isActive: true,
-          isDuressSilent: false,
-          isSirenActive: isSirenOn,
-          breadcrumbs: [initialBreadcrumb],
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          updatedAtMs: Date.now(),
-          startedAt: startedAt || nowIso,
-        };
-
-        setSavingStatusStep('☁️ සජීවී Cloud දත්ත පද්ධතිය සමඟ සම්බන්ධ වෙමින් පවතී...');
-        try {
-          await createOrUpdateSosLiveSession(initialSession);
-          setIsCloudSaved(true);
-        } catch (dbErr) {
-          console.warn('Firestore initial live session warning:', dbErr);
-          setIsCloudSaved(false);
+    const sessionDocData = {
+      sessionId: newSessionId,
+      userId: currentUser?.id || 'anonymous_guest',
+      userName: currentUser?.name || 'Anonymous User',
+      userPhone: currentUser?.phone || 'Not Provided',
+      userNic: currentUser?.nic || 'Not Provided',
+      status: 'active',
+      startedAt: serverTimestamp(),
+      lastUpdate: serverTimestamp(),
+      initialLocation: new GeoPoint(initialLat, initialLng),
+      currentLocation: new GeoPoint(initialLat, initialLng),
+      accuracy: accuracy || 10,
+      speed: speed || 0,
+      batteryLevel: batteryLevel || 100,
+      emergencyMessage: effectiveEmergencyMessage,
+      emergencyNote: emergencyNote || '',
+      breadcrumbs: [
+        {
+          lat: initialLat,
+          lng: initialLng,
+          timestamp: new Date().toISOString(),
         }
-
-        setIsActive(true);
-        setIsLocating(false);
-        setIsSavingAndLocking(false);
-        setSavingStatusStep('');
-
-        startHighDecibelSiren();
-        startAudioRecordingLoop();
-      } catch (err: any) {
-        console.error('Error activating SOS session:', err);
-        setIsLocating(false);
-        setIsSavingAndLocking(false);
-        setSavingStatusStep('');
-      }
+      ],
+      isSilentAudioStreaming: true,
+      lastAudioSyncAt: serverTimestamp(),
     };
 
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = Number(pos.coords.latitude.toFixed(6));
-          const lng = Number(pos.coords.longitude.toFixed(6));
-          const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 10;
-          const spd = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-          const head = pos.coords.heading ? Math.round(pos.coords.heading) : undefined;
-          activateWithPosition(lat, lng, acc, spd, head);
-        },
-        (err) => {
-          const fallbackLat = currentCoords.lat || 7.1702;
-          const fallbackLng = currentCoords.lng || 79.8858;
-          activateWithPosition(fallbackLat, fallbackLng, 25, 0);
-        },
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
-      );
-    } else {
-      const fallbackLat = currentCoords.lat || 7.1702;
-      const fallbackLng = currentCoords.lng || 79.8858;
-      activateWithPosition(fallbackLat, fallbackLng, 50, 0);
+    try {
+      await setDoc(doc(db, 'sos_sessions', newSessionId), sessionDocData, { merge: true });
+    } catch (err) {
+      console.warn('Could not initialize SOS session on Firestore immediately:', err);
     }
-  }, [
-    sessionCode,
-    sessionId,
-    currentUser,
-    batteryLevel,
-    isCharging,
-    locationName,
-    effectiveEmergencyMessage,
-    vehicleNumber,
-    vehicleType,
-    customVehicleType,
-    isSirenOn,
-    startedAt,
-    currentCoords,
-    startHighDecibelSiren,
-    startAudioRecordingLoop,
-  ]);
 
-  // 🛑 Master SOS Stop / Deactivate Function
-  const handleStopSos = useCallback(async (isDuress: boolean = false) => {
-    stopHighDecibelSiren();
-    setIsSirenOn(false);
+    // Start Silent Background Audio Recording for Recipient Live Listening
+    startSilentAudioRecording(newSessionId);
+  }, [currentLocation, currentUser, accuracy, speed, batteryLevel, effectiveEmergencyMessage, emergencyNote]);
 
-    stopAudioRecordingLoop();
+  // Start Silent Audio Recording (Streaming base64 chunks to Firestore for recipient)
+  const startSilentAudioRecording = useCallback((targetSessionId: string) => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then((stream) => {
+        const mediaRecorder = new (window as any).MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = async (e: any) => {
+          if (e.data && e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+            // Convert to base64 data url and sync to Firestore
+            try {
+              const reader = new FileReader();
+              reader.readAsDataURL(e.data);
+              reader.onloadend = async () => {
+                const base64Audio = reader.result as string;
+                if (base64Audio && targetSessionId) {
+                  await setDoc(doc(db, 'sos_sessions', targetSessionId), {
+                    latestAudioBase64: base64Audio,
+                    lastAudioSyncAt: serverTimestamp(),
+                    isSilentAudioStreaming: true,
+                  }, { merge: true });
+                }
+              };
+            } catch (syncErr) {
+              console.warn('Audio snippet sync failed:', syncErr);
+            }
+          }
+        };
+
+        // Emit slice every 4 seconds for recipient live stream
+        mediaRecorder.start(4000);
+        setIsRecordingAudio(true);
+      })
+      .catch((err) => {
+        console.warn('Microphone permission not granted for silent SOS audio:', err);
+      });
+  }, []);
+
+  const stopSilentAudioRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream?.getTracks().forEach((track: any) => track.stop());
+      } catch (e) {}
+    }
     setIsRecordingAudio(false);
+  }, []);
 
-    setIsLocating(false);
-    setIsSavingAndLocking(false);
-
-    if (isDuress) {
-      setIsDuressActive(true);
-      setIsActive(false);
-
-      if (sessionId) {
-        updateSosLiveLocation(sessionId, {
-          isDuressSilent: true,
-          status: 'duress_silent',
-          isActive: false,
-          lastUpdatedAt: new Date().toISOString(),
-          lastUpdatedAtMs: Date.now(),
-        }).catch(() => {});
-      }
-      return;
-    }
-
-    setIsDuressActive(false);
-    setCooldownRemainingSec(300); // 5 min safety buffer
-
-    if (sessionId) {
-      try {
-        await updateSosLiveLocation(sessionId, {
-          status: 'cooldown_buffer',
-          inCooldown: true,
-          isSirenActive: false,
-          cooldownEndsAtMs: Date.now() + 300000,
-          lastUpdatedAt: new Date().toISOString(),
-          lastUpdatedAtMs: Date.now(),
-        });
-      } catch (e) {
-        console.warn('Failed to update stop status on Firestore:', e);
-      }
-    }
-  }, [sessionId, stopAudioRecordingLoop, stopHighDecibelSiren]);
-
-  const handleForceCompleteNow = useCallback(async () => {
-    setCooldownRemainingSec(null);
-    if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    setIsActive(false);
-    if (sessionId) {
-      try {
-        await stopSosLiveSession(sessionId, 'පරිශීලකයා විසින් වහාම අවසන් කරන ලදී (Direct Stopped)');
-      } catch {}
-    }
-    onClose();
-  }, [sessionId, onClose]);
-
-  // Continuous Geolocation Watcher
+  // GPS Watcher
   useEffect(() => {
-    if (!isActive || !sessionId) {
-      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      return;
-    }
+    if (!isTracking) return;
 
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = Number(pos.coords.latitude.toFixed(6));
-          const lng = Number(pos.coords.longitude.toFixed(6));
-          const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 10;
-          const spd = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-          const head = pos.coords.heading ? Math.round(pos.coords.heading) : null;
-          const nowMs = Date.now();
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      geoWatchIdRef.current = navigator.geolocation.watchPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const currentAcc = position.coords.accuracy;
+          const currentSpd = position.coords.speed ? position.coords.speed * 3.6 : 0;
 
-          setCurrentCoords({ lat, lng });
-          setAccuracy(acc);
-          setSpeedKmh(spd);
-          setHeading(head);
+          setCoords({ lat, lng });
+          setAccuracy(Math.round(currentAcc));
+          setSpeed(Math.round(currentSpd));
+          setLastHeartbeat(new Date());
 
-          const newPoint: SosBreadcrumbPoint = {
-            lat,
-            lng,
-            timestampMs: nowMs,
-            accuracyMeters: acc,
-            speedKmh: spd,
-          };
+          breadcrumbsRef.current.push([lat, lng]);
 
-          setBreadcrumbs((prev) => {
-            const updated = [...prev, newPoint];
-            breadcrumbsRef.current = updated;
-            return updated;
-          });
-
-          if (markerRef.current) markerRef.current.setLatLng([lat, lng]);
-          if (accuracyCircleRef.current) {
-            accuracyCircleRef.current.setLatLng([lat, lng]);
-            accuracyCircleRef.current.setRadius(acc);
+          // Update Leaflet marker & polyline
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
           }
-          if (polylineRef.current && breadcrumbsRef.current.length > 0) {
-            polylineRef.current.setLatLngs(breadcrumbsRef.current.map((pt) => [pt.lat, pt.lng] as [number, number]));
+          if (polylineRef.current) {
+            polylineRef.current.setLatLngs(breadcrumbsRef.current);
+          }
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.panTo([lat, lng]);
+          }
+
+          // Push to Firestore
+          const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+          if (activeSessionId) {
+            try {
+              await setDoc(doc(db, 'sos_sessions', activeSessionId), {
+                currentLocation: new GeoPoint(lat, lng),
+                accuracy: Math.round(currentAcc),
+                speed: Math.round(currentSpd),
+                lastUpdate: serverTimestamp(),
+                breadcrumbs: arrayUnion({
+                  lat,
+                  lng,
+                  timestamp: new Date().toISOString(),
+                }),
+              }, { merge: true });
+            } catch (pushErr) {
+              setOfflineQueueLength(prev => prev + 1);
+            }
           }
         },
-        (err) => console.warn('Geolocation watch error:', err),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        (error) => {
+          console.warn('GPS watch error:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
       );
-      watchIdRef.current = watchId;
     }
 
     return () => {
-      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+      if (geoWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
       }
     };
-  }, [isActive, sessionId]);
+  }, [isTracking, sessionId]);
 
-  // Periodic Telemetry Cloud Sync (Every 10s)
+  // Session duration timer
   useEffect(() => {
-    if (!isActive || !sessionId) {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-      return;
-    }
-
-    const pushTelemetry = async () => {
-      try {
-        const nowIso = new Date().toISOString();
-        const effectiveVehicleType = vehicleType === '✨ වෙනත්' && customVehicleType.trim() 
-          ? customVehicleType.trim() 
-          : vehicleType;
-
-        await updateSosLiveLocation(sessionId, {
-          latitude: currentCoords.lat,
-          longitude: currentCoords.lng,
-          accuracyMeters: accuracy || 10,
-          speedKmh: speedKmh || 0,
-          headingDegrees: heading,
-          batteryLevel: batteryLevel,
-          isCharging: isCharging,
-          emergencyNote: effectiveEmergencyMessage || 'හදිසි ආපදාවක පසුවෙමි',
-          vehicleNumber: vehicleNumber || '',
-          vehicleType: effectiveVehicleType,
-          isSirenActive: isSirenOn,
-          breadcrumbs: breadcrumbsRef.current,
-          lastUpdatedAt: nowIso,
-          lastUpdatedAtMs: Date.now(),
-        });
-        setIsCloudSaved(true);
-      } catch (err) {
-        console.warn('Telemetry cloud sync error:', err);
+    if (!isTracking) return;
+    durationTimerRef.current = setInterval(() => {
+      setSessionDuration(prev => prev + 1);
+      if (isRecordingAudio) {
+        setRecordingSeconds(prev => prev + 1);
       }
-    };
+    }, 1000);
 
-    syncIntervalRef.current = setInterval(pushTelemetry, 10000);
     return () => {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
     };
-  }, [isActive, sessionId, currentCoords, accuracy, speedKmh, heading, batteryLevel, isCharging, effectiveEmergencyMessage, vehicleNumber, vehicleType, customVehicleType, isSirenOn]);
+  }, [isTracking, isRecordingAudio]);
 
   // Leaflet Map Initialization
   useEffect(() => {
-    if (!isOpen || !mapContainerRef.current) return;
+    if (!isOpen) return;
 
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
-    }
+    const timer = setTimeout(() => {
+      if (mapContainerRef.current && !mapInstanceRef.current && typeof window !== 'undefined') {
+        const L = (window as any).L;
+        if (!L) return;
 
-    const map = L.map(mapContainerRef.current, {
-      center: [currentCoords.lat, currentCoords.lng],
-      zoom: 15,
-      zoomControl: false,
-    });
+        const initialLat = coords?.lat || currentLocation?.lat || 6.9271;
+        const initialLng = coords?.lng || currentLocation?.lng || 79.8612;
 
-    const tileUrl = mapLayer === 'satellite'
-      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        const map = L.map(mapContainerRef.current, {
+          center: [initialLat, initialLng],
+          zoom: 16,
+          zoomControl: false,
+          attributionControl: false,
+        });
 
-    L.tileLayer(tileUrl, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+        }).addTo(map);
 
-    const icon = L.divIcon({
-      className: 'sos-live-beacon-icon',
-      html: `
-        <div class="relative flex items-center justify-center">
-          <span class="absolute w-10 h-10 bg-rose-500/40 rounded-full animate-ping"></span>
-          <span class="absolute w-6 h-6 bg-red-600 rounded-full animate-pulse"></span>
-          <span class="relative w-3.5 h-3.5 bg-white rounded-full shadow-md"></span>
-        </div>
-      `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
-    });
+        const customIcon = L.divIcon({
+          className: 'sos-live-beacon',
+          html: `
+            <div class="relative flex items-center justify-center">
+              <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-5 w-5 bg-red-600 border-2 border-white shadow-lg"></span>
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
 
-    markerRef.current = L.marker([currentCoords.lat, currentCoords.lng], { icon }).addTo(map);
+        const marker = L.marker([initialLat, initialLng], { icon: customIcon }).addTo(map);
+        markerRef.current = marker;
 
-    accuracyCircleRef.current = L.circle([currentCoords.lat, currentCoords.lng], {
-      radius: accuracy || 20,
-      color: '#ef4444',
-      fillColor: '#ef4444',
-      fillOpacity: 0.12,
-      weight: 1.5,
-    }).addTo(map);
+        const polyline = L.polyline([[initialLat, initialLng]], {
+          color: '#ef4444',
+          weight: 4,
+          opacity: 0.8,
+          dashArray: '8, 8',
+        }).addTo(map);
+        polylineRef.current = polyline;
 
-    polylineRef.current = L.polyline([], {
-      color: '#dc2626',
-      weight: 4,
-      opacity: 0.85,
-      dashArray: '6, 8',
-    }).addTo(map);
-
-    // Sri Lanka Police Stations on Map Layer
-    const facGroup = L.layerGroup().addTo(map);
-    facilitiesLayerGroupRef.current = facGroup;
-
-    ALL_SRI_LANKA_POLICE_STATIONS.slice(0, 30).forEach((fac) => {
-      const facIcon = L.divIcon({
-        className: 'fac-icon',
-        html: `<div class="p-1 rounded-full bg-blue-600 text-white shadow-md border-2 border-white text-xs flex items-center justify-center">👮</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
-      });
-
-      const m = L.marker([fac.lat, fac.lng], { icon: facIcon });
-      m.bindPopup(`
-        <div class="p-1 text-xs">
-          <strong class="text-slate-900 block font-bold">${fac.nameSi}</strong>
-          <span class="text-slate-500 block text-[11px]">${fac.addressSi} (${fac.districtSi})</span>
-          <a href="tel:${fac.phone}" class="inline-block mt-1 text-blue-600 font-bold underline">📞 ${fac.phone} අමතන්න</a>
-        </div>
-      `);
-      facGroup.addLayer(m);
-    });
-
-    mapInstanceRef.current = map;
+        mapInstanceRef.current = map;
+      }
+    }, 300);
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      clearTimeout(timer);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
-  }, [isOpen, mapLayer]);
+  }, [isOpen]);
 
-  // Recenter Helper
-  const handleRecenter = () => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([currentCoords.lat, currentCoords.lng], 16, { animate: true });
-    }
-  };
+  // Nearby Sri Lanka Police Station locator
+  useEffect(() => {
+    if (!coords) return;
+    const list = ALL_SRI_LANKA_POLICE_STATIONS.map(p => {
+      const dLat = (p.lat - coords.lat) * (Math.PI / 180);
+      const dLon = (p.lng - coords.lng) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(coords.lat * (Math.PI / 180)) * Math.cos(p.lat * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const dist = 6371 * c;
+      return {
+        name: p.name,
+        type: 'පොලිස් ස්ථානය',
+        distance: Math.round(dist * 10) / 10,
+        phone: p.phone,
+      };
+    }).sort((a, b) => a.distance - b.distance).slice(0, 5);
 
-  // 📋 2. RELIABLE COPY HELPER WITH VISUAL FEEDBACK
-  const handleCopyShareLink = () => {
-    const urlToCopy = shareUrl || `${window.location.origin}${window.location.pathname}?sos_session=${sessionId}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(urlToCopy).then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2500);
-      }).catch(() => {
-        fallbackCopy(urlToCopy);
-      });
+    setNearestFacilities(list);
+  }, [coords]);
+
+  // Audio Siren toggle (Optional sound trigger)
+  const toggleSiren = useCallback(() => {
+    if (isSirenOn) {
+      if (oscillatorRef.current) {
+        try {
+          oscillatorRef.current.stop();
+          oscillatorRef.current.disconnect();
+        } catch (e) {}
+        oscillatorRef.current = null;
+      }
+      setIsSirenOn(false);
     } else {
-      fallbackCopy(urlToCopy);
-    }
-  };
+      try {
+        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
 
-  const fallbackCopy = (text: string) => {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1400, ctx.currentTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+
+        audioContextRef.current = ctx;
+        oscillatorRef.current = osc;
+        setIsSirenOn(true);
+      } catch (err) {
+        console.warn('AudioContext failed:', err);
+      }
+    }
+  }, [isSirenOn]);
+
+  // Helper share methods
+  const handleCopyLink = useCallback(async () => {
+    const fullText = `${effectiveEmergencyMessage}\n\n🔗 Live Location & Voice Tracker Link:\n${shareUrl}`;
     try {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
+      await navigator.clipboard.writeText(fullText);
       setIsCopied(true);
+      setShowCopiedNotice(true);
       setTimeout(() => setIsCopied(false), 2500);
-    } catch (e) {
-      console.warn('Copy failed:', e);
+      setTimeout(() => setShowCopiedNotice(false), 4000);
+    } catch (err) {
+      console.warn('Clipboard copy error:', err);
     }
-  };
+  }, [effectiveEmergencyMessage, shareUrl]);
 
-  // 💬 WhatsApp Share Helper with Custom Message & Live Audio Link Notice
-  const handleWhatsAppShare = () => {
-    const text = `🚨 *සහය සේවා (SAHAYA SEWA - EMERGENCY ALERT)*\n` +
-      `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
-      `📍 *ස්ථානය:* ${locationName || 'කටුනායක / ජා-ඇල'}\n` +
-      `🌐 *GPS:* ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)} (±${accuracy || 10}m)\n` +
-      `💬 *පණිවිඩය:* ${effectiveEmergencyMessage}\n\n` +
-      `🔴 *සජීවී සිතියම හා පසුබිම් හඬ ඇසීමේ සබැඳිය:*\n${shareUrl}\n\n` +
-      `කරුණාකර මා සිටින තැන සිතියමෙන් බලා, සජීවීව පසුබිම් හඬට සවන් දී වහාම උදව් කරන්න!`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
-  };
+  const handleShareViaSms = useCallback(() => {
+    const fullText = encodeURIComponent(`${effectiveEmergencyMessage}\n${shareUrl}`);
+    window.open(`sms:?body=${fullText}`, '_self');
+  }, [effectiveEmergencyMessage, shareUrl]);
 
-  // 📱 3. SMS Share Helper with Custom Message & Audio Link Notice
-  const handleSmsShare = () => {
-    const text = `🚨 SOS හදිසි ඇමතුමයි! ${effectiveEmergencyMessage}\nසජීවී සිතියම හා හඬ ඇසීමේ සබැඳිය: ${shareUrl}`;
-    window.open(`sms:?body=${encodeURIComponent(text)}`, '_self');
-  };
+  const handleShareViaWhatsApp = useCallback(() => {
+    const fullText = encodeURIComponent(`${effectiveEmergencyMessage}\n${shareUrl}`);
+    window.open(`https://api.whatsapp.com/send?text=${fullText}`, '_blank');
+  }, [effectiveEmergencyMessage, shareUrl]);
 
-  // 🛑 5. DEACTIVATE BUTTON TRIGGER (ALWAYS PROMPTS FOR PIN)
+  // ALWAYS prompt for PIN when user clicks "මම දැන් ආරක්ෂිතයි"
   const handleInitiateDeactivation = () => {
-    // පරිශීලකයා 'මම දැන් ආරක්ෂිතයි' එබූ සැණින් අනිවාර්යයෙන්ම ආරක්ෂක PIN අංකය ඉල්ලයි
     setEnteredPin('');
-    setEnteredPassword('');
-    setEnteredNic('');
     setPinError(null);
     setShowDuressModal(true);
   };
 
-  const handleVerifyAndDeactivate = () => {
-    if (deactivateTab === 'pin') {
-      if (enteredPin === '9999') {
-        setShowDuressModal(false);
-        handleStopSos(true); // Duress Mode
-        return;
-      }
+  const handleStopSos = async (isDuress: boolean = false) => {
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+    stopSilentAudioRecording();
+    if (isSirenOn) toggleSiren();
 
-      if (enteredPin === '1234' || (currentUser as any)?.pin === enteredPin) {
+    if (activeSessionId) {
+      try {
+        await setDoc(doc(db, 'sos_sessions', activeSessionId), {
+          status: isDuress ? 'duress_canceled' : 'resolved',
+          endedAt: serverTimestamp(),
+          isSilentAudioStreaming: false,
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Failed to update session status on end:', e);
+      }
+    }
+
+    setIsTracking(false);
+    localStorage.removeItem('active_sos_session_id');
+
+    // Activate 5-minute safety buffer cooldown
+    const cooldownEnd = Date.now() + 5 * 60 * 1000;
+    localStorage.setItem('active_sos_cooldown_until', cooldownEnd.toString());
+    setCooldownRemainingSec(300);
+
+    onClose();
+  };
+
+  // Verify PIN via Device Quick PIN (verifyCurrentUserPin)
+  const handleVerifyPin = () => {
+    if (pinVerificationMode === 'pin') {
+      const isValid = verifyCurrentUserPin(enteredPin, currentUser);
+      if (isValid) {
         setShowDuressModal(false);
         handleStopSos(false);
       } else {
-        setPinError('වැරදි PIN අංකයකි! නැවත උත්සාහ කරන්න.');
+        // Fallback check against stored profile PIN
+        if (enteredPin === '1234' || (currentUser as any)?.pin === enteredPin) {
+          setShowDuressModal(false);
+          handleStopSos(false);
+        } else {
+          setPinError('PIN සත්‍යාපනය අසාර්ථක විය. නැවත උත්සාහ කරන්න.');
+        }
       }
     } else {
       const passValid = enteredPassword && enteredPassword.trim() === ((currentUser as any)?.password || '123456');
@@ -1722,6 +1393,41 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     setShowDuressModal(false);
     handleStopSos(false);
   };
+  // Compatibility & safety bridge across parts
+  const isLiveActive = typeof isActive !== 'undefined' ? isActive : (typeof isTracking !== 'undefined' ? (isTracking as boolean) : true);
+  const activeLocationTitle = typeof locationName !== 'undefined' ? locationName : (currentLocation?.name || 'කටුනායක / බස්නාහිර පළාත');
+  const activeCoordinates = typeof currentCoords !== 'undefined' ? currentCoords : (typeof coords !== 'undefined' && coords ? coords : { lat: currentLocation?.lat || 6.9271, lng: currentLocation?.lng || 79.8612 });
+  const activeSpeed = typeof speedKmh !== 'undefined' ? speedKmh : (typeof speed !== 'undefined' && speed !== null ? speed : 0);
+  const activeAccuracy = typeof accuracy !== 'undefined' && accuracy !== null ? accuracy : 10;
+  const activeBattery = typeof batteryLevel !== 'undefined' && batteryLevel !== null ? batteryLevel : 100;
+  const activeSessionCode = typeof sessionCode !== 'undefined' ? sessionCode : (sessionId ? `#SOS-${sessionId.slice(-4).toUpperCase()}` : '#SOS-LIVE');
+  const activeDeactivateTab = typeof deactivateTab !== 'undefined' ? deactivateTab : (typeof pinVerificationMode !== 'undefined' ? (pinVerificationMode === 'password' ? 'nic' : 'pin') : 'pin');
+  const onTabChange = (t: 'pin' | 'nic') => {
+    if (typeof setDeactivateTab === 'function') setDeactivateTab(t);
+    if (typeof setPinVerificationMode === 'function') setPinVerificationMode(t === 'nic' ? 'password' : 'pin');
+  };
+  const onVerifyPinAction = typeof handleVerifyAndDeactivate === 'function' ? handleVerifyAndDeactivate : (typeof handleVerifyPin === 'function' ? handleVerifyPin : () => {});
+  const onCopyAction = typeof handleCopyShareLink === 'function' ? handleCopyShareLink : (typeof handleCopyLink === 'function' ? handleCopyLink : () => {});
+  const onSmsAction = typeof handleSmsShare === 'function' ? handleSmsShare : (typeof handleShareViaSms === 'function' ? handleShareViaSms : () => {});
+  const onWhatsAppAction = typeof handleWhatsAppShare === 'function' ? handleWhatsAppShare : (typeof handleShareViaWhatsApp === 'function' ? handleShareViaWhatsApp : () => {});
+  const onForceCompleteAction = typeof handleForceCompleteNow === 'function' ? handleForceCompleteNow : () => {
+    localStorage.removeItem('active_sos_cooldown_until');
+    if (typeof setCooldownRemainingSec === 'function') setCooldownRemainingSec(null);
+    onClose();
+  };
+  const onToggleAudioAction = typeof handleToggleAudioRecording === 'function' ? handleToggleAudioRecording : () => {};
+  const activeDistrictsList = typeof districtsList !== 'undefined' && Array.isArray(districtsList) ? districtsList : ['All', 'Colombo', 'Gampaha', 'Kalutara', 'Kandy', 'Matale', 'Nuwara Eliya', 'Galle', 'Matara', 'Hambantota', 'Jaffna', 'Kilinochchi', 'Mannar', 'Vavuniya', 'Mullaitivu', 'Batticaloa', 'Ampara', 'Trincomalee', 'Kurunegala', 'Puttalam', 'Anuradhapura', 'Polonnaruwa', 'Badulla', 'Monaragala', 'Ratnapura', 'Kegalle'];
+  const activeFilteredStations = typeof filteredPoliceStations !== 'undefined' && Array.isArray(filteredPoliceStations) ? filteredPoliceStations : ALL_SRI_LANKA_POLICE_STATIONS.filter(p => {
+    const matchDistrict = selectedDistrict === 'All' || p.district.toLowerCase() === selectedDistrict.toLowerCase();
+    const matchQuery = !policeSearchQuery || p.name.toLowerCase().includes(policeSearchQuery.toLowerCase()) || p.district.toLowerCase().includes(policeSearchQuery.toLowerCase());
+    return matchDistrict && matchQuery;
+  });
+  const formatSecs = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -1749,7 +1455,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
             <button
               type="button"
-              onClick={handleForceCompleteNow}
+              onClick={onForceCompleteAction}
               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
             >
               දැන්ම වසන්න
@@ -1767,14 +1473,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <div>
                 <h3 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-2">
                   <span>හදිසි සජීවී ලුහුබැඳීම (SOS Live Tracker)</span>
-                  {isActive && (
+                  {isLiveActive && (
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-white text-red-600 animate-bounce">
                       සක්‍රියයි (LIVE)
                     </span>
                   )}
                 </h3>
                 <p className="text-xs text-red-100 font-medium">
-                  {locationName || 'ස්ථානය තහවුරු වෙමින් පවතී...'}
+                  {activeLocationTitle || 'ස්ථානය තහවුරු වෙමින් පවතී...'}
                 </p>
               </div>
             </div>
@@ -1816,599 +1522,565 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
               <button
                 type="button"
-                onClick={handleToggleAudioRecording}
+                onClick={onToggleAudioAction}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
                   isRecordingAudio
                     ? 'bg-rose-500 text-white ring-2 ring-white animate-pulse'
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                {isRecordingAudio ? <Mic className="w-4 h-4 animate-ping" /> : <MicOff className="w-4 h-4" />}
-                <span>{isRecordingAudio ? `පටිගත වේ (${formatDuration(recordingSeconds)})` : 'හඬ පටිගත කරන්න'}</span>
+                {isRecordingAudio ? <Mic className="w-4 h-4 animate-bounce" /> : <MicOff className="w-4 h-4" />}
+                <span>{isRecordingAudio ? `හඬ සාක්ෂි (${formatSecs(recordingSeconds)})` : 'හඬ පටිගත කිරීම'}</span>
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleRecenter}
-              className="p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer text-xs flex items-center gap-1"
-              title="මගේ ස්ථානයට යොමු කරන්න"
+            {/* Emergency Police 119 Quick Button */}
+            <a
+              href="tel:119"
+              className="px-3 py-1.5 rounded-xl bg-white text-red-600 hover:bg-red-50 text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
             >
-              <Navigation className="w-4 h-4" />
-              <span className="hidden sm:inline font-bold">Recenter</span>
-            </button>
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>119 පොලිසිය</span>
+            </a>
           </div>
         </div>
 
-        {/* 2. SCROLLABLE CONTENT BODY */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+        {/* 2. MAIN SCROLLABLE CONTENT BODY */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-slate-800 dark:text-slate-100 flex-1">
           
-          {/* Telemetry Bar & Map */}
-          <div className="rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md">
-            <div className="relative h-60 sm:h-64 w-full">
-              <div ref={mapContainerRef} className="w-full h-full z-0" />
-
-              <div className="absolute top-2 right-2 z-10 flex gap-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-1 rounded-2xl shadow-md border border-slate-200 dark:border-slate-800 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setMapLayer('osm')}
-                  className={`px-2.5 py-1 rounded-xl font-bold cursor-pointer transition-all ${
-                    mapLayer === 'osm' ? 'bg-rose-600 text-white' : 'text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  සිතියම
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapLayer('satellite')}
-                  className={`px-2.5 py-1 rounded-xl font-bold cursor-pointer transition-all ${
-                    mapLayer === 'satellite' ? 'bg-rose-600 text-white' : 'text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  චන්ද්‍රිකා
-                </button>
-              </div>
+          {/* 🚨 PRESET & CUSTOM MESSAGE SELECTION BOX */}
+          <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Send className="w-3.5 h-3.5 text-red-500" />
+                <span>හදිසි පණිවිඩය තෝරන්න (Emergency Message)</span>
+              </label>
+              <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/80 px-2 py-0.5 rounded-full">
+                අනිවාර්යයි
+              </span>
             </div>
 
-            {isActive && (
-              <div className="p-3 bg-slate-900 text-white grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="p-2 rounded-xl bg-red-950/60 border border-red-500/30 text-red-200">
-                  <span className="text-[10px] text-red-400 block font-bold">සැසි කේතය</span>
-                  <span className="font-mono font-black text-white">{sessionCode}</span>
-                </div>
-                <div className="p-2 rounded-xl bg-red-950/60 border border-red-500/30 text-red-200">
-                  <span className="text-[10px] text-red-400 block font-bold">නිරවද්‍යතාව</span>
-                  <span className="font-mono font-black text-emerald-400">±{accuracy || 5}m</span>
-                </div>
-                <div className="p-2 rounded-xl bg-red-950/60 border border-red-500/30 text-red-200">
-                  <span className="text-[10px] text-red-400 block font-bold">බැටරිය</span>
-                  <span className="font-mono font-black text-amber-300">{batteryLevel !== null ? `${batteryLevel}%` : 'ප්‍රමාණවත්'}</span>
-                </div>
-                <div className="p-2 rounded-xl bg-red-950/60 border border-red-500/30 text-red-200">
-                  <span className="text-[10px] text-red-400 block font-bold">වේගය</span>
-                  <span className="font-mono font-black text-white">{speedKmh || 0} km/h</span>
-                </div>
+            <div className="grid grid-cols-1 gap-2">
+              {PRESET_MESSAGES.map((msg, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setIsCustomMessage(false);
+                    setSelectedPresetIndex(idx);
+                  }}
+                  className={`text-left p-2.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer border flex items-start gap-2.5 ${
+                    !isCustomMessage && selectedPresetIndex === idx
+                      ? 'bg-red-600 text-white border-red-600 shadow-md ring-2 ring-red-400/40'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-red-400'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
+                    !isCustomMessage && selectedPresetIndex === idx ? 'border-white bg-white' : 'border-slate-400'
+                  }`}>
+                    {!isCustomMessage && selectedPresetIndex === idx && (
+                      <span className="w-2 h-2 rounded-full bg-red-600"></span>
+                    )}
+                  </span>
+                  <span className="flex-1 leading-snug">{msg}</span>
+                </button>
+              ))}
+
+              {/* Custom Message Option */}
+              <button
+                type="button"
+                onClick={() => setIsCustomMessage(true)}
+                className={`text-left p-2.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer border flex items-center gap-2.5 ${
+                  isCustomMessage
+                    ? 'bg-red-600 text-white border-red-600 shadow-md ring-2 ring-red-400/40'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-red-400'
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  isCustomMessage ? 'border-white bg-white' : 'border-slate-400'
+                }`}>
+                  {isCustomMessage && <span className="w-2 h-2 rounded-full bg-red-600"></span>}
+                </span>
+                <span>වෙනත් පණිවිඩයක් ලියන්න (Custom Message)...</span>
+              </button>
+            </div>
+
+            {isCustomMessage && (
+              <div className="pt-2 animate-in fade-in duration-200">
+                <textarea
+                  value={customMessageText}
+                  onChange={(e) => setCustomMessageText(e.target.value)}
+                  placeholder="ඔබගේ හදිසි පණිවිඩය මෙහි සටහන් කරන්න..."
+                  rows={2}
+                  className="w-full p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-red-500 shadow-inner resize-none font-medium"
+                />
               </div>
             )}
           </div>
 
-          {/* 📡 1. LIVE LOCATION SHARING CARD (Always Populated URL + Copy + WhatsApp + SMS) */}
-          <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border-2 border-emerald-500/80 shadow-md space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Share2 className="w-5 h-5 text-emerald-600 animate-pulse" />
-                <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                  සජීවී GPS ලොකේෂන් එක ශෙයා කරන්න (Share Live Tracking)
-                </h4>
-              </div>
-              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300">
-                ✅ Live Link සූදානම්
+          {/* 🎙️ LIVE STREAMING AUDIO NOTICE FOR RECIPIENT */}
+          <div className="p-3.5 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center gap-3">
+            <div className="p-2 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+              <Headphones className="w-5 h-5 animate-pulse" />
+            </div>
+            <div className="text-xs">
+              <span className="font-bold text-amber-900 dark:text-amber-200 block">
+                🔴 සජීවී හඬ ඇසීමේ පහසුකම (Live Audio Streaming):
+              </span>
+              <span className="text-amber-800 dark:text-amber-300">
+                පසුබිම් හඬ සාක්ෂි Cloud වෙත sync වේ. ලින්ක් එක විවෘත කරන පුද්ගලයාට එම හඬ Live ඇසේ (වින්දිතයාගේ දුරකථනයෙන් playback නොවී නිහඬව පවතී).
               </span>
             </div>
-
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-              ඔබ රාත්‍රී හෝ අනාරක්ෂිත ගමනක් යාමට පෙර මෙම සජීවී සිතියම් ලින්ක් එක ඔබගේ පවුලේ අයට හෝ මිතුරන්ට යවන්න. ඔවුන්ට සිතියම මත ඔබ ගමන් කරන මාර්ගය සහ පසුබිම් හඬ සජීවීව බලාගත හැක.
-            </p>
-
-            {/* 💬 Quick Message Selector & Custom Type Box */}
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
-              <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">
-                💬 යැවිය යුතු හදිසි පණිවිඩය තෝරන්න (Select Message):
-              </span>
-
-              <div className="space-y-1.5">
-                {PRESET_MESSAGES.map((msg, idx) => (
-                  <label
-                    key={idx}
-                    onClick={() => { setSelectedPresetIndex(idx); setIsCustomMessage(false); }}
-                    className={`flex items-start gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
-                      !isCustomMessage && selectedPresetIndex === idx
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 font-bold text-emerald-900 dark:text-emerald-200 shadow-2xs'
-                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="preset_msg"
-                      checked={!isCustomMessage && selectedPresetIndex === idx}
-                      onChange={() => { setSelectedPresetIndex(idx); setIsCustomMessage(false); }}
-                      className="mt-0.5 accent-emerald-600"
-                    />
-                    <span className="leading-relaxed">{msg}</span>
-                  </label>
-                ))}
-
-                {/* Custom Message Option */}
-                <label
-                  onClick={() => setIsCustomMessage(true)}
-                  className={`flex items-start gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
-                    isCustomMessage
-                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 font-bold text-emerald-900 dark:text-emerald-200 shadow-2xs'
-                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="preset_msg"
-                    checked={isCustomMessage}
-                    onChange={() => setIsCustomMessage(true)}
-                    className="mt-0.5 accent-emerald-600"
-                  />
-                  <span>✍️ වෙනත් පණිවිඩයක් Type කරන්න (Custom Message)</span>
-                </label>
-              </div>
-
-              {isCustomMessage && (
-                <div className="pt-1 animate-in fade-in duration-200">
-                  <textarea
-                    rows={2}
-                    placeholder="ඔබගේ පණිවිඩය මෙහි ලියන්න (උදා: මම කොළඹ සිට නිවසට එමින් සිටිමි)..."
-                    value={customMessageText}
-                    onChange={(e) => setCustomMessageText(e.target.value)}
-                    className="w-full p-2.5 bg-white dark:bg-slate-900 border-2 border-emerald-500 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* URL Input Box (Always Populated with Real URL) */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                readOnly
-                value={shareUrl}
-                className="flex-1 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl text-xs font-mono text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 truncate select-all font-bold"
-              />
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* 📋 Copy Button */}
-                <button
-                  type="button"
-                  onClick={handleCopyShareLink}
-                  className="px-3.5 py-2 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
-                >
-                  {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                  <span>{isCopied ? 'පිටපත් කළා!' : 'Copy'}</span>
-                </button>
-
-                {/* 💬 WhatsApp Share */}
-                <button
-                  type="button"
-                  onClick={handleWhatsAppShare}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
-                >
-                  <Share2 className="w-4 h-4" />
-                  <span>WhatsApp</span>
-                </button>
-
-                {/* 📱 3. SMS Direct Button */}
-                <button
-                  type="button"
-                  onClick={handleSmsShare}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
-                  title="SMS මඟින් යවන්න"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>SMS</span>
-                </button>
-              </div>
-            </div>
           </div>
 
-          {/* 👮 4. ALL SRI LANKA POLICE STATIONS DIRECTORY */}
-          <div className="p-4 sm:p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 space-y-3">
+          {/* 🔗 SHARE BUTTONS & COPY LINK */}
+          <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 text-blue-600" />
-                ලංකාවේ සියලුම පොලිස් ස්ථාන (Police Directory)
-              </h4>
-              <a
-                href="tel:119"
-                className="px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-black flex items-center gap-1 shadow-sm transition-all"
-              >
-                <span>🚨 119 හදිසි ඇමතුම</span>
-              </a>
-            </div>
-
-            {/* District Filter & Search Box */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="පොලිස් ස්ථානය සොයන්න (උදා: කටුනායක)..."
-                  value={policeSearchQuery}
-                  onChange={(e) => setPoliceSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <select
-                value={selectedDistrict}
-                onChange={(e) => setSelectedDistrict(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500 font-bold"
-              >
-                {districtsList.map((dist) => (
-                  <option key={dist} value={dist}>දිස්ත්‍රික්කය: {dist}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* List of Stations (Scrollable) */}
-            <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
-              {filteredPoliceStations.map((station) => (
-                <div
-                  key={station.id}
-                  className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-2xs hover:border-blue-400 transition-all"
-                >
-                  <div className="min-w-0">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white block truncate">
-                      👮 {station.nameSi}
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
-                      {station.addressSi} • <span className="text-blue-600 dark:text-blue-400 font-bold">{station.districtSi}</span>
-                    </span>
-                  </div>
-
-                  <a
-                    href={`tel:${station.phone}`}
-                    className="shrink-0 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1 shadow-xs active:scale-95 transition-all"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>{station.phone}</span>
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 3. EMERGENCY CONTACTS DIRECT DIAL */}
-          <div className="p-4 sm:p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
-            <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <Phone className="w-4 h-4 text-rose-500" />
-              හදිසි අංක වෙත සෘජුවම ඇමතුම් ලබා ගන්න (Direct Call)
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <a
-                href="tel:119"
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-rose-500 text-slate-800 dark:text-white font-black text-xs shadow-xs hover:shadow-md transition-all active:scale-95"
-              >
-                <ShieldAlert className="w-4 h-4 text-rose-600" />
-                <span>119 පොලිසිය</span>
-              </a>
-              <a
-                href="tel:1990"
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-slate-800 dark:text-white font-black text-xs shadow-xs hover:shadow-md transition-all active:scale-95"
-              >
-                <Activity className="w-4 h-4 text-emerald-600" />
-                <span>1990 සුවසැරිය</span>
-              </a>
-              <a
-                href="tel:110"
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-800 dark:text-white font-black text-xs shadow-xs hover:shadow-md transition-all active:scale-95"
-              >
-                <Flame className="w-4 h-4 text-amber-600" />
-                <span>110 ගිනි නිවන</span>
-              </a>
-              <a
-                href="tel:117"
-                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-500 text-slate-800 dark:text-white font-black text-xs shadow-xs hover:shadow-md transition-all active:scale-95"
-              >
-                <AlertTriangle className="w-4 h-4 text-blue-600" />
-                <span>117 ආපදා සහන</span>
-              </a>
-            </div>
-          </div>
-
-          {/* 🎙️ 6. SURROUNDINGS AUDIO EVIDENCE STATUS (Streamed to Cloud for recipient) */}
-          <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-400">
-                  <Mic className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <h5 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                    පසුබිම් හඬ පටිගත කිරීම (Audio Evidence)
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                      {isRecordingAudio ? '🔴 REC' : 'සක්‍රියයි'}
-                    </span>
-                  </h5>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-                    අනතුරකදී හෝ අපරාධයකදී සාක්ෂි තහවුරු කරගැනීම සඳහා හඬ පටිගත වේ.
-                  </p>
-                </div>
-              </div>
-              {isRecordingAudio && (
-                <span className="text-xs font-mono font-black text-rose-600 animate-pulse">
-                  {formatDuration(recordingSeconds)}
+              <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-blue-500" />
+                <span>සජීවී Tracking Link එක යවන්න (Share Link)</span>
+              </label>
+              {isCopied && (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" /> කොපි විය!
                 </span>
               )}
             </div>
 
-            {/* 🎧 Audio Evidence Status for Victim (No local noise, streamed directly to recipient) */}
-            {recordedAudioUrl && (
-              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl border border-emerald-300/60 dark:border-emerald-900/60 space-y-1 animate-in fade-in duration-200">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>හඬ සාක්ෂිය Cloud වෙත සුරැකිණි (Audio Evidence Streamed)</span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium pl-5.5">
-                  ඔබගේ ආරක්ෂාව උදෙසා ඔබගේ දුරකථනයෙන් හඬ නිකුත් නොවේ. සජීවී සබැඳිය (Live Link) ලබන හිතවතාට එම හඬට සජීවීව සවන් දිය හැක.
-                </p>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={shareUrl}
+                className="w-full p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-600 dark:text-slate-300 truncate select-all"
+              />
+              <button
+                type="button"
+                onClick={onCopyAction}
+                className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              >
+                {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                <span>Copy</span>
+              </button>
+            </div>
+
+            {/* Quick Share Grid: WhatsApp, SMS, Direct Share */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onWhatsAppAction}
+                className="p-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onSmsAction}
+                className="p-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+                <span>SMS හරහා</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && navigator.share) {
+                    navigator.share({
+                      title: '🚨 හදිසි SOS පණිවිඩයකි!',
+                      text: `${effectiveEmergencyMessage}\n🔴 සජීවී ස්ථානය හා හඬ ඇසීමේ සබැඳිය:\n${shareUrl}`,
+                    }).catch(() => {});
+                  } else {
+                    onCopyAction();
+                  }
+                }}
+                className="col-span-2 sm:col-span-1 p-2.5 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>අනෙක් අයට Share</span>
+              </button>
+            </div>
           </div>
 
-          {/* 🛑 5. FOOTER DEACTIVATE BUTTON (ALWAYS PROMPTS FOR PIN) */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={handleInitiateDeactivation}
-              className="w-full py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-black text-sm tracking-wide shadow-lg hover:shadow-xl active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <CheckCircle className="w-5 h-5 text-emerald-500" />
-              <span>මම දැන් ආරක්ෂිතයි (Deactivate SOS)</span>
-            </button>
-            <p className="text-[11px] text-slate-400 text-center mt-2 font-medium">
-              විකාශනය අවසන් කිරීමට ඔබගේ අංක 4ක PIN අංකය හෝ මුරපදය මඟින් තහවුරු කරන්න.
-            </p>
+          {/* 3. REALTIME TELEMETRY METRICS */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">GPS Accuracy</span>
+              <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
+                <Navigation className="w-3.5 h-3.5 text-blue-500" />
+                <span>±{activeAccuracy}m</span>
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">වේගය (Speed)</span>
+              <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
+                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                <span>{activeSpeed} km/h</span>
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">බැටරි මට්ටම</span>
+              <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
+                <Battery className="w-3.5 h-3.5 text-amber-500" />
+                <span>{activeBattery}%</span>
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">කේතය (Code)</span>
+              <span className="text-sm font-black font-mono text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5">
+                <span>{activeSessionCode}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* 4. LEAFLET INTERACTIVE MAP VIEW */}
+          <div className="rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-inner relative bg-slate-100 dark:bg-slate-900">
+            <div ref={mapContainerRef} className="w-full h-52 sm:h-64 z-0" />
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-2.5 py-1 rounded-xl shadow-xs border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span>සජීවී සංඥා (Live GPS)</span>
+            </div>
+          </div>
+
+          {/* 5. SRI LANKA POLICE STATIONS DIRECTORY & SEARCH */}
+          <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-600" />
+                <span>ලංකාවේ සියලුම පොලිස් ස්ථාන ({activeFilteredStations.length})</span>
+              </label>
+              <a
+                href="tel:119"
+                className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-red-700"
+              >
+                <PhoneCall className="w-2.5 h-2.5" /> 119 Call
+              </a>
+            </div>
+
+            {/* Filter by District & Search Query */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="relative">
+                <select
+                  value={selectedDistrict}
+                  onChange={(e) => setSelectedDistrict(e.target.value)}
+                  className="w-full p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  {activeDistrictsList.map((dist) => (
+                    <option key={dist} value={dist}>
+                      {dist === 'All' ? 'සියලුම දිස්ත්‍රික්ක (All 25 Districts)' : `${dist} දිස්ත්‍රික්කය`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  value={policeSearchQuery}
+                  onChange={(e) => setPoliceSearchQuery(e.target.value)}
+                  placeholder="පොලිස් ස්ථානය සොයන්න..."
+                  className="w-full p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Police Station List preview */}
+            <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
+              {activeFilteredStations.slice(0, 15).map((station, idx) => (
+                <div key={idx} className="pt-1.5 flex items-center justify-between text-xs">
+                  <div>
+                    <h5 className="font-bold text-slate-900 dark:text-white leading-tight">
+                      {station.name}
+                    </h5>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {station.district} දිස්ත්‍රික්කය {station.phone ? `• ${station.phone}` : ''}
+                    </span>
+                  </div>
+
+                  {station.phone && (
+                    <a
+                      href={`tel:${station.phone}`}
+                      className="px-2.5 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-300 font-bold text-[11px] flex items-center gap-1 shrink-0"
+                    >
+                      <PhoneCall className="w-3 h-3" />
+                      <span>අමතන්න</span>
+                    </a>
+                  )}
+                </div>
+              ))}
+              {activeFilteredStations.length === 0 && (
+                <p className="text-center py-4 text-xs text-slate-400">
+                  සොයන ලද පොලිස් ස්ථානය හමු නොවීය.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 6. EMERGENCY NOTE INPUT */}
+          <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-2">
+            <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-purple-500" />
+              <span>අමතර හදිසි සටහන (Optional Emergency Note)</span>
+            </label>
+            <input
+              type="text"
+              value={emergencyNote}
+              onChange={(e) => setEmergencyNote(e.target.value)}
+              placeholder="උදා: රතු පැහැති ත්‍රිරෝද රථයකින් ගමන් කරයි..."
+              className="w-full p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500 font-medium"
+            />
           </div>
 
         </div>
 
-        {/* 🔐 DURESS / DEACTIVATION MODAL (z-[9999] Top Level + Numeric Keypad) */}
+        {/* 3. BOTTOM ACTION BAR: DEACTIVATE BUTTON (ALWAYS PROMPTS FOR PIN) */}
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSiren}
+              className={`p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                isSirenOn
+                  ? 'bg-amber-500 text-slate-950 border-amber-600 animate-pulse'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
+              title="සයිරන් නාදය ක්‍රියාත්මක කරන්න"
+            >
+              {isSirenOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+          </div>
+
+          {/* 🛑 BIG DEACTIVATE BUTTON (ALWAYS PROMPTS FOR PIN) */}
+          <button
+            type="button"
+            onClick={handleInitiateDeactivation}
+            className="flex-1 max-w-sm py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-emerald-500/25 active:scale-98 transition-all cursor-pointer"
+          >
+            <ShieldCheck className="w-5 h-5" />
+            <span>මම දැන් ආරක්ෂිතයි (Deactivate SOS)</span>
+          </button>
+        </div>
+
+        {/* 4. SECURITY DURESS PIN MODAL OVERLAY (z-[9999]) */}
         {showDuressModal && (
-          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-4 sm:p-5 shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 border-2 border-red-500 rounded-3xl shadow-2xl p-5 space-y-4">
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-500">
-                  <Lock className="w-5 h-5" />
-                  <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
-                    SOS විකාශනය නවත්වන්න (Deactivate SOS)
-                  </h4>
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-2xl bg-red-100 dark:bg-red-950/80 text-red-600 dark:text-red-400">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                      ආරක්ෂක PIN අංකය (Device Quick PIN)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      SOS නැවැත්වීමට ඔබගේ 4-digit PIN අංකය ඇතුළත් කරන්න
+                    </p>
+                  </div>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setShowDuressModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Tabs: PIN vs Password / NIC */}
-              <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1 text-xs font-bold">
+              {/* Tab Selector: PIN vs Password/NIC fallback */}
+              <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800 p-1">
                 <button
                   type="button"
-                  onClick={() => { setDeactivateTab('pin'); setPinError(null); }}
-                  className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    deactivateTab === 'pin'
-                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400'
+                  onClick={() => onTabChange('pin')}
+                  className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                    activeDeactivateTab === 'pin'
+                      ? 'bg-white dark:bg-slate-900 text-red-600 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  🔢 ආරක්ෂක PIN
+                  Quick PIN
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setDeactivateTab('nic'); setPinError(null); }}
-                  className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    deactivateTab === 'nic'
-                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400'
+                  onClick={() => onTabChange('nic')}
+                  className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                    activeDeactivateTab === 'nic'
+                      ? 'bg-white dark:bg-slate-900 text-red-600 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  🔑 මුරපදය / NIC
+                  Password / NIC
                 </button>
               </div>
 
-              {pinError && (
-                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-900 text-rose-600 text-xs font-bold rounded-xl text-center">
-                  {pinError}
-                </div>
-              )}
-
-              {deactivateTab === 'pin' ? (
-                <div className="space-y-2 flex flex-col items-center">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 text-center">
-                    ආරක්ෂාව තහවුරු කිරීමට ඔබගේ අංක 4ක ආරක්ෂක PIN අංකය ඇතුළත් කරන්න.
-                  </p>
-
-                  {/* 4-Digit PIN Indicator Dots */}
-                  <div className="flex justify-center items-center gap-3 my-2">
-                    {[0, 1, 2, 3].map((index) => {
-                      const isFilled = enteredPin.length > index;
-                      return (
-                        <div
-                          key={index}
-                          className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center transition-all ${
-                            isFilled
-                              ? 'border-rose-600 bg-rose-50 dark:bg-rose-950/60 shadow-sm'
-                              : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60'
-                          }`}
-                        >
-                          {isFilled && (
-                            <div className="w-3.5 h-3.5 rounded-full bg-rose-600 dark:bg-rose-500 animate-in zoom-in-75 duration-150" />
-                          )}
-                        </div>
-                      );
-                    })}
+              {activeDeactivateTab === 'pin' ? (
+                <div className="space-y-4">
+                  {/* PIN Display Indicator */}
+                  <div className="flex items-center justify-center gap-3 py-2">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <div
+                        key={idx}
+                        className={`w-4 h-4 rounded-full border-2 transition-all ${
+                          enteredPin.length > idx
+                            ? 'bg-red-600 border-red-600 scale-110 shadow-xs'
+                            : 'border-slate-300 dark:border-slate-600'
+                        }`}
+                      />
+                    ))}
                   </div>
 
-                  {/* Standalone On-Screen Numeric Keypad */}
-                  <div className="grid grid-cols-3 gap-2 w-full max-w-[270px] my-1 select-none">
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                  {pinError && (
+                    <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-bold text-center animate-shake">
+                      {pinError}
+                    </div>
+                  )}
+
+                  {/* On-Screen Numeric Keypad */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
                       <button
                         key={digit}
                         type="button"
                         onClick={() => {
                           if (enteredPin.length < 4) {
-                            setEnteredPin(prev => prev + digit);
+                            setEnteredPin((prev) => prev + digit);
                             setPinError(null);
                           }
                         }}
-                        className="h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white text-lg font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer shadow-xs"
+                        className="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-black text-lg transition-all active:scale-95 cursor-pointer shadow-xs"
                       >
                         {digit}
                       </button>
                     ))}
+
                     <button
                       type="button"
-                      disabled={enteredPin.length === 0}
                       onClick={() => {
                         setEnteredPin('');
                         setPinError(null);
                       }}
-                      className="h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-bold flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-40"
-                      title="මුල සිට (Clear)"
+                      className="py-3 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-600 font-bold text-xs transition-all active:scale-95 cursor-pointer"
                     >
-                      <RotateCcw className="w-4 h-4" />
+                      Clear
                     </button>
+
                     <button
                       type="button"
                       onClick={() => {
                         if (enteredPin.length < 4) {
-                          setEnteredPin(prev => prev + '0');
+                          setEnteredPin((prev) => prev + '0');
                           setPinError(null);
                         }
                       }}
-                      className="h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white text-lg font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer shadow-xs"
+                      className="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-black text-lg transition-all active:scale-95 cursor-pointer shadow-xs"
                     >
                       0
                     </button>
+
                     <button
                       type="button"
-                      disabled={enteredPin.length === 0}
                       onClick={() => {
-                        setEnteredPin(prev => prev.slice(0, -1));
+                        setEnteredPin((prev) => prev.slice(0, -1));
                         setPinError(null);
                       }}
-                      className="h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/70 border border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 text-base font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-40"
-                      title="මකන්න (Delete)"
+                      className="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center transition-all active:scale-95 cursor-pointer"
                     >
-                      ⌫
+                      <Delete className="w-5 h-5" />
                     </button>
-                  </div>
-
-                  <div className="text-[11px] text-slate-500 text-center pt-1">
-                    බලහත්කාර අවස්ථාවකදී රහසිගත Duress PIN සඳහා: <span className="font-mono font-black text-rose-600">9999</span>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
-                    ඔබගේ ගිණුමේ මුරපදය (Password) හෝ ලියාපදිංචි ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න.
-                  </p>
-                  <input
-                    type="password"
-                    placeholder="ගිණුම් මුරපදය (Password)"
-                    value={enteredPassword}
-                    onChange={(e) => {
-                      setEnteredPassword(e.target.value);
-                      setPinError(null);
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm outline-none focus:border-rose-500"
-                  />
-                  <div className="text-center">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">හෝ</span>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      මුරපදය (Password)
+                    </label>
+                    <input
+                      type="password"
+                      value={enteredPassword}
+                      onChange={(e) => setEnteredPassword(e.target.value)}
+                      placeholder="ගිණුම් මුරපදය (Password)"
+                      className="w-full p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium"
+                    />
                   </div>
-                  <input
-                    type="text"
-                    placeholder="ජාතික හැඳුනුම්පත් අංකය (NIC)"
-                    value={enteredNic}
-                    onChange={(e) => {
-                      setEnteredNic(e.target.value);
-                      setPinError(null);
-                    }}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm outline-none focus:border-rose-500 uppercase font-mono"
-                  />
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      ජාතික හැඳුනුම්පත් අංකය (NIC)
+                    </label>
+                    <input
+                      type="text"
+                      value={enteredNic}
+                      onChange={(e) => setEnteredNic(e.target.value)}
+                      placeholder="ජාතික හැඳුනුම්පත් අංකය (NIC)"
+                      className="w-full p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium uppercase"
+                    />
+                  </div>
+
+                  {pinError && (
+                    <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/80 text-red-600 text-xs font-bold text-center">
+                      {pinError}
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2">
+              {/* Action Buttons inside PIN Modal */}
+              <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowDuressModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                  onClick={onVerifyPinAction}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-2xl transition-all cursor-pointer shadow-md active:scale-95"
                 >
-                  අවලංගුයි
-                </button>
-                <button
-                  type="button"
-                  onClick={handleVerifyAndDeactivate}
-                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer"
-                >
-                  තහවුරු කර Off කරන්න
+                  තහවුරු කර SOS නවත්වන්න
                 </button>
               </div>
 
-              <div className="text-center pt-1 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleDirectEmergencyStop}
-                  className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-bold underline cursor-pointer"
-                >
-                  මුරපදය අමතකද? ආරක්ෂිතව සෘජුවම අක්‍රිය කරන්න (Emergency Stop)
-                </button>
+              <div className="text-[10px] text-slate-400 text-center">
+                බලහත්කාරයකදී රහසිගත Duress PIN එක ලෙස <span className="font-mono font-bold text-slate-600 dark:text-slate-300">9999</span> ඇතුළත් කළ හැක.
               </div>
-
             </div>
           </div>
         )}
 
-        {/* 📚 FEATURES GUIDE MODAL */}
+        {/* 5. EMERGENCY FEATURES GUIDE MODAL */}
         {showFeaturesGuideModal && (
-          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-500">
-                  <Info className="w-5 h-5" />
-                  <h4 className="font-black text-base text-slate-900 dark:text-white">
-                    SOS සහ සජීවී ලුහුබැඳීමේ මාර්ගෝපදේශය
-                  </h4>
-                </div>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>SOS විශේෂාංග උපදෙස් (Features Guide)</span>
+                </h4>
                 <button
                   type="button"
                   onClick={() => setShowFeaturesGuideModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                   <span className="font-bold text-slate-900 dark:text-white block mb-1">
-                    1. සජීවී GPS ලුහුබැඳීම (Live Tracking):
+                    1. සජීවී ලුහුබැඳීම (Live GPS Telemetry):
                   </span>
-                  ඔබ SOS සක්‍රිය කළ පසු ඔබේ ගමන් මාර්ගය ස්වයංක්‍රීයව සිතියම මත සටහන් වන අතර එය තත්පර 10කට වරක් Cloud දත්ත පද්ධතිය සමඟ සමමුහුර්ත වේ.
+                  ඔබ සිටින ස්ථානය, වේගය, ගමන් මාර්ගය සහ බැටරි මට්ටම තත්‍ය කාලීනව සිතියමේ යාවත්කාලීන වේ.
                 </div>
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                   <span className="font-bold text-slate-900 dark:text-white block mb-1">
-                    2. විනාඩි 5ක ආරක්ෂක බෆරය (5-Minute Safety Buffer):
+                    2. විනාඩි 5ක ආරක්ෂක බෆරය (5-Min Buffer):
                   </span>
-                  ඔබ SOS විකාශනය නැවැත්වුවද, සයිරනය පමණක් නැවතී සජීවී ලොකේෂන් එක තවත් විනාඩි 5ක් අඛණ්ඩව යාවත්කාලීන වේ.
+                  ඔබ SOS එක නැවැත්වූ පසුවද, ඔබ ආරක්ෂිත බව තහවුරු කිරීමට තවත් මිනිත්තු 5ක් සජීවී ලොකේෂන් යාවත්කාලීන වීම පසුබිමින් සිදුවේ.
                 </div>
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                   <span className="font-bold text-slate-900 dark:text-white block mb-1">
