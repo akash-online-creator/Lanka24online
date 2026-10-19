@@ -522,8 +522,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     };
 
     setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
-    if (propOnAddPost) {
-      propOnAddPost(fullPost);
+    if (typeof onAddPost === 'function') {
+      onAddPost(fullPost);
     }
 
     try {
@@ -1835,4 +1835,3 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 };
 
 export default UserDashboard;
-
