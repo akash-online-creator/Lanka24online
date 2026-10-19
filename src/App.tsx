@@ -274,9 +274,15 @@ export const App: React.FC = () => {
     }
   }, [users, currentUser, activeView]);
 
-  // 🛡️ Ensure Device Quick PIN is mandatory upon login / session restore
+  // 🛡️ Ensure Device Quick PIN is mandatory upon login / session restore (EXCEPT for Demo users)
   useEffect(() => {
     if (currentUser) {
+      // 🚀 Demo Account එක සඳහා PIN අංකය අවශ්‍ය නැත
+      if (currentUser.id === 'demo_user' || currentUser.userId === 'demo_user' || currentUser.isDemo || currentUser.nic === '000000000V') {
+        setIsPinSetupRequired(false);
+        return;
+      }
+
       const storedPin = getStoredDevicePin();
       const currentMatchedId = currentUser.id || currentUser.userId || currentUser.nicNumber || currentUser.nic;
       const currentNic = currentUser.nic || currentUser.nicNumber;
@@ -349,12 +355,15 @@ export const App: React.FC = () => {
         console.warn(e);
       }
 
-      // Check if 4-digit device PIN is already configured for this device and user
-      const storedPin = getStoredDevicePin();
-      const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
-      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
-        setIsPinSetupRequired(true);
-        return;
+      // Check if 4-digit device PIN is already configured (Skip for Demo users)
+      const isDemoUser = matched.id === 'demo_user' || matched.userId === 'demo_user' || matched.isDemo || matched.nic === '000000000V';
+      if (!isDemoUser) {
+        const storedPin = getStoredDevicePin();
+        const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
+        if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
+          setIsPinSetupRequired(true);
+          return;
+        }
       }
 
       if (matched.role === 'admin' || matched.role === 'super_admin') {
@@ -386,9 +395,9 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Demo User Direct Login
+  // Demo User Direct Login (🚀 PIN අංකයක් අවශ්‍ය නැත)
   const handleUserDemoLogin = useCallback(() => {
-    const demoUser = users.find((u) => u.id === 'demo_user') || {
+    const baseDemo = users.find((u) => u.id === 'demo_user') || {
       id: 'demo_user',
       userId: 'demo_user',
       name: 'නරඹන්නා (Demo User)',
@@ -400,7 +409,19 @@ export const App: React.FC = () => {
       createdAt: new Date().toISOString(),
       credits: 50,
     };
+
+    const demoUser: User = {
+      ...baseDemo,
+      isDemo: true, // 🚀 Demo පරිශීලකයෙකු ලෙස සලකුණු කිරීම
+    };
+
     setCurrentUser(demoUser);
+    setIsPinSetupRequired(false); // 🚀 Demo Account එක සඳහා PIN අංකය කිසිසේත්ම අවශ්‍ය නොවේ
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(demoUser));
+    } catch (e) {
+      console.warn(e);
+    }
     setActiveView('dashboard');
   }, [users]);
 
@@ -639,7 +660,6 @@ export const App: React.FC = () => {
           <ChangePasswordModal
             isOpen={true}
             onClose={() => {
-              // නව මුරපදය නොදා Dialog එක වසා දැමුවහොත් dashboard එකට ඇතුල් වීමට නොදී logout කරවයි
               handleLogout();
             }}
             onSavePassword={handleSaveNewPassword}
@@ -650,8 +670,8 @@ export const App: React.FC = () => {
         )}
       </div>
 
-      {/* 🔢 Mandatory Device PIN Setup Modal after first-time login */}
-      {isPinSetupRequired && currentUser && (
+      {/* 🔢 Mandatory Device PIN Setup Modal (Demo පරිශීලකයින් හැර සාමාන්‍ය පරිශීලකයින්ට පමණක් Login වීමේදී පෙන්වයි) */}
+      {isPinSetupRequired && currentUser && !currentUser.isDemo && currentUser.id !== 'demo_user' && (
         <DevicePinSetupModal
           isOpen={isPinSetupRequired}
           onClose={() => {}} // Mandatory setup on first login
