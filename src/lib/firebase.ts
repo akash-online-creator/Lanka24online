@@ -9,6 +9,7 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
   onSnapshot,
   addDoc,
   setDoc,
@@ -217,6 +218,7 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
     console.warn('subscribeToUsers error:', err);
   });
 }
+
 // ==============================================================
 // 🆘 HELP POSTS OPERATIONS
 // ==============================================================
@@ -231,6 +233,53 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
   });
 }
 
+export interface PaginatedPostsResult {
+  posts: any[];
+  lastDoc: any | null;
+  hasMore: boolean;
+}
+
+/**
+ * 📢 Firestore මගින් දැන්වීම් 4 බැගින් (batch load) අලුත්ම ඒවා උඩින්ම එන සේ ලබා ගැනීම
+ */
+export async function fetchHelpPostsPaginated(
+  lastDoc: any | null = null,
+  pageSize: number = 4
+): Promise<PaginatedPostsResult> {
+  try {
+    const colRef = collection(db, POSTS_COLLECTION);
+    
+    // createdAt මගින් අලුත්ම දැන්වීම් මුලින්ම (desc) පෙළගැස්වීම
+    let q = query(
+      colRef,
+      orderBy('createdAt', 'desc'),
+      limit(pageSize)
+    );
+
+    if (lastDoc) {
+      q = query(
+        colRef,
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDoc),
+        limit(pageSize)
+      );
+    }
+
+    const snap = await getDocs(q);
+    const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const newLastDoc = snap.docs[snap.docs.length - 1] || null;
+    const hasMore = snap.docs.length === pageSize;
+
+    return {
+      posts,
+      lastDoc: newLastDoc,
+      hasMore,
+    };
+  } catch (err) {
+    console.warn('fetchHelpPostsPaginated error:', err);
+    return { posts: [], lastDoc: null, hasMore: false };
+  }
+}
 export async function addHelpPostToFirestore(postData: any): Promise<string> {
   const postId = postData.id || `post_${Date.now()}`;
   try {
@@ -500,7 +549,6 @@ export async function createOrUpdateSosLiveSession(session: any): Promise<string
   }, { merge: true });
   return id;
 }
-
 export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
   const cleanData = sanitizeForFirestore(locationData);
@@ -545,6 +593,7 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     return null;
   }
 }
+
 // ==============================================================
 // 📋 ISSUES MANAGEMENT
 // ==============================================================
@@ -760,7 +809,6 @@ export async function saveAidBroadcastToFirestore(item: any): Promise<string> {
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
-
 // ==============================================================
 // 🗑️ DELETED RECORDS MAP (SYNC ACROSS ALL CLIENTS)
 // ==============================================================
@@ -861,7 +909,6 @@ export async function deletePasswordResetRequestFromFirestore(id: string): Promi
     handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
   }
 }
-
 
 // ==============================================================
 // 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
