@@ -84,6 +84,12 @@ import {
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { PaginatedHelpPostList } from './PaginatedHelpPostList';
+
+// JSX තුළ පැරණි Help Posts list එක වෙනුවට:
+<PaginatedHelpPostList 
+  onSelectPost={(post) => console.log('Selected:', post)}
+/>
 import { 
   ShieldCheck, 
   ShieldAlert,
