@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem, Issue } from '../types';
 import { translations } from '../data/translations';
 import { initialLocations, initialUsers, initialHelpPosts } from '../data/initialData';
@@ -38,267 +38,391 @@ import { ProximityAlertBanner } from './ProximityAlertBanner';
 import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
-import { calculateDistanceKm } from '../utils/geoUtils';
-import { calculateDistanceKm, resolveExactLocation, toLocationOption } from '../utils/geoUtils';
-import { checkIsAdmin, checkIsPostOwner } from '../utils/postOwnerHelper';
-import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
-import { checkAndDeductFee } from '../utils/creditManager';
-import { getLangText as getLocalizedText } from '../utils/postTranslator';
+import { getStoredTags } from '../utils/tagUtils';
+import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
+import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
+import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
+import { deduplicateUsers } from '../utils/userUtils';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
+import { InsufficientCreditsModal } from './InsufficientCreditsModal';
+import { UserWalletModal } from './UserWalletModal';
+import { BarterExchangeModal } from './BarterExchangeModal';
+import { UserQrPayModal } from './UserQrPayModal';
+import { AdminModerationModal } from './AdminModerationModal';
+import { PosterIssueResponseModal } from './PosterIssueResponseModal';
+import { NotificationCenterModal } from './NotificationCenterModal';
+import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
+import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
+import { SosLiveTrackerModal } from './SosLiveTrackerModal';
+import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
+import { PWAInstallModal } from './PWAInstallModal';
+import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
+import { SavedPlacesModal } from './SavedPlacesModal';
+import { AppQrShareModal } from './AppQrShareModal';
+import { RegisterProfessionalServiceModal } from './RegisterProfessionalServiceModal';
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+import { RedAlertCreateModal } from './RedAlertCreateModal';
+import { RedAlertDetailModal } from './RedAlertDetailModal';
+import { RedAlertFloatingTrigger } from './RedAlertFloatingTrigger';
+import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
+import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
+import { MarketShop } from '../types';
+import { OmniAssistantChatBox } from './OmniAssistantChatBox';
+import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
 import { 
-  addHelpPostToFirestore,
+  getUserCreditBalance, 
+  deductPostingFee, 
+  getCategoryFee 
+} from '../utils/creditManager';
+import { 
+  subscribeToHelpPosts, 
+  addHelpPostToFirestore, 
+  addReplyToFirestore,
   updateHelpPostInFirestore, 
   deleteHelpPostFromFirestore,
-  updateUserInFirestore,
-  subscribeToSosLiveSession
+  sendChatMessageToFirestore
 } from '../lib/firebase';
-import { AppNotification } from '../types';
+import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
-  Bell, 
+  ShieldCheck, 
+  ShieldAlert,
+  AlertCircle,
+  AlertTriangle,
+  Pencil,
+  HelpCircle, 
+  Search, 
   Sparkles, 
   CheckCircle2, 
-  CheckCircle, 
-  Navigation, 
-  Loader2, 
-  Megaphone, 
-  ChevronRight, 
-  Briefcase, 
-  Store, 
-  Settings, 
-  Sliders, 
-  Wrench, 
-  HelpCircle, 
-  UserCheck, 
-  ShieldAlert, 
-  MapPin, 
-  Radio, 
-  HeartHandshake, 
-  PhoneCall, 
-  MessageCircle, 
-  Clock, 
-  AlertTriangle, 
-  Plus, 
-  Search, 
-  Filter, 
-  Eye, 
+  Check, 
   X, 
-  Share2, 
-  Layers, 
-  RefreshCw, 
-  Pencil, 
-  Trash2, 
+  Clock, 
+  MapPin, 
+  Navigation, 
+  Sliders, 
+  Filter, 
+  MessageCircle, 
   Users, 
-  ShieldCheck, 
+  HeartHandshake, 
+  Wrench, 
+  Store, 
+  Gift, 
   Droplet, 
+  PhoneCall, 
+  ChevronRight, 
+  UserCheck, 
+  Plus, 
+  Radio, 
+  RefreshCw, 
+  Trash2, 
+  Eye, 
+  Layers, 
+  ArrowLeft, 
+  CheckCircle, 
+  Info, 
+  Shield, 
+  Share2, 
+  ExternalLink, 
+  TrendingUp, 
   Zap, 
   Mic 
 } from 'lucide-react';
 
 export interface UserDashboardProps {
-  user: User;
+  user?: User;
   currentUser?: User | null;
   setCurrentUser?: React.Dispatch<React.SetStateAction<User | null>>;
-  onUpdateUser?: (updated: User) => void;
-  users: User[];
-  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
-  helpPosts: HelpPost[];
-  setHelpPosts: React.Dispatch<React.SetStateAction<HelpPost[]>>;
-  onDeletePost: (target: string | HelpPost) => Promise<void>;
-  issues: Issue[];
-  setIssues: React.Dispatch<React.SetStateAction<Issue[]>>;
-  redAlerts: RedAlertItem[];
-  setRedAlerts: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
+  users?: User[];
+  setUsers?: React.Dispatch<React.SetStateAction<User[]>>;
+  setHelpPosts?: React.Dispatch<React.SetStateAction<HelpPost[]>>;
+  issues?: Issue[];
+  setIssues?: React.Dispatch<React.SetStateAction<Issue[]>>;
+  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
+  setTheme?: React.Dispatch<React.SetStateAction<Theme>>;
+  onOpenAdminPanel?: () => void;
+  onNavigateToIssues?: () => void;
   language: Language;
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
-  setTheme?: (theme: Theme) => void;
   toggleTheme?: () => void;
-  onLogout: () => void;
-  onNavigateToIssues?: () => void;
-  onNavigate?: (view: 'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => void;
-  onOpenAdminPanel?: () => void;
+  categories?: CategoryItem[];
+  helpPosts?: HelpPost[];
+  onAddPost?: (newPost: HelpPost) => void;
+  onDeletePost?: (postId: string) => void;
   onPermanentDeletePost?: (postId: string) => void;
-  onUpdatePost?: (updated: HelpPost) => void;
+  onUpdatePost?: (updatedPost: HelpPost) => void;
+  onUpdateUser?: (updatedUser: User) => void;
+  onLogout?: () => void;
+  activeRoleView?: any;
+  setActiveRoleView?: any;
+  onNavigate?: (view: any) => void;
   onOpenRedAlert?: () => void;
+  redAlerts?: RedAlertItem[];
+  onViewRedAlertDetail?: (alert: RedAlertItem) => void;
   activeRedAlertsCount?: number;
 }
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
-  user,
+  user: propUser,
   currentUser,
   setCurrentUser,
-  onUpdateUser,
-  users,
+  users = [],
   setUsers,
-  helpPosts,
   setHelpPosts,
-  onDeletePost,
-  issues,
+  issues: propIssues,
   setIssues,
-  redAlerts,
   setRedAlerts,
-  language = 'si',
-  setLanguage,
-  theme = 'light',
   setTheme,
-  toggleTheme,
-  onLogout,
-  onNavigateToIssues,
-  onNavigate,
   onOpenAdminPanel,
-  onPermanentDeletePost,
+  onNavigateToIssues,
+  language,
+  setLanguage,
+  theme,
+  toggleTheme,
+  categories,
+  helpPosts: propHelpPosts,
+  onAddPost,
+  onDeletePost: propOnDeletePost,
+  onPermanentDeletePost: propOnPermanentDeletePost,
   onUpdatePost: propOnUpdatePost,
+  onUpdateUser,
+  onLogout,
+  activeRoleView,
+  setActiveRoleView,
+  onNavigate,
   onOpenRedAlert,
+  redAlerts = [],
+  onViewRedAlertDetail,
   activeRedAlertsCount = 0,
 }) => {
-  // Helper for localized text
-  const getLangText = (si: string, en: string, ta: string): string => {
-    if (language === 'en') return en;
-    if (language === 'ta') return ta;
-    return si;
-  };
+  const user = propUser || currentUser || ({
+    id: 'usr_guest',
+    name: 'පරිශීලක (User)',
+    nic: '000000000V',
+    whatsappPhone: '0770000000',
+    address: 'ශ්‍රී ලංකාව',
+    district: 'කොළඹ',
+    policeDivision: 'කොටුව',
+    status: 'approved',
+    role: 'user',
+    trustScore: 85,
+    creditBalance: 50,
+  } as unknown as User);
+  const t = translations[language];
 
-  // State Management
-  const [activeRoleView, setActiveRoleView] = useState<'all' | 'need_help' | 'can_help'>('all');
+  // Active Location State (Defaults to Kadawatha or saved location)
   const [currentLocation, setCurrentLocation] = useState<LocationOption>(() => {
-    try {
-      const saved = localStorage.getItem('sahaya_current_location');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return initialLocations[0];
+    const saved = localStorage.getItem('sahaya_current_location');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+    }
+    return initialLocations[0]; // Kadawatha
   });
 
-  const [isAutoLoadingLocation, setIsAutoLoadingLocation] = useState<boolean>(false);
+  const [isAutoLoadingLocation, setIsAutoLoadingLocation] = useState(false);
   const [autoLocationMsg, setAutoLocationMsg] = useState<string | null>(null);
 
-  // Modals & Navigation States
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [isHelpPostModalOpen, setIsHelpPostModalOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
-  const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
-  const [isFindForMeModalOpen, setIsFindForMeModalOpen] = useState(false);
-  const [isFromMeToYouModalOpen, setIsFromMeToYouModalOpen] = useState(false);
-  const [isAiVoiceModalOpen, setIsAiVoiceModalOpen] = useState(false);
-  const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
-  const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
-  const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
-  const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors'>('blood_requests');
-  const [isAidLedgerModalOpen, setIsAidLedgerModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'security' | 'pickme_alerts' | 'notifications'>('profile');
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-  const [isPickMeAlertModalOpen, setIsPickMeAlertModalOpen] = useState(false);
-  const [isInboxModalOpen, setIsInboxModalOpen] = useState(false);
-  const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
-  const [isRedAlertCreateOpen, setIsRedAlertCreateOpen] = useState(false);
-  const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
-  const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
-  const [qrPayInitialTab, setQrPayInitialTab] = useState<'my_qr' | 'scan_pay'>('scan_pay');
-  const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
-  const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
-  const [isAppQrModalOpen, setIsAppQrModalOpen] = useState(false);
+  // Auto Load Live Location on Login / Dashboard Mount and on Mode Change
+  useEffect(() => {
+    let isMounted = true;
 
-  // Post Action / Detail Modals
-  const [selectedPostForDetail, setSelectedPostForDetail] = useState<HelpPost | null>(null);
-  const [selectedPostForChat, setSelectedPostForChat] = useState<HelpPost | null>(null);
-  const [selectedPostForConfirm, setSelectedPostForConfirm] = useState<HelpPost | null>(null);
-  const [isVolunteerSupportModalOpen, setIsVolunteerSupportModalOpen] = useState(false);
-  const [isSupportOffersModalOpen, setIsSupportOffersModalOpen] = useState(false);
-  const [targetPostForOffers, setTargetPostForOffers] = useState<HelpPost | null>(null);
-  const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
-  const [viewingPost, setViewingPost] = useState<HelpPost | null>(null);
-  const [deletingPost, setDeletingPost] = useState<HelpPost | null>(null);
-  const [moderatingPost, setModeratingPost] = useState<HelpPost | null>(null);
-  const [posterRespondingPost, setPosterRespondingPost] = useState<HelpPost | null>(null);
+    const autoFetchLiveLocation = () => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) return;
 
-  // Edit states for specific post types
-  const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
-  const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
-  const [editingFromMeToYouPost, setEditingFromMeToYouPost] = useState<HelpPost | null>(null);
+      setIsAutoLoadingLocation(true);
 
-  // Resolution prompt modal
-  const [resolutionPromptPost, setResolutionPromptPost] = useState<HelpPost | null>(null);
-  const [postponedResolutionPostIds, setPostponedResolutionPostIds] = useState<string[]>([]);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (!isMounted) return;
+          try {
+            const { latitude, longitude, accuracy } = position.coords;
+            const resolved = await resolveExactLocation(latitude, longitude);
+            const locOpt = toLocationOption(resolved);
 
-  // Feed & Filter States
-  const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('requests');
-  const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('all_sl');
-  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('');
-  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('');
-  const [maxDistanceRadius, setMaxDistanceRadius] = useState<number>(15);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
-  const [showDemoRegisterPrompt, setShowDemoRegisterPrompt] = useState(false);
-  const [isPwaInstallModalOpen, setIsPwaInstallModalOpen] = useState(false);
+            if (isMounted) {
+              setCurrentLocation(locOpt);
+              localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+              setAutoLocationMsg(`📍 සජීවී ස්ථානය ස්වයංක්‍රීයව හඳුනාගන්නා ලදී: ${resolved.shortDisplaySi}`);
+              setTimeout(() => {
+                if (isMounted) setAutoLocationMsg(null);
+              }, 6000);
+            }
+          } catch (err) {
+            console.warn('Auto location resolution error:', err);
+          } finally {
+            if (isMounted) setIsAutoLoadingLocation(false);
+          }
+        },
+        (error) => {
+          if (isMounted) setIsAutoLoadingLocation(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 30000,
+        }
+      );
+    };
 
-  // Professional Services State
+    autoFetchLiveLocation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Synchronize local help posts with incoming props
+  const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(() => {
+    return filterNonDeletedPosts(propHelpPosts || initialHelpPosts);
+  });
+
+  useEffect(() => {
+    if (propHelpPosts) {
+      setLocalHelpPosts(filterNonDeletedPosts(propHelpPosts));
+    }
+  }, [propHelpPosts]);
+
+  const helpPosts = localHelpPosts;
+
+  // Professional Services State (Synced with localStorage and initial data)
   const [professionalServices, setProfessionalServices] = useState<ProfessionalService[]>(() => {
     return getStoredProfessionalServices();
   });
 
-  // Local state fallback for help posts
-  const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(helpPosts);
-
+  // 🔄 20-Second Auto-Sync Listener for all services in UserDashboard
   useEffect(() => {
-    setLocalHelpPosts(helpPosts);
-  }, [helpPosts]);
-
-  // Notifications State
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
-
-  useEffect(() => {
-    if (!user || !user.id) return;
-    const unsubscribe = subscribeToUserNotifications(user.id, (notifs) => {
-      setNotifications(notifs);
-      setUnreadNotificationsCount(notifs.filter(n => !n.isRead).length);
-    });
-    return () => unsubscribe();
-  }, [user?.id]);
-
-  // Auto-Detect GPS Location upon Mount
-  useEffect(() => {
-    const handleAutoGps = async () => {
-      setIsAutoLoadingLocation(true);
+    const handleSync = () => {
       try {
-        const detected = await autoDetectUserLocation();
-        if (detected) {
-          setCurrentLocation(detected);
-          localStorage.setItem('sahaya_current_location', JSON.stringify(detected));
-          setAutoLocationMsg(detected.name);
-          setTimeout(() => setAutoLocationMsg(null), 4000);
-        }
+        const latestServices = getStoredProfessionalServices();
+        setProfessionalServices(latestServices);
       } catch (err) {
-        console.debug('Auto GPS detection note:', err);
-      } finally {
-        setIsAutoLoadingLocation(false);
+        console.warn('Sync handler error:', err);
       }
     };
 
-    handleAutoGps();
+    window.addEventListener('sahaya_sync_all_services', handleSync);
+    return () => window.removeEventListener('sahaya_sync_all_services', handleSync);
   }, []);
 
-  // Save current location whenever updated
-  useEffect(() => {
-    if (currentLocation) {
-      try {
-        localStorage.setItem('sahaya_current_location', JSON.stringify(currentLocation));
-      } catch {}
+  const handleAddProfessionalService = (newService: ProfessionalService) => {
+    const updated = [newService, ...professionalServices];
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+  };
+
+  const handleDeleteProfessionalService = (serviceId: string) => {
+    if (!serviceId) return;
+    const updated = (professionalServices || []).filter((s) => s && s.id !== serviceId);
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+    addDeletedProServiceId(serviceId);
+    deleteProfessionalServiceFromFirestore(serviceId).catch((err) => {
+      console.warn('Professional service delete from firestore notice:', err);
+    });
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_sync_all_services'));
+    } catch {}
+  };
+
+  const handleAddProfessionalReview = (serviceId: string, review: ServiceReview) => {
+    const updated = (professionalServices || []).map((srv) => {
+      if (srv && srv.id === serviceId) {
+        const currentReviews = srv.reviews || [];
+        const newReviews = [review, ...currentReviews];
+        const newAvg = Number((newReviews.reduce((sum, r) => sum + r.rating, 0) / newReviews.length).toFixed(1));
+        return {
+          ...srv,
+          reviews: newReviews,
+          avgRating: newAvg,
+        };
+      }
+      return srv;
+    });
+    setProfessionalServices(updated);
+    saveProfessionalServicesToStorage(updated);
+  };
+
+  // Modals
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isHelpPostModalOpen, setIsHelpPostModalOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
+  const [selectedCategoryTitle, setSelectedCategoryTitle] = useState<string>('');
+  const [selectedCategoryObj, setSelectedCategoryObj] = useState<CategoryItem | null>(null);
+  const [isVolunteerSupportModalOpen, setIsVolunteerSupportModalOpen] = useState(false);
+  const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
+  const [isQuickServiceModalOpen, setIsQuickServiceModalOpen] = useState(false);
+  const [isFindForMeModalOpen, setIsFindForMeModalOpen] = useState(false);
+  const [isFromMeToYouModalOpen, setIsFromMeToYouModalOpen] = useState(false);
+  const [isAiVoiceModalOpen, setIsAiVoiceModalOpen] = useState(false);
+  const [isEmergencyDirectoryModalOpen, setIsEmergencyDirectoryModalOpen] = useState(false);
+  const [isBloodAndDisasterModalOpen, setIsBloodAndDisasterModalOpen] = useState(false);
+  const [bloodModalInitialTab, setBloodModalInitialTab] = useState<'blood_requests' | 'volunteer_donors'>('blood_requests');
+  const [isAidLedgerModalOpen, setIsAidLedgerModalOpen] = useState(false);
+  const [selectedPostForDetail, setSelectedPostForDetail] = useState<HelpPost | null>(null);
+  const [selectedPostForChat, setSelectedPostForChat] = useState<HelpPost | null>(null);
+  const [selectedPostForConfirm, setSelectedPostForConfirm] = useState<HelpPost | null>(null);
+  const [selectedPostForOffer, setSelectedPostForOffer] = useState<HelpPost | null>(null);
+  const [isSupportOffersModalOpen, setIsSupportOffersModalOpen] = useState(false);
+  const [targetPostForOffers, setTargetPostForOffers] = useState<HelpPost | null>(null);
+  const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
+  const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
+  const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
+  const [editingFromMeToYouPost, setEditingFromMeToYouPost] = useState<HelpPost | null>(null);
+  const [viewingPost, setViewingPost] = useState<HelpPost | null>(null);
+  const [deletingPost, setDeletingPost] = useState<HelpPost | null>(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'security' | 'pickme_alerts' | 'notifications'>('profile');
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
+  const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
+  const [isAppQrModalOpen, setIsAppQrModalOpen] = useState(false);
+  const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
+  const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
+  const [isInsufficientCreditsModalOpen, setIsInsufficientCreditsModalOpen] = useState(false);
+  const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
+  const [moderatingPost, setModeratingPost] = useState<HelpPost | null>(null);
+  const [isPosterResponseModalOpen, setIsPosterResponseModalOpen] = useState(false);
+  const [posterRespondingPost, setPosterRespondingPost] = useState<HelpPost | null>(null);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isPickMeAlertModalOpen, setIsPickMeAlertModalOpen] = useState(false);
+  const [isMarketplaceLowestModalOpen, setIsMarketplaceLowestModalOpen] = useState(false);
+  const [isSosLiveModalOpen, setIsSosLiveModalOpen] = useState(false);
+  const [isFeaturesPostModalOpen, setIsFeaturesPostModalOpen] = useState(false);
+  const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
+  const [isRedAlertCreateOpen, setIsRedAlertCreateOpen] = useState(false);
+  const [selectedAlertForDetail, setSelectedAlertForDetail] = useState<RedAlertItem | null>(null);
+  const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'retail_shop' | 'wholesale_shop' | 'direct_importer' | 'manufacturer_factory'>('retail_shop');
+  const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
+  const [isRegisterProfessionalServiceModalOpen, setIsRegisterProfessionalServiceModalOpen] = useState(false);
+  const [isInboxModalOpen, setIsInboxModalOpen] = useState(false);
+
+  // Resolution Prompt Logic (Post-Help Confirmation System)
+  const [resolutionPromptPost, setResolutionPromptPost] = useState<HelpPost | null>(null);
+  const [postponedResolutionPostIds, setPostponedResolutionPostIds] = useState<string[]>([]);
+
+  const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
+    userId: string;
+    name: string;
+    phone?: string;
+    fixedAmount?: number;
+  } | undefined>(undefined);
+
+  // Navigation handler when user clicks a notification toast or modal item
+  const handleOpenFromNotification = (notif: AppNotification) => {
+    setIsNotificationModalOpen(false);
+    if (notif.relatedPostId) {
+      const target = (helpPosts || []).find((p) => p && p.id === notif.relatedPostId);
+      if (target) {
+        setSelectedPostForDetail(target);
+      }
     }
-  }, [currentLocation]);
+  };
 
-  // Calculate Distance Helper
-  const getPostDistance = useCallback((post: HelpPost): number | null => {
-    if (!currentLocation || !post.latitude || !post.longitude) return null;
-    return calculateDistanceKm(
-      currentLocation.lat,
-      currentLocation.lng,
-      post.latitude,
-      post.longitude
-    );
-  }, [currentLocation]);
+  const handleClearAllNotifications = () => {
+    // Local clear
+  };
 
-  // Trust Profile Calculation
+  // Trust Score calculation profile
   const trustProfile = useMemo(() => {
     return calculateTrustProfile(user, helpPosts);
   }, [user, helpPosts]);
@@ -327,13 +451,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return count;
   }, [helpPosts, user]);
 
-  // Posts where current user was selected as confirmed helper
+  // Posts where the current user was selected as confirmed helper
   const postsWhereIWasSelected = useMemo(() => {
     const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
     const userPhoneNorm = normalizePhone(user?.whatsappPhone || user?.phone);
 
     return (helpPosts || []).filter((post) => {
-      if (!post || !post.isResolved && !post.confirmedHelperId) return false;
+      if (!post || (!post.isResolved && !post.confirmedHelperId)) return false;
       if (post.confirmedHelperId === user.id) return true;
       if (userPhoneNorm && post.confirmedHelperPhone && normalizePhone(post.confirmedHelperPhone) === userPhoneNorm) {
         return true;
@@ -342,26 +466,45 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     });
   }, [helpPosts, user]);
 
-  // All unique tags extracted across help posts
+  // All active tags extracted across all visible posts
   const allTags = useMemo<TagItem[]>(() => {
-    const tagMap = new Map<string, TagItem>();
-    (helpPosts || []).forEach((p) => {
-      if (p && p.tagName) {
-        if (!tagMap.has(p.tagName)) {
-          tagMap.set(p.tagName, {
-            id: p.tagName,
-            nameSi: p.tagName,
-            nameEn: p.tagName,
-            nameTa: p.tagName,
-            category: p.category || 'general',
-          });
-        }
-      }
-    });
-    return Array.from(tagMap.values());
+    const tagsFromPosts = (helpPosts || []).map((p) => (p ? p.tagName : undefined)).filter(Boolean) as string[];
+    const staticTags = getStoredTags().map((t) => t.nameSi);
+    const combined = Array.from(new Set([...tagsFromPosts, ...staticTags]));
+    return combined.map((name, i) => ({
+      id: `tag_${i}`,
+      nameSi: name,
+      nameEn: name,
+      nameTa: name,
+      category: 'general',
+    }));
   }, [helpPosts]);
 
-  // Core Post Creation Handler
+  // Automatic scrolling to community notices upon viewport readiness
+  useEffect(() => {
+    const scrollToNotices = () => {
+      const feed = document.getElementById('help-notices-feed');
+      if (feed) {
+        feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    const timer = setTimeout(scrollToNotices, 350);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Active Feed Tab: 'local' (<15km) vs 'all_sl' (>15km or all)
+  const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('requests');
+  const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('all_sl');
+  const [boardCategoryFilter, setBoardCategoryFilter] = useState<string>('');
+  const [maxDistanceRadius, setMaxDistanceRadius] = useState<number>(15);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showDemoRegisterPrompt, setShowDemoRegisterPrompt] = useState(false);
+  const [isPwaInstallModalOpen, setIsPwaInstallModalOpen] = useState(false);
+
+  // Selected tag filter
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
+
+  // Core Post Creation Handler (addHelpPostToFirestore)
   const handleCreatePost = async (newPost: Omit<HelpPost, 'id' | 'createdAt' | 'createdAtIso'>) => {
     const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const fullPost: HelpPost = {
@@ -376,13 +519,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       isResolved: false,
     };
 
-    setHelpPosts((prev) => [fullPost, ...(prev || [])]);
-    if (propOnUpdatePost) {
-      propOnUpdatePost(fullPost);
+    setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
+    if (propOnAddPost) {
+      propOnAddPost(fullPost);
     }
 
     try {
-      await createHelpPostInFirestore(fullPost);
+      await addHelpPostToFirestore(fullPost);
     } catch (err) {
       console.warn('Post saved locally, cloud sync notice:', err);
     }
@@ -396,12 +539,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Core Post Edit & Save Handler
   const handleSaveUpdatedPost = async (updatedPost: HelpPost) => {
-    setHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
+    setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
     if (propOnUpdatePost) {
       propOnUpdatePost(updatedPost);
-    }
-    if (setLocalHelpPosts) {
-      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
     }
     if (selectedPostForDetail?.id === updatedPost.id) {
       setSelectedPostForDetail(updatedPost);
@@ -468,13 +608,67 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const handleToggleHidePost = async (post: HelpPost) => {
-    if (!post) return;
-    const updated = { ...post, isHidden: !post.isHidden };
-    handleSaveUpdatedPost(updated);
+    if (!post || !post.id) return;
+    const isCurrentlyHidden = Boolean(post.isHidden || post.status === 'hidden');
+    const nextHidden = !isCurrentlyHidden;
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+
+    const updated: HelpPost = {
+      ...post,
+      isHidden: nextHidden,
+      isHiddenByAdmin: isAdmin ? nextHidden : Boolean(post.isHiddenByAdmin),
+      status: nextHidden ? 'hidden' : 'active',
+      hiddenAt: nextHidden ? new Date().toISOString() : undefined,
+      hiddenBy: nextHidden ? (user.name || 'Admin') : undefined,
+    };
+
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updated);
+    } else {
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === post.id ? updated : p)));
+    }
+
+    if (selectedPostForDetail?.id === post.id) setSelectedPostForDetail(updated);
+    if (selectedPostForChat?.id === post.id) setSelectedPostForChat(updated);
+
+    try {
+      await updateHelpPostInFirestore(post.id, {
+        isHidden: nextHidden,
+        isHiddenByAdmin: isAdmin ? nextHidden : Boolean(post.isHiddenByAdmin),
+        status: nextHidden ? 'hidden' : 'active',
+        hiddenAt: nextHidden ? new Date().toISOString() : null,
+        hiddenBy: nextHidden ? (user.name || 'Admin') : null,
+      });
+    } catch (err) {
+      console.warn('Failed to update hidden status in Firestore:', err);
+    }
   };
 
-  // Helper to check if post author is blocked
-  const isAuthorBlocked = (post: HelpPost): boolean => {
+  const handleSaveEditedPost = async (updatedPost: HelpPost) => {
+    if (!updatedPost || !updatedPost.id) return;
+    if (propOnUpdatePost) {
+      propOnUpdatePost(updatedPost);
+    } else {
+      setLocalHelpPosts((prev) => (prev || []).map((p) => (p && p.id === updatedPost.id ? updatedPost : p)));
+    }
+    if (selectedPostForDetail?.id === updatedPost.id) {
+      setSelectedPostForDetail(updatedPost);
+    }
+    if (selectedPostForChat?.id === updatedPost.id) {
+      setSelectedPostForChat(updatedPost);
+    }
+    try {
+      await updateHelpPostInFirestore(updatedPost.id, updatedPost);
+    } catch (err) {
+      console.warn('Updated locally, cloud notice:', err);
+    }
+    setEditingQuickServicePost(null);
+    setEditingFindForMePost(null);
+    setEditingFromMeToYouPost(null);
+    setEditingPost(null);
+  };
+
+  const isAuthorBlockedStatus = (post: HelpPost): boolean => {
     if (!post) return false;
     const authorId = post.userId || post.authorId;
     const authorPhone = post.userPhone || post.contactPhone;
@@ -489,7 +683,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return matchedUser?.status === 'blocked';
   };
 
-  // Helper to check if helpers needed count is satisfied
   const isHelpersNeededSatisfied = (post: HelpPost): boolean => {
     if (!post) return false;
     const neededHelpers = post.helpersNeeded || 0;
@@ -499,12 +692,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return acceptedCount >= neededHelpers;
   };
 
+  // Recalculate distance from current active location
+  const getPostDistance = (post: HelpPost) => {
+    const curLat = currentLocation?.lat;
+    const curLng = currentLocation?.lng;
+    if (!post?.lat || !post?.lng || typeof curLat !== 'number' || typeof curLng !== 'number') {
+      return post?.distanceKm || 20;
+    }
+    return calculateDistanceKm(curLat, curLng, post.lat, post.lng);
+  };
+
   // Category & Distance & Tag Filtering Logic
   const filteredPosts = (helpPosts || []).filter((post) => {
     if (!post || !post.id || post.isDeleted || post.status === 'deleted' || isPostPermanentlyDeleted(post.id)) return false;
 
-    // Check if post author is blocked or deleted by admin
-    if (isAuthorBlocked(post)) {
+    // Check if post author is blocked
+    if (isAuthorBlockedStatus(post)) {
       const isViewerAdmin = checkIsAdmin(user);
       if (!isViewerAdmin) return false;
     }
@@ -636,7 +839,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setResolutionPromptPost(null);
   };
 
-  const handleAddProfessionalService = (newService: Omit<ProfessionalService, 'id' | 'createdAt' | 'rating' | 'reviewsCount' | 'reviews'>) => {
+  const handleAddProfessionalServiceFromForm = (newService: Omit<ProfessionalService, 'id' | 'createdAt' | 'rating' | 'reviewsCount' | 'reviews'>) => {
     const service: ProfessionalService = {
       ...newService,
       id: `service_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -659,8 +862,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setProfessionalServices(updated);
     saveProfessionalServicesToStorage(updated);
   };
-
-  const t = translations[language] || translations.si;
 
   const quickServices = [
     {
@@ -713,6 +914,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
   ];
 
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (language === 'en') return en;
+    if (language === 'ta') return ta;
+    return si;
+  };
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
       {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}
@@ -722,10 +928,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           currentLocation={currentLocation}
           currentUser={user}
           onOpenAlertDetail={(a) => {
+            if (user?.isDemo) {
+              setShowDemoRegisterPrompt(true);
+              return;
+            }
             if (onViewRedAlertDetail) onViewRedAlertDetail(a);
             else setSelectedAlertForDetail(a);
           }}
           onOpenCreate={() => {
+            if (user?.isDemo) {
+              setShowDemoRegisterPrompt(true);
+              return;
+            }
             if (onOpenRedAlert) onOpenRedAlert();
             else setIsRedAlertCreateOpen(true);
           }}
@@ -1107,6 +1321,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           onPosterRespondIssue={(p) => setPosterRespondingPost(p)}
           professionalServices={professionalServices}
           onAddProfessionalService={handleAddProfessionalService}
+          onAddProfessionalReview={handleAddProfessionalReview}
           onDeleteProfessionalService={handleDeleteProfessionalService}
           registeredUsers={(() => {
             try {
@@ -1206,7 +1421,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         lang={language}
         onUpdatePost={handleSaveUpdatedPost}
         onRefreshPosts={() => {
-          setHelpPosts((prev) => [...prev]);
+          setLocalHelpPosts((prev) => [...prev]);
         }}
       />
 
@@ -1371,7 +1586,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       />
 
       {/* 12. Instant QR Payment & Barcode Transfer Modal */}
-      <InstantQrPayModal
+      <UserQrPayModal
         isOpen={isQrPayModalOpen}
         onClose={() => setIsQrPayModalOpen(false)}
         currentUser={user}
@@ -1387,7 +1602,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <NotificationCenterModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
-        notifications={notifications}
         currentUser={user}
         language={language}
         onNotificationClick={handleOpenFromNotification}
@@ -1395,7 +1609,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       />
 
       {/* 14. PickMe Audio & Push Alert Radar Config Modal */}
-      <PickMeAlertModal
+      <PickMeAlertSettingsModal
         isOpen={isPickMeAlertModalOpen}
         onClose={() => setIsPickMeAlertModalOpen(false)}
         currentUser={user}
@@ -1418,7 +1632,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       />
 
       {/* 16. App Installation & PWA Offline Setup Modal */}
-      <PwaInstallModal
+      <PWAInstallModal
         isOpen={isPwaInstallModalOpen}
         onClose={() => setIsPwaInstallModalOpen(false)}
         language={language}
@@ -1533,6 +1747,41 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           } else if (onLogout) {
             onLogout();
           }
+        }}
+      />
+
+      {/* 🚨 1-Tap Floating Red Alert Trigger */}
+      <RedAlertFloatingTrigger
+        userId={user.id}
+        userName={user.name}
+        currentUser={user}
+        currentLocation={currentLocation}
+        activeCount={activeRedAlertsCount || redAlerts.filter((a) => a && a.status === 'active').length}
+        onOpenActiveList={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          const firstActive = redAlerts.find((a) => a && a.status === 'active');
+          if (firstActive) {
+            setSelectedAlertForDetail(firstActive);
+          } else {
+            setIsRedAlertCreateOpen(true);
+          }
+        }}
+        onOpenSosTracker={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsSosLiveModalOpen(true);
+        }}
+        onOpenCreateModal={() => {
+          if (user?.isDemo) {
+            setShowDemoRegisterPrompt(true);
+            return;
+          }
+          setIsRedAlertCreateOpen(true);
         }}
       />
 
