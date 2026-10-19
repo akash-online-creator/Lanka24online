@@ -39,7 +39,7 @@ import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { calculateDistanceKm } from '../utils/geoUtils';
-import { autoDetectUserLocation } from '../utils/locationHelper';
+import { calculateDistanceKm, resolveExactLocation, toLocationOption } from '../utils/geoUtils';
 import { checkIsAdmin, checkIsPostOwner } from '../utils/postOwnerHelper';
 import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
 import { checkAndDeductFee } from '../utils/creditManager';
