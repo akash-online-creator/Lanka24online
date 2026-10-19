@@ -1807,6 +1807,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
       />
 
+      {/* 🚨 SOS Live GPS Tracker Modal */}
+      <SosLiveTrackerModal
+        isOpen={isSosLiveModalOpen}
+        onClose={() => setIsSosLiveModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        language={language}
+      />
+
     </div>
   );
 };
