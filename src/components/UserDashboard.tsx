@@ -717,10 +717,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   ];
 
   const getLangText = (si: string, en: string, ta: string) => {
-    if (language === 'en') return en;
-    if (language === 'ta') return ta;
-    return si;
-  };
+  if (language === 'en') return en;
+  if (language === 'ta') return ta;
+  return si;
+};
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
       {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}
