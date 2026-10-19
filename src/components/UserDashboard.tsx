@@ -84,12 +84,6 @@ import {
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
-import { PaginatedHelpPostList } from './PaginatedHelpPostList';
-
-// JSX තුළ පැරණි Help Posts list එක වෙනුවට:
-<PaginatedHelpPostList 
-  onSelectPost={(post) => console.log('Selected:', post)}
-/>
 import { 
   ShieldCheck, 
   ShieldAlert,
@@ -519,11 +513,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       id: postId,
       createdAt: new Date().toISOString(),
       createdAtIso: new Date().toISOString(),
-      userId: user?.userId || user?.id || 'anonymous_user',
-      userName: user?.name || 'Anonymous User',
-      userPhone: user?.whatsappPhone || user?.phone || '',
+      userId: (newPost as any).userId || user?.userId || user?.id || 'anonymous_user',
+      userName: (newPost as any).userName || user?.name || 'Anonymous User',
+      userPhone: (newPost as any).userPhone || user?.whatsappPhone || user?.phone || '',
       status: 'active',
       isResolved: false,
+      postType: (newPost as any).postType || ((newPost as any).category === 'quick_services' ? 'quick_service' : 'help_post'),
     };
 
     setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
@@ -603,7 +598,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   const handleEditPost = (post: HelpPost) => {
     if (!post) return;
-    if (post.postType === 'quick_service') {
+    if (post.postType === 'quick_service' || post.category === 'quick_services') {
       setEditingQuickServicePost(post);
     } else if (post.postType === 'find_for_me') {
       setEditingFindForMePost(post);
@@ -752,7 +747,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       } else if (boardCategoryFilter === 'marketplace') {
         if (post.category !== 'marketplace' && post.postType !== 'marketplace') return false;
       } else if (boardCategoryFilter === 'quick_services') {
-        if (post.postType !== 'quick_service') return false;
+        if (post.postType !== 'quick_service' && post.category !== 'quick_services') return false;
       } else if (post.category !== boardCategoryFilter && post.tagCategory !== boardCategoryFilter) {
         return false;
       }
@@ -1467,7 +1462,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <AiVoiceHelpModal
         isOpen={isAiVoiceModalOpen}
         onClose={() => setIsAiVoiceModalOpen(false)}
-        onSubmitPost={handleCreatePost}
+        onSubmitHelpPost={handleCreatePost}
         currentLocation={currentLocation}
         currentUser={user}
         lang={language}
@@ -1813,17 +1808,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
       />
 
-      {/* 🚨 SOS Live GPS Tracker Modal */}
-      <SosLiveTrackerModal
-        isOpen={isSosLiveModalOpen}
-        onClose={() => setIsSosLiveModalOpen(false)}
-        currentUser={user}
-        currentLocation={currentLocation}
-        language={language}
-      />
-
     </div>
   );
 };
 
 export default UserDashboard;
+
