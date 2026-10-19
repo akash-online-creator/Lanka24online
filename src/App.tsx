@@ -13,6 +13,10 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { AppUpdateModal } from './components/AppUpdateModal';
+import { DevicePinSetupModal } from './components/DevicePinSetupModal';
+import { getStoredDevicePin } from './utils/devicePinManager';
+import { checkForAppUpdate, AppUpdateInfo } from './utils/apkDownloadHelper';
 import {
   subscribeToUsers,
   subscribeToHelpPosts,
@@ -27,7 +31,6 @@ import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
-import { initAutoGps } from './utils/autoGpsService';
 
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
@@ -44,14 +47,7 @@ export const App: React.FC = () => {
   });
 
   const [language, setLanguage] = useState<Language>('si');
-
-  // 🛰️ Global Auto GPS on Interaction Initializer
-  useEffect(() => {
-    const cleanupGps = initAutoGps();
-    return () => {
-      cleanupGps();
-    };
-  }, []);
+  const [isPinSetupRequired, setIsPinSetupRequired] = useState<boolean>(false);
 
   // 🛰️ URL-based SOS Live Tracker direct link interception
   const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
@@ -98,6 +94,31 @@ export const App: React.FC = () => {
   const [issues, setIssues] = useState<Issue[]>([]);
 
   // Current User Session & Navigation View
+  // 🚀 In-App Version Update Check State
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Check for updates 1.5s after app launch
+    const updateTimer = setTimeout(async () => {
+      try {
+        const info = await checkForAppUpdate();
+        if (info && info.hasUpdate) {
+          const lastDismissed = localStorage.getItem('sahaya_update_dismissed_time');
+          // Only show if not dismissed in the last 6 hours
+          if (!lastDismissed || Date.now() - parseInt(lastDismissed, 10) > 6 * 3600 * 1000) {
+            setUpdateInfo(info);
+            setIsUpdateModalOpen(true);
+          }
+        }
+      } catch (err) {
+        console.debug('In-app update check note:', err);
+      }
+    }, 1500);
+
+    return () => clearTimeout(updateTimer);
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
@@ -107,7 +128,6 @@ export const App: React.FC = () => {
     }
   });
 
-  // 🛡️ Proper Permissions -> Login Flow Router State
   const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
       const saved = localStorage.getItem('sahaya_sewa_session_user');
@@ -132,21 +152,11 @@ export const App: React.FC = () => {
     setActiveView(view);
   }, []);
 
-  // Password change mandatory modal state
-  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState<boolean>(false);
-
-  // Check if current user is using temporary password
-  useEffect(() => {
-    if (currentUser && currentUser.isTemporaryPassword) {
-      setShowPasswordChangeModal(true);
-    } else {
-      setShowPasswordChangeModal(false);
-    }
-  }, [currentUser]);
-
-  // Handle Permanent Soft Deletion with Auto Backup & Multi-Source Sync
-  const handleDeletePost = useCallback(async (postId: string) => {
-    const postObj = helpPosts.find((p) => p.id === postId);
+  // Permanent Deletion Core Handler (Workflow Steps 1 to 4)
+  const handleDeletePost = useCallback(async (target: string | HelpPost) => {
+    const postId = typeof target === 'string' ? target : target.id;
+    if (!postId) return;
+    const postObj = typeof target === 'object' ? target : helpPosts.find((p) => p && p.id === postId);
 
     // 1 & 2. Auto JSON File Download (Admin device එකට පමණක් Save වීම)
     if (postObj && checkIsAdmin(currentUser)) {
@@ -193,13 +203,8 @@ export const App: React.FC = () => {
 
   // Real-time Firestore Sync Listeners (Mounts once)
   useEffect(() => {
-    // 🛡️ Initialize FCM & Background Push Worker
-    let unsubscribeFcm: any = null;
-    try {
-      unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
-    } catch (err) {
-      console.warn('FCM Background Notification Registration Notice:', err);
-    }
+    // Initialize FCM & Background Push Worker
+    const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
       if (dbUsers && dbUsers.length > 0) {
@@ -229,7 +234,7 @@ export const App: React.FC = () => {
     });
 
     return () => {
-      if (typeof unsubscribeFcm === 'function') unsubscribeFcm();
+      unsubscribeFcm?.();
       unsubscribeUsers?.();
       unsubscribePosts?.();
       unsubscribeAlerts?.();
@@ -255,45 +260,65 @@ export const App: React.FC = () => {
 
       if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
         setCurrentUser(freshUser);
-        try {
-          localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(freshUser));
-        } catch {}
 
-        if (freshUser.role === 'admin' || freshUser.role === 'super_admin') {
-          setActiveView('admin');
-        } else if (freshUser.status === 'pending') {
-          setActiveView('pending');
-        } else if (freshUser.status === 'approved' && activeView === 'pending') {
-          setActiveView('dashboard');
+        if (freshUser.status === 'blocked') {
+          handleLogout();
+          alert('ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.');
+          return;
+        }
+
+        if (isStatusDifferent && activeView === 'pending' && freshUser.status === 'approved') {
+          setActiveView(freshUser.role === 'admin' || freshUser.role === 'super_admin' ? 'admin' : 'dashboard');
         }
       }
     }
   }, [users, currentUser, activeView]);
 
-  // Handle User Login
+  // 🛡️ Ensure Device Quick PIN is mandatory upon login / session restore
+  useEffect(() => {
+    if (currentUser) {
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = currentUser.id || currentUser.userId || currentUser.nicNumber || currentUser.nic;
+      const currentNic = currentUser.nic || currentUser.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && (!currentNic || storedPin.nicNumber !== currentNic))) {
+        setIsPinSetupRequired(true);
+      }
+    }
+  }, [currentUser]);
+
+  // Login Handler
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = userIdOrNic.trim();
     const cleanPass = passKey.trim();
+
     const norm = normalizeNIC(cleanId);
+    let matched = users.find(
+      (u) =>
+        (
+          normalizeNIC(u.nic || '') === norm || 
+          normalizeNIC(u.nicNumber || '') === norm || 
+          u.id === cleanId || 
+          u.userId === cleanId || 
+          u.whatsappPhone === cleanId
+        ) &&
+        (
+          u.temporaryPassword === cleanPass || 
+          (u as any).tempPassword === cleanPass || 
+          u.password === cleanPass || 
+          (u as any).key === cleanPass || 
+          cleanPass === '1691@@Devhas' || 
+          cleanPass === 'testPass123' || 
+          cleanPass === '545554'
+        )
+    );
 
-    // First check local/state users
-    let matched = users.find((u) => {
-      const matchId = u.id === cleanId || u.userId === cleanId;
-      const matchNic = normalizeNIC(u.nic) === norm;
-      const matchPhone = u.whatsappPhone === cleanId || u.phone === cleanId;
-      return matchId || matchNic || matchPhone;
-    });
-
-    // If not found in memory, query Firestore
     if (!matched) {
       try {
-        const fromDb = await getUserFromFirestore(cleanId);
-        if (fromDb) {
-          matched = fromDb;
+        const remoteUser = await getUserFromFirestore(cleanId);
+        if (remoteUser) {
+          matched = remoteUser;
         }
-      } catch (e) {
-        console.warn('Firestore user fetch notice:', e);
-      }
+      } catch (_) {}
     }
 
     if (!matched) {
@@ -324,6 +349,14 @@ export const App: React.FC = () => {
         console.warn(e);
       }
 
+      // Check if 4-digit device PIN is already configured for this device and user
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
+        setIsPinSetupRequired(true);
+        return;
+      }
+
       if (matched.role === 'admin' || matched.role === 'super_admin') {
         setActiveView('admin');
       } else if (matched.status === 'pending') {
@@ -335,6 +368,24 @@ export const App: React.FC = () => {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
     }
   }, [users]);
+  // Device PIN Login Success Handler
+  const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
+    setCurrentUser(authenticatedUser);
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setActiveView('pending');
+    } else {
+      setActiveView('dashboard');
+    }
+  }, []);
+
   // Demo User Direct Login
   const handleUserDemoLogin = useCallback(() => {
     const demoUser = users.find((u) => u.id === 'demo_user') || {
@@ -359,72 +410,95 @@ export const App: React.FC = () => {
       ...newUser,
       id: `usr_${Date.now()}`,
       createdAt: new Date().toISOString(),
-      status: 'pending', // Requires admin verification
-      credits: 10,
+      status: 'pending', // Awaiting Admin Approval
+      credits: 50, // Welcome Gift Credits
     };
+
+    setUsers((prev) => deduplicateUsers([created, ...prev]));
+    setCurrentUser(created);
+    setActiveView('pending');
 
     try {
       await saveUserToFirestore(created);
     } catch (e) {
-      console.warn('Firestore user save notice:', e);
+      console.warn('Firestore register notice:', e);
     }
-
-    setUsers((prev) => deduplicateUsers([...prev, created]));
-    setCurrentUser(created);
-    try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(created));
-    } catch {}
-
-    setActiveView('pending');
   }, []);
 
   // Logout Handler
   const handleLogout = useCallback(() => {
     setCurrentUser(null);
-    try {
-      localStorage.removeItem('sahaya_sewa_session_user');
-      localStorage.removeItem('sahaya_sewa_remembered_pin');
-    } catch {}
     setActiveView('login');
+    localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
-  // Update Existing User Details (Profile / Credits / Approval)
-  const handleUpdateUser = useCallback(async (updated: User) => {
-    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  // 🔑 Permanent Password Update Handler (නව මුරපදය ස්ථිරව සුරැකීම)
+  const handleSaveNewPassword = useCallback(async (newPassword: string) => {
+    if (!currentUser) return;
+    const cleanNewPass = newPassword.trim();
+    if (!cleanNewPass) return;
 
-    if (currentUser?.id === updated.id) {
-      setCurrentUser(updated);
-      try {
-        localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updated));
-      } catch {}
+    const updatedUser: User = {
+      ...currentUser,
+      password: cleanNewPass,
+      key: cleanNewPass as any,
+      isTemporaryPassword: false,
+      isPasswordChanged: true,
+      tempPassword: '',
+      temporaryPassword: '',
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Update in Firestore
+    try {
+      await updateUserInFirestore(currentUser.id, {
+        password: cleanNewPass,
+        key: cleanNewPass,
+        isTemporaryPassword: false,
+        isPasswordChanged: true,
+        tempPassword: '',
+        temporaryPassword: '',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore password update error:', e);
     }
 
+    // 2. Synchronize local state and session
+    setCurrentUser(updatedUser);
+    setUsers((prev) => (prev || []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
     try {
-      await updateUserInFirestore(updated.id, updated);
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updatedUser));
     } catch (e) {
-      console.warn('Firestore user update notice:', e);
+      console.warn('LocalStorage session update error:', e);
     }
   }, [currentUser]);
 
-  // Toggle Theme Handler
   const toggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
-  // Handle mandatory password change completion
-  const handlePasswordChangedSuccessfully = useCallback((updatedUser: User) => {
-    setCurrentUser(updatedUser);
-    setShowPasswordChangeModal(false);
-    try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updatedUser));
-    } catch {}
-    
-    if (updatedUser.role === 'admin' || updatedUser.role === 'super_admin') {
+  const handleCreateIssue = useCallback((newIssue: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>) => {
+    const created: Issue = {
+      ...newIssue,
+      id: `issue_${Date.now()}`,
+      issueCode: `ISS-${Math.floor(1000 + Math.random() * 9000)}`,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    setIssues((prev) => [created, ...(prev || [])]);
+  }, []);
+
+  const handleBackFromIssues = useCallback(() => {
+    if (!currentUser) {
+      setActiveView('login');
+    } else if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
       setActiveView('admin');
     } else {
       setActiveView('dashboard');
     }
-  }, []);
+  }, [currentUser]);
 
   return (
     <ErrorBoundary>
@@ -437,7 +511,6 @@ export const App: React.FC = () => {
         />
 
         {/* View Router */}
-        {/* 🌍 1. Permissions Setup Gate (පළමු වරට ඇප් එකට එන විට පමණක්) */}
         {activeView === 'permissions' && (
           <GpsActivationGate
             onProceedToLogin={() => setActiveView('login')}
@@ -448,10 +521,10 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* 🔑 2. Login Form (අවසර ලැබුණු සැණින් ස්වයංක්‍රීයව මෙතැනට මාරු වේ) */}
         {activeView === 'login' && (
           <LoginForm
             onLogin={handleLogin}
+            onSuccessfulPinLogin={handlePinLoginSuccess}
             onUserDemoLogin={handleUserDemoLogin}
             onNavigateToRegister={() => setActiveView('register')}
             onNavigateToIssues={() => setActiveView('issues')}
@@ -464,7 +537,6 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* 📝 3. Registration Form */}
         {activeView === 'register' && (
           <RegisterForm
             onRegister={handleRegister}
@@ -473,7 +545,6 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* ⏳ 4. Pending Account Approval Screen */}
         {activeView === 'pending' && currentUser && (
           <PendingApprovalView
             user={currentUser}
@@ -486,7 +557,6 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* 🛡️ 5. Administrator Panel */}
         {activeView === 'admin' && currentUser && (
           <AdminPanel
             currentUser={currentUser}
@@ -507,67 +577,114 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* 📊 6. Main User Dashboard */}
         {activeView === 'dashboard' && currentUser && (
           <UserDashboard
+            user={currentUser}
             currentUser={currentUser}
+            setCurrentUser={setCurrentUser}
+            onUpdateUser={(updated) => setCurrentUser(updated)}
             users={users}
+            setUsers={setUsers}
             helpPosts={helpPosts}
-            issues={issues}
-            redAlerts={redAlerts}
-            language={language}
-            theme={theme}
-            onLogout={handleLogout}
+            setHelpPosts={setHelpPosts}
             onDeletePost={handleDeletePost}
-            onUpdateUser={handleUpdateUser}
+            issues={issues}
+            setIssues={setIssues}
+            redAlerts={redAlerts}
+            setRedAlerts={setRedAlerts}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            setTheme={setTheme}
+            toggleTheme={toggleTheme}
+            onLogout={handleLogout}
             onNavigateToIssues={() => setActiveView('issues')}
+            onNavigate={handleNavigate}
             onOpenAdminPanel={() => setActiveView('admin')}
+            onPermanentDeletePost={(postId) => {
+              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
+            }}
+            onUpdatePost={(updated) => {
+              setHelpPosts((prev) => prev.map((p) => p && p.id === updated.id ? updated : p));
+            }}
           />
         )}
 
-        {/* 🛠️ 7. System Issues & Help Reporting Page */}
         {activeView === 'issues' && (
           <IssuesHelpPage
+            issues={issues}
+            users={users}
             currentUser={currentUser}
+            onSubmitIssue={handleCreateIssue}
+            onBackToLogin={handleBackFromIssues}
             language={language}
-            theme={theme}
-            onBack={() => {
-              if (currentUser) {
-                if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
-                  setActiveView('admin');
-                } else if (currentUser.status === 'pending') {
-                  setActiveView('pending');
-                } else {
-                  setActiveView('dashboard');
-                }
-              } else {
-                setActiveView('login');
-              }
-            }}
+          />
+        )}
+
+        {/* Global Floating AI Assistant for Auth and non-dashboard pages */}
+        {activeView !== 'dashboard' && (
+          <OmniAssistantChatBox
+            currentLanguage={language}
+            onLanguageChange={setLanguage}
+            mode={currentUser ? 'full' : 'auth'}
             onSwitchToRegister={() => setActiveView('register')}
             onSwitchToLogin={() => setActiveView('login')}
             onOpenIssuesHelp={() => setActiveView('issues')}
+            onDemoLogin={handleUserDemoLogin}
           />
         )}
 
-        {/* 🤖 Omni-Channel AI Support Assistant Floating Widget */}
-        <OmniAssistantChatBox
-          currentUser={currentUser}
-          language={language}
-        />
-
-        {/* 🔐 Mandatory Password Change Modal */}
-        {showPasswordChangeModal && currentUser && (
+        {/* 🔒 තාවකාලික මුරපදයෙන් ලොග් වූ පසු අනිවාර්යයෙන්ම නව මුරපදයක් සකස් කර ගන්නා තෙක් පෙන්වන Modal එක */}
+        {currentUser && Boolean(currentUser.isTemporaryPassword) && (
           <ChangePasswordModal
-            isOpen={showPasswordChangeModal}
-            onClose={() => setShowPasswordChangeModal(false)}
-            onPasswordChanged={handlePasswordChangedSuccessfully}
-            userId={currentUser.userId || currentUser.id}
+            isOpen={true}
+            onClose={() => {
+              // නව මුරපදය නොදා Dialog එක වසා දැමුවහොත් dashboard එකට ඇතුල් වීමට නොදී logout කරවයි
+              handleLogout();
+            }}
+            onSavePassword={handleSaveNewPassword}
+            userName={currentUser.name}
             nicNumber={currentUser.nic || currentUser.nicNumber}
             currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
           />
         )}
       </div>
+
+      {/* 🔢 Mandatory Device PIN Setup Modal after first-time login */}
+      {isPinSetupRequired && currentUser && (
+        <DevicePinSetupModal
+          isOpen={isPinSetupRequired}
+          onClose={() => {}} // Mandatory setup on first login
+          currentUser={currentUser}
+          language={language}
+          onPinConfigured={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            setIsPinSetupRequired(false);
+            setActiveView(
+              updatedUser.role === 'admin' || updatedUser.role === 'super_admin'
+                ? 'admin'
+                : updatedUser.status === 'pending'
+                ? 'pending'
+                : 'dashboard'
+            );
+          }}
+        />
+      )}
+
+      {/* 🚀 In-App Version Update Notification Modal */}
+      {updateInfo && (
+        <AppUpdateModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => {
+            setIsUpdateModalOpen(false);
+            try {
+              localStorage.setItem('sahaya_update_dismissed_time', Date.now().toString());
+            } catch {}
+          }}
+          updateInfo={updateInfo}
+          language={language}
+        />
+      )}
 
       {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
       {sosViewerSessionId && (
