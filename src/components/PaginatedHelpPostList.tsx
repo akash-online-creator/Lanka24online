@@ -16,7 +16,7 @@ import { QueryDocumentSnapshot } from 'firebase/firestore';
 import { HelpPost } from '../types';
 
 // Services
-import { fetchHelpPostsPaginated } from '../services/firebase';
+import { fetchHelpPostsPaginated } from '../lib/firebase';
 
 interface PaginatedHelpPostListProps {
   onSelectPost?: (post: HelpPost) => void;
