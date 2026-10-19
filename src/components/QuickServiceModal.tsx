@@ -20,7 +20,6 @@ import { HelpPost, Language, LocationOption, User, CategoryItem, TagItem } from 
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 import { generateStartPin, calculatePlatformFee } from '../utils/serviceWorkflowManager';
 
@@ -71,7 +70,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [transport, setTransport] = useState<string>('ඔබ පැමිණිය යුතුයි.');
   const [customTransportFee, setCustomTransportFee] = useState<string>('');
 
-  // Payment State
+  // Payment State (No hardcoded 1500)
   const [paymentType, setPaymentType] = useState<'agree' | 'custom'>('agree');
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
@@ -183,7 +182,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       ? 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'
       : `මට ගෙවිය හැක: රු. ${Number(customPaymentAmount).toLocaleString()}`;
 
-    // 🛠️ Edit Post Mode (සියලු Properties නිවැරදිව තහවුරු කිරීම)
     if (editPost && onUpdatePost) {
       const updatedPost: HelpPost = {
         ...editPost,
@@ -218,7 +216,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     const newStartPin = generateStartPin();
     const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
 
-    // 🛠️ Create Post Mode (සියලු දෝෂ නිරාකරණය කළ පූර්ණ Payload එක)
     onSubmitPost({
       title: whatHappened.trim().slice(0, 50) || '⚡ ක්ෂණික සේවාව',
       userName: currentUser?.name || 'පරිශීලක',
@@ -281,6 +278,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     setErrors({});
     onClose();
   };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/80 backdrop-blur-md animate-fadeIn">
       <div className="w-full max-w-2xl bg-white dark:bg-[#06180f] rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.35)] border-2 border-emerald-500/40 overflow-hidden flex flex-col max-h-[92vh]">
@@ -309,31 +307,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
           </button>
         </div>
 
-        {/* AI Voice Inline Bar */}
-        <div className="p-3 bg-emerald-50/70 dark:bg-[#092216] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
-          <AiVoiceInlineBar
-            onVoiceDataReceived={(data) => {
-              setVoiceData(data);
-              if (data.transcript) {
-                setWhatHappened(data.transcript);
-              }
-              if (data.parsedFields?.whatHappened) {
-                setWhatHappened(data.parsedFields.whatHappened);
-              }
-              if (data.parsedFields?.whatIsNeeded) {
-                setWhatIsNeeded(data.parsedFields.whatIsNeeded);
-              }
-              if (data.parsedFields?.transport) {
-                setTransport(data.parsedFields.transport);
-              }
-              if (data.parsedFields?.payment && data.parsedFields.payment.includes('රු.')) {
-                setPaymentType('custom');
-                setCustomPaymentAmount(data.parsedFields.payment.replace(/\D/g, ''));
-              }
-            }}
-            currentLocation={currentLocation}
-          />
-        </div>
+
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
@@ -630,3 +604,4 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     </div>
   );
 };
+
