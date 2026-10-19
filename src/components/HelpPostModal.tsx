@@ -29,7 +29,6 @@ import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimit
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 import { EmbeddedMediaViewer } from './EmbeddedMediaViewer';
-import { AiVoiceInlineBar } from './AiVoiceInlineBar';
 
 interface HelpPostModalProps {
   isOpen: boolean;
@@ -237,8 +236,16 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
     // Record submission for 30s cooldown
     recordPostSubmission(userPhone.trim() || 'user');
 
-    // Create Post object
+    // Create Post object (දෝෂ නිරාකරණය කර සකස් කළ payload එක)
     onSubmitPost({
+      title: whatHappened.trim().slice(0, 50) || 'උපකාරක දැන්වීමක්',
+      category: 'normal_services',
+      postType: 'help_post',
+      roleType: 'need_help',
+      status: 'active',
+      isResolved: false,
+      latitude: currentLocation.lat,
+      longitude: currentLocation.lng,
       userName: userName.trim(),
       userPhone: userPhone.trim(),
       whatHappened: whatHappened.trim(),
@@ -280,7 +287,6 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
       onClose();
     }, 1800);
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
       <div className="w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col">
@@ -339,7 +345,7 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
               <p className="text-sm text-slate-300 max-w-md">{t.postSuccessDesc}</p>
             </div>
           ) : step === 1 ? (
-            /* STEP 1: Details Form */
+            /* STEP 1: Details Form (Voice Recorder එක ඉවත් කළ පිරිසිදු ෆෝරමය) */
             <form id="help-post-form" onSubmit={handleNextToOtp} className="space-y-4">
               {rateLimitError && (
                 <div className="p-3.5 bg-amber-500/20 border border-amber-500/50 rounded-2xl text-amber-200 text-xs font-bold flex items-center gap-2 animate-pulse">
@@ -348,31 +354,6 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
                 </div>
               )}
 
-              {/* 🎙️ AI Voice Inline Recorder Bar */}
-              <AiVoiceInlineBar
-                currentLocation={currentLocation}
-                lang={lang}
-                titlePrompt="🎙️ AI හඬ සහය (Voice Input):"
-                onVoiceCaptured={(data) => {
-                  setVoiceData(data);
-                  if (data.parsedFields?.whatHappened) {
-                    setWhatHappened(data.parsedFields.whatHappened);
-                  } else if (data.transcript) {
-                    setWhatHappened(data.transcript);
-                  }
-                  if (data.parsedFields?.whatIsNeeded) {
-                    setWhatIsNeeded(data.parsedFields.whatIsNeeded);
-                  }
-                  if (data.parsedFields?.payment) {
-                    setPayment(data.parsedFields.payment);
-                  }
-                  if (data.audioUrl) {
-                    setUploadedAudioUrl(data.audioUrl);
-                    setAudioDurationSec(data.durationSec);
-                  }
-                }}
-              />
-              
               {/* User Name & Phone */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
