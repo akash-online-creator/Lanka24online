@@ -1809,6 +1809,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
       />
 
+      {/* 📡 SOS Live Tracker Modal */}
+      <SosLiveTrackerModal
+        isOpen={isSosLiveModalOpen}
+        onClose={() => setIsSosLiveModalOpen(false)}
+        currentUser={user}
+        currentLocation={currentLocation}
+        language={language}
+      />
+
       {/* 🚨 Red Alert Detail & Incident Management Modal */}
       <RedAlertDetailModal
         isOpen={!!selectedAlertForDetail}
@@ -1835,3 +1844,4 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 };
 
 export default UserDashboard;
+
