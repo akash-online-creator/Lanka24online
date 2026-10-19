@@ -532,11 +532,33 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       console.warn('Post saved locally, cloud sync notice:', err);
     }
 
+    // 1. සියලුම Modal Popups ස්වයංක්‍රීයව වසා දැමීම (Auto-close)
     setIsHelpPostModalOpen(false);
     setIsQuickServiceModalOpen(false);
     setIsFindForMeModalOpen(false);
     setIsFromMeToYouModalOpen(false);
     setIsAiVoiceModalOpen(false);
+    setIsCategoryModalOpen(false);
+
+    // 2. දැන්වීම් පුවරුව වෙත මාරු වීම (Switch to Notice Board)
+    setDashboardView('requests');
+    if ((newPost as any).category === 'quick_services' || (newPost as any).postType === 'quick_service') {
+      setBoardCategoryFilter('quick_services');
+    } else {
+      setBoardCategoryFilter('');
+    }
+    setSearchQuery('');
+    setSelectedTagFilter('');
+
+    // 3. ස්වයංක්‍රීයව දැන්වීම් පුවරුව වෙත Scroll වීම (Smooth Auto-scroll to Notice Board)
+    setTimeout(() => {
+      const feed = document.getElementById('help-notices-feed');
+      if (feed) {
+        feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 350, behavior: 'smooth' });
+      }
+    }, 200);
   };
 
   // Core Post Edit & Save Handler
