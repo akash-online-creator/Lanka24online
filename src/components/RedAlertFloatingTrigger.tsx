@@ -39,7 +39,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // 🤏 Draggable Bubble Coordinates (Default: Left side)
+  // 📍 Draggable Bubble Coordinates (Default: Left side)
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
       return { x: 16, y: window.innerHeight - 160 };
@@ -50,7 +50,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
   const dragStartPos = useRef({ x: 0, y: 0, initialBubbleX: 0, initialBubbleY: 0 });
   const hasMovedRef = useRef(false);
 
-  // Handle Drag Start
+  // Handle Drag / Touch Start
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
     const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
@@ -64,17 +64,16 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     };
   };
 
-  // Handle Drag Move
+  // Handle Drag Move (with 15px threshold to prevent accidental taps being treated as drags)
   const handleTouchMove = (e: TouchEvent | MouseEvent) => {
     if (!isDraggingRef.current) return;
     const clientX = 'touches' in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
     const clientY = 'touches' in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
-    
+
     const deltaX = clientX - dragStartPos.current.x;
     const deltaY = clientY - dragStartPos.current.y;
     const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    // Only count as moved if dragged more than 15px (prevents mobile touch jitter)
     if (dist > 15) {
       hasMovedRef.current = true;
       const maxX = window.innerWidth - 70;
@@ -85,7 +84,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     }
   };
 
-  // Handle Drag End (with reliable tap trigger)
+  // Handle Touch End
   const handleTouchEnd = () => {
     if (isDraggingRef.current && !hasMovedRef.current) {
       setIsMenuOpen((prev) => !prev);
@@ -113,7 +112,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
 
   return (
     <>
-      {/* 🔴 DRAGGABLE FLOATING SOS & RED ALERT BUBBLE (Default Left) */}
+      {/* 🔴 DRAGGABLE FLOATING SOS & RED ALERT BUBBLE */}
       <div
         style={{ left: `${position.x}px`, top: `${position.y}px` }}
         className="fixed z-50 select-none touch-none"
@@ -133,7 +132,6 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
           title="හදිසි ආපදා සහන කේන්ද්‍රය (SOS & Red Alert Menu)"
           aria-label="SOS සහ රතු එළිය මෙනුව"
         >
-          {/* Pulsing Alert Waves */}
           <span className="absolute -inset-1.5 rounded-full bg-red-500/30 animate-ping pointer-events-none" />
           <span className="absolute -inset-3 rounded-full bg-rose-500/20 animate-pulse pointer-events-none" />
 
@@ -152,7 +150,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
         </button>
       </div>
 
-      {/* 📋 EXPANDABLE QUICK ACTION MENU (Direct page links) */}
+      {/* 📋 EXPANDABLE QUICK ACTION MENU */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center sm:items-end sm:justify-start p-4 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-slate-950 border-2 border-red-600/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_0_50px_rgba(220,38,38,0.4)] text-white space-y-4 my-auto sm:my-0 sm:ml-4 sm:mb-20">
@@ -179,7 +177,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
 
             {/* 2 DIRECT BUTTONS: 🚨 රතු එළිය & 📡 SOS LIVE */}
             <div className="space-y-2.5">
-              {/* 1. රතු එළිය (RED ALERT) -> Opens Red Alert Creation Page */}
+              {/* 1. රතු එළිය (RED ALERT) */}
               <button
                 type="button"
                 onClick={() => {
@@ -198,7 +196,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
                 <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform" />
               </button>
 
-              {/* 2. SOS LIVE -> Opens SOS Live GPS Tracker Page */}
+              {/* 2. SOS LIVE TRACKER */}
               {onOpenSosTracker && (
                 <button
                   type="button"
@@ -220,7 +218,7 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
               )}
             </div>
 
-            {/* 📞 හදිසි ආපදා ක්ෂණික ඇමතුම් අංක පෙළ (1-Click Call) */}
+            {/* 📞 හදිසි ඇමතුම් අංක පෙළ (1-Click Call) */}
             <div className="space-y-2 pt-2 border-t border-zinc-900">
               <div className="flex items-center justify-between text-[11px] font-bold text-zinc-400">
                 <span className="flex items-center gap-1">
@@ -271,4 +269,3 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     </>
   );
 };
-
