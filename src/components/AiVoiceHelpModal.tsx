@@ -7,6 +7,7 @@ import {
   AlertTriangle, 
   Radio, 
   Zap, 
+  Trash2,
   HeartHandshake, 
   Users, 
   Volume2, 
