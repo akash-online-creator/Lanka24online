@@ -72,21 +72,24 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     
     const deltaX = clientX - dragStartPos.current.x;
     const deltaY = clientY - dragStartPos.current.y;
+    const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+    // Only count as moved if dragged more than 15px (prevents mobile touch jitter)
+    if (dist > 15) {
       hasMovedRef.current = true;
+      const maxX = window.innerWidth - 70;
+      const maxY = window.innerHeight - 70;
+      const newX = Math.min(Math.max(10, dragStartPos.current.initialBubbleX + deltaX), maxX);
+      const newY = Math.min(Math.max(60, dragStartPos.current.initialBubbleY + deltaY), maxY);
+      setPosition({ x: newX, y: newY });
     }
-
-    const maxX = window.innerWidth - 70;
-    const maxY = window.innerHeight - 70;
-    const newX = Math.min(Math.max(10, dragStartPos.current.initialBubbleX + deltaX), maxX);
-    const newY = Math.min(Math.max(60, dragStartPos.current.initialBubbleY + deltaY), maxY);
-
-    setPosition({ x: newX, y: newY });
   };
 
-  // Handle Drag End
+  // Handle Drag End (with reliable tap trigger)
   const handleTouchEnd = () => {
+    if (isDraggingRef.current && !hasMovedRef.current) {
+      setIsMenuOpen((prev) => !prev);
+    }
     isDraggingRef.current = false;
   };
 
@@ -268,3 +271,4 @@ export const RedAlertFloatingTrigger: React.FC<RedAlertFloatingTriggerProps> = (
     </>
   );
 };
+
