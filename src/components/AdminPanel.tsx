@@ -1,597 +1,837 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Users, 
-  FileText, 
-  AlertTriangle, 
-  ShieldAlert, 
-  PhoneCall, 
-  Coins, 
-  HelpCircle, 
-  Radio, 
-  BookOpen, 
-  KeyRound, 
-  Brain, 
-  Settings, 
-  LogOut, 
-  CheckCircle2, 
-  XCircle, 
-  Trash2, 
-  Edit3, 
-  Eye, 
-  Search, 
-  Filter, 
-  Sun, 
-  Moon, 
-  ArrowLeft 
-} from 'lucide-react';
-
-// Types
-import { User, HelpPost, Issue, RedAlert } from '../types';
-
-// Utils & Helpers
-import { checkIsAdmin } from '../utils/postOwnerHelper';
-// ✅ නිවැරදි කළ කේතය:
+  User, 
+  Issue, 
+  Language, 
+  HelpPost, 
+  RedAlertItem 
+} from '../types';
+import { translations } from '../data/translations';
+import { AppLogo } from './AppLogo';
+import { MemoryStorageBar } from './MemoryStorageBar';
+import { AudioVoicePlayer } from './AudioVoiceNote';
+import { deduplicateUsers } from '../utils/userUtils';
 import { 
-  syncUserProfileToFirestore, 
-  deleteUserAccount, 
-  deleteHelpPostFromFirestore 
+  deleteUserAccount,
+  deleteHelpPostFromFirestore,
+  updateHelpPostInFirestore,
+  syncUserProfileToFirestore
 } from '../lib/firebase';
-
-// Subsystem Components
-import { AdminEditUserModal } from './AdminEditUserModal';
-import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
-import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
+import { AdminRedAlertManagement } from './AdminRedAlertManagement';
 import { AdminSearchDictionaryManager } from './AdminSearchDictionaryManager';
 import { AdminTrustManagement } from './AdminTrustManagement';
 import { AdminPresenceDashboard } from './AdminPresenceDashboard';
+import { AdminUserInspectionModal } from './AdminUserInspectionModal';
+import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
 import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
-import { AdminSystemSettingsToggle } from './AdminSystemSettingsToggle';
+import { Sparkles } from 'lucide-react';
+import { 
+  Users, 
+  CheckCircle2, 
+  MessageSquare, 
+  Search, 
+  Trash2, 
+  Phone, 
+  MapPin, 
+  AlertTriangle, 
+  Coins, 
+  Radio, 
+  BookOpen, 
+  Eye, 
+  LogOut,
+  FileText,
+  Activity,
+  Award,
+  Edit,
+  KeyRound
+} from 'lucide-react';
 
-export interface AdminPanelProps {
+interface AdminPanelProps {
   currentUser?: User | null;
   users?: User[];
   setUsers?: React.Dispatch<React.SetStateAction<User[]>>;
   helpPosts?: HelpPost[];
   setHelpPosts?: React.Dispatch<React.SetStateAction<HelpPost[]>>;
-  redAlerts?: RedAlert[];
-  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlert[]>>;
   issues?: Issue[];
-  onUpdateIssueStatus?: (issueId: string, status: Issue['status']) => void;
+  setIssues?: React.Dispatch<React.SetStateAction<Issue[]>>;
+  redAlerts?: RedAlertItem[];
+  setRedAlerts?: React.Dispatch<React.SetStateAction<RedAlertItem[]>>;
+  language?: Language;
+  setLanguage?: (lang: Language) => void;
   onLogout?: () => void;
-  onSwitchToUserView?: () => void;
-  language?: 'si' | 'en' | 'ta';
-  setLanguage?: (lang: 'si' | 'en' | 'ta') => void;
-  theme?: 'light' | 'dark';
-  toggleTheme?: () => void;
+  onSwitchToUserMode?: () => void;
+  onNavigate?: (view: any) => void;
+  onDeletePost?: (postId: string) => void;
 }
 
-type AdminTab = 
-  | 'users' 
-  | 'posts' 
-  | 'credits' 
-  | 'emergency' 
-  | 'alerts' 
-  | 'issues' 
-  | 'dictionary' 
-  | 'trust' 
-  | 'presence' 
-  | 'resets' 
-  | 'ai';
-
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  currentUser,
-  users = [],
+  currentUser = null,
+  users: rawUsers = [],
   setUsers,
   helpPosts = [],
   setHelpPosts,
+  issues = [],
+  setIssues,
   redAlerts = [],
   setRedAlerts,
-  issues = [],
-  onUpdateIssueStatus,
-  onLogout,
-  onSwitchToUserView,
   language = 'si',
   setLanguage,
-  theme = 'light',
-  toggleTheme,
+  onLogout,
+  onSwitchToUserMode,
+  onNavigate,
 }) => {
-  // ==========================================
-  // 1. 🛡️ අභ්‍යන්තර ආරක්ෂක පරීක්ෂාව (Internal Role Guard)
-  // ==========================================
-  if (!currentUser || !checkIsAdmin(currentUser)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-950">
-        <div className="max-w-md w-full text-center p-8 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-red-200 dark:border-red-900/50">
-          <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-2">ප්‍රවේශය අවහිර කර ඇත</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-            මෙම පරිපාලක පුවරුවට (Admin Panel) පිවිසීමට ඔබට අවසර නොමැත. කරුණාකර Admin ගිණුමකින් ලොග් වන්න.
-          </p>
-          <button
-            onClick={onSwitchToUserView}
-            className="w-full py-2.5 bg-slate-800 dark:bg-slate-700 text-white rounded-xl hover:bg-slate-900 text-sm font-medium transition-colors"
-          >
-            ආපසු Dashboard වෙත යන්න
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const t = translations[language] || translations.si;
 
-  // ==========================================
-  // 2. Component States
-  // ==========================================
-  const [activeTab, setActiveTab] = useState<AdminTab>('users');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('all');
-  
-  // Modals & Action States
+  const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
+
+  const [activeTab, setActiveTab] = useState<
+    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'
+  >('users');
+
+  const [userSearch, setUserSearch] = useState('');
+  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
+  const [postSearch, setPostSearch] = useState('');
+  const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+
+  // User inspection and editing modal states
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
-  // Notification Toast State
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000);
+  const showNotification = (msg: string) => {
+    setNotificationMsg(msg);
+    setTimeout(() => setNotificationMsg(null), 4000);
   };
 
-  // ==========================================
-  // 3. Robust Handlers (Try/Catch + Rollback Fix)
-  // ==========================================
+  // ----------------------------------------------------
+  // 📥 Automatic JSON Download Helper for Deleted Post Backup
+  // ----------------------------------------------------
+  const downloadPostBackupJSON = (post: HelpPost) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `deleted_post_${post.postCode || post.id}_${timestamp}.json`;
 
-  // A. පරිශීලකයින් අනුමත කිරීම (Approve User)
-  const handleApproveUser = async (targetUser: User) => {
-    if (!setUsers) return;
-    const previousUsers = [...users];
-    const updatedUser: User = { ...targetUser, status: 'approved' };
+    const backupData = {
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.name || 'ADMIN',
+      adminId: currentUser?.id || 'UNKNOWN',
+      postData: post,
+    };
 
-    // Optimistic UI Update
-    setUsers(prev => prev.map(u => (u.id === targetUser.id ? updatedUser : u)));
-    setIsProcessing(targetUser.id);
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
+  const handleUnhidePostByAdmin = async (postId: string) => {
     try {
-      await syncUserProfileToFirestore(updatedUser);
-      showToast(`${targetUser.fullName || targetUser.username || 'පරිශීලකයා'} සාර්ථකව අනුමත කරන ලදී.`, 'success');
-    } catch (error) {
-      console.error('Failed to approve user in Firestore:', error);
-      // Rollback on failure
-      setUsers(previousUsers);
-      showToast('අනුමත කිරීම අසාර්ථක විය. කරුණාකර ජාල සම්බන්ධතාවය පරීක්ෂා කරන්න.', 'error');
-    } finally {
-      setIsProcessing(null);
+      await updateHelpPostInFirestore(postId, {
+        isHidden: false,
+        reportsCount: 0,
+        hiddenReason: null,
+        reviewedByAdminAt: new Date().toISOString(),
+      });
+
+      if (setHelpPosts) {
+        setHelpPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? { ...p, isHidden: false, reportsCount: 0, hiddenReason: undefined }
+              : p
+          )
+        );
+      }
+      showNotification('✅ දැන්වීම නැවත සාර්ථකව සක්‍රිය කරන ලදී (Unhidden)!');
+    } catch (err) {
+      console.error('Failed to unhide post:', err);
+      alert('දැන්වීම සක්‍රිය කිරීම අසාර්ථක විය. නැවත උත්සාහ කරන්න.');
     }
   };
 
-  // B. පරිශීලකයින් අවහිර කිරීම (Block / Unblock User)
-  const handleToggleBlockUser = async (targetUser: User) => {
-    if (!setUsers) return;
-    const previousUsers = [...users];
-    const nextStatus = targetUser.status === 'blocked' ? 'approved' : 'blocked';
-    const updatedUser: User = { ...targetUser, status: nextStatus };
+  const handlePermanentDeletePost = async (postId: string) => {
+    const postToDelete = helpPosts.find((p) => p.id === postId);
+    const confirmDelete = window.confirm(
+      '⚠️ මෙම දැන්වීම සහමුලින්ම Database එකෙන් සහ Cloud එකෙන් මකා දැමීමට ඔබට සහතිකද?\n\n(මෙහි දත්ත සහිත Backup JSON ගොනුවක් ඔබගේ පරිගණකයට ස්වයංක්‍රීයව බාගත වේ).'
+    );
+    if (!confirmDelete) return;
 
-    setUsers(prev => prev.map(u => (u.id === targetUser.id ? updatedUser : u)));
-    setIsProcessing(targetUser.id);
-
-    try {
-      await syncUserProfileToFirestore(updatedUser);
-      showToast(`පරිශීලක තත්ත්වය සාර්ථකව වෙනස් කරන ලදී.`, 'success');
-    } catch (error) {
-      console.error('Failed to update user status in Firestore:', error);
-      setUsers(previousUsers);
-      showToast('තත්ත්වය යාවත්කාලීන කිරීම අසාර්ථක විය.', 'error');
-    } finally {
-      setIsProcessing(null);
+    if (postToDelete) {
+      try {
+        downloadPostBackupJSON(postToDelete);
+      } catch (err) {
+        console.warn('JSON backup failed:', err);
+      }
     }
-  };
-
-  // C. පරිශීලක ගිණුමක් මැකීම (Delete User)
-  const handleDeleteUser = async (targetUser: User) => {
-    const confirmMessage = `${targetUser.fullName || targetUser.username} ගේ ගිණුම ස්ථිරවම මකා දැමීමට අවශ්‍ය බව සහතිකද?`;
-    if (!window.confirm(confirmMessage)) return;
-
-    if (!setUsers) return;
-    const previousUsers = [...users];
-
-    setUsers(prev => prev.filter(u => u.id !== targetUser.id));
-    setIsProcessing(targetUser.id);
-
-    try {
-      await deleteUserAccount(targetUser.id);
-      showToast('පරිශීලක ගිණුම සාර්ථකව මකා දමන ලදී.', 'success');
-    } catch (error) {
-      console.error('Failed to delete user account:', error);
-      setUsers(previousUsers);
-      showToast('ගිණුම මකා දැමීම අසාර්ථක විය.', 'error');
-    } finally {
-      setIsProcessing(null);
-    }
-  };
-
-  // D. Help Post එකක් මැකීම (Delete Post)
-  const handleDeletePost = async (postId: string) => {
-    if (!window.confirm('මෙම Post එක ස්ථිරවම මකා දැමීමට අවශ්‍යද?')) return;
-
-    if (!setHelpPosts) return;
-    const previousPosts = [...helpPosts];
-
-    setHelpPosts(prev => prev.filter(p => p.id !== postId));
 
     try {
       await deleteHelpPostFromFirestore(postId);
-      showToast('Post එක සාර්ථකව මකා දමන ලදී.', 'success');
-    } catch (error) {
-      console.error('Failed to delete post in Firestore:', error);
-      setHelpPosts(previousPosts);
-      showToast('Post එක මකා දැමීම අසාර්ථක විය.', 'error');
+      if (setHelpPosts) {
+        setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
+      }
+      showNotification('🗑️ දැන්වීම සදහටම මකා දමන ලදී (Cloud Permanently Deleted).');
+    } catch (err) {
+      console.error('Failed to delete post:', err);
+      alert('දැන්වීම මකා දැමීම අසාර්ථක විය.');
     }
   };
 
-  // E. User Profile එක සංස්කරණය කර සුරැකීම
-  const handleSaveEditedUser = async (updated: User) => {
-    if (!setUsers) return;
-    const previousUsers = [...users];
+  // User Actions
+  const handleApproveUser = async (userToApprove: User) => {
+    try {
+      const updatedUser: User = { 
+        ...userToApprove, 
+        status: 'approved',
+        credits: userToApprove.credits || 50,
+      };
+      await syncUserProfileToFirestore(updatedUser);
 
-    setUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
-    setEditingUser(null);
+      if (setUsers) {
+        setUsers((prev) =>
+          deduplicateUsers(
+            prev.map((u) => (u.id === userToApprove.id ? updatedUser : u))
+          )
+        );
+      }
+      showNotification(`✅ ${userToApprove.name} සාර්ථකව අනුමත කරන ලදී!`);
+    } catch (err) {
+      console.error('Approval failed:', err);
+      alert('අනුමත කිරීම අසාර්ථක විය.');
+    }
+  };
+
+  const handleRejectUser = async (userToReject: User) => {
+    const confirmReject = window.confirm(`ඔබට ${userToReject.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කර ඉවත් කිරීමට අවශ්‍යද?`);
+    if (!confirmReject) return;
 
     try {
-      await syncUserProfileToFirestore(updated);
-      showToast('පරිශීලක තොරතුරු සාර්ථකව යාවත්කාලීන විය.', 'success');
-    } catch (error) {
-      console.error('Failed to save edited user:', error);
-      setUsers(previousUsers);
-      showToast('යාවත්කාලීන කිරීම අසාර්ථක විය.', 'error');
+      await deleteUserAccount(userToReject.id);
+      if (setUsers) {
+        setUsers((prev) => prev.filter((u) => u.id !== userToReject.id));
+      }
+      showNotification(`❌ ${userToReject.name} ප්‍රතික්ෂේප කර ඉවත් කරන ලදී.`);
+    } catch (err) {
+      console.error('Rejection failed:', err);
+      alert('ප්‍රතික්ෂේප කිරීම අසාර්ථක විය.');
     }
   };
-  // ==========================================
-  // 4. Filters & Computed Data
-  // ==========================================
-  const pendingCount = useMemo(() => users.filter(u => u.status === 'pending').length, [users]);
-  const activeAlertsCount = useMemo(() => redAlerts.length, [redAlerts]);
-  const pendingIssuesCount = useMemo(() => issues.filter(i => i.status === 'pending' || i.status === 'open').length, [issues]);
 
-  const filteredUsers = useMemo(() => {
-    return users.filter(u => {
-      const matchesSearch = 
-        (u.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.nicNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.phone || '').includes(searchQuery);
-
-      const matchesStatus = 
-        statusFilter === 'all' ? true : u.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [users, searchQuery, statusFilter]);
-
-  const filteredPosts = useMemo(() => {
-    return helpPosts.filter(p => 
-      (p.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const handleBlockUser = async (userToBlock: User) => {
+    const targetNic = (userToBlock.nic || '').trim().toUpperCase();
+    const enteredNic = window.prompt(
+      `⚠️ අනතුරු ඇඟවීමයි!\n\n${userToBlock.name} (${userToBlock.userId || userToBlock.nic}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:`
     );
-  }, [helpPosts, searchQuery]);
 
-  // ==========================================
-  // 5. Main JSX Return
-  // ==========================================
+    if (enteredNic === null) return;
+
+    if (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic) {
+      alert('❌ ඇතුළත් කළ හැඳුනුම්පත් අංකය (NIC) නොගැලපේ! පරිශීලකයා අවහිර කිරීම (Block) අවලංගු විය.');
+      return;
+    }
+
+    try {
+      const updatedUser: User = { ...userToBlock, status: 'blocked' };
+      await syncUserProfileToFirestore(updatedUser);
+
+      if (setUsers) {
+        setUsers((prev) =>
+          deduplicateUsers(
+            prev.map((u) => (u.id === userToBlock.id ? updatedUser : u))
+          )
+        );
+      }
+      showNotification(`🚫 ${userToBlock.name} සාර්ථකව අවහිර (Blocked) කරන ලදී.`);
+    } catch (err) {
+      console.error('Block failed:', err);
+      alert('අවහිර කිරීම අසාර්ථක විය.');
+    }
+  };
+
+  const handleUnblockUser = async (userToUnblock: User) => {
+    const confirmUnblock = window.confirm(`${userToUnblock.name} ගේ අවහිරය (Block) ඉවත් කිරීමට ඔබට සහතිකද?`);
+    if (!confirmUnblock) return;
+
+    try {
+      const updatedUser: User = { ...userToUnblock, status: 'approved' };
+      await syncUserProfileToFirestore(updatedUser);
+
+      if (setUsers) {
+        setUsers((prev) =>
+          deduplicateUsers(
+            prev.map((u) => (u.id === userToUnblock.id ? updatedUser : u))
+          )
+        );
+      }
+      showNotification(`🔓 ${userToUnblock.name} ගේ අවහිරය සාර්ථකව ඉවත් කරන ලදී.`);
+    } catch (err) {
+      console.error('Unblock failed:', err);
+      alert('අවහිරය ඉවත් කිරීම අසාර්ථක විය.');
+    }
+  };
+
+  const handleSaveEditedUser = async (updatedData: Partial<User>) => {
+    if (!editingUser) return;
+    try {
+      const merged: User = {
+        ...editingUser,
+        ...updatedData,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await syncUserProfileToFirestore(merged);
+
+      if (setUsers) {
+        setUsers((prev) =>
+          deduplicateUsers(
+            prev.map((u) => (u.id === editingUser.id ? merged : u))
+          )
+        );
+      }
+
+      setEditingUser(null);
+      showNotification(`✅ ${merged.name} ගේ විස්තර සාර්ථකව යාවත්කාලීන විය.`);
+    } catch (err) {
+      console.error('Failed to save edited user:', err);
+      alert('පරිශීලක තොරතුරු යාවත්කාලීන කිරීම අසාර්ථක විය.');
+    }
+  };
+
+  const pendingUsersCount = users.filter((u) => u.status === 'pending').length;
+  const pendingIssuesCount = issues.filter((i) => i.status === 'pending').length;
+  const activeAlertsCount = redAlerts.filter((a) => a.status === 'active').length;
+
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
-      
-      {/* 🔔 Notification Toast */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 transition-all ${
-          notification.type === 'success' 
-            ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200' 
-            : 'bg-red-50 dark:bg-red-950/80 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
-        }`}>
-          {notification.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
-          <span className="text-sm font-medium">{notification.message}</span>
+    <div className="w-full max-w-7xl mx-auto py-4 sm:py-6 space-y-6 animate-fadeIn text-slate-800 dark:text-slate-100">
+      {/* Toast Notification Banner */}
+      {notificationMsg && (
+        <div className="fixed top-5 right-5 z-50 p-4 rounded-2xl bg-slate-900 text-white border-2 border-emerald-500 shadow-2xl flex items-center gap-3 animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span className="font-bold text-xs sm:text-sm">{notificationMsg}</span>
         </div>
       )}
 
-      {/* 🛡️ Header Bar */}
-      <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-sm">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg leading-tight">Lanka24online Admin</h1>
-              <p className="text-xs text-slate-500">පද්ධති කළමනාකරණ පුවරුව</p>
-            </div>
-          </div>
-
-          {/* Header Badges & Actions */}
-          <div className="flex items-center gap-2">
-            {pendingCount > 0 && (
-              <span className="px-2.5 py-1 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-full border border-amber-200 dark:border-amber-900">
-                {pendingCount} Pending
+      {/* Top Header & Branding Card */}
+      <div className="bg-white dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <AppLogo size="md" />
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span>{t.adminDashboard}</span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                SUPER ADMIN
               </span>
-            )}
-            
-            <button
-              onClick={onSwitchToUserView}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" /> User Mode
-            </button>
-
-            {toggleTheme && (
-              <button
-                onClick={toggleTheme}
-                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
-              >
-                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
-            )}
-
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
-              title="System Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            )}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              පරිශීලකයින්, ආපදා රතු එළිය, සහ පද්ධති සම්පත් සජීවීව පාලනය කරන්න
+            </p>
           </div>
         </div>
 
-        {/* 📑 Tab Navigation */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 overflow-x-auto py-2 scrollbar-none">
-          {[
-            { id: 'users', label: 'පරිශීලකයින්', icon: Users, count: users.length },
-            { id: 'posts', label: 'Help Posts', icon: FileText, count: helpPosts.length },
-            { id: 'alerts', label: 'Red Alerts', icon: AlertTriangle, count: activeAlertsCount },
-            { id: 'issues', label: 'ගැටළු (Issues)', icon: HelpCircle, count: pendingIssuesCount },
-            { id: 'credits', label: 'ණය කළමනාකරණය', icon: Coins },
-            { id: 'emergency', label: 'හදිසි අංක', icon: PhoneCall },
-            { id: 'dictionary', label: 'ශබ්දකෝෂය', icon: BookOpen },
-            { id: 'trust', label: 'විශ්වාසනීයත්වය', icon: ShieldAlert },
-            { id: 'presence', label: 'ක්‍රියාකාරීත්වය', icon: Radio },
-            { id: 'resets', label: 'මුරපද යළි පිහිටුවීම්', icon: KeyRound },
-            { id: 'ai', label: 'AI දැනුම', icon: Brain },
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id as AdminTab);
-                  setSearchQuery('');
-                }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-                {tab.count !== undefined && tab.count > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                    isActive ? 'bg-blue-800 text-blue-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                  }`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Quick Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {onSwitchToUserMode && (
+            <button
+              type="button"
+              onClick={onSwitchToUserMode}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-[#0c2417] text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs transition-all cursor-pointer border border-emerald-200 dark:border-[#173a26]"
+            >
+              <Eye className="w-4 h-4" />
+              <span>User Mode එකට පිවිසෙන්න</span>
+            </button>
+          )}
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs transition-all cursor-pointer border border-rose-200 dark:border-rose-900/60"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>පිටවෙන්න</span>
+            </button>
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* 📦 Tab Content Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        
-        {/* TAB 1: USERS */}
-        {activeTab === 'users' && (
-          <div className="space-y-4">
-            {/* Search & Filter Bar */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="නම, NIC හෝ දුරකථන අංකයෙන් සොයන්න..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+      {/* 📊 1. FIREBASE STORAGE & DATABASE QUOTA EXPLORER BAR */}
+      <MemoryStorageBar 
+        helpPosts={helpPosts} 
+        users={users} 
+        issues={issues} 
+      />
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Filter className="w-4 h-4 text-slate-400" />
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value as any)}
-                  className="text-xs bg-slate-50 dark:bg-slate-800 py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700"
-                >
-                  <option value="all">සියලු පරිශීලකයින් ({users.length})</option>
-                  <option value="pending">අනුමැතිය අපේක්ෂිත ({pendingCount})</option>
-                  <option value="approved">අනුමත කළ අය</option>
-                  <option value="blocked">අවහිර කළ අය</option>
-                </select>
-              </div>
+      {/* Navigation Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        {[
+          { id: 'users', label: 'පරිශීලකයින්', icon: Users, badge: pendingUsersCount },
+          { id: 'posts', label: 'දැන්වීම් පාලනය', icon: FileText, count: helpPosts.length },
+          { id: 'credits', label: 'ක්‍රෙඩිට් කළමනාකරණය', icon: Coins },
+          { id: 'emergency', label: 'හදිසි නාමාවලිය', icon: Phone },
+          { id: 'red_alerts', label: 'රතු එළිය (Disaster)', icon: Radio, badge: activeAlertsCount },
+          { id: 'issues', label: 'ගැටලු & උපකාර', icon: MessageSquare, badge: pendingIssuesCount },
+          { id: 'dictionary', label: 'සෙවුම් ඩික්ෂනරිය', icon: BookOpen },
+          { id: 'trust', label: 'විශ්වාසනීයතා ලාංඡන', icon: Award },
+          { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
+          { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
+          { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer shrink-0 shadow-xs ${
+                isActive
+                  ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white shadow-md shadow-emerald-700/30'
+                  : 'bg-white dark:bg-[#07170e] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#12281b] border border-slate-200 dark:border-[#153422]'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
+              <span>{tab.label}</span>
+              {Boolean(tab.badge && tab.badge > 0) && (
+                <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-black animate-pulse">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {/* 🛡️ Safety & Compatibility bridge across parts */}
+      {/* Tab 1: User Management & Approvals */}
+      {activeTab === 'users' && (
+        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-600" />
+                <span>පරිශීලක කළමනාකරණය සහ අනුමැතිය (User Approvals)</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                මුළු පරිශීලකයින්: {users.length} • අනුමැතිය බලාපොරොත්තුවෙන්: {pendingUsersCount}
+              </p>
             </div>
 
-            {/* Users Table */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                    <tr>
-                      <th className="p-3">පරිශීලකයා</th>
-                      <th className="p-3">තත්ත්වය (Status)</th>
-                      <th className="p-3">NIC / දුරකථනය</th>
-                      <th className="p-3">කාර්යභාරය (Role)</th>
-                      <th className="p-3 text-right">ක්‍රියාමාර්ග (Actions)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-8 text-center text-slate-400">
-                          පරිශීලකයින් කිසිවෙකු හමු නොවීය.
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#07170e] p-1.5 rounded-2xl border border-slate-200/80 dark:border-[#153422] text-xs font-bold">
+              {(['pending', 'approved', 'blocked', 'all'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setUserFilter(f)}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer capitalize ${
+                    userFilter === f
+                      ? 'bg-[#007a4b] text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {f === 'pending'
+                    ? `අනුමැතියට (${pendingUsersCount})`
+                    : f === 'approved'
+                    ? 'අනුමත අය'
+                    : f === 'blocked'
+                    ? 'අවහිර කළ අය'
+                    : 'සියල්ල'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="නම, NIC, දුරකථන අංකය හෝ නගරය මඟින් සොයන්න..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] text-xs sm:text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          {/* Users List Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-[#173a26] text-slate-400 text-[11px] font-black uppercase">
+                  <th className="py-3 px-3">පරිශීලකයා</th>
+                  <th className="py-3 px-3">සම්බන්ධීකරණය</th>
+                  <th className="py-3 px-3">හැඳුනුම්පත (NIC)</th>
+                  <th className="py-3 px-3">තත්ත්වය</th>
+                  <th className="py-3 px-3 text-right">ක්‍රියාමාර්ග</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-[#12281b]">
+                {users
+                  .filter((u) => {
+                    if (userFilter === 'all') return true;
+                    return u.status === userFilter;
+                  })
+                  .filter((u) => {
+                    if (!userSearch.trim()) return true;
+                    const q = userSearch.toLowerCase();
+                    return (
+                      (u.name && u.name.toLowerCase().includes(q)) ||
+                      (u.nic && u.nic.toLowerCase().includes(q)) ||
+                      (u.whatsappPhone && u.whatsappPhone.includes(q)) ||
+                      (u.city && u.city.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((u) => {
+                    const isPending = u.status === 'pending';
+                    const isBlocked = u.status === 'blocked';
+                    return (
+                      <tr key={u.id} className="hover:bg-slate-50/80 dark:hover:bg-[#0f281b]/50 transition-colors">
+                        <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-[#007a4b] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                              {u.name?.charAt(0) || 'U'}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="block truncate max-w-[140px] sm:max-w-none">{u.name}</span>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                {u.role === 'admin' ? '🛡️ Administrator' : 'සාමාජික'}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-[11px]">
+                          <div>{u.whatsappPhone || u.phone || '-'}</div>
+                          <div className="text-slate-400 text-[10px] flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            <span>{u.city || u.district || 'නොදනී'}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {u.nic || '-'}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1 ${
+                              isPending
+                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                                : isBlocked
+                                ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                                : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                            }`}
+                          >
+                            {isPending ? 'අනුමැතියට' : isBlocked ? 'අවහිර' : 'සක්‍රිය'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {/* Inspect Details Button */}
+                            <button
+                              type="button"
+                              onClick={() => setInspectingUser(u)}
+                              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#12281b] dark:hover:bg-[#173a26] text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+                              title="තොරතුරු පරීක්ෂා කරන්න (Inspect Profile)"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+
+                            {/* Edit Details Button */}
+                            <button
+                              type="button"
+                              onClick={() => setEditingUser(u)}
+                              className="p-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 text-blue-600 dark:text-blue-400 transition-all cursor-pointer"
+                              title="විස්තර සංස්කරණය (Edit Details)"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+
+                            {/* Approve / Reject buttons for Pending */}
+                            {isPending && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveUser(u)}
+                                  className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition-all shadow-xs active:scale-95 cursor-pointer"
+                                  title="අනුමත කරන්න"
+                                >
+                                  අනුමත
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectUser(u)}
+                                  className="px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition-all shadow-xs active:scale-95 cursor-pointer"
+                                  title="ප්‍රතික්ෂේප කරන්න"
+                                >
+                                  ඉවත්
+                                </button>
+                              </>
+                            )}
+
+                            {/* Block / Unblock buttons */}
+                            {!isPending && !isBlocked && (
+                              <button
+                                type="button"
+                                onClick={() => handleBlockUser(u)}
+                                className="px-2.5 py-1 rounded-xl bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-bold text-xs transition-all cursor-pointer"
+                                title="පරිශීලකයා අවහිර කරන්න (Block)"
+                              >
+                                Block
+                              </button>
+                            )}
+
+                            {isBlocked && (
+                              <button
+                                type="button"
+                                onClick={() => handleUnblockUser(u)}
+                                className="px-2.5 py-1 rounded-xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition-all cursor-pointer"
+                                title="අවහිරය ඉවත් කරන්න (Unblock)"
+                              >
+                                Unblock
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ) : (
-                      filteredUsers.map(user => (
-                        <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                          <td className="p-3">
-                            <div className="font-semibold">{user.fullName || user.username || 'නමක් නැත'}</div>
-                            <div className="text-[11px] text-slate-400">{user.email || user.username}</div>
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              user.status === 'approved' 
-                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' 
-                                : user.status === 'pending'
-                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                                : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
-                            }`}>
-                              {user.status || 'unknown'}
-                            </span>
-                          </td>
-                          <td className="p-3 font-mono text-[11px]">
-                            <div>{user.nicNumber || '-'}</div>
-                            <div className="text-slate-400">{user.phone || '-'}</div>
-                          </td>
-                          <td className="p-3 capitalize">{user.role || 'user'}</td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => setInspectingUser(user)}
-                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded"
-                                title="Inspect"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditingUser(user)}
-                                className="p-1.5 text-slate-500 hover:text-amber-600 rounded"
-                                title="Edit"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              {user.status === 'pending' && (
-                                <button
-                                  disabled={isProcessing === user.id}
-                                  onClick={() => handleApproveUser(user)}
-                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded"
-                                  title="Approve"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              <button
-                                disabled={isProcessing === user.id}
-                                onClick={() => handleToggleBlockUser(user)}
-                                className={`p-1.5 rounded ${user.status === 'blocked' ? 'text-emerald-600' : 'text-amber-600'}`}
-                                title={user.status === 'blocked' ? 'Unblock' : 'Block'}
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                              <button
-                                disabled={isProcessing === user.id}
-                                onClick={() => handleDeleteUser(user)}
-                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Posts Management & Moderation */}
+      {activeTab === 'posts' && (
+        <div className="bg-white dark:bg-[#0a1a11] rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-[#173a26] shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#173d27]">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <span>දැන්වීම් පාලන පැනලය (Community Posts Moderation)</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                මුළු දැන්වීම්: {helpPosts.length}
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={postSearch}
+                onChange={(e) => setPostSearch(e.target.value)}
+                placeholder="දැන්වීම් සොයන්න..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-[#07170e] border border-slate-200 dark:border-[#153422] text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
           </div>
-        )}
 
-        {/* TAB 2: POSTS */}
-        {activeTab === 'posts' && (
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredPosts.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs">Help Posts කිසිවක් හමු නොවීය.</div>
-              ) : (
-                filteredPosts.map(post => (
-                  <div key={post.id} className="p-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-sm">{post.title}</h3>
-                      <p className="text-xs text-slate-500 mt-1">{post.description}</p>
+          {/* Posts List */}
+          <div className="space-y-3">
+            {helpPosts
+              .filter((p) => {
+                if (!postSearch.trim()) return true;
+                const q = postSearch.toLowerCase();
+                return (
+                  (p.title && p.title.toLowerCase().includes(q)) ||
+                  (p.whatHappened && p.whatHappened.toLowerCase().includes(q)) ||
+                  (p.userName && p.userName.toLowerCase().includes(q)) ||
+                  (p.locationName && p.locationName.toLowerCase().includes(q))
+                );
+              })
+              .map((post) => (
+                <div
+                  key={post.id}
+                  className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                    post.isHidden
+                      ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-300 dark:border-rose-900/60'
+                      : 'bg-slate-50/70 dark:bg-[#07170e] border-slate-200 dark:border-[#153422]'
+                  }`}
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                        {post.postCode || `#POST-${post.id.slice(-4)}`}
+                      </span>
+                      <h4 className="font-extrabold text-sm text-slate-900 dark:text-white leading-tight">
+                        {post.title || post.whatHappened || post.whatIsNeeded || 'දැන්වීම් සිරස්තලයක් නොමැත'}
+                      </h4>
+                      {post.isResolved && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          නිරාකරණය විය
+                        </span>
+                      )}
                     </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                      <span>👤 {post.userName || 'පරිශීලක'}</span>
+                      <span>•</span>
+                      <span>📍 {post.locationName || 'ස්ථානයක් නැත'}</span>
+                      {Boolean(post.reportsCount && post.reportsCount > 0) && (
+                        <>
+                          <span>•</span>
+                          <span className="text-rose-600 font-bold">
+                            ⚠️ රිපෝට්: {post.reportsCount}
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Audio Note Preview if exists */}
+                    {post.audioUrl && (
+                      <div className="pt-1 max-w-xs">
+                        <AudioVoicePlayer audioUrl={post.audioUrl} durationSec={post.audioDurationSec || 15} />
+                      </div>
+                    )}
+
+                    {/* Reports & Auto-hidden Alert */}
+                    {post.isHidden && (
+                      <div className="text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 pt-0.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {post.hiddenReason || 'වාර්තා (Reports) නිසා මෙම දැන්වීම ස්වයංක්‍රීයව සඟවා ඇත.'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                    {post.isHidden && (
+                      <button
+                        type="button"
+                        onClick={() => handleUnhidePostByAdmin(post.id)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>යළි සක්‍රිය (Unhide)</span>
+                      </button>
+                    )}
+
                     <button
-                      onClick={() => handleDeletePost(post.id)}
-                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-xs flex items-center gap-1"
+                      type="button"
+                      onClick={() => handlePermanentDeletePost(post.id)}
+                      className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                      title="Cloud එකෙන් සදහටම මකා දමන්න"
                     >
-                      <Trash2 className="w-4 h-4" /> මකන්න
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Delete</span>
                     </button>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+              ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* SUBSYSTEM TABS (Props ආරක්ෂිතව ලබා දීම) */}
-        {activeTab === 'alerts' && <AdminRedAlertManagement redAlerts={redAlerts} setRedAlerts={setRedAlerts} />}
-        {activeTab === 'issues' && <AdminIssuesManagement issues={issues} onUpdateStatus={onUpdateIssueStatus} />}
-        {activeTab === 'credits' && <AdminCreditManagement users={users} setUsers={setUsers} />}
-        {activeTab === 'emergency' && <AdminEmergencyDirectoryManagement />}
-        {activeTab === 'dictionary' && <AdminSearchDictionaryManager />}
-        {activeTab === 'trust' && <AdminTrustManagement users={users} />}
-        {activeTab === 'presence' && <AdminPresenceDashboard users={users} />}
-        {activeTab === 'resets' && <AdminPasswordResetsManagement />}
-        {activeTab === 'ai' && <AdminAiKnowledgeManagement />}
-      </main>
+      {/* Tab 3: Credits Management */}
+      {activeTab === 'credits' && (
+        <AdminCreditManagement 
+          users={users} 
+          setUsers={setUsers} 
+          language={language} 
+        />
+      )}
 
-      {/* 🔍 User Inspection Modal */}
+      {/* Tab 4: Emergency Contacts Directory Management */}
+      {activeTab === 'emergency' && (
+        <AdminEmergencyDirectoryManagement 
+          language={language} 
+        />
+      )}
+
+      {/* Tab 5: Red Alerts / Disaster Reporting Management */}
+      {activeTab === 'red_alerts' && (
+        <AdminRedAlertManagement
+          redAlerts={redAlerts}
+          setRedAlerts={setRedAlerts}
+          language={language}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Tab 6: Issues Helpdesk */}
+      {activeTab === 'issues' && (
+        <AdminIssuesManagement
+          issues={issues}
+          setIssues={setIssues}
+          language={language}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Tab 7: Search Dictionary Management */}
+      {activeTab === 'dictionary' && (
+        <AdminSearchDictionaryManager 
+          language={language} 
+        />
+      )}
+
+      {/* Tab 8: Trust Badges Management */}
+      {activeTab === 'trust' && (
+        <AdminTrustManagement 
+          users={users} 
+          setUsers={setUsers} 
+          language={language} 
+        />
+      )}
+
+      {/* Tab 9: Presence & Real-time Active Sessions */}
+      {activeTab === 'presence' && (
+        <AdminPresenceDashboard 
+          language={language} 
+        />
+      )}
+
+      {/* Tab 10: Password Resets Management */}
+      {activeTab === 'password_resets' && (
+        <AdminPasswordResetsManagement 
+          language={language} 
+          users={users} 
+          setUsers={setUsers} 
+        />
+      )}
+
+      {/* Tab 11: AI Knowledge Management */}
+      {activeTab === 'ai_knowledge' && (
+        <AdminAiKnowledgeManagement 
+          language={language} 
+        />
+      )}
+
+      {/* Member Inspection Modal */}
       {inspectingUser && (
         <AdminUserInspectionModal
           user={inspectingUser}
+          isOpen={Boolean(inspectingUser)}
           onClose={() => setInspectingUser(null)}
+          onApprove={handleApproveUser}
+          onBlock={handleBlockUser}
+          onUnblock={handleUnblockUser}
+          onEdit={(u) => {
+            setInspectingUser(null);
+            setEditingUser(u);
+          }}
+          onDelete={handleRejectUser}
+          language={language}
         />
       )}
 
-      {/* ✏️ User Edit Modal */}
+      {/* Member Details Edit Modal */}
       {editingUser && (
         <AdminEditUserModal
           user={editingUser}
-          onSave={handleSaveEditedUser}
+          isOpen={Boolean(editingUser)}
           onClose={() => setEditingUser(null)}
+          onSave={handleSaveEditedUser}
+          language={language}
         />
       )}
 
-      {/* ⚙️ System Settings Modal */}
-      {isSettingsOpen && (
-        <AdminSystemSettingsToggle
-          onClose={() => setIsSettingsOpen(false)}
-        />
-      )}
     </div>
   );
 };
