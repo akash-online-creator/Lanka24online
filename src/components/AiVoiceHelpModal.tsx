@@ -2,25 +2,29 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, 
   Square, 
-  Play, 
-  Pause, 
   Send, 
-  Trash2, 
-  MapPin, 
+  RotateCcw, 
   AlertTriangle, 
+  Radio, 
   Zap, 
   HeartHandshake, 
-  X, 
-  Loader2, 
+  Users, 
+  Volume2, 
+  VolumeX, 
+  Play, 
+  Pause, 
+  Coins, 
+  Sparkles, 
   CheckCircle2, 
-  Coins,
-  Users,
-  Plus,
-  Minus
+  Loader2, 
+  X, 
+  MapPin, 
+  ShieldCheck, 
+  Plus, 
+  Minus 
 } from 'lucide-react';
-import { HelpPost, Language, LocationOption, User, RedAlertItem } from '../types';
+import { HelpPost, Language, LocationOption, RedAlertItem, User } from '../types';
 import { uploadMediaToTelegram } from '../utils/telegramStorage';
-import { resolveExactLocation } from '../utils/geoUtils';
 
 export type AllowedVoiceCategory = 'quick_services' | 'general_help' | 'red_alert';
 
@@ -31,7 +35,7 @@ interface AiVoiceHelpModalProps {
   currentLocation: LocationOption;
   lang?: Language;
   onSubmitHelpPost?: (post: any) => Promise<any> | void;
-  onSubmitPost?: (post: any) => Promise<any> | void; // 👈 Support both prop names
+  onSubmitPost?: (post: any) => Promise<any> | void; // 👈 Prop දෙයාකාරයෙන්ම ලැබුණද ක්‍රියාත්මක වීමට
   onSubmitRedAlert?: (alert: RedAlertItem) => Promise<any> | void;
 }
 
@@ -51,16 +55,16 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   
-  // Nearest City only (නගරය පමණි - නිශ්චිත ස්ථානය සඟවයි)
+  // Nearest City only (නගරය පමණි)
   const [cityName, setCityName] = useState('');
 
-  // Mandatory Category Selection (3 Categories Only)
-  const [selectedCategory, setSelectedCategory] = useState<AllowedVoiceCategory | null>(null);
+  // Mandatory Category Selection
+  const [selectedCategory, setSelectedCategory] = useState<AllowedVoiceCategory | null>('quick_services');
 
-  // Helpers Needed Count (සහායකයන් අවශ්‍ය ගණන තීරණය කිරීම)
+  // Helpers Needed Count
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
 
-  // Status
+  // UI States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -72,47 +76,31 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      resolveNearestCity();
-      setAudioBlob(null);
-      setAudioUrl(null);
-      setSelectedCategory(null);
-      setHelpersNeeded(1);
-      setSubmissionSuccess(null);
-      setErrorMsg(null);
       setIsRecording(false);
       setRecordingSeconds(0);
-    }
-  }, [isOpen]);
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setIsPlayingPreview(false);
+      setSelectedCategory('quick_services');
+      setHelpersNeeded(1);
+      setIsSubmitting(false);
+      setSubmissionSuccess(null);
+      setErrorMsg(null);
 
-  const resolveNearestCity = async () => {
-    const defaultCity = (currentLocation?.nameSi || 'කොළඹ').split('(')[0].trim();
-    setCityName(defaultCity);
-
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            const loc = await resolveExactLocation(pos.coords.latitude, pos.coords.longitude);
-            if (loc && (loc.townSi || loc.districtSi)) {
-              const cleanCity = (loc.townSi || loc.districtSi || defaultCity).split('(')[0].trim();
-              setCityName(cleanCity || defaultCity);
-            }
-          } catch {
-            setCityName(defaultCity);
-          }
-        },
-        () => {
-          setCityName(defaultCity);
-        },
-        { enableHighAccuracy: false, timeout: 5000 }
-      );
+      const defaultCity = currentLocation?.nameSi || currentLocation?.nameEn || 'කොළඹ';
+      if (currentLocation?.nameSi) {
+        const cleanCity = currentLocation.nameSi.split(',')[0].trim();
+        setCityName(cleanCity || defaultCity);
+      } else {
+        setCityName(defaultCity);
+      }
+    } else {
+      handleStopRecording();
     }
-  };
+  }, [isOpen, currentLocation]);
 
   const handleStartRecording = async () => {
     setErrorMsg(null);
-    setSubmissionSuccess(null);
-
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setErrorMsg('මයික්‍රෆෝනය භාවිතය ඔබගේ බ්‍රවුසරයේ නොමැත.');
@@ -154,7 +142,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       }, 1000);
     } catch (err: any) {
       console.warn('Microphone error:', err);
-      setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීමට අවසර නැත. කරුණාකර අවසර ලබා දෙන්න.');
+      setErrorMsg('මයික්‍රෆෝනය සක්‍රිය කිරීමට අවසර නැත. කරුණාකර Browser Settings වලින් මයික්‍රෆෝන් අවසරය ලබා දෙන්න.');
     }
   };
 
@@ -185,7 +173,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     }
 
     if (!selectedCategory) {
-      setErrorMsg('කරුණාකර දැන්වීම සඳහා සේවා කාණ්ඩයක් තෝරන්න (ඉක්මන් සේවා, සාමාන්‍ය සේවා, හෝ ආපදා රතු එළිය).');
+      setErrorMsg('කරුණාකර දැන්වීම සඳහා සේවා කාණ්ඩයක් තෝරන්න.');
       return;
     }
 
@@ -250,8 +238,8 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
       }
 
       const now = new Date();
-      const dateStr = now.toLocaleDateString('si-LK');
-      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = now.toLocaleDateString();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       const categoryConfig: Record<AllowedVoiceCategory, { catKey: string; tag: string; label: string }> = {
         quick_services: { catKey: 'quick_services', tag: 'ඉක්මන් සේවා', label: 'ඉක්මන් සේවා' },
@@ -261,7 +249,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
       const config = categoryConfig[selectedCategory];
 
-      // Submit as Voice Post (Supports both onSubmitHelpPost and onSubmitPost)
+      // 🛡️ Submit as Voice Post (Supports both onSubmitHelpPost and onSubmitPost)
       const submitFn = onSubmitHelpPost || onSubmitPost;
       if (submitFn) {
         const postData = {
@@ -290,7 +278,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
           userName: currentUser?.name || 'පරිශීලක',
           userPhone: currentUser?.phone || currentUser?.whatsappNumber || '0771234567',
           userEmail: currentUser?.email || '',
-          userId: currentUser?.id || currentUser?.userId,
+          userId: currentUser?.id || currentUser?.userId || 'usr_guest',
           status: 'active' as const,
           mediaType: 'voice' as const,
           audioUrl: finalAudioUrl,
@@ -308,6 +296,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         const res: any = await submitFn(postData);
         if (res && res.error === 'insufficient_credits') {
           setIsSubmitting(false);
+          setErrorMsg(res.message || 'ඔබගේ ගිණුමේ ප්‍රමාණවත් ක්‍රෙඩිට් ශේෂයක් නොමැත.');
           return;
         }
 
@@ -345,14 +334,19 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
         setSubmissionSuccess('✅ ඔබගේ හඬ සහය දැන්වීම සාර්ථකව පළකරන ලදී!');
       }
 
+      // Auto-close and return to Notice Board
       setTimeout(() => {
         setIsSubmitting(false);
         onClose();
-      }, 1500);
-    } catch (err) {
+        const feed = document.getElementById('help-notices-feed');
+        if (feed) {
+          feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 1000);
+    } catch (err: any) {
       console.error('Submit voice error:', err);
       setIsSubmitting(false);
-      setErrorMsg('දැන්වීම පළකිරීමේදී දෝෂයක් මතු විය. නැවත උත්සාහ කරන්න.');
+      setErrorMsg(err?.message || 'දැන්වීම පළකිරීමේදී දෝෂයක් මතු විය. නැවත උත්සාහ කරන්න.');
     }
   };
 
@@ -363,7 +357,6 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   };
 
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
       <div className="relative w-full max-w-lg bg-white dark:bg-[#06180f] border-2 border-emerald-500/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -435,7 +428,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
                 {isRecording ? (
                   <span className="text-rose-600 animate-pulse">🎙️ පටිගත වෙමින් පවතී... අවශ්‍යතාවය පවසන්න</span>
                 ) : audioUrl ? (
-                  <span className="text-emerald-600">✅ හඬ පටිගත විය! පහතින් කාණ්ඩය හා සහායකයින් තෝරන්න</span>
+                  <span className="text-emerald-600">✅ හඬ පටිගත විය! පහතින් කාණ්ඩය සහ සහායකයින් තෝරන්න</span>
                 ) : (
                   <span>පහත බොත්තම ඔබා හඬ පටිගත කරන්න</span>
                 )}
@@ -685,4 +678,3 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     </div>
   );
 };
-
