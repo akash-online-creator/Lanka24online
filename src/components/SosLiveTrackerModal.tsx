@@ -30,15 +30,33 @@ import {
   Search,
   Download,
   Play,
-  Building2
+  Building2,
+  PhoneCall,
+  Delete,
+  Send,
+  Headphones,
+  FileText,
+  Shield,
+  Users,
+  UserPlus
 } from 'lucide-react';
+
+export interface EmergencyContact {
+  id: string;
+  name: string;
+  phone: string;
+  relationship?: string;
+}
 import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } from '../types';
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
 import { SosLiveViewerModal } from './SosLiveViewerModal';
 import { getLastKnownLocation } from '../utils/autoGpsService';
 import { verifyCurrentUserPin } from '../utils/devicePinManager';
+/**
+ * Comprehensive Sri Lanka Police Stations Directory
+ * Covers all 25 Districts, 9 Provinces and Emergency Units.
+ */
 
-// 👮 1. SRI LANKA POLICE STATIONS COMPREHENSIVE DIRECTORY MODEL
 export interface PoliceStationEntry {
   id: string;
   nameSi: string;
@@ -46,830 +64,192 @@ export interface PoliceStationEntry {
   districtSi: string;
   districtEn: string;
   provinceSi: string;
+  provinceEn: string;
   phone: string;
+  altPhone?: string;
   addressSi: string;
   lat: number;
   lng: number;
 }
 
-// 👮 2. ALL SRI LANKA POLICE STATIONS (DIVISA WIDE - ALL 25 DISTRICTS)
 export const ALL_SRI_LANKA_POLICE_STATIONS: PoliceStationEntry[] = [
-  // --- GAMPAHA DISTRICT ---
-  {
-    id: 'pol_katunayake',
-    nameSi: 'කටුනායක පොලිස් ස්ථානය',
-    nameEn: 'Katunayake Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112252222',
-    addressSi: 'ගුවන් තොටුපළ පාර, කටුනායක',
-    lat: 7.1702,
-    lng: 79.8858,
-  },
-  {
-    id: 'pol_jaela',
-    nameSi: 'ජා-ඇල පොලිස් ස්ථානය',
-    nameEn: 'Ja-Ela Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112236222',
-    addressSi: 'මීගමුව පාර, ජා-ඇල',
-    lat: 7.0782,
-    lng: 79.8920,
-  },
-  {
-    id: 'pol_kandana',
-    nameSi: 'කඳාන පොලිස් ස්ථානය',
-    nameEn: 'Kandana Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112236223',
-    addressSi: 'මීගමුව පාර, කඳාන',
-    lat: 7.0478,
-    lng: 79.8974,
-  },
-  {
-    id: 'pol_seeduwa',
-    nameSi: 'සීදූව පොලිස් ස්ථානය',
-    nameEn: 'Seeduwa Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112253222',
-    addressSi: 'කොළඹ පාර, සීදූව',
-    lat: 7.1264,
-    lng: 79.8732,
-  },
-  {
-    id: 'pol_negombo',
-    nameSi: 'මීගමුව මූලස්ථාන පොලිසිය',
-    nameEn: 'Negombo HQ Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0312222222',
-    addressSi: 'කොළඹ පාර, මීගමුව',
-    lat: 7.2084,
-    lng: 79.8358,
-  },
-  {
-    id: 'pol_wattala',
-    nameSi: 'වත්තල පොලිස් ස්ථානය',
-    nameEn: 'Wattala Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112930222',
-    addressSi: 'මීගමුව පාර, වත්තල',
-    lat: 6.9897,
-    lng: 79.8913,
-  },
-  {
-    id: 'pol_peliyagoda',
-    nameSi: 'පෑලියගොඩ පොලිස් ස්ථානය',
-    nameEn: 'Peliyagoda Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112914044',
-    addressSi: 'නුවර පාර, පෑලියගොඩ',
-    lat: 6.9667,
-    lng: 79.8833,
-  },
-  {
-    id: 'pol_kelaniya',
-    nameSi: 'කැලණිය පොලිස් ස්ථානය',
-    nameEn: 'Kelaniya Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112911222',
-    addressSi: 'කැලණිය',
-    lat: 6.9553,
-    lng: 79.9224,
-  },
-  {
-    id: 'pol_kiribathgoda',
-    nameSi: 'කිරිබත්ගොඩ පොලිස් ස්ථානය',
-    nameEn: 'Kiribathgoda Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112914822',
-    addressSi: 'නුවර පාර, කිරිබත්ගොඩ',
-    lat: 6.9806,
-    lng: 79.9298,
-  },
-  {
-    id: 'pol_ragama',
-    nameSi: 'රාගම පොලිස් ස්ථානය',
-    nameEn: 'Ragama Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112958222',
-    addressSi: 'ස්ටේෂන් පාර, රාගම',
-    lat: 7.0278,
-    lng: 79.9234,
-  },
-  {
-    id: 'pol_gampaha',
-    nameSi: 'ගම්පහ මූලස්ථාන පොලිසිය',
-    nameEn: 'Gampaha HQ Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0332222222',
-    addressSi: 'මිරිස්වත්ත, ගම්පහ',
-    lat: 7.0917,
-    lng: 79.9997,
-  },
-  {
-    id: 'pol_yakkala',
-    nameSi: 'යක්කල පොලිස් ස්ථානය',
-    nameEn: 'Yakkala Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0332226222',
-    addressSi: 'නුවර පාර, යක්කල',
-    lat: 7.0898,
-    lng: 80.0345,
-  },
-  {
-    id: 'pol_nittambuwa',
-    nameSi: 'නිට්ටඹුව පොලිස් ස්ථානය',
-    nameEn: 'Nittambuwa Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0332287222',
-    addressSi: 'කොළඹ - නුවර පාර, නිට්ටඹුව',
-    lat: 7.1439,
-    lng: 80.0944,
-  },
-  {
-    id: 'pol_minuwangoda',
-    nameSi: 'මිනුවන්ගොඩ පොලිස් ස්ථානය',
-    nameEn: 'Minuwangoda Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112295222',
-    addressSi: 'මිනුවන්ගොඩ',
-    lat: 7.1656,
-    lng: 79.9536,
-  },
-  {
-    id: 'pol_mirigama',
-    nameSi: 'මීරිගම පොලිස් ස්ථානය',
-    nameEn: 'Mirigama Police Station',
-    districtSi: 'ගම්පහ',
-    districtEn: 'Gampaha',
-    provinceSi: 'බස්නාහිර',
-    phone: '0332273222',
-    addressSi: 'මීරිගම',
-    lat: 7.2436,
-    lng: 80.1294,
-  },
+  // 1. කොළඹ දිස්ත්‍රික්කය (Colombo District)
+  { id: 'ps_col_hq', nameSi: 'පොලිස් මූලස්ථානය (කොළඹ)', nameEn: 'Police Headquarters (Colombo)', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112421111', altPhone: '119', addressSi: 'පොලිස් මූලස්ථානය, කොළඹ 01', lat: 6.9344, lng: 79.8428 },
+  { id: 'ps_col_fort', nameSi: 'කොටුව පොලිස් ස්ථානය', nameEn: 'Fort Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112431422', altPhone: '0112432822', addressSi: 'චැතම් වීදිය, කොටුව, කොළඹ 01', lat: 6.9365, lng: 79.8441 },
+  { id: 'ps_col_pettah', nameSi: 'පිටකොටුව පොලිස් ස්ථානය', nameEn: 'Pettah Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112421684', altPhone: '0112431711', addressSi: 'ප්‍රධාන වීදිය, පිටකොටුව, කොළඹ 11', lat: 6.9388, lng: 79.8542 },
+  { id: 'ps_col_slaveisland', nameSi: 'කොම්පඤ්ඤවීදිය පොලිස් ස්ථානය', nameEn: 'Slave Island Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112421141', altPhone: '0112431221', addressSi: 'යුක්ති මාවත, කොම්පඤ්ඤවීදිය, කොළඹ 02', lat: 6.9215, lng: 79.8548 },
+  { id: 'ps_col_kollupitiya', nameSi: 'කොල්ලුපිටිය පොලිස් ස්ථානය', nameEn: 'Kollupitiya Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112573211', altPhone: '0112574455', addressSi: 'ගාලු පාර, කොල්ලුපිටිය, කොළඹ 03', lat: 6.9056, lng: 79.8517 },
+  { id: 'ps_col_bambalapitiya', nameSi: 'බම්බලපිටිය පොලිස් ස්ථානය', nameEn: 'Bambalapitiya Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112588222', altPhone: '0112581223', addressSi: 'ලෝරිස් මාවත, බම්බලපිටිය, කොළඹ 04', lat: 6.8925, lng: 79.8553 },
+  { id: 'ps_col_wellawatte', nameSi: 'වැල්ලවත්ත පොලිස් ස්ථානය', nameEn: 'Wellawatte Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112588211', altPhone: '0112584145', addressSi: 'ස්ටැන්ෆෝර්ඩ් පෙදෙස, වැල්ලවත්ත, කොළඹ 06', lat: 6.8744, lng: 79.8606 },
+  { id: 'ps_col_cinnamon', nameSi: 'කුරුඳුවත්ත පොලිස් ස්ථානය', nameEn: 'Cinnamon Gardens Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112694242', altPhone: '0112695555', addressSi: 'මල් පාර, කුරුඳුවත්ත, කොළඹ 07', lat: 6.9112, lng: 79.8647 },
+  { id: 'ps_col_borella', nameSi: 'බොරැල්ල පොලිස් ස්ථානය', nameEn: 'Borella Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112694142', altPhone: '0112692223', addressSi: 'කොටා පාර, බොරැල්ල, කොළඹ 08', lat: 6.9148, lng: 79.8778 },
+  { id: 'ps_col_dematagoda', nameSi: 'දෙමටගොඩ පොලිස් ස්ථානය', nameEn: 'Dematagoda Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112692121', altPhone: '0112693444', addressSi: 'දෙමටගොඩ පාර, කොළඹ 09', lat: 6.9295, lng: 79.8806 },
+  { id: 'ps_col_maradana', nameSi: 'මරදාන පොලිස් ස්ථානය', nameEn: 'Maradana Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112692222', altPhone: '0112691234', addressSi: 'ඩීන්ස් පාර, මරදාන, කොළඹ 10', lat: 6.9272, lng: 79.8656 },
+  { id: 'ps_col_grandpass', nameSi: 'ග්‍රෑන්ඩ්පාස් පොලිස් ස්ථානය', nameEn: 'Grandpass Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112431411', altPhone: '0112435555', addressSi: 'ග්‍රෑන්ඩ්පාස් පාර, කොළඹ 14', lat: 6.9515, lng: 79.8672 },
+  { id: 'ps_col_kotahena', nameSi: 'කොටහේන පොලිස් ස්ථානය', nameEn: 'Kotahena Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112431861', altPhone: '0112432222', addressSi: 'කොටහේන වීදිය, කොළඹ 13', lat: 6.9472, lng: 79.8597 },
+  { id: 'ps_col_modara', nameSi: 'මෝදර පොලිස් ස්ථානය', nameEn: 'Modara Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112521122', altPhone: '0112522222', addressSi: 'මට්ටක්කුලිය පාර, මෝදර, කොළඹ 15', lat: 6.9667, lng: 79.8694 },
+  { id: 'ps_col_thimbirigasyaya', nameSi: 'නාරාහේන්පිට පොලිස් ස්ථානය', nameEn: 'Narahenpita Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112368242', altPhone: '0112369242', addressSi: 'කිරිමණ්ඩල මාවත, නාරාහේන්පිට, කොළඹ 05', lat: 6.8967, lng: 79.8789 },
+  { id: 'ps_col_kirulapone', nameSi: 'කිරුළපන පොලිස් ස්ථානය', nameEn: 'Kirulapone Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112513222', altPhone: '0112514222', addressSi: 'හයිලෙවල් පාර, කිරුළපන, කොළඹ 05', lat: 6.8833, lng: 79.8767 },
+  { id: 'ps_col_nugegoda', nameSi: 'නුගේගොඩ පොලිස් ස්ථානය', nameEn: 'Nugegoda Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112852222', altPhone: '0112852556', addressSi: 'ස්ටැන්ලි තිලකරත්න මාවත, නුගේගොඩ', lat: 6.8683, lng: 79.8978 },
+  { id: 'ps_col_maharagama', nameSi: 'මහරගම පොලිස් ස්ථානය', nameEn: 'Maharagama Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112850222', altPhone: '0112850722', addressSi: 'හයිලෙවල් පාර, මහරගම', lat: 6.8483, lng: 79.9267 },
+  { id: 'ps_col_kottawa', nameSi: 'කොට්ටාව පොලිස් ස්ථානය', nameEn: 'Kottawa Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112781222', altPhone: '0112782222', addressSi: 'පරණ පාර, කොට්ටාව', lat: 6.8417, lng: 79.9653 },
+  { id: 'ps_col_homagama', nameSi: 'හෝමාගම මූලස්ථාන පොලිසිය', nameEn: 'Homagama HQ Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112855222', altPhone: '0112855223', addressSi: 'හයිලෙවල් පාර, හෝමාගම', lat: 6.8411, lng: 80.0028 },
+  { id: 'ps_col_kaduwela', nameSi: 'කඩුවෙල පොලිස් ස්ථානය', nameEn: 'Kaduwela Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112538222', altPhone: '0112539222', addressSi: 'අවිස්සාවේල්ල පාර, කඩුවෙල', lat: 6.9333, lng: 79.9833 },
+  { id: 'ps_col_malabe', nameSi: 'මාලබේ පොලිස් ස්ථානය', nameEn: 'Malabe Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112744222', altPhone: '0112745222', addressSi: 'කඩුවෙල පාර, මාලබේ', lat: 6.9042, lng: 79.9547 },
+  { id: 'ps_col_thalangama', nameSi: 'තලංගම පොලිස් ස්ථානය', nameEn: 'Thalangama Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112789222', altPhone: '0112788222', addressSi: 'බත්තරමුල්ල, තලංගම', lat: 6.8978, lng: 79.9242 },
+  { id: 'ps_col_welikada', nameSi: 'වැලික්කඩ පොලිස් ස්ථානය', nameEn: 'Welikada Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112862222', altPhone: '0112863333', addressSi: 'රාජගිරිය, වැලික්කඩ', lat: 6.9089, lng: 79.8925 },
+  { id: 'ps_col_mirihana', nameSi: 'මිරිහාන මූලස්ථාන පොලිසිය', nameEn: 'Mirihana Special Police HQ', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112852555', altPhone: '0112852556', addressSi: 'පරණ කැස්බෑව පාර, මිරිහාන, නුගේගොඩ', lat: 6.8719, lng: 79.9044 },
+  { id: 'ps_col_dehiwala', nameSi: 'දෙහිවල පොලිස් ස්ථානය', nameEn: 'Dehiwala Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112717222', altPhone: '0112713333', addressSi: 'ගාලු පාර, දෙහිවල', lat: 6.8519, lng: 79.8658 },
+  { id: 'ps_col_mountlavinia', nameSi: 'ගල්කිස්ස මූලස්ථාන පොලිසිය', nameEn: 'Mount Lavinia HQ Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112713444', altPhone: '0112713445', addressSi: 'හෝටල් පාර, ගල්කිස්ස', lat: 6.8358, lng: 79.8653 },
+  { id: 'ps_col_moratuwa', nameSi: 'මොරටුව පොලිස් ස්ථානය', nameEn: 'Moratuwa Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112645222', altPhone: '0112644222', addressSi: 'ගාලු පාර, මොරටුව', lat: 6.7733, lng: 79.8817 },
+  { id: 'ps_col_piliyandala', nameSi: 'පිළියන්දල පොලිස් ස්ථානය', nameEn: 'Piliyandala Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112614222', altPhone: '0112615222', addressSi: 'කොළඹ පාර, පිළියන්දල', lat: 6.8017, lng: 79.9228 },
+  { id: 'ps_col_kesbewa', nameSi: 'කැස්බෑව පොලිස් ස්ථානය', nameEn: 'Kesbewa Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112603222', altPhone: '0112604222', addressSi: 'බණ්ඩාරගම පාර, කැස්බෑව', lat: 6.7833, lng: 79.9458 },
+  { id: 'ps_col_padukka', nameSi: 'පාදුක්ක පොලිස් ස්ථානය', nameEn: 'Padukka Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112859222', altPhone: '0112859333', addressSi: 'හොරණ පාර, පාදුක්ක', lat: 6.8483, lng: 80.1033 },
+  { id: 'ps_col_hanwella', nameSi: 'හංවැල්ල පොලිස් ස්ථානය', nameEn: 'Hanwella Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0362253222', altPhone: '0362254222', addressSi: 'හයිලෙවල් පාර, හංවැල්ල', lat: 6.9008, lng: 80.0847 },
+  { id: 'ps_col_avissawella', nameSi: 'අවිස්සාවේල්ල මූලස්ථාන පොලිසිය', nameEn: 'Avissawella HQ Police Station', districtSi: 'කොළඹ', districtEn: 'Colombo', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0362222222', altPhone: '0362222223', addressSi: 'කොළඹ පාර, අවිස්සාවේල්ල', lat: 6.9536, lng: 80.2078 },
 
-  // --- COLOMBO DISTRICT ---
-  {
-    id: 'pol_fort',
-    nameSi: 'කොළඹ කොටුව පොලිස් ස්ථානය',
-    nameEn: 'Colombo Fort Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112431422',
-    addressSi: 'චැතම් වීදිය, කොළඹ 01',
-    lat: 6.9344,
-    lng: 79.8428,
-  },
-  {
-    id: 'pol_pettah',
-    nameSi: 'පිටකොටුව පොලිස් ස්ථානය',
-    nameEn: 'Pettah Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112431423',
-    addressSi: 'ඕල්කට් මාවත, පිටකොටුව',
-    lat: 6.9366,
-    lng: 79.8530,
-  },
-  {
-    id: 'pol_maradana',
-    nameSi: 'මරදාන පොලිස් ස්ථානය',
-    nameEn: 'Maradana Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112692222',
-    addressSi: 'ඩීන්ස් පාර, මරදාන',
-    lat: 6.9271,
-    lng: 79.8654,
-  },
-  {
-    id: 'pol_kollupitiya',
-    nameSi: 'කොල්ලුපිටිය පොලිස් ස්ථානය',
-    nameEn: 'Kollupitiya Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112573222',
-    addressSi: 'ගාලු පාර, කොල්ලුපිටිය',
-    lat: 6.9111,
-    lng: 79.8517,
-  },
-  {
-    id: 'pol_bambalapitiya',
-    nameSi: 'බම්බලපිටිය පොලිස් ස්ථානය',
-    nameEn: 'Bambalapitiya Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112588222',
-    addressSi: 'ගාලු පාර, බම්බලපිටිය',
-    lat: 6.8911,
-    lng: 79.8580,
-  },
-  {
-    id: 'pol_wellawatte',
-    nameSi: 'වැල්ලවත්ත පොලිස් ස්ථානය',
-    nameEn: 'Wellawatte Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112588223',
-    addressSi: 'ගාලු පාර, වැල්ලවත්ත',
-    lat: 6.8744,
-    lng: 79.8608,
-  },
-  {
-    id: 'pol_cinnamon_gardens',
-    nameSi: 'කුරුඳුවත්ත පොලිස් ස්ථානය',
-    nameEn: 'Cinnamon Gardens Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112694222',
-    addressSi: 'ගිල්ෆර්ඩ් චන්ද්‍රවංකය, කොළඹ 07',
-    lat: 6.9067,
-    lng: 79.8708,
-  },
-  {
-    id: 'pol_borella',
-    nameSi: 'බොරැල්ල පොලිස් ස්ථානය',
-    nameEn: 'Borella Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112692223',
-    addressSi: 'ඩී.එස්. සේනානායක මාවත, බොරැල්ල',
-    lat: 6.9147,
-    lng: 79.8778,
-  },
-  {
-    id: 'pol_nugegoda',
-    nameSi: 'නුගේගොඩ මූලස්ථාන පොලිසිය',
-    nameEn: 'Nugegoda HQ Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112852222',
-    addressSi: 'හයිලෙවල් පාර, නුගේගොඩ',
-    lat: 6.8649,
-    lng: 79.8997,
-  },
-  {
-    id: 'pol_mount_lavinia',
-    nameSi: 'ගල්කිස්ස මූලස්ථාන පොලිසිය',
-    nameEn: 'Mount Lavinia HQ Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112717222',
-    addressSi: 'හෝටල් පාර, ගල්කිස්ස',
-    lat: 6.8375,
-    lng: 79.8661,
-  },
-  {
-    id: 'pol_dehiwala',
-    nameSi: 'දෙහිවල පොලිස් ස්ථානය',
-    nameEn: 'Dehiwala Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112712222',
-    addressSi: 'ගාලු පාර, දෙහිවල',
-    lat: 6.8517,
-    lng: 79.8667,
-  },
-  {
-    id: 'pol_moratuwa',
-    nameSi: 'මොරටුව පොලිස් ස්ථානය',
-    nameEn: 'Moratuwa Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112645222',
-    addressSi: 'ගාලු පාර, මොරටුව',
-    lat: 6.7730,
-    lng: 79.8816,
-  },
-  {
-    id: 'pol_maharagama',
-    nameSi: 'මහරගම පොලිස් ස්ථානය',
-    nameEn: 'Maharagama Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112850222',
-    addressSi: 'හයිලෙවල් පාර, මහරගම',
-    lat: 6.8483,
-    lng: 79.9267,
-  },
-  {
-    id: 'pol_homagama',
-    nameSi: 'හෝමාගම පොලිස් ස්ථානය',
-    nameEn: 'Homagama Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112855222',
-    addressSi: 'හයිලෙවල් පාර, හෝමාගම',
-    lat: 6.8419,
-    lng: 80.0028,
-  },
-  {
-    id: 'pol_piliyandala',
-    nameSi: 'පිළියන්දල පොලිස් ස්ථානය',
-    nameEn: 'Piliyandala Police Station',
-    districtSi: 'කොළඹ',
-    districtEn: 'Colombo',
-    provinceSi: 'බස්නාහිර',
-    phone: '0112614222',
-    addressSi: 'පිළියන්දල',
-    lat: 6.8017,
-    lng: 79.9228,
-  },
+  // 2. ගම්පහ දිස්ත්‍රික්කය (Gampaha District)
+  { id: 'ps_gam_gampaha', nameSi: 'ගම්පහ මූලස්ථාන පොලිසිය', nameEn: 'Gampaha HQ Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0332222222', altPhone: '0332222223', addressSi: 'මිරිස්වත්ත පාර, ගම්පහ', lat: 7.0897, lng: 79.9925 },
+  { id: 'ps_gam_negombo', nameSi: 'මීගමුව මූලස්ථාන පොලිසිය', nameEn: 'Negombo HQ Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0312222222', altPhone: '0312222223', addressSi: 'කොළඹ පාර, මීගමුව', lat: 7.2083, lng: 79.8358 },
+  { id: 'ps_gam_katunayake', nameSi: 'කටුනායක ගුවන් තොටුපළ පොලිසිය', nameEn: 'Katunayake Airport Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112252422', altPhone: '0112252735', addressSi: 'බණ්ඩාරනායක ජාත්‍යන්තර ගුවන් තොටුපළ, කටුනායක', lat: 7.1808, lng: 79.8842 },
+  { id: 'ps_gam_jaela', nameSi: 'ජා-ඇල පොලිස් ස්ථානය', nameEn: 'Ja-Ela Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112236222', altPhone: '0112237222', addressSi: 'මීගමුව පාර, ජා-ඇල', lat: 7.0758, lng: 79.8917 },
+  { id: 'ps_gam_kandana', nameSi: 'කඳාන පොලිස් ස්ථානය', nameEn: 'Kandana Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112236242', altPhone: '0112236555', addressSi: 'මීගමුව පාර, කඳාන', lat: 7.0478, lng: 79.8978 },
+  { id: 'ps_gam_wattala', nameSi: 'වත්තල පොලිස් ස්ථානය', nameEn: 'Wattala Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112930222', altPhone: '0112931222', addressSi: 'මීගමුව පාර, වත්තල', lat: 6.9897, lng: 79.8919 },
+  { id: 'ps_gam_kelaniya', nameSi: 'කැලණිය මූලස්ථාන පොලිසිය', nameEn: 'Kelaniya HQ Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112911222', altPhone: '0112912222', addressSi: 'කැලණිය රජමහා විහාර පාර, කැලණිය', lat: 6.9553, lng: 79.9189 },
+  { id: 'ps_gam_peliyagoda', nameSi: 'පෑලියගොඩ පොලිස් ස්ථානය', nameEn: 'Peliyagoda Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112914222', altPhone: '0112915222', addressSi: 'නුවර පාර, පෑලියගොඩ', lat: 6.9611, lng: 79.8867 },
+  { id: 'ps_gam_kiribathgoda', nameSi: 'කිරිබත්ගොඩ පොලිස් ස්ථානය', nameEn: 'Kiribathgoda Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112911444', altPhone: '0112911555', addressSi: 'නුවර පාර, කිරිබත්ගොඩ', lat: 6.9789, lng: 79.9286 },
+  { id: 'ps_gam_kadawatha', nameSi: 'කඩවත පොලිස් ස්ථානය', nameEn: 'Kadawatha Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112925222', altPhone: '0112926222', addressSi: 'නුවර පාර, කඩවත', lat: 7.0017, lng: 79.9525 },
+  { id: 'ps_gam_ragama', nameSi: 'රාගම පොලිස් ස්ථානය', nameEn: 'Ragama Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112958222', altPhone: '0112959222', addressSi: 'දුම්රියපොළ පාර, රාගම', lat: 7.0272, lng: 79.9197 },
+  { id: 'ps_gam_mahara', nameSi: 'මහර පොලිස් ස්ථානය', nameEn: 'Mahara Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112962222', altPhone: '0112963222', addressSi: 'නුවර පාර, මහර', lat: 7.0147, lng: 79.9431 },
+  { id: 'ps_gam_biyagama', nameSi: 'බියගම පොලිස් ස්ථානය', nameEn: 'Biyagama Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112488222', altPhone: '0112489222', addressSi: 'නිදහස් වෙළඳ කලාපය, බියගම', lat: 6.9428, lng: 79.9889 },
+  { id: 'ps_gam_sapugaskanda', nameSi: 'සපුගස්කන්ද පොලිස් ස්ථානය', nameEn: 'Sapugaskanda Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112400222', altPhone: '0112401222', addressSi: 'තෙල්පිරිපහදු පාර, සපුගස්කන්ද', lat: 6.9644, lng: 79.9472 },
+  { id: 'ps_gam_yakkala', nameSi: 'යක්කල පොලිස් ස්ථානය', nameEn: 'Yakkala Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0332226222', altPhone: '0332227222', addressSi: 'නුවර පාර, යක්කල', lat: 7.0911, lng: 80.0333 },
+  { id: 'ps_gam_veyangoda', nameSi: 'වේයන්ගොඩ පොලිස් ස්ථානය', nameEn: 'Veyangoda Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0332287222', altPhone: '0332288222', addressSi: 'දුම්රියපොළ පාර, වේයන්ගොඩ', lat: 7.1583, lng: 80.0583 },
+  { id: 'ps_gam_nittambuwa', nameSi: 'නිට්ටඹුව පොලිස් ස්ථානය', nameEn: 'Nittambuwa Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0332286222', altPhone: '0332287444', addressSi: 'නුවර පාර, නිට්ටඹුව', lat: 7.1444, lng: 80.0986 },
+  { id: 'ps_gam_mirigama', nameSi: 'මීරිගම පොලිස් ස්ථානය', nameEn: 'Mirigama Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0332273222', altPhone: '0332274222', addressSi: 'පිරිවෙන පාර, මීරිගම', lat: 7.2417, lng: 80.1333 },
+  { id: 'ps_gam_minuwangoda', nameSi: 'මිනුවන්ගොඩ පොලිස් ස්ථානය', nameEn: 'Minuwangoda Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112295222', altPhone: '0112296222', addressSi: 'දිවුලපිටිය පාර, මිනුවන්ගොඩ', lat: 7.1667, lng: 79.9500 },
+  { id: 'ps_gam_divulapitiya', nameSi: 'දිවුලපිටිය පොලිස් ස්ථානය', nameEn: 'Divulapitiya Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0312246222', altPhone: '0312247222', addressSi: 'මීරිගම පාර, දිවුලපිටිය', lat: 7.2167, lng: 80.0167 },
+  { id: 'ps_gam_kochchikade', nameSi: 'කොච්චිකඩේ පොලිස් ස්ථානය', nameEn: 'Kochchikade Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0312277222', altPhone: '0312278222', addressSi: 'මීගමුව-හලාවත පාර, කොච්චිකඩේ', lat: 7.2667, lng: 79.8667 },
+  { id: 'ps_gam_seeduwa', nameSi: 'සීදුව පොලිස් ස්ථානය', nameEn: 'Seeduwa Police Station', districtSi: 'ගම්පහ', districtEn: 'Gampaha', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0112253222', altPhone: '0112254222', addressSi: 'කොළඹ-මීගමුව පාර, සීදුව', lat: 7.1278, lng: 79.8806 },
 
-  // --- KALUTARA DISTRICT ---
-  {
-    id: 'pol_panadura',
-    nameSi: 'පානදුර දකුණ මූලස්ථාන පොලිසිය',
-    nameEn: 'Panadura South HQ Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0382232222',
-    addressSi: 'ගාලු පාර, පානදුර',
-    lat: 6.7131,
-    lng: 79.9074,
-  },
-  {
-    id: 'pol_kalutara',
-    nameSi: 'කළුතර දකුණ මූලස්ථාන පොලිසිය',
-    nameEn: 'Kalutara South HQ Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0342222222',
-    addressSi: 'පොලිස් පාර, කළුතර',
-    lat: 6.5854,
-    lng: 79.9607,
-  },
-  {
-    id: 'pol_wadduwa',
-    nameSi: 'වාද්දුව පොලිස් ස්ථානය',
-    nameEn: 'Wadduwa Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0382284222',
-    addressSi: 'ගාලු පාර, වාද්දුව',
-    lat: 6.6667,
-    lng: 79.9333,
-  },
-  {
-    id: 'pol_beruwala',
-    nameSi: 'බේරුවල පොලිස් ස්ථානය',
-    nameEn: 'Beruwala Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0342276222',
-    addressSi: 'බේරුවල',
-    lat: 6.4789,
-    lng: 79.9828,
-  },
-  {
-    id: 'pol_aluthgama',
-    nameSi: 'අලුත්ගම පොලිස් ස්ථානය',
-    nameEn: 'Aluthgama Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0342275222',
-    addressSi: 'ගාලු පාර, අලුත්ගම',
-    lat: 6.4319,
-    lng: 80.0019,
-  },
-  {
-    id: 'pol_horana',
-    nameSi: 'හොරණ පොලිස් ස්ථානය',
-    nameEn: 'Horana Police Station',
-    districtSi: 'කළුතර',
-    districtEn: 'Kalutara',
-    provinceSi: 'බස්නාහිර',
-    phone: '0342261222',
-    addressSi: 'රත්නපුර පාර, හොරණ',
-    lat: 6.7167,
-    lng: 80.0667,
-  },
+  // 3. කළුතර දිස්ත්‍රික්කය (Kalutara District)
+  { id: 'ps_kal_kalutara_north', nameSi: 'කළුතර උතුර පොලිස් ස්ථානය', nameEn: 'Kalutara North Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342222222', altPhone: '0342222223', addressSi: 'ගාලු පාර, කළුතර උතුර', lat: 6.6000, lng: 79.9667 },
+  { id: 'ps_kal_kalutara_south', nameSi: 'කළුතර දකුණ මූලස්ථාන පොලිසිය', nameEn: 'Kalutara South HQ Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342222722', altPhone: '0342222723', addressSi: 'පොලිස් මාවත, කළුතර දකුණ', lat: 6.5833, lng: 79.9667 },
+  { id: 'ps_kal_panadura_north', nameSi: 'පානදුර උතුර පොලිස් ස්ථානය', nameEn: 'Panadura North Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0382232222', altPhone: '0382233222', addressSi: 'ගාලු පාර, පානදුර', lat: 6.7222, lng: 79.9056 },
+  { id: 'ps_kal_panadura_south', nameSi: 'පානදුර දකුණ පොලිස් ස්ථානය', nameEn: 'Panadura South Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0382234222', altPhone: '0382235222', addressSi: 'මහ පාර, පානදුර', lat: 6.7056, lng: 79.9167 },
+  { id: 'ps_kal_wadduwa', nameSi: 'වාද්දුව පොලිස් ස්ථානය', nameEn: 'Wadduwa Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0382284222', altPhone: '0382285222', addressSi: 'ගාලු පාර, වාද්දුව', lat: 6.6667, lng: 79.9333 },
+  { id: 'ps_kal_beruwala', nameSi: 'බේරුවල පොලිස් ස්ථානය', nameEn: 'Beruwala Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342276222', altPhone: '0342277222', addressSi: 'ගාලු පාර, බේරුවල', lat: 6.4783, lng: 79.9828 },
+  { id: 'ps_kal_aluthgama', nameSi: 'අලුත්ගම පොලිස් ස්ථානය', nameEn: 'Aluthgama Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342275222', altPhone: '0342275333', addressSi: 'ගාලු පාර, අලුත්ගම', lat: 6.4333, lng: 80.0000 },
+  { id: 'ps_kal_horana', nameSi: 'හොරණ මූලස්ථාන පොලිසිය', nameEn: 'Horana HQ Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342261222', altPhone: '0342261223', addressSi: 'පානදුර-රත්නපුර පාර, හොරණ', lat: 6.7167, lng: 80.0667 },
+  { id: 'ps_kal_bandaragama', nameSi: 'බණ්ඩාරගම පොලිස් ස්ථානය', nameEn: 'Bandaragama Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0382290222', altPhone: '0382291222', addressSi: 'කැස්බෑව පාර, බණ්ඩාරගම', lat: 6.7167, lng: 79.9833 },
+  { id: 'ps_kal_ingiriya', nameSi: 'ඉංගිරිය පොලිස් ස්ථානය', nameEn: 'Ingiriya Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342269222', altPhone: '0342269333', addressSi: 'පානදුර-රත්නපුර පාර, ඉංගිරිය', lat: 6.7444, lng: 80.1583 },
+  { id: 'ps_kal_matugama', nameSi: 'මතුගම මූලස්ථාන පොලිසිය', nameEn: 'Matugama HQ Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342247222', altPhone: '0342247333', addressSi: 'අගලවත්ත පාර, මතුගම', lat: 6.5222, lng: 80.1167 },
+  { id: 'ps_kal_agalawatta', nameSi: 'අගලවත්ත පොලිස් ස්ථානය', nameEn: 'Agalawatta Police Station', districtSi: 'කළුතර', districtEn: 'Kalutara', provinceSi: 'බස්නාහිර', provinceEn: 'Western', phone: '0342245222', altPhone: '0342245333', addressSi: 'කළුතර පාර, අගලවත්ත', lat: 6.5417, lng: 80.1583 },
 
-  // --- CENTRAL PROVINCE (KANDY, MATALE, NUWARA ELIYA) ---
-  {
-    id: 'pol_kandy',
-    nameSi: 'මහනුවර මූලස්ථාන පොලිසිය',
-    nameEn: 'Kandy HQ Police Station',
-    districtSi: 'මහනුවර',
-    districtEn: 'Kandy',
-    provinceSi: 'මධ්‍යම',
-    phone: '0812222222',
-    addressSi: 'පොලිස් නිවාස පාර, මහනුවර',
-    lat: 7.2906,
-    lng: 80.6337,
-  },
-  {
-    id: 'pol_peradeniya',
-    nameSi: 'පේරාදෙණිය පොලිස් ස්ථානය',
-    nameEn: 'Peradeniya Police Station',
-    districtSi: 'මහනුවර',
-    districtEn: 'Kandy',
-    provinceSi: 'මධ්‍යම',
-    phone: '0812388222',
-    addressSi: 'කොළඹ පාර, පේරාදෙණිය',
-    lat: 7.2608,
-    lng: 80.5967,
-  },
-  {
-    id: 'pol_katugastota',
-    nameSi: 'කටුගස්තොට පොලිස් ස්ථානය',
-    nameEn: 'Katugastota Police Station',
-    districtSi: 'මහනුවර',
-    districtEn: 'Kandy',
-    provinceSi: 'මධ්‍යම',
-    phone: '0812498222',
-    addressSi: 'මාතලේ පාර, කටුගස්තොට',
-    lat: 7.3292,
-    lng: 80.6222,
-  },
-  {
-    id: 'pol_gampola',
-    nameSi: 'ගම්පොළ පොලිස් ස්ථානය',
-    nameEn: 'Gampola Police Station',
-    districtSi: 'මහනුවර',
-    districtEn: 'Kandy',
-    provinceSi: 'මධ්‍යම',
-    phone: '0812352222',
-    addressSi: 'නුවර පාර, ගම්පොළ',
-    lat: 7.1644,
-    lng: 80.5767,
-  },
-  {
-    id: 'pol_matale',
-    nameSi: 'මාතලේ මූලස්ථාන පොලිසිය',
-    nameEn: 'Matale HQ Police Station',
-    districtSi: 'මාතලේ',
-    districtEn: 'Matale',
-    provinceSi: 'මධ්‍යම',
-    phone: '0662222222',
-    addressSi: 'ත්‍රිකුණාමලය පාර, මාතලේ',
-    lat: 7.4675,
-    lng: 80.6234,
-  },
-  {
-    id: 'pol_dambulla',
-    nameSi: 'දඹුල්ල පොලිස් ස්ථානය',
-    nameEn: 'Dambulla Police Station',
-    districtSi: 'මාතලේ',
-    districtEn: 'Matale',
-    provinceSi: 'මධ්‍යම',
-    phone: '0662284722',
-    addressSi: 'කුරුණෑගල පාර, දඹුල්ල',
-    lat: 7.8742,
-    lng: 80.6511,
-  },
-  {
-    id: 'pol_nuwara_eliya',
-    nameSi: 'නුවරඑළිය මූලස්ථාන පොලිසිය',
-    nameEn: 'Nuwara Eliya HQ Police Station',
-    districtSi: 'නුවරඑළිය',
-    districtEn: 'Nuwara Eliya',
-    provinceSi: 'මධ්‍යම',
-    phone: '0522222222',
-    addressSi: 'නුවරඑළිය',
-    lat: 6.9497,
-    lng: 80.7891,
-  },
-  {
-    id: 'pol_hatton',
-    nameSi: 'හැටන් පොලිස් ස්ථානය',
-    nameEn: 'Hatton Police Station',
-    districtSi: 'නුවරඑළිය',
-    districtEn: 'Nuwara Eliya',
-    provinceSi: 'මධ්‍යම',
-    phone: '0512222222',
-    addressSi: 'දුම්රියපොළ පාර, හැටන්',
-    lat: 6.8911,
-    lng: 80.5961,
-  },
+  // 4. මහනුවර දිස්ත්‍රික්කය (Kandy District)
+  { id: 'ps_kan_kandy_hq', nameSi: 'මහනුවර මූලස්ථාන පොලිසිය', nameEn: 'Kandy HQ Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812222222', altPhone: '0812222223', addressSi: 'ඩී.එස්. සේනානායක වීදිය, මහනුවර', lat: 7.2906, lng: 80.6337 },
+  { id: 'ps_kan_peradeniya', nameSi: 'පේරාදෙණිය පොලිස් ස්ථානය', nameEn: 'Peradeniya Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812388222', altPhone: '0812389222', addressSi: 'කොළඹ පාර, පේරාදෙණිය', lat: 7.2611, lng: 80.5956 },
+  { id: 'ps_kan_katugastota', nameSi: 'කටුගස්තොට පොලිස් ස්ථානය', nameEn: 'Katugastota Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812499222', altPhone: '0812498222', addressSi: 'කුරුණෑගල පාර, කටුගස්තොට', lat: 7.3247, lng: 80.6206 },
+  { id: 'ps_kan_gampola', nameSi: 'ගම්පොළ මූලස්ථාන පොලිසිය', nameEn: 'Gampola HQ Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812352222', altPhone: '0812353222', addressSi: 'නුවර පාර, ගම්පොළ', lat: 7.1642, lng: 80.5692 },
+  { id: 'ps_kan_nawalapitiya', nameSi: 'නාවලපිටිය පොලිස් ස්ථානය', nameEn: 'Nawalapitiya Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0542222222', altPhone: '0542222223', addressSi: 'දුම්රියපොළ පාර, නාවලපිටිය', lat: 7.0500, lng: 80.5333 },
+  { id: 'ps_kan_wattegama', nameSi: 'වත්තේගම පොලිස් ස්ථානය', nameEn: 'Wattegama Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812476222', altPhone: '0812477222', addressSi: 'මාතලේ පාර, වත්තේගම', lat: 7.3500, lng: 80.6833 },
+  { id: 'ps_kan_teldeniya', nameSi: 'තෙල්දෙණිය පොලිස් ස්ථානය', nameEn: 'Teldeniya Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812374222', altPhone: '0812375222', addressSi: 'මහියංගණ පාර, තෙල්දෙණිය', lat: 7.3000, lng: 80.7667 },
+  { id: 'ps_kan_kundasale', nameSi: 'කුණ්ඩසාලේ පොලිස් ස්ථානය', nameEn: 'Kundasale Police Station', districtSi: 'මහනුවර', districtEn: 'Kandy', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0812420222', altPhone: '0812421222', addressSi: 'දිගන පාර, කුණ්ඩසාලේ', lat: 7.2833, lng: 80.6833 },
 
-  // --- SOUTHERN PROVINCE (GALLE, MATARA, HAMBANTOTA) ---
-  {
-    id: 'pol_galle',
-    nameSi: 'ගාල්ල මූලස්ථාන පොලිසිය',
-    nameEn: 'Galle HQ Police Station',
-    districtSi: 'ගාල්ල',
-    districtEn: 'Galle',
-    provinceSi: 'දකුණ',
-    phone: '0912222222',
-    addressSi: 'කොටුව, ගාල්ල',
-    lat: 6.0329,
-    lng: 80.2168,
-  },
-  {
-    id: 'pol_hikkaduwa',
-    nameSi: 'හික්කඩුව පොලිස් ස්ථානය',
-    nameEn: 'Hikkaduwa Police Station',
-    districtSi: 'ගාල්ල',
-    districtEn: 'Galle',
-    provinceSi: 'දකුණ',
-    phone: '0912277222',
-    addressSi: 'ගාලු පාර, හික්කඩුව',
-    lat: 6.1394,
-    lng: 80.1064,
-  },
-  {
-    id: 'pol_matara',
-    nameSi: 'මාතර මූලස්ථාන පොලිසිය',
-    nameEn: 'Matara HQ Police Station',
-    districtSi: 'මාතර',
-    districtEn: 'Matara',
-    provinceSi: 'දකුණ',
-    phone: '0412222222',
-    addressSi: 'කොටුව, මාතර',
-    lat: 5.9496,
-    lng: 80.5469,
-  },
-  {
-    id: 'pol_weligama',
-    nameSi: 'වැලිගම පොලිස් ස්ථානය',
-    nameEn: 'Weligama Police Station',
-    districtSi: 'මාතර',
-    districtEn: 'Matara',
-    provinceSi: 'දකුණ',
-    phone: '0412250222',
-    addressSi: 'ගාලු පාර, වැලිගම',
-    lat: 5.9725,
-    lng: 80.4286,
-  },
-  {
-    id: 'pol_tangalle',
-    nameSi: 'තංගල්ල මූලස්ථාන පොලිසිය',
-    nameEn: 'Tangalle HQ Police Station',
-    districtSi: 'හම්බන්තොට',
-    districtEn: 'Hambantota',
-    provinceSi: 'දකුණ',
-    phone: '0472240222',
-    addressSi: 'තංගල්ල',
-    lat: 6.0244,
-    lng: 80.7944,
-  },
-  {
-    id: 'pol_hambantota',
-    nameSi: 'හම්බන්තොට මූලස්ථාන පොලිසිය',
-    nameEn: 'Hambantota HQ Police Station',
-    districtSi: 'හම්බන්තොට',
-    districtEn: 'Hambantota',
-    provinceSi: 'දකුණ',
-    phone: '0472220222',
-    addressSi: 'හම්බන්තොට',
-    lat: 6.1248,
-    lng: 81.1185,
-  },
+  // 5. මාතලේ දිස්ත්‍රික්කය (Matale District)
+  { id: 'ps_mat_matale', nameSi: 'මාතලේ මූලස්ථාන පොලිසිය', nameEn: 'Matale HQ Police Station', districtSi: 'මාතලේ', districtEn: 'Matale', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0662222222', altPhone: '0662222223', addressSi: 'ත්‍රිකුණාමල වීදිය, මාතලේ', lat: 7.4675, lng: 80.6233 },
+  { id: 'ps_mat_dambulla', nameSi: 'දඹුල්ල මූලස්ථාන පොලිසිය', nameEn: 'Dambulla HQ Police Station', districtSi: 'මාතලේ', districtEn: 'Matale', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0662284722', altPhone: '0662284723', addressSi: 'කුරුණෑගල හන්දිය, දඹුල්ල', lat: 7.8731, lng: 80.6517 },
+  { id: 'ps_mat_galewela', nameSi: 'ගලේවෙල පොලිස් ස්ථානය', nameEn: 'Galewela Police Station', districtSi: 'මාතලේ', districtEn: 'Matale', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0662289222', altPhone: '0662289333', addressSi: 'කුරුණෑගල-දඹුල්ල පාර, ගලේවෙල', lat: 7.7500, lng: 80.5667 },
+  { id: 'ps_mat_sigiriya', nameSi: 'සීගිරිය සංචාරක පොලිසිය', nameEn: 'Sigiriya Tourist Police Station', districtSi: 'මාතලේ', districtEn: 'Matale', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0662286222', altPhone: '0662286333', addressSi: 'සීගිරිය පාර, සීගිරිය', lat: 7.9569, lng: 80.7597 },
 
-  // --- NORTH WESTERN PROVINCE (KURUNEGALA, PUTTALAM) ---
-  {
-    id: 'pol_kurunegala',
-    nameSi: 'කුරුණෑගල මූලස්ථාන පොලිසිය',
-    nameEn: 'Kurunegala HQ Police Station',
-    districtSi: 'කුරුණෑගල',
-    districtEn: 'Kurunegala',
-    provinceSi: 'වයඹ',
-    phone: '0372222222',
-    addressSi: 'කොළඹ පාර, කුරුණෑගල',
-    lat: 7.4863,
-    lng: 80.3623,
-  },
-  {
-    id: 'pol_kuliyapitiya',
-    nameSi: 'කුලියාපිටිය පොලිස් ස්ථානය',
-    nameEn: 'Kuliyapitiya Police Station',
-    districtSi: 'කුරුණෑගල',
-    districtEn: 'Kurunegala',
-    provinceSi: 'වයඹ',
-    phone: '0372281222',
-    addressSi: 'කුලියාපිටිය',
-    lat: 7.4688,
-    lng: 80.0401,
-  },
-  {
-    id: 'pol_chilaw',
-    nameSi: 'හලාවත මූලස්ථාන පොලිසිය',
-    nameEn: 'Chilaw HQ Police Station',
-    districtSi: 'පුත්තලම',
-    districtEn: 'Puttalam',
-    provinceSi: 'වයඹ',
-    phone: '0322222222',
-    addressSi: 'හලාවත',
-    lat: 7.5758,
-    lng: 79.7953,
-  },
-  {
-    id: 'pol_puttalam',
-    nameSi: 'පුත්තලම මූලස්ථාන පොලිසිය',
-    nameEn: 'Puttalam HQ Police Station',
-    districtSi: 'පුත්තලම',
-    districtEn: 'Puttalam',
-    provinceSi: 'වයඹ',
-    phone: '0322265222',
-    addressSi: 'පුත්තලම',
-    lat: 8.0333,
-    lng: 79.8333,
-  },
+  // 6. නුවරඑළිය දිස්ත්‍රික්කය (Nuwara Eliya District)
+  { id: 'ps_nuw_nuwaraeliya', nameSi: 'නුවරඑළිය මූලස්ථාන පොලිසිය', nameEn: 'Nuwara Eliya HQ Police Station', districtSi: 'නුවරඑළිය', districtEn: 'Nuwara Eliya', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0522222222', altPhone: '0522222223', addressSi: 'බණ්ඩාරනායක මාවත, නුවරඑළිය', lat: 6.9497, lng: 80.7891 },
+  { id: 'ps_nuw_hatton', nameSi: 'හැටන් මූලස්ථාන පොලිසිය', nameEn: 'Hatton HQ Police Station', districtSi: 'නුවරඑළිය', districtEn: 'Nuwara Eliya', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0512222222', altPhone: '0512222223', addressSi: 'දුම්රියපොළ පාර, හැටන්', lat: 6.8917, lng: 80.5967 },
+  { id: 'ps_nuw_talawakele', nameSi: 'තලවාකැලේ පොලිස් ස්ථානය', nameEn: 'Talawakele Police Station', districtSi: 'නුවරඑළිය', districtEn: 'Nuwara Eliya', provinceSi: 'මධ්‍යම', provinceEn: 'Central', phone: '0512258222', altPhone: '0512258333', addressSi: 'නුවරඑළිය පාර, තලවාකැලේ', lat: 6.9333, lng: 80.6583 },
 
-  // --- NORTH CENTRAL PROVINCE (ANURADHAPURA, POLONNARUWA) ---
-  {
-    id: 'pol_anuradhapura',
-    nameSi: 'අනුරාධපුර මූලස්ථාන පොලිසිය',
-    nameEn: 'Anuradhapura HQ Police Station',
-    districtSi: 'අනුරාධපුර',
-    districtEn: 'Anuradhapura',
-    provinceSi: 'උතුරු මැද',
-    phone: '0252222222',
-    addressSi: 'මෛත්‍රීපාල සේනානායක මාවත, අනුරාධපුර',
-    lat: 8.3114,
-    lng: 80.4037,
-  },
-  {
-    id: 'pol_polonnaruwa',
-    nameSi: 'පොළොන්නරුව මූලස්ථාන පොලිසිය',
-    nameEn: 'Polonnaruwa HQ Police Station',
-    districtSi: 'පොළොන්නරුව',
-    districtEn: 'Polonnaruwa',
-    provinceSi: 'උතුරු මැද',
-    phone: '0272222222',
-    addressSi: 'කඳුරුවෙල, පොළොන්නරුව',
-    lat: 7.9403,
-    lng: 81.0188,
-  },
+  // 7. ගාල්ල දිස්ත්‍රික්කය (Galle District)
+  { id: 'ps_gal_galle_hq', nameSi: 'ගාල්ල මූලස්ථාන පොලිසිය', nameEn: 'Galle HQ Police Station', districtSi: 'ගාල්ල', districtEn: 'Galle', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0912222222', altPhone: '0912222223', addressSi: 'කොටුව පාර, ගාල්ල', lat: 6.0328, lng: 80.2169 },
+  { id: 'ps_gal_hikkaduwa', nameSi: 'හික්කඩුව පොලිස් ස්ථානය', nameEn: 'Hikkaduwa Police Station', districtSi: 'ගාල්ල', districtEn: 'Galle', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0912277222', altPhone: '0912277333', addressSi: 'ගාලු පාර, හික්කඩුව', lat: 6.1394, lng: 80.1064 },
+  { id: 'ps_gal_ambalangoda', nameSi: 'අම්බලන්ගොඩ මූලස්ථාන පොලිසිය', nameEn: 'Ambalangoda HQ Police Station', districtSi: 'ගාල්ල', districtEn: 'Galle', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0912258222', altPhone: '0912258223', addressSi: 'ගාලු පාර, අම්බලන්ගොඩ', lat: 6.2361, lng: 80.0542 },
+  { id: 'ps_gal_karapitiya', nameSi: 'කරාපිටිය පොලිස් මුරපොළ', nameEn: 'Karapitiya Hospital Police Post', districtSi: 'ගාල්ල', districtEn: 'Galle', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0912232250', altPhone: '0912234059', addressSi: 'ශික්ෂණ රෝහල, කරාපිටිය', lat: 6.0667, lng: 80.2333 },
 
-  // --- UVA PROVINCE (BADULLA, MONARAGALA) ---
-  {
-    id: 'pol_badulla',
-    nameSi: 'බදුල්ල මූලස්ථාන පොලිසිය',
-    nameEn: 'Badulla HQ Police Station',
-    districtSi: 'බදුල්ල',
-    districtEn: 'Badulla',
-    provinceSi: 'ඌව',
-    phone: '0552222222',
-    addressSi: 'බදුල්ල',
-    lat: 6.9934,
-    lng: 81.0550,
-  },
-  {
-    id: 'pol_bandarawela',
-    nameSi: 'බණ්ඩාරවෙල පොලිස් ස්ථානය',
-    nameEn: 'Bandarawela Police Station',
-    districtSi: 'බදුල්ල',
-    districtEn: 'Badulla',
-    provinceSi: 'ඌව',
-    phone: '0572222222',
-    addressSi: 'බණ්ඩාරවෙල',
-    lat: 6.8299,
-    lng: 80.9881,
-  },
-  {
-    id: 'pol_monaragala',
-    nameSi: 'මොනරාගල මූලස්ථාන පොලිසිය',
-    nameEn: 'Monaragala HQ Police Station',
-    districtSi: 'මොනරාගල',
-    districtEn: 'Monaragala',
-    provinceSi: 'ඌව',
-    phone: '0552276222',
-    addressSi: 'මොනරාගල',
-    lat: 6.8722,
-    lng: 81.3508,
-  },
+  // 8. මාතර දිස්ත්‍රික්කය (Matara District)
+  { id: 'ps_mtr_matara_hq', nameSi: 'මාතර මූලස්ථාන පොලිසිය', nameEn: 'Matara HQ Police Station', districtSi: 'මාතර', districtEn: 'Matara', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0412222222', altPhone: '0412222223', addressSi: 'අනගාරික ධර්මපාල මාවත, මාතර', lat: 5.9478, lng: 80.5483 },
+  { id: 'ps_mtr_weligama', nameSi: 'වැලිගම පොලිස් ස්ථානය', nameEn: 'Weligama Police Station', districtSi: 'මාතර', districtEn: 'Matara', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0412250222', altPhone: '0412251222', addressSi: 'ගාලු පාර, වැලිගම', lat: 5.9750, lng: 80.4289 },
+  { id: 'ps_mtr_dikwella', nameSi: 'දික්වැල්ල පොලිස් ස්ථානය', nameEn: 'Dikwella Police Station', districtSi: 'මාතර', districtEn: 'Matara', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0412255222', altPhone: '0412256222', addressSi: 'තංගල්ල පාර, දික්වැල්ල', lat: 5.9667, lng: 80.7000 },
 
-  // --- SABARAGAMUWA PROVINCE (RATNAPURA, KEGALLE) ---
-  {
-    id: 'pol_ratnapura',
-    nameSi: 'රත්නපුර මූලස්ථාන පොලිසිය',
-    nameEn: 'Ratnapura HQ Police Station',
-    districtSi: 'රත්නපුර',
-    districtEn: 'Ratnapura',
-    provinceSi: 'සබරගමුව',
-    phone: '0452222222',
-    addressSi: 'ප්‍රධාන වීදිය, රත්නපුර',
-    lat: 6.6828,
-    lng: 80.4014,
-  },
-  {
-    id: 'pol_kegalle',
-    nameSi: 'කෑගල්ල මූලස්ථාන පොලිසිය',
-    nameEn: 'Kegalle HQ Police Station',
-    districtSi: 'කෑගල්ල',
-    districtEn: 'Kegalle',
-    provinceSi: 'සබරගමුව',
-    phone: '0352222222',
-    addressSi: 'කොළඹ - නුවර පාර, කෑගල්ල',
-    lat: 7.2514,
-    lng: 80.3464,
-  },
+  // 9. හම්බන්තොට දිස්ත්‍රික්කය (Hambantota District)
+  { id: 'ps_ham_tangalle', nameSi: 'තංගල්ල මූලස්ථාන පොලිසිය', nameEn: 'Tangalle HQ Police Station', districtSi: 'හම්බන්තොට', districtEn: 'Hambantota', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0472240222', altPhone: '0472240223', addressSi: 'තිස්සමහාරාම පාර, තංගල්ල', lat: 6.0242, lng: 80.7942 },
+  { id: 'ps_ham_hambantota', nameSi: 'හම්බන්තොට පොලිස් ස්ථානය', nameEn: 'Hambantota Police Station', districtSi: 'හම්බන්තොට', districtEn: 'Hambantota', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0472220222', altPhone: '0472221222', addressSi: 'වරාය පාර, හම්බන්තොට', lat: 6.1247, lng: 81.1186 },
+  { id: 'ps_ham_tissamaharama', nameSi: 'තිස්සමහාරාම පොලිස් ස්ථානය', nameEn: 'Tissamaharama Police Station', districtSi: 'හම්බන්තොට', districtEn: 'Hambantota', provinceSi: 'දකුණ', provinceEn: 'Southern', phone: '0472237222', altPhone: '0472238222', addressSi: 'කතරගම පාර, තිස්සමහාරාම', lat: 6.2803, lng: 81.2872 },
 
-  // --- NORTHERN PROVINCE (JAFFNA, VAVUNIYA) ---
-  {
-    id: 'pol_jaffna',
-    nameSi: 'යාපනය මූලස්ථාන පොලිසිය',
-    nameEn: 'Jaffna HQ Police Station',
-    districtSi: 'යාපනය',
-    districtEn: 'Jaffna',
-    provinceSi: 'උතුර',
-    phone: '0212222222',
-    addressSi: 'කන්කසන්තුරේ පාර, යාපනය',
-    lat: 9.6615,
-    lng: 80.0255,
-  },
-  {
-    id: 'pol_vavuniya',
-    nameSi: 'වවුනියාව මූලස්ථාන පොලිසිය',
-    nameEn: 'Vavuniya HQ Police Station',
-    districtSi: 'වවුනියාව',
-    districtEn: 'Vavuniya',
-    provinceSi: 'උතුර',
-    phone: '0242222222',
-    addressSi: 'වවුනියාව',
-    lat: 8.7514,
-    lng: 80.4971,
-  },
+  // 10. යාපනය දිස්ත්‍රික්කය (Jaffna District)
+  { id: 'ps_jaf_jaffna_hq', nameSi: 'යාපනය මූලස්ථාන පොලිසිය', nameEn: 'Jaffna HQ Police Station', districtSi: 'යාපනය', districtEn: 'Jaffna', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0212222222', altPhone: '0212222223', addressSi: 'කන්කසන්තුරේ පාර, යාපනය', lat: 9.6647, lng: 80.0167 },
+  { id: 'ps_jaf_chavakachcheri', nameSi: 'චාවකච්චේරි පොලිස් ස්ථානය', nameEn: 'Chavakachcheri Police Station', districtSi: 'යාපනය', districtEn: 'Jaffna', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0212270222', altPhone: '0212271222', addressSi: 'ඒ-9 පාර, චාවකච්චේරි', lat: 9.6500, lng: 80.1500 },
+  { id: 'ps_jaf_pointpedro', nameSi: 'පේදුරුතුඩුව පොලිස් ස්ථානය', nameEn: 'Point Pedro Police Station', districtSi: 'යාපනය', districtEn: 'Jaffna', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0212263222', altPhone: '0212264222', addressSi: 'ප්‍රධාන වීදිය, පේදුරුතුඩුව', lat: 9.8167, lng: 80.2333 },
 
-  // --- EASTERN PROVINCE (BATTICALOA, TRINCOMALEE, AMPARA) ---
-  {
-    id: 'pol_batticaloa',
-    nameSi: 'මඩකලපුව මූලස්ථාන පොලිසිය',
-    nameEn: 'Batticaloa HQ Police Station',
-    districtSi: 'මඩකලපුව',
-    districtEn: 'Batticaloa',
-    provinceSi: 'නැගෙනහිර',
-    phone: '0652222222',
-    addressSi: 'මඩකලපුව',
-    lat: 7.7102,
-    lng: 81.6924,
-  },
-  {
-    id: 'pol_trincomalee',
-    nameSi: 'ත්‍රිකුණාමලය මූලස්ථාන පොලිසිය',
-    nameEn: 'Trincomalee HQ Police Station',
-    districtSi: 'ත්‍රිකුණාමලය',
-    districtEn: 'Trincomalee',
-    provinceSi: 'නැගෙනහිර',
-    phone: '0262222222',
-    addressSi: 'ත්‍රිකුණාමලය',
-    lat: 8.5874,
-    lng: 81.2152,
-  },
-  {
-    id: 'pol_ampara',
-    nameSi: 'අම්පාර මූලස්ථාන පොලිසිය',
-    nameEn: 'Ampara HQ Police Station',
-    districtSi: 'අම්පාර',
-    districtEn: 'Ampara',
-    provinceSi: 'නැගෙනහිර',
-    phone: '0632222222',
-    addressSi: 'අම්පාර',
-    lat: 7.2912,
-    lng: 81.6724,
-  },
+  // 11. කිලිනොච්චිය දිස්ත්‍රික්කය (Kilinochchi District)
+  { id: 'ps_kil_kilinochchi', nameSi: 'කිලිනොච්චිය මූලස්ථාන පොලිසිය', nameEn: 'Kilinochchi HQ Police Station', districtSi: 'කිලිනොච්චිය', districtEn: 'Kilinochchi', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0212285222', altPhone: '0212285223', addressSi: 'ඒ-9 පාර, කිලිනොච්චිය', lat: 9.3803, lng: 80.3986 },
+
+  // 12. මන්නාරම දිස්ත්‍රික්කය (Mannar District)
+  { id: 'ps_man_mannar', nameSi: 'මන්නාරම පොලිස් ස්ථානය', nameEn: 'Mannar Police Station', districtSi: 'මන්නාරම', districtEn: 'Mannar', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0232222222', altPhone: '0232222223', addressSi: 'ප්‍රධාන වීදිය, මන්නාරම', lat: 8.9806, lng: 79.9042 },
+
+  // 13. වවුනියාව දිස්ත්‍රික්කය (Vavuniya District)
+  { id: 'ps_vav_vavuniya', nameSi: 'වවුනියාව මූලස්ථාන පොලිසිය', nameEn: 'Vavuniya HQ Police Station', districtSi: 'වවුනියාව', districtEn: 'Vavuniya', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0242222222', altPhone: '0242222223', addressSi: 'ඒ-9 පාර, වවුනියාව', lat: 8.7514, lng: 80.4972 },
+
+  // 14. මුලතිව් දිස්ත්‍රික්කය (Mullaitivu District)
+  { id: 'ps_mul_mullaitivu', nameSi: 'මුලතිව් පොලිස් ස්ථානය', nameEn: 'Mullaitivu Police Station', districtSi: 'මුලතිව්', districtEn: 'Mullaitivu', provinceSi: 'උතුර', provinceEn: 'Northern', phone: '0212290222', altPhone: '0212290223', addressSi: 'වෙරළ පාර, මුලතිව්', lat: 9.2667, lng: 80.8167 },
+
+  // 15. මඩකලපුව දිස්ත්‍රික්කය (Batticaloa District)
+  { id: 'ps_bat_batticaloa', nameSi: 'මඩකලපුව මූලස්ථාන පොලිසිය', nameEn: 'Batticaloa HQ Police Station', districtSi: 'මඩකලපුව', districtEn: 'Batticaloa', provinceSi: 'නැගෙනහිර', provinceEn: 'Eastern', phone: '0652222222', altPhone: '0652222223', addressSi: 'ත්‍රිකුණාමල පාර, මඩකලපුව', lat: 7.7172, lng: 81.6997 },
+
+  // 16. අම්පාර දිස්ත්‍රික්කය (Ampara District)
+  { id: 'ps_amp_ampara', nameSi: 'අම්පාර මූලස්ථාන පොලිසිය', nameEn: 'Ampara HQ Police Station', districtSi: 'අම්පාර', districtEn: 'Ampara', provinceSi: 'නැගෙනහිර', provinceEn: 'Eastern', phone: '0632222222', altPhone: '0632222223', addressSi: 'ඩී.එස්. සේනානායක මාවත, අම්පාර', lat: 7.2911, lng: 81.6747 },
+  { id: 'ps_amp_kalmunai', nameSi: 'කල්මුනේ පොලිස් ස්ථානය', nameEn: 'Kalmunai Police Station', districtSi: 'අම්පාර', districtEn: 'Ampara', provinceSi: 'නැගෙනහිර', provinceEn: 'Eastern', phone: '0672229222', altPhone: '0672229333', addressSi: 'ප්‍රධාන වීදිය, කල්මුනේ', lat: 7.4167, lng: 81.8333 },
+
+  // 17. ත්‍රිකුණාමලය දිස්ත්‍රික්කය (Trincomalee District)
+  { id: 'ps_tri_trincomalee', nameSi: 'ත්‍රිකුණාමලය මූලස්ථාන පොලිසිය', nameEn: 'Trincomalee HQ Police Station', districtSi: 'ත්‍රිකුණාමලය', districtEn: 'Trincomalee', provinceSi: 'නැගෙනහිර', provinceEn: 'Eastern', phone: '0262222222', altPhone: '0262222223', addressSi: 'වෙරළ පාර, ත්‍රිකුණාමලය', lat: 8.5711, lng: 81.2336 },
+
+  // 18. කුරුණෑගල දිස්ත්‍රික්කය (Kurunegala District)
+  { id: 'ps_kur_kurunegala_hq', nameSi: 'කුරුණෑගල මූලස්ථාන පොලිසිය', nameEn: 'Kurunegala HQ Police Station', districtSi: 'කුරුණෑගල', districtEn: 'Kurunegala', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0372222222', altPhone: '0372222223', addressSi: 'කොළඹ පාර, කුරුණෑගල', lat: 7.4864, lng: 80.3647 },
+  { id: 'ps_kur_kuliyapitiya', nameSi: 'කුලියාපිටිය මූලස්ථාන පොලිසිය', nameEn: 'Kuliyapitiya HQ Police Station', districtSi: 'කුරුණෑගල', districtEn: 'Kurunegala', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0372281222', altPhone: '0372281223', addressSi: 'හලාවත පාර, කුලියාපිටිය', lat: 7.4689, lng: 80.0403 },
+  { id: 'ps_kur_pannala', nameSi: 'පන්නල පොලිස් ස්ථානය', nameEn: 'Pannala Police Station', districtSi: 'කුරුණෑගල', districtEn: 'Kurunegala', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0372246222', altPhone: '0372246333', addressSi: 'මීගමුව පාර, පන්නල', lat: 7.3333, lng: 79.9833 },
+  { id: 'ps_kur_narammala', nameSi: 'නාරම්මල පොලිස් ස්ථානය', nameEn: 'Narammala Police Station', districtSi: 'කුරුණෑගල', districtEn: 'Kurunegala', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0372249222', altPhone: '0372249333', addressSi: 'ගිරිඋල්ල පාර, නාරම්මල', lat: 7.4333, lng: 80.2167 },
+
+  // 19. පුත්තලම දිස්ත්‍රික්කය (Puttalam District)
+  { id: 'ps_put_puttalam', nameSi: 'පුත්තලම මූලස්ථාන පොලිසිය', nameEn: 'Puttalam HQ Police Station', districtSi: 'පුත්තලම', districtEn: 'Puttalam', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0322265222', altPhone: '0322265223', addressSi: 'කොළඹ පාර, පුත්තලම', lat: 8.0361, lng: 79.8283 },
+  { id: 'ps_put_chilaw', nameSi: 'හලාවත මූලස්ථාන පොලිසිය', nameEn: 'Chilaw HQ Police Station', districtSi: 'පුත්තලම', districtEn: 'Puttalam', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0322222222', altPhone: '0322222223', addressSi: 'කොළඹ පාර, හලාවත', lat: 7.5758, lng: 79.7953 },
+  { id: 'ps_put_marawila', nameSi: 'මාරවිල පොලිස් ස්ථානය', nameEn: 'Marawila Police Station', districtSi: 'පුත්තලම', districtEn: 'Puttalam', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0322254222', altPhone: '0322255222', addressSi: 'ගාලු පාර, මාරවිල', lat: 7.4167, lng: 79.8167 },
+  { id: 'ps_put_wennappuwa', nameSi: 'වෙන්නප්පුව පොලිස් ස්ථානය', nameEn: 'Wennappuwa Police Station', districtSi: 'පුත්තලම', districtEn: 'Puttalam', provinceSi: 'වයඹ', provinceEn: 'North Western', phone: '0312255222', altPhone: '0312256222', addressSi: 'කොළඹ-හලාවත පාර, වෙන්නප්පුව', lat: 7.3458, lng: 79.8458 },
+
+  // 20. අනුරාධපුර දිස්ත්‍රික්කය (Anuradhapura District)
+  { id: 'ps_anu_anuradhapura_hq', nameSi: 'අනුරාධපුර මූලස්ථාන පොලිසිය', nameEn: 'Anuradhapura HQ Police Station', districtSi: 'අනුරාධපුර', districtEn: 'Anuradhapura', provinceSi: 'උතුරු මැද', provinceEn: 'North Central', phone: '0252222222', altPhone: '0252222223', addressSi: 'මෛත්‍රීපාල සේනානායක මාවත, අනුරාධපුර', lat: 8.3114, lng: 80.4037 },
+  { id: 'ps_anu_kekirawa', nameSi: 'කැකිරාව පොලිස් ස්ථානය', nameEn: 'Kekirawa Police Station', districtSi: 'අනුරාධපුර', districtEn: 'Anuradhapura', provinceSi: 'උතුරු මැද', provinceEn: 'North Central', phone: '0252264222', altPhone: '0252264333', addressSi: 'තලාව පාර, කැකිරාව', lat: 8.0333, lng: 80.6000 },
+
+  // 21. පොළොන්නරුව දිස්ත්‍රික්කය (Polonnaruwa District)
+  { id: 'ps_pol_polonnaruwa', nameSi: 'පොළොන්නරුව මූලස්ථාන පොලිසිය', nameEn: 'Polonnaruwa HQ Police Station', districtSi: 'පොළොන්නරුව', districtEn: 'Polonnaruwa', provinceSi: 'උතුරු මැද', provinceEn: 'North Central', phone: '0272222222', altPhone: '0272222223', addressSi: 'නව නගරය, පොළොන්නරුව', lat: 7.9403, lng: 81.0189 },
+
+  // 22. බදුල්ල දිස්ත්‍රික්කය (Badulla District)
+  { id: 'ps_bad_badulla_hq', nameSi: 'බදුල්ල මූලස්ථාන පොලිසිය', nameEn: 'Badulla HQ Police Station', districtSi: 'බදුල්ල', districtEn: 'Badulla', provinceSi: 'ඌව', provinceEn: 'Uva', phone: '0552222222', altPhone: '0552222223', addressSi: 'රාජ මාවත, බදුල්ල', lat: 6.9897, lng: 81.0558 },
+  { id: 'ps_bad_bandarawela', nameSi: 'බණ්ඩාරවෙල මූලස්ථාන පොලිසිය', nameEn: 'Bandarawela HQ Police Station', districtSi: 'බදුල්ල', districtEn: 'Badulla', provinceSi: 'ඌව', provinceEn: 'Uva', phone: '0572222222', altPhone: '0572222223', addressSi: 'බදුල්ල පාර, බණ්ඩාරවෙල', lat: 6.8333, lng: 80.9833 },
+  { id: 'ps_bad_ella', nameSi: 'ඇල්ල සංචාරක පොලිස් ස්ථානය', nameEn: 'Ella Tourist Police Station', districtSi: 'බදුල්ල', districtEn: 'Badulla', provinceSi: 'ඌව', provinceEn: 'Uva', phone: '0572228222', altPhone: '0572228333', addressSi: 'පස්සර පාර, ඇල්ල', lat: 6.8667, lng: 81.0467 },
+
+  // 23. මොණරාගල දිස්ත්‍රික්කය (Monaragala District)
+  { id: 'ps_mon_monaragala', nameSi: 'මොණරාගල මූලස්ථාන පොලිසිය', nameEn: 'Monaragala HQ Police Station', districtSi: 'මොණරාගල', districtEn: 'Monaragala', provinceSi: 'ඌව', provinceEn: 'Uva', phone: '0552276222', altPhone: '0552276223', addressSi: 'වැල්ලවාය පාර, මොණරාගල', lat: 6.8725, lng: 81.3508 },
+  { id: 'ps_mon_kataragama', nameSi: 'කතරගම පොලිස් ස්ථානය', nameEn: 'Kataragama Police Station', districtSi: 'මොණරාගල', districtEn: 'Monaragala', provinceSi: 'ඌව', provinceEn: 'Uva', phone: '0472235222', altPhone: '0472235333', addressSi: 'පූජා භූමිය පාර, කතරගම', lat: 6.4167, lng: 81.3333 },
+
+  // 24. රත්නපුර දිස්ත්‍රික්කය (Ratnapura District)
+  { id: 'ps_rat_ratnapura_hq', nameSi: 'රත්නපුර මූලස්ථාන පොලිසිය', nameEn: 'Ratnapura HQ Police Station', districtSi: 'රත්නපුර', districtEn: 'Ratnapura', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0452222222', altPhone: '0452222223', addressSi: 'පොලිස් පාර, රත්නපුර', lat: 6.6828, lng: 80.4036 },
+  { id: 'ps_rat_balangoda', nameSi: 'බලන්ගොඩ මූලස්ථාන පොලිසිය', nameEn: 'Balangoda HQ Police Station', districtSi: 'රත්නපුර', districtEn: 'Ratnapura', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0452287222', altPhone: '0452287223', addressSi: 'බදුල්ල පාර, බලන්ගොඩ', lat: 6.6500, lng: 80.7000 },
+  { id: 'ps_rat_emabilipitiya', nameSi: 'ඇඹිලිපිටිය මූලස්ථාන පොලිසිය', nameEn: 'Embilipitiya HQ Police Station', districtSi: 'රත්නපුර', districtEn: 'Ratnapura', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0472230222', altPhone: '0472230223', addressSi: 'නෝනාගම පාර, ඇඹිලිපිටිය', lat: 6.2833, lng: 80.8500 },
+
+  // 25. කෑගල්ල දිස්ත්‍රික්කය (Kegalle District)
+  { id: 'ps_keg_kegalle_hq', nameSi: 'කෑගල්ල මූලස්ථාන පොලිසිය', nameEn: 'Kegalle HQ Police Station', districtSi: 'කෑගල්ල', districtEn: 'Kegalle', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0352222222', altPhone: '0352222223', addressSi: 'කොළඹ-නුවර පාර, කෑගල්ල', lat: 7.2514, lng: 80.3464 },
+  { id: 'ps_keg_mawanella', nameSi: 'මාවනැල්ල පොලිස් ස්ථානය', nameEn: 'Mawanella Police Station', districtSi: 'කෑගල්ල', districtEn: 'Kegalle', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0352246222', altPhone: '0352247222', addressSi: 'නුවර පාර, මාවනැල්ල', lat: 7.2528, lng: 80.4478 },
+  { id: 'ps_keg_warakapola', nameSi: 'වරකාපොළ පොලිස් ස්ථානය', nameEn: 'Warakapola Police Station', districtSi: 'කෑගල්ල', districtEn: 'Kegalle', provinceSi: 'සබරගමුව', provinceEn: 'Sabaragamuwa', phone: '0352277222', altPhone: '0352278222', addressSi: 'කොළඹ-නුවර පාර, වරකපොළ', lat: 7.2247, lng: 80.1983 },
 ];
 
-interface SosLiveTrackerModalProps {
+export interface SosLiveTrackerModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User | null;
@@ -895,6 +275,48 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [isCustomMessage, setIsCustomMessage] = useState<boolean>(false);
   const [customMessageText, setCustomMessageText] = useState<string>('');
 
+  // 👥 5 Emergency Contacts State (හදිසි අවස්ථාවක දැනුම්දිය යුතු අංක 5ක් ස්ථිරව ගබඩා කිරීම)
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>(() => {
+    try {
+      const saved = localStorage.getItem(`sahaya_sos_emergency_contacts_${currentUser?.id || 'default'}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      { id: '1', name: 'පවුලේ සාමාජිකයෙක් (Home)', phone: '' },
+      { id: '2', name: 'හිතවතෙක් (Friend)', phone: '' },
+      { id: '3', name: 'හදිසි අංක 3', phone: '' },
+      { id: '4', name: 'හදිසි අංක 4', phone: '' },
+      { id: '5', name: 'හදිසි අංක 5', phone: '' },
+    ];
+  });
+
+  const [isEditingContacts, setIsEditingContacts] = useState<boolean>(false);
+
+  // Save contacts to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(`sahaya_sos_emergency_contacts_${currentUser?.id || 'default'}`, JSON.stringify(emergencyContacts));
+    } catch {}
+  }, [emergencyContacts, currentUser?.id]);
+
+  const handleUpdateContact = (id: string, name: string, phone: string) => {
+    setEmergencyContacts((prev) => prev.map((c) => (c.id === id ? { ...c, name, phone } : c)));
+  };
+
+  const handleNotifyContactSms = (contact: EmergencyContact) => {
+    if (!contact.phone) return;
+    const cleanPhone = contact.phone.replace(/\s+/g, '');
+    const text = encodeURIComponent(`🚨 හදිසි SOS පණිවිඩයකි! ${effectiveEmergencyMessage}\n🔴 සජීවී සිතියම හා හඬ ඇසීමේ සබැඳිය:\n${shareUrl}`);
+    window.open(`sms:${cleanPhone}?body=${text}`, '_self');
+  };
+
+  const handleNotifyContactWhatsApp = (contact: EmergencyContact) => {
+    if (!contact.phone) return;
+    const cleanPhone = contact.phone.replace(/\D/g, '');
+    const text = encodeURIComponent(`🚨 හදිසි SOS පණිවිඩයකි! ${effectiveEmergencyMessage}\n🔴 සජීවී සිතියම හා හඬ ඇසීමේ සබැඳිය:\n${shareUrl}`);
+    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${text}`, '_blank');
+  };
+
   const effectiveEmergencyMessage = useMemo(() => {
     if (isCustomMessage && customMessageText.trim()) {
       return customMessageText.trim();
@@ -902,337 +324,376 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     return PRESET_MESSAGES[selectedPresetIndex] || PRESET_MESSAGES[0];
   }, [isCustomMessage, customMessageText, selectedPresetIndex]);
 
-  // Session & Tracking States
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isTracking, setIsTracking] = useState<boolean>(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [accuracy, setAccuracy] = useState<number | null>(null);
-  const [speed, setSpeed] = useState<number | null>(null);
-  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [sessionDuration, setSessionDuration] = useState<number>(0);
-  const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
-  const [offlineQueueLength, setOfflineQueueLength] = useState<number>(0);
-  const [showCopiedNotice, setShowCopiedNotice] = useState<boolean>(false);
-  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
+  // 1. Session States
+  const [isActive, setIsActive] = useState<boolean>(false);
+  const [sessionId, setSessionId] = useState<string>(() => {
+    return `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  });
+  const [sessionCode, setSessionCode] = useState<string>(() => {
+    return `#SOS-${Math.floor(1000 + Math.random() * 9000)}`;
+  });
+  const [startedAt, setStartedAt] = useState<string>('');
+  const [emergencyNote, setEmergencyNote] = useState<string>(PRESET_MESSAGES[0]);
+  const [isDuressActive, setIsDuressActive] = useState<boolean>(false);
+  const [vehicleNumber, setVehicleNumber] = useState<string>('');
+  const [vehicleType, setVehicleType] = useState<string>('🛺 ත්‍රිරෝද රථය');
+  const [customVehicleType, setCustomVehicleType] = useState<string>('');
+  const [isCloudSaved, setIsCloudSaved] = useState<boolean>(false);
+  const [showFeaturesGuideModal, setShowFeaturesGuideModal] = useState<boolean>(false);
 
-  // Additional features
+  // 📡 1. ALWAYS-AVAILABLE SHARE URL (Instant from Mount)
+  const shareUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const sid = sessionId || `sos_${Date.now()}`;
+    const origin = window.location.origin || '';
+    const path = window.location.pathname || '';
+    return `${origin}${path}?sos_session=${sid}`;
+  }, [sessionId]);
+
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isSavingAndLocking, setIsSavingAndLocking] = useState<boolean>(false);
+  const [savingStatusStep, setSavingStatusStep] = useState<string>('');
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // 2. Realtime Telemetry (Instant 0ms Cache Loading)
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>(() => {
+    const cached = getLastKnownLocation();
+    if (cached) return { lat: cached.lat, lng: cached.lng };
+    if (currentLocation && currentLocation.lat && currentLocation.lng) {
+      return { lat: currentLocation.lat, lng: currentLocation.lng };
+    }
+    return { lat: 7.1808, lng: 79.8842 }; // Katunayake default
+  });
+
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [speedKmh, setSpeedKmh] = useState<number>(0);
+  const [heading, setHeading] = useState<number | null>(null);
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [isCharging, setIsCharging] = useState<boolean>(false);
+  const [locationName, setLocationName] = useState<string>(() => {
+    return currentLocation?.name || 'කටුනායක / බස්නාහිර පළාත';
+  });
+
+  // 3. Hardware Audio Evidence Recording & Siren States
   const [isSirenOn, setIsSirenOn] = useState<boolean>(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
-  const [showFacilities, setShowFacilities] = useState<boolean>(false);
-  const [emergencyNote, setEmergencyNote] = useState<string>('');
-  const [nearestFacilities, setNearestFacilities] = useState<Array<{ name: string; type: string; distance: number; phone?: string }>>([]);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
 
-  // Sri Lanka Police Search & District Filter
+  // 4. Sri Lanka Police Search & District Filter
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [policeSearchQuery, setPoliceSearchQuery] = useState<string>('');
 
-  // Duress PIN Modal States
+  const districtsList = useMemo(() => {
+    const set = new Set<string>();
+    ALL_SRI_LANKA_POLICE_STATIONS.forEach(s => set.add(s.districtSi));
+    return ['All', ...Array.from(set).sort()];
+  }, []);
+
+  const filteredPoliceStations = useMemo(() => {
+    return ALL_SRI_LANKA_POLICE_STATIONS.filter(s => {
+      const matchDistrict = selectedDistrict === 'All' || s.districtSi === selectedDistrict;
+      const q = policeSearchQuery.toLowerCase().trim();
+      const matchQuery = !q || s.nameSi.toLowerCase().includes(q) || s.nameEn.toLowerCase().includes(q) || s.districtEn.toLowerCase().includes(q);
+      return matchDistrict && matchQuery;
+    });
+  }, [selectedDistrict, policeSearchQuery]);
+
+  // 5. Duress PIN Modal States
   const [showDuressModal, setShowDuressModal] = useState<boolean>(false);
+  const [deactivateTab, setDeactivateTab] = useState<'pin' | 'nic'>('pin');
   const [enteredPin, setEnteredPin] = useState<string>('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [pinVerificationMode, setPinVerificationMode] = useState<'pin' | 'password'>('pin');
   const [enteredPassword, setEnteredPassword] = useState<string>('');
   const [enteredNic, setEnteredNic] = useState<string>('');
+  const [pinError, setPinError] = useState<string | null>(null);
 
-  // Map & Watcher Refs
+  // 🛡️ 5-Minute Safety Cooldown Buffer State
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
+
+  // 6. Audio Evidence Recorder & Stream Refs
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const continuousRecorderRef = useRef<MediaRecorder | null>(null);
+  const isContinuousAudioRunningRef = useRef<boolean>(false);
+  const audioTimerIntervalRef = useRef<any>(null);
+
+  // 7. Map & Watcher Refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
-  const polylineRef = useRef<any>(null);
-  const breadcrumbsRef = useRef<Array<[number, number]>>([]);
-  const geoWatchIdRef = useRef<number | null>(null);
-  const audioContextRef = useRef<any>(null);
-  const oscillatorRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<any>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const durationTimerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
+  const facilitiesLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const syncIntervalRef = useRef<any>(null);
+  const sirenAudioContextRef = useRef<AudioContext | null>(null);
+  const sirenOscillatorRef = useRef<OscillatorNode | null>(null);
+  const sirenGainRef = useRef<GainNode | null>(null);
+  const sirenModulatorRef = useRef<OscillatorNode | null>(null);
 
-  // Initialize Cooldown timer from LocalStorage if exists
-  useEffect(() => {
-    const existingCooldownUntil = localStorage.getItem('active_sos_cooldown_until');
-    if (existingCooldownUntil) {
-      const diff = Math.max(0, Math.floor((parseInt(existingCooldownUntil, 10) - Date.now()) / 1000));
-      if (diff > 0) {
-        setCooldownRemainingSec(diff);
-      } else {
-        localStorage.removeItem('active_sos_cooldown_until');
+  const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
+
+  // Format MM:SS for audio timer
+  const formatDuration = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  // 🔊 HIGH-DECIBEL SIREN AUDIO SYNTHESIZER
+  const startHighDecibelSiren = useCallback(() => {
+    try {
+      if (sirenAudioContextRef.current && sirenAudioContextRef.current.state === 'running') {
+        return;
       }
+
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      const ctx = new AudioContextClass();
+      sirenAudioContextRef.current = ctx;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const modOsc = ctx.createOscillator();
+      const modGain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(850, ctx.currentTime);
+
+      modOsc.type = 'triangle';
+      modOsc.frequency.setValueAtTime(2.2, ctx.currentTime);
+      modGain.gain.setValueAtTime(450, ctx.currentTime);
+
+      modOsc.connect(osc.frequency);
+      modOsc.start();
+
+      gain.gain.setValueAtTime(0.85, ctx.currentTime);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+
+      sirenOscillatorRef.current = osc;
+      sirenGainRef.current = gain;
+      sirenModulatorRef.current = modOsc;
+      setIsSirenOn(true);
+    } catch (e) {
+      console.warn('AudioContext Siren initialization error:', e);
     }
   }, []);
 
-  // Cooldown countdown tick
-  useEffect(() => {
-    if (cooldownRemainingSec === null || cooldownRemainingSec <= 0) return;
-    const interval = setInterval(() => {
-      setCooldownRemainingSec(prev => {
-        if (prev === null || prev <= 1) {
-          localStorage.removeItem('active_sos_cooldown_until');
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [cooldownRemainingSec]);
-
-  // Battery monitoring
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && (navigator as any).getBattery) {
-      (navigator as any).getBattery().then((battery: any) => {
-        setBatteryLevel(Math.round(battery.level * 100));
-        battery.addEventListener('levelchange', () => {
-          setBatteryLevel(Math.round(battery.level * 100));
-        });
-      }).catch(() => {});
+  const stopHighDecibelSiren = useCallback(() => {
+    try {
+      if (sirenOscillatorRef.current) {
+        sirenOscillatorRef.current.stop();
+        sirenOscillatorRef.current.disconnect();
+        sirenOscillatorRef.current = null;
+      }
+      if (sirenModulatorRef.current) {
+        sirenModulatorRef.current.stop();
+        sirenModulatorRef.current.disconnect();
+        sirenModulatorRef.current = null;
+      }
+      if (sirenGainRef.current) {
+        sirenGainRef.current.disconnect();
+        sirenGainRef.current = null;
+      }
+      if (sirenAudioContextRef.current) {
+        sirenAudioContextRef.current.close().catch(() => {});
+        sirenAudioContextRef.current = null;
+      }
+    } catch (e) {
+      console.warn('Siren AudioContext cleanup error:', e);
+    } finally {
+      setIsSirenOn(false);
     }
   }, []);
 
-  // Build the Share URL
-  const shareUrl = useMemo(() => {
-    if (!sessionId) {
-      const activeId = localStorage.getItem('active_sos_session_id') || 'preview';
-      return `https://supporservice.online/#/sos-live?session=${activeId}`;
+  const toggleSiren = useCallback(() => {
+    if (isSirenOn) {
+      stopHighDecibelSiren();
+      setIsSirenOn(false);
+    } else {
+      startHighDecibelSiren();
+      setIsSirenOn(true);
     }
-    return `https://supporservice.online/#/sos-live?session=${sessionId}`;
-  }, [sessionId]);
+  }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
 
-  // Start SOS Session
-  const handleStartSos = useCallback(async () => {
-    const newSessionId = `sos_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    setSessionId(newSessionId);
-    setIsTracking(true);
-    setSessionDuration(0);
-    localStorage.setItem('active_sos_session_id', newSessionId);
-
-    // Initial Coordinates
-    const initialLat = currentLocation?.lat || 6.9271;
-    const initialLng = currentLocation?.lng || 79.8612;
-    setCoords({ lat: initialLat, lng: initialLng });
-    breadcrumbsRef.current = [[initialLat, initialLng]];
-
-    const sessionDocData = {
-      sessionId: newSessionId,
-      userId: currentUser?.id || 'anonymous_guest',
-      userName: currentUser?.name || 'Anonymous User',
-      userPhone: currentUser?.phone || 'Not Provided',
-      userNic: currentUser?.nic || 'Not Provided',
-      status: 'active',
-      startedAt: serverTimestamp(),
-      lastUpdate: serverTimestamp(),
-      initialLocation: new GeoPoint(initialLat, initialLng),
-      currentLocation: new GeoPoint(initialLat, initialLng),
-      accuracy: accuracy || 10,
-      speed: speed || 0,
-      batteryLevel: batteryLevel || 100,
-      emergencyMessage: effectiveEmergencyMessage,
-      emergencyNote: emergencyNote || '',
-      breadcrumbs: [
-        {
-          lat: initialLat,
-          lng: initialLng,
-          timestamp: new Date().toISOString(),
-        }
-      ],
-      isSilentAudioStreaming: true,
-      lastAudioSyncAt: serverTimestamp(),
-    };
+  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER
+  const startAudioRecordingLoop = useCallback(async () => {
+    if (isContinuousAudioRunningRef.current) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      console.warn('MediaDevices getUserMedia API not supported');
+      return;
+    }
 
     try {
-      await setDoc(doc(db, 'sos_sessions', newSessionId), sessionDocData, { merge: true });
-    } catch (err) {
-      console.warn('Could not initialize SOS session on Firestore immediately:', err);
-    }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioStreamRef.current = stream;
+      isContinuousAudioRunningRef.current = true;
 
-    // Start Silent Background Audio Recording for Recipient Live Listening
-    startSilentAudioRecording(newSessionId);
-  }, [currentLocation, currentUser, accuracy, speed, batteryLevel, effectiveEmergencyMessage, emergencyNote]);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
 
-  // Start Silent Audio Recording (Streaming base64 chunks to Firestore for recipient)
-  const startSilentAudioRecording = useCallback((targetSessionId: string) => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      continuousRecorderRef.current = recorder;
 
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then((stream) => {
-        const mediaRecorder = new (window as any).MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
+      recorder.ondataavailable = async (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) {
+          const reader = new FileReader();
+          reader.readAsDataURL(e.data);
+          reader.onloadend = async () => {
+            const base64Data = reader.result as string;
+            setRecordedAudioUrl(base64Data);
 
-        mediaRecorder.ondataavailable = async (e: any) => {
-          if (e.data && e.data.size > 0) {
-            audioChunksRef.current.push(e.data);
-            // Convert to base64 data url and sync to Firestore
-            try {
-              const reader = new FileReader();
-              reader.readAsDataURL(e.data);
-              reader.onloadend = async () => {
-                const base64Audio = reader.result as string;
-                if (base64Audio && targetSessionId) {
-                  await setDoc(doc(db, 'sos_sessions', targetSessionId), {
-                    latestAudioBase64: base64Audio,
-                    lastAudioSyncAt: serverTimestamp(),
-                    isSilentAudioStreaming: true,
-                  }, { merge: true });
-                }
-              };
-            } catch (syncErr) {
-              console.warn('Audio snippet sync failed:', syncErr);
+            const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+            if (activeSessionId) {
+              try {
+                await updateSosLiveLocation(activeSessionId, {
+                  latestAudioBase64: base64Data,
+                  lastAudioSyncAt: Date.now(),
+                  isSilentAudioStreaming: true,
+                } as any);
+              } catch (err) {}
             }
-          }
-        };
+          };
+        }
+      };
 
-        // Emit slice every 4 seconds for recipient live stream
-        mediaRecorder.start(4000);
-        setIsRecordingAudio(true);
-      })
-      .catch((err) => {
-        console.warn('Microphone permission not granted for silent SOS audio:', err);
-      });
-  }, []);
+      recorder.start(4000);
+      setIsRecordingAudio(true);
 
-  const stopSilentAudioRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      audioTimerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.warn('Silent Audio evidence recorder permission notice:', err);
+    }
+  }, [sessionId]);
+
+  const stopAudioRecordingLoop = useCallback(() => {
+    isContinuousAudioRunningRef.current = false;
+    if (audioTimerIntervalRef.current) {
+      clearInterval(audioTimerIntervalRef.current);
+      audioTimerIntervalRef.current = null;
+    }
+    if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
       try {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream?.getTracks().forEach((track: any) => track.stop());
+        continuousRecorderRef.current.stop();
       } catch (e) {}
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
     }
     setIsRecordingAudio(false);
   }, []);
 
-  // GPS Watcher
+  const handleToggleAudioRecording = useCallback(() => {
+    if (isRecordingAudio) {
+      stopAudioRecordingLoop();
+    } else {
+      startAudioRecordingLoop();
+    }
+  }, [isRecordingAudio, startAudioRecordingLoop, stopAudioRecordingLoop]);
+
+  // Handle GPS location updates
+  const handleGpsSuccess = useCallback((pos: GeolocationPosition) => {
+    const { latitude, longitude, accuracy: acc, speed: spd, heading: hd } = pos.coords;
+    setCurrentCoords({ lat: latitude, lng: longitude });
+    setAccuracy(Math.round(acc));
+    setSpeedKmh(spd ? Math.round(spd * 3.6) : 0);
+    setHeading(hd ? Math.round(hd) : null);
+    setGpsError(null);
+
+    if (markerRef.current) {
+      markerRef.current.setLatLng([latitude, longitude]);
+    }
+    if (accuracyCircleRef.current) {
+      accuracyCircleRef.current.setLatLng([latitude, longitude]);
+      accuracyCircleRef.current.setRadius(acc);
+    }
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.panTo([latitude, longitude], { animate: true });
+    }
+  }, []);
+
+  // Watch Position Effect
   useEffect(() => {
-    if (!isTracking) return;
+    if (!isOpen) return;
 
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-      geoWatchIdRef.current = navigator.geolocation.watchPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          const currentAcc = position.coords.accuracy;
-          const currentSpd = position.coords.speed ? position.coords.speed * 3.6 : 0;
-
-          setCoords({ lat, lng });
-          setAccuracy(Math.round(currentAcc));
-          setSpeed(Math.round(currentSpd));
-          setLastHeartbeat(new Date());
-
-          breadcrumbsRef.current.push([lat, lng]);
-
-          // Update Leaflet marker & polyline
-          if (markerRef.current) {
-            markerRef.current.setLatLng([lat, lng]);
-          }
-          if (polylineRef.current) {
-            polylineRef.current.setLatLngs(breadcrumbsRef.current);
-          }
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.panTo([lat, lng]);
-          }
-
-          // Push to Firestore
-          const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
-          if (activeSessionId) {
-            try {
-              await setDoc(doc(db, 'sos_sessions', activeSessionId), {
-                currentLocation: new GeoPoint(lat, lng),
-                accuracy: Math.round(currentAcc),
-                speed: Math.round(currentSpd),
-                lastUpdate: serverTimestamp(),
-                breadcrumbs: arrayUnion({
-                  lat,
-                  lng,
-                  timestamp: new Date().toISOString(),
-                }),
-              }, { merge: true });
-            } catch (pushErr) {
-              setOfflineQueueLength(prev => prev + 1);
-            }
-          }
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        handleGpsSuccess,
+        (err) => {
+          setGpsError('GPS සංඥා ලබා ගැනීමට නොහැකි විය. කරුණාකර Location On කරන්න.');
         },
-        (error) => {
-          console.warn('GPS watch error:', error);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
       );
     }
 
     return () => {
-      if (geoWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined') {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
     };
-  }, [isTracking, sessionId]);
-
-  // Session duration timer
-  useEffect(() => {
-    if (!isTracking) return;
-    durationTimerRef.current = setInterval(() => {
-      setSessionDuration(prev => prev + 1);
-      if (isRecordingAudio) {
-        setRecordingSeconds(prev => prev + 1);
-      }
-    }, 1000);
-
-    return () => {
-      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-    };
-  }, [isTracking, isRecordingAudio]);
+  }, [isOpen, handleGpsSuccess]);
 
   // Leaflet Map Initialization
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !mapContainerRef.current) return;
 
     const timer = setTimeout(() => {
-      if (mapContainerRef.current && !mapInstanceRef.current && typeof window !== 'undefined') {
-        const L = (window as any).L;
-        if (!L) return;
-
-        const initialLat = coords?.lat || currentLocation?.lat || 6.9271;
-        const initialLng = coords?.lng || currentLocation?.lng || 79.8612;
-
-        const map = L.map(mapContainerRef.current, {
-          center: [initialLat, initialLng],
-          zoom: 16,
-          zoomControl: false,
-          attributionControl: false,
-        });
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-        }).addTo(map);
-
-        const customIcon = L.divIcon({
-          className: 'sos-live-beacon',
-          html: `
-            <div class="relative flex items-center justify-center">
-              <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-red-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-5 w-5 bg-red-600 border-2 border-white shadow-lg"></span>
-            </div>
-          `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
-        });
-
-        const marker = L.marker([initialLat, initialLng], { icon: customIcon }).addTo(map);
-        markerRef.current = marker;
-
-        const polyline = L.polyline([[initialLat, initialLng]], {
-          color: '#ef4444',
-          weight: 4,
-          opacity: 0.8,
-          dashArray: '8, 8',
-        }).addTo(map);
-        polylineRef.current = polyline;
-
-        mapInstanceRef.current = map;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
-    }, 300);
+
+      const map = L.map(mapContainerRef.current, {
+        center: [currentCoords.lat, currentCoords.lng],
+        zoom: 16,
+        zoomControl: false,
+        attributionControl: false,
+      });
+
+      const tileUrl = mapLayer === 'satellite'
+        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+      L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
+
+      const beaconIcon = L.divIcon({
+        className: 'sos-custom-beacon',
+        html: `
+          <div class="relative flex items-center justify-center">
+            <span class="absolute w-10 h-10 bg-red-500/40 rounded-full animate-ping"></span>
+            <span class="absolute w-6 h-6 bg-red-600/60 rounded-full animate-pulse"></span>
+            <div class="relative w-5 h-5 bg-red-600 border-2 border-white rounded-full shadow-lg flex items-center justify-center text-white text-[9px] font-black">
+              SOS
+            </div>
+          </div>
+        `,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+      });
+
+      markerRef.current = L.marker([currentCoords.lat, currentCoords.lng], { icon: beaconIcon }).addTo(map);
+
+      accuracyCircleRef.current = L.circle([currentCoords.lat, currentCoords.lng], {
+        radius: accuracy || 15,
+        color: '#ef4444',
+        fillColor: '#fca5a5',
+        fillOpacity: 0.25,
+        weight: 1.5,
+      }).addTo(map);
+
+      mapInstanceRef.current = map;
+    }, 250);
 
     return () => {
       clearTimeout(timer);
@@ -1241,118 +702,73 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         mapInstanceRef.current = null;
       }
     };
-  }, [isOpen]);
+  }, [isOpen, mapLayer]);
 
-  // Nearby Sri Lanka Police Station locator
-  useEffect(() => {
-    if (!coords) return;
-    const list = ALL_SRI_LANKA_POLICE_STATIONS.map(p => {
-      const dLat = (p.lat - coords.lat) * (Math.PI / 180);
-      const dLon = (p.lng - coords.lng) * (Math.PI / 180);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(coords.lat * (Math.PI / 180)) * Math.cos(p.lat * (Math.PI / 180)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const dist = 6371 * c;
-      return {
-        name: p.name,
-        type: 'පොලිස් ස්ථානය',
-        distance: Math.round(dist * 10) / 10,
-        phone: p.phone,
-      };
-    }).sort((a, b) => a.distance - b.distance).slice(0, 5);
-
-    setNearestFacilities(list);
-  }, [coords]);
-
-  // Audio Siren toggle (Optional sound trigger)
-  const toggleSiren = useCallback(() => {
-    if (isSirenOn) {
-      if (oscillatorRef.current) {
-        try {
-          oscillatorRef.current.stop();
-          oscillatorRef.current.disconnect();
-        } catch (e) {}
-        oscillatorRef.current = null;
-      }
-      setIsSirenOn(false);
-    } else {
-      try {
-        const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(800, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1400, ctx.currentTime + 0.3);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-
-        audioContextRef.current = ctx;
-        oscillatorRef.current = osc;
-        setIsSirenOn(true);
-      } catch (err) {
-        console.warn('AudioContext failed:', err);
-      }
-    }
-  }, [isSirenOn]);
-
-  // Helper share methods
-  const handleCopyLink = useCallback(async () => {
-    const fullText = `${effectiveEmergencyMessage}\n\n🔗 Live Location & Voice Tracker Link:\n${shareUrl}`;
+  // Native share helpers
+  const handleCopyShareLink = async () => {
+    const fullText = `${effectiveEmergencyMessage}\n\n🔴 සජීවී ස්ථානය හා හඬ ඇසීමේ සබැඳිය:\n${shareUrl}`;
     try {
       await navigator.clipboard.writeText(fullText);
       setIsCopied(true);
-      setShowCopiedNotice(true);
       setTimeout(() => setIsCopied(false), 2500);
-      setTimeout(() => setShowCopiedNotice(false), 4000);
-    } catch (err) {
-      console.warn('Clipboard copy error:', err);
+    } catch (e) {
+      console.warn(e);
     }
-  }, [effectiveEmergencyMessage, shareUrl]);
+  };
 
-  const handleShareViaSms = useCallback(() => {
-    const fullText = encodeURIComponent(`${effectiveEmergencyMessage}\n${shareUrl}`);
-    window.open(`sms:?body=${fullText}`, '_self');
-  }, [effectiveEmergencyMessage, shareUrl]);
+  const handleWhatsAppShare = () => {
+    const text =
+      `🚨 *හදිසි SOS ඇමතුමයි! (Emergency Distress)*\n\n` +
+      `👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n` +
+      `📞 *දුරකථනය:* ${currentUser?.whatsappPhone || currentUser?.phone || 'ලබා දී නැත'}\n` +
+      `📍 *ස්ථානය:* ${locationName || 'කටුනායක'}\n` +
+      `🌐 *GPS:* ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)}\n` +
+      `💬 *පණිවිඩය:* ${effectiveEmergencyMessage}\n\n` +
+      `🔴 *සජීවී සිතියම හා හඬ ඇසීමේ සබැඳිය:*\n${shareUrl}\n\n` +
+      `කරුණාකර මා සිටින තැන සිතියමෙන් බලා සජීවීව පසුබිම් හඬට සවන් දී වහාම උදව් කරන්න!`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
 
-  const handleShareViaWhatsApp = useCallback(() => {
-    const fullText = encodeURIComponent(`${effectiveEmergencyMessage}\n${shareUrl}`);
-    window.open(`https://api.whatsapp.com/send?text=${fullText}`, '_blank');
-  }, [effectiveEmergencyMessage, shareUrl]);
+  const handleSmsShare = () => {
+    const text = `🚨 SOS හදිසි ඇමතුමයි! ${effectiveEmergencyMessage}\nසජීවී සිතියම හා හඬ සබැඳිය: ${shareUrl}`;
+    window.open(`sms:?body=${encodeURIComponent(text)}`, '_self');
+  };
 
-  // ALWAYS prompt for PIN when user clicks "මම දැන් ආරක්ෂිතයි"
+  const handleRecenter = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([currentCoords.lat, currentCoords.lng], 16, { animate: true });
+    }
+  };
+
+  // 🛑 DEACTIVATE TRIGGER (Demo users bypass PIN)
   const handleInitiateDeactivation = () => {
+    // 🚀 Demo පරිශීලකයින් සඳහා PIN අවශ්‍ය නැත
+    if (currentUser?.isDemo || currentUser?.id === 'demo_user' || currentUser?.nic === '000000000V') {
+      handleStopSos(false);
+      return;
+    }
     setEnteredPin('');
+    setEnteredPassword('');
+    setEnteredNic('');
     setPinError(null);
     setShowDuressModal(true);
   };
 
   const handleStopSos = async (isDuress: boolean = false) => {
-    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
-    stopSilentAudioRecording();
-    if (isSirenOn) toggleSiren();
+    stopAudioRecordingLoop();
+    if (isSirenOn) stopHighDecibelSiren();
 
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
     if (activeSessionId) {
       try {
-        await setDoc(doc(db, 'sos_sessions', activeSessionId), {
-          status: isDuress ? 'duress_canceled' : 'resolved',
-          endedAt: serverTimestamp(),
-          isSilentAudioStreaming: false,
-        }, { merge: true });
-      } catch (e) {
-        console.warn('Failed to update session status on end:', e);
-      }
+        await stopSosLiveSession(activeSessionId, isDuress ? 'duress_canceled' : 'resolved');
+      } catch (e) {}
     }
 
-    setIsTracking(false);
+    setIsActive(false);
     localStorage.removeItem('active_sos_session_id');
 
-    // Activate 5-minute safety buffer cooldown
+    // 5-minute safety cooldown buffer
     const cooldownEnd = Date.now() + 5 * 60 * 1000;
     localStorage.setItem('active_sos_cooldown_until', cooldownEnd.toString());
     setCooldownRemainingSec(300);
@@ -1360,15 +776,29 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     onClose();
   };
 
-  // Verify PIN via Device Quick PIN (verifyCurrentUserPin)
-  const handleVerifyPin = () => {
-    if (pinVerificationMode === 'pin') {
-      const isValid = verifyCurrentUserPin(enteredPin, currentUser);
-      if (isValid) {
+  const handleForceCompleteNow = useCallback(async () => {
+    localStorage.removeItem('active_sos_cooldown_until');
+    setCooldownRemainingSec(null);
+    onClose();
+  }, [onClose]);
+
+  const handleVerifyAndDeactivate = async () => {
+    if (deactivateTab === 'pin') {
+      if (enteredPin === '9999') {
         setShowDuressModal(false);
-        handleStopSos(false);
-      } else {
-        // Fallback check against stored profile PIN
+        handleStopSos(true);
+        return;
+      }
+
+      try {
+        const pinResult = await verifyCurrentUserPin(enteredPin, currentUser);
+        if (pinResult.success || (enteredPin === '1234' && (currentUser as any)?.isDemo)) {
+          setShowDuressModal(false);
+          handleStopSos(false);
+        } else {
+          setPinError(pinResult.message || 'වැරදි PIN අංකයකි! ඔබගේ Device Quick PIN අංකය ඇතුළත් කරන්න.');
+        }
+      } catch (err) {
         if (enteredPin === '1234' || (currentUser as any)?.pin === enteredPin) {
           setShowDuressModal(false);
           handleStopSos(false);
@@ -1393,42 +823,33 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     setShowDuressModal(false);
     handleStopSos(false);
   };
-  // Compatibility & safety bridge across parts
-  const isLiveActive = typeof isActive !== 'undefined' ? isActive : (typeof isTracking !== 'undefined' ? (isTracking as boolean) : true);
-  const activeLocationTitle = typeof locationName !== 'undefined' ? locationName : (currentLocation?.name || 'කටුනායක / බස්නාහිර පළාත');
-  const activeCoordinates = typeof currentCoords !== 'undefined' ? currentCoords : (typeof coords !== 'undefined' && coords ? coords : { lat: currentLocation?.lat || 6.9271, lng: currentLocation?.lng || 79.8612 });
-  const activeSpeed = typeof speedKmh !== 'undefined' ? speedKmh : (typeof speed !== 'undefined' && speed !== null ? speed : 0);
-  const activeAccuracy = typeof accuracy !== 'undefined' && accuracy !== null ? accuracy : 10;
-  const activeBattery = typeof batteryLevel !== 'undefined' && batteryLevel !== null ? batteryLevel : 100;
-  const activeSessionCode = typeof sessionCode !== 'undefined' ? sessionCode : (sessionId ? `#SOS-${sessionId.slice(-4).toUpperCase()}` : '#SOS-LIVE');
-  const activeDeactivateTab = typeof deactivateTab !== 'undefined' ? deactivateTab : (typeof pinVerificationMode !== 'undefined' ? (pinVerificationMode === 'password' ? 'nic' : 'pin') : 'pin');
-  const onTabChange = (t: 'pin' | 'nic') => {
-    if (typeof setDeactivateTab === 'function') setDeactivateTab(t);
-    if (typeof setPinVerificationMode === 'function') setPinVerificationMode(t === 'nic' ? 'password' : 'pin');
-  };
-  const onVerifyPinAction = typeof handleVerifyAndDeactivate === 'function' ? handleVerifyAndDeactivate : (typeof handleVerifyPin === 'function' ? handleVerifyPin : () => {});
-  const onCopyAction = typeof handleCopyShareLink === 'function' ? handleCopyShareLink : (typeof handleCopyLink === 'function' ? handleCopyLink : () => {});
-  const onSmsAction = typeof handleSmsShare === 'function' ? handleSmsShare : (typeof handleShareViaSms === 'function' ? handleShareViaSms : () => {});
-  const onWhatsAppAction = typeof handleWhatsAppShare === 'function' ? handleWhatsAppShare : (typeof handleShareViaWhatsApp === 'function' ? handleShareViaWhatsApp : () => {});
-  const onForceCompleteAction = typeof handleForceCompleteNow === 'function' ? handleForceCompleteNow : () => {
-    localStorage.removeItem('active_sos_cooldown_until');
-    if (typeof setCooldownRemainingSec === 'function') setCooldownRemainingSec(null);
-    onClose();
-  };
-  const onToggleAudioAction = typeof handleToggleAudioRecording === 'function' ? handleToggleAudioRecording : () => {};
-  const activeDistrictsList = typeof districtsList !== 'undefined' && Array.isArray(districtsList) ? districtsList : ['All', 'Colombo', 'Gampaha', 'Kalutara', 'Kandy', 'Matale', 'Nuwara Eliya', 'Galle', 'Matara', 'Hambantota', 'Jaffna', 'Kilinochchi', 'Mannar', 'Vavuniya', 'Mullaitivu', 'Batticaloa', 'Ampara', 'Trincomalee', 'Kurunegala', 'Puttalam', 'Anuradhapura', 'Polonnaruwa', 'Badulla', 'Monaragala', 'Ratnapura', 'Kegalle'];
-  const activeFilteredStations = typeof filteredPoliceStations !== 'undefined' && Array.isArray(filteredPoliceStations) ? filteredPoliceStations : ALL_SRI_LANKA_POLICE_STATIONS.filter(p => {
-    const matchDistrict = selectedDistrict === 'All' || p.district.toLowerCase() === selectedDistrict.toLowerCase();
-    const matchQuery = !policeSearchQuery || p.name.toLowerCase().includes(policeSearchQuery.toLowerCase()) || p.district.toLowerCase().includes(policeSearchQuery.toLowerCase());
-    return matchDistrict && matchQuery;
-  });
-  const formatSecs = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
-
   if (!isOpen) return null;
+
+  // 🚀 Demo Account එකෙන් SOS සේවාව භාවිතා කළ නොහැක (Issue #2 Fix)
+  if (currentUser?.isDemo || currentUser?.id === 'demo_user' || currentUser?.nic === '000000000V') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+        <div className="max-w-md w-full p-6 bg-white dark:bg-slate-900 rounded-3xl text-center space-y-4 border-2 border-rose-500 shadow-2xl">
+          <div className="w-14 h-14 bg-rose-100 dark:bg-rose-950/80 text-rose-600 rounded-2xl flex items-center justify-center mx-auto shadow-md">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-black text-slate-900 dark:text-white">
+            ලියාපදිංචි වීම අනිවාර්යයි (Registration Required)
+          </h3>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+            නිරීක්ෂණ Demo ගිණුම මඟින් හදිසි SOS සේවාව හෝ රතු එළිය භාවිතා කළ නොහැක. කරුණාකර ඔබගේ නියම ගිණුම සාදා ලියාපදිංචි වන්න.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            වසන්න (Close)
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
@@ -1455,7 +876,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             </div>
             <button
               type="button"
-              onClick={onForceCompleteAction}
+              onClick={handleForceCompleteNow}
               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
             >
               දැන්ම වසන්න
@@ -1473,14 +894,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <div>
                 <h3 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-2">
                   <span>හදිසි සජීවී ලුහුබැඳීම (SOS Live Tracker)</span>
-                  {isLiveActive && (
+                  {isActive && (
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-white text-red-600 animate-bounce">
                       සක්‍රියයි (LIVE)
                     </span>
                   )}
                 </h3>
                 <p className="text-xs text-red-100 font-medium">
-                  {activeLocationTitle || 'ස්ථානය තහවුරු වෙමින් පවතී...'}
+                  {locationName || 'ස්ථානය තහවුරු වෙමින් පවතී...'}
                 </p>
               </div>
             </div>
@@ -1522,7 +943,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
               <button
                 type="button"
-                onClick={onToggleAudioAction}
+                onClick={handleToggleAudioRecording}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
                   isRecordingAudio
                     ? 'bg-rose-500 text-white ring-2 ring-white animate-pulse'
@@ -1530,16 +951,16 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 }`}
               >
                 {isRecordingAudio ? <Mic className="w-4 h-4 animate-bounce" /> : <MicOff className="w-4 h-4" />}
-                <span>{isRecordingAudio ? `හඬ සාක්ෂි (${formatSecs(recordingSeconds)})` : 'හඬ පටිගත කිරීම'}</span>
+                <span>{isRecordingAudio ? `හඬ සාක්ෂි (${formatDuration(recordingSeconds)})` : 'හඬ පටිගත කිරීම'}</span>
               </button>
             </div>
 
-            {/* Emergency Police 119 Quick Button */}
+            {/* Emergency Police 119 Quick Button (Issue #1 Fix) */}
             <a
               href="tel:119"
               className="px-3 py-1.5 rounded-xl bg-white text-red-600 hover:bg-red-50 text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
             >
-              <PhoneCall className="w-3.5 h-3.5" />
+              <Phone className="w-3.5 h-3.5" />
               <span>119 පොලිසිය</span>
             </a>
           </div>
@@ -1548,11 +969,94 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         {/* 2. MAIN SCROLLABLE CONTENT BODY */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-slate-800 dark:text-slate-100 flex-1">
           
+          {/* 👥 5 EMERGENCY TRUSTED CONTACTS MANAGEMENT CARD (Issue #3 Fix) */}
+          <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-emerald-500" />
+                <span>හදිසි ඇමතුම් සඳහා අංක 5 (Emergency Contacts - 5)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsEditingContacts(!isEditingContacts)}
+                className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/80 px-2.5 py-1 rounded-xl hover:bg-blue-100 cursor-pointer transition-all"
+              >
+                {isEditingContacts ? 'සුරකින්න (Done)' : 'සංස්කරණය (Edit Numbers)'}
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {emergencyContacts.map((contact, idx) => (
+                <div
+                  key={contact.id}
+                  className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 text-xs"
+                >
+                  {isEditingContacts ? (
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      <input
+                        type="text"
+                        value={contact.name}
+                        onChange={(e) => handleUpdateContact(contact.id, e.target.value, contact.phone)}
+                        placeholder={`අංක ${idx + 1} නම`}
+                        className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                      />
+                      <input
+                        type="tel"
+                        value={contact.phone}
+                        onChange={(e) => handleUpdateContact(contact.id, contact.name, e.target.value)}
+                        placeholder="දුරකථන අංකය (07xxxxxxxx)"
+                        className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-mono"
+                      />
+                    </div>
+                  ) : (
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-900 dark:text-white truncate">
+                        {contact.name || `හදිසි අංක ${idx + 1}`}
+                      </div>
+                      <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                        {contact.phone || 'අංකයක් ඇතුළත් කර නොමැත'}
+                      </div>
+                    </div>
+                  )}
+
+                  {contact.phone && !isEditingContacts && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a
+                        href={`tel:${contact.phone}`}
+                        className="p-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 transition-all"
+                        title="Call"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleNotifyContactSms(contact)}
+                        className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        title="Send SMS Alert"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        <span>SMS</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNotifyContactWhatsApp(contact)}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        title="WhatsApp Alert"
+                      >
+                        <span>WA</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* 🚨 PRESET & CUSTOM MESSAGE SELECTION BOX */}
           <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Send className="w-3.5 h-3.5 text-red-500" />
+                <Share2 className="w-3.5 h-3.5 text-red-500" />
                 <span>හදිසි පණිවිඩය තෝරන්න (Emergency Message)</span>
               </label>
               <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/80 px-2 py-0.5 rounded-full">
@@ -1621,7 +1125,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           {/* 🎙️ LIVE STREAMING AUDIO NOTICE FOR RECIPIENT */}
           <div className="p-3.5 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center gap-3">
             <div className="p-2 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
-              <Headphones className="w-5 h-5 animate-pulse" />
+              <Volume2 className="w-5 h-5 animate-pulse" />
             </div>
             <div className="text-xs">
               <span className="font-bold text-amber-900 dark:text-amber-200 block">
@@ -1656,7 +1160,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               />
               <button
                 type="button"
-                onClick={onCopyAction}
+                onClick={handleCopyShareLink}
                 className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
               >
                 {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
@@ -1668,7 +1172,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
               <button
                 type="button"
-                onClick={onWhatsAppAction}
+                onClick={handleWhatsAppShare}
                 className="p-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <Share2 className="w-4 h-4" />
@@ -1677,10 +1181,10 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
               <button
                 type="button"
-                onClick={onSmsAction}
+                onClick={handleSmsShare}
                 className="p-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
               >
-                <Send className="w-4 h-4" />
+                <Share2 className="w-4 h-4" />
                 <span>SMS හරහා</span>
               </button>
 
@@ -1693,7 +1197,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       text: `${effectiveEmergencyMessage}\n🔴 සජීවී ස්ථානය හා හඬ ඇසීමේ සබැඳිය:\n${shareUrl}`,
                     }).catch(() => {});
                   } else {
-                    onCopyAction();
+                    handleCopyShareLink();
                   }
                 }}
                 className="col-span-2 sm:col-span-1 p-2.5 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
@@ -1710,7 +1214,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <span className="text-[10px] font-bold text-slate-400 uppercase">GPS Accuracy</span>
               <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
                 <Navigation className="w-3.5 h-3.5 text-blue-500" />
-                <span>±{activeAccuracy}m</span>
+                <span>±{accuracy || 10}m</span>
               </span>
             </div>
 
@@ -1718,7 +1222,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <span className="text-[10px] font-bold text-slate-400 uppercase">වේගය (Speed)</span>
               <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
                 <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                <span>{activeSpeed} km/h</span>
+                <span>{speedKmh} km/h</span>
               </span>
             </div>
 
@@ -1726,14 +1230,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <span className="text-[10px] font-bold text-slate-400 uppercase">බැටරි මට්ටම</span>
               <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
                 <Battery className="w-3.5 h-3.5 text-amber-500" />
-                <span>{activeBattery}%</span>
+                <span>{batteryLevel || 100}%</span>
               </span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
               <span className="text-[10px] font-bold text-slate-400 uppercase">කේතය (Code)</span>
               <span className="text-sm font-black font-mono text-red-600 dark:text-red-400 flex items-center gap-1 mt-0.5">
-                <span>{activeSessionCode}</span>
+                <span>{sessionCode}</span>
               </span>
             </div>
           </div>
@@ -1751,14 +1255,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-blue-600" />
-                <span>ලංකාවේ සියලුම පොලිස් ස්ථාන ({activeFilteredStations.length})</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                <span>ලංකාවේ සියලුම පොලිස් ස්ථාන ({filteredPoliceStations.length})</span>
               </label>
               <a
                 href="tel:119"
                 className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-red-700"
               >
-                <PhoneCall className="w-2.5 h-2.5" /> 119 Call
+                <Phone className="w-2.5 h-2.5" /> 119 Call
               </a>
             </div>
 
@@ -1770,7 +1274,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                   onChange={(e) => setSelectedDistrict(e.target.value)}
                   className="w-full p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
-                  {activeDistrictsList.map((dist) => (
+                  {districtsList.map((dist) => (
                     <option key={dist} value={dist}>
                       {dist === 'All' ? 'සියලුම දිස්ත්‍රික්ක (All 25 Districts)' : `${dist} දිස්ත්‍රික්කය`}
                     </option>
@@ -1791,14 +1295,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
             {/* Police Station List preview */}
             <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 dark:divide-slate-800">
-              {activeFilteredStations.slice(0, 15).map((station, idx) => (
+              {filteredPoliceStations.slice(0, 15).map((station, idx) => (
                 <div key={idx} className="pt-1.5 flex items-center justify-between text-xs">
                   <div>
                     <h5 className="font-bold text-slate-900 dark:text-white leading-tight">
-                      {station.name}
+                      {station.nameSi}
                     </h5>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      {station.district} දිස්ත්‍රික්කය {station.phone ? `• ${station.phone}` : ''}
+                      {station.districtSi} දිස්ත්‍රික්කය {station.phone ? `• ${station.phone}` : ''}
                     </span>
                   </div>
 
@@ -1807,13 +1311,13 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       href={`tel:${station.phone}`}
                       className="px-2.5 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-300 font-bold text-[11px] flex items-center gap-1 shrink-0"
                     >
-                      <PhoneCall className="w-3 h-3" />
+                      <Phone className="w-3 h-3" />
                       <span>අමතන්න</span>
                     </a>
                   )}
                 </div>
               ))}
-              {activeFilteredStations.length === 0 && (
+              {filteredPoliceStations.length === 0 && (
                 <p className="text-center py-4 text-xs text-slate-400">
                   සොයන ලද පොලිස් ස්ථානය හමු නොවීය.
                 </p>
@@ -1824,7 +1328,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           {/* 6. EMERGENCY NOTE INPUT */}
           <div className="p-4 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-2">
             <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-purple-500" />
+              <ShieldAlert className="w-3.5 h-3.5 text-purple-500" />
               <span>අමතර හදිසි සටහන (Optional Emergency Note)</span>
             </label>
             <input
@@ -1899,9 +1403,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800 p-1">
                 <button
                   type="button"
-                  onClick={() => onTabChange('pin')}
+                  onClick={() => setDeactivateTab('pin')}
                   className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-                    activeDeactivateTab === 'pin'
+                    deactivateTab === 'pin'
                       ? 'bg-white dark:bg-slate-900 text-red-600 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
@@ -1910,9 +1414,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onTabChange('nic')}
+                  onClick={() => setDeactivateTab('nic')}
                   className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-                    activeDeactivateTab === 'nic'
+                    deactivateTab === 'nic'
                       ? 'bg-white dark:bg-slate-900 text-red-600 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
@@ -1921,7 +1425,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 </button>
               </div>
 
-              {activeDeactivateTab === 'pin' ? (
+              {deactivateTab === 'pin' ? (
                 <div className="space-y-4">
                   {/* PIN Display Indicator */}
                   <div className="flex items-center justify-center gap-3 py-2">
@@ -1993,7 +1497,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       }}
                       className="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center justify-center transition-all active:scale-95 cursor-pointer"
                     >
-                      <Delete className="w-5 h-5" />
+                      <RotateCcw className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
@@ -2037,7 +1541,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={onVerifyPinAction}
+                  onClick={handleVerifyAndDeactivate}
                   className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-2xl transition-all cursor-pointer shadow-md active:scale-95"
                 >
                   තහවුරු කර SOS නවත්වන්න
