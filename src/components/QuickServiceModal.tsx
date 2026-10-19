@@ -71,7 +71,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [transport, setTransport] = useState<string>('ඔබ පැමිණිය යුතුයි.');
   const [customTransportFee, setCustomTransportFee] = useState<string>('');
 
-  // Payment State (No hardcoded 1500)
+  // Payment State
   const [paymentType, setPaymentType] = useState<'agree' | 'custom'>('agree');
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
@@ -183,9 +183,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       ? 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'
       : `මට ගෙවිය හැක: රු. ${Number(customPaymentAmount).toLocaleString()}`;
 
+    // 🛠️ Edit Post Mode (සියලු Properties නිවැරදිව තහවුරු කිරීම)
     if (editPost && onUpdatePost) {
       const updatedPost: HelpPost = {
         ...editPost,
+        title: whatHappened.trim().slice(0, 50) || editPost.title || '⚡ ක්ෂණික සේවාව',
+        category: 'quick_services',
+        postType: 'quick_service',
+        roleType: 'need_help',
         whatHappened: whatHappened.trim(),
         whatIsNeeded: whatIsNeeded.trim(),
         conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
@@ -213,9 +218,12 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     const newStartPin = generateStartPin();
     const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
 
+    // 🛠️ Create Post Mode (සියලු දෝෂ නිරාකරණය කළ පූර්ණ Payload එක)
     onSubmitPost({
+      title: whatHappened.trim().slice(0, 50) || '⚡ ක්ෂණික සේවාව',
       userName: currentUser?.name || 'පරිශීලක',
-      userPhone: whatsappNumber.trim() || userWhatsAppNumber,
+      userPhone: whatsappNumber.trim() || userWhatsAppNumber || currentUser?.phone || '',
+      userEmail: currentUser?.email || '',
       userId: currentUser?.userId || currentUser?.id || '',
       whatHappened: whatHappened.trim(),
       whatIsNeeded: whatIsNeeded.trim(),
@@ -236,10 +244,16 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       selectedHelpers: [],
       locationName: resolvedLocation,
       distanceKm: 0.8,
+      latitude: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
+      longitude: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
       lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
       category: 'quick_services',
+      postType: 'quick_service',
+      roleType: 'need_help',
+      status: 'active',
+      isResolved: false,
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
@@ -267,7 +281,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     setErrors({});
     onClose();
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-emerald-950/80 backdrop-blur-md animate-fadeIn">
       <div className="w-full max-w-2xl bg-white dark:bg-[#06180f] rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.35)] border-2 border-emerald-500/40 overflow-hidden flex flex-col max-h-[92vh]">
