@@ -45,7 +45,7 @@ import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
 import { checkAndDeductFee } from '../utils/creditManager';
 import { getLangText as getLocalizedText } from '../utils/postTranslator';
 import { 
-  createHelpPostInFirestore, 
+  addHelpPostToFirestore,
   updateHelpPostInFirestore, 
   deleteHelpPostFromFirestore,
   updateUserInFirestore,
