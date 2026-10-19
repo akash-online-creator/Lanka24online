@@ -48,9 +48,6 @@ import {
   createHelpPostInFirestore, 
   updateHelpPostInFirestore, 
   deleteHelpPostFromFirestore,
-  subscribeToUserNotifications,
-  markNotificationAsReadInFirestore,
-  clearAllNotificationsInFirestore,
   updateUserInFirestore,
   subscribeToSosLiveSession
 } from '../lib/firebase';
