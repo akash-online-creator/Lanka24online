@@ -30,7 +30,8 @@ interface AiVoiceHelpModalProps {
   currentUser: User;
   currentLocation: LocationOption;
   lang?: Language;
-  onSubmitHelpPost?: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => Promise<any> | void;
+  onSubmitHelpPost?: (post: any) => Promise<any> | void;
+  onSubmitPost?: (post: any) => Promise<any> | void; // 👈 Support both prop names
   onSubmitRedAlert?: (alert: RedAlertItem) => Promise<any> | void;
 }
 
@@ -41,6 +42,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
   currentLocation,
   lang = 'si',
   onSubmitHelpPost,
+  onSubmitPost,
   onSubmitRedAlert,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -259,8 +261,9 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
 
       const config = categoryConfig[selectedCategory];
 
-      // Submit as Voice Post
-      if (onSubmitHelpPost) {
+      // Submit as Voice Post (Supports both onSubmitHelpPost and onSubmitPost)
+      const submitFn = onSubmitHelpPost || onSubmitPost;
+      if (submitFn) {
         const postData = {
           title: `🎙️ හඬ සහය (${config.label})`,
           whatHappened: 'හඬ පටය ශ්‍රවණය කර සහය වන්න.',
@@ -275,9 +278,13 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
           feeAgreed: true,
           locationName: cityName || 'නගරය',
           distanceKm: 0,
+          latitude: currentLocation?.lat || 6.9271,
+          longitude: currentLocation?.lng || 79.8612,
           lat: currentLocation?.lat || 6.9271,
           lng: currentLocation?.lng || 79.8612,
           category: config.catKey,
+          postType: selectedCategory === 'quick_services' ? 'quick_service' : 'help_post',
+          roleType: 'need_help',
           tagName: config.tag,
           tagCategory: config.label,
           userName: currentUser?.name || 'පරිශීලක',
@@ -298,7 +305,7 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
           isHidden: false,
         };
 
-        const res: any = await onSubmitHelpPost(postData);
+        const res: any = await submitFn(postData);
         if (res && res.error === 'insufficient_credits') {
           setIsSubmitting(false);
           return;
@@ -678,3 +685,4 @@ export const AiVoiceHelpModal: React.FC<AiVoiceHelpModalProps> = ({
     </div>
   );
 };
+
