@@ -400,7 +400,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [resolutionPromptPost, setResolutionPromptPost] = useState<HelpPost | null>(null);
   const [postponedResolutionPostIds, setPostponedResolutionPostIds] = useState<string[]>([]);
 
-  const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
   const [qrPayInitialTab, setQrPayInitialTab] = useState<'my_qr' | 'scan_pay'>('scan_pay');
   const [qrPayTargetRecipient, setQrPayTargetRecipient] = useState<{
     userId: string;
