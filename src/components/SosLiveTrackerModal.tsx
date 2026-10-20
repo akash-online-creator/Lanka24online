@@ -602,7 +602,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   }, [isRecordingAudio, startAudioRecordingLoop, stopAudioRecordingLoop]);
 
   // Handle GPS location updates
-  const handleGpsSuccess = useCallback((pos: GeolocationPosition) => {
+  const handleGpsSuccess = useCallback(async (pos: GeolocationPosition) => {
     const { latitude, longitude, accuracy: acc, speed: spd, heading: hd } = pos.coords;
     setCurrentCoords({ lat: latitude, lng: longitude });
     setAccuracy(Math.round(acc));
@@ -620,7 +620,27 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     if (mapInstanceRef.current) {
       mapInstanceRef.current.panTo([latitude, longitude], { animate: true });
     }
-  }, []);
+
+    // 📡 Live broadcast location updates to Firestore for anyone tracking this SOS
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+    if (activeSessionId) {
+      try {
+        await updateSosLiveLocation(activeSessionId, {
+          currentLocation: {
+            lat: latitude,
+            lng: longitude,
+            accuracy: Math.round(acc),
+            speedKmh: spd ? Math.round(spd * 3.6) : 0,
+            heading: hd ? Math.round(hd) : null,
+            updatedAt: Date.now(),
+          },
+          lastLocationUpdateMs: Date.now(),
+        });
+      } catch (e) {
+        console.warn('Live location broadcast error:', e);
+      }
+    }
+  }, [sessionId]);
 
   // Watch Position Effect
   useEffect(() => {
@@ -643,6 +663,55 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       }
     };
   }, [isOpen, handleGpsSuccess]);
+
+  // 📡 Register & Synchronize Active SOS Session in Firestore on launch
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const activeId = sessionId || 'sos_' + Date.now();
+    setSessionId(activeId);
+    localStorage.setItem('active_sos_session_id', activeId);
+    setIsActive(true);
+
+    const initSosSession = async () => {
+      try {
+        const newSession: any = {
+          id: activeId,
+          userId: currentUser?.id || currentUser?.userId || 'usr_anonymous',
+          userName: currentUser?.name || 'පරිශීලක (User)',
+          userPhone: currentUser?.phone || currentUser?.whatsappPhone || '',
+          userNic: currentUser?.nic || currentUser?.nicNumber || '',
+          userPhotoUrl: currentUser?.photoUrl || '',
+          currentLocation: {
+            lat: currentCoords.lat,
+            lng: currentCoords.lng,
+            accuracy: accuracy || 15,
+            locationName: currentLocation?.nameSi || 'ශ්‍රී ලංකාව',
+          },
+          breadcrumbs: [
+            {
+              lat: currentCoords.lat,
+              lng: currentCoords.lng,
+              timestamp: Date.now(),
+              accuracy: accuracy || 15,
+            }
+          ],
+          batteryLevel: 100,
+          status: 'active',
+          startedAt: new Date().toLocaleTimeString('si-LK'),
+          startedAtMs: Date.now(),
+          alertReason: effectiveEmergencyMessage,
+        };
+
+        await createOrUpdateSosLiveSession(newSession);
+        setIsActive(true);
+      } catch (err) {
+        console.error('Failed to create SOS Live Session in Firestore:', err);
+      }
+    };
+
+    initSosSession();
+  }, [isOpen]);
 
   // Leaflet Map Initialization
   useEffect(() => {
@@ -1617,3 +1686,4 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 };
 
 export default SosLiveTrackerModal;
+
