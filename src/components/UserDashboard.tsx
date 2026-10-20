@@ -84,6 +84,7 @@ import {
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
+import { subscribeToSystemSettings, getCachedSettings, SystemSettings } from '../utils/systemSettingsManager';
 import { 
   ShieldCheck, 
   ShieldAlert,
@@ -375,6 +376,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isBarterModalOpen, setIsBarterModalOpen] = useState(false);
   const [isQrPayModalOpen, setIsQrPayModalOpen] = useState(false);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => getCachedSettings());
+
+  useEffect(() => {
+    const unsub = subscribeToSystemSettings((s) => setSystemSettings(s));
+    return () => unsub();
+  }, []);
   const [isAppQrModalOpen, setIsAppQrModalOpen] = useState(false);
   const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
@@ -1035,7 +1042,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           }
           setIsBarterModalOpen(true);
         }}
-        onOpenQrPay={(tab: 'my_qr' | 'scan_pay' = 'scan_pay') => {
+        onOpenQrPay={systemSettings.enableQrPay ? (tab: 'my_qr' | 'scan_pay' = 'scan_pay') => {
           if (user?.isDemo) {
             setShowDemoRegisterPrompt(true);
             return;
@@ -1043,7 +1050,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setQrPayTargetRecipient(undefined);
           setQrPayInitialTab(tab);
           setIsQrPayModalOpen(true);
-        }}
+        } : undefined}
         onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
         onOpenSavedPlaces={() => setIsSavedPlacesModalOpen(true)}
         onOpenQuickRegisterHub={() => setIsQuickRegistrationHubOpen(true)}
@@ -1603,13 +1610,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onUpdateUser={onUpdateUser}
         language={language}
         theme={theme}
-        onOpenQrPay={() => {
+        onOpenQrPay={systemSettings.enableQrPay ? () => {
           setIsWalletModalOpen(false);
           setIsQrPayModalOpen(true);
-        }}
+        } : undefined}
       />
 
       {/* 12. Instant QR Payment & Barcode Transfer Modal */}
+      {systemSettings.enableQrPay && (
       <UserQrPayModal
         isOpen={isQrPayModalOpen}
         onClose={() => setIsQrPayModalOpen(false)}
@@ -1621,6 +1629,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         targetRecipient={qrPayTargetRecipient}
         usersList={users}
       />
+      )}
 
       {/* 13. System Notifications Center Modal */}
       <NotificationCenterModal
