@@ -130,6 +130,12 @@ export const App: React.FC = () => {
 
   const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
+      // 1. Quick PIN Check: If user set a Quick PIN on this device, open directly at Quick PIN screen!
+      const storedPin = getStoredDevicePin();
+      if (storedPin) {
+        return 'login';
+      }
+
       const saved = localStorage.getItem('sahaya_sewa_session_user');
       if (saved) {
         const u: User = JSON.parse(saved);
@@ -138,7 +144,7 @@ export const App: React.FC = () => {
         return 'dashboard';
       }
 
-      // Check if permissions setup has been completed on initial launch
+      // 2. Check if permissions setup has been completed on initial launch
       const isPermDone = localStorage.getItem('sahaya_permissions_setup_completed');
       if (!isPermDone) {
         return 'permissions';
@@ -726,3 +732,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+
