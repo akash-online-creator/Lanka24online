@@ -110,12 +110,14 @@ service cloud.firestore {
     // ===============================================================
     // 🚨 4. Red Alerts (හදිසි ආපදා සහ අනතුරු ඇඟවීම්)
     // ===============================================================
+    match /red_alerts/{alertId} {
+      allow read, write: if true;
+    }
     match /redAlerts/{alertId} {
-      // ඕනෑම අයෙකුට ප්‍රසිද්ධියේ අනතුරු ඇඟවීම් කියවිය හැක
-      allow read: if true;
-
-      // නව අනතුරු ඇඟවීම් නිකුත් කිරීම, සංස්කරණය හෝ මැකීම Admin ට පමණි
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+    match /push_broadcast_queue/{queueId} {
+      allow read, write: if true;
     }
 
     // ===============================================================
@@ -261,3 +263,4 @@ service cloud.firestore {
 
   }
 }
+
