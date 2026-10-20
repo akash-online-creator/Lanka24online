@@ -24,145 +24,11 @@ export const BARTER_CATEGORIES: BarterCategoryMeta[] = [
   { key: 'general', nameSi: 'වෙනත් ඕනෑම අතිරික්ත භාණ්ඩ', nameEn: 'General & Miscellaneous', icon: '📦', color: 'bg-slate-500' },
 ];
 
-export const INITIAL_BARTER_ITEMS: BarterItem[] = [
-  {
-    id: 'swap_001',
-    barterCode: '#SWAP-1082',
-    userId: 'user_kamal_01',
-    userNumericId: '881234567',
-    userName: 'කමල් ජයවර්ධන',
-    userPhone: '0771234567',
-    userDistrict: 'කුරුණෑගල',
-    userTown: 'නාරම්මල',
-    offeringTitle: ' Singer විදුලි මහන මැෂිම (හොඳම තත්ත්වයේ ඇත)',
-    offeringCategory: 'appliances',
-    offeringDescription: 'වැඩකිරීමේ කිසිදු දෝෂයක් නොමැත. මෝටරය සමඟ සම්පූර්ණ කට්ටලයම ඇත. පාවිච්චි නොකරන බැවින් හුවමාරු කෙරේ.',
-    condition: 'good',
-    estimatedValue: 18500,
-    photos: ['https://images.unsplash.com/photo-1528458900012-985bf317546f?w=600&auto=format&fit=crop&q=80'],
-    wantedItem: 'Smart Phone එකක් හෝ Tablet එකක්',
-    wantedCategory: 'electronics',
-    wantedDescription: 'දරුවාගේ Online පන්ති සඳහා භාවිතා කළ හැකි Samsung හෝ Redmi ස්මාර්ට් දුරකථනයක් බලාපොරොත්තු වේ.',
-    status: 'available',
-    proposalsCount: 2,
-    createdAt: '2026-09-21 10:30 AM',
-    createdAtMs: Date.now() - 86400000 * 2,
-  },
-  {
-    id: 'swap_002',
-    barterCode: '#SWAP-1083',
-    userId: 'user_sunil_02',
-    userNumericId: '792345678',
-    userName: 'සුනිල් ප්‍රේමරත්න',
-    userPhone: '0719876543',
-    userDistrict: 'ගම්පහ',
-    userTown: 'මිනුවන්ගොඩ',
-    offeringTitle: 'අතිරික්ත උසස් තත්ත්වයේ බද්ධ පොල් පැළ 30ක් සහ ගම්මිරිස් වැල් පැළ 50ක්',
-    offeringCategory: 'agriculture',
-    offeringDescription: 'ගෙවත්තෙන් අතිරික්ත වූ හොඳින් වැඩුණු බද්ධ පොල් පැළ සහ ගම්මිරිස් පැළ තොගයකි.',
-    condition: 'brand_new',
-    estimatedValue: 12000,
-    photos: ['https://images.unsplash.com/photo-1592417817098-8f3d6eb22525?w=600&auto=format&fit=crop&q=80'],
-    wantedItem: 'ගෙවතු තණකොළ කපන යන්ත්‍රයක් (Grass Cutter) හෝ වතුර බවුසරයක්',
-    wantedCategory: 'tools',
-    wantedDescription: 'ක්‍රියාකාරී තත්ත්වයේ ඇති තණකොළ කපන මැෂිමක් හෝ ගෙවතු වගා උපකරණ කට්ටලයක්.',
-    status: 'available',
-    proposalsCount: 1,
-    createdAt: '2026-09-22 08:15 AM',
-    createdAtMs: Date.now() - 86400000 * 1,
-  },
-  {
-    id: 'swap_003',
-    barterCode: '#SWAP-1084',
-    userId: 'user_nimal_03',
-    userNumericId: '953456789',
-    userName: 'නිමල් චන්ද්‍රසිරි',
-    userPhone: '0765544332',
-    userDistrict: 'කොළඹ',
-    userTown: 'හෝමාගම',
-    offeringTitle: 'Lumala 26-inch Speed බයිසිකලය',
-    offeringCategory: 'vehicles',
-    offeringDescription: 'ටයර් අලුත්. ගියර් පද්ධතිය හොඳින් ක්‍රියා කරයි. දෛනික ගමන් සඳහා සුදුසුය.',
-    condition: 'good',
-    estimatedValue: 22000,
-    photos: ['https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600&auto=format&fit=crop&q=80'],
-    wantedItem: 'Singer විදුලි මහන මැෂිමක් හෝ ගෑස් ලිපක් (Gas Cooker Set)',
-    wantedCategory: 'appliances',
-    wantedDescription: 'නිවසේ ප්‍රයෝජනය සඳහා හොඳ තත්ත්වයේ මහන මැෂිමක් හෝ Double burner ගෑස් ලිපක් අවශ්‍යයි.',
-    status: 'available',
-    proposalsCount: 0,
-    createdAt: '2026-09-22 02:40 PM',
-    createdAtMs: Date.now() - 3600000 * 4,
-  },
-  {
-    id: 'swap_004',
-    barterCode: '#SWAP-1085',
-    userId: 'user_rashmi_04',
-    userNumericId: '994567890',
-    userName: 'රශ්මි මධුෂිකා',
-    userPhone: '0702233445',
-    userDistrict: 'මහනුවර',
-    userTown: 'පේරාදෙණිය',
-    offeringTitle: 'A/L සහ O/L විද්‍යා සහ ගණිත විෂය සමගාමී පොත්පත් හා ප්‍රශ්න පත්‍ර තොගයක්',
-    offeringCategory: 'books',
-    offeringDescription: 'උසස් පෙළ ජීව විද්‍යා සහ භෞතික විද්‍යා පසුගිය විභාග ප්‍රශ්න පත්‍ර සහ සම්පත් පොත් 15ක් පමණ ඇත.',
-    condition: 'like_new',
-    estimatedValue: 9500,
-    photos: ['https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=600&auto=format&fit=crop&q=80'],
-    wantedItem: 'ගිටාරයක් (Acoustic Guitar) හෝ ඉලෙක්ට්‍රොනික් සංගීත භාණ්ඩයක්',
-    wantedCategory: 'electronics',
-    wantedDescription: 'පුහුණුවීම් සඳහා භාවිතා කළ හැකි ඇකෝස්ටික් ගිටාරයක් සමඟ මාරු කිරීමට කැමැත්තෙමි.',
-    status: 'available',
-    proposalsCount: 1,
-    createdAt: '2026-09-22 05:00 PM',
-    createdAtMs: Date.now() - 3600000 * 2,
-  },
-  {
-    id: 'swap_005',
-    barterCode: '#SWAP-1086',
-    userId: 'user_anura_05',
-    userNumericId: '825678901',
-    userName: 'අනුර වික්‍රමසිංහ',
-    userPhone: '0781122334',
-    userDistrict: 'කළුතර',
-    userTown: 'පානදුර',
-    offeringTitle: 'Bosch Professional Hand Drill Machine & Grinder Set',
-    offeringCategory: 'tools',
-    offeringDescription: '100% ඔරිජිනල් Bosch ඩ්‍රිල් සහ ග්‍රයින්ඩර් කට්ටලය. බිට්ස් සහ පෙට්ටිය සහිතයි.',
-    condition: 'like_new',
-    estimatedValue: 24000,
-    photos: ['https://images.unsplash.com/photo-1504148455328-c376907d081c?w=600&auto=format&fit=crop&q=80'],
-    wantedItem: 'බයිසිකලයක් (Mountain Bike / Lumala) හෝ කාර්යාල පුටුවක්',
-    wantedCategory: 'vehicles',
-    wantedDescription: 'වැඩිහිටි අයෙකුට පැදීමට සුදුසු පාපැදියක් සොයමි.',
-    status: 'available',
-    proposalsCount: 0,
-    createdAt: '2026-09-22 06:20 PM',
-    createdAtMs: Date.now() - 1800000,
-  }
-];
+// 🔄 භාණ්ඩ හුවමාරු ආරම්භයේදී පිරිසිදුව හිස්ව තැබීම (සාම්පල භාණ්ඩ ඉවත් කර ඇත)
+export const INITIAL_BARTER_ITEMS: BarterItem[] = [];
 
-export const INITIAL_BARTER_PROPOSALS: BarterProposal[] = [
-  {
-    id: 'prop_001',
-    proposalCode: '#PROP-201',
-    barterItemId: 'swap_001',
-    barterItemTitle: 'Singer විදුලි මහන මැෂිම (හොඳම තත්ත්වයේ ඇත)',
-    targetUserId: 'user_kamal_01',
-    proposerUserId: 'user_nimal_03',
-    proposerName: 'නිමල් චන්ද්‍රසිරි',
-    proposerPhone: '0765544332',
-    proposerDistrict: 'කොළඹ',
-    offeredItemTitle: 'Samsung Galaxy Tab A (8-inch)',
-    offeredItemCategory: 'electronics',
-    offeredItemDescription: 'Zoom පන්ති සඳහා භාවිතා කළ ටැබ් එකකි. චාජරය සමඟ ඇත. මාරු කිරීමට කැමතියි.',
-    offeredCondition: 'good',
-    proposerNotes: 'මට ඔබගේ මහන මැෂිම අවශ්‍යයි. මගේ ටැබ් එක ලබාදිය හැකියි. හෙට දින හමුවිය හැක.',
-    status: 'pending',
-    createdAt: '2026-09-22 01:15 PM',
-    createdAtMs: Date.now() - 3600000 * 5,
-  }
-];
+// 🤝 හුවමාරු යෝජනා ආරම්භයේදී පිරිසිදුව හිස්ව තැබීම (සාම්පල යෝජනා ඉවත් කර ඇත)
+export const INITIAL_BARTER_PROPOSALS: BarterProposal[] = [];
 
 /**
  * Get all barter listings from storage
@@ -172,12 +38,15 @@ export const getStoredBarterItems = (): BarterItem[] => {
     const raw = localStorage.getItem(STORAGE_KEY_BARTER_ITEMS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        // පෙර තිබූ sample mock items (swap_) ස්වයංක්‍රීයව පෙරීම
+        return parsed.filter((item: BarterItem) => item && !item.id?.startsWith('swap_'));
+      }
     }
   } catch (err) {
     console.warn('Error reading barter items:', err);
   }
-  return INITIAL_BARTER_ITEMS;
+  return [];
 };
 
 /**
@@ -199,12 +68,15 @@ export const getStoredBarterProposals = (): BarterProposal[] => {
     const raw = localStorage.getItem(STORAGE_KEY_BARTER_PROPOSALS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // පෙර තිබූ sample mock proposals (prop_) ස්වයංක්‍රීයව පෙරීම
+        return parsed.filter((prop: BarterProposal) => prop && !prop.id?.startsWith('prop_'));
+      }
     }
   } catch (err) {
     console.warn('Error reading barter proposals:', err);
   }
-  return INITIAL_BARTER_PROPOSALS;
+  return [];
 };
 
 /**
