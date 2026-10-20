@@ -1,8 +1,4 @@
-﻿6. build_apk.yml (Full Workflow)
-Path: .github/workflows/build_apk.yml
-
-
- name: Build Release APK
+name: Build Release APK
 
 
 on:
@@ -236,4 +232,4 @@ jobs:
             public/apk/version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
+
