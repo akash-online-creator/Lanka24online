@@ -51,6 +51,7 @@ import { User, Language, LocationOption, SosLiveSession, SosBreadcrumbPoint } fr
 import { createOrUpdateSosLiveSession, updateSosLiveLocation, stopSosLiveSession } from '../lib/firebase';
 import { SosLiveViewerModal } from './SosLiveViewerModal';
 import { getLastKnownLocation } from '../utils/autoGpsService';
+import { resolveExactLocation } from '../utils/geoUtils';
 import { verifyCurrentUserPin } from '../utils/devicePinManager';
 /**
  * Comprehensive Sri Lanka Police Stations Directory
@@ -291,6 +292,18 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   });
 
   const [isEditingContacts, setIsEditingContacts] = useState<boolean>(false);
+  const [disconnectedContactIds, setDisconnectedContactIds] = useState<string[]>([]);
+
+  // 🔒 PIN Protected Audio Cut State
+  const [showVoiceCutPinModal, setShowVoiceCutPinModal] = useState<boolean>(false);
+  // 🔒 PIN Protected Contact Disconnect State
+  const [showContactDisconnectPinModal, setShowContactDisconnectPinModal] = useState<boolean>(false);
+  const [pendingContactToDisconnect, setPendingContactToDisconnect] = useState<EmergencyContact | null>(null);
+  const [contactDisconnectPin, setContactDisconnectPin] = useState<string>('');
+  const [contactDisconnectPinError, setContactDisconnectPinError] = useState<string | null>(null);
+  const [voiceCutPin, setVoiceCutPin] = useState<string>('');
+  const [voiceCutPinError, setVoiceCutPinError] = useState<string | null>(null);
+  const [isAudioCut, setIsAudioCut] = useState<boolean>(false);
 
   // Save contacts to localStorage whenever updated
   useEffect(() => {
@@ -343,11 +356,19 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
   // 📡 1. ALWAYS-AVAILABLE SHARE URL (Instant from Mount)
   const shareUrl = useMemo(() => {
-    if (typeof window === 'undefined') return '';
     const sid = sessionId || `sos_${Date.now()}`;
-    const origin = window.location.origin || '';
-    const path = window.location.pathname || '';
-    return `${origin}${path}?sos_session=${sid}`;
+    const baseDomain = (typeof window !== 'undefined' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost')
+      ? window.location.origin
+      : 'https://supporservice.online';
+    return `${baseDomain}/?sos_session=${sid}`;
+  }, [sessionId]);
+
+  const getShareUrlForContact = useCallback((contactId: string) => {
+    const sid = sessionId || `sos_${Date.now()}`;
+    const baseDomain = (typeof window !== 'undefined' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost')
+      ? window.location.origin
+      : 'https://supporservice.online';
+    return `${baseDomain}/?sos_session=${sid}&cid=${contactId}`;
   }, [sessionId]);
 
   const [isCopied, setIsCopied] = useState<boolean>(false);
@@ -372,7 +393,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [isCharging, setIsCharging] = useState<boolean>(false);
   const [locationName, setLocationName] = useState<string>(() => {
-    return currentLocation?.name || 'කටුනායක / බස්නාහිර පළාත';
+    return currentLocation?.nameSi || currentLocation?.nameEn || 'ජා-ඇල / බස්නාහිර පළාත';
   });
 
   // 3. Hardware Audio Evidence Recording & Siren States
@@ -610,6 +631,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     setHeading(hd ? Math.round(hd) : null);
     setGpsError(null);
 
+    // Resolve real live town name
+    try {
+      const geo = await resolveExactLocation(latitude, longitude);
+      if (geo && geo.shortDisplaySi) {
+        setLocationName(geo.shortDisplaySi);
+      }
+    } catch {}
+
     if (markerRef.current) {
       markerRef.current.setLatLng([latitude, longitude]);
     }
@@ -621,17 +650,24 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       mapInstanceRef.current.panTo([latitude, longitude], { animate: true });
     }
 
-    // 📡 Live broadcast location updates to Firestore for anyone tracking this SOS
+    // 📡 Live broadcast accurate GPS & location to Firestore
     const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
     if (activeSessionId) {
       try {
         await updateSosLiveLocation(activeSessionId, {
+          latitude,
+          longitude,
+          accuracyMeters: Math.round(acc),
+          speedKmh: spd ? Math.round(spd * 3.6) : 0,
+          heading: hd ? Math.round(hd) : null,
+          locationName,
           currentLocation: {
             lat: latitude,
             lng: longitude,
             accuracy: Math.round(acc),
             speedKmh: spd ? Math.round(spd * 3.6) : 0,
             heading: hd ? Math.round(hd) : null,
+            locationName,
             updatedAt: Date.now(),
           },
           lastLocationUpdateMs: Date.now(),
@@ -640,7 +676,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         console.warn('Live location broadcast error:', e);
       }
     }
-  }, [sessionId]);
+  }, [sessionId, locationName]);
 
   // Watch Position Effect
   useEffect(() => {
@@ -668,7 +704,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const activeId = sessionId || 'sos_' + Date.now();
+    const activeId = sessionId || 'sos_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     setSessionId(activeId);
     localStorage.setItem('active_sos_session_id', activeId);
     setIsActive(true);
@@ -682,21 +718,27 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           userPhone: currentUser?.phone || currentUser?.whatsappPhone || '',
           userNic: currentUser?.nic || currentUser?.nicNumber || '',
           userPhotoUrl: currentUser?.photoUrl || '',
+          latitude: currentCoords.lat,
+          longitude: currentCoords.lng,
+          accuracyMeters: accuracy || 10,
+          locationName,
           currentLocation: {
             lat: currentCoords.lat,
             lng: currentCoords.lng,
-            accuracy: accuracy || 15,
-            locationName: currentLocation?.nameSi || 'ශ්‍රී ලංකාව',
+            accuracy: accuracy || 10,
+            locationName,
           },
           breadcrumbs: [
             {
               lat: currentCoords.lat,
               lng: currentCoords.lng,
               timestamp: Date.now(),
-              accuracy: accuracy || 15,
+              accuracy: accuracy || 10,
             }
           ],
           batteryLevel: 100,
+          disconnectedContactIds: [],
+          isAudioCut: false,
           status: 'active',
           startedAt: new Date().toLocaleTimeString('si-LK'),
           startedAtMs: Date.now(),
@@ -785,6 +827,118 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   };
 
+  // 🔒 PIN-Protected Contact Disconnect Initiation
+  const handleInitiateContactDisconnect = (contact: EmergencyContact) => {
+    // If already disconnected, reconnecting does not require PIN
+    if (disconnectedContactIds.includes(contact.id)) {
+      performContactReconnect(contact.id);
+      return;
+    }
+    // Disconnecting requires Quick PIN to prevent unauthorized sabotage
+    setPendingContactToDisconnect(contact);
+    setContactDisconnectPin('');
+    setContactDisconnectPinError(null);
+    setShowContactDisconnectPinModal(true);
+  };
+
+  const performContactReconnect = async (contactId: string) => {
+    const updated = disconnectedContactIds.filter(id => id !== contactId);
+    setDisconnectedContactIds(updated);
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+    if (activeSessionId) {
+      try {
+        await updateSosLiveLocation(activeSessionId, {
+          disconnectedContactIds: updated,
+        });
+      } catch (e) {
+        console.warn('Error reconnecting contact:', e);
+      }
+    }
+  };
+
+  const handleConfirmContactDisconnect = async () => {
+    if (!contactDisconnectPin || contactDisconnectPin.length !== 4) {
+      setContactDisconnectPinError('කරුණාකර අංක 4ක PIN අංකය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    if (!pendingContactToDisconnect) return;
+
+    try {
+      const res = await verifyCurrentUserPin(contactDisconnectPin, currentUser);
+      if (res.success) {
+        const contactId = pendingContactToDisconnect.id;
+        const updated = [...disconnectedContactIds, contactId];
+        setDisconnectedContactIds(updated);
+        setShowContactDisconnectPinModal(false);
+        setPendingContactToDisconnect(null);
+        setContactDisconnectPin('');
+        setContactDisconnectPinError(null);
+
+        const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+        if (activeSessionId) {
+          await updateSosLiveLocation(activeSessionId, {
+            disconnectedContactIds: updated,
+          });
+        }
+      } else {
+        setContactDisconnectPinError(res.message || 'වැරදි PIN අංකයකි! සබඳතාව විසන්ධි කළ නොහැක.');
+      }
+    } catch (e) {
+      setContactDisconnectPinError('PIN සත්‍යාපනය අසාර්ථක විය.');
+    }
+  };
+
+  // 🔒 PIN verification to CUT voice streaming
+  const handleInitiateVoiceCut = () => {
+    setVoiceCutPin('');
+    setVoiceCutPinError(null);
+    setShowVoiceCutPinModal(true);
+  };
+
+  const handleConfirmVoiceCut = async () => {
+    if (!voiceCutPin || voiceCutPin.length !== 4) {
+      setVoiceCutPinError('කරුණාකර අංක 4ක PIN අංකය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    try {
+      const res = await verifyCurrentUserPin(voiceCutPin, currentUser);
+      if (res.success) {
+        stopAudioRecordingLoop();
+        setIsAudioCut(true);
+        setShowVoiceCutPinModal(false);
+        setVoiceCutPin('');
+        setVoiceCutPinError(null);
+
+        const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+        if (activeSessionId) {
+          await updateSosLiveLocation(activeSessionId, {
+            isAudioCut: true,
+            isSilentAudioStreaming: false,
+            latestAudioBase64: '',
+          });
+        }
+      } else {
+        setVoiceCutPinError(res.message || 'වැරදි PIN අංකයකි! හඬ විකාශනය විසන්ධි කළ නොහැක.');
+      }
+    } catch (e) {
+      setVoiceCutPinError('PIN සත්‍යාපනය අසාර්ථක විය.');
+    }
+  };
+
+  const handleResumeVoiceStream = async () => {
+    startAudioRecordingLoop();
+    setIsAudioCut(false);
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+    if (activeSessionId) {
+      await updateSosLiveLocation(activeSessionId, {
+        isAudioCut: false,
+        isSilentAudioStreaming: true,
+      });
+    }
+  };
+
   const handleWhatsAppShare = () => {
     const text =
       `🚨 *හදිසි SOS ඇමතුමයි! (Emergency Distress)*\n\n` +
@@ -830,6 +984,12 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
     if (activeSessionId) {
       try {
+        await updateSosLiveLocation(activeSessionId, {
+          status: 'ended',
+          isActive: false,
+          endedAtMs: Date.now(),
+          deactivationReason: isDuress ? 'duress_canceled' : 'resolved',
+        });
         await stopSosLiveSession(activeSessionId, isDuress ? 'duress_canceled' : 'resolved');
       } catch (e) {}
     }
@@ -1010,18 +1170,35 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 <span>{isSirenOn ? 'සයිරනය Off' : 'සයිරන් නාදය On'}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleToggleAudioRecording}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
-                  isRecordingAudio
-                    ? 'bg-rose-500 text-white ring-2 ring-white animate-pulse'
-                    : 'bg-white/20 text-white hover:bg-white/30'
-                }`}
-              >
-                {isRecordingAudio ? <Mic className="w-4 h-4 animate-bounce" /> : <MicOff className="w-4 h-4" />}
-                <span>{isRecordingAudio ? `හඬ සාක්ෂි (${formatDuration(recordingSeconds)})` : 'හඬ පටිගත කිරීම'}</span>
-              </button>
+                            {isAudioCut ? (
+                <button
+                  type="button"
+                  onClick={handleResumeVoiceStream}
+                  className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white transition-all cursor-pointer shadow-md"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>🎙️ හඬ නැවත On කරන්න</span>
+                </button>
+              ) : isRecordingAudio ? (
+                <button
+                  type="button"
+                  onClick={handleInitiateVoiceCut}
+                  className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 bg-rose-700 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md ring-2 ring-white/50"
+                  title="හඬ විකාශනය Cut කිරීමට Quick PIN අවශ්‍යයි"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>🔇 හඬ කට් කරන්න (Cut Voice)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleToggleAudioRecording}
+                  className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 bg-white/20 text-white hover:bg-white/30 transition-all cursor-pointer shadow-sm"
+                >
+                  <Mic className="w-4 h-4" />
+                  <span>හඬ රෙකෝඩ් On</span>
+                </button>
+              )}
             </div>
 
             {/* Emergency Police 119 Quick Button (Issue #1 Fix) */}
@@ -1108,11 +1285,31 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleNotifyContactWhatsApp(contact)}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        onClick={() => {
+                          if (!contact.phone) return;
+                          const cleanPhone = contact.phone.replace(/\D/g, '');
+                          const contactUrl = getShareUrlForContact(contact.id);
+                          const msg = encodeURIComponent(`🚨 *හදිසි SOS ඇමතුමයි!*\n👤 *නම:* ${currentUser?.name || 'පරිශීලක'}\n📍 *ස්ථානය:* ${locationName}\n🌐 *GPS:* ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)}\n🔴 *සජීවී සිතියම හා හඬ:*\n${contactUrl}`);
+                          window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`, '_blank');
+                        }}
+                        className="px-2 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
                         title="WhatsApp Alert"
                       >
                         <span>WA</span>
+                      </button>
+
+                      {/* 🚫 Disconnect / Reconnect Specific Contact Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleInitiateContactDisconnect(contact)}
+                        className={`px-2 py-1.5 rounded-xl font-bold text-[10px] transition-all cursor-pointer ${
+                          disconnectedContactIds.includes(contact.id)
+                            ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
+                            : 'bg-rose-600 hover:bg-rose-500 text-white'
+                        }`}
+                        title={disconnectedContactIds.includes(contact.id) ? 'නැවත සක්‍රීය කරන්න' : 'සබඳතාව විසන්ධි කරන්න'}
+                      >
+                        {disconnectedContactIds.includes(contact.id) ? '🔄 Reconnect' : '🚫 Disconnect'}
                       </button>
                     </div>
                   )}
@@ -1682,6 +1879,112 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
       </div>
     </div>
+      {/* 🔒 Quick PIN Modal to Cut Voice Stream */}
+      {showVoiceCutPinModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-rose-500 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl text-white">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-2xl font-black">
+              🔒
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">හඬ විකාශනය කට් කිරීම (Voice Cut)</h3>
+              <p className="text-xs text-slate-300 pt-1">
+                හඬ විකාශනය අත්හිටුවීමට ඔබගේ අංක 4ක Quick PIN එක ඇතුළත් කරන්න.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="password"
+                maxLength={4}
+                autoFocus
+                value={voiceCutPin}
+                onChange={(e) => {
+                  setVoiceCutPin(e.target.value.replace(/\D/g, ''));
+                  setVoiceCutPinError(null);
+                }}
+                placeholder="••••"
+                className="w-full text-center tracking-[1em] text-2xl font-mono py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:border-rose-500 outline-none"
+              />
+              {voiceCutPinError && (
+                <p className="text-[11px] font-bold text-rose-400">{voiceCutPinError}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowVoiceCutPinModal(false)}
+                className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs"
+              >
+                අවලංගු කරන්න
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmVoiceCut}
+                className="py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-all"
+              >
+                තහවුරු කරන්න
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 🔒 Quick PIN Modal to Disconnect Contact */}
+      {showContactDisconnectPinModal && pendingContactToDisconnect && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-amber-500 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl text-white">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto text-2xl font-black">
+              🔒
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">සබඳතාවය විසන්ධි කිරීම (Disconnect)</h3>
+              <p className="text-xs text-slate-300 pt-1 leading-relaxed">
+                <strong>{pendingContactToDisconnect.name}</strong> වෙත ඇති සජීවී නිරීක්ෂණ ප්‍රවේශය අවලංගු කිරීමට ඔබගේ අංක 4ක Quick PIN එක ඇතුළත් කරන්න.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="password"
+                maxLength={4}
+                autoFocus
+                value={contactDisconnectPin}
+                onChange={(e) => {
+                  setContactDisconnectPin(e.target.value.replace(/\D/g, ''));
+                  setContactDisconnectPinError(null);
+                }}
+                placeholder="••••"
+                className="w-full text-center tracking-[1em] text-2xl font-mono py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:border-amber-500 outline-none"
+              />
+              {contactDisconnectPinError && (
+                <p className="text-[11px] font-bold text-rose-400">{contactDisconnectPinError}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowContactDisconnectPinModal(false);
+                  setPendingContactToDisconnect(null);
+                }}
+                className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs"
+              >
+                අවලංගු කරන්න
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmContactDisconnect}
+                className="py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-all"
+              >
+                තහවුරු කරන්න
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 };
 
