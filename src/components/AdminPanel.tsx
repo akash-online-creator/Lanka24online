@@ -396,6 +396,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {[
           { id: 'users', label: 'පරිශීලකයින්', icon: Users, badge: pendingUsersCount },
+          { id: 'system_controls', label: '⚙️ පද්ධති පාලන (Controls)', icon: Sliders },
           { id: 'posts', label: 'දැන්වීම් පාලනය', icon: FileText, count: helpPosts.length },
           { id: 'credits', label: 'ක්‍රෙඩිට් කළමනාකරණය', icon: Coins },
           { id: 'emergency', label: 'හදිසි නාමාවලිය', icon: Phone },
@@ -406,7 +407,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
           { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
           { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
-          { id: 'system_controls', label: 'පද්ධති පාලන (Controls)', icon: Sliders },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
