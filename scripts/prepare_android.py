@@ -24,6 +24,8 @@ if os.path.exists(manifest_path):
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     """
 
     if "<uses-permission" not in content:
@@ -32,6 +34,8 @@ if os.path.exists(manifest_path):
     # Add usesCleartextTraffic, hardwareAccelerated, and lockscreen attributes to application/activity
     if 'android:usesCleartextTraffic="true"' not in content:
         content = content.replace('<application', '<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"')
+    if 'android:showWhenLocked="true"' not in content:
+        content = content.replace('<activity', '<activity android:showWhenLocked="true" android:turnScreenOn="true"')
 
     # Android 14+ Foreground Service Crash වැළැක්වීම සඳහා Service Type අර්ථ දැක්වීම
     service_declaration = """
@@ -122,3 +126,4 @@ if os.path.exists("android/app/src/main"):
         print("Mirrored assets/web/index.html to android/app/src/main/assets/web/index.html")
 
 print("Preparation complete.")
+
