@@ -21,10 +21,7 @@ import {
   Volume2,
   VolumeX,
   Play,
-  Square,
-  Mic,
-  Headphones,
-  RadioTower
+  Pause
 } from 'lucide-react';
 import { SosLiveSession, Language, LocationOption } from '../types';
 import { subscribeToSosLiveSession } from '../lib/firebase';
@@ -45,24 +42,42 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
   viewerLocation,
   language = 'si',
 }) => {
-  const [session, setSession] = useState<SosLiveSession | any | null>(null);
+  const [session, setSession] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [lastUpdatedSecAgo, setLastUpdatedSecAgo] = useState<number>(0);
   const [mapLayer, setMapLayer] = useState<'osm' | 'satellite'>('osm');
 
-  // 🎙️ Live Audio Streaming States for Recipient
-  const [isAudioListening, setIsAudioListening] = useState<boolean>(false);
-  const [audioVolume, setAudioVolume] = useState<number>(1);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const [lastAudioReceivedAt, setLastAudioReceivedAt] = useState<Date | null>(null);
-  const [hasAudioData, setHasAudioData] = useState<boolean>(false);
+  // Viewer's live GPS coordinates for accurate distance calculation
+  const [viewerCoords, setViewerCoords] = useState<{ lat: number; lng: number } | null>(() => {
+    if (viewerLocation && viewerLocation.lat && viewerLocation.lng) {
+      return { lat: viewerLocation.lat, lng: viewerLocation.lng };
+    }
+    return null;
+  });
+
+  // Audio Playback State
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Automatically fetch viewer's live GPS so "ඔබේ සිට දුර" is 100% accurate
+  useEffect(() => {
+    if (!isOpen) return;
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setViewerCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, [isOpen]);
 
   // Real-time Firestore Subscription
   useEffect(() => {
@@ -70,71 +85,41 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
 
     setIsLoading(true);
 
-    const unsubscribe = subscribeToSosLiveSession(sessionId, (updatedSession: any) => {
+    const unsubscribe = subscribeToSosLiveSession(sessionId, (updatedSession) => {
       setSession(updatedSession);
       setIsLoading(false);
       setLastUpdatedSecAgo(0);
-
-      // Check if new audio chunk arrived from the victim
-      if (updatedSession?.latestAudioBase64) {
-        setHasAudioData(true);
-        setLastAudioReceivedAt(new Date());
-
-        // Auto-play if recipient enabled live listening
-        if (audioPlayerRef.current) {
-          audioPlayerRef.current.src = updatedSession.latestAudioBase64;
-          if (isAudioListening) {
-            audioPlayerRef.current.play().catch((err) => {
-              console.warn('Audio auto-play blocked by browser policy:', err);
-            });
-          }
-        }
-      }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [isOpen, sessionId, isAudioListening]);
+  }, [isOpen, sessionId]);
 
-  // Handle Play/Stop Listening Toggle
-  const toggleListening = () => {
-    if (isAudioListening) {
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-      }
-      setIsAudioListening(false);
-    } else {
-      setIsAudioListening(true);
-      setAudioError(null);
-      if (audioPlayerRef.current && session?.latestAudioBase64) {
-        audioPlayerRef.current.src = session.latestAudioBase64;
-        audioPlayerRef.current.play().catch((err) => {
-          setAudioError('ශ්‍රව්‍ය වාදනය ආරම්භ කිරීමට කරුණාකර තිරය ස්පර්ශ කරන්න.');
-        });
-      }
-    }
-  };
-
-  // "Seconds ago" counter
+  // "Seconds ago" and cooldown ticker
+  const [currentTimestamp, setCurrentTimestamp] = useState<number>(Date.now());
   useEffect(() => {
     const timer = setInterval(() => {
-      if (session?.updatedAtMs || session?.lastUpdate) {
-        const ms = session.updatedAtMs || (session.lastUpdate?.toMillis ? session.lastUpdate.toMillis() : Date.now());
-        const diffSec = Math.floor((Date.now() - ms) / 1000);
+      setCurrentTimestamp(Date.now());
+      if (session?.updatedAtMs || session?.lastLocationUpdateMs) {
+        const ts = session.lastLocationUpdateMs || session.updatedAtMs;
+        const diffSec = Math.floor((Date.now() - ts) / 1000);
         setLastUpdatedSecAgo(Math.max(0, diffSec));
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [session]);
+  }, [session?.updatedAtMs, session?.lastLocationUpdateMs]);
+
+  // Robust GPS coordinates resolution
+  const targetLat = session?.latitude ?? session?.currentLocation?.lat ?? session?.lat ?? 0;
+  const targetLng = session?.longitude ?? session?.currentLocation?.lng ?? session?.lng ?? 0;
+  const targetAccuracy = session?.accuracyMeters ?? session?.currentLocation?.accuracy ?? session?.accuracy ?? 15;
+  const isCoordsValid = Boolean(targetLat && targetLng && targetLat !== 0 && targetLng !== 0);
 
   // Leaflet Map Initialization & Updates
   useEffect(() => {
-    if (!isOpen || !session || !mapContainerRef.current) return;
-
-    const lat = session.latitude || session.currentLocation?.latitude || 6.9271;
-    const lng = session.longitude || session.currentLocation?.longitude || 79.8612;
+    if (!isOpen || !isCoordsValid || !mapContainerRef.current) return;
 
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
@@ -142,7 +127,7 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
     }
 
     const map = L.map(mapContainerRef.current, {
-      center: [lat, lng],
+      center: [targetLat, targetLng],
       zoom: 16,
       zoomControl: false,
     });
@@ -156,8 +141,7 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
       attribution: '© OpenStreetMap contributors',
     }).addTo(map);
 
-    // Custom Icon (Pulsing if active, Gray if ended)
-    const isLive = session.isActive !== false && session.status !== 'resolved' && session.status !== 'duress_canceled';
+    const isLive = session?.isActive !== false && session?.status !== 'ended';
     const beaconHtml = isLive ? `
       <div class="relative flex items-center justify-center">
         <span class="absolute w-12 h-12 bg-rose-500/40 rounded-full animate-ping"></span>
@@ -181,13 +165,12 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
       iconAnchor: [22, 22],
     });
 
-    const marker = L.marker([lat, lng], { icon }).addTo(map);
+    const marker = L.marker([targetLat, targetLng], { icon }).addTo(map);
     markerRef.current = marker;
 
-    const accuracy = session.accuracyMeters || session.accuracy;
-    if (accuracy) {
-      const circle = L.circle([lat, lng], {
-        radius: accuracy,
+    if (targetAccuracy) {
+      const circle = L.circle([targetLat, targetLng], {
+        radius: targetAccuracy,
         color: isLive ? '#f43f5e' : '#64748b',
         fillColor: isLive ? '#fda4af' : '#cbd5e1',
         fillOpacity: 0.2,
@@ -196,9 +179,9 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
       accuracyCircleRef.current = circle;
     }
 
-    const trail = session.breadcrumbTrail || session.breadcrumbs;
-    if (trail && trail.length > 0) {
-      const polyline = L.polyline(trail.map((b: any) => [b.lat || b.latitude, b.lng || b.longitude]), {
+    const breadcrumbs = session?.breadcrumbs || session?.breadcrumbTrail || [];
+    if (breadcrumbs.length > 0) {
+      const polyline = L.polyline(breadcrumbs.map((b: any) => [b.lat, b.lng]), {
         color: isLive ? '#ef4444' : '#64748b',
         weight: 4,
         opacity: 0.8,
@@ -219,53 +202,108 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
         mapInstanceRef.current = null;
       }
     };
-  }, [isOpen, mapLayer, session?.id, sessionId]);
+  }, [isOpen, mapLayer, session?.id, isCoordsValid]);
 
   // Update existing map when coordinates change
   useEffect(() => {
-    if (!mapInstanceRef.current || !session) return;
-    const lat = session.latitude || session.currentLocation?.latitude;
-    const lng = session.longitude || session.currentLocation?.longitude;
-    if (!lat || !lng) return;
+    if (!mapInstanceRef.current || !isCoordsValid) return;
 
     if (markerRef.current) {
-      markerRef.current.setLatLng([lat, lng]);
+      markerRef.current.setLatLng([targetLat, targetLng]);
     }
-    const accuracy = session.accuracyMeters || session.accuracy;
-    if (accuracyCircleRef.current && accuracy) {
-      accuracyCircleRef.current.setLatLng([lat, lng]);
-      accuracyCircleRef.current.setRadius(accuracy);
+    if (accuracyCircleRef.current && targetAccuracy) {
+      accuracyCircleRef.current.setLatLng([targetLat, targetLng]);
+      accuracyCircleRef.current.setRadius(targetAccuracy);
     }
-    const trail = session.breadcrumbTrail || session.breadcrumbs;
-    if (polylineRef.current && trail) {
-      polylineRef.current.setLatLngs(trail.map((b: any) => [b.lat || b.latitude, b.lng || b.longitude]));
+    const breadcrumbs = session?.breadcrumbs || session?.breadcrumbTrail || [];
+    if (polylineRef.current && breadcrumbs.length > 0) {
+      polylineRef.current.setLatLngs(breadcrumbs.map((b: any) => [b.lat, b.lng]));
     }
-    mapInstanceRef.current.setView([lat, lng], mapInstanceRef.current.getZoom(), { animate: true });
-  }, [session?.latitude, session?.longitude, session?.currentLocation, session?.breadcrumbs]);
+    mapInstanceRef.current.panTo([targetLat, targetLng], { animate: true });
+  }, [targetLat, targetLng, targetAccuracy, session?.breadcrumbs]);
+
   if (!isOpen) return null;
 
-  const lat = session?.latitude || session?.currentLocation?.latitude || 6.9271;
-  const lng = session?.longitude || session?.currentLocation?.longitude || 79.8612;
-  const isLive = session?.isActive !== false && session?.status !== 'resolved' && session?.status !== 'duress_canceled';
+  // Check if current viewer has been disconnected by the sender
+  const contactIdParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('cid') : null;
+  const isViewerRevoked = Boolean(contactIdParam && session?.disconnectedContactIds?.includes(contactIdParam));
 
-  // Calculate distance from viewer to victim
-  const distanceKm = (viewerLocation && session) 
-    ? calculateDistanceKm(viewerLocation.lat, viewerLocation.lng, lat, lng)
+  if (isViewerRevoked) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+        <div className="bg-slate-900 border-2 border-red-600 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl text-white">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center mx-auto text-3xl font-black">
+            🚫
+          </div>
+          <h3 className="text-lg font-black text-white">සජීවී නිරීක්ෂණ සබඳතාව විසන්ධි කර ඇත</h3>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            මෙම SOS සැසියේ හිමිකරු විසින් ඔබගේ සජීවී නිරීක්ෂණ ප්‍රවේශය අත්හිටුවා (Disconnect කර) ඇත.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs cursor-pointer"
+          >
+            වසන්න (Close)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 🛡️ 5-Minute Safety Cooldown & Auto-Expiry Logic
+  const isSessionEnded = session?.isActive === false || session?.status === 'ended' || session?.status === 'cancelled' || session?.status === 'resolved';
+  const endedTimestamp = session?.endedAtMs || session?.lastLocationUpdateMs || session?.updatedAtMs || 0;
+  const elapsedSinceEndMs = isSessionEnded && endedTimestamp > 0 ? Math.max(0, currentTimestamp - endedTimestamp) : 0;
+  const isCooldownExpired = isSessionEnded && (elapsedSinceEndMs > 5 * 60 * 1000);
+  const cooldownRemainingSec = isSessionEnded && !isCooldownExpired
+    ? Math.max(0, Math.floor((5 * 60 * 1000 - elapsedSinceEndMs) / 1000))
+    : 0;
+
+  // ⏰ Permanent Auto-Disconnect Screen when 5-minute cooldown expires
+  if (isCooldownExpired) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
+        <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-4 shadow-2xl text-white">
+          <div className="w-16 h-16 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto text-3xl font-black">
+            ⏰
+          </div>
+          <div>
+            <h3 className="text-lg sm:text-xl font-black text-white">මෙම SOS සැසියේ කාල සීමාව අවසන්</h3>
+            <p className="text-xs text-slate-400 leading-relaxed pt-2">
+              ආරක්ෂිත හේතූන් මත විනාඩි 5ක කාල සීමාව අවසන් වූ බැවින්, මෙම පුද්ගලයාගේ සජීවී ස්ථානය සහ හඬ දත්ත ස්වයංක්‍රීයව පද්ධතියෙන් ඉවත් කර ඇත.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs cursor-pointer transition-all"
+          >
+            වසන්න (Close)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate distance from viewer to victim accurately
+  const distanceKm = (viewerCoords && isCoordsValid) 
+    ? calculateDistanceKm(viewerCoords.lat, viewerCoords.lng, targetLat, targetLng)
     : null;
 
-  const googleMapsRouteUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  const emergencyMsg = session?.emergencyMessage || session?.emergencyNote || 'මා ගැන හා මම සිටින ස්ථානය සෙවීමට මේ ලින්ක් එක භාවිතා කරන්න.';
+  // Exact Google Maps navigation URL
+  const googleMapsRouteUrl = isCoordsValid
+    ? `https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}`
+    : '#';
+
+  const googleMapsPinUrl = isCoordsValid
+    ? `https://www.google.com/maps/search/?api=1&query=${targetLat},${targetLng}`
+    : '#';
+
+  const isLive = session?.isActive !== false && session?.status !== 'ended';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
-      {/* Hidden Audio Element for Live Streaming */}
-      <audio 
-        ref={audioPlayerRef} 
-        preload="auto" 
-        onPlay={() => setIsAudioListening(true)}
-        onPause={() => setIsAudioListening(false)}
-      />
-
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-fadeIn overflow-y-auto">
       <div className="bg-white dark:bg-[#0b1712] border-2 border-rose-600/80 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl transition-all relative flex flex-col max-h-[92vh]">
         
         {/* Header */}
@@ -281,7 +319,7 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg sm:text-xl font-black tracking-wide">
-                  {isLive ? 'සජීවී SOS ස්ථානය හා හඬ නිරීක්ෂණය' : 'SOS සජීවී විකාශනය අවසන්'}
+                  {isLive ? 'සජීවී SOS ස්ථාන හා හඬ නිරීක්ෂණය' : 'SOS සජීවී විකාශනය අවසන්'}
                 </h3>
                 {isLive ? (
                   <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-200 border border-rose-400/50 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 animate-pulse">
@@ -294,8 +332,8 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-red-100 font-medium">
-                {session?.sessionCode || `#SOS-${sessionId.slice(-4).toUpperCase()}`} • {session?.userName || 'පරිශීලක'}
+              <p className="text-xs text-red-100 font-medium truncate max-w-xs sm:max-w-md">
+                {session?.sessionCode || `#SOS-${sessionId.slice(-4)}`} • {session?.userName || 'පරිශීලක'}
               </p>
             </div>
           </div>
@@ -316,7 +354,7 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
             <div className="py-12 text-center space-y-3">
               <RefreshCw className="w-8 h-8 text-rose-500 animate-spin mx-auto" />
               <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                සජීවී ස්ථාන සහ ශ්‍රව්‍ය දත්ත ලබාගනිමින් පවතී...
+                සජීවී ස්ථාන දත්ත ලබාගනිමින් පවතී...
               </p>
             </div>
           ) : !session ? (
@@ -331,109 +369,90 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Deactivated Notice if OFF */}
+              {/* Deactivated Notice if OFF with 5-minute cooldown countdown */}
               {!isLive && (
-                <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
+                <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center gap-3 animate-fadeIn">
+                  <Clock className="w-6 h-6 text-amber-500 shrink-0 animate-pulse" />
                   <div>
-                    <span className="text-xs font-black text-slate-900 dark:text-white block">
-                      මෙම SOS සජීවී විකාශනය අක්‍රිය කර ඇත
+                    <span className="text-xs font-black text-amber-900 dark:text-amber-200 block">
+                      ⚠️ මෙම SOS සැසිය අක්‍රීය කර ඇත (විනාඩි 5ක Cooldown ආරක්ෂාව)
                     </span>
-                    <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                      පරිශීලකයා විසින් 'මම දැන් ආරක්ෂිතයි' තහවුරු කර ඇති බැවින් ලුහුබැඳීම අවසන් විය.
+                    <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 font-medium leading-relaxed block pt-0.5">
+                      ආරක්ෂිත හේතූන් මත අවසන් ස්ථාන දත්ත තව <strong>{Math.floor(cooldownRemainingSec / 60)}:{String(cooldownRemainingSec % 60).padStart(2, '0')}</strong> කින් ස්වයංක්‍රීයව පද්ධතියෙන් ඉවත් වනු ඇත.
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* ⚠️ EMERGENCY MESSAGE HIGHLIGHT BOX */}
-              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 space-y-1.5 shadow-sm">
-                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-black text-xs uppercase tracking-wider">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>හදිසි පණිවිඩය (Emergency Distress Note):</span>
-                </div>
-                <p className="text-sm font-bold leading-relaxed">
-                  "{emergencyMsg}"
-                </p>
-              </div>
-
-              {/* 🎙️ 🔴 LIVE AUDIO EVIDENCE STREAM PLAYER CARD */}
-              <div className="p-4 rounded-3xl bg-gradient-to-br from-red-950/80 via-slate-900 to-slate-950 border-2 border-rose-500/60 text-white shadow-xl space-y-3">
+              {/* 🎧 Live Audio Stream Player or Cut Notice */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-black border-2 border-indigo-500/40 text-white space-y-3 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 shadow-md">
-                      <Headphones className="w-5 h-5 animate-pulse" />
+                    <div className="p-2 rounded-xl bg-indigo-950/80 border border-indigo-500/50 text-indigo-400">
+                      {session.isAudioCut ? (
+                        <VolumeX className="w-5 h-5 text-rose-400" />
+                      ) : (
+                        <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+                      )}
                     </div>
                     <div>
-                      <h4 className="text-sm font-black flex items-center gap-2">
-                        <span>සජීවී පසුබිම් හඬ ඇසීම (Live Audio Stream)</span>
-                        {isLive && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                        )}
+                      <h4 className="text-xs sm:text-sm font-black text-white">
+                        {session.isAudioCut ? 'හඬ විකාශනය අත්හිටුවා ඇත' : 'සජීවී පසුබිම් හඬ ඇසීම (Live Audio Stream)'}
                       </h4>
-                      <p className="text-[11px] text-slate-300 font-medium">
-                        {hasAudioData
-                          ? 'වින්දිතයාගේ දුරකථනයෙන් පසුබිම් හඬ සජීවීව Cloud වෙත ලැබෙමින් පවතී'
+                      <p className="text-[10px] text-slate-400">
+                        {session.isAudioCut
+                          ? 'පරිශීලකයා විසින් ආරක්ෂිතව හඬ විකාශනය Cut කර ඇත.'
+                          : session.latestAudioBase64
+                          ? 'නවතම සජීවී හඬ ඛණ්ඩය සූදානම්.'
                           : 'ශ්‍රව්‍ය සංඥා බලාපොරොත්තුවෙන් පවතී...'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Sound Wave Animation Indicator */}
-                  {isAudioListening && (
-                    <div className="flex items-end gap-1 h-6 shrink-0">
-                      <span className="w-1 bg-rose-400 rounded-full animate-bounce h-3"></span>
-                      <span className="w-1 bg-rose-500 rounded-full animate-bounce h-5 [animation-delay:0.2s]"></span>
-                      <span className="w-1 bg-red-400 rounded-full animate-bounce h-6 [animation-delay:0.4s]"></span>
-                      <span className="w-1 bg-rose-500 rounded-full animate-bounce h-4 [animation-delay:0.1s]"></span>
-                      <span className="w-1 bg-rose-400 rounded-full animate-bounce h-2 [animation-delay:0.3s]"></span>
-                    </div>
+                  {!session.isAudioCut && session.latestAudioBase64 && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                      ACTIVE
+                    </span>
                   )}
                 </div>
 
-                {audioError && (
-                  <p className="text-xs text-amber-300 bg-amber-950/60 p-2 rounded-xl border border-amber-600/40">
-                    {audioError}
-                  </p>
-                )}
-
-                {/* Audio Controls Bar */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={toggleListening}
-                    className={`w-full sm:w-auto px-5 py-2.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
-                      isAudioListening
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white ring-2 ring-white/40 animate-pulse'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
-                  >
-                    {isAudioListening ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                    <span>{isAudioListening ? 'හඬ නැවැත්වීම (Stop Audio)' : 'සජීවී හඬට සවන් දෙන්න (Listen Live)'}</span>
-                  </button>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end text-xs text-slate-300">
-                    <Volume2 className="w-4 h-4 text-slate-400 shrink-0" />
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={audioVolume}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setAudioVolume(v);
+                {!session.isAudioCut && session.latestAudioBase64 && (
+                  <div>
+                    <audio
+                      ref={audioPlayerRef}
+                      src={session.latestAudioBase64}
+                      onEnded={() => setIsPlayingAudio(false)}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
                         if (audioPlayerRef.current) {
-                          audioPlayerRef.current.volume = v;
+                          if (isPlayingAudio) {
+                            audioPlayerRef.current.pause();
+                            setIsPlayingAudio(false);
+                          } else {
+                            audioPlayerRef.current.play().catch(() => {});
+                            setIsPlayingAudio(true);
+                          }
                         }
                       }}
-                      className="w-24 accent-rose-500 cursor-pointer"
-                    />
-                    <span className="font-mono text-[10px] w-8">
-                      {Math.round(audioVolume * 100)}%
-                    </span>
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+                    >
+                      {isPlayingAudio ? (
+                        <>
+                          <Pause className="w-4 h-4" />
+                          <span>හඬ නැවතීමට (Pause)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          <span>▶️ සජීවී හඬට සවන් දෙන්න (Listen Live)</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Victim Profile & Contact Card */}
@@ -441,44 +460,45 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-black text-slate-900 dark:text-white truncate">
-                      👤 {session.userName || 'පරිශීලක'}
+                      👤 {session.userName}
                     </span>
-                    {(session.batteryPercent !== undefined || session.batteryLevel !== undefined) && (
+                    {session.batteryPercent !== undefined && (
                       <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono font-black text-[11px] border border-amber-500/30 flex items-center gap-1">
                         <Battery className="w-3 h-3" />
-                        <span>{session.batteryPercent || session.batteryLevel}%</span>
+                        <span>{session.batteryPercent}%</span>
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    {session.locationName || 'ස්ථාන විස්තර සොයමින් පවතී...'}
+                    {session.locationName || session.currentLocation?.locationName || 'ස්ථාන විස්තර නොමැත'}
                   </p>
                 </div>
 
                 {/* Direct Action Buttons */}
                 <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
-                  {(session.userPhone || session.phone) && (
+                  {session.userPhone && (
                     <a
-                      href={`tel:${session.userPhone || session.phone}`}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                      href={`tel:${session.userPhone}`}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
                     >
                       <Phone className="w-3.5 h-3.5" />
                       <span>අමතන්න (Call)</span>
                     </a>
                   )}
 
-                  {(session.userPhone || session.phone) && (
+                  {session.userPhone && (
                     <a
-                      href={`https://wa.me/${String(session.userPhone || session.phone).replace(/\D/g, '')}`}
+                      href={`https://wa.me/${session.userPhone.replace(/\D/g, '')}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                      className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       <span>WhatsApp</span>
                     </a>
                   )}
 
+                  {/* Direct Route on Google Maps */}
                   <a
                     href={googleMapsRouteUrl}
                     target="_blank"
@@ -490,6 +510,16 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
                   </a>
                 </div>
               </div>
+
+              {/* Emergency Message Callout */}
+              {(session.alertReason || session.emergencyNote) && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 text-xs font-bold leading-relaxed">
+                  <span className="text-rose-600 dark:text-rose-400 font-black block mb-1">
+                    ⚠️ හදිසි පණිවිඩය:
+                  </span>
+                  "{session.alertReason || session.emergencyNote}"
+                </div>
+              )}
 
               {/* Real-time Telemetry Bar */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
@@ -503,21 +533,23 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-400 block font-bold">නිරවද්‍යතාව</span>
                   <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
-                    ±{session.accuracyMeters || session.accuracy || 10}m
+                    ±{targetAccuracy || 10}m
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-400 block font-bold">වත්මන් වේගය</span>
                   <span className="font-mono font-black text-slate-800 dark:text-slate-200">
-                    {session.speedKmh || session.speed || 0} km/h
+                    {session.speedKmh || 0} km/h
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-400 block font-bold">ඔබේ සිට දුර</span>
                   <span className="font-mono font-black text-rose-600 dark:text-rose-400">
-                    {distanceKm !== null ? `${distanceKm.toFixed(1)} km` : 'නොදනී'}
+                    {distanceKm !== null 
+                      ? (distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`)
+                      : 'ස්ථානය සොයමින්...'}
                   </span>
                 </div>
               </div>
@@ -527,78 +559,70 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                   <div className="flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                    <span>සජීවී සිතියම ({lat.toFixed(4)}, {lng.toFixed(4)})</span>
+                    <span>සජීවී සිතියම ({targetLat ? targetLat.toFixed(4) : '0.0000'}, {targetLng ? targetLng.toFixed(4) : '0.0000'})</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setMapLayer(mapLayer === 'osm' ? 'satellite' : 'osm')}
-                    className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Layers className="w-3 h-3" />
-                    <span>{mapLayer === 'osm' ? 'Satellite' : 'Roadmap'}</span>
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={googleMapsPinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Google Map එකෙන් බලන්න</span>
+                    </a>
+
+                    <div className="flex items-center p-0.5 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setMapLayer('osm')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-all ${
+                          mapLayer === 'osm'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        Map
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMapLayer('satellite')}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black transition-all ${
+                          mapLayer === 'satellite'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        Satellite
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden border-2 border-rose-400/40 shadow-inner">
-                  <div ref={mapContainerRef} className="w-full h-full" />
-                </div>
+                <div
+                  ref={mapContainerRef}
+                  className="w-full h-64 sm:h-80 rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-800 shadow-inner relative z-0"
+                />
               </div>
 
-              {/* Emergency Hotline Dial Buttons */}
-              <div className="pt-2 space-y-1.5">
-                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300">
-                  ක්ෂණික හදිසි ඇමතුම් (Emergency Call):
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-                  <a
-                    href="tel:119"
-                    className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black cursor-pointer"
-                  >
-                    👮 119 Police
-                  </a>
-                  <a
-                    href="tel:1990"
-                    className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-black cursor-pointer"
-                  >
-                    🚑 1990 Suwa Seriya
-                  </a>
-                  <a
-                    href="tel:110"
-                    className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-black cursor-pointer"
-                  >
-                    🚒 110 Fire
-                  </a>
-                  <a
-                    href="tel:117"
-                    className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-black cursor-pointer"
-                  >
-                    🚨 117 Disaster
-                  </a>
-                </div>
+              {/* Bottom Footer Actions */}
+              <div className="pt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500">
+                <span>සහය සේවා (Sahaya Sewa) සජීවී ආපදා ආරක්ෂණ පද්ධතිය</span>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition-all cursor-pointer"
+                >
+                  වසන්න (Close)
+                </button>
               </div>
             </>
           )}
 
         </div>
-
-        {/* Footer */}
-        <div className="p-3 sm:p-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            සහය සේවා (Sahaya Sewa) සජීවී ආපදා ආරක්ෂණ පද්ධතිය
-          </span>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-          >
-            වසන්න (Close)
-          </button>
-        </div>
-
       </div>
     </div>
   );
 };
 
-export default SosLiveViewerModal;
