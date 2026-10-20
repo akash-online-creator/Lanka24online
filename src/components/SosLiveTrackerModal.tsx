@@ -1081,7 +1081,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
         {/* 🛡️ 5-MINUTE SAFETY BUFFER ACTIVE BANNER */}
@@ -1984,9 +1985,10 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           </div>
         </div>
       )}
-
+    </>
   );
 };
 
 export default SosLiveTrackerModal;
+
 
