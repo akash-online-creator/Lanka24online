@@ -1879,7 +1879,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         )}
 
       </div>
-    </div>
+        
       {/* 🔒 Quick PIN Modal to Cut Voice Stream */}
       {showVoiceCutPinModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
@@ -1985,6 +1985,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           </div>
         </div>
       )}
+    </div>
     </>
   );
 };
