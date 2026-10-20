@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Settings,
   ArrowRight,
+  Battery,
 } from 'lucide-react';
 import { Language, Theme, LocationOption } from '../types';
 import { AppLogo } from './AppLogo';
@@ -47,18 +48,6 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [isNativeApp, setIsNativeApp] = useState(false);
   const [showSettingsButton, setShowSettingsButton] = useState(false);
   const hasProceededRef = useRef(false);
-
-  // Helper to detect Android APK WebView or Native Hybrid App
-  const checkIsAndroidApp = useCallback(() => {
-    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-    return Boolean(
-      /wv|Android.*Version\/[0-9]\.[0-9]|Mobile.*wv/i.test(navigator.userAgent) ||
-      (window as any).__sahaya_is_native_app === true ||
-      (window as any).SahayaPermissionChannel ||
-      (window as any).SahayaGpsChannel ||
-      (window as any).Android
-    );
-  }, []);
 
   // Helper to communicate with Native Flutter Bridge
   const sendNativeMessage = useCallback((channel: string, message: string) => {
@@ -117,16 +106,12 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   useEffect(() => {
     // 1. Detect if running inside Native Flutter App Wrapper
     const checkNative = () => {
-      const isNative = checkIsAndroidApp();
+      const isNative = Boolean(
+        (window as any).__sahaya_is_native_app === true ||
+        (window as any).SahayaPermissionChannel ||
+        (window as any).SahayaGpsChannel
+      );
       setIsNativeApp(isNative);
-
-      // In Android APK, notification permissions are controlled at OS level.
-      // If user is inside APK or previously marked, treat notification as active.
-      const storedNotif = typeof localStorage !== 'undefined' && localStorage.getItem('sahaya_notif_granted') === 'true';
-      if (isNative || storedNotif) {
-        setNotifGranted(true);
-        setShowSettingsButton(false);
-      }
 
       if ((window as any).__sahaya_native_notif_granted === true) {
         setNotifGranted(true);
@@ -202,11 +187,8 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         if ((window as any).SahayaPermissionChannel) {
           (window as any).SahayaPermissionChannel.postMessage('CHECK_PERMISSIONS');
         }
-        // When resuming from phone settings, mark notifications granted
-        setNotifGranted(true);
-        setShowSettingsButton(false);
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('sahaya_notif_granted', 'true');
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          setNotifGranted(true);
         }
       }
     };
@@ -243,40 +225,38 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
   // Request Notification Permission (Native App Aware)
   const handleRequestNotification = async () => {
-    // In Android APK, notification permission is managed by Android OS
+    // A. Native Flutter Hybrid App execution
     if ((window as any).SahayaPermissionChannel) {
       sendNativeMessage('SahayaPermissionChannel', 'REQUEST_NOTIFICATION');
+      setStatusType('scanning');
+      setStatusMessage('🔔 හදිසි දැනුම්දීම් සක්‍රීය කරමින් පවතී...');
+      return true;
     }
 
-    try {
-      await requestNotificationPermission();
-    } catch {}
-
-    // Always activate notifications for APK & mobile users so they are never blocked
-    setNotifGranted(true);
-    setShowSettingsButton(false);
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('sahaya_notif_granted', 'true');
+    // B. Standard Web Browser execution
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      setNotifGranted(true);
+      setShowSettingsButton(false);
+      playNotificationSound('general');
+      setStatusType('success');
+      setStatusMessage('🔔 හදිසි දැනුම්දීම් සාර්ථකව සක්‍රීය කරන ලදී.');
+    } else {
+      setShowSettingsButton(true);
+      setStatusType('denied');
+      setStatusMessage('⚠️ දැනුම්දීම් අවසරය ලබාදී නැත. Settings වෙත ගොස් අවසර ලබාදෙන්න.');
     }
-    playNotificationSound('general');
-    setStatusType('success');
-    setStatusMessage('🔔 හදිසි දැනුම්දීම් සාර්ථකව සක්‍රීය කරන ලදී.');
-    return true;
+    return granted;
   };
 
   // Open App Permission Settings directly
   const handleOpenAppSettings = () => {
     if ((window as any).SahayaPermissionChannel) {
       sendNativeMessage('SahayaPermissionChannel', 'OPEN_SETTINGS');
+      setStatusMessage('📱 දුරකථනයේ Settings පිටුව විවෘත කෙරේ. Permissions > Notifications සහ Location සක්‍රීය කරන්න.');
+    } else {
+      setStatusMessage('⚠️ දුරකථනයේ Settings > Apps > Sahaya Sewa වෙත ගොස් Permissions සක්‍රීය කරන්න.');
     }
-    // Mark as granted so user is not blocked when returning
-    setNotifGranted(true);
-    setShowSettingsButton(false);
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('sahaya_notif_granted', 'true');
-    }
-    setStatusType('success');
-    setStatusMessage('🔔 හදිසි දැනුම්දීම් සක්‍රීය කරන ලදී.');
   };
 
   // Start High-Accuracy GPS Scanning
@@ -344,14 +324,12 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       return;
     }
 
-    // 2. Notifications Activation (Always grant in APK/Mobile to prevent lock)
-    setNotifGranted(true);
-    setShowSettingsButton(false);
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('sahaya_notif_granted', 'true');
-    }
+    // 2. Web Browser Fallback
     try {
-      await requestNotificationPermission();
+      const ok = await requestNotificationPermission();
+      if (ok) {
+        setNotifGranted(true);
+      }
     } catch {}
 
     handleStartGps(false);
@@ -387,9 +365,7 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     }
   };
 
-  // In APK, location is essential; notifications must never lock the gate
-  const isBothComplete = locationGranted && (notifGranted || isNativeApp || checkIsAndroidApp());
-  const canProceed = locationGranted || isBothComplete;
+  const isBothComplete = locationGranted && notifGranted;
 
   return (
     <div className="w-full max-w-lg mx-auto px-3 py-4 flex flex-col items-center animate-fadeIn">
@@ -582,6 +558,32 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
               {notifGranted ? 'Active ✓' : showSettingsButton ? 'Settings ⚙️' : 'Allow'}
             </button>
           </div>
+
+          {/* 3. 24/7 Background Radar & Battery Optimization Exemption Card */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#112519] border border-slate-200/80 dark:border-emerald-900/60 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                <Battery className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🔋 පසුබිම් අවදිය (Battery Unrestricted)</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  රාත්‍රියේ දුරකථනය Lock කර ඇති විටත් ආපදා සයිරන් නාද වීමට
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenAppSettings}
+              className="px-3.5 py-1.5 rounded-xl font-black text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer active:scale-95 transition-all"
+              title="Settings > Battery > Unrestricted"
+            >
+              සැකසුම් ⚙️
+            </button>
+          </div>
         </div>
 
         {/* Bottom Proceed Action Button */}
@@ -594,17 +596,17 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           <button
             type="button"
             onClick={handleFinishAndProceed}
-            disabled={!canProceed}
+            disabled={!isBothComplete}
             className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all ${
-              canProceed
+              isBothComplete
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95 animate-pulse'
                 : 'bg-slate-200 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
             }`}
           >
             <span>
-              {canProceed
+              {isBothComplete
                 ? 'ඇප් එකට පිවිසෙන්න (Proceed) >'
-                : '🛰️ GPS ස්ථානය හඳුනාගනිමින් පවතී...'}
+                : '🔒 අවසර 2ම අවශ්‍යයි (Locked)'}
             </span>
             <ChevronRight className="w-4 h-4" />
           </button>
