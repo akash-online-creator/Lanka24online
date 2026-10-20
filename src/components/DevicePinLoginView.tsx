@@ -276,15 +276,15 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
           </p>
         )}
 
-        {/* Numeric Keypad (1 - 9, 0) */}
-        <div className="grid grid-cols-3 gap-2 w-full max-w-[260px] my-2">
+        {/* 🔢 Spacious Thumb-Friendly Numeric Keypad (1 - 9, 0) */}
+        <div className="grid grid-cols-3 gap-3 sm:gap-3.5 w-full max-w-[320px] sm:max-w-[340px] my-3">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
             <button
               key={digit}
               type="button"
               disabled={isVerifying}
               onClick={() => handleDigit(digit)}
-              className="h-12 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-50 dark:hover:bg-[#183925] border border-slate-200/90 dark:border-[#1d442c] text-slate-800 dark:text-white text-lg font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+              className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-100 dark:hover:bg-[#183925] active:bg-emerald-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
             >
               {digit}
             </button>
@@ -293,16 +293,17 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
             type="button"
             disabled={isVerifying || pin.length === 0}
             onClick={handleClear}
-            className="h-12 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-slate-100 dark:hover:bg-[#183925] border border-slate-200/90 dark:border-[#1d442c] text-slate-500 dark:text-slate-400 text-xs font-bold flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-30 shadow-2xs"
+            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-slate-100 dark:hover:bg-[#183925] border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-500 dark:text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-0.5 active:scale-90 transition-all cursor-pointer disabled:opacity-30 shadow-sm touch-manipulation select-none"
             title="මුල සිට (Clear)"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-5 h-5" />
+            <span className="text-[10px] font-bold">Clear</span>
           </button>
           <button
             type="button"
             disabled={isVerifying}
             onClick={() => handleDigit('0')}
-            className="h-12 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-50 dark:hover:bg-[#183925] border border-slate-200/90 dark:border-[#1d442c] text-slate-800 dark:text-white text-lg font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-100 dark:hover:bg-[#183925] active:bg-emerald-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
           >
             0
           </button>
@@ -310,7 +311,7 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
             type="button"
             disabled={isVerifying || pin.length === 0}
             onClick={handleBackspace}
-            className="h-12 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200/90 dark:border-[#1d442c] text-slate-600 dark:text-slate-300 text-sm font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-30 shadow-2xs"
+            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-rose-100 dark:hover:bg-rose-950/60 active:bg-rose-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-rose-600 dark:text-rose-400 text-xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-30 shadow-sm touch-manipulation select-none"
             title="මකන්න (Delete)"
           >
             ⌫
@@ -382,3 +383,4 @@ export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
     </div>
   );
 };
+
