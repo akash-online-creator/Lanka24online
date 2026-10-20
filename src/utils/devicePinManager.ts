@@ -67,7 +67,7 @@ export function getStoredDevicePin(): StoredDevicePinData | null {
     if (!data) return null;
     const parsed: StoredDevicePinData = JSON.parse(data);
     const currentDeviceId = getOrCreateDeviceId();
-    if (!parsed || parsed.deviceId !== currentDeviceId || !parsed.pinHash || !parsed.userId) {
+    if (!parsed || !parsed.pinHash || !parsed.userId) {
       return null;
     }
     return parsed;
@@ -281,3 +281,4 @@ export async function verifyCurrentUserPin(
 
   return { success: true };
 }
+
