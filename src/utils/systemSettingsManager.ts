@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 
 export interface SystemSettings {
   enableQrPay: boolean;
+  enableDemoLogin: boolean; // 👤 Admin Toggle for Visitor / Demo Login
   maintenanceMode: boolean;
   enableDisasterSirens: boolean;
   updatedAt?: string;
@@ -11,6 +12,7 @@ export interface SystemSettings {
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   enableQrPay: true,
+  enableDemoLogin: false, // Default is disabled (Admin can turn it ON)
   maintenanceMode: false,
   enableDisasterSirens: true,
 };
@@ -20,7 +22,7 @@ const STORAGE_KEY = 'sahaya_system_settings';
 /**
  * LocalStorage Cache Helper (Zero-delay and Offline fallback)
  */
-function getCachedSettings(): SystemSettings {
+export function getCachedSettings(): SystemSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -151,6 +153,7 @@ export async function updateSystemSettings(
       };
 
       if (newSettings.enableQrPay !== undefined) cleanPayload.enableQrPay = Boolean(newSettings.enableQrPay);
+      if (newSettings.enableDemoLogin !== undefined) cleanPayload.enableDemoLogin = Boolean(newSettings.enableDemoLogin);
       if (newSettings.maintenanceMode !== undefined) cleanPayload.maintenanceMode = Boolean(newSettings.maintenanceMode);
       if (newSettings.enableDisasterSirens !== undefined) cleanPayload.enableDisasterSirens = Boolean(newSettings.enableDisasterSirens);
 
@@ -163,3 +166,4 @@ export async function updateSystemSettings(
 
   return updated;
 }
+
