@@ -1,386 +1,305 @@
-import React, { useState, useEffect } from 'react';
-import { User, Language, Theme } from '../types';
-import { translations } from '../data/translations';
-import { 
-  ShieldCheck, 
-  Lock, 
-  KeyRound, 
-  Sparkles, 
-  Loader2, 
-  AlertCircle, 
-  User as UserIcon,
-  RotateCcw,
-  Languages,
-  Sun,
-  Moon,
-  LogOut,
-  HelpCircle,
-  Smartphone
-} from 'lucide-react';
-import { AppLogo } from './AppLogo';
-import { FontSizeController } from './FontSizeController';
-import { StoredDevicePinData, verifyDevicePin, clearDevicePin } from '../utils/devicePinManager';
-import { getUserFromFirestore } from '../lib/user';
-import { PWAInstallModal } from './PWAInstallModal';
-import { triggerNativeInstallPrompt } from '../utils/pwaHelper';
-import { Download } from 'lucide-react';
+﻿import React, { useState } from 'react';
+import { User, Language } from '../types';
+import { ShieldCheck, Lock, CheckCircle2, AlertCircle, X, Sparkles, Smartphone, ArrowRight, RotateCcw } from 'lucide-react';
+import { saveDevicePin } from '../utils/devicePinManager';
+import { updateUserInFirestore } from '../lib/firebase';
 
-interface DevicePinLoginViewProps {
-  storedPinData: StoredDevicePinData;
-  users: User[];
-  onSuccessfulPinLogin: (authenticatedUser: User) => void;
-  onSwitchToPasswordLogin: () => void;
-  onClearDevicePin: () => void;
-  onNavigateToIssues: () => void;
+
+interface DevicePinSetupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: User;
   language: Language;
-  setLanguage?: (lang: Language) => void;
-  theme?: Theme;
-  toggleTheme?: () => void;
+  onPinConfigured: (updatedUser: User) => void;
+  isChangeMode?: boolean;
 }
 
-export const DevicePinLoginView: React.FC<DevicePinLoginViewProps> = ({
-  storedPinData,
-  users,
-  onSuccessfulPinLogin,
-  onSwitchToPasswordLogin,
-  onClearDevicePin,
-  onNavigateToIssues,
+
+export const DevicePinSetupModal: React.FC<DevicePinSetupModalProps> = ({
+  isOpen,
+  onClose,
+  currentUser,
   language,
-  setLanguage,
-  theme = 'light',
-  toggleTheme,
+  onPinConfigured,
+  isChangeMode = false,
 }) => {
   const [pin, setPin] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [confirmPin, setConfirmPin] = useState('');
+  const [step, setStep] = useState<'enter' | 'confirm'>('enter');
   const [error, setError] = useState<string | null>(null);
-  const [isShake, setIsShake] = useState(false);
-  const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  const t = (translations[language] || translations.si) as any;
 
-  // Mask NIC for privacy e.g. "970185472V" -> "97018****V"
-  const getMaskedNic = (nic: string) => {
-    if (!nic) return '';
-    const clean = nic.trim();
-    if (clean.length <= 6) return clean;
-    const start = clean.slice(0, 4);
-    const end = clean.slice(-2);
-    return `${start}****${end}`;
-  };
+  if (!isOpen) return null;
 
-  const handleDigit = (digit: string) => {
-    if (isVerifying) return;
+
+  const handleDigitClick = (digit: string) => {
     setError(null);
-    if (pin.length < 4) {
-      const nextPin = pin + digit;
-      setPin(nextPin);
-      if (nextPin.length === 4) {
-        submitPin(nextPin);
+    if (step === 'enter') {
+      if (pin.length < 4) {
+        const nextPin = pin + digit;
+        setPin(nextPin);
+        if (nextPin.length === 4) {
+          setTimeout(() => {
+            setStep('confirm');
+          }, 200);
+        }
+      }
+    } else {
+      if (confirmPin.length < 4) {
+        const nextConfirm = confirmPin + digit;
+        setConfirmPin(nextConfirm);
+        if (nextConfirm.length === 4) {
+          handleFinalizePin(pin, nextConfirm);
+        }
       }
     }
   };
+
 
   const handleBackspace = () => {
-    if (isVerifying) return;
     setError(null);
-    setPin((prev) => prev.slice(0, -1));
-  };
-
-  const handleClear = () => {
-    if (isVerifying) return;
-    setPin('');
-    setError(null);
-  };
-
-  // Keyboard listener for physical numeric keyboard input
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isVerifying) return;
-      if (/^[0-9]$/.test(e.key)) {
-        handleDigit(e.key);
-      } else if (e.key === 'Backspace') {
-        handleBackspace();
-      } else if (e.key === 'Escape') {
-        handleClear();
+    if (step === 'enter') {
+      setPin((prev) => prev.slice(0, -1));
+    } else {
+      if (confirmPin.length === 0) {
+        setStep('enter');
+      } else {
+        setConfirmPin((prev) => prev.slice(0, -1));
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pin, isVerifying]);
+    }
+  };
 
-  const submitPin = async (pinToVerify: string) => {
-    setIsVerifying(true);
+
+  const handleReset = () => {
+    setPin('');
+    setConfirmPin('');
+    setStep('enter');
     setError(null);
+  };
+
+
+  const handleFinalizePin = async (firstPin: string, secondPin: string) => {
+    if (firstPin !== secondPin) {
+      setError(
+        language === 'en'
+          ? 'PIN codes do not match. Please try again.'
+          : language === 'ta'
+          ? 'PIN எண்கள் பொருந்தவில்லை. மீண்டும் முயற்சிக்கவும்.'
+          : 'PIN අංක දෙක එකිනෙක නොගැළපේ. කරුණාකර නැවත උත්සාහ කරන්න.'
+      );
+      setConfirmPin('');
+      setStep('enter');
+      setPin('');
+      return;
+    }
+
+
+    setIsSaving(true);
+    setError(null);
+
 
     try {
-      const result = await verifyDevicePin(pinToVerify, users, getUserFromFirestore);
+      const { deviceId, deviceSessionToken } = await saveDevicePin(currentUser, firstPin);
       
-      if (result.success && result.matchedUser) {
-        onSuccessfulPinLogin(result.matchedUser);
-      } else {
-        setIsShake(true);
-        setTimeout(() => setIsShake(false), 500);
-        setPin('');
-        
-        if (result.reason === 'device_mismatch') {
-          alert(result.message || 'වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය Reset කර ඇත.');
-          onClearDevicePin();
-          onSwitchToPasswordLogin();
-          return;
-        }
+      const updatedUserData: Partial<User> = {
+        activeDeviceId: deviceId,
+        deviceSessionToken,
+        devicePinUpdatedAt: new Date().toISOString(),
+      };
 
-        setError(
-          result.message ||
-            (language === 'en'
-              ? 'Incorrect PIN. Please try again.'
-              : language === 'ta'
-              ? 'தவறான PIN. மீண்டும் முயற்சிக்கவும்.'
-              : 'ඇතුළත් කළ PIN අංකය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.')
-        );
+
+      if (currentUser.id) {
+        await updateUserInFirestore(currentUser.id, updatedUserData).catch((e) => {
+          console.warn('Firestore device PIN sync notice:', e);
+        });
       }
+
+
+      const updatedUser: User = {
+        ...currentUser,
+        ...updatedUserData,
+      };
+
+
+      setIsSuccess(true);
+      setTimeout(() => {
+        onPinConfigured(updatedUser);
+        onClose();
+      }, 1400);
     } catch (err: any) {
-      console.error('PIN verification error:', err);
-      setError('සත්‍යාපනය කිරීමේදී දෝෂයක් සිදු විය.');
-      setPin('');
-    } finally {
-      setIsVerifying(false);
+      console.error('Save PIN error:', err);
+      setError(err?.message || 'PIN අංකය සුරැකීමේදී දෝෂයක් සිදු විය.');
+      setIsSaving(false);
     }
   };
 
-  const handleNextLanguage = () => {
-    if (!setLanguage) return;
-    const langSeq: Language[] = ['si', 'en', 'ta'];
-    const currentIndex = langSeq.indexOf(language);
-    const nextLang = langSeq[(currentIndex + 1) % langSeq.length];
-    setLanguage(nextLang);
-  };
 
-  const getLanguageDisplayName = (lang: Language) => {
-    switch (lang) {
-      case 'si':
-        return 'සිංහල';
-      case 'ta':
-        return 'தமிழ்';
-      case 'en':
-      default:
-        return 'English';
-    }
-  };
+  const currentDisplayPin = step === 'enter' ? pin : confirmPin;
+
 
   return (
-    <div className="w-full max-w-[400px] mx-auto px-3 py-1 flex flex-col items-center">
-      {/* Top Bar Controls */}
-      <div className="w-full flex items-center justify-start gap-2 mb-1.5">
-        {toggleTheme && (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div
+        className="w-full max-w-sm bg-white dark:bg-[#091810] border-2 border-emerald-500/40 dark:border-emerald-600/60 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Top Header */}
+        <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-800 via-teal-900 to-[#022818] text-white relative text-center">
           <button
             type="button"
-            onClick={toggleTheme}
-            className="w-7 h-7 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-xs hover:shadow-sm flex items-center justify-center text-slate-700 dark:text-emerald-300 transition-all cursor-pointer active:scale-95"
-            title="Toggle theme"
+            onClick={onClose}
+            className="absolute top-3 right-3 p-1.5 rounded-full bg-black/30 hover:bg-black/50 text-white transition-all cursor-pointer"
+            title="වසන්න (Close)"
           >
-            {theme === 'dark' ? (
-              <Sun className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Moon className="w-3.5 h-3.5 text-slate-700" />
-            )}
+            <X className="w-4 h-4" />
           </button>
-        )}
 
-        {setLanguage && (
-          <button
-            type="button"
-            onClick={handleNextLanguage}
-            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-xs hover:shadow-sm text-slate-800 dark:text-slate-200 transition-all text-xs font-semibold cursor-pointer active:scale-95"
-            title="Change language"
-          >
-            <Languages className="w-3 h-3 text-slate-600 dark:text-emerald-400" />
-            <span>{getLanguageDisplayName(language)}</span>
-          </button>
-        )}
 
-        <FontSizeController language={language} className="ml-auto" />
-      </div>
-
-      {/* Main PIN Unlock Card */}
-      <div className="w-full bg-white dark:bg-[#0c1811] rounded-3xl p-4 sm:p-5 shadow-xl shadow-emerald-950/10 dark:shadow-black/60 border border-slate-100 dark:border-[#173222] backdrop-blur-sm flex flex-col items-center">
-        
-        {/* User Info Capsule */}
-        <div className="flex flex-col items-center mb-3">
-          <div className="relative mb-2">
-            {storedPinData.userPhoto ? (
-              <img
-                src={storedPinData.userPhoto}
-                alt={storedPinData.userName}
-                className="w-16 h-16 rounded-full object-cover border-2 border-emerald-500 shadow-md"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shadow-md text-xl font-black">
-                {storedPinData.userName?.charAt(0) || <UserIcon className="w-8 h-8" />}
-              </div>
-            )}
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-xs border-2 border-white dark:border-[#0c1811]">
-              <Smartphone className="w-3.5 h-3.5" />
-            </div>
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 flex items-center justify-center mx-auto mb-2 shadow-lg">
+            <Smartphone className="w-6 h-6" />
           </div>
 
-          <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white text-center leading-tight">
-            {storedPinData.userName}
+
+          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[10px] font-black uppercase tracking-wider mb-1">
+            <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+            <span>{isChangeMode ? 'PIN අංකය වෙනස් කිරීම' : 'Device Quick PIN Setup'}</span>
+          </div>
+
+
+          <h2 className="text-base sm:text-lg font-black tracking-tight">
+            {language === 'en'
+              ? 'Set 4-Digit Quick PIN'
+              : language === 'ta'
+              ? '4 இலக்க விரைவு PIN அமைக்கவும்'
+              : 'අංක 4ක ඉක්මන් PIN අංකයක් සකසන්න'}
           </h2>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-emerald-400/90 bg-slate-100 dark:bg-[#12281b] px-2 py-0.5 rounded-full border border-slate-200 dark:border-[#1e422c]">
-              NIC: {getMaskedNic(storedPinData.nicNumber)}
+          <p className="text-[11px] text-emerald-100/80 font-medium mt-0.5 max-w-xs mx-auto leading-tight">
+            {language === 'en'
+              ? 'Log in instantly on this device next time without typing your full NIC & password'
+              : 'මීළඟ වතාවේදී හැඳුනුම්පත් අංකය හා මුරපදය නැවත නැවත ඇතුළත් නොකර මෙම Device එකෙන් ක්ෂණිකව පිවිසෙන්න'}
+          </p>
+        </div>
+
+
+        {/* Modal Body */}
+        <div className="p-4 sm:p-5 flex flex-col items-center">
+          {/* Status Instruction */}
+          <div className="text-center mb-3">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+              {step === 'enter' ? (
+                <span>
+                  🔹 {language === 'en' ? 'Enter 4-digit PIN:' : 'කැමති අංක 4ක PIN අංකය ඇතුළත් කරන්න:'}
+                </span>
+              ) : (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  {language === 'en' ? 'Re-enter PIN to confirm:' : 'තහවුරු කිරීමට එම PIN අංකය නැවත ඇතුළත් කරන්න:'}
+                </span>
+              )}
             </span>
           </div>
-          <span className="text-[10px] text-emerald-700 dark:text-emerald-300/80 font-semibold mt-1">
-            🔒 {language === 'en' ? 'Quick Device Unlock' : 'Device Quick PIN මඟින් පිවිසෙන්න'}
-          </span>
-        </div>
 
-        {/* 4 Digit Circles with Shake Animation */}
-        <div
-          className={`flex items-center justify-center gap-3.5 my-2 transition-transform ${
-            isShake ? 'animate-bounce text-red-500' : ''
-          }`}
-        >
-          {[0, 1, 2, 3].map((idx) => {
-            const isFilled = idx < pin.length;
-            return (
-              <div
-                key={idx}
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-200 ${
-                  isFilled
-                    ? 'bg-emerald-600 border-2 border-emerald-400 scale-105 shadow-md shadow-emerald-500/25'
-                    : 'bg-slate-100 dark:bg-[#0e2215] border-2 border-slate-200 dark:border-[#1b3d27]'
-                }`}
+
+          {/* 4 Digit Circles */}
+          <div className="flex items-center justify-center gap-3 my-2">
+            {[0, 1, 2, 3].map((index) => {
+              const isFilled = index < currentDisplayPin.length;
+              return (
+                <div
+                  key={index}
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200 ${
+                    isFilled
+                      ? 'bg-emerald-600 border-2 border-emerald-500 scale-105 shadow-md shadow-emerald-500/20'
+                      : 'bg-slate-100 dark:bg-[#112419] border-2 border-slate-300 dark:border-[#1e422c]'
+                  }`}
+                >
+                  {isFilled && <div className="w-3 h-3 rounded-full bg-white animate-in zoom-in-50" />}
+                </div>
+              );
+            })}
+          </div>
+
+
+          {/* Error Message */}
+          {error && (
+            <div className="w-full my-2 p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-700 dark:text-red-300 text-xs text-center flex items-center justify-center gap-1.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+              <span className="font-semibold">{error}</span>
+            </div>
+          )}
+
+
+          {/* Success State */}
+          {isSuccess && (
+            <div className="w-full my-2 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-bold text-center flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>PIN අංකය සාර්ථකව සක්‍රිය කරන ලදී!</span>
+            </div>
+          )}
+
+
+          {/* 🔢 Spacious Thumb-Friendly Numeric Keypad */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-3.5 w-full max-w-[320px] sm:max-w-[340px] my-3">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+              <button
+                key={digit}
+                type="button"
+                disabled={isSaving || isSuccess}
+                onClick={() => handleDigitClick(digit)}
+                className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#0e2115] hover:bg-emerald-100 dark:hover:bg-[#153422] active:bg-emerald-600 active:text-white border-2 border-slate-200 dark:border-[#1a3f29] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
               >
-                {isFilled && <div className="w-3.5 h-3.5 rounded-full bg-white animate-in zoom-in-50" />}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Verifying Indicator or Error */}
-        {isVerifying ? (
-          <div className="my-1.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>සත්‍යාපනය කරමින්...</span>
-          </div>
-        ) : error ? (
-          <div className="my-1.5 p-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-700 dark:text-red-300 text-xs font-semibold text-center flex items-center justify-center gap-1.5 max-w-xs">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
-            <span className="leading-tight">{error}</span>
-          </div>
-        ) : (
-          <p className="my-1 text-[11px] text-slate-400 dark:text-slate-400 font-medium">
-            අංක 4ක PIN අංකය ඇතුළත් කරන්න
-          </p>
-        )}
-
-        {/* 🔢 Spacious Thumb-Friendly Numeric Keypad (1 - 9, 0) */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-3.5 w-full max-w-[320px] sm:max-w-[340px] my-3">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                {digit}
+              </button>
+            ))}
             <button
-              key={digit}
               type="button"
-              disabled={isVerifying}
-              onClick={() => handleDigit(digit)}
-              className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-100 dark:hover:bg-[#183925] active:bg-emerald-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
+              disabled={isSaving || isSuccess}
+              onClick={handleReset}
+              className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#0e2115] hover:bg-slate-100 dark:hover:bg-[#153422] border-2 border-slate-200 dark:border-[#1a3f29] text-slate-500 dark:text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-0.5 active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
+              title="නැවත මුල සිට (Reset)"
             >
-              {digit}
+              <RotateCcw className="w-5 h-5" />
+              <span className="text-[10px] font-bold">Reset</span>
             </button>
-          ))}
-          <button
-            type="button"
-            disabled={isVerifying || pin.length === 0}
-            onClick={handleClear}
-            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-slate-100 dark:hover:bg-[#183925] border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-500 dark:text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-0.5 active:scale-90 transition-all cursor-pointer disabled:opacity-30 shadow-sm touch-manipulation select-none"
-            title="මුල සිට (Clear)"
-          >
-            <RotateCcw className="w-5 h-5" />
-            <span className="text-[10px] font-bold">Clear</span>
-          </button>
-          <button
-            type="button"
-            disabled={isVerifying}
-            onClick={() => handleDigit('0')}
-            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-emerald-100 dark:hover:bg-[#183925] active:bg-emerald-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
-          >
-            0
-          </button>
-          <button
-            type="button"
-            disabled={isVerifying || pin.length === 0}
-            onClick={handleBackspace}
-            className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#102417] hover:bg-rose-100 dark:hover:bg-rose-950/60 active:bg-rose-600 active:text-white border-2 border-slate-200/90 dark:border-[#1d442c] text-rose-600 dark:text-rose-400 text-xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-30 shadow-sm touch-manipulation select-none"
-            title="මකන්න (Delete)"
-          >
-            ⌫
-          </button>
-        </div>
-
-        {/* Action Switches (Full Login, Switch Account, Forgot PIN) */}
-        <div className="w-full mt-2 pt-2.5 border-t border-slate-100 dark:border-[#173222] space-y-1.5 flex flex-col items-center">
-          <button
-            type="button"
-            disabled={isVerifying}
-            onClick={onSwitchToPasswordLogin}
-            className="w-full py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-bold border border-emerald-300/80 dark:border-emerald-700/80 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>{language === 'en' ? 'Use NIC & Password instead' : 'හැඳුනුම්පත හා මුරපදය මඟින් පිවිසෙන්න'}</span>
-          </button>
-
-          <div className="flex items-center justify-between w-full text-[11px] px-1">
             <button
               type="button"
-              disabled={isVerifying}
-              onClick={() => {
-                if (confirm('මෙම Device එකෙන් PIN අංකය ඉවත් කර වෙනත් ගිණුමකට මාරුවීමට අවශ්‍ය බව තහවුරු කරන්න ද?')) {
-                  onClearDevicePin();
-                  onSwitchToPasswordLogin();
-                }
-              }}
-              className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-semibold hover:underline cursor-pointer transition-colors"
+              disabled={isSaving || isSuccess}
+              onClick={() => handleDigitClick('0')}
+              className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#0e2115] hover:bg-emerald-100 dark:hover:bg-[#153422] active:bg-emerald-600 active:text-white border-2 border-slate-200 dark:border-[#1a3f29] text-slate-900 dark:text-white text-2xl sm:text-3xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
             >
-              👤 වෙනත් ගිණුමක්
+              0
             </button>
-
             <button
               type="button"
-              disabled={isVerifying}
-              onClick={onNavigateToIssues}
-              className="text-amber-600 dark:text-amber-400 hover:text-amber-700 font-semibold hover:underline cursor-pointer transition-colors"
+              disabled={isSaving || isSuccess}
+              onClick={handleBackspace}
+              className="h-14 sm:h-16 rounded-2xl bg-slate-50 dark:bg-[#0e2115] hover:bg-rose-100 dark:hover:bg-rose-950/60 active:bg-rose-600 active:text-white border-2 border-slate-200 dark:border-[#1a3f29] text-rose-600 dark:text-rose-400 text-xl font-black flex items-center justify-center active:scale-90 transition-all cursor-pointer disabled:opacity-40 shadow-sm touch-manipulation select-none"
+              title="මකන්න (Delete)"
             >
-              PIN අංකය අමතකද?
+              ⌫
             </button>
           </div>
 
-          {/* 📲 Download & Install App Direct Button */}
-          <button
-            type="button"
-            onClick={async () => {
-              const res = await triggerNativeInstallPrompt();
-              if (res.outcome !== 'accepted') {
-                setIsPWAInstallOpen(true);
-              }
-            }}
-            className="w-full mt-2 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-900/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all animate-pulse"
-          >
-            <Download className="w-4 h-4 text-amber-300" />
-            <span>📲 {language === 'en' ? 'Download Sahaya App' : 'සහය සේවා App එක Phone එකට Download කරගන්න'}</span>
-          </button>
+
+          {/* Footer Controls */}
+          <div className="w-full pt-2 border-t border-slate-100 dark:border-[#142e1f] flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-bold transition-colors cursor-pointer py-1 px-2"
+            >
+              {isChangeMode ? 'අවලංගු කරන්න' : 'පසුව සකසන්න (Skip)'}
+            </button>
+
+
+            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+              🔒 මෙම Device එකට පමණි
+            </span>
+          </div>
         </div>
       </div>
-
-      {/* PWA Install Modal */}
-      {isPWAInstallOpen && (
-        <PWAInstallModal
-          isOpen={isPWAInstallOpen}
-          onClose={() => setIsPWAInstallOpen(false)}
-          language={language}
-        />
-      )}
     </div>
   );
 };
-
