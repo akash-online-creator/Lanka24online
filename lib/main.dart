@@ -18,11 +18,16 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 // ==============================================================
 class LocalAssetServer {
   HttpServer? _server;
-  int get port => _server?.port ?? 0;
+  int get port => _server?.port ?? 8089;
 
   Future<int> start() async {
     try {
-      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      const int fixedPort = 8089;
+      try {
+        _server = await HttpServer.bind(InternetAddress.loopbackIPv4, fixedPort, shared: true);
+      } catch (e) {
+        _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      }
       _server!.listen((HttpRequest request) async {
         try {
           String path = request.uri.path;
@@ -318,3 +323,4 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     );
   }
 }
+
