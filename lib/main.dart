@@ -18,16 +18,11 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 // ==============================================================
 class LocalAssetServer {
   HttpServer? _server;
-  int get port => _server?.port ?? 8089;
+  int get port => _server?.port ?? 0;
 
   Future<int> start() async {
     try {
-      const int fixedPort = 8089;
-      try {
-        _server = await HttpServer.bind(InternetAddress.loopbackIPv4, fixedPort, shared: true);
-      } catch (e) {
-        _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      }
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       _server!.listen((HttpRequest request) async {
         try {
           String path = request.uri.path;
@@ -169,8 +164,28 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initEmergencySirenChannel();
+    _start24x7BackgroundAlertService();
     _setupWebView();
     _startServerAndLoad();
+  }
+
+  // 24/7 Background Emergency Radar & Battery Optimization Exemption
+  Future<void> _start24x7BackgroundAlertService() async {
+    try {
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+      if (!await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.startService(
+          serviceId: 256,
+          notificationTitle: 'සහාය සේවා - 24/7 ආපදා සේවාව ක්‍රියාත්මකයි 🛡️',
+          notificationText: 'ආපදා හා අනතුරු ඇඟවීම් නිරීක්ෂණය කරමින් පසුබිමෙන් ක්‍රියාත්මක වේ.',
+          callback: startSosCallback,
+        );
+      }
+    } catch (e) {
+      debugPrint('Background service setup notice: ');
+    }
   }
 
   @override
