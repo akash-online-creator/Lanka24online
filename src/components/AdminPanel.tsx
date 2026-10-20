@@ -28,7 +28,8 @@ import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
 import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Sliders, QrCode, UserCheck } from 'lucide-react';
+import { subscribeToSystemSettings, updateSystemSettings, getCachedSettings, SystemSettings } from '../utils/systemSettingsManager';
 import { 
   Users, 
   CheckCircle2, 
@@ -89,8 +90,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const users = useMemo(() => deduplicateUsers(rawUsers), [rawUsers]);
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge'
+    'users' | 'posts' | 'credits' | 'emergency' | 'red_alerts' | 'issues' | 'dictionary' | 'trust' | 'presence' | 'password_resets' | 'ai_knowledge' | 'system_controls'
   >('users');
+
+  // 🎛️ Live System Feature Settings (QR Pay & Demo Login Toggles)
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => getCachedSettings());
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeToSystemSettings((s) => {
+      setSystemSettings(s);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleToggleSystemSetting = async (key: keyof SystemSettings, val: boolean) => {
+    setIsUpdatingSettings(true);
+    try {
+      await updateSystemSettings({ [key]: val }, currentUser?.id);
+      showNotification('✅ පද්ධති සැකසුම සාර්ථකව යාවත්කාලීන විය.');
+    } catch (e) {
+      showNotification('⚠️ සැකසුම යාවත්කාලීන කිරීමේදී දෝෂයක් ඇතිවිය.');
+    } finally {
+      setIsUpdatingSettings(false);
+    }
+  };
 
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
@@ -382,6 +406,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'presence', label: 'සජීවී සක්‍රීයතාව', icon: Activity },
           { id: 'password_resets', label: 'මුරපද ඉල්ලීම්', icon: KeyRound },
           { id: 'ai_knowledge', label: 'AI දැනුම් කේන්ද්‍රය', icon: Sparkles },
+          { id: 'system_controls', label: 'පද්ධති පාලන (Controls)', icon: Sliders },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -803,6 +828,111 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
+      {/* 🎛️ System Feature Controls (QR Pay & Demo Login Toggles) */}
+      {activeTab === 'system_controls' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border-2 border-slate-800 text-white shadow-xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400">
+                <Sliders className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-base sm:text-lg text-white">ප්‍රධාන පද්ධති පාලන මධ්‍යස්ථානය (System Feature Controls)</h3>
+                <p className="text-xs text-slate-400">
+                  පරිශීලකයින්ට දිස්වන විශේෂාංග සක්‍රීය හෝ අක්‍රීය කිරීම පරිපාලකවරයාට මෙතැනින් පාලනය කළ හැක.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              {/* 1. QR Pay Toggle Control */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                        <QrCode className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-black text-sm text-white">QR Pay ගෙවීම් පද්ධතිය</h4>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      systemSettings.enableQrPay
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    }`}>
+                      {systemSettings.enableQrPay ? 'සක්‍රීයයි (Active)' : 'අක්‍රීයයි (Hidden)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    පරිශීලකයින් අතර QR කේත මඟින් මුදල්/ක්‍රෙඩිට් හුවමාරු කිරීමේ පහසුකම පාලනය කරන්න. මෙය අක්‍රීය කළ විට සාමාන්‍ය පරිශීලකයින්ගෙන් QR Pay සම්පූර්ණයෙන්ම සැඟවී යයි.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">
+                    තත්ත්වය: {systemSettings.enableQrPay ? 'සක්‍රීයයි (Visible)' : 'සඟවා ඇත (Hidden)'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isUpdatingSettings}
+                    onClick={() => handleToggleSystemSetting('enableQrPay', !systemSettings.enableQrPay)}
+                    className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                      systemSettings.enableQrPay
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                    }`}
+                  >
+                    {systemSettings.enableQrPay ? '🔴 QR Pay අක්‍රීය කරන්න (Turn OFF)' : '🟢 QR Pay සක්‍රීය කරන්න (Turn ON)'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. User Demo Login Toggle Control */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-black text-sm text-white">නරඹන්නා පිවිසුම (User Demo Mode)</h4>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      systemSettings.enableDemoLogin
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    }`}>
+                      {systemSettings.enableDemoLogin ? 'සක්‍රීයයි (Active)' : 'අක්‍රීයයි (Disabled)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    මුරපද රහිතව Demo පරිශීලකයෙකු ලෙස ඕනෑම අයෙකුට ඇතුල්වීමේ පහසුකම පාලනය කරන්න. මෙය අක්‍රීය කළ විට Login තිරයෙන් Demo බොත්තම ඉවත් වන අතර ලියාපදිංචි පරිශීලකයින්ට පමණක් Login විය හැක.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">
+                    තත්ත්වය: {systemSettings.enableDemoLogin ? 'Demo විවෘතයි' : 'ලියාපදිංචි අයට පමණයි'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isUpdatingSettings}
+                    onClick={() => handleToggleSystemSetting('enableDemoLogin', !systemSettings.enableDemoLogin)}
+                    className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                      systemSettings.enableDemoLogin
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                    }`}
+                  >
+                    {systemSettings.enableDemoLogin ? '🔴 Demo අක්‍රීය කරන්න (Turn OFF)' : '🟢 Demo සක්‍රීය කරන්න (Turn ON)'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Member Inspection Modal */}
       {inspectingUser && (
         <AdminUserInspectionModal
@@ -837,3 +967,4 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 };
 
 export default AdminPanel;
+
