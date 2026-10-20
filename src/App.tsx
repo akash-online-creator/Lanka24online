@@ -29,6 +29,7 @@ import {
 } from './lib/firebase';
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
+import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 
@@ -403,6 +404,11 @@ export const App: React.FC = () => {
 
   // Demo User Direct Login (🚀 PIN අංකයක් අවශ්‍ය නැත)
   const handleUserDemoLogin = useCallback(() => {
+    const settings = getCachedSettings();
+    if (settings && settings.enableDemoLogin === false) {
+      alert('පරිපාලක (Admin) විසින් Demo පිවිසුම අක්‍රීය කර ඇත. කරුණාකර ලියාපදිංචි වී පිවිසෙන්න.');
+      return;
+    }
     const baseDemo = users.find((u) => u.id === 'demo_user') || {
       id: 'demo_user',
       userId: 'demo_user',
