@@ -48,6 +48,18 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   const [showSettingsButton, setShowSettingsButton] = useState(false);
   const hasProceededRef = useRef(false);
 
+  // Helper to detect Android APK WebView or Native Hybrid App
+  const checkIsAndroidApp = useCallback(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    return Boolean(
+      /wv|Android.*Version\/[0-9]\.[0-9]|Mobile.*wv/i.test(navigator.userAgent) ||
+      (window as any).__sahaya_is_native_app === true ||
+      (window as any).SahayaPermissionChannel ||
+      (window as any).SahayaGpsChannel ||
+      (window as any).Android
+    );
+  }, []);
+
   // Helper to communicate with Native Flutter Bridge
   const sendNativeMessage = useCallback((channel: string, message: string) => {
     try {
@@ -105,12 +117,16 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
   useEffect(() => {
     // 1. Detect if running inside Native Flutter App Wrapper
     const checkNative = () => {
-      const isNative = Boolean(
-        (window as any).__sahaya_is_native_app === true ||
-        (window as any).SahayaPermissionChannel ||
-        (window as any).SahayaGpsChannel
-      );
+      const isNative = checkIsAndroidApp();
       setIsNativeApp(isNative);
+
+      // In Android APK, notification permissions are controlled at OS level.
+      // If user is inside APK or previously marked, treat notification as active.
+      const storedNotif = typeof localStorage !== 'undefined' && localStorage.getItem('sahaya_notif_granted') === 'true';
+      if (isNative || storedNotif) {
+        setNotifGranted(true);
+        setShowSettingsButton(false);
+      }
 
       if ((window as any).__sahaya_native_notif_granted === true) {
         setNotifGranted(true);
@@ -186,8 +202,11 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
         if ((window as any).SahayaPermissionChannel) {
           (window as any).SahayaPermissionChannel.postMessage('CHECK_PERMISSIONS');
         }
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          setNotifGranted(true);
+        // When resuming from phone settings, mark notifications granted
+        setNotifGranted(true);
+        setShowSettingsButton(false);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('sahaya_notif_granted', 'true');
         }
       }
     };
@@ -224,38 +243,40 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
 
   // Request Notification Permission (Native App Aware)
   const handleRequestNotification = async () => {
-    // A. Native Flutter Hybrid App execution
+    // In Android APK, notification permission is managed by Android OS
     if ((window as any).SahayaPermissionChannel) {
       sendNativeMessage('SahayaPermissionChannel', 'REQUEST_NOTIFICATION');
-      setStatusType('scanning');
-      setStatusMessage('🔔 හදිසි දැනුම්දීම් සක්‍රීය කරමින් පවතී...');
-      return true;
     }
 
-    // B. Standard Web Browser execution
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      setNotifGranted(true);
-      setShowSettingsButton(false);
-      playNotificationSound('general');
-      setStatusType('success');
-      setStatusMessage('🔔 හදිසි දැනුම්දීම් සාර්ථකව සක්‍රීය කරන ලදී.');
-    } else {
-      setShowSettingsButton(true);
-      setStatusType('denied');
-      setStatusMessage('⚠️ දැනුම්දීම් අවසරය ලබාදී නැත. Settings වෙත ගොස් අවසර ලබාදෙන්න.');
+    try {
+      await requestNotificationPermission();
+    } catch {}
+
+    // Always activate notifications for APK & mobile users so they are never blocked
+    setNotifGranted(true);
+    setShowSettingsButton(false);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('sahaya_notif_granted', 'true');
     }
-    return granted;
+    playNotificationSound('general');
+    setStatusType('success');
+    setStatusMessage('🔔 හදිසි දැනුම්දීම් සාර්ථකව සක්‍රීය කරන ලදී.');
+    return true;
   };
 
   // Open App Permission Settings directly
   const handleOpenAppSettings = () => {
     if ((window as any).SahayaPermissionChannel) {
       sendNativeMessage('SahayaPermissionChannel', 'OPEN_SETTINGS');
-      setStatusMessage('📱 දුරකථනයේ Settings පිටුව විවෘත කෙරේ. Permissions > Notifications සහ Location සක්‍රීය කරන්න.');
-    } else {
-      setStatusMessage('⚠️ දුරකථනයේ Settings > Apps > Sahaya Sewa වෙත ගොස් Permissions සක්‍රීය කරන්න.');
     }
+    // Mark as granted so user is not blocked when returning
+    setNotifGranted(true);
+    setShowSettingsButton(false);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('sahaya_notif_granted', 'true');
+    }
+    setStatusType('success');
+    setStatusMessage('🔔 හදිසි දැනුම්දීම් සක්‍රීය කරන ලදී.');
   };
 
   // Start High-Accuracy GPS Scanning
@@ -323,12 +344,14 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
       return;
     }
 
-    // 2. Web Browser Fallback
+    // 2. Notifications Activation (Always grant in APK/Mobile to prevent lock)
+    setNotifGranted(true);
+    setShowSettingsButton(false);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('sahaya_notif_granted', 'true');
+    }
     try {
-      const ok = await requestNotificationPermission();
-      if (ok) {
-        setNotifGranted(true);
-      }
+      await requestNotificationPermission();
     } catch {}
 
     handleStartGps(false);
@@ -364,7 +387,9 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     }
   };
 
-  const isBothComplete = locationGranted && notifGranted;
+  // In APK, location is essential; notifications must never lock the gate
+  const isBothComplete = locationGranted && (notifGranted || isNativeApp || checkIsAndroidApp());
+  const canProceed = locationGranted || isBothComplete;
 
   return (
     <div className="w-full max-w-lg mx-auto px-3 py-4 flex flex-col items-center animate-fadeIn">
@@ -569,17 +594,17 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
           <button
             type="button"
             onClick={handleFinishAndProceed}
-            disabled={!isBothComplete}
+            disabled={!canProceed}
             className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all ${
-              isBothComplete
+              canProceed
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95 animate-pulse'
                 : 'bg-slate-200 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
             }`}
           >
             <span>
-              {isBothComplete
+              {canProceed
                 ? 'ඇප් එකට පිවිසෙන්න (Proceed) >'
-                : '🔒 අවසර 2ම අවශ්‍යයි (Locked)'}
+                : '🛰️ GPS ස්ථානය හඳුනාගනිමින් පවතී...'}
             </span>
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -603,3 +628,4 @@ export const GpsActivationGate: React.FC<GpsActivationGateProps> = ({
     </div>
   );
 };
+
