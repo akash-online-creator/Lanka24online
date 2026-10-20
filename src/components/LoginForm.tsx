@@ -28,6 +28,7 @@ import { MarketShop } from '../types';
 import { initialTags } from '../data/initialData';
 import { getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
 import { PasswordResetRequestModal } from './PasswordResetRequestModal';
+import { subscribeToSystemSettings, getCachedSettings, SystemSettings } from '../utils/systemSettingsManager';
 
 interface LoginFormProps {
   onLogin: (userId: string, key: string) => Promise<void> | void;
@@ -68,6 +69,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
   const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'shop' | 'business'>('shop');
   const [isResetRequestModalOpen, setIsResetRequestModalOpen] = useState(false);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => getCachedSettings());
+
+  useEffect(() => {
+    const unsub = subscribeToSystemSettings((s) => setSystemSettings(s));
+    return () => unsub();
+  }, []);
 
   const handleSaveMarketShop = (newShop: MarketShop) => {
     const currentShops = getStoredMarketShops();
@@ -159,6 +166,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       return;
     }
 
+    if ((userId.trim().toLowerCase() === 'demo_user' || userId.trim().toLowerCase() === 'demo') && !systemSettings.enableDemoLogin) {
+      setError('පරිපාලක (Admin) විසින් Demo පිවිසුම අක්‍රීය කර ඇත. කරුණාකර ලියාපදිංචි වී පිවිසෙන්න.');
+      return;
+    }
     setIsLoading(true);
     try {
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -403,7 +414,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </button>
         </form>
 
-        {showDemoUserLogin && (
+        {showDemoUserLogin && systemSettings.enableDemoLogin && (
           <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-[#173222]">
             <button
               type="button"
@@ -528,3 +539,4 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     </div>
   );
 };
+
