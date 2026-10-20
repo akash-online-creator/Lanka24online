@@ -165,8 +165,31 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     WidgetsBinding.instance.addObserver(this);
     _initEmergencySirenChannel();
     _start24x7BackgroundAlertService();
+    _requestAllInitialPermissions();
     _setupWebView();
     _startServerAndLoad();
+  }
+
+  // 1. App Launch Initial Permissions Auto-Request
+  Future<void> _requestAllInitialPermissions() async {
+    try {
+      // Notification Permission (Android 13+)
+      if (await Permission.notification.isDenied) {
+        await Permission.notification.request();
+      }
+
+      // Location Permission (GPS)
+      if (await Permission.location.isDenied) {
+        await Permission.location.request();
+      }
+
+      // Battery Optimization Exemption
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+    } catch (e) {
+      debugPrint('Initial permissions auto-request notice: $e');
+    }
   }
 
   // 24/7 Background Emergency Radar & Battery Optimization Exemption
