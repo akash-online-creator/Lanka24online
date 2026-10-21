@@ -148,8 +148,14 @@ export const RedAlertLiveManager: React.FC<Props> = ({
   useEffect(() => {
     let pushListenerHandle: any = null;
 
-    const getUserCoordinates = (): { lat: number; lng: number } => {
+    const getUserCoordinates = (): { lat: number; lng: number; isFallback?: boolean } => {
       try {
+        // A. Real-time Native GPS injected from Flutter
+        const nativeLoc = (window as any).sahayaNativeLocation;
+        if (nativeLoc && typeof nativeLoc.lat === 'number' && typeof nativeLoc.lng === 'number') {
+          return { lat: nativeLoc.lat, lng: nativeLoc.lng };
+        }
+        // B. LocalStorage saved location
         const savedLoc = localStorage.getItem('sahaya_current_location');
         if (savedLoc) {
           const parsed = JSON.parse(savedLoc);
@@ -158,7 +164,8 @@ export const RedAlertLiveManager: React.FC<Props> = ({
           }
         }
       } catch {}
-      return { lat: 6.9271, lng: 79.8612 };
+      // C. Smart Sri Lanka Center/Katunayake Coordinates fallback
+      return { lat: 7.151, lng: 79.885, isFallback: true };
     };
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
@@ -199,11 +206,29 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
         const isReporter = currentActive.reportedByUserId === currentUserId;
 
+        // Location match check (same city/town or within 15km)
+        const userLocName = (localStorage.getItem('sahaya_current_location') || '').toLowerCase();
+        const alertLocName = (currentActive.locationName || '').toLowerCase();
+        const isSameArea = userLocName && alertLocName && (userLocName.includes(alertLocName) || alertLocName.includes(userLocName));
+        const isWithin15Km = distanceKm <= 15.0 || isSameArea || userCoords.isFallback;
+
         // මෙම ඩිවයිස් එකේ dismiss කර නැත්නම් පමණක් siren නාද කර බැනරය පෙන්වන්න
-        if ((distanceKm <= 15 || isReporter) && !isDismissedStored) {
+        if ((isWithin15Km || isReporter) && !isDismissedStored) {
+          // A. Trigger Local Web Siren Audio
           startEmergencySiren();
           setIsSirenActive(true);
           triggerPopup(`🚨 රතු නිවේදනය: ${currentActive.disasterTitleSi || 'ආපදා අනතුරු ඇඟවීමක්'} ක්‍රියාත්මකයි!`);
+
+          // B. 📱 Trigger Native Android / Flutter Wake-Up & Fullscreen Siren Alert
+          if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+            try {
+              (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + JSON.stringify({
+                title: currentActive.disasterTitleSi || 'ආපදා අනතුරු ඇඟවීමක්',
+                location: currentActive.locationName || '',
+                distanceKm: distanceKm.toFixed(1)
+              }));
+            } catch (_) {}
+          }
         } else if (!isDismissedStored) {
           triggerBrowserNotification({
             id: `alert-new-${currentActive.id || Date.now()}`,
@@ -416,3 +441,4 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     </div>
   );
 };
+
