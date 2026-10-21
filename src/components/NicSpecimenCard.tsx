@@ -38,7 +38,7 @@ export const NicSpecimenCard: React.FC<NicSpecimenCardProps> = ({ customImage, c
                   {/* Outer Aureole */}
                   <circle cx="50" cy="50" r="42" fill="#d97706" stroke="#78350f" strokeWidth="3" />
                   <circle cx="50" cy="50" r="37" fill="#fef3c7" stroke="#b45309" strokeWidth="2" strokeDasharray="3 2" />
-                  <circle cx="50" cy="50" r="28" fill="#854d0e" />
+                  <circle cx="50" cy="28" fill="#854d0e" />
                   
                   {/* Golden Lion with Sword */}
                   <path d="M42 45 Q50 35 58 45 Q58 55 50 58 Q42 55 42 45 Z" fill="#fbbf24" />
@@ -65,14 +65,17 @@ export const NicSpecimenCard: React.FC<NicSpecimenCardProps> = ({ customImage, c
             </div>
           </div>
 
-          {/* Citizen Name Field (Specimen) */}
-          <div className="w-full text-center py-0.5 mb-1">
-            <span className="text-[10px] sm:text-[11px] font-bold text-slate-800 font-sinhala">
-              ඩබ්. එම්. අසංක කරුණාරත්න
+          {/* 1. Prominent NIC Number (හැඳුනුම්පත් අංකය) - Specimen */}
+          <div className="w-full flex items-center justify-between px-2.5 py-1 mb-1.5 bg-amber-50/90 border border-amber-300/80 rounded-lg">
+            <span className="text-[9px] sm:text-[10px] font-black text-slate-700 font-sinhala">
+              හැඳුනුම්පත් අංකය:
+            </span>
+            <span className="text-[11px] sm:text-xs font-black text-slate-950 font-mono tracking-wider">
+              199012345678 / 901234567V
             </span>
           </div>
 
-          {/* Central Portrait Photo with Golden Decorative Border */}
+          {/* 2. Central Portrait Photo with Golden Decorative Border */}
           <div className="my-1 flex justify-center">
             <div className="p-1 rounded bg-gradient-to-b from-amber-400 via-amber-200 to-amber-500 border-2 border-amber-600 shadow-md">
               <div className="w-24 h-32 sm:w-28 sm:h-36 bg-slate-200 overflow-hidden relative flex flex-col items-center justify-center border border-amber-800/40">
@@ -87,8 +90,8 @@ export const NicSpecimenCard: React.FC<NicSpecimenCardProps> = ({ customImage, c
                     {/* Silhouette Specimen Avatar */}
                     <div className="w-12 h-12 rounded-full bg-slate-400/80 mb-1 border-2 border-slate-300 shadow-inner" />
                     <div className="w-18 h-10 rounded-t-full bg-slate-500/80 shadow-inner" />
-                    <span className="absolute bottom-1 bg-amber-500/90 text-slate-950 font-black text-[8px] px-1.5 py-0.5 rounded uppercase tracking-wider shadow-xs">
-                      ආදර්ශය
+                    <span className="absolute bottom-1 bg-amber-500/95 text-slate-950 font-black text-[8px] px-1.5 py-0.5 rounded uppercase tracking-wider shadow-xs">
+                      හැඳුනුම්පත් ඡායාරූපය
                     </span>
                   </div>
                 )}
@@ -149,3 +152,4 @@ export const NicSpecimenCard: React.FC<NicSpecimenCardProps> = ({ customImage, c
     </div>
   );
 };
+
