@@ -33,9 +33,10 @@ const getSystemTermsAndConditions = async (): Promise<string> =>
   '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
 
 interface RegisterFormProps {
-  onRegisterSuccess: (newUser: User) => void;
+  onRegister?: (newUser: User) => void;
+  onRegisterSuccess?: (newUser: User) => void;
   onNavigateToLogin: () => void;
-  onNavigateToIssues: () => void;
+  onNavigateToIssues?: () => void;
   language: Language;
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
@@ -43,6 +44,7 @@ interface RegisterFormProps {
 }
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({
+  onRegister,
   onRegisterSuccess,
   onNavigateToLogin,
   onNavigateToIssues,
@@ -278,7 +280,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         facePhotoUrl: '',
       };
 
-      onRegisterSuccess(newUser);
+      const registerCallback = onRegister || onRegisterSuccess;
+      if (typeof registerCallback === 'function') {
+        registerCallback(newUser);
+      } else {
+        console.warn('Neither onRegister nor onRegisterSuccess was provided');
+      }
     } catch (err: any) {
       console.error('Registration processing error:', err);
       setErrorMessage(err.message || 'ලියාපදිංචි කිරීමේදී දෝෂයක් සිදුවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
@@ -858,7 +865,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             <div className="pt-1">
               <button
                 type="button"
-                onClick={onNavigateToIssues}
+                onClick={() => {
+                  if (typeof onNavigateToIssues === 'function') {
+                    onNavigateToIssues();
+                  } else {
+                    onNavigateToLogin();
+                  }
+                }}
                 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-emerald-800 cursor-pointer"
               >
                 <HelpCircle className="w-3.5 h-3.5" />
