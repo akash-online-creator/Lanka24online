@@ -66,7 +66,6 @@ export function getStoredDevicePin(): StoredDevicePinData | null {
     const data = localStorage.getItem(DEVICE_PIN_KEY);
     if (!data) return null;
     const parsed: StoredDevicePinData = JSON.parse(data);
-    const currentDeviceId = getOrCreateDeviceId();
     if (!parsed || !parsed.pinHash || !parsed.userId) {
       return null;
     }
@@ -206,16 +205,8 @@ export async function verifyDevicePin(
 
   const currentDeviceId = getOrCreateDeviceId();
 
-  // 3. ⚠️ වෙනත් දුරකථනයකින් Login වී ඇත්නම්, මෙම ඩිවයිස් එකේ PIN එක ඉවත් කර NIC/මුරපදය ඉල්ලීම
-  if (user.activeDeviceId && user.activeDeviceId !== currentDeviceId) {
-    clearDevicePin();
-    return {
-      success: false,
-      reason: 'device_mismatch',
-      message:
-        '⚠️ ඔබගේ ගිණුමට වෙනත් Device එකකින් Login වී ඇති බැවින් මෙම Device එකෙහි PIN අංකය ඉවත් විය. කරුණාකර ඔබගේ හැඳුනුම්පත් අංකය හා මුරපදය මඟින් නැවත ඇතුල් වන්න.',
-    };
-  }
+  // 3. 📱 Multi-Device Support: දුරකථන දෙකක හෝ වැඩි ගණනක එකම ගිණුම PIN මඟින් භාවිත කළ හැක
+  // වෙනත් ඩිවයිස් එකකින් ලොග් වූ පමණින් මෙම ඩිවයිස් එකේ PIN එක මකා නොදමයි.
 
   // 4. මෙම Device එකෙහිම වලංගු PIN එකක් නම් Login වීමට ඉඩ දීම
   if (stored.deviceId === currentDeviceId) {
