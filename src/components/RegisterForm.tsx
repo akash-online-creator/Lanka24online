@@ -27,6 +27,7 @@ import {
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { FontSizeController } from './FontSizeController';
+import { NicSpecimenCard } from './NicSpecimenCard';
 // ✅ නිවැරදි කළ කේතය (පේළිය 30):
 const getSystemTermsAndConditions = async (): Promise<string> => 
   '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
@@ -175,11 +176,15 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       try {
+        setIsProcessingPhoto(true);
+        setErrorMessage(null);
         const processed = await processImageFile(file);
         setter(processed);
       } catch (err) {
         console.error('Error processing photo:', err);
         setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් සිදුවිය. කරුණාකර වෙනත් ඡායාරූපයක් තෝරන්න.');
+      } finally {
+        setIsProcessingPhoto(false);
       }
     }
   };
@@ -658,7 +663,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     9. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
                   </label>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    හැඳුනුම්පත් අංකය සහ ඔබගේ ඡායාරූපය පැහැදිලිව පෙනෙන පරිදි ඉදිරිපස පමණක් උඩුගත කරන්න.
+                    හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඔබගේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඉදිරිපස ඡායාරූපය උඩුගත කරන්න.
                   </p>
                 </div>
                 <button
@@ -671,10 +676,37 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </button>
               </div>
 
-              {/* Upload Drop Zone / Button with Native Overlay Input */}
-              <div className="relative w-full min-h-[170px] sm:min-h-[200px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/30 via-white to-emerald-50/30 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/20 flex flex-col items-center justify-center p-3 shadow-inner transition-all">
-                {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
-                  <div className="relative w-full h-full max-h-56 flex items-center justify-center z-10">
+              {/* Hidden Native File Inputs */}
+              {/* 1. Standard Chooser (Gallery / Camera / Files) */}
+              <input
+                ref={nicFileInputRef}
+                id="nic-front-file-input"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  handlePhotoUpload(e, setNicFrontPhoto);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+              {/* 2. Direct Camera Trigger */}
+              <input
+                ref={nicCameraInputRef}
+                id="nic-camera-file-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  handlePhotoUpload(e, setNicFrontPhoto);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+
+              {/* Upload Drop Zone / Button */}
+              {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
+                <div className="relative w-full rounded-2xl overflow-hidden bg-slate-50 border-2 border-emerald-400 p-4 flex flex-col items-center justify-center gap-3 shadow-inner">
+                  <div className="relative max-h-56 max-w-full flex items-center justify-center">
                     <img
                       src={nicFrontPhoto}
                       alt="NIC Front"
@@ -686,9 +718,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                         e.stopPropagation();
                         e.preventDefault();
                         setNicFrontPhoto('');
-                        if (nicFileInputRef.current) {
-                          nicFileInputRef.current.value = '';
-                        }
+                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
+                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
                       }}
                       className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-2 shadow-lg transition-colors cursor-pointer z-30"
                       title="ඡායාරූපය ඉවත් කරන්න"
@@ -696,37 +727,82 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                ) : (
-                  <>
-                    {/* Native invisible file input spanning entire card */}
-                    <input
-                      ref={nicFileInputRef}
-                      id="nic-front-file-input"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoUpload(e, setNicFrontPhoto)}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                      title="ජාතික හැඳුනුම්පත් ඡායාරූපය තෝරන්න"
-                    />
-                    <div className="flex flex-col items-center justify-center gap-2 py-4 text-center pointer-events-none z-10">
-                      <div className="p-3 bg-emerald-100 text-emerald-800 rounded-full shadow-sm">
-                        <Upload className="w-7 h-7 animate-bounce" />
+                  <div className="flex flex-wrap items-center justify-center gap-2 w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={() => nicFileInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-600" />
+                      <span>වෙනත් ඡායාරූපයක් තෝරන්න</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNicFrontPhoto('');
+                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
+                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <X className="w-3.5 h-3.5 text-rose-600" />
+                      <span>ඡායාරූපය ඉවත් කරන්න</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => nicFileInputRef.current?.click()}
+                  className="relative w-full min-h-[180px] sm:min-h-[210px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/30 flex flex-col items-center justify-center p-4 sm:p-5 shadow-inner transition-all cursor-pointer group"
+                >
+                  {isProcessingPhoto ? (
+                    <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+                      <Loader2 className="w-9 h-9 text-emerald-600 animate-spin" />
+                      <span className="text-xs font-bold text-emerald-950">
+                        ඡායාරූපය සැකසෙමින් පවතී...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-2.5 text-center w-full">
+                      <div className="p-3 bg-emerald-100 text-emerald-800 rounded-full shadow-sm group-hover:scale-105 transition-transform">
+                        <Upload className="w-7 h-7 text-emerald-700 animate-bounce" />
                       </div>
                       <span className="text-sm font-black text-emerald-950 tracking-tight">
                         ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනින් එක් කරන්න (අනිවාර්යයි *)
                       </span>
-                      <span className="text-xs text-slate-500 max-w-xs font-medium">
-                        කැමරාවෙන් ඡායාරූපයක් ගැනීමට හෝ ගැලරියෙන් තෝරාගැනීමට මෙතැන ස්පර්ශ (Tap) කරන්න (JPG, PNG)
+                      <span className="text-xs text-slate-500 max-w-sm font-medium leading-relaxed">
+                        හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඡායාරූපය ලබාගන්න.
                       </span>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold shadow-sm mt-1">
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>කැමරාව / ගැලරිය විවෘත කරන්න</span>
+
+                      {/* Explicit Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2 w-full">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nicCameraInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-md hover:shadow transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4" />
+                          <span>කැමරාවෙන් ඡායාරූපයක් ගන්න</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nicFileInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-emerald-900 border-2 border-emerald-300 hover:border-emerald-500 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4 text-emerald-700" />
+                          <span>ගැලරියෙන් / Files තෝරන්න</span>
+                        </button>
                       </div>
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -794,9 +870,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       {/* 1. Modal: NIC Guide Sample Photo */}
       {showNicGuideModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-black text-emerald-950">ආදර්ශ ජාතික හැඳුනුම්පත</h4>
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h4 className="text-sm font-black text-emerald-950">ආදර්ශ ජාතික හැඳුනුම්පත (Specimen)</h4>
               <button
                 type="button"
                 onClick={() => setShowNicGuideModal(false)}
@@ -805,15 +881,22 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
-              <CreditCard className="w-12 h-12 text-emerald-600 mx-auto" />
-              <div className="text-xs font-extrabold text-emerald-950">
-                හැඳුනුම්පතේ ඉදිරිපස පමණක් උඩුගත කරන්න
+
+            {/* Specimen Replica Component */}
+            <div className="py-1">
+              <NicSpecimenCard compact={true} />
+            </div>
+
+            <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-1">
+              <div className="text-xs font-black text-emerald-950 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 inline shrink-0" />
+                <span>හැඳුනුම්පතේ ඉදිරිපස පමණක් උඩුගත කරන්න</span>
               </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                හැඳුනුම්පත් අංකය, ඔබගේ ඡායාරූපය සහ නම පැහැදිලිව කියවිය හැකි වන සේ ආලෝකය ඇති ස්ථානයක තබා ඡායාරූපය ලබාගන්න.
+              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි හොඳින් ආලෝකය ඇති ස්ථානයක තබා ඡායාරූපය ලබාගන්න.
               </p>
             </div>
+
             <button
               type="button"
               onClick={() => setShowNicGuideModal(false)}
@@ -899,3 +982,4 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 };
 
 export default RegisterForm;
+
