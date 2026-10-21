@@ -205,14 +205,16 @@ jobs:
       - name: Stage APK Files & Generate Version Manifest
         run: |
           mkdir -p public/apk
+          cp build/app/outputs/flutter-apk/app-release.apk "public/apk/සහය සේවා.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "public/apk/SahayaSewa.apk"
           cp build/app/outputs/flutter-apk/app-release.apk public/apk/sahayasewa-latest.apk
           cp build/app/outputs/flutter-apk/app-release.apk public/apk/app-release.apk
           cat << 'EOF' > public/apk/version.json
           {
             "versionCode": 2,
             "versionName": "1.1",
-            "appName": "Sahaya Sewa",
-            "downloadPath": "/apk/sahayasewa-latest.apk"
+            "appName": ".සහය සේවා",
+            "downloadPath": "/apk/SahayaSewa.apk"
           }
           EOF
 
@@ -227,6 +229,8 @@ jobs:
           prerelease: false
           make_latest: true
           files: |
+            public/apk/සහය සේවා.apk
+            public/apk/SahayaSewa.apk
             public/apk/sahayasewa-latest.apk
             public/apk/app-release.apk
             public/apk/version.json
