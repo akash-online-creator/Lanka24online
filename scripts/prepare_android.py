@@ -50,9 +50,25 @@ if os.path.exists(manifest_path):
     if "com.pravera.flutter_foreground_task.service.ForegroundService" not in content:
         content = content.replace("</application>", service_declaration + "\n    </application>")
 
+    
+    # App installed display name -> .සහය සේවා
+    import re
+    content = re.sub(r'android:label="[^"]*"', 'android:label=".සහය සේවා"', content)
+
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(content)
     print("Updated AndroidManifest.xml with clean permissions, FGS location service & audio settings.")
+
+# 1.1 Update strings.xml for App Display Name
+strings_dir = android/app/src/main/res/values
+os.makedirs(strings_dir, exist_ok=True)
+with open(os.path.join(strings_dir, strings.xml), w, encoding=utf-8) as f:
+    f.write('<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">.සහය සේවා</string>
+</resources>
+')
+
 # 2. Update android/app/build.gradle
 gradle_path = "android/app/build.gradle"
 if os.path.exists(gradle_path):
