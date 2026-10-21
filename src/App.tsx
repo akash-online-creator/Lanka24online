@@ -437,8 +437,26 @@ export const App: React.FC = () => {
     setActiveView('dashboard');
   }, [users]);
 
-  // Registration Handler
+  // Registration Handler with Strict Duplicate NIC Prevention
   const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'createdAt' | 'status'>) => {
+    // 🛡️ Strict Duplicate NIC Security Guard
+    const targetNic = (newUser.nicNumber || newUser.userId || '').trim().toUpperCase();
+    const existing = users.find((u) => {
+      const uNic = (u.nicNumber || u.userId || u.nic || '').trim().toUpperCase();
+      if (!uNic || !targetNic) return false;
+      if (uNic === targetNic) return true;
+      const uDigits = uNic.replace(/[^0-9]/g, '');
+      const tDigits = targetNic.replace(/[^0-9]/g, '');
+      if (uDigits.length >= 9 && tDigits.length >= 9 && uDigits === tDigits) return true;
+      return false;
+    });
+
+    if (existing) {
+      alert('ආරක්ෂක නිවේදනයයි: මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එක් පුද්ගලයෙකුට සහ එක් හැඳුනුම්පතකට නිර්මාණය කළ හැක්කේ එක් ගිණුමක් පමණි.');
+      setActiveView('login');
+      return;
+    }
+
     const created: User = {
       ...newUser,
       id: `usr_${Date.now()}`,
@@ -456,7 +474,7 @@ export const App: React.FC = () => {
     } catch (e) {
       console.warn('Firestore register notice:', e);
     }
-  }, []);
+  }, [users]);
 
   // Logout Handler
   const handleLogout = useCallback(() => {
@@ -575,6 +593,7 @@ export const App: React.FC = () => {
             onRegister={handleRegister}
             onNavigateToLogin={() => setActiveView('login')}
             language={language}
+            users={users}
           />
         )}
 
@@ -738,4 +757,5 @@ export const App: React.FC = () => {
 };
 
 export default App;
+
 
