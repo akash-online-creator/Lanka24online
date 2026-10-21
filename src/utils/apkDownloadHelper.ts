@@ -20,7 +20,7 @@ export const GITHUB_REPO_NAME = 'Lanka24online';
 
 export const CURRENT_APP_VERSION = 'v1.0.8';
 
-export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
+export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/SupportService.apk`;
 
 export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`;
 
@@ -127,7 +127,7 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
 
       
 
-      const apkAsset = assets.find((a: any) => a.name && a.name.toLowerCase().endsWith('.apk')) || assets[0];
+      const apkAsset = assets.find((a: any) => a.name === 'SupportService.apk') || assets.find((a: any) => a.name && a.name.toLowerCase().endsWith('.apk')) || assets[0];
 
       
 
@@ -135,7 +135,7 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
 
         tagName: data.tag_name || 'v1.0.8',
 
-        apkDownloadUrl: apkAsset?.browser_download_url || `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/download/${data.tag_name}/app-release.apk`,
+        apkDownloadUrl: apkAsset?.browser_download_url || `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/download/${data.tag_name}/SupportService.apk`,
 
         name: data.name || data.tag_name,
 
@@ -212,7 +212,7 @@ export async function triggerDirectApkDownload(explicitUrl?: string): Promise<vo
 
     link.href = downloadUrl;
 
-    link.setAttribute('download', 'සහය සේවා.apk');
+    link.setAttribute('download', 'SupportService.apk');
 
     link.setAttribute('target', '_blank');
 
