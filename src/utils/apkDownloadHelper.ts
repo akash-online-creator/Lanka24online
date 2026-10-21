@@ -180,7 +180,7 @@ export async function checkForAppUpdate(): Promise<AppUpdateInfo> {
       hasUpdate: isNewer,
       currentVersion: CURRENT_APP_VERSION,
       latestVersion: latestTag,
-      releaseTitle: latest.name || ,
+      releaseTitle: latest.name || ('Sahaya Sewa ' + latestTag),
       releaseNotes: latest.body || '',
       downloadUrl: latest.apkDownloadUrl || FALLBACK_APK_DIRECT_URL,
       publishedAt: latest.publishedAt,
