@@ -32,6 +32,57 @@ import { NicSpecimenCard } from './NicSpecimenCard';
 const getSystemTermsAndConditions = async (): Promise<string> => 
   '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
 
+// 🛡️ Advanced Sri Lankan NIC Matching & Fraud Prevention Helper
+const isNicConflict = (existingUser: Partial<User>, inputNic: string): boolean => {
+  if (!existingUser || !inputNic) return false;
+
+  const cleanInput = inputNic.trim().toUpperCase().replace(/\s+/g, '');
+  if (!cleanInput) return false;
+
+  const exNic = String(existingUser.nicNumber || existingUser.nic || '').trim().toUpperCase().replace(/\s+/g, '');
+  const exUserId = String(existingUser.userId || '').trim().toUpperCase().replace(/\s+/g, '');
+
+  // 1. Direct String Match
+  if (cleanInput === exNic || cleanInput === exUserId) {
+    return true;
+  }
+
+  // 2. Cross-format Sri Lankan NIC matching (9-digit Old vs 12-digit New)
+  const isInputOld = /^[0-9]{9}[VX]$/.test(cleanInput);
+  const isInputNew = /^[0-9]{12}$/.test(cleanInput);
+  const isExOld = /^[0-9]{9}[VX]$/.test(exNic);
+  const isExNew = /^[0-9]{12}$/.test(exNic);
+
+  if ((isInputOld && isExNew) || (isInputNew && isExOld)) {
+    const oldNic = isInputOld ? cleanInput : exNic;
+    const newNic = isInputNew ? cleanInput : exNic;
+
+    const oldYear = 1900 + parseInt(oldNic.substring(0, 2), 10);
+    const oldDay = parseInt(oldNic.substring(2, 5), 10);
+    const oldSeq = oldNic.substring(5, 8);
+
+    const newYear = parseInt(newNic.substring(0, 4), 10);
+    const newDay = parseInt(newNic.substring(4, 7), 10);
+    const newSeq = newNic.substring(7, 11);
+
+    // Exact Birth Year + Birth Day-of-year match
+    if (oldYear === newYear && oldDay === newDay) {
+      if (newSeq.includes(oldSeq) || newSeq.endsWith(oldSeq)) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Raw Digits Equality (if length >= 9)
+  const inDigits = cleanInput.replace(/[^0-9]/g, '');
+  const exDigits = exNic.replace(/[^0-9]/g, '');
+  if (inDigits.length >= 9 && exDigits.length >= 9 && inDigits === exDigits) {
+    return true;
+  }
+
+  return false;
+};
+
 interface RegisterFormProps {
   onRegister?: (newUser: User) => void;
   onRegisterSuccess?: (newUser: User) => void;
@@ -41,6 +92,7 @@ interface RegisterFormProps {
   setLanguage?: (lang: Language) => void;
   theme?: Theme;
   toggleTheme?: () => void;
+  users?: User[];
 }
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({
@@ -52,6 +104,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   setLanguage,
   theme = 'light',
   toggleTheme,
+  users = [],
 }) => {
   const t = (translations[language] || translations.si) as any;
 
@@ -81,6 +134,45 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [showPhoneHelpModal, setShowPhoneHelpModal] = useState(false);
   const [showPasswordHelpModal, setShowPasswordHelpModal] = useState(false);
   const [termsAndConditions, setTermsAndConditions] = useState<string>('');
+  const [nicConflict, setNicConflict] = useState<User | null>(null);
+  const [phoneConflict, setPhoneConflict] = useState<boolean>(false);
+
+  // 🛡️ Realtime Live Duplicate NIC & Fraud Prevention Security Checker
+  useEffect(() => {
+    if (!nicInfo || !nicInfo.valid) {
+      setNicConflict(null);
+      return;
+    }
+
+    const clean = nicInfo.cleanNic;
+    
+    // Check in-memory users from props
+    if (users && users.length > 0) {
+      const match = users.find((u) => isNicConflict(u, clean));
+      if (match) {
+        setNicConflict(match);
+        return;
+      }
+    }
+
+    setNicConflict(null);
+  }, [nicNumber, nicInfo, users]);
+
+  // 🛡️ Duplicate Phone Check
+  useEffect(() => {
+    const cleanP = sanitizePhone(whatsappPhone);
+    if (cleanP && cleanP.length >= 10 && users && users.length > 0) {
+      const matchPhone = users.some(
+        (u) =>
+          u.phone &&
+          (u.phone.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, '') ||
+           u.whatsappPhone?.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, ''))
+      );
+      setPhoneConflict(matchPhone);
+    } else {
+      setPhoneConflict(false);
+    }
+  }, [whatsappPhone, users]);
 
   // Load Dynamic System Terms & Conditions from Firebase
   useEffect(() => {
@@ -211,9 +303,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
-    // 3. NIC Number Validation
+    // 3. NIC Number Validation & Strict Duplicate Fraud Guard
     if (!nicInfo || !nicInfo.valid) {
       setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකයක් ඇතුළත් කරන්න (පැරණි: 970181547V හෝ නව: 199701815470).');
+      return;
+    }
+
+    // 🛡️ Strict Security Rule: One Account per NIC only
+    if (nicConflict || (users && users.some((u) => isNicConflict(u, nicInfo.cleanNic)))) {
+      setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් සකසා ඇත. ආරක්ෂක හේතූන් මත එක් හැඳුනුම්පත් අංකයකින් සැකසිය හැක්කේ එක් ගිණුමක් පමණි. කරුණාකර ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න.');
+      window.scrollTo({ top: 150, behavior: 'smooth' });
       return;
     }
 
@@ -442,14 +541,33 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 />
               </div>
 
-              {/* NIC Validation Badge */}
+              {/* NIC Validation & Duplicate Security Badge */}
               {nicNumber.trim() !== '' && (
                 <div className="pt-1">
-                  {nicInfo && nicInfo.valid ? (
+                  {nicConflict ? (
+                    <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col gap-2 shadow-sm animate-fadeIn">
+                      <div className="flex items-center gap-2 text-rose-800 font-black text-xs sm:text-sm">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>මෙම ජාතික හැඳුනුම්පත් අංකය දැනටමත් ලියාපදිංචි කර ඇත!</span>
+                      </div>
+                      <p className="text-[11px] text-rose-700 leading-relaxed font-medium">
+                        ආරක්ෂිත හේතූන් මත එකම ජාතික හැඳුනුම්පත් අංකයකින් පද්ධතියේ නිර්මාණය කළ හැක්කේ එක් ගිණුමක් පමණි. වංචනික ලියාපදිංචි කිරීම් වැළැක්වීම සඳහා මෙම හැඳුනුම්පත සඳහා අලුතින් ගිණුම් සෑදීම අවහිර කර ඇත.
+                      </p>
+                      <div className="pt-1 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onNavigateToLogin}
+                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න (Sign In)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : nicInfo && nicInfo.valid ? (
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>
-                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
+                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'}) - ලියාපදිංචි විය හැක.
                       </span>
                     </div>
                   ) : (
@@ -832,7 +950,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           <div className="pt-2">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || Boolean(nicConflict)}
               className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] disabled:opacity-50 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-base flex items-center justify-center gap-2"
             >
               {loading ? (
