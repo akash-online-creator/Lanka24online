@@ -137,6 +137,60 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [nicConflict, setNicConflict] = useState<User | null>(null);
   const [phoneConflict, setPhoneConflict] = useState<boolean>(false);
 
+  // --- PURE HELPERS & CALCULATED VALUES (INITIALIZED BEFORE USEEFFECTS) ---
+
+  // 1. NIC Helper Validator & Gender Evaluator
+  const evaluateNicInfo = (nic: string) => {
+    const clean = nic.trim().toUpperCase();
+    if (!clean) return null;
+
+    let birthYear: number | null = null;
+    let dayOfYear: number | null = null;
+    let gender: 'male' | 'female' = 'male';
+
+    if (/^[0-9]{9}[VX]$/.test(clean)) {
+      birthYear = 1900 + parseInt(clean.substring(0, 2), 10);
+      dayOfYear = parseInt(clean.substring(2, 5), 10);
+    } else if (/^[0-9]{12}$/.test(clean)) {
+      birthYear = parseInt(clean.substring(0, 4), 10);
+      dayOfYear = parseInt(clean.substring(4, 7), 10);
+    }
+
+    if (dayOfYear !== null) {
+      if (dayOfYear > 500) {
+        gender = 'female';
+        dayOfYear = dayOfYear - 500;
+      }
+      return { valid: true, birthYear, gender, cleanNic: clean };
+    }
+
+    return { valid: false, cleanNic: clean };
+  };
+
+  const nicInfo = evaluateNicInfo(nicNumber);
+
+  // 2. Password / Key Strength Evaluator (Minimum 6 Characters)
+  const isKeyValid = key.trim().length >= 6;
+  const doKeysMatch = key === confirmKey && key.trim() !== '';
+
+  // 3. Phone Sanitizer for Sri Lankan Numbers
+  const sanitizePhone = (val: string) => {
+    let clean = val.replace(/[^0-9+]/g, '');
+    if (clean.startsWith('+94')) {
+      clean = '0' + clean.substring(3);
+    } else if (clean.startsWith('94') && clean.length === 11) {
+      clean = '0' + clean.substring(2);
+    }
+    return clean;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitized = sanitizePhone(e.target.value);
+    setWhatsappPhone(sanitized);
+  };
+
+  // --- USEEFFECT HOOKS (ALL DEPENDENCIES ARE NOW FULLY INITIALIZED) ---
+
   // 🛡️ Realtime Live Duplicate NIC & Fraud Prevention Security Checker
   useEffect(() => {
     if (!nicInfo || !nicInfo.valid) {
@@ -198,53 +252,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       setSelectedPoliceDivision(availableDivisions[0]);
     }
   }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
-
-  // NIC Helper Validator & Gender Evaluator
-  const evaluateNicInfo = (nic: string) => {
-    const clean = nic.trim().toUpperCase();
-    if (!clean) return null;
-
-    let birthYear: number | null = null;
-    let dayOfYear: number | null = null;
-    let gender: 'male' | 'female' = 'male';
-
-    if (/^[0-9]{9}[VX]$/.test(clean)) { birthYear = 1900 + parseInt(clean.substring(0, 2), 10); dayOfYear = parseInt(clean.substring(2, 5), 10); } else if (/^[0-9]{12}$/.test(clean)) {
-      birthYear = parseInt(clean.substring(0, 4), 10);
-      dayOfYear = parseInt(clean.substring(4, 7), 10);
-    }
-
-    if (dayOfYear !== null) {
-      if (dayOfYear > 500) {
-        gender = 'female';
-        dayOfYear = dayOfYear - 500;
-      }
-      return { valid: true, birthYear, gender, cleanNic: clean };
-    }
-
-    return { valid: false, cleanNic: clean };
-  };
-
-  const nicInfo = evaluateNicInfo(nicNumber);
-
-  // Password / Key Strength Evaluator (Minimum 6 Characters)
-  const isKeyValid = key.trim().length >= 6;
-  const doKeysMatch = key === confirmKey && key.trim() !== '';
-
-  // Phone Sanitizer for Sri Lankan Numbers
-  const sanitizePhone = (val: string) => {
-    let clean = val.replace(/[^0-9+]/g, '');
-    if (clean.startsWith('+94')) {
-      clean = '0' + clean.substring(3);
-    } else if (clean.startsWith('94') && clean.length === 11) {
-      clean = '0' + clean.substring(2);
-    }
-    return clean;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const sanitized = sanitizePhone(e.target.value);
-    setWhatsappPhone(sanitized);
-  };
 
   // Image Compressor & Light Data URL Generator
   const processImageFile = async (file: File): Promise<string> => {
