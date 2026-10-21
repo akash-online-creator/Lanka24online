@@ -1,3 +1,4 @@
+import 'dart:convert';
 // File: lib/main.dart (Optimized Battery, High-Precision GPS & Emergency Siren Architecture)
 // ------------------------------------------------------------------------------------------
 
@@ -291,15 +292,48 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       ..addJavaScriptChannel(
         'SahayaNativeAlertChannel',
         onMessageReceived: (JavaScriptMessage message) async {
-          if (message.message == 'START_SOS_TRACKING') {
+          final text = message.message;
+          if (text == 'START_SOS_TRACKING') {
             await FlutterForegroundTask.startService(
               serviceId: 256,
               notificationTitle: 'සහාය සේවා - සජීවී SOS පිහිටීම විකාශනය වේ 🚨',
               notificationText: 'ඔබගේ ආරක්ෂාව උදෙසා ගලවාගන්නන් වෙත සජීවී පිහිටීම යොමු කෙරේ.',
               callback: startSosCallback,
             );
-          } else if (message.message == 'STOP_SOS_TRACKING') {
+          } else if (text == 'STOP_SOS_TRACKING') {
             await FlutterForegroundTask.stopService();
+          } else if (text.startsWith('TRIGGER_RED_ALERT')) {
+            // 🚨 NATIVE EMERGENCY DISASTER ALARM: WAKES UP SCREEN & SOUNDS MAX SIREN
+            try {
+              String alertDetails = 'හදිසි ආපදා අනතුරු ඇඟවීමක් වාර්තා වී ඇත. වහාම පරීක්ෂා කරන්න.';
+              if (text.contains('{')) {
+                final jsonStr = text.substring(text.indexOf('{'));
+                final parsed = jsonDecode(jsonStr);
+                final loc = parsed['location'] ?? '';
+                final title = parsed['title'] ?? 'ආපදා අනතුරු ඇඟවීමක්';
+                final dist = parsed['distanceKm'] ?? '';
+                alertDetails = '$loc ප්‍රදේශයේ $title! (දුර: කි.මී. $dist)';
+              }
+
+              if (await FlutterForegroundTask.isRunningService) {
+                await FlutterForegroundTask.updateService(
+                  notificationTitle: '🚨 රතු එළිය - හදිසි ආපදා අනතුරු ඇඟවීමක්!',
+                  notificationText: alertDetails,
+                );
+              } else {
+                await FlutterForegroundTask.startService(
+                  serviceId: 256,
+                  notificationTitle: '🚨 රතු එළිය - හදිසි ආපදා අනතුරු ඇඟවීමක්!',
+                  notificationText: alertDetails,
+                  callback: startSosCallback,
+                );
+              }
+              // 🔥 WAKE UP PHONE DISPLAY & LAUNCH FULLSCREEN OVER LOCKSCREEN
+              FlutterForegroundTask.wakeUpScreen();
+              FlutterForegroundTask.launchApp();
+            } catch (e) {
+              debugPrint('Native red alert wake-up notice: $e');
+            }
           }
         },
       );
