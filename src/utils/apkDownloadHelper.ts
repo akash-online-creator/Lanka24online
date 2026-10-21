@@ -172,19 +172,28 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
  */
 
 export async function checkForAppUpdate(): Promise<AppUpdateInfo> {
-
-  return {
-
-    hasUpdate: false,
-
-    currentVersion: CURRENT_APP_VERSION,
-
-    latestVersion: CURRENT_APP_VERSION,
-
-    downloadUrl: FALLBACK_APK_DIRECT_URL,
-
-  };
-
+  try {
+    const latest = await fetchLatestApkDownloadUrl();
+    const latestTag = latest.tagName || CURRENT_APP_VERSION;
+    const isNewer = compareVersions(latestTag, CURRENT_APP_VERSION) > 0;
+    return {
+      hasUpdate: isNewer,
+      currentVersion: CURRENT_APP_VERSION,
+      latestVersion: latestTag,
+      releaseTitle: latest.name || ,
+      releaseNotes: latest.body || '',
+      downloadUrl: latest.apkDownloadUrl || FALLBACK_APK_DIRECT_URL,
+      publishedAt: latest.publishedAt,
+    };
+  } catch (err) {
+    console.warn('Update check failed:', err);
+    return {
+      hasUpdate: false,
+      currentVersion: CURRENT_APP_VERSION,
+      latestVersion: CURRENT_APP_VERSION,
+      downloadUrl: FALLBACK_APK_DIRECT_URL,
+    };
+  }
 }
 
 /**
@@ -203,7 +212,7 @@ export async function triggerDirectApkDownload(explicitUrl?: string): Promise<vo
 
     link.href = downloadUrl;
 
-    link.setAttribute('download', 'SahayaSewa.apk');
+    link.setAttribute('download', 'සහය සේවා.apk');
 
     link.setAttribute('target', '_blank');
 
@@ -268,4 +277,5 @@ if (typeof window !== 'undefined') {
   (window as any).saveAppUpdateSettings = saveAppUpdateSettings;
 
 }
+
 
