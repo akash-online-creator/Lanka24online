@@ -309,7 +309,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
               notificationText: 'ඔබගේ ආරක්ෂාව උදෙසා ගලවාගන්නන් වෙත සජීවී පිහිටීම යොමු කෙරේ.',
               callback: startSosCallback,
             );
-          } else if (text == 'STOP_SOS_TRACKING') {
+          } else if (text == 'STOP_SOS_TRACKING' || text == 'STOP_RED_ALERT' || text == 'STOP_SIREN') {
             await FlutterForegroundTask.stopService();
           } else if (text.startsWith('TRIGGER_RED_ALERT')) {
             // 🚨 NATIVE EMERGENCY DISASTER ALARM: WAKES UP SCREEN & SOUNDS MAX SIREN
