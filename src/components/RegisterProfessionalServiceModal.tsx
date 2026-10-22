@@ -600,6 +600,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                       isFullMapOpen ? 'h-96 sm:h-[450px]' : 'h-60 sm:h-64'
                     }`}>
                       <div ref={mapContainerRef} className="w-full h-full z-0" />
+                    </div>
 
                     {/* Resolved Location Info Box */}
                     <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-[#11291b] border border-emerald-300 dark:border-[#1e452d] flex items-start gap-2.5 shadow-xs">
