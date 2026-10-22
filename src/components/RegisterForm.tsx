@@ -606,7 +606,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                         වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
                       </span>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
+                    </div>
+                  )}
 
                   {/* Previous Rejection Notice Banner */}
                   {isPreviousRejected && (
@@ -623,11 +628,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                           පෙර ප්‍රතික්ෂේප වීමට හේතුව: {(isPreviousRejected as any).rejectionReason}
                         </p>
                       )}
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
                     </div>
                   )}
                 </div>
@@ -857,7 +857,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 </button>
               </div>
 
-              {/* Hidden Native File Inputs */}
+              {/* Native File Inputs (kept in DOM for mobile WebView & click compatibility) */}
               {/* 1. Standard Chooser (Gallery / Camera / Files) */}
               <input
                 ref={nicFileInputRef}
@@ -868,7 +868,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                   handlePhotoUpload(e, setNicFrontPhoto);
                   e.target.value = '';
                 }}
-                className="hidden"
+                className="sr-only"
+                style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
               />
               {/* 2. Direct Camera Trigger */}
               <input
@@ -881,7 +882,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                   handlePhotoUpload(e, setNicFrontPhoto);
                   e.target.value = '';
                 }}
-                className="hidden"
+                className="sr-only"
+                style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
               />
 
               {/* Upload Drop Zone / Button */}
@@ -909,14 +911,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2 w-full pt-1">
-                    <button
-                      type="button"
+                    <label
+                      htmlFor="nic-front-file-input"
                       onClick={() => nicFileInputRef.current?.click()}
                       className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Upload className="w-3.5 h-3.5 text-slate-600" />
                       <span>වෙනත් ඡායාරූපයක් තෝරන්න</span>
-                    </button>
+                    </label>
                     <button
                       type="button"
                       onClick={() => {
@@ -932,8 +934,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                   </div>
                 </div>
               ) : (
-                <div
-                  onClick={() => nicFileInputRef.current?.click()}
+                <label
+                  htmlFor="nic-front-file-input"
+                  onClick={(e) => {
+                    // Let native label behavior handle file chooser, or fallback if needed
+                    if (!e.defaultPrevented) {
+                      nicFileInputRef.current?.click();
+                    }
+                  }}
                   className="relative w-full min-h-[180px] sm:min-h-[210px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/30 flex flex-col items-center justify-center p-4 sm:p-5 shadow-inner transition-all cursor-pointer group"
                 >
                   {isProcessingPhoto ? (
@@ -982,7 +990,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                       </div>
                     </div>
                   )}
-                </div>
+                </label>
               )}
             </div>
           </div>
