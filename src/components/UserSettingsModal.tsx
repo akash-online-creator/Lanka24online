@@ -46,7 +46,11 @@ import {
   Copy,
   ExternalLink,
   Smartphone,
-  Download
+  Download,
+  Globe,
+  ChevronDown,
+  ChevronUp,
+  Trash2
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
@@ -155,27 +159,36 @@ export const getStoredFontSize = (): FontSizeKey => {
   return 'small';
 };
 
-interface UserSettingsModalProps {
+export interface UserSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User;
+  user?: User;
+  currentUser?: User | null;
   onUpdateUser?: (updatedUser: User) => void;
   language?: Language;
   initialTab?: SettingsTabKey;
   helpPosts?: HelpPost[];
+  redAlerts?: any[];
+  onDeletePost?: (postId: string) => void;
+  onViewPost?: (post: HelpPost) => void;
   onNavigateToIssues?: () => void;
 }
 
 export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   isOpen,
   onClose,
-  user,
+  user: propUser,
+  currentUser: propCurrentUser,
   onUpdateUser,
   language = 'si',
   initialTab = 'profile',
   helpPosts = [],
+  redAlerts = [],
+  onDeletePost,
+  onViewPost,
   onNavigateToIssues
 }) => {
+  const user = propCurrentUser || propUser || ({} as User);
   const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
   const [isDataSaver, toggleDataSaver] = useDataSaver();
 
@@ -191,6 +204,130 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
   const [email, setEmail] = useState(user?.email || '');
   const [photoUrl, setPhotoUrl] = useState(user?.facePhotoUrl || user?.photoUrl || '');
   const [customPhotoInput, setCustomPhotoInput] = useState('');
+
+  // 👤 03. Profile Username State (30-day edit limitation)
+  const [username, setUsername] = useState(user?.username || '');
+  const lastUsernameChangedAt = user?.lastUsernameChangedAt;
+
+  const isUsernameLocked = useMemo(() => {
+    if (!lastUsernameChangedAt) return false;
+    const changedTime = new Date(lastUsernameChangedAt).getTime();
+    if (isNaN(changedTime)) return false;
+    const daysPassed = (Date.now() - changedTime) / (1000 * 3600 * 24);
+    return daysPassed < 30;
+  }, [lastUsernameChangedAt]);
+
+  const daysRemainingForUsername = useMemo(() => {
+    if (!lastUsernameChangedAt) return 0;
+    const changedTime = new Date(lastUsernameChangedAt).getTime();
+    if (isNaN(changedTime)) return 0;
+    const daysPassed = (Date.now() - changedTime) / (1000 * 3600 * 24);
+    return Math.max(1, Math.ceil(30 - daysPassed));
+  }, [lastUsernameChangedAt]);
+
+  // 🔑 04. Profile Deposit Account ID (Readonly)
+  const profileId = user?.accountDepositId || user?.userNumericId || user?.userId || user?.id || 'N/A';
+
+  // 🛡️ Privacy Controls (Public / Private toggles)
+  const [privacySettings, setPrivacySettings] = useState<{
+    photo: 'public' | 'private';
+    name: 'public' | 'private';
+    username: 'public' | 'private';
+    profileId: 'public' | 'private';
+    myPosts: 'public' | 'private';
+  }>(() => ({
+    photo: user?.privacySettings?.photo || 'public',
+    name: user?.privacySettings?.name || 'public',
+    username: user?.privacySettings?.username || 'public',
+    profileId: user?.privacySettings?.profileId || 'public',
+    myPosts: user?.privacySettings?.myPosts || 'public',
+  }));
+
+  const togglePrivacy = (key: keyof typeof privacySettings) => {
+    setPrivacySettings((prev) => ({
+      ...prev,
+      [key]: prev[key] === 'public' ? 'private' : 'public',
+    }));
+  };
+
+  // 📂 05. My Posted Ads by Category State
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    red_alerts: true,
+    blood_disaster: true,
+    quick_services: true,
+    general_services: true,
+  });
+
+  const toggleCategoryExpand = (catKey: string) => {
+    setExpandedCategories((prev) => ({
+      ...prev,
+      [catKey]: !prev[catKey],
+    }));
+  };
+
+  // Filter ads created by this user
+  const userMyPosts = useMemo(() => {
+    if (!user) return [];
+    const uId = user.id;
+    const uUserId = user.userId;
+    const uNic = user.nicNumber || user.nic;
+    const uName = (user.name || '').toLowerCase();
+    const uPhone = (user.whatsappPhone || user.phone || '').replace(/\D/g, '');
+
+    return (helpPosts || []).filter((p) => {
+      if (p.isDeleted) return false;
+      if (p.userId && (p.userId === uId || p.userId === uUserId)) return true;
+      if (p.actualAuthorId && (p.actualAuthorId === uId || p.actualAuthorId === uUserId)) return true;
+      if (p.actualAuthorNic && uNic && p.actualAuthorNic.toUpperCase() === uNic.toUpperCase()) return true;
+      if (p.userNic && uNic && p.userNic.toUpperCase() === uNic.toUpperCase()) return true;
+      if (p.userName && p.userName.toLowerCase() === uName) return true;
+      const pPhone = (p.userPhone || '').replace(/\D/g, '');
+      if (pPhone && uPhone && pPhone.slice(-9) === uPhone.slice(-9)) return true;
+      return false;
+    });
+  }, [user, helpPosts]);
+
+  // Group user's posts into 4 main categories
+  const redAlertPosts = useMemo(() => {
+    return userMyPosts.filter(
+      (p) => p.category === 'red_alerts' || p.category === 'emergency' || p.priorityLevel === 'emergency' || p.isPinnedEmergency
+    );
+  }, [userMyPosts]);
+
+  const bloodDisasterPosts = useMemo(() => {
+    return userMyPosts.filter(
+      (p) => p.category === 'blood_disaster' || p.category === 'blood' || p.tagName?.includes('ලේ') || p.tagCategory?.includes('පරිත්‍යාග')
+    );
+  }, [userMyPosts]);
+
+  const quickServicePosts = useMemo(() => {
+    return userMyPosts.filter(
+      (p) => p.category === 'quick_services' || p.postType === 'quick_service'
+    );
+  }, [userMyPosts]);
+
+  const generalServicePosts = useMemo(() => {
+    return userMyPosts.filter(
+      (p) =>
+        p.category !== 'red_alerts' &&
+        p.category !== 'blood_disaster' &&
+        p.category !== 'blood' &&
+        p.category !== 'quick_services' &&
+        p.postType !== 'quick_service' &&
+        !p.isPinnedEmergency
+    );
+  }, [userMyPosts]);
+
+  // Handle in-profile Post Deletion
+  const handleDeleteMyPost = async (postId: string, postTitle: string) => {
+    if (!window.confirm(`ඔබට "${postTitle || 'මෙම දැන්වීම'}" සදහටම ඉවත් කිරීමට අවශ්‍ය බව සහතිකද?`)) return;
+
+    if (onDeletePost) {
+      onDeletePost(postId);
+    }
+    setSaveSuccessMsg('දැන්වීම සාර්ථකව ඉවත් කරන ලදී.');
+    setTimeout(() => setSaveSuccessMsg(null), 2500);
+  };
   
   // Password States
   const [changePassword, setChangePassword] = useState(false);
@@ -453,10 +590,17 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       };
     }
 
+    // Check if username was modified and update lastUsernameChangedAt
+    const isUsernameChanged = username.trim() !== (user?.username || '') && username.trim() !== '';
+
     // Name and Address must NOT be updated immediately if changed!
     const updatedUser: User = {
       ...user,
-      name: isNameChanged ? (user?.name || '') : trimmedName,
+      name: user?.name || trimmedName, // Original name is strictly permanent
+      username: username.trim(),
+      lastUsernameChangedAt: isUsernameChanged ? new Date().toISOString() : user?.lastUsernameChangedAt,
+      accountDepositId: profileId,
+      privacySettings: privacySettings,
       address: isAddressChanged ? user.address : trimmedAddress,
       phone: trimmedPhone,
       email: trimmedEmail,
@@ -715,134 +859,101 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 1: PROFILE SETTING */}
+          {/* TAB 1: PROFILE SETTING - COMPLETE USER OVERHAUL */}
           {activeTab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              {/* Pending Admin Approval Banner (If User Has Pending Name/Address Changes) */}
-              {user?.pendingProfileUpdate && user.pendingProfileUpdate.status === 'pending' && (
-                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-400 dark:border-amber-600/80 shadow-md space-y-2.5 animate-in fade-in">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-black text-xs sm:text-sm">
-                      <Clock className="w-5 h-5 text-amber-600 animate-pulse shrink-0" />
-                      <span>{getLang('පැතිකඩ සංශෝධන ඉල්ලීමක් පරිපාලක (Admin) අනුමැතිය අපේක්ෂාවෙන් පවතී', 'Profile Change Request is Pending Admin Approval', 'சுயவிவர மாற்றக் கோரிக்கை நிர்வாகி ஒப்புதலுக்கு காத்திருக்கிறது')}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCancelPendingUpdate}
-                      className="px-2.5 py-1 rounded-xl bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 text-rose-800 dark:text-rose-200 border border-rose-300 text-[10px] font-bold cursor-pointer transition-all shrink-0 active:scale-95"
-                    >
-                      {getLang('ඉල්ලීම අවලංගු කරන්න', 'Cancel Request', 'ரத்து செய்')}
-                    </button>
+              
+              {/* 🛡️ Header Info Notice */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <UserIcon className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-100">
+                      පරිශීලක පැතිකඩ කළමනාකරණය (Profile Dashboard)
+                    </h4>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                      ඔබගේ පැතිකඩ තොරතුරු සහ පුද්ගලිකත්ව (Privacy) සැකසුම් මෙතැනින් පාලනය කරන්න.
+                    </p>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-white/80 dark:bg-[#07190f]/80 p-3 rounded-xl border border-amber-300/60 dark:border-amber-800/40">
-                    {user.pendingProfileUpdate.newName && (
-                      <div>
-                        <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block">{getLang('ඉල්ලුම් කළ නව නම:', 'Requested New Name:', 'புதிய பெயர்:')}</span>
-                        <span className="font-black text-amber-950 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-900/50 px-2 py-0.5 rounded-md inline-block mt-0.5">{user.pendingProfileUpdate.newName}</span>
-                      </div>
-                    )}
-                    {user.pendingProfileUpdate.newAddress && (
-                      <div>
-                        <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block">{getLang('ඉල්ලුම් කළ නව ලිපිනය:', 'Requested New Address:', 'புதிய முகவரி:')}</span>
-                        <span className="font-black text-amber-950 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-900/50 px-2 py-0.5 rounded-md inline-block mt-0.5">{user.pendingProfileUpdate.newAddress}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
-                    {getLang(
-                      '🛡️ පරිපාලක විසින් මෙම සංශෝධනය අනුමත කරන තෙක් ඔබගේ පැරණි නම සහ ලිපිනය පද්ධතිය තුළ සක්‍රීයව පවතී.',
-                      '🛡️ Your existing name and address remain active until an Admin reviews and approves this request.',
-                      '🛡️ நிர்வாகி ஒப்புதல் அளிக்கும் வரை உங்கள் தற்போதைய தகவல்களே பயன்பாட்டில் இருக்கும்.'
-                    )}
-                  </p>
                 </div>
-              )}
+                <div className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shrink-0">
+                  Verified Member
+                </div>
+              </div>
 
-              {/* Profile Photo Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0e271a] border border-slate-200 dark:border-[#1a4730] space-y-3.5">
-                <div className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center justify-between">
+              {/* ==============================================================
+                  01. PROFILE PICTURE (REPLACEABLE + PRIVACY TOGGLE)
+                  ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">1</span>
                     <Camera className="w-4 h-4 text-emerald-600" />
-                    <span>{getLang('පැතිකඩ ඡායාරූපය:', 'Profile Photo:', 'சுயவிவரப் படம்:')}</span>
+                    <span className="text-xs font-black text-slate-800 dark:text-emerald-300">පැතිකඩ ඡායාරූපය (Profile Picture):</span>
                   </div>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                    {getLang('පැතිකඩ ඡායාරූපය', 'Profile Photo', 'சுயவிவரப் படம்')}
-                  </span>
-                </div>
 
-                {/* Important Policy Note */}
-                <div className="p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-300/80 dark:border-emerald-800 text-[11px] font-medium text-emerald-900 dark:text-emerald-200 space-y-0.5">
-                  <div className="font-extrabold flex items-center gap-1.5 text-emerald-950 dark:text-emerald-100">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>{getLang('ඡායාරූප මාර්ගෝපදේශ', 'Photo Guidelines', 'புகைப்பட வழிகாட்டுதல்கள்')}</span>
-                  </div>
-                  <p className="leading-relaxed">
-                    {getLang(
-                      'සහය සේවා ප්‍රජාවේ විශ්වසනීයත්වය හා ආරක්ෂාව සඳහා ඔබගේ පැහැදිලි ඡායාරූපයක් ලබාදෙන්න.',
-                      'To maintain community trust and safety, please upload a clear, genuine photograph.',
-                      'நம்பகத்தன்மை மற்றும் பாதுகாப்பிற்காக உங்கள் தெளிவான புகைப்படத்தைப் பதிவேற்றவும்.'
+                  {/* Privacy Toggle: Public / Private */}
+                  <button
+                    type="button"
+                    onClick={() => togglePrivacy('photo')}
+                    className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      privacySettings.photo === 'public'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-slate-700'
+                    }`}
+                    title="ප්‍රසිද්ධද පෞද්ගලිකද යන්න තෝරන්න"
+                  >
+                    {privacySettings.photo === 'public' ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>🌐 Public (ප්‍රසිද්ධයි)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>🔒 Private (පෞද්ගලිකයි)</span>
+                      </>
                     )}
-                  </p>
+                  </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                  {isDataSaver ? (
-                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-amber-950 flex items-center justify-center font-black text-2xl shadow-md border-2 border-amber-400 shrink-0">
-                      {name ? name.charAt(0).toUpperCase() : '👤'}
-                    </div>
-                  ) : (
-                    <div className="relative group shrink-0">
-                      {photoUrl && photoUrl.trim() !== '' ? (
-                        <img
-                          src={photoUrl}
-                          alt="Current Profile"
-                          loading="lazy"
-                          decoding="async"
-                          referrerPolicy="no-referrer"
-                          className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/30"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-200 dark:from-emerald-950 dark:to-teal-900 border-2 border-dashed border-emerald-400 text-emerald-800 dark:text-emerald-300 flex flex-col items-center justify-center shadow-inner text-center p-1">
-                          <Camera className="w-5 h-5 mb-0.5 opacity-70" />
-                          <span className="text-[10px] font-black leading-tight">{getLang('ඡායාරූපයක් නැත', 'No Photo', 'படம் இல்லை')}</span>
-                        </div>
-                      )}
-                      
-                      <label 
-                        htmlFor="face-photo-file-upload"
-                        className="absolute inset-0 bg-black/45 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity text-center p-1"
-                        title={getLang('කැමරාවෙන් හෝ ගොනුවකින් ඡායාරූපය එක් කරන්න', 'Upload from camera or storage', 'புகைப்படத்தை பதிவேற்றவும்')}
-                      >
-                        <Camera className="w-5 h-5 text-white mb-0.5" />
-                        <span className="text-[9px] font-bold">වෙනස් කරන්න</span>
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-[220px] space-y-2.5">
-                    {isDataSaver && (
-                      <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>{getLang('Data Saver සක්‍රීයයි - Text අකුරු පමණක් පූරණය වේ', 'Data Saver Active - Pure text mode', 'டேட்டா சேவர் செயலில் உள்ளது')}</span>
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  <div className="relative group shrink-0">
+                    {photoUrl && photoUrl.trim() !== '' ? (
+                      <img
+                        src={photoUrl}
+                        alt="Profile"
+                        className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/20"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-200 dark:from-emerald-950 dark:to-teal-900 border-2 border-dashed border-emerald-400 text-emerald-800 dark:text-emerald-300 flex flex-col items-center justify-center shadow-inner text-center p-1">
+                        <Camera className="w-6 h-6 mb-1 opacity-70" />
+                        <span className="text-[10px] font-black">ඡායාරූපයක් නැත</span>
                       </div>
                     )}
 
-                    {/* Direct Upload & Camera Input Button */}
+                    <label
+                      htmlFor="profile-photo-replace-upload"
+                      className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity text-center p-1"
+                    >
+                      <Camera className="w-5 h-5 text-white mb-0.5" />
+                      <span className="text-[9px] font-bold">Replace</span>
+                    </label>
+                  </div>
+
+                  <div className="flex-1 min-w-[200px] space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <label
-                        htmlFor="face-photo-file-upload"
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black shadow-md cursor-pointer transition-all border border-emerald-500/50"
+                        htmlFor="profile-photo-replace-upload"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black shadow-md cursor-pointer transition-all"
                       >
                         <Upload className="w-3.5 h-3.5 text-white" />
-                        <span>{getLang('📸 ඡායාරූපය එක් කරන්න', '📸 Upload Photo', '📸 புகைப்படம் பதிவேற்றுக')}</span>
+                        <span>📸 ඡායාරූපය Replace කරන්න</span>
                       </label>
                       <input
-                        id="face-photo-file-upload"
+                        id="profile-photo-replace-upload"
                         type="file"
                         accept="image/*"
-                        capture="user"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
@@ -851,7 +962,6 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                             reader.onload = (event) => {
                               if (typeof event.target?.result === 'string') {
                                 setPhotoUrl(event.target.result);
-                                setCustomPhotoInput('');
                               }
                             };
                             reader.readAsDataURL(file);
@@ -859,385 +969,563 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         }}
                       />
 
-                      {photoUrl && photoUrl.trim() !== '' && (
+                      {photoUrl && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setPhotoUrl('');
-                            setCustomPhotoInput('');
-                          }}
-                          className="px-2.5 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 text-xs font-bold transition-all border border-rose-300 dark:border-rose-800 cursor-pointer"
-                          title="ඡායාරූපය ඉවත් කරන්න"
+                          onClick={() => setPhotoUrl('')}
+                          className="px-3 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold border border-rose-300 dark:border-rose-800 cursor-pointer"
                         >
-                          {getLang('ඉවත් කරන්න', 'Clear', 'நீக்குக')}
+                          ඉවත් කරන්න
                         </button>
                       )}
                     </div>
-
-                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium">
-                      {getLang(
-                        'කැමරාව මඟින් සජීවීව හෝ ඔබගේ දුරකථනයේ / පරිගණකයේ ඇති ඡායාරූපයක් තෝරන්න.',
-                        'Take a live photo via camera or select a photo file from your device.',
-                        'கேமரா அல்லது உங்கள் சாதனத்திலிருந்து நேரடி புகைப்படத்தைத் தேர்ந்தெடுக்கவும்.'
-                      )}
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      කැමරාවෙන් හෝ ඔබගේ උපාංගයෙන් නව ඡායාරූපයක් ලබාගෙන Replace කළ හැක.
                     </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Custom Photo URL Input */}
-                <div className="pt-2 border-t border-slate-200 dark:border-[#1a4730]/60 space-y-1">
-                  <div className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">
-                    {getLang('හෝ ඡායාරූප සබැඳිය (URL) ඇතුළත් කරන්න:', 'Or enter image URL:', 'அல்லது புகைப்பட URL ஐ உள்ளிடவும்:')}
+              {/* ==============================================================
+                  02. PROFILE NAME (ORIGINAL NAME - PERMANENT READONLY)
+                  ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">2</span>
+                    <UserIcon className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-black text-slate-800 dark:text-emerald-300">මූලික නම (Original Profile Name):</span>
                   </div>
+
+                  {/* Privacy Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => togglePrivacy('name')}
+                    className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      privacySettings.name === 'public'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {privacySettings.name === 'public' ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>🌐 Public</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>🔒 Private</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative">
                   <input
-                    type="url"
-                    value={customPhotoInput}
-                    onChange={(e) => {
-                      setCustomPhotoInput(e.target.value);
-                      if (e.target.value.startsWith('http')) {
-                        setPhotoUrl(e.target.value);
-                      }
-                    }}
-                    placeholder={getLang('https://... (ඡායාරූප සබැඳිය)', 'https://... (Image link)', 'https://... (புகைப்பட இணைப்பு)')}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#07190f] border border-slate-200 dark:border-[#1a4730] text-xs focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
+                    type="text"
+                    readOnly
+                    value={user?.name || ''}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-200/80 dark:bg-[#05140b] border border-slate-300 dark:border-emerald-900 text-xs sm:text-sm font-black text-slate-800 dark:text-zinc-200 cursor-not-allowed outline-none select-none"
                   />
+                  <div className="absolute right-3 top-2.5 text-[10px] font-black text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md flex items-center gap-1 border border-amber-300 dark:border-amber-800">
+                    <Lock className="w-3 h-3" />
+                    <span>Original Name (වෙනස් කළ නොහැක)</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                  ජාතික හැඳුනුම්පත සත්‍යාපනය කර ඇති බැවින් මෙම මූලික නම ස්ථිරව සුරැකී පවතී.
+                </p>
+              </div>
+
+              {/* ==============================================================
+                  03. PROFILE USERNAME (30-DAY EDIT LIMITATION)
+                  ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">3</span>
+                    <Type className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-black text-slate-800 dark:text-emerald-300">පරිශීලක නාමය (Profile Username):</span>
+                  </div>
+
+                  {/* Privacy Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => togglePrivacy('username')}
+                    className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      privacySettings.username === 'public'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {privacySettings.username === 'public' ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>🌐 Public</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>🔒 Private</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    disabled={isUsernameLocked}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="උදා: @kamal_perera"
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-bold outline-none transition-all ${
+                      isUsernameLocked
+                        ? 'bg-slate-200/80 dark:bg-[#05140b] border-slate-300 dark:border-emerald-900 text-slate-500 cursor-not-allowed'
+                        : 'bg-white dark:bg-[#06160d] border-slate-300 dark:border-emerald-800/80 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500'
+                    }`}
+                  />
+                  {isUsernameLocked && (
+                    <div className="absolute right-3 top-2.5 text-[10px] font-black text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 rounded-md flex items-center gap-1 border border-rose-300 dark:border-rose-800">
+                      <Lock className="w-3 h-3" />
+                      <span>දින {daysRemainingForUsername}කින් පසු සංස්කරණය කළ හැක</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 flex items-center justify-between">
+                  <span>අන් අයට ඔබව සොයාගැනීමට පහසු වන නමකි. <strong>එක් වරක් edit කළ පසු දින 30කට වෙනස් කළ නොහැක.</strong></span>
+                  {lastUsernameChangedAt && (
+                    <span className="text-[9px] text-slate-400 font-mono">
+                      අවසාන වෙනස්කම: {new Date(lastUsernameChangedAt).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* User Read-only Credentials Badge */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs">
-                {/* 1. User ID */}
-                <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Key className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">{getLang('පරිශීලක ID (User ID):', 'User ID:', 'பயனர் ஐடி:')}</div>
-                      <div className="font-mono font-black text-emerald-950 dark:text-emerald-200 truncate">
-                        {user?.userId || user?.id || user?.nicNumber || 'N/A'}
-                      </div>
-                    </div>
+              {/* ==============================================================
+                  04. PROFILE ID (ACCOUNT DEPOSIT NUMBER - READONLY)
+                  ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">4</span>
+                    <Key className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-black text-slate-800 dark:text-emerald-300">තම ගිණුම් අංකය (Profile Account Deposit ID):</span>
                   </div>
+
+                  {/* Privacy Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => togglePrivacy('profileId')}
+                    className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      privacySettings.profileId === 'public'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {privacySettings.profileId === 'public' ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>🌐 Public</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>🔒 Private</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      readOnly
+                      value={profileId}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-200/80 dark:bg-[#05140b] border border-slate-300 dark:border-emerald-900 text-xs sm:text-sm font-mono font-black text-emerald-950 dark:text-emerald-300 outline-none select-all"
+                    />
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
-                      const idToCopy = user?.userId || user?.id || user?.nicNumber || '';
-                      if (idToCopy) {
-                        navigator.clipboard.writeText(idToCopy);
-                        setSaveSuccessMsg(getLang('පරිශීලක ID පිටපත් කරගන්නා ලදී!', 'User ID copied!', 'பயனர் ஐடி நகலெடுக்கப்பட்டது!'));
+                      if (profileId) {
+                        navigator.clipboard.writeText(profileId);
+                        setSaveSuccessMsg('පැතිකඩ ID (Account ID) පිටපත් කරගන්නා ලදී!');
                         setTimeout(() => setSaveSuccessMsg(null), 2500);
                       }
                     }}
-                    className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/80 dark:hover:bg-emerald-800 text-emerald-800 dark:text-emerald-200 cursor-pointer shrink-0 text-[10px] font-black flex items-center gap-1 active:scale-95 transition-all"
-                    title={getLang('පරිශීලක ID එක පිටපත් කරන්න', 'Copy User ID', 'பயனர் ஐடியை நகலெடு')}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all shrink-0"
+                    title="පිටපත් කරගන්න"
                   >
-                    <Copy className="w-3 h-3" />
-                    <span>Copy</span>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy ID</span>
                   </button>
                 </div>
 
-                {/* 2. NIC Number */}
-                <div className="flex items-center gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">NIC Number (ජා.හැ. අංකය):</div>
-                    <div className="font-mono font-black text-emerald-950 dark:text-emerald-200 truncate">{user?.nicNumber || user?.userId || 'N/A'}</div>
-                  </div>
-                </div>
-
-                {/* 3. User Status */}
-                <div className="flex items-center gap-2 p-2 rounded-xl bg-white/90 dark:bg-[#07190f]/90 border border-emerald-300/60 dark:border-emerald-700/50 shadow-2xs">
-                  <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold">User Status (තත්ත්වය):</div>
-                    <div className="font-black text-emerald-700 dark:text-emerald-300 uppercase">{user?.status || 'APPROVED'}</div>
-                  </div>
-                </div>
+                <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                  💡 මෙය තම ගිණුම සඳහා මුදල් බැරකිරීමට (Account Deposit & Wallet Top-up) භාවිතා වන අනන්‍ය අංකයයි. (වෙනස් කළ නොහැක).
+                </p>
               </div>
 
-              {/* Sahaya Community Trust & Collaboration Points Section (Moved from Main Page to Profile Only) */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-100/50 dark:from-[#061e12] dark:via-[#09291a] dark:to-[#04160d] border-2 border-emerald-300/90 dark:border-emerald-700/60 shadow-sm space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-emerald-200/80 dark:border-emerald-800/60">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shadow-xs">
-                      <Award className="w-5 h-5 text-amber-300" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-100">
-                        {getLang('සහය ප්‍රජා සහයෝගිතා සහ විශ්වාස ලකුණු (Trust Profile)', 'Community Collaboration & Trust Profile', 'சமூக நம்பிக்கை சுயவிவரம்')}
-                      </h4>
-                      <p className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold">
-                        {getLang('සාමාජිකයින් අතර අන්‍යෝන්‍ය විශ්වාසනීයත්ව සහ සහයෝගිතා තත්ත්වය', 'Mutual Community Trust & Collaboration Score', 'பரஸ்பர சமூக நம்பிக்கை நிலை')}
-                      </p>
-                    </div>
-                  </div>
-                  <TrustBadge trustProfile={trustProfile} size="md" showKarmaPoints={false} />
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {/* Metric 1: Collaboration Points */}
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-[#07190f]/80 border border-emerald-200 dark:border-emerald-800/40 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 dark:text-zinc-400">{getLang('සහයෝගිතා ලකුණු', 'Collaboration Points', 'ஒத்துழைப்பு புள்ளிகள்')}</div>
-                    <div className="text-xs sm:text-sm font-mono font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
-                      ✨ {trustProfile.karmaPoints} {getLang('ලකුණු', 'pts', 'புள்ளிகள்')}
-                    </div>
-                  </div>
-
-                  {/* Metric 2: Completed Helps */}
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-[#07190f]/80 border border-emerald-200 dark:border-emerald-800/40 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 dark:text-zinc-400">සාර්ථක සහයවීම්</div>
-                    <div className="text-xs sm:text-sm font-mono font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
-                      🤝 {trustProfile.completedHelpsCount} වතාවක්
-                    </div>
-                  </div>
-
-                  {/* Metric 3: Phone Verified */}
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-[#07190f]/80 border border-emerald-200 dark:border-emerald-800/40 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 dark:text-zinc-400">දුරකථන අංකය</div>
-                    <div className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{trustProfile.verifiedPhone ? 'තහවුරුයි' : 'නැත'}</span>
-                    </div>
-                  </div>
-
-                  {/* Metric 4: NIC Verified */}
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-[#07190f]/80 border border-emerald-200 dark:border-emerald-800/40 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 dark:text-zinc-400">හැඳුනුම්පත (NIC)</div>
-                    <div className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{trustProfile.verifiedNic ? 'සත්‍යාපිතයි' : 'නැත'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-emerald-800 dark:text-emerald-300/90 font-medium bg-emerald-600/10 p-2 rounded-xl border border-emerald-400/30 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span>
-                    {getLang(
-                      'ප්‍රජාවේ අනෙකුත් සාමාජිකයින්ට උදව් කිරීමෙන් සහ විශ්වාසවන්තව කටයුතු කිරීමෙන් ඔබගේ සහයෝගිතා ලකුණු ඉහළ යයි.',
-                      'Helping other community members increases your Collaboration Points and unlocks higher volunteer badges.',
-                      'பிறருக்கு உதவுவதன் மூலம் உங்கள் ஒத்துழைப்பு புள்ளிகளை (Collaboration Points) அதிகரிக்கலாம்.'
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {/* Form Inputs */}
-              <div className="space-y-3">
-                {/* Name */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-black text-slate-700 dark:text-emerald-300">
-                      {getLang('සම්පූර්ණ නම (Full Name):', 'Full Name:', 'முழு பெயர்:')}
-                    </label>
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      <span>{getLang('වෙනස් කිරීම් සඳහා Admin අනුමැතිය අවශ්‍යයි', 'Admin approval needed for changes', 'நிர்வாகி ஒப்புதல் தேவை')}</span>
+              {/* ==============================================================
+                  05. MY POSTED ADS BY CATEGORY (VIEW & DELETE)
+                  ============================================================== */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-200 dark:border-emerald-900/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">5</span>
+                    <Layers className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                      තමා විසින් පළකළ දැන්වීම් (My Posted Ads):
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                      මුළු දැන්වීම් {userMyPosts.length}
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#07190f] border border-slate-200 dark:border-[#1a4730] text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                  />
-                </div>
 
-                {/* Phone & Email */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-black text-slate-700 dark:text-emerald-300 mb-1">
-                      {getLang('දුරකථන අංකය (Phone Number):', 'Phone Number:', 'தொலைபேசி எண்:')}
-                    </label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                      <input
-                        type="tel"
-                        required
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-[#07190f] border border-slate-200 dark:border-[#1a4730] text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-black text-slate-700 dark:text-emerald-300 mb-1">
-                      {getLang('විද්‍යුත් තැපෑල (Email - Optional):', 'Email (Optional):', 'மின்னஞ்சல்:')}
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-[#07190f] border border-slate-200 dark:border-[#1a4730] text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-black text-slate-700 dark:text-emerald-300">
-                      {getLang('පදිංචි ලිපිනය / නගරය (Address / City):', 'Home Address / City:', 'முகவரி / நகரம்:')}
-                    </label>
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      <span>{getLang('වෙනස් කිරීම් සඳහා Admin අනුමැතිය අවශ්‍යයි', 'Admin approval needed for changes', 'நிர்வாகி ஒப்புதல் தேவை')}</span>
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-[#07190f] border border-slate-200 dark:border-[#1a4730] text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Change Toggle */}
-                <div className="pt-2">
+                  {/* Privacy Toggle */}
                   <button
                     type="button"
-                    onClick={() => setChangePassword(!changePassword)}
-                    className="flex items-center gap-2 text-xs font-black text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                    onClick={() => togglePrivacy('myPosts')}
+                    className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                      privacySettings.myPosts === 'public'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-slate-700'
+                    }`}
                   >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>
-                      {changePassword
-                        ? getLang('මුරපදය වෙනස් කිරීම අවලංගු කරන්න', 'Cancel Password Change', 'கடவுச்சொல் மாற்றத்தை ரத்துசெய்')
-                        : getLang('🔐 මුරපදය (Password / PIN) වෙනස් කිරීමට අවශ්‍යද?', '🔐 Change Password / PIN?', '🔐 கடவுச்சொல்லை மாற்ற வேண்டுமா?')}
-                    </span>
+                    {privacySettings.myPosts === 'public' ? (
+                      <>
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>🌐 Public</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>🔒 Private</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
-                {/* Password Change Subform */}
-                {changePassword && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-3 animate-in fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
-                          {getLang('නව මුරපදය (New Key):', 'New Password / Key:', 'புதிய கடவுச்சொல்:')}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={newKey}
-                            onChange={(e) => setNewKey(e.target.value)}
-                            className="w-full px-3 py-2 pr-9 rounded-xl bg-white dark:bg-[#07190f] border border-amber-300 dark:border-amber-700 text-xs font-mono font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                          >
-                            {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
+                {userMyPosts.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400 dark:text-zinc-500 font-medium">
+                    ඔබ විසින් තවමත් දැන්වීම් පළකර නොමැත.
+                  </div>
+                ) : (
+                  <div className="space-y-3 pt-1">
+                    
+                    {/* Category 1: රතු එළිය (Red Alerts) */}
+                    <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 overflow-hidden bg-white dark:bg-[#06160d]">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryExpand('red_alerts')}
+                        className="w-full p-3 bg-rose-50 dark:bg-rose-950/50 flex items-center justify-between text-left font-black text-xs text-rose-950 dark:text-rose-200 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>🚨 රතු එළිය හදිසි නිවේදන (Red Alerts)</span>
+                          <span className="px-1.5 py-0.2 rounded-md bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200 text-[10px]">
+                            {redAlertPosts.length}
+                          </span>
+                        </span>
+                        {expandedCategories.red_alerts ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
-                          {getLang('මුරපදය තහවුරු කරන්න:', 'Confirm New Password:', 'உறுதிப்படுத்தவும்:')}
-                        </label>
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={confirmKey}
-                          onChange={(e) => setConfirmKey(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#07190f] border border-amber-300 dark:border-amber-700 text-xs font-mono font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
-                        />
-                      </div>
+                      {expandedCategories.red_alerts && (
+                        <div className="p-2 space-y-1.5 divide-y divide-slate-100 dark:divide-emerald-950/60">
+                          {redAlertPosts.length === 0 ? (
+                            <div className="p-2 text-[11px] text-slate-400">මෙම කාණ්ඩයේ දැන්වීම් නොමැත.</div>
+                          ) : (
+                            redAlertPosts.map((post) => (
+                              <div key={post.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-slate-900 dark:text-white truncate">
+                                    {post.headline || post.title || post.whatHappened || 'හදිසි අනතුරු ඇඟවීම'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">{post.postCode} • {new Date(post.createdAt).toLocaleDateString()}</div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {onViewPost && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onViewPost(post)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                      title="බලන්න"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      <span>බලන්න</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMyPost(post.id, post.headline || post.title || '')}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    title="ඉවත් කරන්න"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Category 2: ලේ සහ හදිසි සහන (Blood & Disaster Aid) */}
+                    <div className="rounded-2xl border border-red-200 dark:border-red-900/60 overflow-hidden bg-white dark:bg-[#06160d]">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryExpand('blood_disaster')}
+                        className="w-full p-3 bg-red-50 dark:bg-red-950/50 flex items-center justify-between text-left font-black text-xs text-red-950 dark:text-red-200 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>🩸 ලේ සහ ආපදා ආධාර (Blood & Disaster Aid)</span>
+                          <span className="px-1.5 py-0.2 rounded-md bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-200 text-[10px]">
+                            {bloodDisasterPosts.length}
+                          </span>
+                        </span>
+                        {expandedCategories.blood_disaster ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+
+                      {expandedCategories.blood_disaster && (
+                        <div className="p-2 space-y-1.5 divide-y divide-slate-100 dark:divide-emerald-950/60">
+                          {bloodDisasterPosts.length === 0 ? (
+                            <div className="p-2 text-[11px] text-slate-400">මෙම කාණ්ඩයේ දැන්වීම් නොමැත.</div>
+                          ) : (
+                            bloodDisasterPosts.map((post) => (
+                              <div key={post.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-slate-900 dark:text-white truncate">
+                                    {post.headline || post.title || post.whatHappened || 'ලේ පරිත්‍යාග දැන්වීම'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">{post.postCode} • {new Date(post.createdAt).toLocaleDateString()}</div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {onViewPost && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onViewPost(post)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      <span>බලන්න</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMyPost(post.id, post.headline || post.title || '')}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Category 3: ඉක්මන් සේවා (Quick Services) */}
+                    <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 overflow-hidden bg-white dark:bg-[#06160d]">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryExpand('quick_services')}
+                        className="w-full p-3 bg-amber-50 dark:bg-amber-950/50 flex items-center justify-between text-left font-black text-xs text-amber-950 dark:text-amber-200 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>⚡ ඉක්මන් සේවා (Quick Services)</span>
+                          <span className="px-1.5 py-0.2 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 text-[10px]">
+                            {quickServicePosts.length}
+                          </span>
+                        </span>
+                        {expandedCategories.quick_services ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+
+                      {expandedCategories.quick_services && (
+                        <div className="p-2 space-y-1.5 divide-y divide-slate-100 dark:divide-emerald-950/60">
+                          {quickServicePosts.length === 0 ? (
+                            <div className="p-2 text-[11px] text-slate-400">මෙම කාණ්ඩයේ දැන්වීම් නොමැත.</div>
+                          ) : (
+                            quickServicePosts.map((post) => (
+                              <div key={post.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-slate-900 dark:text-white truncate">
+                                    {post.headline || post.title || post.whatHappened || 'ඉක්මන් සේවා ඉල්ලීම'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">{post.postCode} • {new Date(post.createdAt).toLocaleDateString()}</div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {onViewPost && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onViewPost(post)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      <span>බලන්න</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMyPost(post.id, post.headline || post.title || '')}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Category 4: සාමාන්‍ය සේවා (General Services - Text / Picture / Standard) */}
+                    <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/60 overflow-hidden bg-white dark:bg-[#06160d]">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryExpand('general_services')}
+                        className="w-full p-3 bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-between text-left font-black text-xs text-emerald-950 dark:text-emerald-200 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>🛠️ සාමාන්‍ය සේවා (General Services - Text / Picture Posts)</span>
+                          <span className="px-1.5 py-0.2 rounded-md bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 text-[10px]">
+                            {generalServicePosts.length}
+                          </span>
+                        </span>
+                        {expandedCategories.general_services ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+
+                      {expandedCategories.general_services && (
+                        <div className="p-2 space-y-1.5 divide-y divide-slate-100 dark:divide-emerald-950/60">
+                          {generalServicePosts.length === 0 ? (
+                            <div className="p-2 text-[11px] text-slate-400">මෙම කාණ්ඩයේ දැන්වීම් නොමැත.</div>
+                          ) : (
+                            generalServicePosts.map((post) => (
+                              <div key={post.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-slate-900 dark:text-white truncate">
+                                    {post.headline || post.title || post.whatHappened || 'සාමාන්‍ය දැන්වීම'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    {post.postType === 'text_post' ? '📝 Text Post' : post.postType === 'picture_post' ? '📸 Picture Post' : '📄 Standard'} • {new Date(post.createdAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {onViewPost && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onViewPost(post)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      <span>බලන්න</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMyPost(post.id, post.headline || post.title || '')}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 )}
               </div>
 
-              {/* 🛠️ App Help & Issues Support Section (Requirement 03: ඉහළින්ම ඇති ඇප් සහය බොත්තම setting තුලට රැගෙනයන්න) */}
-              {onNavigateToIssues && (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-900 via-[#005e38] to-teal-900 border-2 border-emerald-400/60 text-white shadow-md flex flex-col sm:flex-row items-center justify-between gap-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-white/15 text-white flex items-center justify-center font-black shadow-inner shrink-0 border border-white/20">
-                      <HelpCircle className="w-5 h-5 text-emerald-300" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
-                        <span>{getLang('ඇප් සහය & තාක්ෂණික ගැටලු (App Help)', 'App Help & Technical Support', 'செயலி உதவி மற்றும் சிக்கல்கள்')}</span>
-                      </h4>
-                      <p className="text-[11px] text-emerald-100 font-medium leading-snug mt-0.5">
-                        {getLang(
-                          'ඇප් එකේ ගැටලුවක් හෝ දෝෂයක් ඇත්නම් සෘජුවම අපගේ කාර්මික කණ්ඩායමට යොමු කරන්න.',
-                          'Report bugs, request technical assistance, or contact support directly.',
-                          'தொழில்நுட்ப சிக்கல்கள் அல்லது உதவிகளுக்கு ஆதரவு குழுவை தொடர்பு கொள்ளவும்.'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onNavigateToIssues();
-                    }}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-amber-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
-                  >
-                    <HelpCircle className="w-4 h-4 text-amber-950" />
-                    <span>{getLang('ඇප් සහය විවෘත කරන්න', 'Open App Help', 'உதவிக்கு செல்க')}</span>
-                    <ExternalLink className="w-3 h-3 text-amber-950/80 ml-0.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* Standalone Mobile App / Install Helper Card */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-emerald-500/10 dark:from-amber-950/40 dark:via-amber-900/30 dark:to-emerald-950/40 border border-amber-300 dark:border-amber-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 flex items-center justify-center font-black shadow-xs shrink-0">
-                    <Smartphone className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
-                      <span>{getLang('📱 Mobile App එකක් ලෙස ස්ථාපනය (Install App)', '📱 Install as Mobile App (No URL Bar)', '📱 மொபைல் செயலியாக நிறுவவும்')}</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-600 dark:text-zinc-400">
-                      {getLang(
-                        'උඩින් සබැඳිය (URL/Link) නොපෙන්වා, සම්පූර්ණ තිරයේ (Full Screen) සැබෑ Mobile App එකක් ලෙස ඔබගේ Phone එකට එක් කරගන්න.',
-                        'Run as a full-screen standalone mobile app without browser URL bar or browser address frames.',
-                        'உலாவி URL இல்லாமல் முழுத்திரை செயலியாக நிறுவவும்.'
-                      )}
-                    </p>
-                  </div>
-                </div>
-
+              {/* Password Change Toggle */}
+              <div className="pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowPwaInstallModal(true)}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+                  onClick={() => setChangePassword(!changePassword)}
+                  className="flex items-center gap-2 text-xs font-black text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                 >
-                  <Download className="w-4 h-4 text-amber-950" />
-                  <span>{getLang('App එක ගන්න', 'Install App', 'நிறுவவும்')}</span>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>
+                    {changePassword
+                      ? 'මුරපදය වෙනස් කිරීම අවලංගු කරන්න'
+                      : '🔐 මුරපදය (Password / PIN) වෙනස් කිරීමට අවශ්‍යද?'}
+                  </span>
                 </button>
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-3 flex items-center justify-end gap-2.5">
+              {/* Password Change Subform */}
+              {changePassword && (
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-3 animate-in fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                        නව මුරපදය (New Password):
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={newKey}
+                          onChange={(e) => setNewKey(e.target.value)}
+                          className="w-full px-3 py-2 pr-9 rounded-xl bg-white dark:bg-[#07190f] border border-amber-300 dark:border-amber-700 text-xs font-mono font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-950 dark:text-amber-200 mb-1">
+                        මුරපදය තහවුරු කරන්න:
+                      </label>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={confirmKey}
+                        onChange={(e) => setConfirmKey(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#07190f] border border-amber-300 dark:border-amber-700 text-xs font-mono font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-zinc-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==============================================================
+                  07. BOTTOM SAVE BUTTON (සුරකින්න)
+                  ============================================================== */}
+              <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-200 dark:border-emerald-900/60">
                 <button
                   type="button"
                   onClick={onClose}
                   className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#0e271a] text-slate-700 dark:text-zinc-300 text-xs font-bold cursor-pointer transition-all"
                 >
-                  {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்துசெய்')}
+                  අවලංගු කරන්න (Cancel)
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{getLang('වෙනස්කම් සුරකින්න', 'Save Profile Settings', 'சேமிக்கவும்')}</span>
+                  <span>වෙනස්කම් සුරකින්න (Save Settings)</span>
                 </button>
               </div>
+
             </form>
           )}
 
@@ -2131,3 +2419,4 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     </div>
   );
 };
+
