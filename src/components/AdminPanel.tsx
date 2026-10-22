@@ -236,27 +236,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleRejectUser = async (userToReject: User, rejectionReason?: string) => {
     const targetId = userToReject.id;
-    const targetNic = userToReject.nicNumber || userToReject.nic || userToReject.userId;
+    const targetNic = (userToReject.nicNumber || userToReject.nic || userToReject.userId || '').trim().toUpperCase();
+    const targetDigits = targetNic.replace(/[^0-9]/g, '');
 
-    // 1. Immediately remove from local UI state so the application vanishes from pending list instantly
+    // 1. Immediately remove from local UI state across all ID and NIC matching variants
     if (setUsers) {
       setUsers((prev) =>
         prev.filter((u) => {
           if (u.id === targetId) return false;
-          if (targetNic && (u.nicNumber === targetNic || u.userId === targetNic || u.nic === targetNic)) return false;
+          const uNic = (u.nicNumber || u.nic || u.userId || '').trim().toUpperCase();
+          if (targetNic && (uNic === targetNic || u.userId === targetNic || u.id === targetNic)) return false;
+          const uDigits = uNic.replace(/[^0-9]/g, '');
+          if (targetDigits.length >= 9 && uDigits.length >= 9 && targetDigits === uDigits) return false;
           return true;
         })
       );
     }
 
-    // 2. Perform rejection in Firestore
+    // 2. Perform persistent rejection & deletion in Firestore
     try {
       const docId = userToReject.id || userToReject.userId;
       
-      // Update status to 'rejected' so real-time listener never restores it into pending list
+      // Update status to 'rejected' with full identity fields so Firestore security rules always pass
       if (docId) {
         try {
           await updateUserInFirestore(docId, {
+            ...userToReject,
             status: 'rejected',
             isDeleted: true,
             rejectionReason: rejectionReason || 'පරිපාලක විසින් අයදුම්පත ප්‍රතික්ෂේප කර ඉවත් කරන ලදී.',
@@ -272,6 +277,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         } catch (delErr) {
           console.warn('deleteUserAccount notice:', delErr);
         }
+      }
+
+      // If document was keyed under NIC number, update that as well
+      if (targetNic && targetNic !== docId) {
+        try {
+          await updateUserInFirestore(targetNic, {
+            ...userToReject,
+            status: 'rejected',
+            isDeleted: true,
+            rejectionReason: rejectionReason || 'පරිපාලක විසින් අයදුම්පත ප්‍රතික්ෂේප කර ඉවත් කරන ලදී.',
+            rejectedAt: new Date().toISOString()
+          });
+        } catch (_) {}
       }
 
       showNotification(`❌ ${userToReject.name} ගේ අයදුම්පත සාර්ථකව ඉවත් කරන ලදී.`);
@@ -1020,4 +1038,5 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 };
 
 export default AdminPanel;
+
 
