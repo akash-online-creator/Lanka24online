@@ -796,6 +796,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           {(post as any).postType === 'text_post' ? '📝 Text Post' : (post as any).postType === 'picture_post' ? '📸 Picture Post' : (post as any).postType}
                         </span>
                       )}
+                      {Boolean(post.reportsCount && post.reportsCount > 0) && (
+                        <>
+                          <span>•</span>
+                          <span className="text-rose-600 font-bold">
+                            ⚠️ රිපෝට්: {post.reportsCount}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* 🛡️ Anonymous Post Admin Audit Inspection */}
@@ -815,15 +823,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       </div>
                     )}
-                      {Boolean(post.reportsCount && post.reportsCount > 0) && (
-                        <>
-                          <span>•</span>
-                          <span className="text-rose-600 font-bold">
-                            ⚠️ රිපෝට්: {post.reportsCount}
-                          </span>
-                        </>
-                      )}
-                    </div>
 
                     {/* Audio Note Preview if exists */}
                     {post.audioUrl && (
@@ -1087,4 +1086,5 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 };
 
 export default AdminPanel;
+
 
