@@ -215,7 +215,37 @@ export const App: React.FC = () => {
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
       if (dbUsers && dbUsers.length > 0) {
-        // 🛡️ Filter out rejected and deleted users from active memory state
+        // 🛡️ If current session user is on pending screen, live-sync their status from Firestore
+        if (currentUser && (activeView === 'pending' || currentUser.status === 'pending')) {
+          const normNic = normalizeNIC(currentUser.nic || currentUser.nicNumber || '');
+          const myDoc = dbUsers.find(
+            (u) =>
+              u.id === currentUser.id ||
+              u.userId === currentUser.userId ||
+              (normNic && normalizeNIC(u.nic || u.nicNumber || '') === normNic)
+          );
+
+          if (!myDoc) {
+            // User was deleted from Firestore by admin
+            setCurrentUser((prev) => prev ? {
+              ...prev,
+              status: 'rejected',
+              rejectionReason: 'පරිපාලක විසින් ඔබගේ අයදුම්පත පද්ධතියෙන් ඉවත් කරන ලදී. කරුණාකර නැවත ලියාපදිංචි වන්න.'
+            } : null);
+          } else if (myDoc.status === 'approved') {
+            setCurrentUser(myDoc);
+            setActiveView(myDoc.role === 'admin' || myDoc.role === 'super_admin' ? 'admin' : 'dashboard');
+          } else if (myDoc.status === 'rejected' || myDoc.isDeleted) {
+            setCurrentUser((prev) => prev ? {
+              ...prev,
+              ...myDoc,
+              status: 'rejected',
+              rejectionReason: myDoc.rejectionReason || 'පරිපාලක විසින් ඔබගේ අයදුම්පත ප්‍රතික්ෂේප කර ඇත.'
+            } : null);
+          }
+        }
+
+        // Active users list in state (filter out rejected/deleted)
         const activeDbUsers = dbUsers.filter((u) => u.status !== 'rejected' && !u.isDeleted);
         setUsers(deduplicateUsers([...activeDbUsers, ...initialUsers]));
       }
@@ -603,11 +633,63 @@ export const App: React.FC = () => {
           <PendingApprovalView
             user={currentUser}
             language={language}
-            onRefreshStatus={() => {
-              if (currentUser.status === 'approved') setActiveView('dashboard');
+            onRefreshStatus={async () => {
+              // 🔍 Realtime Live Status Check directly against Firestore
+              try {
+                const targetKey = currentUser.id || currentUser.userId || currentUser.nicNumber || currentUser.nic || '';
+                const freshDoc = await getUserFromFirestore(targetKey);
+
+                if (!freshDoc) {
+                  // Document was completely deleted by Admin
+                  const rejectedUser: User = {
+                    ...currentUser,
+                    status: 'rejected',
+                    rejectionReason: 'පරිපාලක විසින් ඔබගේ අයදුම්පත පරීක්ෂා කර පද්ධතියෙන් ඉවත් කරන ලදී. කරුණාකර නිවැරදි තොරතුරු සහිතව නැවත ලියාපදිංචි වන්න.',
+                  };
+                  setCurrentUser(rejectedUser);
+                  try {
+                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(rejectedUser));
+                  } catch (_) {}
+                  return;
+                }
+
+                if (freshDoc.status === 'approved') {
+                  setCurrentUser(freshDoc);
+                  try {
+                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(freshDoc));
+                  } catch (_) {}
+                  setActiveView(freshDoc.role === 'admin' || freshDoc.role === 'super_admin' ? 'admin' : 'dashboard');
+                } else if (freshDoc.status === 'rejected' || freshDoc.isDeleted) {
+                  const rejectedUser: User = {
+                    ...currentUser,
+                    ...freshDoc,
+                    status: 'rejected',
+                    rejectionReason: freshDoc.rejectionReason || 'පරිපාලක විසින් ඔබගේ අයදුම්පත ප්‍රතික්ෂේප කර ඇත.',
+                  };
+                  setCurrentUser(rejectedUser);
+                  try {
+                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(rejectedUser));
+                  } catch (_) {}
+                } else {
+                  alert('තවමත් පරීක්ෂා කරමින් පවතී. Admin වරයා විසින් අනුමත කරනතුරු කරුණාකර රැඳී සිටින්න.');
+                }
+              } catch (err) {
+                console.warn('Realtime status refresh error:', err);
+              }
+            }}
+            onReRegister={() => {
+              // Clear current rejected session and navigate to clean register form
+              setCurrentUser(null);
+              try {
+                localStorage.removeItem('sahaya_sewa_session_user');
+              } catch (_) {}
+              setActiveView('register');
             }}
             onNavigateToIssues={() => setActiveView('issues')}
-            onBackToLogin={handleLogout}
+            onBackToLogin={() => {
+              handleLogout();
+              setActiveView('login');
+            }}
           />
         )}
 
