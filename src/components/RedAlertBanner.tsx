@@ -6,9 +6,12 @@ import {
   MapPin, 
   Radio, 
   Clock, 
-  ChevronRight 
+  ChevronRight,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
 import { stopEmergencySiren } from '../utils/sirenAudio';
+import { deleteRedAlertInFirestore, updateRedAlertStatus } from '../lib/firebase';
 
 export interface RedAlertData {
   id: string;
@@ -22,52 +25,78 @@ export interface RedAlertData {
   incidentTime?: string;
   createdAt?: string;
   createdAtMs?: number;
+  status?: string;
 }
 
 interface RedAlertBannerProps {
-  // තනි alert එකක් හෝ alert array එකක් ලෙස ලැබුණද දෙකටම ගැළපෙන පරිදි සකසා ඇත
   alert?: RedAlertData;
   alerts?: RedAlertData[];
+  currentUser?: any;
+  currentLocation?: any;
   onDismiss?: (alertId: string) => void;
   onOpenAlertDetail?: (alert: RedAlertData) => void;
+  onOpenCreate?: () => void;
 }
 
 export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
   alert: singleAlert,
   alerts,
+  currentUser,
   onDismiss,
   onOpenAlertDetail,
 }) => {
-  // සක්‍රීය ඇලර්ට් එක තෝරාගැනීම
+  // සක්‍රීය ඇලර්ට් එක තෝරාගැනීම (status === 'active' පමණක් සලකා බලයි)
   const activeAlert: RedAlertData | null = useMemo(() => {
-    if (singleAlert) return singleAlert;
-    if (alerts && alerts.length > 0) return alerts[0];
+    if (singleAlert) {
+      if ((singleAlert as any).status && (singleAlert as any).status !== 'active') return null;
+      return singleAlert;
+    }
+    if (alerts && alerts.length > 0) {
+      const active = alerts.find(a => a && (!(a as any).status || (a as any).status === 'active'));
+      return active || null;
+    }
     return null;
   }, [singleAlert, alerts]);
 
   const alertId = activeAlert?.id || '';
 
-  // Dismiss කළ පසු නැවත නැවත මතුවීම වැළැක්වීමට Session එකේ තබා ගැනීම
+  // 🛡️ Dismiss කළ පසු නැවත කිසිදා නොපෙන්වීමට localStorage (Permanent Storage) භාවිතා කිරීම
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
     try {
-      const saved = sessionStorage.getItem('sahaya_dismissed_alerts');
+      const saved = localStorage.getItem('sahaya_dismissed_disaster_alerts');
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch {
       return new Set();
     }
   });
 
-  const isDismissed = alertId ? dismissedAlerts.has(alertId) : false;
+  // පරිශීලකයා මෙම ආපදාව මින්පෙර එක් වරක් හෝ close කර ඇත්දැයි ස්ථිරව පරීක්ෂා කිරීම
+  const isDismissed = useMemo(() => {
+    if (!alertId) return true;
+    if (dismissedAlerts.has(alertId)) return true;
+    try {
+      if (localStorage.getItem('sahaya_dismissed_alert_' + alertId) === 'true') {
+        return true;
+      }
+      const saved = localStorage.getItem('sahaya_dismissed_disaster_alerts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.includes(alertId)) return true;
+      }
+    } catch {}
+    return false;
+  }, [alertId, dismissedAlerts]);
 
   // Touch Swipe Gesture States
   const [isDragging, setIsDragging] = useState(false);
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
   const [opacity, setOpacity] = useState(1);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const touchStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // 1. ඇලර්ට් එක ඉවත් කිරීම, සයිරන් සහ Vibration නැවැත්වීමේ Function එක
+  // 1. ඇලර්ට් එක ඉවත් කිරීම, සයිරන් සහ Vibration නැවැත්වීමේ Function එක (Permanent Save)
   const handleDismissAlert = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
       e.stopPropagation();
@@ -89,7 +118,8 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
       setDismissedAlerts((prev) => {
         const next = new Set(prev).add(alertId);
         try {
-          sessionStorage.setItem('sahaya_dismissed_alerts', JSON.stringify(Array.from(next)));
+          localStorage.setItem('sahaya_dismissed_disaster_alerts', JSON.stringify(Array.from(next)));
+          localStorage.setItem('sahaya_dismissed_alert_' + alertId, 'true');
         } catch {}
         return next;
       });
@@ -100,7 +130,44 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
     }
   };
 
-  // 2. ඇඟිල්ලෙන් ස්වයිප් කිරීම (Touch Swipe Gestures)
+  // 2. පරිපාලක (Admin) සඳහා Cloud එකෙන් සදහටම මකා දැමීමේ Function එක
+  const handleDeleteAlertFromCloud = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!alertId || isDeleting) return;
+    const confirmed = window.confirm('මෙම ආපදා නිවේදනය Cloud පද්ධතියෙන් සදහටම මකා දැමීමට ඔබට අවශ්‍යද?');
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteRedAlertInFirestore(alertId);
+      handleDismissAlert();
+    } catch (err) {
+      console.warn('Delete alert from cloud failed, resolving instead:', err);
+      try {
+        await updateRedAlertStatus(alertId, 'resolved', 'Admin resolved & cleared');
+        handleDismissAlert();
+      } catch (_) {}
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 3. පරිපාලක (Admin) සඳහා විසඳන ලදී ලෙස සලකුණු කිරීම
+  const handleResolveAlert = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!alertId || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await updateRedAlertStatus(alertId, 'resolved', 'Admin resolved');
+      handleDismissAlert();
+    } catch (err) {
+      console.warn('Resolve alert failed:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 4. ඇඟිල්ලෙන් ස්වයිප් කිරීම (Touch Swipe Gestures)
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartRef.current = {
       x: e.touches[0].clientX,
@@ -161,6 +228,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 
   const alertCode = activeAlert.code || activeAlert.alertCode || (alertId ? `#RED-${alertId.slice(0, 4).toUpperCase()}` : '#RED-8777');
   const alertTime = activeAlert.time || activeAlert.incidentTime || 'දැන් (Just now)';
+  const isAdmin = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.isAdmin));
 
   return (
     <aside 
@@ -189,7 +257,7 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           onClick={handleDismissAlert}
           className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 border border-white/40 text-white flex items-center justify-center shadow-md active:scale-90 transition-all cursor-pointer"
           aria-label="ඇලර්ට් එක වසන්න"
-          title="වසන්න"
+          title="මෙම ආපදාව ස්ථිරව වසන්න"
         >
           <X className="w-4 h-4 text-white" />
         </button>
@@ -246,7 +314,38 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
           </div>
         </div>
 
-        {/* 4. Swipe Hint Indicator */}
+        {/* 🛡️ 4. පරිපාලක (Admin) සඳහා සෘජු Cloud Controls */}
+        {isAdmin && (
+          <div className="mt-2.5 pt-2 border-t border-white/20 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider">
+              🛡️ පරිපාලක පාලනය (Admin Action):
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleResolveAlert}
+                className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold cursor-pointer transition-all active:scale-95 shadow-sm flex items-center gap-1"
+                title="මෙම ආපදාව විසඳන ලද බව සලකුණු කර ඉවත් කරන්න"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                <span>විසඳන ලදී</span>
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteAlertFromCloud}
+                className="px-2.5 py-1 rounded-xl bg-black/60 hover:bg-black text-rose-300 hover:text-white text-[11px] font-bold cursor-pointer transition-all active:scale-95 border border-rose-400/40 shadow-sm flex items-center gap-1"
+                title="මෙම ආපදාව Cloud එකෙන් සදහටම මකා දමන්න"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Cloud එකෙන් මකන්න</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 5. Swipe Hint Indicator */}
         <div className="mt-2.5 pt-1.5 border-t border-white/15 flex items-center justify-between text-[10px] text-white/75 font-medium">
           <span>👆 උඩට හෝ පැත්තට swipe කර ඉවත් කරන්න</span>
           <span className="flex items-center gap-0.5 text-amber-200 font-bold group-hover:translate-x-0.5 transition-transform">
@@ -260,3 +359,4 @@ export const RedAlertBanner: React.FC<RedAlertBannerProps> = ({
 };
 
 export default RedAlertBanner;
+
