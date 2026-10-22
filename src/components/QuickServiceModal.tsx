@@ -90,6 +90,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const voiceData: any = null;
   // Voice recording bar removed
 
   // 📝 2nd Method: Text Post State
@@ -302,7 +303,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     const isAnon = !showProfileText;
     const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
     const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
-    const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+    const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
 
     onSubmitPost({
       userName: authorDisplayName,
@@ -343,15 +344,20 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       commentsList: [],
     } as any);
 
-    broadcastPushNotification({
-      category: 'quick_service',
-      title: '📝 නව Text පෝස්ට් එකක්!',
-      message: `${textHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-      locationName: resolvedLocation,
-      lat: currentLocation?.lat,
-      lng: currentLocation?.lng,
-      targetModal: 'normal_services',
-    });
+    try {
+      broadcastPushNotification({
+        category: 'quick_service',
+        title: '📝 නව Text පෝස්ට් එකක්!',
+        message: `${textHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
+        body: `${textHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
+        locationName: resolvedLocation,
+        lat: currentLocation?.lat,
+        lng: currentLocation?.lng,
+        targetModal: 'normal_services',
+      });
+    } catch (notifErr) {
+      console.debug('Notification broadcast notice:', notifErr);
+    }
 
     setIsSuccess(true);
     setTimeout(() => {
@@ -381,7 +387,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       const isAnon = !showProfilePic;
       const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
       const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
-      const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+      const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
 
       await onSubmitPost({
         userName: authorDisplayName,
@@ -423,15 +429,20 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         commentsList: [],
       } as any);
 
-      broadcastPushNotification({
-        category: 'quick_service',
-        title: '📸 නව Picture පෝස්ට් එකක්!',
-        message: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-        locationName: resolvedLocation,
-        lat: currentLocation?.lat,
-        lng: currentLocation?.lng,
-        targetModal: 'normal_services',
-      });
+      try {
+        broadcastPushNotification({
+          category: 'quick_service',
+          title: '📸 නව Picture පෝස්ට් එකක්!',
+          message: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
+          body: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
+          locationName: resolvedLocation,
+          lat: currentLocation?.lat,
+          lng: currentLocation?.lng,
+          targetModal: 'normal_services',
+        });
+      } catch (notifErr) {
+        console.debug('Notification broadcast notice:', notifErr);
+      }
 
       setIsSuccess(true);
       setTimeout(() => {
@@ -516,7 +527,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       return;
     }
 
-    const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+    const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
     const autoPlatformFee = calculatePlatformFee(paymentText);
     const newStartPin = generateStartPin();
     const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
@@ -544,8 +555,8 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       selectedHelpers: [],
       locationName: resolvedLocation,
       distanceKm: 0.8,
-      lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
-      lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
+      lat: currentLocation?.lat || 7.1712,
+      lng: currentLocation?.lng || 79.8978,
       verifiedOtp: true,
       category: 'normal_services',
       tagName: selectedTag?.tagName,
