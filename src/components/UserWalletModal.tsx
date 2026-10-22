@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, CreditTransaction, Language } from '../types';
 import { 
+  getEffectiveCategoryFees, 
   BANK_DEPOSIT_INFO, 
   CATEGORY_CREDIT_FEES, 
   extractNumericId, 
@@ -63,7 +64,7 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
   const [ratesFilter, setRatesFilter] = useState<'all' | 'free' | 'paid'>('all');
 
   const allRates = React.useMemo(() => {
-    const feesMap = getEffectiveCategoryFees();
+    const feesMap = typeof getEffectiveCategoryFees === 'function' ? getEffectiveCategoryFees() : (CATEGORY_CREDIT_FEES || {});
     return Object.values(feesMap)
       .filter((item) => item.id >= 1 && item.id <= 21)
       .sort((a, b) => a.id - b.id);
