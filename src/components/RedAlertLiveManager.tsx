@@ -82,7 +82,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   const currentUserId = propUserId || currentUser?.id || currentUser?.userId || 'usr_guest';
 
-|---|---|---|---|---|
 
   const [activeAlert, setActiveAlert] = useState<RedAlertItem | null>(null);
 
