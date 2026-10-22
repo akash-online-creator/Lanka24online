@@ -38,6 +38,7 @@ import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/f
 import { maskPhone } from '../utils/demoDataMasker';
 import { AudioVoicePlayer } from './AudioVoiceNote';
 import { getFontFamilyById, injectPostFonts } from '../utils/postFontManager';
+import { getPostValidityInfo } from '../utils/creditManager';
 
 export interface PostCardProps {
   post: HelpPost | any;
@@ -649,7 +650,34 @@ export const PostCard: React.FC<PostCardProps> = ({
     );
   };
 
-  // =========================================================================
+    // ⏳ Validity Duration Badge for Post Author / Creator
+  const renderValidityDurationForPoster = () => {
+    if (!ownerCheck) return null;
+    const validityInfo = getPostValidityInfo(post);
+
+    return (
+      <div className="mt-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 dark:border-amber-500/40 flex items-center justify-between gap-2 text-xs font-bold text-amber-950 dark:text-amber-100 shadow-2xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-slate-600 dark:text-slate-400 shrink-0">වලංගු කාලසීමාව:</span>
+          <span className="font-extrabold text-amber-950 dark:text-amber-100 bg-amber-400/25 px-2 py-0.5 rounded-lg border border-amber-500/30 truncate">
+            {validityInfo.durationSi}
+          </span>
+        </div>
+        <div className="shrink-0 flex items-center gap-1.5">
+          <span className={`text-[11px] px-2.5 py-0.5 rounded-xl font-black ${
+            validityInfo.isExpired
+              ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+              : 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
+          }`}>
+            {validityInfo.remainingText}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+// =========================================================================
   // 📝 2. TEXT POST RENDER (Green Highlight Headline & Greenish-White Bold Box)
   // =========================================================================
   if (post.postType === 'text_post') {
@@ -712,6 +740,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           )}
         </div>
 
+        {/* ⏳ Post Validity for Author */}
+        {renderValidityDurationForPoster()}
+
         {/* Action Bar */}
         {renderInteractiveActionBar()}
 
@@ -759,6 +790,9 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           )}
         </div>
+
+        {/* ⏳ Post Validity for Author */}
+        {renderValidityDurationForPoster()}
 
         {/* Action Bar */}
         {renderInteractiveActionBar()}
@@ -808,6 +842,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* ⏳ Post Validity for Author */}
+      {renderValidityDurationForPoster()}
 
       {/* Action Bar */}
       {renderInteractiveActionBar()}
