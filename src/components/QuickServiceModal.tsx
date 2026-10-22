@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -14,35 +14,28 @@ import {
   Check,
   Plus,
   Minus,
-  AlertTriangle,
-  Type,
-  Camera,
-  Upload,
-  Trash2,
-  Send,
-  Sparkles,
-  Loader2
+  AlertTriangle
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User, CategoryItem, TagItem } from '../types';
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-// Voice recording bar removed as requested
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 import { generateStartPin, calculatePlatformFee } from '../utils/serviceWorkflowManager';
-import { SUPPORTED_POST_FONTS, injectPostFonts, getFontFamilyById } from '../utils/postFontManager';
 
 interface QuickServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmitPost: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => void;
   currentLocation: LocationOption;
-  availableLocations: LocationOption[];
+  availableLocations?: LocationOption[];
   currentUser: User;
   categories?: CategoryItem[];
   lang?: Language;
   editPost?: HelpPost | null;
   onUpdatePost?: (post: HelpPost) => void;
+  categoryTitle?: string;
+  selectedCategoryObj?: CategoryItem | null;
 }
 
 export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
@@ -56,19 +49,15 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   lang = 'si',
   editPost,
   onUpdatePost,
+  categoryTitle,
+  selectedCategoryObj,
 }) => {
   const t = translations[lang] || translations.si;
-
-  // 🔀 3-Way Method Mode State:
-  // 'standard' = ප්‍රශ්න වලට තොරතුරු සපයන සාමාන්‍ය ක්‍රමය
-  // 'text_post' = Facebook-style Text Post
-  // 'picture_post' = 16:9 Picture Post
-  const [postMode, setPostMode] = useState<'standard' | 'text_post' | 'picture_post'>('standard');
 
   // Selected Tag
   const [selectedTag, setSelectedTag] = useState<TagItem | null>(null);
 
-  // Form Fields State (Standard)
+  // Form Fields State
   const [whatHappened, setWhatHappened] = useState('');
   const [whatIsNeeded, setWhatIsNeeded] = useState('');
   const [conditions, setConditions] = useState('');
@@ -90,38 +79,12 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
   const [whatsappNumber, setWhatsappNumber] = useState('');
-  const voiceData: any = null;
-  // Voice recording bar removed
-
-  // 📝 2nd Method: Text Post State
-  const [textHeadline, setTextHeadline] = useState('');
-  const [selectedFont, setSelectedFont] = useState('noto-sans-sinhala');
-  const [textDescription, setTextDescription] = useState('');
-  const [showCommentsText, setShowCommentsText] = useState(true);
-  const [showProfileText, setShowProfileText] = useState(true);
-
-  // 📸 3rd Method: Picture Post State
-  const [pictureHeadline, setPictureHeadline] = useState('');
-  const [pictureImageBase64, setPictureImageBase64] = useState('');
-  const [showCommentsPic, setShowCommentsPic] = useState(true);
-  const [showProfilePic, setShowProfilePic] = useState(true);
-  const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const picturePostImageRef = useRef<HTMLInputElement | null>(null);
-
-  // Shared Anonymous ID for privacy
-  const [generatedAnonymousId, setGeneratedAnonymousId] = useState('');
 
   // Validation Error States
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
 
   const userWhatsAppNumber = currentUser?.whatsappNumber || currentUser?.phone || '';
-
-  useEffect(() => {
-    injectPostFonts();
-  }, []);
 
   useEffect(() => {
     if (currentUser && !whatsappNumber) {
@@ -154,21 +117,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         const found = allTags.find(t => t.id === editPost.tagId);
         if (found) setSelectedTag(found);
       }
-
-      if ((editPost as any).postType === 'text_post') {
-        setPostMode('text_post');
-        setTextHeadline(editPost.headline || editPost.title || '');
-        setTextDescription(editPost.whatHappened || '');
-        setSelectedFont((editPost as any).selectedFont || 'noto-sans-sinhala');
-      } else if ((editPost as any).postType === 'picture_post') {
-        setPostMode('picture_post');
-        setPictureHeadline(editPost.headline || editPost.title || '');
-        setPictureImageBase64(editPost.imageUrl || '');
-      } else {
-        setPostMode('standard');
-      }
     } else if (!editPost && isOpen) {
-      setPostMode('standard');
       setWhatHappened('');
       setWhatIsNeeded('');
       setConditions('');
@@ -180,286 +129,13 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       setHelpersNeeded(1);
       setWhatsappNumber(userWhatsAppNumber);
       setSelectedTag(null);
-      
       setErrors({});
       setHasAttemptedSubmit(false);
-      setIsSuccess(false);
-
-      // Text and Picture defaults
-      const randCode = Math.floor(1000 + Math.random() * 9000);
-      setGeneratedAnonymousId(`Anonymous #${randCode}`);
-      setTextHeadline('');
-      setTextDescription('');
-      setSelectedFont('noto-sans-sinhala');
-      setShowCommentsText(true);
-      setShowProfileText(true);
-      setPictureHeadline('');
-      setPictureImageBase64('');
-      setShowCommentsPic(true);
-      setShowProfilePic(true);
     }
   }, [editPost, isOpen, userWhatsAppNumber]);
 
   if (!isOpen) return null;
 
-  // 16:9 True HD (1280x720) High-Quality Canvas Processing (~90KB - 160KB)
-  const handlePicturePostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsProcessingImage(true);
-    const reader = new FileReader();
-    reader.onload = (event: any) => {
-      const img = new Image();
-      img.onload = () => {
-        // High quality True HD 16:9 Canvas (1280 x 720)
-        const targetWidth = 1280;
-        const targetHeight = 720;
-        const canvas = document.createElement('canvas');
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          setPictureImageBase64(event.target?.result || '');
-          setIsProcessingImage(false);
-          return;
-        }
-
-        // Enable ultra-high quality smoothing for maximum sharpness
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        // Clean dark emerald background
-        ctx.fillStyle = '#06180f';
-        ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-        // Aspect ratios
-        const imgAspect = img.width / img.height;
-        const targetAspect = targetWidth / targetHeight; // 16:9
-
-        let renderWidth = targetWidth;
-        let renderHeight = targetHeight;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        // If source is close to 16:9 (aspect between 1.4 and 2.0), fill and center-crop edge-to-edge
-        // If source is vertical or square, fit entirely inside so no text/info is chopped off!
-        if (imgAspect >= 1.4 && imgAspect <= 2.0) {
-          if (imgAspect > targetAspect) {
-            renderHeight = targetHeight;
-            renderWidth = img.width * (targetHeight / img.height);
-            offsetX = (targetWidth - renderWidth) / 2;
-          } else {
-            renderWidth = targetWidth;
-            renderHeight = img.height * (targetWidth / img.width);
-            offsetY = (targetHeight - renderHeight) / 2;
-          }
-        } else {
-          // Vertical screenshot / document / square: contain fit to preserve all text
-          if (imgAspect > targetAspect) {
-            renderWidth = targetWidth;
-            renderHeight = img.height * (targetWidth / img.width);
-            offsetY = (targetHeight - renderHeight) / 2;
-          } else {
-            renderHeight = targetHeight;
-            renderWidth = img.width * (targetHeight / img.height);
-            offsetX = (targetWidth - renderWidth) / 2;
-          }
-        }
-
-        ctx.drawImage(img, offsetX, offsetY, renderWidth, renderHeight);
-
-        // Export as crisp HD JPEG with 0.85 quality (~90KB to 160KB - crystal clear & light)
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-        setPictureImageBase64(compressedBase64);
-        setIsProcessingImage(false);
-      };
-      img.onerror = () => {
-        setIsProcessingImage(false);
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.onerror = () => {
-      setIsProcessingImage(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // -------------------------------------------------------------
-  // 🚀 SUBMIT METHOD 2: TEXT POST (Facebook Style)
-  // -------------------------------------------------------------
-  const handleTextPostSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!textHeadline.trim()) {
-      alert('කරුණාකර හෙඩ්ලයින් එක (Headline) ඇතුළත් කරන්න.');
-      return;
-    }
-    if (!textDescription.trim()) {
-      alert('කරුණාකර දැන්වීමේ විස්තරය ඇතුළත් කරන්න.');
-      return;
-    }
-
-    const isAnon = !showProfileText;
-    const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
-    const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
-    const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
-
-    onSubmitPost({
-      userName: authorDisplayName,
-      userPhotoUrl: authorDisplayPhoto,
-      userPhone: whatsappNumber.trim() || userWhatsAppNumber,
-      userId: currentUser?.userId || currentUser?.id || '',
-      postType: 'text_post',
-      headline: textHeadline.trim(),
-      title: textHeadline.trim(),
-      selectedFont: selectedFont,
-      whatHappened: textDescription.trim(),
-      whatIsNeeded: textHeadline.trim(),
-      conditions: 'විශේෂ කොන්දේසි නොමැත.',
-      transport: 'අදාළ නොවේ',
-      payment: 'නොමිලේ / සාකච්ඡා කළ හැක',
-      locationName: resolvedLocation,
-      distanceKm: 0.5,
-      lat: currentLocation?.lat || 7.1712,
-      lng: currentLocation?.lng || 79.8978,
-      verifiedOtp: true,
-      category: 'normal_services',
-      tagName: selectedTag?.tagName,
-      tagCategory: selectedTag?.category,
-      tagId: selectedTag?.id,
-      showComments: showCommentsText,
-      isAnonymous: isAnon,
-      anonymousId: isAnon ? generatedAnonymousId : undefined,
-      // 🛡️ Secure Admin Audit Trail
-      actualAuthorId: currentUser?.id || currentUser?.userId || 'unknown',
-      actualAuthorName: currentUser?.name || 'Anonymous User',
-      actualAuthorNic: currentUser?.nicNumber || currentUser?.nic || currentUser?.userId || 'N/A',
-      actualAuthorPhone: currentUser?.whatsappPhone || currentUser?.phone || userWhatsAppNumber || 'N/A',
-      likeCount: 0,
-      unlikeCount: 0,
-      unlikesCount: 0,
-      savesCount: 0,
-      commentsCount: 0,
-      commentsList: [],
-    } as any);
-
-    try {
-      broadcastPushNotification({
-        category: 'quick_service',
-        title: '📝 නව Text පෝස්ට් එකක්!',
-        message: `${textHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-        body: `${textHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-        locationName: resolvedLocation,
-        lat: currentLocation?.lat,
-        lng: currentLocation?.lng,
-        targetModal: 'normal_services',
-      });
-    } catch (notifErr) {
-      console.debug('Notification broadcast notice:', notifErr);
-    }
-
-    setIsSuccess(true);
-    setTimeout(() => {
-      setIsSuccess(false);
-      onClose();
-    }, 1500);
-  };
-
-  // -------------------------------------------------------------
-  // 🚀 SUBMIT METHOD 3: PICTURE POST (16:9 Image)
-  // -------------------------------------------------------------
-  const handlePicturePostSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
-    if (e && e.preventDefault) e.preventDefault();
-
-    if (!pictureHeadline.trim()) {
-      alert('කරුණාකර හෙඩ්ලයින් එක (Headline) ඇතුළත් කරන්න.');
-      return;
-    }
-    if (!pictureImageBase64) {
-      alert('කරුණාකර 16:9 අනුපාතයේ ඡායාරූපයක් තෝරාගන්න.');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const isAnon = !showProfilePic;
-      const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
-      const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
-      const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
-
-      await onSubmitPost({
-        userName: authorDisplayName,
-        userPhotoUrl: authorDisplayPhoto,
-        userPhone: whatsappNumber.trim() || userWhatsAppNumber,
-        userId: currentUser?.userId || currentUser?.id || '',
-        postType: 'picture_post',
-        headline: pictureHeadline.trim(),
-        title: pictureHeadline.trim(),
-        imageUrl: pictureImageBase64,
-        mediaType: 'photo',
-        whatHappened: pictureHeadline.trim(),
-        whatIsNeeded: pictureHeadline.trim(),
-        conditions: 'විශේෂ කොන්දේසි නොමැත.',
-        transport: 'අදාළ නොවේ',
-        payment: 'නොමිලේ / සාකච්ඡා කළ හැක',
-        locationName: resolvedLocation,
-        distanceKm: 0.5,
-        lat: currentLocation?.lat || 7.1712,
-        lng: currentLocation?.lng || 79.8978,
-        verifiedOtp: true,
-        category: 'normal_services',
-        tagName: selectedTag?.tagName,
-        tagCategory: selectedTag?.category,
-        tagId: selectedTag?.id,
-        showComments: showCommentsPic,
-        isAnonymous: isAnon,
-        anonymousId: isAnon ? generatedAnonymousId : undefined,
-        // 🛡️ Secure Admin Audit Trail
-        actualAuthorId: currentUser?.id || currentUser?.userId || 'unknown',
-        actualAuthorName: currentUser?.name || 'Anonymous User',
-        actualAuthorNic: currentUser?.nicNumber || currentUser?.nic || currentUser?.userId || 'N/A',
-        actualAuthorPhone: currentUser?.whatsappPhone || currentUser?.phone || userWhatsAppNumber || 'N/A',
-        likeCount: 0,
-        unlikeCount: 0,
-        unlikesCount: 0,
-        savesCount: 0,
-        commentsCount: 0,
-        commentsList: [],
-      } as any);
-
-      try {
-        broadcastPushNotification({
-          category: 'quick_service',
-          title: '📸 නව Picture පෝස්ට් එකක්!',
-          message: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-          body: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-          locationName: resolvedLocation,
-          lat: currentLocation?.lat,
-          lng: currentLocation?.lng,
-          targetModal: 'normal_services',
-        });
-      } catch (notifErr) {
-        console.debug('Notification broadcast notice:', notifErr);
-      }
-
-      setIsSuccess(true);
-      setTimeout(() => {
-        setIsSuccess(false);
-        onClose();
-      }, 1000);
-    } catch (err) {
-      console.error('Picture post submission error:', err);
-      alert('දැන්වීම පළකිරීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // -------------------------------------------------------------
-  // 🚀 SUBMIT METHOD 1: STANDARD QUESTIONNAIRE
-  // -------------------------------------------------------------
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
 
@@ -481,16 +157,19 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       }
     }
 
-    if (paymentType === 'custom' && (!customPaymentAmount || Number(customPaymentAmount) <= 0)) {
-      newErrors.payment = 'කරුණාකර ඔබ ගෙවීමට බලාපොරොත්තු වන මුදල ඇතුළත් කරන්න.';
-    }
-
-    if (transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' && (!customTransportFee || Number(customTransportFee) <= 0)) {
-      newErrors.transportFee = 'කරුණාකර ප්‍රවාහනය සඳහා ගෙවන මුදල ඇතුළත් කරන්න.';
+    if (paymentType === 'custom' && (!customPaymentAmount.trim() || Number(customPaymentAmount) <= 0)) {
+      newErrors.customPayment = 'කරුණාකර වලංගු මුදලක් ඇතුළත් කරන්න.';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleHelperChange = (delta: number) => {
+    setHelpersNeeded(prev => {
+      const next = prev + delta;
+      return next >= 1 ? next : 1;
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -501,11 +180,17 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       return;
     }
 
-    const paymentText = paymentType === 'agree' ? 'සාකච්ඡා කර තීරණය කරමු' : `රු. ${customPaymentAmount} ගෙවිය හැක`;
+    const paymentText = paymentType === 'agree'
+      ? 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)'
+      : `මට ගෙවිය හැක: රු. ${Number(customPaymentAmount).toLocaleString()}`;
 
     if (editPost && onUpdatePost) {
       const updatedPost: HelpPost = {
         ...editPost,
+        title: whatHappened.trim().slice(0, 50) || editPost.title || '⚡ ක්ෂණික සේවාව',
+        category: 'quick_services',
+        postType: 'quick_service',
+        roleType: 'need_help',
         whatHappened: whatHappened.trim(),
         whatIsNeeded: whatIsNeeded.trim(),
         conditions: conditions.trim() || 'විශේෂ කොන්දේසි නොමැත.',
@@ -514,6 +199,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
         customTransportFee: transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0,
         payment: paymentText,
         helpersNeeded: helpersNeeded,
+        helpersCount: helpersNeeded,
         userPhone: whatsappNumber.trim() || userWhatsAppNumber,
         tagName: selectedTag?.tagName || editPost.tagName,
         tagCategory: selectedTag?.category || editPost.tagCategory,
@@ -533,8 +219,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
     const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
 
     onSubmitPost({
+      title: whatHappened.trim().slice(0, 50) || '⚡ ක්ෂණික සේවාව',
       userName: currentUser?.name || 'පරිශීලක',
-      userPhone: whatsappNumber.trim() || userWhatsAppNumber,
+      userPhone: whatsappNumber.trim() || userWhatsAppNumber || currentUser?.phone || '',
+      userEmail: currentUser?.email || '',
       userId: currentUser?.userId || currentUser?.id || '',
       whatHappened: whatHappened.trim(),
       whatIsNeeded: whatIsNeeded.trim(),
@@ -555,31 +243,29 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       selectedHelpers: [],
       locationName: resolvedLocation,
       distanceKm: 0.8,
+      latitude: currentLocation?.lat || 7.1712,
+      longitude: currentLocation?.lng || 79.8978,
       lat: currentLocation?.lat || 7.1712,
       lng: currentLocation?.lng || 79.8978,
       verifiedOtp: true,
-      category: 'normal_services',
+      category: 'quick_services',
+      postType: 'quick_service',
+      roleType: 'need_help',
+      status: 'active',
+      isResolved: false,
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
-      audioUrl: (voiceData as any)?.audioUrl,
-      audioDurationSec: (voiceData as any)?.durationSec,
-      voiceSentDate: (voiceData as any)?.date,
-      voiceSentTime: (voiceData as any)?.time,
-      voiceSentLocation: (voiceData as any)?.location,
-      voiceCoordinates: (voiceData as any)?.coords,
-      isVoicePost: Boolean((voiceData as any)?.audioUrl),
-      voiceTranscript: (voiceData as any)?.transcript,
     });
 
     broadcastPushNotification({
       category: 'quick_service',
-      title: '🛠️ නව සාමාන්‍ය සේවා දැන්වීමක්!',
+      title: '⚡ නව සේවා දැන්වීමක්!',
       message: `${whatHappened.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
       locationName: resolvedLocation,
       lat: currentLocation?.lat,
       lng: currentLocation?.lng,
-      targetModal: 'normal_services',
+      targetModal: 'quick_service',
     });
 
     setHasAttemptedSubmit(false);
@@ -599,10 +285,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                <span>{editPost ? 'සාමාන්‍ය සේවා දැන්වීම සංස්කරණය' : 'සාමාන්‍ය සේවා ඉල්ලීමක් පළකරන්න'}</span>
+                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : (categoryTitle ? `⚡ ${categoryTitle} ඉල්ලීමක් පළකරන්න` : '⚡ ඉක්මන් සේවා ඉල්ලීමක් පළකරන්න')}</span>
               </h2>
               <p className="text-[11px] text-emerald-100 font-medium">
-                සාමාන්‍ය සේවා පුවරුව වෙත ප්‍රජා සහය දැන්වීම් පළකරන්න
+                අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී සේවාවන් ලබාගන්න
               </p>
             </div>
           </div>
@@ -615,656 +301,301 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
           </button>
         </div>
 
-        {/* 🔀 3-WAY METHOD SELECTOR TABS */}
-        <div className="p-2 sm:p-2.5 bg-emerald-50/90 dark:bg-[#05140b] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
-          <div className="text-[11px] font-black text-emerald-950 dark:text-emerald-300 mb-1.5 px-1 flex items-center justify-between">
-            <span>දැන්වීම පළකිරීමේ ක්‍රමය තෝරන්න (Select Posting Method):</span>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400">ක්‍රම 3කි</span>
+
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm">
+          
+          {/* Tag Selector */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
+            </label>
+            <TagSelector
+              selectedTag={selectedTag}
+              onSelectTag={setSelectedTag}
+              lang={lang}
+            />
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-200/80 dark:bg-[#071d12] rounded-2xl border border-slate-300/80 dark:border-emerald-900/50">
-            {/* Tab 1: Standard Questionnaire */}
-            <button
-              type="button"
-              onClick={() => setPostMode('standard')}
-              className={`py-2 px-1.5 rounded-xl text-center font-black text-[11px] sm:text-xs transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 cursor-pointer ${
-                postMode === 'standard'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+          {/* සිදුවී ඇති දේ (What Happened) */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <HelpCircle className="w-4 h-4 text-emerald-600" />
+              <span>සිදුවී ඇති දේ (What Happened) <span className="text-rose-500">*</span>:</span>
+            </label>
+            <textarea
+              rows={3}
+              value={whatHappened}
+              onChange={(e) => {
+                setWhatHappened(e.target.value);
+                if (errors.whatHappened) setErrors(prev => ({ ...prev, whatHappened: undefined }));
+              }}
+              placeholder="උදා: මෝටර් සයිකලයේ ටයර් එක පැන්චර් වී ඇත / වතුර බටයක් කැඩී වතුර කාන්දු වේ..."
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                errors.whatHappened ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
               }`}
-            >
-              <FileText className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">1. සාමාන්‍ය පෝරමය</span>
-            </button>
-
-            {/* Tab 2: Facebook-style Text Post */}
-            <button
-              type="button"
-              onClick={() => setPostMode('text_post')}
-              className={`py-2 px-1.5 rounded-xl text-center font-black text-[11px] sm:text-xs transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 cursor-pointer ${
-                postMode === 'text_post'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Type className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">2. Text පෝස්ට්</span>
-            </button>
-
-            {/* Tab 3: 16:9 Picture Post */}
-            <button
-              type="button"
-              onClick={() => setPostMode('picture_post')}
-              className={`py-2 px-1.5 rounded-xl text-center font-black text-[11px] sm:text-xs transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 cursor-pointer ${
-                postMode === 'picture_post'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">3. Picture පෝස්ට්</span>
-            </button>
+            />
+            {errors.whatHappened && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatHappened}</p>
+            )}
           </div>
-        </div>
 
-        {isSuccess ? (
-          <div className="py-12 text-center flex flex-col items-center justify-center space-y-3 animate-fadeIn flex-1">
-            <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-500 animate-bounce">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-            <h4 className="text-xl font-bold text-slate-900 dark:text-white">දැන්වීම සාර්ථකව පළකරන ලදී!</h4>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 max-w-md">
-              ඔබගේ දැන්වීම ප්‍රජා පුවරුවේ සජීවීව දිස්වනු ඇත.
-            </p>
+          {/* වියයුතු දේ (What is Needed) */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              <span>වියයුතු දේ (What is Needed) <span className="text-rose-500">*</span>:</span>
+            </label>
+            <textarea
+              rows={2}
+              value={whatIsNeeded}
+              onChange={(e) => {
+                setWhatIsNeeded(e.target.value);
+                if (errors.whatIsNeeded) setErrors(prev => ({ ...prev, whatIsNeeded: undefined }));
+              }}
+              placeholder="උදා: පැන්චරය දමා දීමට කාර්මිකයෙකු අවශ්‍යයි / ජලනල කාර්මිකයෙකු අවශ්‍යයි..."
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                errors.whatIsNeeded ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
+              }`}
+            />
+            {errors.whatIsNeeded && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatIsNeeded}</p>
+            )}
           </div>
-        ) : postMode === 'text_post' ? (
-          /* ==============================================================
-             📝 METHOD 2: TEXT POST (FACEBOOK STYLE) FORM
-             ============================================================== */
-          <form onSubmit={handleTextPostSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-4 text-left text-sm animate-fadeIn">
-            {/* Tag Selector for Text Post */}
-            <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
-              </label>
-              <TagSelector
-                selectedTag={selectedTag}
-                onSelectTag={(t) => setSelectedTag(t)}
-                activeCategory={categories.find(c => c.id === 'normal_services') || null}
-              />
-            </div>
 
-            {/* 01. Headline Box */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">1</span>
-                <span>හෙඩ්ලයින් එක (Headline / Title):</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={textHeadline}
-                onChange={(e) => setTextHeadline(e.target.value)}
-                placeholder="උදා: කඩවත අවට විශ්වාසනීය ජලනල කාර්මික සේවාවක් සොයමි..."
-                className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 dark:bg-[#06160d] border border-slate-300 dark:border-emerald-800/80 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-                style={{ fontFamily: getFontFamilyById(selectedFont) }}
-              />
-            </div>
-
-            {/* 02. Font Selection Box */}
-            <div className="space-y-1.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">2</span>
-                  <Type className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>අකුරු විලාසය (Select Font Style):</span>
-                </label>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
-                  Google Web Fonts Active
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                {SUPPORTED_POST_FONTS.map((font) => (
-                  <button
-                    key={font.id}
-                    type="button"
-                    onClick={() => setSelectedFont(font.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      selectedFont === font.id
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 shadow-xs ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 dark:border-emerald-900/40 bg-white dark:bg-[#06160d] hover:border-slate-300'
+          {/* 5 ගමනාගමන ක්‍රම (5 Transport Modes) */}
+          <div className="space-y-2">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Car className="w-4 h-4 text-emerald-600" />
+              <span>ගමනාගමනය සිදුවන්නේ කෙසේද? <span className="text-xs text-slate-500 font-normal">(පහතින් එකක් තෝරන්න)</span>:</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 dark:bg-[#0a1a12] p-3 rounded-2xl border border-slate-200 dark:border-[#163824]">
+              {transportOptions.map((opt) => {
+                const isSelected = transport === opt;
+                return (
+                  <label
+                    key={opt}
+                    onClick={() => setTransport(opt)}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs sm:text-sm font-bold cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm'
+                        : 'bg-white dark:bg-[#0c2217] border-slate-200 dark:border-[#1b3d29] text-slate-700 dark:text-slate-300 hover:bg-slate-100'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-black text-slate-800 dark:text-zinc-200">{font.name}</span>
-                      {selectedFont === font.id && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                    </div>
-                    <div 
-                      className="text-xs text-slate-600 dark:text-zinc-400 truncate"
-                      style={{ fontFamily: font.fontFamily }}
-                    >
-                      {font.previewSample}
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    <input
+                      type="radio"
+                      name="transport_choice"
+                      checked={isSelected}
+                      onChange={() => setTransport(opt)}
+                      className="accent-emerald-600 w-4 h-4"
+                    />
+                    <span>{opt}</span>
+                  </label>
+                );
+              })}
             </div>
 
-            {/* 03. Description Box */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">3</span>
-                <span>දැන්වීමේ විස්තරය (Post Description):</span>
-              </label>
-              <textarea
-                required
-                rows={4}
-                value={textDescription}
-                onChange={(e) => setTextDescription(e.target.value)}
-                placeholder="ඔබගේ අවශ්‍යතාවය, සම්බන්ධ කරගත හැකි ආකාරය සහ අනෙකුත් සියලු විස්තර මෙහි සටහන් කරන්න..."
-                className="w-full p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06160d] border border-slate-300 dark:border-emerald-800/80 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed"
-                style={{ fontFamily: getFontFamilyById(selectedFont) }}
-              />
-            </div>
-
-            {/* 04 & 05. Checkboxes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 cursor-pointer">
+            {/* Option 5: Custom Transport Fee Input */}
+            {transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' && (
+              <div className="p-3 bg-emerald-50 dark:bg-[#0d281a] border-2 border-emerald-400 rounded-2xl space-y-1.5 animate-fadeIn">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>ඔබ ගෙවන ප්‍රවාහන ගාස්තුව (රු.):</span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={showCommentsText}
-                  onChange={(e) => setShowCommentsText(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-emerald-600 rounded-md focus:ring-emerald-500"
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={customTransportFee}
+                  onChange={(e) => setCustomTransportFee(e.target.value)}
+                  placeholder="උදා: 350"
+                  className="w-full sm:w-48 bg-white dark:bg-[#07130c] border border-emerald-400 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-inner"
                 />
-                <div className="min-w-0">
-                  <span className="text-xs font-black text-slate-800 dark:text-zinc-200 block">
-                    Comment අන් අයට පෙන්වන්නද?
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">
-                    {showCommentsText ? 'අන් අයට අදහස් දැක්වීමට සහ කියවීමට හැක.' : 'අදහස් දැක්වීම අක්‍රීය කෙරේ.'}
-                  </span>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showProfileText}
-                  onChange={(e) => setShowProfileText(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-emerald-600 rounded-md focus:ring-emerald-500"
-                />
-                <div className="min-w-0">
-                  <span className="text-xs font-black text-slate-800 dark:text-zinc-200 block">
-                    Profile එක පෙන්වන්නද?
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">
-                    {showProfileText 
-                      ? 'ඔබගේ නම සහ Profile පින්තූරය පෙන්වයි.' 
-                      : `අප්‍රකටව (${generatedAnonymousId}) ලෙස පළවේ.`}
-                  </span>
-                </div>
-              </label>
-            </div>
-
-            {!showProfileText && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  <strong>අප්‍රකට දැන්වීමකි:</strong> පරිශීලකයින්ට <strong>{generatedAnonymousId}</strong> ලෙස පෙනෙන අතර, වංචනික ක්‍රියා වැළැක්වීම සඳහා Admin ට සැබෑ අයිතිකරු සෙවිය හැක.
-                </span>
+                <p className="text-[10px] text-slate-500">
+                  * මෙම ප්‍රවාහන මුදල සහායකයාගේ අවසන් සේවා බිල්පතට ස්වයංක්‍රීයව ඇතුළත් වේ.
+                </p>
               </div>
             )}
 
-            {/* 06. Submit Button */}
-            <div className="pt-2">
+            {/* Option 2: Distance based note */}
+            {transport === 'මා එවන්නම්' && (
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium px-1">
+                💡 සහායකයා පැමිණෙන දුර අනුව (කි.මී. 1 ට රු. 100 බැගින්) ප්‍රවාහන ගාස්තුව ස්වයංක්‍රීයව බිල්පතට එක්වේ.
+              </p>
+            )}
+          </div>
+
+          {/* ගෙවීම් (Payment) */}
+          <div className="space-y-2">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Banknote className="w-4 h-4 text-emerald-600" />
+              <span>ගෙවීම් (Payment / Fee):</span>
+            </label>
+
+            <div className="bg-slate-50 dark:bg-[#0a1a12] p-3.5 rounded-2xl border border-slate-200 dark:border-[#163824] space-y-3">
+              <label 
+                onClick={() => setPaymentType('agree')}
+                className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  paymentType === 'agree'
+                    ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 font-bold'
+                    : 'bg-white dark:bg-[#0c2217] border-slate-200 dark:border-[#1b3d29] text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment_choice"
+                  checked={paymentType === 'agree'}
+                  onChange={() => setPaymentType('agree')}
+                  className="accent-emerald-600 w-4 h-4"
+                />
+                <span className="text-xs sm:text-sm font-bold">
+                  [x] ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee)
+                </span>
+              </label>
+
+              <div 
+                onClick={() => setPaymentType('custom')}
+                className={`flex flex-wrap items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  paymentType === 'custom'
+                    ? 'bg-emerald-100 dark:bg-[#133722] border-emerald-500 text-emerald-950 dark:text-emerald-200 font-bold'
+                    : 'bg-white dark:bg-[#0c2217] border-slate-200 dark:border-[#1b3d29] text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="payment_choice"
+                    checked={paymentType === 'custom'}
+                    onChange={() => setPaymentType('custom')}
+                    className="accent-emerald-600 w-4 h-4"
+                  />
+                  <span className="text-xs sm:text-sm font-bold">මට ගෙවිය හැක: රු.</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={customPaymentAmount}
+                  disabled={paymentType !== 'custom'}
+                  onChange={(e) => {
+                    setCustomPaymentAmount(e.target.value);
+                    if (errors.customPayment) setErrors(prev => ({ ...prev, customPayment: undefined }));
+                  }}
+                  placeholder="ගාස්තුව ඇතුළත් කරන්න..."
+                  className="w-36 bg-white dark:bg-[#07130c] border border-slate-300 dark:border-[#1b3d29] rounded-xl px-3 py-1 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl border border-emerald-300/80 dark:border-emerald-800/60 flex items-center justify-between text-[11px]">
+              <span className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ඇප් ගාස්තුව (Platform Fee):</span>
+              </span>
+              <span className="font-mono font-black text-emerald-700 dark:text-emerald-400">
+                {paymentType === 'custom' && Number(customPaymentAmount) === 0 ? 'රු. 0.00 (නොමිලේ සේවා)' : 'රු. 50.00 (ගනුදෙනුව සාර්ථක වූ පසු)'}
+              </span>
+            </div>
+            {errors.customPayment && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.customPayment}</p>
+            )}
+          </div>
+
+          {/* උදව් අවශ්‍ය පුද්ගලයන් සංඛ්‍යාව (- ___ +) */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <Users className="w-4 h-4 text-emerald-600" />
+              <span>අවශ්‍ය සහායකයින් ගණන (Helpers Needed):</span>
+            </label>
+            <div className="flex items-center gap-4 bg-slate-50 dark:bg-[#0a1a12] p-2.5 rounded-2xl border border-slate-200 dark:border-[#163824] w-fit">
               <button
                 type="button"
-                onClick={handleTextPostSubmit}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 transition-all"
+                onClick={() => handleHelperChange(-1)}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-[#1b3d29] flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer shadow-xs active:scale-95"
               >
-                <Send className="w-4 h-4" />
-                <span>Text Post එක පළ කරන්න (Submit)</span>
+                <Minus className="w-4 h-4" />
               </button>
+              <span className="font-mono font-black text-base text-emerald-700 dark:text-emerald-300 w-6 text-center">
+                {helpersNeeded}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleHelperChange(1)}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-[#0c2217] border border-slate-300 dark:border-[#1b3d29] flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 cursor-pointer shadow-xs active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-slate-500 font-medium pl-1">පුද්ගලයින්</span>
             </div>
-          </form>
-        ) : postMode === 'picture_post' ? (
-          /* ==============================================================
-             📸 METHOD 3: 16:9 PICTURE POST FORM
-             ============================================================== */
-          <form onSubmit={handlePicturePostSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-4 text-left text-sm animate-fadeIn">
-            {/* Tag Selector for Picture Post */}
-            <div className="space-y-1.5">
-              <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
-              </label>
-              <TagSelector
-                selectedTag={selectedTag}
-                onSelectTag={(t) => setSelectedTag(t)}
-                activeCategory={categories.find(c => c.id === 'normal_services') || null}
-              />
-            </div>
+          </div>
 
-            {/* 01. Head Line Box */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">1</span>
-                <span>හෙඩ්ලයින් එක (Headline / Title):</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={pictureHeadline}
-                onChange={(e) => setPictureHeadline(e.target.value)}
-                placeholder="උදා: අලෙවි කිරීමට ඇති නව උපකරණ තොගය..."
-                className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 dark:bg-[#06160d] border border-slate-300 dark:border-emerald-800/80 text-xs sm:text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-              />
-            </div>
-
-            {/* 02. Upload Image (Strict 16:9 Ratio Container) */}
-            <div className="space-y-2 p-4 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold">2</span>
-                  <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>16:9 ඡායාරූපය උඩුගත කරන්න (Upload 16:9 Image):</span>
-                </label>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
-                  Ratio 16:9 පමණි
-                </span>
-              </div>
-
-              <input
-                ref={picturePostImageRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePicturePostImageChange}
-              />
-
-              {/* 16:9 Preview Frame with Active Loading State */}
-              {isProcessingImage ? (
-                <div className="w-full aspect-video rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 dark:bg-[#071d12] flex flex-col items-center justify-center p-6 text-center shadow-inner animate-pulse">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-3 shadow-xs">
-                    <Loader2 className="w-7 h-7 animate-spin" />
-                  </div>
-                  <span className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-200">
-                    ඡායාරූපය High Quality (HD) ලෙස සකසමින් පවතී...
-                  </span>
-                  <span className="text-[11px] font-semibold text-emerald-700/80 dark:text-emerald-400/80 mt-1">
-                    කරුණාකර මොහොතක් රැඳී සිටින්න
-                  </span>
-                </div>
-              ) : pictureImageBase64 ? (
-                <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md group">
-                  <img
-                    src={pictureImageBase64}
-                    alt="16:9 Uploaded Post"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => picturePostImageRef.current?.click()}
-                      className="px-3 py-1.5 rounded-xl bg-white text-slate-900 font-bold text-xs flex items-center gap-1 shadow-md cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>වෙනස් කරන්න</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPictureImageBase64('')}
-                      className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs flex items-center gap-1 shadow-md cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>ඉවත් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => picturePostImageRef.current?.click()}
-                  className="w-full aspect-video rounded-2xl border-2 border-dashed border-emerald-400 dark:border-emerald-700 bg-white dark:bg-[#06160d] hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 transition-all flex flex-col items-center justify-center p-4 text-center cursor-pointer group"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform shadow-xs">
-                    <Upload className="w-6 h-6" />
-                  </div>
-                  <span className="text-xs font-black text-slate-800 dark:text-white">
-                    16:9 ඡායාරූපය මෙතැනින් තෝරන්න
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-0.5">
-                    කැමරාවෙන් හෝ ගොනු අතරින් ඡායාරූපය ලබාගන්න (16:9 Screen Fit)
-                  </span>
-                </button>
-              )}
-            </div>
-
-            {/* Checkboxes: Comments & Profile */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showCommentsPic}
-                  onChange={(e) => setShowCommentsPic(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-emerald-600 rounded-md focus:ring-emerald-500"
-                />
-                <div className="min-w-0">
-                  <span className="text-xs font-black text-slate-800 dark:text-zinc-200 block">
-                    Comment අන් අයට පෙන්වන්නද?
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">
-                    {showCommentsPic ? 'අන් අයට අදහස් දැක්වීමට හැක.' : 'අදහස් දැක්වීම අක්‍රීයයි.'}
-                  </span>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/60 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showProfilePic}
-                  onChange={(e) => setShowProfilePic(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-emerald-600 rounded-md focus:ring-emerald-500"
-                />
-                <div className="min-w-0">
-                  <span className="text-xs font-black text-slate-800 dark:text-zinc-200 block">
-                    Profile එක පෙන්වන්නද?
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">
-                    {showProfilePic 
-                      ? 'ඔබගේ නම සහ Profile පින්තූරය පෙන්වයි.' 
-                      : `අප්‍රකටව (${generatedAnonymousId}) ලෙස පළවේ.`}
-                  </span>
-                </div>
-              </label>
-            </div>
-
-            {!showProfilePic && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  <strong>අප්‍රකට දැන්වීමකි:</strong> පරිශීලකයින්ට <strong>{generatedAnonymousId}</strong> ලෙස පෙනෙන අතර, වංචනික ක්‍රියා වැළැක්වීම සඳහා Admin ට සැබෑ අයිතිකරු සෙවිය හැක.
-                </span>
-              </div>
+          {/* WhatsApp අංකය */}
+          <div className="space-y-1.5">
+            <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+              <MessageSquare className="w-4 h-4 text-emerald-600" />
+              <span>ඔබගේ WhatsApp අංකය <span className="text-rose-500">*</span>:</span>
+            </label>
+            <input
+              type="text"
+              value={whatsappNumber}
+              onChange={(e) => {
+                setWhatsappNumber(e.target.value);
+                if (errors.whatsappNumber) setErrors(prev => ({ ...prev, whatsappNumber: undefined }));
+              }}
+              placeholder="0771234567"
+              className={`w-full p-3 rounded-2xl border bg-slate-50 dark:bg-[#07130c] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm ${
+                errors.whatsappNumber ? 'border-rose-500 bg-rose-50/50' : 'border-slate-300 dark:border-[#1b3d29]'
+              }`}
+            />
+            {errors.whatsappNumber && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{errors.whatsappNumber}</p>
             )}
+          </div>
 
-            {/* Submit Button with Dynamic Loading & Upload Protection States */}
-            <div className="pt-2">
-              {isProcessingImage ? (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/20 border-2 border-amber-500/40 text-amber-900 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed shadow-inner"
-                >
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-600 dark:text-amber-400" />
-                  <span>ඡායාරූපය සකස් වන තුරු කරුණාකර මොහොතක් රැඳී සිටින්න...</span>
-                </button>
-              ) : !pictureImageBase64 ? (
-                <button
-                  type="button"
-                  onClick={() => picturePostImageRef.current?.click()}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border-2 border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-zinc-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 hover:border-emerald-400 transition-all"
-                >
-                  <Camera className="w-4 h-4 text-emerald-600" />
-                  <span>පළමුව 16:9 ඡායාරූපයක් තෝරාගන්න (Select Image)</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={handlePicturePostSubmit}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 transition-all disabled:opacity-60"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>දැන්වීම පළකරමින් පවතී (Publishing)...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      <span>Picture Post එක පළ කරන්න (Submit)</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </form>
-        ) : (
-          /* ==============================================================
-             📋 METHOD 1: STANDARD QUESTIONNAIRE FORM
-             ============================================================== */
-          <>
-            
+          {/* කොන්දේසි */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
+              <span>කොන්දේසි (විකල්ප):</span>
+            </label>
+            <input
+              type="text"
+              value={conditions}
+              onChange={(e) => setConditions(e.target.value)}
+              placeholder="උදා: වැඩය සාර්ථක වූ පසු පමණක් ගෙවීම් කරනු ලැබේ..."
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-[#1b3d29] bg-slate-50 dark:bg-[#07130c] text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
 
-            {/* Form Body */}
-            <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm animate-fadeIn">
-              
-              {/* Tag Selector */}
-              <div className="space-y-1.5">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>අදාළ Tag එක තෝරන්න (විකල්ප):</span>
-                </label>
-                <TagSelector
-                  selectedTag={selectedTag}
-                  onSelectTag={(t) => setSelectedTag(t)}
-                  activeCategory={categories.find(c => c.id === 'normal_services') || null}
-                />
-              </div>
+          {/* විශේෂ දැනුවත් කිරීම */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 text-xs">
+              <span>විශේෂ දැනුවත් කිරීම (විකල්ප):</span>
+            </label>
+            <input
+              type="text"
+              value={specialNotice}
+              onChange={(e) => setSpecialNotice(e.target.value)}
+              placeholder="උදා: සවස 4.00 ට පෙර පැමිණිය හැකිනම් වඩාත් පහසුයි..."
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-[#1b3d29] bg-slate-50 dark:bg-[#07130c] text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
 
-              {/* 1. What Happened */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <HelpCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>සිදුවී ඇති දේ (What Happened) <span className="text-rose-500">*</span>:</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={whatHappened}
-                  onChange={(e) => setWhatHappened(e.target.value)}
-                  placeholder="උදා: මෝටර් සයිකලයේ ටයර් එක පැන්චර් වී ඇත / වතුර බටයක් කැඩී වතුර කාන්දු වේ..."
-                  className={`w-full p-3 bg-slate-50 dark:bg-[#041209] border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm ${errors.whatHappened ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200 dark:border-[#143823]'}`}
-                />
-                {errors.whatHappened && (
-                  <p className="text-[11px] text-rose-500 font-bold flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{errors.whatHappened}</span>
-                  </p>
-                )}
-              </div>
+          {/* Submit Button */}
+          <div className="pt-3">
+            <button
+              type="submit"
+              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-[0_4px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
+            >
+              <span>{editPost ? 'යාවත්කාලීන කරන්න' : 'දැන්වීම පළකරන්න'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
 
-              {/* 2. What is Needed */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>වියයුතු දේ (What is Needed) <span className="text-rose-500">*</span>:</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={whatIsNeeded}
-                  onChange={(e) => setWhatIsNeeded(e.target.value)}
-                  placeholder="උදා: පැන්චරය දමා දීමට කාර්මිකයෙකු අවශ්‍යයි / ජලනල කාර්මිකයෙකු අවශ්‍යයි..."
-                  className={`w-full p-3 bg-slate-50 dark:bg-[#041209] border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm ${errors.whatIsNeeded ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200 dark:border-[#143823]'}`}
-                />
-                {errors.whatIsNeeded && (
-                  <p className="text-[11px] text-rose-500 font-bold flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{errors.whatIsNeeded}</span>
-                  </p>
-                )}
-              </div>
+        </form>
 
-              {/* 3. Transport Options */}
-              <div className="space-y-2">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <Car className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ගමනාගමනය සිදුවන්නේ කෙසේද? (පහතින් එකක් තෝරන්න):</span>
-                </label>
-                <div className="space-y-2">
-                  {transportOptions.map((opt, idx) => (
-                    <label
-                      key={idx}
-                      className={`flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer ${
-                        transport === opt 
-                          ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 font-bold text-emerald-900 dark:text-emerald-200' 
-                          : 'border-slate-200 dark:border-[#143823] hover:bg-slate-50 dark:hover:bg-[#081e13]'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="transport"
-                        value={opt}
-                        checked={transport === opt}
-                        onChange={(e) => setTransport(e.target.value)}
-                        className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                      />
-                      <span className="text-xs sm:text-sm">{opt}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' && (
-                  <div className="mt-2 p-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-300 dark:border-emerald-800/60 space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      ප්‍රවාහනය සඳහා ඔබ ගෙවන උපරිම මුදල (රු.):
-                    </label>
-                    <input
-                      type="number"
-                      value={customTransportFee}
-                      onChange={(e) => setCustomTransportFee(e.target.value)}
-                      placeholder="උදා: 350"
-                      className="w-full p-2.5 bg-white dark:bg-[#06180f] border border-slate-300 dark:border-[#143823] rounded-xl text-xs sm:text-sm font-bold text-slate-900 dark:text-white"
-                    />
-                    {errors.transportFee && (
-                      <p className="text-[11px] text-rose-500 font-bold">{errors.transportFee}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Payment Agreement / Custom Fee */}
-              <div className="space-y-2">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <Banknote className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>සේවා ගාස්තුව (ගෙවීම් ක්‍රමය):</span>
-                </label>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentType('agree')}
-                    className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                      paymentType === 'agree'
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 font-bold text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 dark:border-[#143823] hover:bg-slate-50'
-                    }`}
-                  >
-                    <div>
-                      <span className="text-xs sm:text-sm font-bold block">සාකච්ඡා කර තීරණය කරමු</span>
-                      <span className="text-[10px] text-slate-500">කතාබස් කර එකඟ වන මුදල</span>
-                    </div>
-                    {paymentType === 'agree' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentType('custom')}
-                    className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                      paymentType === 'custom'
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 font-bold text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 dark:border-[#143823] hover:bg-slate-50'
-                    }`}
-                  >
-                    <div>
-                      <span className="text-xs sm:text-sm font-bold block">නිශ්චිත මුදලක් ගෙවිය හැක</span>
-                      <span className="text-[10px] text-slate-500">ඔබ ගෙවන මුදල සටහන් කරන්න</span>
-                    </div>
-                    {paymentType === 'custom' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                  </button>
-                </div>
-
-                {paymentType === 'custom' && (
-                  <div className="mt-2 p-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-300 dark:border-emerald-800/60 space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      ඔබ සේවාව වෙනුවෙන් ගෙවීමට බලාපොරොත්තු වන මුදල (රු.):
-                    </label>
-                    <input
-                      type="number"
-                      value={customPaymentAmount}
-                      onChange={(e) => setCustomPaymentAmount(e.target.value)}
-                      placeholder="උදා: 2500"
-                      className="w-full p-2.5 bg-white dark:bg-[#06180f] border border-slate-300 dark:border-[#143823] rounded-xl text-xs sm:text-sm font-bold text-slate-900 dark:text-white"
-                    />
-                    {errors.payment && (
-                      <p className="text-[11px] text-rose-500 font-bold">{errors.payment}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* 5. Helpers Needed Counter */}
-              <div className="space-y-1.5">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <Users className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>අවශ්‍ය සහායකයින් ගණන (Helpers Needed):</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setHelpersNeeded(prev => Math.max(1, prev - 1))}
-                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 flex items-center justify-center font-bold text-lg"
-                  >
-                    -
-                  </button>
-                  <span className="text-base font-black px-4">{helpersNeeded}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHelpersNeeded(prev => Math.min(10, prev + 1))}
-                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 flex items-center justify-center font-bold text-lg"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* 6. Contact WhatsApp Number */}
-              <div className="space-y-1">
-                <label className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>සම්බන්ධ කරගත හැකි WhatsApp දුරකථන අංකය <span className="text-rose-500">*</span>:</span>
-                </label>
-                <input
-                  type="tel"
-                  value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
-                  placeholder="07XXXXXXXX"
-                  className={`w-full p-3 bg-slate-50 dark:bg-[#041209] border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm font-bold ${errors.whatsappNumber ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200 dark:border-[#143823]'}`}
-                />
-                {errors.whatsappNumber && (
-                  <p className="text-[11px] text-rose-500 font-bold">{errors.whatsappNumber}</p>
-                )}
-              </div>
-
-              {/* Submit Button */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm sm:text-base shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
-                >
-                  <Check className="w-5 h-5" />
-                  <span>{editPost ? 'දැන්වීම යාවත්කාලීන කරන්න' : 'සේවා ඉල්ලීම පළකරන්න (Submit)'}</span>
-                </button>
-              </div>
-            </form>
-          </>
-        )}
       </div>
     </div>
   );
 };
-
-export default QuickServiceModal;
 
