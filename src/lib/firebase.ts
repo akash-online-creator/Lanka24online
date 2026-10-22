@@ -200,38 +200,12 @@ export async function syncUserWhatsappInFirestore(userId: string, whatsapp: stri
   }
 }
 
-export async function deleteUserAccount(userOrId: any, _permanent = true): Promise<void> {
+export async function deleteUserAccount(user: any, _permanent = true): Promise<void> {
   try {
-    const docId = typeof userOrId === 'string' ? userOrId : (userOrId?.id || userOrId?.userId);
-    if (!docId) return;
-
-    // 1. Attempt hard deleteDoc
-    try {
-      const docRef = doc(db, USERS_COLLECTION, docId);
-      await deleteDoc(docRef);
-      console.log('Successfully deleteDoc on Firestore:', docId);
-      return;
-    } catch (delErr) {
-      console.warn('deleteDoc blocked by Firestore rules, applying soft rejection update:', delErr);
-    }
-
-    // 2. Fallback: If deleteDoc is prohibited by Firestore rules, mark status as 'rejected'
-    const targetNic = userOrId?.nicNumber || userOrId?.nic || userOrId?.userId || '';
-    const targetUserId = userOrId?.userId || targetNic || docId;
-    const docRef = doc(db, USERS_COLLECTION, docId);
-
-    await setDoc(docRef, sanitizeForFirestore({
-      ...(typeof userOrId === 'object' ? userOrId : {}),
-      id: docId,
-      userId: targetUserId,
-      nicNumber: targetNic,
-      status: 'rejected',
-      isDeleted: true,
-      rejectedAt: serverTimestamp(),
-      updatedAtServer: serverTimestamp()
-    }), { merge: true });
+    const docRef = doc(db, USERS_COLLECTION, user.id);
+    await deleteDoc(docRef);
   } catch (err) {
-    console.warn('deleteUserAccount notice:', err);
+    handleFirestoreError(err, OperationType.DELETE, USERS_COLLECTION);
   }
 }
 
@@ -244,7 +218,6 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
     console.warn('subscribeToUsers error:', err);
   });
 }
-
 // ==============================================================
 // 🆘 HELP POSTS OPERATIONS
 // ==============================================================
@@ -306,6 +279,8 @@ export async function fetchHelpPostsPaginated(
     return { posts: [], lastDoc: null, hasMore: false };
   }
 }
+
+
 export async function addHelpPostToFirestore(postData: any): Promise<string> {
   const postId = postData.id || `post_${Date.now()}`;
   try {
@@ -382,18 +357,60 @@ export async function addReplyToFirestore(postId: string, replyData: any): Promi
 
 export async function sendChatMessageToFirestore(postId: string, messageData: any): Promise<void> {
   try {
+    if (!postId) return;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const fullMsg = {
+      ...messageData,
+      createdAt: messageData.createdAt || nowIso,
+      createdAtMs: messageData.createdAtMs || nowMs,
+      createdAtServer: serverTimestamp(),
+    };
     const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
-    await addDoc(colRef, sanitizeForFirestore({ ...messageData, createdAtServer: serverTimestamp() }));
+    await addDoc(colRef, sanitizeForFirestore(fullMsg));
+
+    // 🚀 CRITICAL: Update the parent post document so that post.replies and activity timestamps are updated!
+    // This allows MessageInboxModal, MessageInboxBubble, and Realtime Listeners to instantly notify the post owner!
+    try {
+      const postDocRef = doc(db, POSTS_COLLECTION, postId);
+      const replyEntry = {
+        id: `rep_${nowMs}_${Math.random().toString(36).substring(2, 7)}`,
+        responderName: messageData.senderName || 'පරිශීලක',
+        responderPhone: messageData.senderPhone || '',
+        message: messageData.text || '',
+        createdAt: nowIso,
+        createdAtMs: nowMs,
+      };
+
+      await setDoc(postDocRef, sanitizeForFirestore({
+        lastMessage: messageData.text || '',
+        lastMessageSenderName: messageData.senderName || '',
+        lastMessageSenderPhone: messageData.senderPhone || '',
+        lastMessageTime: nowIso,
+        lastMessageTimeMs: nowMs,
+        replies: arrayUnion(replyEntry),
+        updatedAtServer: serverTimestamp(),
+      }), { merge: true });
+    } catch (parentErr) {
+      console.warn('sendChatMessageToFirestore parent post update notice:', parentErr);
+    }
   } catch (err) {
     console.warn('sendChatMessageToFirestore error:', err);
   }
 }
 
 export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) => void): () => void {
+  if (!postId) return () => {};
   const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
-  const q = query(colRef, orderBy('createdAt', 'asc'));
-  return onSnapshot(q, (snap) => {
+  // Listen without an index-requiring orderBy so missing fields or lack of composite index will never fail
+  return onSnapshot(colRef, (snap) => {
     const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Robust in-memory sort by createdAtMs / createdAt / server timestamp
+    msgs.sort((a: any, b: any) => {
+      const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const timeB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return timeA - timeB;
+    });
     callback(msgs);
   }, (err) => {
     console.warn('subscribeToChatMessages error:', err);
@@ -575,6 +592,7 @@ export async function createOrUpdateSosLiveSession(session: any): Promise<string
   }, { merge: true });
   return id;
 }
+
 export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
   const cleanData = sanitizeForFirestore(locationData);
@@ -619,7 +637,6 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     return null;
   }
 }
-
 // ==============================================================
 // 📋 ISSUES MANAGEMENT
 // ==============================================================
@@ -835,6 +852,7 @@ export async function saveAidBroadcastToFirestore(item: any): Promise<string> {
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
+
 // ==============================================================
 // 🗑️ DELETED RECORDS MAP (SYNC ACROSS ALL CLIENTS)
 // ==============================================================
@@ -935,6 +953,7 @@ export async function deletePasswordResetRequestFromFirestore(id: string): Promi
     handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
   }
 }
+
 
 // ==============================================================
 // 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
