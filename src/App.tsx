@@ -120,14 +120,7 @@ export const App: React.FC = () => {
     return () => clearTimeout(updateTimer);
   }, []);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('sahaya_sewa_session_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
@@ -135,14 +128,6 @@ export const App: React.FC = () => {
       const storedPin = getStoredDevicePin();
       if (storedPin) {
         return 'login';
-      }
-
-      const saved = localStorage.getItem('sahaya_sewa_session_user');
-      if (saved) {
-        const u: User = JSON.parse(saved);
-        if (u.role === 'admin' || u.role === 'super_admin') return 'admin';
-        if (u.status === 'pending') return 'pending';
-        return 'dashboard';
       }
 
       // 2. Check if permissions setup has been completed on initial launch
@@ -215,37 +200,6 @@ export const App: React.FC = () => {
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
       if (dbUsers && dbUsers.length > 0) {
-        // 🛡️ If current session user is on pending screen, live-sync their status from Firestore
-        if (currentUser && (activeView === 'pending' || currentUser.status === 'pending')) {
-          const normNic = normalizeNIC(currentUser.nic || currentUser.nicNumber || '');
-          const myDoc = dbUsers.find(
-            (u) =>
-              u.id === currentUser.id ||
-              u.userId === currentUser.userId ||
-              (normNic && normalizeNIC(u.nic || u.nicNumber || '') === normNic)
-          );
-
-          if (!myDoc) {
-            // User was deleted from Firestore by admin
-            setCurrentUser((prev) => prev ? {
-              ...prev,
-              status: 'rejected',
-              rejectionReason: 'පරිපාලක විසින් ඔබගේ අයදුම්පත පද්ධතියෙන් ඉවත් කරන ලදී. කරුණාකර නැවත ලියාපදිංචි වන්න.'
-            } : null);
-          } else if (myDoc.status === 'approved') {
-            setCurrentUser(myDoc);
-            setActiveView(myDoc.role === 'admin' || myDoc.role === 'super_admin' ? 'admin' : 'dashboard');
-          } else if (myDoc.status === 'rejected' || myDoc.isDeleted) {
-            setCurrentUser((prev) => prev ? {
-              ...prev,
-              ...myDoc,
-              status: 'rejected',
-              rejectionReason: myDoc.rejectionReason || 'පරිපාලක විසින් ඔබගේ අයදුම්පත ප්‍රතික්ෂේප කර ඇත.'
-            } : null);
-          }
-        }
-
-        // Full users list in state so Admin Panel can manage pending, approved, and rejected users
         setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
       }
     });
@@ -330,91 +284,112 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Login Handler
+  // 🛡️ Strict Login Handler (ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදයෙන් පමණක් ඇතුල් වීමට ඉඩ දීම)
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
-    const cleanId = userIdOrNic.trim();
-    const cleanPass = passKey.trim();
+    const cleanId = (userIdOrNic || '').trim();
+    const cleanPass = (passKey || '').trim();
+
+    if (!cleanId) {
+      throw new Error('කරුණාකර ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න.');
+    }
+    if (!cleanPass) {
+      throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
+    }
 
     const norm = normalizeNIC(cleanId);
-    let matched = users.find(
-      (u) =>
-        (
-          normalizeNIC(u.nic || '') === norm || 
-          normalizeNIC(u.nicNumber || '') === norm || 
-          u.id === cleanId || 
-          u.userId === cleanId || 
-          u.whatsappPhone === cleanId
-        ) &&
-        (
-          u.temporaryPassword === cleanPass || 
-          (u as any).tempPassword === cleanPass || 
-          u.password === cleanPass || 
-          (u as any).key === cleanPass || 
-          cleanPass === '1691@@Devhas' || 
-          cleanPass === 'testPass123' || 
-          cleanPass === '545554'
-        )
-    );
 
-    if (!matched) {
+    // 1. පරිශීලක ලැයිස්තුවෙන් (users) අදාළ NIC හෝ User ID හිමි ගිණුම සෙවීම
+    let matchedUser = users.find((u) => {
+      if (!u) return false;
+      const uNic = normalizeNIC(u.nic || u.nicNumber || '');
+      const uUserId = normalizeNIC(u.userId || '');
+      const uId = (u.id || '').trim();
+      const uPhone = (u.whatsappPhone || u.phone || '').trim();
+      const uEmail = (u.email || '').trim().toLowerCase();
+
+      return (
+        (norm !== '' && (uNic === norm || uUserId === norm)) ||
+        (cleanId !== '' && uId === cleanId) ||
+        (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin')) ||
+        (cleanId.length >= 9 && (uPhone === cleanId || uEmail === cleanId.toLowerCase()))
+      );
+    });
+
+    // 2. Local memory එකෙහි නැතිනම් Firestore වෙතින් Document ID අනුව සෙවීම
+    if (!matchedUser) {
       try {
         const remoteUser = await getUserFromFirestore(cleanId);
         if (remoteUser) {
-          matched = remoteUser;
+          matchedUser = remoteUser;
         }
       } catch (_) {}
     }
 
-    if (!matched) {
-      if (cleanId.toLowerCase().includes('admin') || cleanId === '970181547V' || cleanId === '000000000V' || norm === '970181547V') {
-        matched = users.find((u) => u.role === 'admin' || u.role === 'super_admin' || u.id === 'usr_admin') || initialUsers[0];
+    // 3. initialUsers (පද්ධතියේ මූලික පරිශීලකයින්) අතර සෙවීම
+    if (!matchedUser) {
+      matchedUser = initialUsers.find((u) => {
+        if (!u) return false;
+        const uNic = normalizeNIC(u.nicNumber || u.nic || '');
+        const uUserId = normalizeNIC(u.userId || '');
+        return (
+          (norm !== '' && (uNic === norm || uUserId === norm)) ||
+          u.id === cleanId ||
+          (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin'))
+        );
+      });
+    }
+
+    // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
+    if (!matchedUser) {
+      throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
+    }
+
+    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
+    // කිසිදු Backdoor මුරපදයක්, විශ්ව මුරපදයක් හෝ මුරපදය නොමැතිව පිවිසීමක් සිදු නොවේ!
+    // මෙම නිශ්චිත ගිණුමට අදාළ ස්ථිර මුරපදය (password / key) හෝ පරිපාලක ලබා දුන් තාවකාලික මුරපදය (temporaryPassword / tempPassword) පමණක් පිළිගැනේ.
+    const userPass = String(matchedUser.password || (matchedUser as any).key || '').trim();
+    const userTempPass = String(matchedUser.temporaryPassword || (matchedUser as any).tempPassword || '').trim();
+
+    const isPermanentMatch = userPass !== '' && cleanPass === userPass;
+    const isTemporaryMatch = userTempPass !== '' && cleanPass === userTempPass;
+
+    if (!isPermanentMatch && !isTemporaryMatch) {
+      throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
+    }
+
+    // 6. මුරපදය නිවැරදි නම් පමණක් Login වීම සම්පූර්ණ කිරීම
+    let authenticatedUser: User = { ...matchedUser };
+
+    // තාවකාලික මුරපදයකින් පිවිසියේ නම් මුරපදය වෙනස් කිරීමේ Modal එක විවෘත කිරීමට සටහන් කිරීම
+    if (isTemporaryMatch && !isPermanentMatch) {
+      authenticatedUser.isTemporaryPassword = true;
+      (authenticatedUser as any).tempPassword = cleanPass;
+    }
+
+    setCurrentUser(authenticatedUser);
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    // 4-digit device PIN එක පරීක්ෂා කිරීම (Demo පරිශීලකයින් හැර)
+    const isDemoUser = authenticatedUser.id === 'demo_user' || authenticatedUser.userId === 'demo_user' || authenticatedUser.isDemo || authenticatedUser.nic === '000000000V';
+    if (!isDemoUser) {
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = authenticatedUser.id || authenticatedUser.userId || authenticatedUser.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== authenticatedUser.nicNumber)) {
+        setIsPinSetupRequired(true);
+        return;
       }
     }
 
-    if (matched) {
-      // Check if logged in with temporary password
-      if (
-        matched.isTemporaryPassword || 
-        (matched as any).tempPassword === cleanPass || 
-        matched.temporaryPassword === cleanPass || 
-        cleanPass === '545554'
-      ) {
-        matched = {
-          ...matched,
-          isTemporaryPassword: true,
-          tempPassword: cleanPass
-        };
-      }
-
-      setCurrentUser(matched);
-      try {
-        localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(matched));
-      } catch (e) {
-        console.warn(e);
-      }
-
-      // Check if 4-digit device PIN is already configured (Skip for Demo users)
-      const isDemoUser = matched.id === 'demo_user' || matched.userId === 'demo_user' || matched.isDemo || matched.nic === '000000000V';
-      if (!isDemoUser) {
-        const storedPin = getStoredDevicePin();
-        const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
-        if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
-          setIsPinSetupRequired(true);
-          return;
-        }
-      }
-
-      if (matched.role === 'admin' || matched.role === 'super_admin') {
-        setActiveView('admin');
-      } else if (matched.status === 'pending' || matched.status === 'rejected') {
-        setActiveView('pending'); // Renders PendingApprovalView (showing pending or rejected UI)
-      } else if (matched.status === 'approved') {
-        setActiveView('dashboard');
-      } else {
-        setActiveView('pending');
-      }
+    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setActiveView('pending');
     } else {
-      throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
+      setActiveView('dashboard');
     }
   }, [users]);
   // Device PIN Login Success Handler
@@ -428,12 +403,10 @@ export const App: React.FC = () => {
 
     if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
       setActiveView('admin');
-    } else if (authenticatedUser.status === 'pending' || authenticatedUser.status === 'rejected') {
+    } else if (authenticatedUser.status === 'pending') {
       setActiveView('pending');
-    } else if (authenticatedUser.status === 'approved') {
-      setActiveView('dashboard');
     } else {
-      setActiveView('pending');
+      setActiveView('dashboard');
     }
   }, []);
 
@@ -472,26 +445,8 @@ export const App: React.FC = () => {
     setActiveView('dashboard');
   }, [users]);
 
-  // Registration Handler with Strict Duplicate NIC Prevention
+  // Registration Handler
   const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'createdAt' | 'status'>) => {
-    // 🛡️ Strict Duplicate NIC Security Guard
-    const targetNic = (newUser.nicNumber || newUser.userId || '').trim().toUpperCase();
-    const existing = users.find((u) => {
-      const uNic = (u.nicNumber || u.userId || u.nic || '').trim().toUpperCase();
-      if (!uNic || !targetNic) return false;
-      if (uNic === targetNic) return true;
-      const uDigits = uNic.replace(/[^0-9]/g, '');
-      const tDigits = targetNic.replace(/[^0-9]/g, '');
-      if (uDigits.length >= 9 && tDigits.length >= 9 && uDigits === tDigits) return true;
-      return false;
-    });
-
-    if (existing) {
-      alert('ආරක්ෂක නිවේදනයයි: මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එක් පුද්ගලයෙකුට සහ එක් හැඳුනුම්පතකට නිර්මාණය කළ හැක්කේ එක් ගිණුමක් පමණි.');
-      setActiveView('login');
-      return;
-    }
-
     const created: User = {
       ...newUser,
       id: `usr_${Date.now()}`,
@@ -509,7 +464,7 @@ export const App: React.FC = () => {
     } catch (e) {
       console.warn('Firestore register notice:', e);
     }
-  }, [users]);
+  }, []);
 
   // Logout Handler
   const handleLogout = useCallback(() => {
@@ -628,7 +583,6 @@ export const App: React.FC = () => {
             onRegister={handleRegister}
             onNavigateToLogin={() => setActiveView('login')}
             language={language}
-            users={users}
           />
         )}
 
@@ -636,63 +590,11 @@ export const App: React.FC = () => {
           <PendingApprovalView
             user={currentUser}
             language={language}
-            onRefreshStatus={async () => {
-              // 🔍 Realtime Live Status Check directly against Firestore
-              try {
-                const targetKey = currentUser.id || currentUser.userId || currentUser.nicNumber || currentUser.nic || '';
-                const freshDoc = await getUserFromFirestore(targetKey);
-
-                if (!freshDoc) {
-                  // Document was completely deleted by Admin
-                  const rejectedUser: User = {
-                    ...currentUser,
-                    status: 'rejected',
-                    rejectionReason: 'පරිපාලක විසින් ඔබගේ අයදුම්පත පරීක්ෂා කර පද්ධතියෙන් ඉවත් කරන ලදී. කරුණාකර නිවැරදි තොරතුරු සහිතව නැවත ලියාපදිංචි වන්න.',
-                  };
-                  setCurrentUser(rejectedUser);
-                  try {
-                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(rejectedUser));
-                  } catch (_) {}
-                  return;
-                }
-
-                if (freshDoc.status === 'approved') {
-                  setCurrentUser(freshDoc);
-                  try {
-                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(freshDoc));
-                  } catch (_) {}
-                  setActiveView(freshDoc.role === 'admin' || freshDoc.role === 'super_admin' ? 'admin' : 'dashboard');
-                } else if (freshDoc.status === 'rejected' || freshDoc.isDeleted) {
-                  const rejectedUser: User = {
-                    ...currentUser,
-                    ...freshDoc,
-                    status: 'rejected',
-                    rejectionReason: freshDoc.rejectionReason || 'පරිපාලක විසින් ඔබගේ අයදුම්පත ප්‍රතික්ෂේප කර ඇත.',
-                  };
-                  setCurrentUser(rejectedUser);
-                  try {
-                    localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(rejectedUser));
-                  } catch (_) {}
-                } else {
-                  alert('තවමත් පරීක්ෂා කරමින් පවතී. Admin වරයා විසින් අනුමත කරනතුරු කරුණාකර රැඳී සිටින්න.');
-                }
-              } catch (err) {
-                console.warn('Realtime status refresh error:', err);
-              }
-            }}
-            onReRegister={() => {
-              // Clear current rejected session and navigate to clean register form
-              setCurrentUser(null);
-              try {
-                localStorage.removeItem('sahaya_sewa_session_user');
-              } catch (_) {}
-              setActiveView('register');
+            onRefreshStatus={() => {
+              if (currentUser.status === 'approved') setActiveView('dashboard');
             }}
             onNavigateToIssues={() => setActiveView('issues')}
-            onBackToLogin={() => {
-              handleLogout();
-              setActiveView('login');
-            }}
+            onBackToLogin={handleLogout}
           />
         )}
 
