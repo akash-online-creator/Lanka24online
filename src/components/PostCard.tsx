@@ -641,17 +641,17 @@ export const PostCard: React.FC<PostCardProps> = ({
   };
 
   // =========================================================================
-  // 📝 2. TEXT POST RENDER (16:9 Aspect Frame & Ellipsis Truncation)
+  // 📝 2. TEXT POST RENDER (Green Highlight Headline & Greenish-White Bold Box)
   // =========================================================================
   if (post.postType === 'text_post') {
     const rawHeadline = post.headline || post.title || '';
     const rawDesc = post.whatHappened || post.content || '';
     const fontStyle = getFontFamilyById(post.selectedFont);
     
-    // 16:9 Box text truncation check (approx 140 chars)
-    const isLongText = rawDesc.length > 140;
+    // Box text truncation check (approx 160 chars)
+    const isLongText = rawDesc.length > 160;
     const displayText = (!isTextExpanded && isLongText)
-      ? rawDesc.substring(0, 140) + '.......'
+      ? rawDesc.substring(0, 160) + '.......'
       : rawDesc;
 
     return (
@@ -660,25 +660,31 @@ export const PostCard: React.FC<PostCardProps> = ({
         {/* Header */}
         {renderCardHeader()}
 
-        {/* 16:9 Proportional Content Container */}
-        <div className="w-full aspect-[16/9] min-h-[170px] rounded-2xl bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-slate-50 dark:from-[#06180e] dark:via-[#082215] dark:to-[#04120a] border border-emerald-200/80 dark:border-emerald-900/60 p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-inner group relative">
+        {/* Proportional Content Container */}
+        <div className="w-full min-h-[170px] rounded-2xl bg-gradient-to-br from-[#f2fcf7] via-[#e8f7f0] to-[#f4faf6] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-300/80 dark:border-emerald-800/80 p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-inner group relative">
           
-          <div className="space-y-2">
-            {/* Headline */}
-            <h3 
-              className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-snug line-clamp-2"
-              style={{ fontFamily: fontStyle }}
-            >
-              {rawHeadline}
-            </h3>
+          <div className="space-y-3">
+            {/* 1. Headline: කොළ පාට background එකේ කළු පාට highlight අකුරෙන් */}
+            {rawHeadline && (
+              <div className="inline-block bg-emerald-500/25 dark:bg-emerald-500/35 border-2 border-emerald-600/30 dark:border-emerald-400/40 px-3.5 py-1.5 rounded-xl shadow-xs">
+                <h3 
+                  className="text-base sm:text-lg font-black text-slate-950 dark:text-emerald-100 leading-snug line-clamp-2 tracking-wide"
+                  style={{ fontFamily: fontStyle }}
+                >
+                  {rawHeadline}
+                </h3>
+              </div>
+            )}
 
-            {/* Description */}
-            <p 
-              className="text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-medium"
-              style={{ fontFamily: fontStyle }}
-            >
-              {displayText}
-            </p>
+            {/* 2. Description Box: කොළ පාටට මිශ්‍ර සුදු පාට කොටුවේ bold අකුරෙන් */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white/95 dark:bg-[#071d12]/95 border border-emerald-200/90 dark:border-emerald-900/80 shadow-xs">
+              <p 
+                className="text-xs sm:text-sm text-slate-950 dark:text-zinc-100 leading-relaxed font-bold"
+                style={{ fontFamily: fontStyle }}
+              >
+                {displayText}
+              </p>
+            </div>
           </div>
 
           {/* Ellipsis / Read More Toggle */}
@@ -689,7 +695,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 e.stopPropagation();
                 setIsTextExpanded(!isTextExpanded);
               }}
-              className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 self-start cursor-pointer pt-1"
+              className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 hover:underline flex items-center gap-1 self-start cursor-pointer pt-2"
             >
               <span>{isTextExpanded ? 'හකුලන්න (Show Less)' : 'තව කියවන්න (Read More)'}</span>
               {isTextExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -719,11 +725,15 @@ export const PostCard: React.FC<PostCardProps> = ({
         {/* Header */}
         {renderCardHeader()}
 
-        {/* Headline */}
+        {/* Headline: කොළ පාට background එකේ කළු පාට highlight අකුරෙන් */}
         {rawHeadline && (
-          <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white mb-2 leading-snug">
-            {rawHeadline}
-          </h3>
+          <div className="mb-2.5">
+            <div className="inline-block bg-emerald-500/25 dark:bg-emerald-500/35 border-2 border-emerald-600/30 dark:border-emerald-400/40 px-3.5 py-1.5 rounded-xl shadow-xs">
+              <h3 className="text-sm sm:text-base font-black text-slate-950 dark:text-emerald-100 leading-snug tracking-wide">
+                {rawHeadline}
+              </h3>
+            </div>
+          </div>
         )}
 
         {/* Strict 16:9 Image Frame */}
