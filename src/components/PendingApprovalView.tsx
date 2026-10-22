@@ -14,7 +14,8 @@ import {
   XCircle,
   AlertTriangle,
   RotateCcw,
-  MessageSquare
+  MessageSquare,
+  History
 } from 'lucide-react';
 
 interface PendingApprovalViewProps {
@@ -36,8 +37,11 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
 }) => {
   const t = translations[language] || translations.si;
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const isRejected = user.status === 'rejected' || (user as any).isDeleted === true;
+  const attemptCount = (user as any).submissionCount || 1;
+  const historyList = (user as any).rejectionHistory || [];
 
   const handleRefreshClick = async () => {
     try {
@@ -48,12 +52,19 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
     }
   };
 
+  const getAttemptWord = (count: number) => {
+    if (count === 1) return 'පළමු වතාවට';
+    if (count === 2) return 'දෙවතාවක්';
+    if (count === 3) return 'තෙවතාවක්';
+    return `${count} වතාවක්`;
+  };
+
   return (
     <div className="w-full max-w-lg mx-auto py-6 px-3">
-      <Card3D glowColor={isRejected ? "rgba(239, 68, 68, 0.25)" : "rgba(234, 179, 8, 0.15)"}>
+      <Card3D glowColor={isRejected ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.15)"}>
         
         {/* Top Status Header */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-5">
           <div className="flex justify-center mb-3">
             {isRejected ? (
               <div className="w-16 h-16 rounded-3xl bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center text-rose-500 shadow-[0_0_25px_rgba(239,68,68,0.4)] animate-pulse">
@@ -83,7 +94,7 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
           </h2>
           <p className="text-slate-400 text-xs sm:text-sm leading-relaxed max-w-sm mx-auto font-medium">
             {isRejected 
-              ? 'පරිපාලක මණ්ඩලය විසින් ඔබගේ ලියාපදිංචිය පරීක්ෂා කර බලා ප්‍රතික්ෂේප කර ඇත.' 
+              ? `ඔබගේ හැඳුනුම්පත් අංකය ${getAttemptWord(attemptCount)} භාවිත කර ඇත.` 
               : (t.pendingSubtitle || 'ඔබේ තොරතුරු අපගේ පරිපාලක මණ්ඩලය විසින් පරීක්ෂා කරමින් පවතී')}
           </p>
         </div>
@@ -109,10 +120,7 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
                 {user?.name || 'සාමාජිකයා'}
               </h4>
               <p className="text-xs text-slate-400 font-mono">
-                ID: <span className="text-yellow-400 font-semibold">{user?.userId || '-'}</span>
-              </p>
-              <p className="text-xs text-slate-400 font-mono">
-                NIC: {user?.nicNumber || user?.userId || '-'}
+                NIC: <span className="text-yellow-400 font-bold">{user?.nicNumber || user?.userId || '-'}</span>
               </p>
               {(user?.whatsappPhone || user?.phone || user?.whatsappNumber) && (
                 <p className="text-xs text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
@@ -124,14 +132,46 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
 
           {/* Conditional Notification Box (Rejected vs Pending) */}
           {isRejected ? (
-            <div className="bg-rose-950/60 border-2 border-rose-500/50 p-4 rounded-xl space-y-2 text-rose-100">
-              <div className="flex items-center gap-1.5 font-black text-xs text-rose-300">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>ප්‍රතික්ෂේප වීමට හේතුව:</span>
+            <div className="bg-rose-950/60 border-2 border-rose-500/50 p-4 rounded-xl space-y-2 text-rose-100 shadow-inner">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-black text-xs text-rose-300">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>අවසාන ප්‍රතික්ෂේප වීමට හේතුව:</span>
+                </div>
+                {historyList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="text-[11px] text-amber-300 underline font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <History className="w-3 h-3" />
+                    <span>{showHistory ? 'ඉතිහාසය සඟවන්න' : 'පෙර උත්සාහයන් බලන්න'}</span>
+                  </button>
+                )}
               </div>
-              <p className="text-xs sm:text-sm font-bold text-white bg-rose-900/60 p-2.5 rounded-lg border border-rose-800 leading-relaxed">
+
+              <div className="text-xs sm:text-sm font-bold text-white bg-rose-900/70 p-3 rounded-lg border border-rose-700/80 leading-relaxed shadow-xs">
                 👉 {(user as any).rejectionReason || 'හැඳුනුම්පත් ඡායාරූපය අපැහැදිලි වීම හෝ ලබාදුන් තොරතුරුවල දෝෂයක් පැවතීම.'}
-              </p>
+              </div>
+
+              {/* Collapsible History of Previous Rejections */}
+              {showHistory && historyList.length > 0 && (
+                <div className="pt-2 border-t border-rose-800 space-y-2">
+                  <span className="text-[10px] uppercase font-black text-amber-400 block tracking-wider">
+                    පෙර අයදුම්පත් ඉතිහාසය:
+                  </span>
+                  {historyList.map((h: any, idx: number) => (
+                    <div key={idx} className="p-2 rounded bg-black/40 border border-white/10 text-[11px] space-y-0.5">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span className="font-bold text-amber-300">උත්සාහය #{h.attempt || idx + 1}</span>
+                        <span>{h.date ? new Date(h.date).toLocaleDateString('si-LK') : ''}</span>
+                      </div>
+                      <p className="text-slate-200">හේතුව: {h.rejectionReason}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <p className="text-[11px] text-rose-300 font-medium pt-1">
                 කරුණාකර නිවැරදි තොරතුරු හා පැහැදිලි හැඳුනුම්පත් ඡායාරූපයක් සහිතව නැවත ලියාපදිංචි වන්න.
               </p>
@@ -155,10 +195,10 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
             <button
               type="button"
               onClick={onReRegister || onBackToLogin}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] border-b-4 border-emerald-800 transition-all active:translate-y-1 active:border-b-0 flex items-center justify-center gap-2 cursor-pointer text-sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.35)] border-b-4 border-emerald-800 transition-all active:translate-y-1 active:border-b-0 flex items-center justify-center gap-2 cursor-pointer text-sm"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>නැවත ලියාපදිංචි වන්න (Re-Register)</span>
+              <span>නැවත නිවැරදි තොරතුරු සහිතව ලියාපදිංචි වන්න (Re-Register)</span>
             </button>
           ) : (
             <button
