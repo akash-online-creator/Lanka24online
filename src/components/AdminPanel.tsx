@@ -119,7 +119,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const [userSearch, setUserSearch] = useState('');
-  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('pending');
+  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'blocked'>('pending');
   const [postSearch, setPostSearch] = useState('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
@@ -386,6 +386,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const pendingUsersCount = users.filter((u) => u.status === 'pending').length;
+  const rejectedUsersCount = users.filter((u) => u.status === 'rejected').length;
   const pendingIssuesCount = issues.filter((i) => i.status === 'pending').length;
   const activeAlertsCount = redAlerts.filter((a) => a.status === 'active').length;
 
@@ -506,7 +507,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {/* Filter Pills */}
             <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#07170e] p-1.5 rounded-2xl border border-slate-200/80 dark:border-[#153422] text-xs font-bold">
-              {(['pending', 'approved', 'blocked', 'all'] as const).map((f) => (
+              {(['pending', 'approved', 'rejected', 'blocked', 'all'] as const).map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -521,6 +522,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     ? `අනුමැතියට (${pendingUsersCount})`
                     : f === 'approved'
                     ? 'අනුමත අය'
+                    : f === 'rejected'
+                    ? `ප්‍රතික්ෂේපිත (${rejectedUsersCount})`
                     : f === 'blocked'
                     ? 'අවහිර කළ අය'
                     : 'සියල්ල'}
@@ -580,7 +583,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               {u.name?.charAt(0) || 'U'}
                             </div>
                             <div className="min-w-0">
-                              <span className="block truncate max-w-[140px] sm:max-w-none">{u.name}</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="block truncate max-w-[140px] sm:max-w-none">{u.name}</span>
+                                {((u as any).submissionCount > 1 || (u as any).isReRegistration) && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-black">
+                                    Attempt #{((u as any).submissionCount || 2)}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] text-slate-400 font-normal">
                                 {u.role === 'admin' ? '🛡️ Administrator' : 'සාමාජික'}
                               </span>
@@ -615,12 +625,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1 ${
                               isPending
                                 ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                                : u.status === 'rejected'
+                                ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
                                 : isBlocked
                                 ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
                                 : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
                             }`}
                           >
-                            {isPending ? 'අනුමැතියට' : isBlocked ? 'අවහිර' : 'සක්‍රිය'}
+                            {isPending ? 'අනුමැතියට' : u.status === 'rejected' ? 'ප්‍රතික්ෂේපිත' : isBlocked ? 'අවහිර' : 'සක්‍රිය'}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right">
