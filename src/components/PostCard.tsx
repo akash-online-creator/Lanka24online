@@ -525,24 +525,33 @@ export const PostCard: React.FC<PostCardProps> = ({
           </button>
         </div>
 
-        {/* Right: Quick Chat / Call */}
+        {/* Right: In-App Direct Inbox Message & Delete */}
         <div className="flex items-center gap-1.5">
-          {phoneNumber && !isAnonymousPost && (
-            <a
-              href={`https://wa.me/94${phoneNumber.replace(/[^0-9]/g, '').replace(/^0/, '')}?text=${encodeURIComponent('ආයුබෝවන්, ඔබ සහය සේවා යෙදුමේ පළකළ දැන්වීම සම්බන්ධයෙනි: ' + (post.headline || post.title || ''))}`}
-              target="_blank"
-              rel="noreferrer"
-              className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-400 transition-colors"
-              title="WhatsApp මඟින් සම්බන්ධ වන්න"
-            >
-              <Phone className="w-3.5 h-3.5" />
-            </a>
-          )}
+          {/* 💬 In-App Direct Inbox Message Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenChat) {
+                onOpenChat(post);
+              } else if (onOfferSupport) {
+                onOfferSupport(post);
+              } else if (onViewDetails) {
+                onViewDetails(post.id);
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs"
+            title="Inbox පණිවිඩයක් එවන්න (Direct Message)"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Inbox</span>
+          </button>
+
           {canModify && (
             <button
               type="button"
               onClick={handleDelete}
-              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl"
+              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95"
               title="ඉවත් කරන්න"
             >
               <Trash2 className="w-3.5 h-3.5" />
