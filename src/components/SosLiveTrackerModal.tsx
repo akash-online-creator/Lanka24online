@@ -432,6 +432,45 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   // 🛡️ 5-Minute Safety Cooldown Buffer State
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
 
+  // 🔋 Live Device Battery Level & Charging Status Listener (Web Battery API)
+  useEffect(() => {
+    let batteryObj: any = null;
+
+    const handleBatteryUpdate = (b: any) => {
+      if (b && typeof b.level === 'number') {
+        const pct = Math.round(b.level * 100);
+        setBatteryLevel(pct);
+        setIsCharging(Boolean(b.charging));
+
+        // 📡 Sync real battery level & charging state to Firestore active SOS session
+        const activeSessionId = sessionId || (typeof window !== 'undefined' ? localStorage.getItem('active_sos_session_id') : null);
+        if (activeSessionId) {
+          updateSosLiveLocation(activeSessionId, {
+            batteryPercent: pct,
+            batteryLevel: pct,
+            isCharging: Boolean(b.charging),
+          }).catch(() => {});
+        }
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        batteryObj = battery;
+        handleBatteryUpdate(battery);
+
+        battery.addEventListener('levelchange', () => handleBatteryUpdate(battery));
+        battery.addEventListener('chargingchange', () => handleBatteryUpdate(battery));
+      }).catch((err: any) => {
+        console.warn('Web Battery API initialization notice:', err);
+      });
+    }
+
+    return () => {
+      // Event listener cleanup
+    };
+  }, [sessionId]);
+
   // 6. Audio Evidence Recorder & Stream Refs
   const audioStreamRef = useRef<MediaStream | null>(null);
   const continuousRecorderRef = useRef<MediaRecorder | null>(null);
@@ -635,7 +674,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     try {
       const geo = await resolveExactLocation(latitude, longitude);
       if (geo && geo.shortDisplaySi) {
-        setLocationName(geo.shortDisplaySi);
+        const cleanTown = geo.shortDisplaySi.replace(/Andiamabalama/gi, 'Andiambalama');
+        setLocationName(cleanTown);
       }
     } catch {}
 
@@ -660,6 +700,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           accuracyMeters: Math.round(acc),
           speedKmh: spd ? Math.round(spd * 3.6) : 0,
           heading: hd ? Math.round(hd) : null,
+          batteryPercent: batteryLevel !== null ? batteryLevel : undefined,
+          batteryLevel: batteryLevel !== null ? batteryLevel : undefined,
+          isCharging: isCharging,
           locationName,
           currentLocation: {
             lat: latitude,
@@ -736,7 +779,9 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
               accuracy: accuracy || 10,
             }
           ],
-          batteryLevel: 100,
+          batteryLevel: batteryLevel !== null ? batteryLevel : undefined,
+          batteryPercent: batteryLevel !== null ? batteryLevel : undefined,
+          isCharging: isCharging,
           disconnectedContactIds: [],
           isAudioCut: false,
           status: 'active',
@@ -1115,7 +1160,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         )}
 
         {/* 1. TOP HEADER & TELEMETRY */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-red-600 to-rose-700 text-white flex flex-col gap-3 relative shrink-0">
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-red-600 to-rose-700 text-white flex flex-col gap-3 relative shrink-0 shadow-lg z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-md">
@@ -1495,9 +1540,18 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
 
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col">
               <span className="text-[10px] font-bold text-slate-400 uppercase">බැටරි මට්ටම</span>
-              <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1 mt-0.5">
-                <Battery className="w-3.5 h-3.5 text-amber-500" />
-                <span>{batteryLevel || 100}%</span>
+              <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5 mt-0.5">
+                <Battery className={`w-3.5 h-3.5 ${
+                  batteryLevel !== null && batteryLevel <= 20
+                    ? 'text-red-500 animate-pulse'
+                    : batteryLevel !== null && batteryLevel <= 50
+                    ? 'text-amber-500'
+                    : 'text-emerald-500'
+                }`} />
+                <span>{batteryLevel !== null ? `${batteryLevel}%` : 'පරීක්ෂා වෙමින්...'}</span>
+                {isCharging && (
+                  <span className="text-xs text-emerald-500 font-black animate-pulse" title="චාජ් වෙමින් පවතී">⚡</span>
+                )}
               </span>
             </div>
 
@@ -1523,7 +1577,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                <span>ලංකාවේ සියලුම පොලිස් ස්ථාන ({filteredPoliceStations.length})</span>
+                <span>ශ්‍රී ලංකාවේ ප්‍රධාන පොලිස් ස්ථාන ({filteredPoliceStations.length})</span>
               </label>
               <a
                 href="tel:119"
@@ -1879,7 +1933,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
         )}
 
       </div>
-        
+    </div>
       {/* 🔒 Quick PIN Modal to Cut Voice Stream */}
       {showVoiceCutPinModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
@@ -1985,11 +2039,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           </div>
         </div>
       )}
-    </div>
     </>
   );
 };
 
 export default SosLiveTrackerModal;
-
-
