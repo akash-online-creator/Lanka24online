@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Heart, 
+  ThumbsDown,
   MessageSquare, 
   Share2, 
   MoreVertical, 
@@ -24,20 +25,26 @@ import {
   Download,
   X,
   Send,
-  Users
+  Users,
+  Lock,
+  User as UserIcon,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { HelpPost, User, Language, LocationOption } from '../types';
+import { HelpPost, User, Language, LocationOption, PostComment } from '../types';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedPostId } from '../utils/deletedPostsManager';
 import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/firebase';
 import { maskPhone } from '../utils/demoDataMasker';
 import { AudioVoicePlayer } from './AudioVoiceNote';
+import { getFontFamilyById, injectPostFonts } from '../utils/postFontManager';
 
 export interface PostCardProps {
   post: HelpPost | any;
   currentUser?: User | null;
   viewerLocation?: LocationOption;
   lang?: Language;
+  language?: Language;
   isOwner?: boolean;
   isSaved?: boolean;
   onToggleSave?: (post: HelpPost) => void;
@@ -56,10 +63,12 @@ export interface PostCardProps {
   onPosterRespondIssue?: (post: HelpPost) => void;
   onPinPost?: (postId: string) => void;
   onLike?: (postId: string) => void;
+  onUnlike?: (postId: string) => void;
   onComment?: (postId: string) => void;
   onShare?: (postId: string) => void;
   onApprovePost?: (postId: string) => void;
   onRejectPost?: (postId: string) => void;
+  onViewProfile?: (userIdOrName: string) => void;
   isDemo?: boolean;
 }
 
@@ -67,9 +76,10 @@ export const PostCard: React.FC<PostCardProps> = ({
   post,
   currentUser,
   viewerLocation,
-  lang = 'si',
+  lang,
+  language = 'si',
   isOwner,
-  isSaved = false,
+  isSaved: propIsSaved = false,
   onToggleSave,
   onOfferSupport,
   onEditPost,
@@ -85,16 +95,55 @@ export const PostCard: React.FC<PostCardProps> = ({
   onPosterRespondIssue,
   onPinPost,
   onLike,
+  onUnlike,
   onComment,
   onShare,
   onApprovePost,
   onRejectPost,
+  onViewProfile,
   isDemo: propIsDemo,
 }) => {
+  const activeLang = lang || language || 'si';
+
+  // Fonts injection
+  React.useEffect(() => {
+    injectPostFonts();
+  }, []);
+
   const [showMenu, setShowMenu] = useState(false);
   const [isDeletingLocal, setIsDeletingLocal] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+
+  // 📝 Text Expansion State for long posts (....... ellipsis truncation)
+  const [isTextExpanded, setIsTextExpanded] = useState(false);
+
+  // 💬 Comments Drawer State
+  const [showCommentsDrawer, setShowCommentsDrawer] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [localComments, setLocalComments] = useState<PostComment[]>(() => post.commentsList || []);
+
+  // 👍 Like, 👎 Unlike, 🔖 Save Local State
+  const myUserId = currentUser?.id || currentUser?.userId || 'anonymous_guest';
+  const [likesCount, setLikesCount] = useState<number>(post.likeCount || 0);
+  const [isLiked, setIsLiked] = useState<boolean>(() => {
+    if (post.likedBy && Array.isArray(post.likedBy)) {
+      return post.likedBy.includes(myUserId);
+    }
+    return false;
+  });
+
+  const [unlikesCount, setUnlikesCount] = useState<number>(post.unlikesCount || post.unlikeCount || 0);
+  const [isUnliked, setIsUnliked] = useState<boolean>(() => {
+    if (post.unlikedBy && Array.isArray(post.unlikedBy)) {
+      return post.unlikedBy.includes(myUserId);
+    }
+    return false;
+  });
+
+  const [isSaved, setIsSaved] = useState<boolean>(propIsSaved || Boolean(post.savedBy?.includes(myUserId)));
+  const [savesCount, setSavesCount] = useState<number>(post.savesCount || post.saveCount || (propIsSaved ? 1 : 0));
 
   // Report Modal States
   const [showReportModal, setShowReportModal] = useState(false);
@@ -116,12 +165,11 @@ export const PostCard: React.FC<PostCardProps> = ({
   }
 
   const getLangText = (si: string, en: string, ta: string) => {
-    if (lang === 'en') return en;
-    if (lang === 'ta') return ta;
+    if (activeLang === 'en') return en;
+    if (activeLang === 'ta') return ta;
     return si;
   };
 
-  // Helper to extract ONLY the nearest city/town (නගරය පමණි - නිශ්චිත ස්ථානය සඟවයි)
   const getCityOnly = (locStr?: string): string => {
     if (!locStr) return viewerLocation?.nameSi?.split('(')[0]?.trim() || getLangText('නගරය', 'City', 'நகரம்');
     if (/^\d+\.\d+/.test(locStr.trim())) {
@@ -131,7 +179,13 @@ export const PostCard: React.FC<PostCardProps> = ({
     return cleaned || locStr;
   };
 
-  const authorName = post.userName || post.authorName || post.author?.name || getLangText('සහය ඉල්ලුම්කරු', 'Help Seeker', 'உதவி கோருபவர்');
+  // 👤 Author Name & Avatar (Handling Anonymous Posts)
+  const isAnonymousPost = Boolean(post.isAnonymous || post.userName?.startsWith('Anonymous #'));
+  const authorName = isAnonymousPost
+    ? (post.anonymousId || post.userName || 'Anonymous #User')
+    : (post.userName || post.authorName || getLangText('සහය ඉල්ලුම්කරු', 'Help Seeker', 'உதவி கோருபவர்'));
+
+  const authorPhoto = isAnonymousPost ? '' : (post.userPhotoUrl || post.photoUrl || '');
   const postCode = post.postCode || (post.id ? `#POST-${post.id.replace(/[^0-9]/g, '').slice(-4) || 'HELP'}` : '#HELP');
   const nearestCity = getCityOnly(post.locationName || post.city || post.town);
   const distance = typeof post.distanceKm === 'number' ? post.distanceKm : null;
@@ -148,7 +202,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       if (!isNaN(parsed)) {
         try {
           const d = new Date(parsed);
-          return `${d.toLocaleDateString(lang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+          return `${d.toLocaleDateString(activeLang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         } catch {
           return dateVal;
         }
@@ -158,7 +212,7 @@ export const PostCard: React.FC<PostCardProps> = ({
     if (typeof dateVal === 'number') {
       try {
         const d = new Date(dateVal);
-        return `${d.toLocaleDateString(lang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        return `${d.toLocaleDateString(activeLang === 'en' ? 'en-US' : 'si-LK')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       } catch {
         return getLangText('මෑතකදී', 'Recently', 'சமீபத்தில்');
       }
@@ -166,59 +220,127 @@ export const PostCard: React.FC<PostCardProps> = ({
     return getLangText('මෑතකදී', 'Recently', 'சமீபத்தில்');
   };
 
-  const triggerPostBackupDownload = (postData: any) => {
-    if (!isAdmin) return;
+  // -------------------------------------------------------------
+  // 👍 LIKE HANDLER
+  // -------------------------------------------------------------
+  const handleLikeClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onLike) onLike(post.id);
+
+    const nextLiked = !isLiked;
+    const nextCount = nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1);
+    setIsLiked(nextLiked);
+    setLikesCount(nextCount);
+
+    if (nextLiked && isUnliked) {
+      setIsUnliked(false);
+      setUnlikesCount((prev) => Math.max(0, prev - 1));
+    }
+
     try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const postId = postData.id || 'UNKNOWN';
-      const fileName = `deleted_post_${postId}_${timestamp}.json`;
+      if (post.id) {
+        await updateHelpPostInFirestore(post.id, {
+          likeCount: nextCount,
+          likedBy: nextLiked ? [myUserId] : []
+        });
+      }
+    } catch (_) {}
+  };
 
-      const backupContent = {
-        deletedAt: new Date().toISOString(),
-        deletedBy: {
-          id: currentUser?.id || 'unknown',
-          name: currentUser?.name || 'Unknown User',
-          role: isAdmin ? 'Admin' : 'User'
-        },
-        postData: postData
-      };
+  // -------------------------------------------------------------
+  // 👎 UNLIKE HANDLER
+  // -------------------------------------------------------------
+  const handleUnlikeClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUnlike) onUnlike(post.id);
 
-      const jsonString = JSON.stringify(backupContent, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Backup JSON download failed:', error);
+    const nextUnliked = !isUnliked;
+    const nextCount = nextUnliked ? unlikesCount + 1 : Math.max(0, unlikesCount - 1);
+    setIsUnliked(nextUnliked);
+    setUnlikesCount(nextCount);
+
+    if (nextUnliked && isLiked) {
+      setIsLiked(false);
+      setLikesCount((prev) => Math.max(0, prev - 1));
+    }
+
+    try {
+      if (post.id) {
+        await updateHelpPostInFirestore(post.id, {
+          unlikesCount: nextCount,
+          unlikeCount: nextCount,
+          unlikedBy: nextUnliked ? [myUserId] : []
+        });
+      }
+    } catch (_) {}
+  };
+
+  // -------------------------------------------------------------
+  // 🔖 SAVE HANDLER
+  // -------------------------------------------------------------
+  const handleSaveClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleSave) onToggleSave(post);
+
+    const nextSaved = !isSaved;
+    const nextCount = nextSaved ? savesCount + 1 : Math.max(0, savesCount - 1);
+    setIsSaved(nextSaved);
+    setSavesCount(nextCount);
+
+    try {
+      if (post.id) {
+        await updateHelpPostInFirestore(post.id, {
+          savesCount: nextCount,
+          saveCount: nextCount,
+        });
+      }
+    } catch (_) {}
+  };
+
+  // -------------------------------------------------------------
+  // 💬 COMMENT SUBMISSION HANDLER
+  // -------------------------------------------------------------
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+
+    setIsSubmittingComment(true);
+    const newComment: PostComment = {
+      id: `cmt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId: currentUser?.id || currentUser?.userId || 'guest_user',
+      userName: currentUser?.name || 'සහය සාමාජික',
+      userPhotoUrl: currentUser?.photoUrl || '',
+      comment: newCommentText.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedComments = [...localComments, newComment];
+    setLocalComments(updatedComments);
+    setNewCommentText('');
+    setIsSubmittingComment(false);
+
+    try {
+      if (post.id) {
+        await updateHelpPostInFirestore(post.id, {
+          commentsCount: updatedComments.length,
+          commentsList: updatedComments,
+        });
+      }
+    } catch (err) {
+      console.warn('Comment sync error:', err);
     }
   };
 
+  // -------------------------------------------------------------
+  // 🗑️ DELETE POST
+  // -------------------------------------------------------------
   const handleDelete = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setShowMenu(false);
     
-    const confirmMessage = isAdmin
-      ? getLangText(
-          'පරිපාලක (Admin) ලෙස මෙම දැන්වීම පද්ධතියෙන් සදහටම ඉවත් කිරීමට ඔබට සහතිකද? (දත්ත JSON ගොනුවක් ලෙස සුරැකෙනු ඇත)',
-          'Are you sure you want to permanently delete this post as Admin? (Data will be downloaded as JSON backup)',
-          'நிர்வாகியாக இந்த இடுகையை நிரந்தரமாக நீக்க உறுதியாக உள்ளீர்களா?'
-        )
-      : getLangText(
-          'මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?',
-          'Are you sure you want to delete this post?',
-          'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'
-        );
-
-    if (!window.confirm(confirmMessage)) return;
+    if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) return;
 
     const targetId = post.id;
-    if (isAdmin) triggerPostBackupDownload(post);
     setIsDeletingLocal(true);
 
     if (targetId) {
@@ -228,654 +350,452 @@ export const PostCard: React.FC<PostCardProps> = ({
           isDeleted: true,
           status: 'deleted',
           deletedAt: new Date().toISOString(),
-          deletedBy: isAdmin ? `Admin (${currentUser?.name || 'Admin'})` : (currentUser?.name || post.userName || 'User')
         }).catch(() => {});
-
         await deleteHelpPostFromFirestore(targetId).catch(() => {});
-      } catch (err) {
-        console.warn('Post delete notice:', err);
-      }
+      } catch (_) {}
     }
 
     if (onDeletePost) {
-      try {
-        onDeletePost(targetId || post);
-      } catch (e) {
-        console.warn('onDeletePost callback notice:', e);
-      }
+      onDeletePost(targetId || post);
     }
   };
 
-  const handleEdit = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setShowMenu(false);
-    if (onEditPost) onEditPost(post);
-  };
-
-  const handleView = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setShowMenu(false);
-    if (onViewPost) onViewPost(post);
-    else if (onViewDetails) onViewDetails(post.id);
-  };
-
-  const handleCopyPhone = (phoneNum?: string) => {
-    if (!phoneNum) return;
-    navigator.clipboard.writeText(phoneNum);
-    setCopiedPhone(true);
-    setTimeout(() => setCopiedPhone(false), 2000);
-  };
-
-  const handleSupport = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isDemo && onRequireRegistration) {
-      onRequireRegistration();
+  const handleProfileClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isAnonymousPost && !isAdmin) {
+      alert('මෙම දැන්වීම අප්‍රකටව (Anonymous) පළකර ඇත.');
       return;
     }
-    if (onOfferSupport) {
-      onOfferSupport(post);
-    } else if (onOpenConfirm) {
-      onOpenConfirm(post);
-    } else if (onOpenChat) {
-      onOpenChat(post);
+    if (onViewProfile) {
+      onViewProfile(post.actualAuthorId || post.userId || authorName);
     }
   };
 
-  const handleChat = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isDemo && onRequireRegistration) {
-      onRequireRegistration();
-      return;
-    }
-    if (onOpenChat) {
-      onOpenChat(post);
-    } else if (onViewPost) {
-      onViewPost(post);
-    }
-  };
+  // -------------------------------------------------------------
+  // 💬 COMMENTS MODAL / DRAWER
+  // -------------------------------------------------------------
+  const renderCommentsSection = () => {
+    if (!showCommentsDrawer) return null;
 
-  const handleSubmitReport = async () => {
-    if (!reportReason.trim() || !post.id) return;
-    setIsSubmittingReport(true);
-    try {
-      const existingReports = Array.isArray(post.reports) ? post.reports : [];
-      const newReport = {
-        userId: currentUser?.id || currentUser?.userId || 'anonymous',
-        userName: currentUser?.name || 'පරිශීලක',
-        userPhone: currentUser?.phone || '',
-        reason: reportReason.trim(),
-        reportedAt: new Date().toISOString()
-      };
-      const updatedReports = [...existingReports, newReport];
-      const newReportsCount = (post.reportsCount || existingReports.length) + 1;
-      const isNowHidden = newReportsCount >= 5;
+    const areCommentsHidden = post.showComments === false && !ownerCheck && !isAdmin;
 
-      await updateHelpPostInFirestore(post.id, {
-        reports: updatedReports,
-        reportsCount: newReportsCount,
-        isHidden: isNowHidden,
-        hiddenReason: isNowHidden ? '5_reports_received' : undefined,
-        lastReportedAt: new Date().toISOString()
-      });
-
-      post.reports = updatedReports;
-      post.reportsCount = newReportsCount;
-      if (isNowHidden) {
-        post.isHidden = true;
-      }
-
-      setReportSuccess(true);
-      setTimeout(() => {
-        setShowReportModal(false);
-        setReportReason('');
-        setReportSuccess(false);
-      }, 1500);
-    } catch (err) {
-      console.error('Report submission failed:', err);
-    } finally {
-      setIsSubmittingReport(false);
-    }
-  };
-
-  const handleUnhidePost = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!post.id) return;
-    try {
-      await updateHelpPostInFirestore(post.id, {
-        isHidden: false,
-        hiddenReason: null,
-        reportsCount: 0,
-        unhiddenAt: new Date().toISOString(),
-        unhiddenBy: currentUser?.name || 'Admin'
-      });
-      post.isHidden = false;
-      post.reportsCount = 0;
-    } catch (err) {
-      console.error('Unhide post failed:', err);
-    }
-  };
-
-  const renderReportModal = () => {
-    if (!showReportModal) return null;
     return (
       <div 
-        className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn" 
+        className="mt-3.5 pt-3.5 border-t border-slate-200/80 dark:border-emerald-950/80 space-y-3 animate-fadeIn"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-white dark:bg-[#071e13] border-2 border-rose-500 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-              <AlertTriangle className="w-6 h-6 shrink-0" />
-              <h3 className="text-base font-black text-slate-900 dark:text-white leading-snug">
-                දැන්වීම වාර්තා කිරීම (Report Post)
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => { setShowReportModal(false); setReportReason(''); }}
-              className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <h5 className="text-xs font-black text-slate-800 dark:text-zinc-200">
+              අදහස් සහ විමසීම් (Comments - {localComments.length})
+            </h5>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowCommentsDrawer(false)}
+            className="text-[11px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 cursor-pointer"
+          >
+            වසන්න ✕
+          </button>
+        </div>
 
-          <div className="p-3.5 bg-rose-50 dark:bg-rose-950/60 rounded-2xl border border-rose-200 dark:border-rose-800/80">
-            <p className="text-sm font-bold text-rose-950 dark:text-rose-200 leading-relaxed">
-              මෙහි ඇති තොරතුරු අසත්‍යද? නැත්නම් මෙහි ඇති ගැටලුව කුමක්ද?
-            </p>
+        {areCommentsHidden ? (
+          <div className="p-3 rounded-2xl bg-slate-100 dark:bg-[#06160d] border border-slate-200 dark:border-emerald-950 text-center text-xs font-bold text-slate-500 dark:text-zinc-400">
+            🔒 මෙම දැන්වීමේ අදහස් (Comments) අන් අයට පෙන්වීම දැන්වීම්කරු විසින් අක්‍රීය කර ඇත.
           </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
-              ඔබගේ අදහස / ගැටලුව මෙහි සටහන් කරන්න:
-            </label>
-            <textarea
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              placeholder="මෙහි ඇති අසත්‍ය තොරතුරු හෝ ගැටලුව කුමක්දැයි සඳහන් කරන්න..."
-              rows={3}
-              className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-[#05130b] border border-slate-300 dark:border-emerald-900 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
-            />
-          </div>
-
-          {reportSuccess && (
-            <div className="p-3 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
-              <span>වාර්තාව ඇඩ්මින්වරයා වෙත යොමු කරන ලදී!</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={() => { setShowReportModal(false); setReportReason(''); }}
-              className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer active:scale-95"
-            >
-              අවලංගු කරන්න
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmitReport}
-              disabled={!reportReason.trim() || isSubmittingReport || reportSuccess}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer active:scale-95"
-            >
-              {isSubmittingReport ? (
-                <span>යවමින්...</span>
+        ) : (
+          <>
+            {/* Comments List */}
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {localComments.length === 0 ? (
+                <div className="py-4 text-center text-xs text-slate-400 dark:text-zinc-500 font-medium">
+                  තවමත් අදහස් පළවී නොමැත. මුලින්ම අදහසක් දක්වන්න!
+                </div>
               ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>වාර්තා කරන්න (Submit)</span>
-                </>
+                localComments.map((cmt) => (
+                  <div 
+                    key={cmt.id}
+                    className="p-2.5 rounded-2xl bg-slate-50 dark:bg-[#06180e] border border-slate-200/80 dark:border-emerald-950/60 flex items-start gap-2.5"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                      {cmt.userPhotoUrl ? (
+                        <img src={cmt.userPhotoUrl} alt={cmt.userName} className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        cmt.userName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[11px] font-black text-slate-900 dark:text-zinc-100 truncate">{cmt.userName}</span>
+                        <span className="text-[9px] text-slate-400 font-medium">{formatPostDate(cmt.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">{cmt.comment}</p>
+                    </div>
+                  </div>
+                ))
               )}
+            </div>
+
+            {/* Add Comment Input */}
+            <form onSubmit={handleAddComment} className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                required
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="ඔබගේ අදහස / විමසීම මෙහි සටහන් කරන්න..."
+                className="flex-1 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-[#06160d] border border-slate-200 dark:border-emerald-950 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="submit"
+                disabled={!newCommentText.trim() || isSubmittingComment}
+                className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white cursor-pointer active:scale-95 transition-all"
+                title="Comment කරන්න"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // -------------------------------------------------------------
+  // 🔘 INTERACTIVE ACTION BAR (LIKE, UNLIKE, COMMENT, SAVE)
+  // -------------------------------------------------------------
+  const renderInteractiveActionBar = () => {
+    return (
+      <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-emerald-950/60 flex items-center justify-between gap-2 text-xs font-bold flex-wrap">
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Like Button */}
+          <button
+            type="button"
+            onClick={handleLikeClick}
+            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+              isLiked
+                ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-black border border-rose-300 dark:border-rose-800'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${isLiked ? 'fill-current text-rose-500' : ''}`} />
+            <span>{likesCount}</span>
+          </button>
+
+          {/* Unlike Button */}
+          <button
+            type="button"
+            onClick={handleUnlikeClick}
+            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+              isUnliked
+                ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-zinc-200 font-black border border-slate-300 dark:border-slate-700'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
+            }`}
+          >
+            <ThumbsDown className={`w-4 h-4 ${isUnliked ? 'fill-current text-slate-700 dark:text-slate-300' : ''}`} />
+            <span>{unlikesCount}</span>
+          </button>
+
+          {/* Comment Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowCommentsDrawer((prev) => !prev);
+            }}
+            className="px-3 py-1.5 rounded-xl text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <span>{localComments.length}</span>
+          </button>
+
+          {/* Save Button */}
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+              isSaved
+                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-black border border-amber-300 dark:border-amber-800'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
+            }`}
+          >
+            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current text-amber-500' : ''}`} />
+            <span>{savesCount}</span>
+          </button>
+        </div>
+
+        {/* Right: Quick Chat / Call */}
+        <div className="flex items-center gap-1.5">
+          {phoneNumber && !isAnonymousPost && (
+            <a
+              href={`https://wa.me/94${phoneNumber.replace(/[^0-9]/g, '').replace(/^0/, '')}?text=${encodeURIComponent('ආයුබෝවන්, ඔබ සහය සේවා යෙදුමේ පළකළ දැන්වීම සම්බන්ධයෙනි: ' + (post.headline || post.title || ''))}`}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-400 transition-colors"
+              title="WhatsApp මඟින් සම්බන්ධ වන්න"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </a>
+          )}
+          {canModify && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl"
+              title="ඉවත් කරන්න"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
-          </div>
+          )}
         </div>
       </div>
     );
   };
 
-  // =========================================================================
-  // 1. DEDICATED VOICE POST CARD LAYOUT
-  // Includes: Name, Nearest City, Post ID, Distance in km, Date & Time,
-  // Updates/Edit, Delete & Bookmark buttons, Voice Audio Player,
-  // Helpers Needed count below voice, and 3 Action Buttons (සහය වෙමි, චැට්, රිපෝට්)
-  // =========================================================================
-  const isVoicePost = Boolean(post.isVoicePost || post.mediaType === 'voice' || post.audioUrl);
-
-  if (isVoicePost) {
+  // -------------------------------------------------------------
+  // 🏷️ TOP CARD HEADER (Shared across all modes)
+  // -------------------------------------------------------------
+  const renderCardHeader = () => {
     return (
-      <div className="relative rounded-3xl bg-white dark:bg-[#07170e] border-2 border-emerald-500/70 dark:border-emerald-600/70 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
-        
-        {/* Admin Reported / Auto-Hidden Notice */}
-        {isAdmin && isHiddenByReports && (
-          <div className="bg-rose-50 dark:bg-rose-950/80 p-3 sm:p-4 border-b-2 border-rose-500 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 text-rose-800 dark:text-rose-200 text-xs font-black">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>⚠️ රිපෝට් {post.reportsCount || post.reports?.length || 5}ක් ලැබී සාමාන්‍ය අයට සඟවා ඇත (Hidden)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleUnhidePost}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black cursor-pointer active:scale-95"
-              >
-                නැවත පෙන්වන්න (Unhide)
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black cursor-pointer active:scale-95"
-              >
-                සදහටම ඉවත් කරන්න (Delete)
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="p-4 sm:p-5 space-y-3.5">
-          
-          {/* 🏷️ Top Header: Author Name, Post ID, Nearest City, Date/Time, Distance, Category Badge, Edit, Delete, Bookmark */}
-          <div className="flex items-start justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-emerald-950/60 flex-wrap">
-            
-            {/* Left: Author Info, City, Date/Time, Distance */}
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md shrink-0 border-2 border-white dark:border-slate-800">
+      <div className="flex items-start justify-between gap-2.5 pb-2.5">
+        <div 
+          onClick={handleProfileClick}
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group"
+        >
+          {/* Avatar */}
+          <div className="relative shrink-0">
+            {isAnonymousPost ? (
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-slate-300 dark:border-slate-700">
+                <UserIcon className="w-5 h-5 text-slate-300" />
+              </div>
+            ) : authorPhoto ? (
+              <img 
+                src={authorPhoto} 
+                alt={authorName} 
+                className="w-10 h-10 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/20"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800">
                 {authorName.charAt(0).toUpperCase()}
               </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h4 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base leading-snug truncate">
-                    {authorName}
-                  </h4>
-                  <span className="font-mono text-[10px] font-black text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                    {postCode}
-                  </span>
-                  {ownerCheck && (
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
-                      {getLangText('ඔබේ දැන්වීම', 'Your Post', 'உங்கள் இடுகை')}
-                    </span>
-                  )}
-                </div>
-
-                {/* Date, Time, Nearest City & Distance */}
-                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{formatPostDate(post.createdAt || post.createdAtMs)}</span>
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-300">
-                    <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                    <span className="truncate max-w-[150px] sm:max-w-[200px]">නගරය: {nearestCity}</span>
-                  </span>
-                  {distance !== null && (
-                    <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-md font-mono font-bold text-[10px]">
-                      {distance.toFixed(1)} km
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Category Badge, Edit, Delete, Bookmark Buttons */}
-            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
-                <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{post.tagName || post.tagCategory || (post.category === 'quick_services' ? 'ඉක්මන් සේවා' : post.category === 'red_alert' ? 'ආපදා / රතු එළිය' : 'සාමාන්‍ය සේවා')}</span>
-              </span>
-
-              {/* Edit / Update Button (යාවත්කාලීන කිරීම්) */}
-              {canModify && onEditPost && (
-                <button
-                  type="button"
-                  onClick={handleEdit}
-                  className="p-1.5 rounded-xl text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/50 cursor-pointer transition-all"
-                  title="සංස්කරණය / යාවත්කාලීන කරන්න"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Delete Button (ඩිලීට්) */}
-              {canModify && (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer transition-all"
-                  title="ඉවත් කරන්න (Delete)"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Bookmark Button (බුක්මාර්ක්) */}
-              {onToggleSave && (
-                <button
-                  type="button"
-                  onClick={() => onToggleSave(post)}
-                  className={`p-1.5 rounded-xl cursor-pointer transition-all ${
-                    isSaved 
-                      ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/50' 
-                      : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                  title="සුරකින්න (Bookmark)"
-                >
-                  <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
-                </button>
-              )}
-            </div>
-
-          </div>
-
-          {/* 🎙️ Playable Voice Note Player */}
-          <div className="p-3 bg-slate-50 dark:bg-[#071d12] rounded-2xl border border-emerald-300/80 dark:border-emerald-800 shadow-sm">
-            <AudioVoicePlayer audioUrl={post.audioUrl || ''} durationSec={post.audioDurationSec || 15} />
-          </div>
-
-          {/* 👥 සහායකයින් අවශ්‍ය ගණන (Voice Player එකට යටින්) */}
-          {Boolean(post.helpersNeeded && post.helpersNeeded > 0) && (
-            <div className="flex items-center gap-2 pt-0.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-blue-50 dark:bg-blue-950/70 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-900 shadow-2xs">
-                <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>{getLangText(`සහායකයින් ${post.helpersNeeded}ක් අවශ්‍යයි`, `${post.helpersNeeded} Helpers Needed`, `${post.helpersNeeded} உதவியாளர்கள் தேவை`)}</span>
-              </span>
-            </div>
-          )}
-
-          {/* 🔘 Exactly 3 Buttons: 1. සහය වෙමි, 2. චැට්, 3. රිපෝට් */}
-          <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-slate-100 dark:border-emerald-950/60">
+            )}
             
-            {/* Button 1: සහය වෙමි */}
-            <button
-              type="button"
-              onClick={handleSupport}
-              className="py-3 px-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl font-black text-xs sm:text-sm shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-              title="සහය වීමට කැමැත්ත පළකරන්න"
-            >
-              <HelpCircle className="w-4 h-4 shrink-0" />
-              <span className="truncate">{ownerCheck ? getLangText('කැමැත්ත දැක්වූවන්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහය වෙමි', 'I will help', 'உதவுகிறேன்')}</span>
-            </button>
-
-            {/* Button 2: චැට් */}
-            <button
-              type="button"
-              onClick={handleChat}
-              className="py-3 px-2 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/80 dark:hover:bg-sky-900/80 text-sky-800 dark:text-sky-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-sky-300 dark:border-sky-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-              title="දැන්වීම්කරු සමඟ චැට් කරන්න"
-            >
-              <MessageCircle className="w-4 h-4 text-sky-600 shrink-0" />
-              <span className="truncate">{getLangText('චැට්', 'Chat', 'Chat')}</span>
-            </button>
-
-            {/* Button 3: රිපෝට් */}
-            <button
-              type="button"
-              onClick={() => setShowReportModal(true)}
-              className="py-3 px-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/80 dark:hover:bg-rose-900/80 text-rose-800 dark:text-rose-200 rounded-2xl font-black text-xs sm:text-sm border-2 border-rose-300 dark:border-rose-800 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all text-center"
-              title="දැන්වීම වාර්තා කරන්න"
-            >
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span className="truncate">{getLangText('රිපෝට්', 'Report', 'புகாரளி')}</span>
-            </button>
-
+            {ownerCheck && !isAnonymousPost && (
+              <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs">
+                <UserCheck className="w-3 h-3" />
+              </span>
+            )}
           </div>
 
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors">
+                {authorName}
+              </h4>
+
+              {isAnonymousPost && (
+                <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700">
+                  අප්‍රකට
+                </span>
+              )}
+
+              {ownerCheck && (
+                <span className="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+                  ඔබගේ
+                </span>
+              )}
+
+              <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                {postCode}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-400" />
+                <span>{formatPostDate(post.createdAt || post.createdAtIso)}</span>
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium">
+                <MapPin className="w-3 h-3" />
+                <span className="truncate max-w-[120px]">{nearestCity}</span>
+              </span>
+            </div>
+          </div>
         </div>
 
-        {renderReportModal()}
+        {/* Admin Special Audit Badge for Anonymous Posts */}
+        {isAdmin && isAnonymousPost && (
+          <div className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0">
+            <div className="font-black flex items-center gap-1">
+              <Lock className="w-3 h-3 text-amber-600" />
+              <span>Admin Audit:</span>
+            </div>
+            <div className="truncate max-w-[130px] font-bold">{post.actualAuthorName || 'Unknown'}</div>
+            <div className="font-mono text-[9px] text-slate-500">{post.actualAuthorNic || 'NIC N/A'}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
+  // =========================================================================
+  // 📝 2. TEXT POST RENDER (16:9 Aspect Frame & Ellipsis Truncation)
+  // =========================================================================
+  if (post.postType === 'text_post') {
+    const rawHeadline = post.headline || post.title || '';
+    const rawDesc = post.whatHappened || post.content || '';
+    const fontStyle = getFontFamilyById(post.selectedFont);
+    
+    // 16:9 Box text truncation check (approx 140 chars)
+    const isLongText = rawDesc.length > 140;
+    const displayText = (!isTextExpanded && isLongText)
+      ? rawDesc.substring(0, 140) + '.......'
+      : rawDesc;
+
+    return (
+      <div className="relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/90 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5 flex flex-col justify-between">
+        
+        {/* Header */}
+        {renderCardHeader()}
+
+        {/* 16:9 Proportional Content Container */}
+        <div className="w-full aspect-[16/9] min-h-[170px] rounded-2xl bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-slate-50 dark:from-[#06180e] dark:via-[#082215] dark:to-[#04120a] border border-emerald-200/80 dark:border-emerald-900/60 p-4 sm:p-5 flex flex-col justify-between overflow-hidden shadow-inner group relative">
+          
+          <div className="space-y-2">
+            {/* Headline */}
+            <h3 
+              className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-snug line-clamp-2"
+              style={{ fontFamily: fontStyle }}
+            >
+              {rawHeadline}
+            </h3>
+
+            {/* Description */}
+            <p 
+              className="text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-medium"
+              style={{ fontFamily: fontStyle }}
+            >
+              {displayText}
+            </p>
+          </div>
+
+          {/* Ellipsis / Read More Toggle */}
+          {isLongText && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsTextExpanded(!isTextExpanded);
+              }}
+              className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 self-start cursor-pointer pt-1"
+            >
+              <span>{isTextExpanded ? 'හකුලන්න (Show Less)' : 'තව කියවන්න (Read More)'}</span>
+              {isTextExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+
+        {/* Action Bar */}
+        {renderInteractiveActionBar()}
+
+        {/* Comments Section */}
+        {renderCommentsSection()}
       </div>
     );
   }
 
   // =========================================================================
-  // 2. STANDARD TEXT POST CARD LAYOUT (Unchanged for standard posts)
+  // 📸 3. PICTURE POST RENDER (Ratio 16:9 Image)
   // =========================================================================
-  const locationText = post.locationName || post.incidentLocation || getLangText('ශ්‍රී ලංකාව', 'Sri Lanka', 'இலங்கை');
+  if (post.postType === 'picture_post') {
+    const rawHeadline = post.headline || post.title || '';
+    const imgUrl = post.imageUrl || post.photoUrl || post.image;
 
-  return (
-    <div className="relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/80 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden">
-      
-      {/* Top Accent / Status Bar */}
-      <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600" />
+    return (
+      <div className="relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/90 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5 flex flex-col justify-between">
+        
+        {/* Header */}
+        {renderCardHeader()}
 
-      {/* Main Post Header */}
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="relative shrink-0">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center font-black text-base shadow-md border-2 border-white dark:border-slate-800">
-                {authorName.charAt(0).toUpperCase()}
-              </div>
-              {ownerCheck && (
-                <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs" title="ඔබගේ දැන්වීම">
-                  <UserCheck className="w-3 h-3" />
-                </span>
-              )}
+        {/* Headline */}
+        {rawHeadline && (
+          <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white mb-2 leading-snug">
+            {rawHeadline}
+          </h3>
+        )}
+
+        {/* Strict 16:9 Image Frame */}
+        <div className="w-full aspect-video rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative group">
+          {imgUrl ? (
+            <img 
+              src={imgUrl} 
+              alt={rawHeadline} 
+              className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
+              ඡායාරූපය නොමැත
             </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base leading-snug truncate">
-                  {authorName}
-                </h3>
-                
-                {ownerCheck && (
-                  <span className="bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
-                    {getLangText('ඔබේ දැන්වීම', 'Your Post', 'உங்கள் இடுகை')}
-                  </span>
-                )}
-
-                {isAdmin && (
-                  <span className="bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-700">
-                    ADMIN
-                  </span>
-                )}
-
-                <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                  {postCode}
-                </span>
-              </div>
-
-              {/* Time & Location Bar */}
-              <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{formatPostDate(post.createdAt || post.createdAtIso || post.createdAtMs)}</span>
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-300">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate max-w-[160px] sm:max-w-[220px]">{locationText}</span>
-                </span>
-                {distance !== null && (
-                  <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-md font-mono font-bold text-[10px]">
-                    {distance.toFixed(1)} km
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Top Quick Actions */}
-          <div className="flex items-center gap-1 shrink-0 relative">
-            {canModify && (
-              <div className="flex items-center gap-1">
-                {onEditPost && (
-                  <button
-                    type="button"
-                    onClick={handleEdit}
-                    className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 rounded-xl transition-all cursor-pointer"
-                    title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்துக')}
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                )}
-                
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all cursor-pointer font-bold"
-                  title={getLangText('දැන්වීම සදහටම ඉවත් කරන්න', 'Delete Post Permanently', 'நிரந்தரமாக நீக்குக')}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {onToggleSave && (
-              <button
-                type="button"
-                onClick={() => onToggleSave(post)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  isSaved 
-                    ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/50' 
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={getLangText('සුරකින්න', 'Save Post', 'சேமிக்குக')}
-              >
-                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
-              </button>
-            )}
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-
-              {showMenu && (
-                <div 
-                  className="absolute right-0 top-10 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border-2 border-emerald-500/40 py-2 z-30 text-xs font-bold animate-fadeIn"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {(onViewPost || onViewDetails) && (
-                    <button
-                      type="button"
-                      onClick={handleView}
-                      className="w-full text-left px-4 py-2.5 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>{getLangText('විස්තර පරීක්ෂා කරන්න', 'View Details', 'விவரங்களை காண்க')}</span>
-                    </button>
-                  )}
-                  {canModify && (
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      className="w-full text-left px-4 py-2.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-600" />
-                      <span>{getLangText('සදහටම ඉවත් කරන්න (Delete)', 'Delete Permanently', 'நிரந்தரமாக நீக்குக')}</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Category & Service Tag Badge */}
-        {(post.tagName || post.tagCategory || post.category) && (
-          <div className="mb-3 flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/80">
-              <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{post.tagName || post.tagCategory || post.category}</span>
-            </span>
+        {/* Action Bar */}
+        {renderInteractiveActionBar()}
+
+        {/* Comments Section */}
+        {renderCommentsSection()}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 4. STANDARD & VOICE POST RENDER (Fallback / Existing compatibility)
+  // =========================================================================
+  const locationText = post.locationName || getLangText('ශ්‍රී ලංකාව', 'Sri Lanka', 'இலங்கை');
+
+  return (
+    <div className="relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/80 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5">
+      {renderCardHeader()}
+
+      {/* Voice Audio Player if voice post */}
+      {post.audioUrl && (
+        <div className="mb-3">
+          <AudioVoicePlayer audioUrl={post.audioUrl} durationSec={post.audioDurationSec} />
+        </div>
+      )}
+
+      {/* Post Content */}
+      <div className="space-y-2 text-xs sm:text-sm">
+        {(post.whatHappened || post.content) && (
+          <div className="bg-slate-50 dark:bg-[#06160d] p-3 rounded-2xl border border-slate-200/80 dark:border-emerald-950/80">
+            <p className="font-semibold text-slate-900 dark:text-slate-100 whitespace-pre-line leading-relaxed">
+              {post.whatHappened || post.content}
+            </p>
           </div>
         )}
 
-        {/* Post Content Details */}
-        <div className="space-y-2.5 text-sm sm:text-base">
-          {(post.whatHappened || post.content || post.title || post.itemLostStolenOrSearched || post.donationItem) && (
-            <div className="bg-slate-50 dark:bg-[#06160d] p-3.5 rounded-2xl border border-slate-200/80 dark:border-emerald-950/80">
-              <p className="font-semibold text-slate-900 dark:text-slate-100 whitespace-pre-line leading-relaxed text-sm sm:text-base">
-                {post.whatHappened || post.content || post.title || post.itemLostStolenOrSearched || post.donationItem}
-              </p>
-            </div>
-          )}
-
-          {post.whatIsNeeded && (
-            <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-3.5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60">
-              <p className="font-bold text-emerald-950 dark:text-emerald-100 whitespace-pre-line leading-relaxed text-sm sm:text-base">
-                {post.whatIsNeeded}
-              </p>
-            </div>
-          )}
-
-          {(post.image || post.photoUrl || post.userPhotoUrl) && !imageError && (
-            <div className="mt-3 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-h-72">
-              <img 
-                src={post.image || post.photoUrl || post.userPhotoUrl} 
-                alt="Post evidence" 
-                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                onError={() => setImageError(true)}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Action Bottom Bar */}
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-emerald-950/60 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            {displayPhone && (
-              <button
-                type="button"
-                onClick={() => handleCopyPhone(phoneNumber)}
-                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-black flex items-center gap-1.5 cursor-pointer"
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{displayPhone}</span>
-                {copiedPhone && <span className="text-[10px] text-emerald-600 font-bold ml-1">✓</span>}
-              </button>
-            )}
-
-            {(onOpenChat || onViewPost) && (
-              <button
-                type="button"
-                onClick={handleChat}
-                className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 text-xs font-black flex items-center gap-1.5 cursor-pointer border border-emerald-300 dark:border-emerald-800"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>{getLangText('Chat සංවාදය', 'Chat', 'Chat')}</span>
-              </button>
-            )}
+        {post.whatIsNeeded && (
+          <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-3 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 font-bold text-emerald-950 dark:text-emerald-100">
+            {post.whatIsNeeded}
           </div>
+        )}
 
-          <div className="flex items-center gap-2">
-            {ownerCheck ? (
-              <button
-                type="button"
-                onClick={handleSupport}
-                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white rounded-xl font-black text-xs shadow-md flex items-center gap-1.5 cursor-pointer"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>{getLangText('කැමැත්ත දැක්වූවන්', 'Willing Helpers', 'விருப்பம் தெரிவித்தோர்')}</span>
-              </button>
-            ) : (
-              (onOfferSupport || onOpenConfirm) && (
-                <button
-                  type="button"
-                  onClick={handleSupport}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-xl font-black text-xs shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                  <span>{getLangText('සහාය වන්න (Help)', 'Offer Support', 'உதவ முன்வாருங்கள்')}</span>
-                </button>
-              )
-            )}
+        {/* Image if present */}
+        {post.imageUrl && (
+          <div className="w-full aspect-video rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <img src={post.imageUrl} alt="Evidence" className="w-full h-full object-cover" />
           </div>
-        </div>
-
+        )}
       </div>
 
-      {renderReportModal()}
+      {/* Action Bar */}
+      {renderInteractiveActionBar()}
 
+      {/* Comments Section */}
+      {renderCommentsSection()}
     </div>
   );
 };
+
