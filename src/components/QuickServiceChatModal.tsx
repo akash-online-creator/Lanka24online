@@ -15,6 +15,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { HelpPost, ChatMessage, User as UserType, Language } from '../types';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
 import { parseTimeToMs, formatMessageClockTime } from '../utils/dateUtils';
 import { 
@@ -36,21 +37,32 @@ interface QuickServiceChatModalProps {
   post: HelpPost | null;
   isOpen: boolean;
   onClose: () => void;
-  currentUser: UserType;
+  currentUser?: UserType | null;
+  user?: UserType | null;
   onNavigateToIssues?: () => void;
   onOpenConfirm?: (post: HelpPost) => void;
+  onConfirmWorkflow?: (post: HelpPost) => void;
+  onUpdatePost?: (post: HelpPost) => void;
   language?: Language;
+  lang?: Language;
 }
 
 export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   post,
   isOpen,
   onClose,
-  currentUser,
+  currentUser: currentUserProp,
+  user: userProp,
   onNavigateToIssues,
   onOpenConfirm,
+  onConfirmWorkflow,
+  onUpdatePost,
   language = 'si',
+  lang,
 }) => {
+  const currentUser = (currentUserProp || userProp) as UserType;
+  const activeLang = lang || language || 'si';
+  const handleConfirm = onConfirmWorkflow || onOpenConfirm;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -177,9 +189,10 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
   const postAuthorPhone = normalizePhone(post.userPhone);
 
   const isPostAuthor = Boolean(
-    (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
-    (currentUser.userId && post.userId && (currentUser.userId === post.userId || (currentUser.id && currentUser.id === post.userId))) ||
-    (currentUser.id && post.userId && currentUser.id === post.userId) ||
+    checkIsPostOwner(currentUser, post) ||
+    (currentUser?.name && post?.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase()) ||
+    (currentUser?.userId && post?.userId && (currentUser.userId === post.userId || (currentUser?.id && currentUser.id === post.userId))) ||
+    (currentUser?.id && post?.userId && currentUser.id === post.userId) ||
     (currentUserPhone && postAuthorPhone && currentUserPhone === postAuthorPhone)
   );
 
@@ -220,14 +233,17 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
     const generatedTranslations = getChatTranslations(messageTextToSave, userLang);
     const detected = detectLanguageOfText(messageTextToSave);
 
+    const nowIso = new Date().toISOString();
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
       senderName: currentUser?.name || 'පරිශීලක',
       senderRole: isPostAuthor ? 'seeker' : 'helper',
       text: messageTextToSave,
-      timestamp: formatMessageClockTime(undefined, nowMs),
+      timestamp: formatMessageClockTime(nowIso, nowMs),
+      createdAt: nowIso,
       createdAtMs: nowMs,
-      senderPhone: currentUser.phone || currentUser.whatsappNumber || '',
+      senderPhone: currentUser?.phone || currentUser?.whatsappNumber || '',
+      senderId: (currentUser as any)?.userId || (currentUser as any)?.id || '',
       senderLang: userLang,
       detectedLang: detected,
       originalText: messageTextToSave,
@@ -264,14 +280,17 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
       return;
     }
 
+    const nowIso = new Date().toISOString();
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
       senderName: currentUser?.name || 'පරිශීලක',
       senderRole: isPostAuthor ? 'seeker' : 'helper',
       text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
-      timestamp: formatMessageClockTime(undefined, nowMs),
+      timestamp: formatMessageClockTime(nowIso, nowMs),
+      createdAt: nowIso,
       createdAtMs: nowMs,
-      senderPhone: currentUser.phone || currentUser.whatsappNumber || '',
+      senderPhone: currentUser?.phone || currentUser?.whatsappNumber || '',
+      senderId: (currentUser as any)?.userId || (currentUser as any)?.id || '',
       audioUrl: audioBase64,
       audioDurationSec: durationSec,
       senderLang: userLang,
@@ -434,7 +453,8 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
           <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 bg-[#f6faf8] dark:bg-[#040e08]">
             {(messages || []).map((msg, msgIdx) => {
               const isMe = Boolean(
-                (currentUser.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+                ((msg as any).senderId && ((currentUser as any)?.id === (msg as any).senderId || (currentUser as any)?.userId === (msg as any).senderId)) ||
+                (currentUser?.name && msg.senderName && msg.senderName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
                 (msg.senderPhone && currentUserPhone && normalizePhone(msg.senderPhone) === currentUserPhone)
               );
 
@@ -677,3 +697,4 @@ export const QuickServiceChatModal: React.FC<QuickServiceChatModalProps> = ({
     </>
   );
 };
+
