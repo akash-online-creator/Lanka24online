@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
-import { User, Language, ProfessionalService, ServiceDeliveryMethod, LocationOption } from '../types';
+import { User, Language, ProfessionalService, ServiceDeliveryMethod } from '../types';
 import { professionalServiceCategories } from '../data/professionalServicesData';
 import { 
   X, 
@@ -18,17 +18,22 @@ import {
   Navigation,
   Search,
   Maximize2,
-  Check,
-  Globe,
-  Loader2
+  Minimize2,
+  Loader2,
+  Compass
 } from 'lucide-react';
 import { 
   resolveExactLocation, 
   searchSriLankanPlacesAndRoads, 
-  PlaceSearchResult,
-  formatOrderedLocation
+  PlaceSearchResult
 } from '../utils/geoUtils';
-import { initialLocations } from '../data/initialData';
+const customMarkerIcon = L.divIcon({
+  className: 'custom-leaflet-marker',
+  html: `<div style="width: 36px; height: 36px; background: linear-gradient(135deg, #10b981, #047857); border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; cursor: grab;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg></div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+  popupAnchor: [0, -36],
+});
 
 interface RegisterProfessionalServiceModalProps {
   isOpen: boolean;
@@ -67,7 +72,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   const [altPhone, setAltPhone] = useState('');
   const [revealContactConsent, setRevealContactConsent] = useState(true);
   const [locationName, setLocationName] = useState(currentLocationName || user?.nearestTown || 'කඩවත');
-  
+  const [resolvedAddressDetails, setResolvedAddressDetails] = useState<string>('');
   // Coordinates for map
   const [mapLat, setMapLat] = useState<number>(user?.registrationLat || 7.1712);
   const [mapLng, setMapLng] = useState<number>(user?.registrationLng || 79.8978);
@@ -83,6 +88,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   // Leaflet map container references
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
   const currentCategory = professionalServiceCategories.find((c) => c.category_id === selectedCategoryId) || professionalServiceCategories[0];
 
@@ -91,8 +97,14 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     setIsGeocoding(true);
     try {
       const geo = await resolveExactLocation(lat, lng);
-      if (geo && geo.shortDisplaySi) {
-        setLocationName(geo.shortDisplaySi);
+      if (geo) {
+        const nameToUse = geo.shortDisplaySi || geo.townSi || geo.districtSi || 'තෝරාගත් ස්ථානය';
+        setLocationName(nameToUse);
+        const fullAddr = geo.fullAddressSi || geo.displayTitleSi || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        setResolvedAddressDetails(fullAddr);
+        if (markerRef.current) {
+          markerRef.current.bindPopup(`<div style="font-family: sans-serif; font-size: 12px; font-weight: bold; color: #065f46;">📍 ${fullAddr}</div>`).openPopup();
+        }
       }
     } catch (err) {
       console.warn('Geocoding notice:', err);
@@ -101,58 +113,67 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     }
   }, []);
 
-  // Initialize and synchronize inline map when 'location' delivery method is chosen
+  // Initialize Leaflet Map with Draggable Marker and Click Listener
   useEffect(() => {
     if (!isOpen || deliveryMethod !== 'location' || !mapContainerRef.current) return;
 
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapContainerRef.current, {
+        center: [mapLat, mapLng],
+        zoom: 15,
+        zoomControl: true,
+        attributionControl: false,
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
+      }).addTo(map);
+      // Create Draggable Marker
+      const marker = L.marker([mapLat, mapLng], {
+        draggable: true,
+        icon: customMarkerIcon,
+      }).addTo(map);
+      markerRef.current = marker;
+
+      // Handle Marker Drag End
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        setMapLat(pos.lat);
+        setMapLng(pos.lng);
+        handleLookupLocation(pos.lat, pos.lng);
+      });
+
+      // Handle Map Click to Move Pin
+      map.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        marker.setLatLng([lat, lng]);
+        map.panTo([lat, lng], { animate: true });
+        setMapLat(lat);
+        setMapLng(lng);
+        handleLookupLocation(lat, lng);
+      });
+
+      mapInstanceRef.current = map;
+      handleLookupLocation(mapLat, mapLng);
     }
 
-    const map = L.map(mapContainerRef.current, {
-      center: [mapLat, mapLng],
-      zoom: 15,
-      zoomControl: true,
-      attributionControl: false,
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-    }).addTo(map);
-
-    // Update coordinates and address when map dragging stops
-    map.on('moveend', () => {
-      const center = map.getCenter();
-      setMapLat(center.lat);
-      setMapLng(center.lng);
-      handleLookupLocation(center.lat, center.lng);
-    });
-
-    // Also support clicking on map to set pin
-    map.on('click', (e) => {
-      map.panTo(e.latlng, { animate: true });
-      setMapLat(e.latlng.lat);
-      setMapLng(e.latlng.lng);
-      handleLookupLocation(e.latlng.lat, e.latlng.lng);
-    });
-
-    mapInstanceRef.current = map;
-
-    // Trigger invalidateSize after slight delay for proper container rendering in modals
     const timer = setTimeout(() => {
-      map.invalidateSize();
-    }, 250);
-
-    return () => {
-      clearTimeout(timer);
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+        mapInstanceRef.current.invalidateSize();
       }
-    };
-  }, [deliveryMethod, handleLookupLocation]);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, deliveryMethod, isFullMapOpen, handleLookupLocation]);
+
+  // Clean up map when modal closes
+  useEffect(() => {
+    if (!isOpen && mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    }
+  }, [isOpen]);
 
   // Handle map search
   const handleSearchPlace = async (query: string) => {
@@ -182,9 +203,13 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     setMapSearchResults([]);
     setIsSearchingMap(false);
 
+    if (markerRef.current) {
+      markerRef.current.setLatLng([res.lat, res.lng]);
+    }
     if (mapInstanceRef.current) {
       mapInstanceRef.current.setView([res.lat, res.lng], 16, { animate: true });
     }
+    handleLookupLocation(res.lat, res.lng);
   };
 
   // GPS Locate current position
@@ -197,6 +222,9 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
           const lng = pos.coords.longitude;
           setMapLat(lat);
           setMapLng(lng);
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
+          }
           if (mapInstanceRef.current) {
             mapInstanceRef.current.setView([lat, lng], 17, { animate: true });
           }
@@ -283,7 +311,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       altPhone: altPhone.trim(),
       serviceTitle: serviceTitle.trim(),
       deliveryMethod,
-      deliveryMethodDetails: deliveryMethodDetails.trim(),
+      deliveryMethodDetails: resolvedAddressDetails ? `${deliveryMethodDetails.trim()} | ස්ථානය: ${resolvedAddressDetails}` : deliveryMethodDetails.trim(),
       locationName: locationName.trim(),
       lat: mapLat,
       lng: mapLng,
@@ -314,7 +342,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
       <div className="bg-white dark:bg-[#0c1a12] border border-slate-200 dark:border-[#1a3826] rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
         
         {/* Modal Header */}
@@ -508,16 +536,16 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-emerald-500 animate-bounce" />
                         <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
-                          සිතියම මත ඔබගේ සේවා ස්ථානය තෝරන්න (Manual Map Pin):
+                          සිතියම මත ඔබගේ සේවා ස්ථානය තෝරන්න (Pin Anywhere):
                         </span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setIsFullMapOpen(true)}
+                        onClick={() => setIsFullMapOpen(!isFullMapOpen)}
                         className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
                       >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span>විශාල සිතියම</span>
+                        {isFullMapOpen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        <span>{isFullMapOpen ? 'කුඩා සිතියම' : 'විශාල සිතියම'}</span>
                       </button>
                     </div>
 
@@ -568,33 +596,27 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     </div>
 
                     {/* Interactive Leaflet Map Box */}
-                    <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-slate-300 dark:border-[#1e3e2b] shadow-inner">
+                    <div className={`relative w-full rounded-2xl overflow-hidden border border-slate-300 dark:border-[#1e3e2b] shadow-inner transition-all duration-300 ${
+                      isFullMapOpen ? 'h-96 sm:h-[450px]' : 'h-60 sm:h-64'
+                    }`}>
                       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-                      {/* Center Pin Marker */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full pointer-events-none z-[1000] flex flex-col items-center">
-                        <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-[#0c1a12]">
-                          <MapPin className="w-5 h-5 fill-white text-emerald-600" />
-                        </div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-900/60 blur-[1px] -mt-1" />
+                    {/* Resolved Location Info Box */}
+                    <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-[#11291b] border border-emerald-300 dark:border-[#1e452d] flex items-start gap-2.5 shadow-xs">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                        <Compass className="w-4 h-4" />
                       </div>
-
-                      {/* Live Coordinates / Geocoding Status Overlay */}
-                      <div className="absolute bottom-2 left-2 right-2 bg-slate-950/85 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-[11px] font-mono flex items-center justify-between z-[1000] shadow-md border border-white/10">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                          <span className="truncate font-sans font-bold text-emerald-200">
-                            {isGeocoding ? 'ස්ථානය පරික්ෂා කරමින්...' : locationName}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 hidden sm:inline flex-shrink-0">
-                          {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
+                      <div className="text-xs min-w-0 flex-1">
+                        <span className="font-extrabold text-slate-900 dark:text-white block">
+                          තෝරාගත් නිශ්චිත ස්ථානය / ලිපිනය:
                         </span>
+                        <p className="text-emerald-800 dark:text-emerald-300 font-semibold mt-0.5 leading-snug break-words">
+                          {isGeocoding ? 'ස්ථානය පරික්ෂා කරමින්...' : (resolvedAddressDetails || locationName)}
+                        </p>
                       </div>
                     </div>
-                    
                     <p className="text-[11px] text-slate-500 dark:text-[#789d87]">
-                      * සිතියම Drag කර හෝ ක්ලික් කර නිශ්චිත සේවා ස්ථානය Pin කරන්න.
+                      * සිතියම මත ඕනෑම තැනක් ක්ලික් කර හෝ Pin එක ඇදගෙන ගොස් (Drag & Drop) නිශ්චිත ස්ථානය සටහන් කරන්න.
                     </p>
                   </div>
                 )}
