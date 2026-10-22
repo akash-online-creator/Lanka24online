@@ -18,6 +18,7 @@ import {
   Mic
 } from 'lucide-react';
 import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { translations } from '../data/translations';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
 import { parseTimeToMs, getAccurateElapsedTime, formatMessageClockTime } from '../utils/dateUtils';
@@ -39,11 +40,14 @@ import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 interface MessageInboxModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: UserType;
+  user?: UserType;
+  currentUser?: UserType;
   helpPosts: HelpPost[];
-  lang: Language;
+  lang?: Language;
+  language?: Language;
   onViewPost?: (post: HelpPost) => void;
   onOpenChat?: (post: HelpPost) => void;
+  onSelectPostChat?: (post: HelpPost) => void;
   onOpenConfirm?: (post: HelpPost) => void;
   onNavigateToIssues?: () => void;
 }
@@ -63,14 +67,21 @@ export interface ConversationThread {
 export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
   isOpen,
   onClose,
-  user,
+  user: userProp,
+  currentUser,
   helpPosts,
-  lang,
+  lang: langProp,
+  language,
   onViewPost,
+  onOpenChat,
+  onSelectPostChat,
   onOpenConfirm,
   onNavigateToIssues,
 }) => {
-  const t = translations[lang];
+  const user = (currentUser || userProp) as UserType;
+  const activeLang = langProp || language || 'si';
+  const t = (translations as any)[activeLang] || translations.si;
+  const handleOpenChat = onSelectPostChat || onOpenChat;
   const [searchQuery, setSearchQuery] = useState('');
   const [inboxTab, setInboxTab] = useState<'all' | 'my_posts' | 'my_offers'>('all');
   const [activeThread, setActiveThread] = useState<ConversationThread | null>(null);
@@ -203,6 +214,7 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
 
   const isUserPostAuthor = (post: HelpPost) => {
     if (!post) return false;
+    if (checkIsPostOwner(user, post)) return true;
     const postPhoneClean = normalizePhone(post.userPhone);
     const isPhoneMatch = Boolean(
       userPhoneClean &&
@@ -350,14 +362,17 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     const generatedTranslations = getChatTranslations(messageTextToSave, userLang);
     const detected = detectLanguageOfText(messageTextToSave);
 
+    const nowIso = new Date().toISOString();
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
       senderName: user?.name || 'පරිශීලක',
       senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
       text: messageTextToSave,
-      timestamp: formatMessageClockTime(undefined, nowMs),
+      timestamp: formatMessageClockTime(nowIso, nowMs),
+      createdAt: nowIso,
       createdAtMs: nowMs,
-      senderPhone: user.phone || user.whatsappNumber || '',
+      senderPhone: user?.phone || user?.whatsappNumber || '',
+      senderId: (user as any)?.userId || (user as any)?.id || '',
       senderLang: userLang,
       detectedLang: detected,
       originalText: messageTextToSave,
@@ -396,14 +411,17 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
       return;
     }
 
+    const nowIso = new Date().toISOString();
     const nowMs = Date.now();
     const newMsg: Omit<ChatMessage, 'id'> = {
       senderName: user?.name || 'පරිශීලක',
       senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
       text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
-      timestamp: formatMessageClockTime(undefined, nowMs),
+      timestamp: formatMessageClockTime(nowIso, nowMs),
+      createdAt: nowIso,
       createdAtMs: nowMs,
-      senderPhone: user.phone || user.whatsappNumber || '',
+      senderPhone: user?.phone || user?.whatsappNumber || '',
+      senderId: (user as any)?.userId || (user as any)?.id || '',
       audioUrl: audioBase64,
       audioDurationSec: durationSec,
       senderLang: userLang,
@@ -989,3 +1007,4 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     </>
   );
 };
+
