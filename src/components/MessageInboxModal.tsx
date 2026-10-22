@@ -94,19 +94,19 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Dual-party language states
-  const [userLang, setUserLang] = useState<Language>(lang || 'si');
+  const [userLang, setUserLang] = useState<Language>(activeLang || 'si');
   const [otherPartyLang, setOtherPartyLang] = useState<Language>(() => {
-    if (lang === 'en') return 'si';
+    if (activeLang === 'en') return 'si';
     return 'en';
   });
   const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (lang) {
-      setUserLang(lang);
-      setOtherPartyLang(lang === 'en' ? 'si' : 'en');
+    if (activeLang) {
+      setUserLang(activeLang);
+      setOtherPartyLang(activeLang === 'en' ? 'si' : 'en');
     }
-  }, [lang]);
+  }, [activeLang]);
 
   // Policy Guard Modal State
   const userKey = user?.userId || user?.phone || user?.nicNumber || user?.name || 'user';
@@ -1007,4 +1007,3 @@ export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
     </>
   );
 };
-
