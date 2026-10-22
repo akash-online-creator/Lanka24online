@@ -625,6 +625,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setDeletingPost(null);
   };
 
+  // Handler for permanently deleting post (used in UserSettingsModal)
+  const handleDeletePostPermanently = async (postId: string) => {
+    await handleConfirmDeletePost(postId);
+  };
+
   const handleEditPost = (post: HelpPost) => {
     if (!post) return;
     if (post.postType === 'quick_service' || post.category === 'quick_services') {
