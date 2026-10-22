@@ -245,9 +245,8 @@ export const App: React.FC = () => {
           }
         }
 
-        // Active users list in state (filter out rejected/deleted)
-        const activeDbUsers = dbUsers.filter((u) => u.status !== 'rejected' && !u.isDeleted);
-        setUsers(deduplicateUsers([...activeDbUsers, ...initialUsers]));
+        // Full users list in state so Admin Panel can manage pending, approved, and rejected users
+        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
       }
     });
 
