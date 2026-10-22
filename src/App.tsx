@@ -215,7 +215,9 @@ export const App: React.FC = () => {
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
       if (dbUsers && dbUsers.length > 0) {
-        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+        // 🛡️ Filter out rejected and deleted users from active memory state
+        const activeDbUsers = dbUsers.filter((u) => u.status !== 'rejected' && !u.isDeleted);
+        setUsers(deduplicateUsers([...activeDbUsers, ...initialUsers]));
       }
     });
 
