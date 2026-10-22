@@ -149,7 +149,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     let dayOfYear: number | null = null;
     let gender: 'male' | 'female' = 'male';
 
-    if (/^[0-9]{9}[VX]$/.test(clean)) { birthYear = 1900 + parseInt(clean.substring(0, 2), 10); dayOfYear = parseInt(clean.substring(2, 5), 10); } else if (/^[0-9]{12}$/.test(clean)) {
+    if (/^[0-9]{9}[VX]$/.test(clean)) {
+      birthYear = 1900 + parseInt(clean.substring(0, 2), 10);
+      dayOfYear = parseInt(clean.substring(2, 5), 10);
+    } else if (/^[0-9]{12}$/.test(clean)) {
       birthYear = parseInt(clean.substring(0, 4), 10);
       dayOfYear = parseInt(clean.substring(4, 7), 10);
     }
@@ -603,7 +606,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                         වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
                       </span>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
+                    </div>
+                  )}
 
                   {/* Previous Rejection Notice Banner */}
                   {isPreviousRejected && (
@@ -620,11 +628,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                           පෙර ප්‍රතික්ෂේප වීමට හේතුව: {(isPreviousRejected as any).rejectionReason}
                         </p>
                       )}
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
                     </div>
                   )}
                 </div>
