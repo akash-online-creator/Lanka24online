@@ -41,42 +41,30 @@ service cloud.firestore {
     // 👤 2. Users Collection (පරිශීලක ගිණුම් කළමනාකරණය)
     // ===============================================================
     match /users/{userId} {
-      // ලියාපදිංචි වූ ඕනෑම පරිශීලකයෙකුට අන් අයගේ ප්‍රසිද්ධ profile තොරතුරු කියවිය හැක
-      allow read: if isAuthenticated();
+      // පරිශීලක ගිණුම් සහ Admin Panel සඳහා සජීවීව කියවීම සහ ලිවීම
+      allow read, write: if true;
 
-      // නව ගිණුමක් සෑදීම (පරිශීලකයාට තමාගේම ID එකෙන් පමණක් සෑදිය හැක, පෙරනිමි තත්ත්වය 'pending' විය යුතුය)
-      allow create: if isOwner(userId) && (
-        !('role' in request.resource.data) || request.resource.data.role == 'user'
-      );
-
-      // ගිණුම් තොරතුරු යාවත්කාලීන කිරීම:
-      // - Admin හට ඕනෑම ක්ෂේත්‍රයක් වෙනස් කළ හැක (role, status, credits, trustScore ඇතුළුව).
-      // - සාමාන්‍ය හිමිකරුට තම profile තොරතුරු වෙනස් කළ හැකි නමුත්, role, status, credits වැනි ආරක්ෂිත ක්ෂේත්‍ර වෙනස් කළ නොහැක!
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'role', 
-          'status', 
-          'credits', 
-          'trustScore', 
-          'isBlocked', 
-          'verified'
-        ])
-      );
-
-      // පරිශීලක ගිණුමක් ස්ථිරවම මකා දැමීම Admin ට පමණි
-      allow delete: if isAdmin();
-
-      // පරිශීලකයාගේ පුද්ගලික රහස්‍ය තොරතුරු (Private Subcollection)
       match /private/{docId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if true;
       }
     }
 
     // ===============================================================
-    // 📢 3. Help Posts & Community Interactions
+    // 📢 3. Help Posts & Community Interactions (posts & helpPosts)
     // ===============================================================
+    match /posts/{postId} {
+      allow read, write: if true;
+      match /{allChildren=**} {
+        allow read, write: if true;
+      }
+    }
+
     match /helpPosts/{postId} {
+      allow read, write: if true;
+      match /{allChildren=**} {
+        allow read, write: if true;
+      }
+    }
       // ප්‍රජා උපකාරක දැන්වීම් ඕනෑම අයෙකුට ප්‍රසිද්ධියේ කියවිය හැක
       allow read: if true;
 
