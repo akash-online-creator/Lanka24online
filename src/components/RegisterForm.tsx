@@ -1,1009 +1,1168 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  MessageSquare, 
-  Phone, 
-  Send, 
-  Clock, 
-  Search, 
-  Inbox, 
-  UserCheck, 
-  ArrowLeft,
-  CheckCircle,
-  Lock,
-  User as UserIcon,
-  ShieldAlert,
-  Sparkles,
-  ArrowRightLeft,
-  Globe,
-  Mic
-} from 'lucide-react';
-import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
-import { checkIsPostOwner } from '../utils/postOwnerHelper';
+import { User, Language, Theme } from '../types';
 import { translations } from '../data/translations';
-import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
-import { parseTimeToMs, getAccurateElapsedTime, formatMessageClockTime } from '../utils/dateUtils';
 import { 
-  inspectAndSanitizeMessage, 
-  getUserStrikes, 
-  recordPolicyViolation, 
-  isUserPolicyBlocked 
-} from '../utils/policyGuard';
+  SRI_LANKA_DISTRICTS, 
+  SRI_LANKA_POLICE_DIVISIONS 
+} from '../data/sriLankaGeoData';
+import { compressImageFile } from '../utils/imageCompressor';
 import { 
-  translateChatMessage, 
-  getChatTranslations, 
-  detectLanguageOfText,
-  getLanguageDisplayInfo 
-} from '../utils/chatTranslator';
-import { PolicyViolationModal } from './PolicyViolationModal';
-import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
+  User as UserIcon, 
+  CreditCard, 
+  Phone, 
+  MapPin, 
+  Lock, 
+  Upload, 
+  CheckCircle2, 
+  ArrowLeft, 
+  Loader2, 
+  FileText, 
+  Eye, 
+  EyeOff, 
+  X, 
+  AlertTriangle,
+  HelpCircle,
+  Camera
+} from 'lucide-react';
+import { AppLogo } from './AppLogo';
+import { MedicalPlusBadge } from './MedicalPlusBadge';
+import { FontSizeController } from './FontSizeController';
+import { NicSpecimenCard } from './NicSpecimenCard';
+// ✅ නිවැරදි කළ කේතය (පේළිය 30):
+const getSystemTermsAndConditions = async (): Promise<string> => 
+  '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
 
-interface MessageInboxModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  user?: UserType;
-  currentUser?: UserType;
-  helpPosts: HelpPost[];
-  lang?: Language;
-  language?: Language;
-  onViewPost?: (post: HelpPost) => void;
-  onOpenChat?: (post: HelpPost) => void;
-  onSelectPostChat?: (post: HelpPost) => void;
-  onOpenConfirm?: (post: HelpPost) => void;
+// 🛡️ Advanced Sri Lankan NIC Matching & Fraud Prevention Helper
+const isNicConflict = (existingUser: Partial<User>, inputNic: string): boolean => {
+  if (!existingUser || !inputNic) return false;
+
+  const cleanInput = inputNic.trim().toUpperCase().replace(/\s+/g, '');
+  if (!cleanInput) return false;
+
+  const exNic = String(existingUser.nicNumber || existingUser.nic || '').trim().toUpperCase().replace(/\s+/g, '');
+  const exUserId = String(existingUser.userId || '').trim().toUpperCase().replace(/\s+/g, '');
+
+  // 1. Direct String Match
+  if (cleanInput === exNic || cleanInput === exUserId) {
+    return true;
+  }
+
+  // 2. Cross-format Sri Lankan NIC matching (9-digit Old vs 12-digit New)
+  const isInputOld = /^[0-9]{9}[VX]$/.test(cleanInput);
+  const isInputNew = /^[0-9]{12}$/.test(cleanInput);
+  const isExOld = /^[0-9]{9}[VX]$/.test(exNic);
+  const isExNew = /^[0-9]{12}$/.test(exNic);
+
+  if ((isInputOld && isExNew) || (isInputNew && isExOld)) {
+    const oldNic = isInputOld ? cleanInput : exNic;
+    const newNic = isInputNew ? cleanInput : exNic;
+
+    const oldYear = 1900 + parseInt(oldNic.substring(0, 2), 10);
+    const oldDay = parseInt(oldNic.substring(2, 5), 10);
+    const oldSeq = oldNic.substring(5, 8);
+
+    const newYear = parseInt(newNic.substring(0, 4), 10);
+    const newDay = parseInt(newNic.substring(4, 7), 10);
+    const newSeq = newNic.substring(7, 11);
+
+    // Exact Birth Year + Birth Day-of-year match
+    if (oldYear === newYear && oldDay === newDay) {
+      if (newSeq.includes(oldSeq) || newSeq.endsWith(oldSeq)) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Raw Digits Equality (if length >= 9)
+  const inDigits = cleanInput.replace(/[^0-9]/g, '');
+  const exDigits = exNic.replace(/[^0-9]/g, '');
+  if (inDigits.length >= 9 && exDigits.length >= 9 && inDigits === exDigits) {
+    return true;
+  }
+
+  return false;
+};
+
+interface RegisterFormProps {
+  onRegister?: (newUser: User) => void;
+  onRegisterSuccess?: (newUser: User) => void;
+  onNavigateToLogin: () => void;
   onNavigateToIssues?: () => void;
+  language: Language;
+  setLanguage?: (lang: Language) => void;
+  theme?: Theme;
+  toggleTheme?: () => void;
+  users?: User[];
 }
 
-export interface ConversationThread {
-  id: string;
-  post: HelpPost;
-  respondentName: string;
-  respondentPhone: string;
-  lastMessage: string;
-  lastMessageTime: string;
-  lastMessageTimeMs: number;
-  repliesCount: number;
-  isCurrentUserAuthor: boolean;
-}
-
-export const MessageInboxModal: React.FC<MessageInboxModalProps> = ({
-  isOpen,
-  onClose,
-  user: userProp,
-  currentUser,
-  helpPosts,
-  lang: langProp,
-  language,
-  onViewPost,
-  onOpenChat,
-  onSelectPostChat,
-  onOpenConfirm,
+export const RegisterForm: React.FC<RegisterFormProps> = ({
+  onRegister,
+  onRegisterSuccess,
+  onNavigateToLogin,
   onNavigateToIssues,
+  language,
+  setLanguage,
+  theme = 'light',
+  toggleTheme,
+  users = [],
 }) => {
-  const user = (currentUser || userProp) as UserType;
-  const activeLang = langProp || language || 'si';
-  const t = (translations as any)[activeLang] || translations.si;
-  const handleOpenChat = onSelectPostChat || onOpenChat;
-  const [searchQuery, setSearchQuery] = useState('');
-  const [inboxTab, setInboxTab] = useState<'all' | 'my_posts' | 'my_offers'>('all');
-  const [activeThread, setActiveThread] = useState<ConversationThread | null>(null);
+  const t = (translations[language] || translations.si) as any;
 
-  // Chat State for active thread
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  // 10 Key Profile State Variables
+  const [fullName, setFullName] = useState('');
+  const [nicNumber, setNicNumber] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [selectedDistrict, setSelectedDistrict] = useState('Gampaha');
+  const [selectedPoliceDivision, setSelectedPoliceDivision] = useState('Katunayake');
+  const [address, setAddress] = useState('');
+  const [key, setKey] = useState(''); // Password / Pin
+  const [confirmKey, setConfirmKey] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Dual-party language states
-  const [userLang, setUserLang] = useState<Language>(activeLang || 'si');
-  const [otherPartyLang, setOtherPartyLang] = useState<Language>(() => {
-    if (activeLang === 'en') return 'si';
-    return 'en';
-  });
-  const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
+  // Photos State (Front of NIC is sufficient)
+  const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
 
-  useEffect(() => {
-    if (activeLang) {
-      setUserLang(activeLang);
-      setOtherPartyLang(activeLang === 'en' ? 'si' : 'en');
+  const nicFileInputRef = useRef<HTMLInputElement | null>(null);
+  const nicCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState<boolean>(false);
+
+  // UI Flow & Validation State
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showNicGuideModal, setShowNicGuideModal] = useState(false);
+  const [showPhoneHelpModal, setShowPhoneHelpModal] = useState(false);
+  const [showPasswordHelpModal, setShowPasswordHelpModal] = useState(false);
+  const [termsAndConditions, setTermsAndConditions] = useState<string>('');
+  const [nicConflict, setNicConflict] = useState<User | null>(null);
+  const [phoneConflict, setPhoneConflict] = useState<boolean>(false);
+  const [isPreviousRejected, setIsPreviousRejected] = useState<User | null>(null);
+
+  // --- PURE HELPERS & CALCULATED VALUES (INITIALIZED BEFORE USEEFFECTS) ---
+
+  // 1. NIC Helper Validator & Gender Evaluator
+  const evaluateNicInfo = (nic: string) => {
+    const clean = nic.trim().toUpperCase();
+    if (!clean) return null;
+
+    let birthYear: number | null = null;
+    let dayOfYear: number | null = null;
+    let gender: 'male' | 'female' = 'male';
+
+    if (/^[0-9]{9}[VX]$/.test(clean)) { birthYear = 1900 + parseInt(clean.substring(0, 2), 10); dayOfYear = parseInt(clean.substring(2, 5), 10); } else if (/^[0-9]{12}$/.test(clean)) {
+      birthYear = parseInt(clean.substring(0, 4), 10);
+      dayOfYear = parseInt(clean.substring(4, 7), 10);
     }
-  }, [activeLang]);
 
-  // Policy Guard Modal State
-  const userKey = user?.userId || user?.phone || user?.nicNumber || user?.name || 'user';
-  const [showPolicyModal, setShowPolicyModal] = useState(false);
-  const [policyStrikes, setPolicyStrikes] = useState<number>(() => getUserStrikes(userKey));
-  const [isBlocked, setIsBlocked] = useState<boolean>(() => isUserPolicyBlocked(userKey));
-  const [detectedViolationTypes, setDetectedViolationTypes] = useState<('phone' | 'link' | 'address')[]>([]);
-
-  // Update strikes from storage whenever modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setPolicyStrikes(getUserStrikes(userKey));
-      setIsBlocked(isUserPolicyBlocked(userKey));
-    }
-  }, [isOpen, userKey]);
-
-  // Reset active thread on modal close/open
-  useEffect(() => {
-    if (!isOpen) {
-      setActiveThread(null);
-      setInputText('');
-    }
-  }, [isOpen]);
-
-  // Subscribe to real-time chat messages when an active thread is opened
-  useEffect(() => {
-    if (!isOpen || !activeThread?.post?.id) return;
-
-    const currentPost = activeThread.post;
-    const unsubscribe = subscribeToChatMessages(currentPost.id, (firestoreMsgs) => {
-      const combined: ChatMessage[] = [];
-
-      // Include initial post replies from this respondent or all respondents
-      if (currentPost.replies && currentPost.replies.length > 0) {
-        currentPost.replies.forEach((rep) => {
-          if (!rep) return;
-          const isAlreadyInMsgs = (firestoreMsgs || []).some(
-            (m) => m && m.text && rep.message && m.text.trim() === rep.message.trim() && m.senderName && rep.responderName && m.senderName.trim() === rep.responderName.trim()
-          );
-          if (!isAlreadyInMsgs) {
-            const repMs = rep.createdAtMs || parseTimeToMs(rep.createdAt);
-            combined.push({
-              id: rep.id || `rep_${Math.random()}`,
-              senderName: rep.responderName || 'සහායක',
-              senderRole: (rep.responderName || '').trim().toLowerCase() === (currentPost.userName || '').trim().toLowerCase() ? 'seeker' : 'helper',
-              text: rep.message || '',
-              timestamp: formatMessageClockTime(rep.createdAt, repMs),
-              createdAtMs: repMs,
-              senderPhone: rep.responderPhone || '',
-            });
-          }
-        });
+    if (dayOfYear !== null) {
+      if (dayOfYear > 500) {
+        gender = 'female';
+        dayOfYear = dayOfYear - 500;
       }
-
-      (firestoreMsgs || []).forEach((fMsg) => {
-        if (!fMsg) return;
-        const fMs = fMsg.createdAtMs || parseTimeToMs(fMsg.timestamp);
-        combined.push({
-          ...fMsg,
-          createdAtMs: fMs,
-          timestamp: formatMessageClockTime(fMsg.timestamp, fMs),
-        });
-      });
-
-      // Strict chronological sorting by time ascending (earliest top, newest bottom)
-      combined.sort((a, b) => {
-        const timeA = a.createdAtMs || parseTimeToMs(a.timestamp);
-        const timeB = b.createdAtMs || parseTimeToMs(b.timestamp);
-        return timeA - timeB;
-      });
-
-      if (combined.length > 0) {
-        setMessages(combined);
-      } else {
-        const nowMs = Date.now();
-        const safeDesc = inspectAndSanitizeMessage(currentPost.whatHappened || 'ඉල්ලීම', Boolean(currentPost.isConfirmed)).sanitizedText;
-        setMessages([
-          {
-            id: 'init_1',
-            senderName: currentPost.userName || 'දැන්වීම්කරු',
-            senderRole: 'seeker',
-            text: `හලෝ, මගේ #${currentPost.postCode || ''} ("${safeDesc}") දැන්වීම සඳහා සහය ලබා ගැනීමට සංවාදය මෙතැනින් ආරම්භ කරන්න.`,
-            timestamp: formatMessageClockTime(undefined, nowMs),
-            createdAtMs: nowMs,
-            senderPhone: currentPost.userPhone || '',
-          },
-        ]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [isOpen, activeThread?.post?.id, activeThread?.post]);
-
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    if (activeThread) {
-      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return { valid: true, birthYear, gender, cleanNic: clean };
     }
-  }, [messages, activeThread]);
 
-  if (!isOpen) return null;
-
-  const normalizePhone = (phone?: string) => (phone ? phone.replace(/\D/g, '') : '');
-  const userPhoneClean = normalizePhone(user?.phone || user?.whatsappNumber);
-
-  const isUserPostAuthor = (post: HelpPost) => {
-    if (!post) return false;
-    if (checkIsPostOwner(user, post)) return true;
-    const postPhoneClean = normalizePhone(post.userPhone);
-    const isPhoneMatch = Boolean(
-      userPhoneClean &&
-        postPhoneClean &&
-        (userPhoneClean === postPhoneClean ||
-          userPhoneClean.endsWith(postPhoneClean.slice(-7)) ||
-          postPhoneClean.endsWith(userPhoneClean.slice(-7)))
-    );
-    const isIdMatch = Boolean(
-      (user?.userId && (post.userId === user.userId || (user?.id && post.userId === user.id))) ||
-      (user?.id && (post.userId === user.id || (user?.userId && post.userId === user.userId)))
-    );
-    const isNameMatch = Boolean(
-      user?.name &&
-      post?.userName &&
-      (post.userName || '').trim().toLowerCase() === (user?.name || '').trim().toLowerCase()
-    );
-
-    return isPhoneMatch || isIdMatch || isNameMatch;
+    return { valid: false, cleanNic: clean };
   };
 
-  const isUserHelperOnPost = (post: HelpPost) => {
-    if (!post || isUserPostAuthor(post)) return false;
-    const replies = post.replies || [];
-    return replies.some((r) => {
-      if (!r) return false;
-      const repPhone = normalizePhone(r.responderPhone);
-      const isPhone = Boolean(userPhoneClean && repPhone && (userPhoneClean === repPhone || userPhoneClean.endsWith(repPhone.slice(-7))));
-      const isName = Boolean(user?.name && r.responderName && r.responderName.trim().toLowerCase() === user?.name.trim().toLowerCase());
-      return isPhone || isName;
-    });
+  const nicInfo = evaluateNicInfo(nicNumber);
+
+  // 2. Password / Key Strength Evaluator (Minimum 6 Characters)
+  const isKeyValid = key.trim().length >= 6;
+  const doKeysMatch = key === confirmKey && key.trim() !== '';
+
+  // 3. Phone Sanitizer for Sri Lankan Numbers
+  const sanitizePhone = (val: string) => {
+    let clean = val.replace(/[^0-9+]/g, '');
+    if (clean.startsWith('+94')) {
+      clean = '0' + clean.substring(3);
+    } else if (clean.startsWith('94') && clean.length === 11) {
+      clean = '0' + clean.substring(2);
+    }
+    return clean;
   };
 
-  // Group messages into distinct conversation threads per post with accurate time calculation
-  const conversationThreads: ConversationThread[] = [];
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitized = sanitizePhone(e.target.value);
+    setWhatsappPhone(sanitized);
+  };
 
-  (helpPosts || []).forEach((post) => {
-    if (!post || !post.id || post.isDeleted) return;
+  // --- USEEFFECT HOOKS (ALL DEPENDENCIES ARE NOW FULLY INITIALIZED) ---
 
-    if (isUserPostAuthor(post)) {
-      // USER IS THE POST AUTHOR (Seeker): Show each helper respondent thread
-      const replies = post.replies || [];
-      const respondentMap: Record<string, PostReply[]> = {};
-      replies.forEach((r) => {
-        if (!r) return;
-        const key = (r.responderName || 'සහායක').trim().toLowerCase();
-        if (!respondentMap[key]) {
-          respondentMap[key] = [];
+  // 🛡️ Realtime Live Duplicate NIC & Fraud Prevention Security Checker
+  useEffect(() => {
+    if (!nicInfo || !nicInfo.valid) {
+      setNicConflict(null);
+      return;
+    }
+
+    const clean = nicInfo.cleanNic;
+    
+    // Check in-memory users from props
+    if (users && users.length > 0) {
+      const match = users.find((u) => isNicConflict(u, clean));
+      if (match) {
+        if (match.status === 'rejected') {
+          // Previously rejected! Allow re-registration with audit history
+          setIsPreviousRejected(match);
+          setNicConflict(null);
+        } else {
+          // Active (Approved or Pending): Strictly block duplicate
+          setNicConflict(match);
+          setIsPreviousRejected(null);
         }
-        respondentMap[key].push(r);
+        return;
+      }
+    }
+
+    setNicConflict(null);
+    setIsPreviousRejected(null);
+  }, [nicNumber, nicInfo, users]);
+
+  // 🛡️ Duplicate Phone Check
+  useEffect(() => {
+    const cleanP = sanitizePhone(whatsappPhone);
+    if (cleanP && cleanP.length >= 10 && users && users.length > 0) {
+      const matchPhone = users.some(
+        (u) =>
+          u.phone &&
+          (u.phone.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, '') ||
+           u.whatsappPhone?.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, ''))
+      );
+      setPhoneConflict(matchPhone);
+    } else {
+      setPhoneConflict(false);
+    }
+  }, [whatsappPhone, users]);
+
+  // Load Dynamic System Terms & Conditions from Firebase
+  useEffect(() => {
+    let isMounted = true;
+    getSystemTermsAndConditions()
+      .then((terms) => {
+        if (isMounted && terms) {
+          setTermsAndConditions(terms);
+        }
+      })
+      .catch((err) => {
+        console.warn('System terms load notice:', err);
       });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-      Object.entries(respondentMap).forEach(([_, repList]) => {
-        // Sort replies inside this thread chronologically
-        repList.sort((a, b) => parseTimeToMs(a.createdAt, a.createdAtMs) - parseTimeToMs(b.createdAt, b.createdAtMs));
-        const latestReply = repList[repList.length - 1];
-        if (!latestReply) return;
-        const replyMs = latestReply.createdAtMs || parseTimeToMs(latestReply.createdAt);
-        const timeDisplay = getAccurateElapsedTime(latestReply.createdAt, replyMs);
+  // Update Police Divisions list when District changes
+  const availableDivisions = SRI_LANKA_POLICE_DIVISIONS[selectedDistrict] || [];
+  useEffect(() => {
+    if (availableDivisions.length > 0 && !availableDivisions.includes(selectedPoliceDivision)) {
+      setSelectedPoliceDivision(availableDivisions[0]);
+    }
+  }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
 
-        conversationThreads.push({
-          id: `${post.id}_author_${latestReply.responderName}`,
-          post,
-          respondentName: latestReply.responderName || 'නොදන්නා සහායකයා',
-          respondentPhone: latestReply.responderPhone || '',
-          lastMessage: latestReply.message || '',
-          lastMessageTime: timeDisplay,
-          lastMessageTimeMs: replyMs,
-          repliesCount: repList.length,
-          isCurrentUserAuthor: true,
-        });
+  // Image Compressor & Light Data URL Generator
+  const processImageFile = async (file: File): Promise<string> => {
+    try {
+      return await compressImageFile(file, {
+        maxWidth: 1024,
+        maxHeight: 1024,
+        quality: 0.8,
+        maxSizeMB: 0.5,
       });
-    } else if (isUserHelperOnPost(post)) {
-      // USER IS A HELPER ON THIS POST: Show conversation thread with Post Author!
-      const replies = [...(post.replies || [])].filter(Boolean);
-      replies.sort((a, b) => parseTimeToMs(b.createdAt, b.createdAtMs) - parseTimeToMs(a.createdAt, a.createdAtMs));
-      const latestReply = replies[0];
-      const replyMs = latestReply
-        ? (latestReply.createdAtMs || parseTimeToMs(latestReply.createdAt))
-        : (post.createdAtMs || parseTimeToMs(post.createdAt));
-      const timeDisplay = getAccurateElapsedTime(latestReply?.createdAt || post.createdAt, replyMs);
-
-      conversationThreads.push({
-        id: `${post.id}_helper_thread`,
-        post,
-        respondentName: post.userName || 'දැන්වීම්කරු',
-        respondentPhone: post.userPhone || '',
-        lastMessage: latestReply?.message || post.whatHappened || 'සංවාදය ආරම්භ විය',
-        lastMessageTime: timeDisplay,
-        lastMessageTimeMs: replyMs,
-        repliesCount: replies.length,
-        isCurrentUserAuthor: false,
+    } catch {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
       });
     }
-  });
+  };
 
-  // Sort conversation threads in strict descending order: most recent message first
-  conversationThreads.sort((a, b) => b.lastMessageTimeMs - a.lastMessageTimeMs);
+  const handlePhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (val: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        setIsProcessingPhoto(true);
+        setErrorMessage(null);
+        const processed = await processImageFile(file);
+        setter(processed);
+      } catch (err) {
+        console.error('Error processing photo:', err);
+        setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් සිදුවිය. කරුණාකර වෙනත් ඡායාරූපයක් තෝරන්න.');
+      } finally {
+        setIsProcessingPhoto(false);
+      }
+    }
+  };
 
-  // Filter threads by tab and search query
-  const filteredThreads = conversationThreads.filter((thread) => {
-    if (inboxTab === 'my_posts' && !thread.isCurrentUserAuthor) return false;
-    if (inboxTab === 'my_offers' && thread.isCurrentUserAuthor) return false;
-
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      (thread.respondentName || '').toLowerCase().includes(q) ||
-      (thread.lastMessage || '').toLowerCase().includes(q) ||
-      (thread.post?.whatHappened || '').toLowerCase().includes(q) ||
-      (thread.post?.postCode || '').toLowerCase().includes(q)
-    );
-  });
-
-  // Handle sending a chat message inside thread
-  const handleSend = async (e: React.FormEvent) => {
+  // Form Submission & Account Creation Handler
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isSending || !activeThread?.post) return;
+    setErrorMessage(null);
 
-    const currentPost = activeThread.post;
-    const isConfirmed = Boolean(currentPost.isConfirmed);
-
-    if (isUserPolicyBlocked(userKey)) {
-      setIsBlocked(true);
-      setShowPolicyModal(true);
+    // 1. Mandatory NIC Front Photo Validation
+    if (!nicFrontPhoto || nicFrontPhoto.trim() === '') {
+      setErrorMessage('කරුණාකර ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය (NIC Front Photo) උඩුගත කරන්න.');
+      window.scrollTo({ top: 300, behavior: 'smooth' });
       return;
     }
 
-    const rawText = inputText.trim();
-    setInputText('');
-
-    // Policy Check
-    const policyResult = inspectAndSanitizeMessage(rawText, isConfirmed);
-    let messageTextToSave = rawText;
-
-    if (policyResult.hasViolation) {
-      messageTextToSave = policyResult.sanitizedText;
-      const record = recordPolicyViolation(userKey);
-      setPolicyStrikes(record.newStrikes);
-      setIsBlocked(record.isBlocked);
-      setDetectedViolationTypes(policyResult.detectedTypes);
-      setShowPolicyModal(true);
-    }
-
-    const generatedTranslations = getChatTranslations(messageTextToSave, userLang);
-    const detected = detectLanguageOfText(messageTextToSave);
-
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
-    const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: user?.name || 'පරිශීලක',
-      senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
-      text: messageTextToSave,
-      timestamp: formatMessageClockTime(nowIso, nowMs),
-      createdAt: nowIso,
-      createdAtMs: nowMs,
-      senderPhone: user?.phone || user?.whatsappNumber || '',
-      senderId: (user as any)?.userId || (user as any)?.id || '',
-      senderLang: userLang,
-      detectedLang: detected,
-      originalText: messageTextToSave,
-      translations: {
-        si: generatedTranslations.si,
-        en: generatedTranslations.en,
-        ta: generatedTranslations.ta,
-      },
-    };
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...newMsg,
-        id: `local_msg_${nowMs}`,
-      },
-    ]);
-
-    setIsSending(true);
-    try {
-      await sendChatMessageToFirestore(currentPost.id, newMsg);
-    } catch (err) {
-      console.error('Failed to send message to Firestore:', err);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleSendVoiceAudio = async (audioBase64: string, durationSec: number, tgRecord?: TelegramMediaRecord) => {
-    if (!activeThread) return;
-    const currentPost = activeThread.post;
-
-    if (isUserPolicyBlocked(userKey)) {
-      setIsBlocked(true);
-      setShowPolicyModal(true);
+    // 2. Full Name Validation
+    if (!fullName.trim() || fullName.trim().length < 3) {
+      setErrorMessage('කරුණාකර ඔබගේ සම්පූර්ණ නම නිවැරදිව ඇතුළත් කරන්න (අවම වශයෙන් අකුරු 3ක්).');
       return;
     }
 
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
-    const newMsg: Omit<ChatMessage, 'id'> = {
-      senderName: user?.name || 'පරිශීලක',
-      senderRole: activeThread.isCurrentUserAuthor ? 'seeker' : 'helper',
-      text: '🎙️ [හඬ පණිවිඩයක් / Voice Note]',
-      timestamp: formatMessageClockTime(nowIso, nowMs),
-      createdAt: nowIso,
-      createdAtMs: nowMs,
-      senderPhone: user?.phone || user?.whatsappNumber || '',
-      senderId: (user as any)?.userId || (user as any)?.id || '',
-      audioUrl: audioBase64,
-      audioDurationSec: durationSec,
-      senderLang: userLang,
-      telegramStorage: tgRecord,
-    };
+    // 3. NIC Number Validation & Strict Duplicate Fraud Guard
+    if (!nicInfo || !nicInfo.valid) {
+      setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකයක් ඇතුළත් කරන්න (පැරණි: 970181547V හෝ නව: 199701815470).');
+      return;
+    }
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...newMsg,
-        id: `local_audio_${nowMs}`,
-      },
-    ]);
+    // 🛡️ Strict Security Rule: One Account per NIC only
+    if (nicConflict || (users && users.some((u) => isNicConflict(u, nicInfo.cleanNic)))) {
+      setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් සකසා ඇත. ආරක්ෂක හේතූන් මත එක් හැඳුනුම්පත් අංකයකින් සැකසිය හැක්කේ එක් ගිණුමක් පමණි. කරුණාකර ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න.');
+      window.scrollTo({ top: 150, behavior: 'smooth' });
+      return;
+    }
 
-    setIsRecordingVoice(false);
-    setIsSending(true);
+    // 4. Phone Number Validation
+    const cleanPhone = whatsappPhone.trim();
+    if (!/^(07[0-9]{8}|01[0-9]{8}|0[0-9]{9})$/.test(cleanPhone)) {
+      setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකයක් ඇතුළත් කරන්න (උදා: 0771234567).');
+      return;
+    }
+
+    // 5. Address Validation
+    if (!address.trim() || address.trim().length < 5) {
+      setErrorMessage('කරුණාකර ඔබගේ ස්ථීර ලිපිනය ඇතුළත් කරන්න.');
+      return;
+    }
+
+    // 6. Security Key / Password Validation
+    if (!isKeyValid) {
+      setErrorMessage('මුරපදය සඳහා අවම වශයෙන් අකුරු හෝ අංක 6ක් ඇතුළත් කරන්න.');
+      return;
+    }
+
+    if (key !== confirmKey) {
+      setErrorMessage('තහවුරු කිරීමේ මුරපදය නොගැලපේ. කරුණාකර නැවත පරීක්ෂා කරන්න.');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      await sendChatMessageToFirestore(currentPost.id, newMsg);
-    } catch (err) {
-      console.error('Failed to send voice note to Firestore:', err);
+      const nowStr = new Date().toISOString();
+      const cleanNic = nicInfo.cleanNic;
+
+      // Compute re-registration history and attempt counters
+      const prevAttemptCount = (isPreviousRejected as any)?.submissionCount || 1;
+      const attemptNum = isPreviousRejected ? prevAttemptCount + 1 : 1;
+      const existingHistory = (isPreviousRejected as any)?.rejectionHistory || [];
+      
+      const newHistoryItem = isPreviousRejected ? {
+        attempt: prevAttemptCount,
+        date: isPreviousRejected.rejectedAt || isPreviousRejected.updatedAt || isPreviousRejected.registeredAt || nowStr,
+        rejectionReason: (isPreviousRejected as any).rejectionReason || 'පරිපාලක විසින් ප්‍රතික්ෂේප කරන ලදී.',
+        previousName: isPreviousRejected.name,
+        previousAddress: isPreviousRejected.address,
+        previousPhone: isPreviousRejected.phone || isPreviousRejected.whatsappPhone,
+        previousPhotoUrl: isPreviousRejected.nicFrontPhotoUrl || isPreviousRejected.photoUrl,
+      } : null;
+
+      // Primary User Profile Model
+      const newUser: User = {
+        id: isPreviousRejected?.id || `usr_${Date.now()}`,
+        userId: cleanNic,
+        nicNumber: cleanNic,
+        nic: cleanNic,
+        name: fullName.trim(),
+        phone: cleanPhone,
+        whatsappPhone: cleanPhone,
+        address: address.trim(),
+        district: selectedDistrict,
+        policeDivision: selectedPoliceDivision,
+        gender: nicInfo.gender || 'male',
+        role: 'user',
+        status: 'pending', // Re-entered into pending approval
+        credits: 50,
+        trustScore: 85,
+        rating: 5.0,
+        completedHelpCount: 0,
+        registeredAt: nowStr,
+        createdAt: isPreviousRejected?.registeredAt || nowStr,
+        updatedAt: nowStr,
+        password: key.trim(),
+        key: key.trim() as any,
+        temporaryPassword: '',
+        isTemporaryPassword: false,
+        isPasswordChanged: true,
+        photoUrl: nicFrontPhoto || '',
+        idCardPhotoUrl: nicFrontPhoto || '',
+        nicFrontPhotoUrl: nicFrontPhoto || '',
+        nicBackPhotoUrl: '',
+        facePhotoUrl: '',
+        submissionCount: attemptNum,
+        rejectionHistory: newHistoryItem ? [...existingHistory, newHistoryItem] : existingHistory,
+        isReRegistration: Boolean(isPreviousRejected),
+      } as any;
+
+      const registerCallback = onRegister || onRegisterSuccess;
+      if (typeof registerCallback === 'function') {
+        registerCallback(newUser);
+      } else {
+        console.warn('Neither onRegister nor onRegisterSuccess was provided');
+      }
+    } catch (err: any) {
+      console.error('Registration processing error:', err);
+      setErrorMessage(err.message || 'ලියාපදිංචි කිරීමේදී දෝෂයක් සිදුවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
     } finally {
-      setIsSending(false);
+      setLoading(false);
     }
   };
 
-  const toggleShowOriginal = (msgId: string) => {
-    setToggledOriginals((prev) => ({
-      ...prev,
-      [msgId]: !prev[msgId],
-    }));
-  };
+  // Localized Titles
+  const mainTitle = language === 'en' 
+    ? 'Create New Member Account' 
+    : language === 'ta' 
+    ? 'புதிய உறுப்பினர் கணக்கை உருவாக்கவும்' 
+    : 'නව සාමාජික ගිණුමක් සකසන්න';
 
-  const userLangInfo = getLanguageDisplayInfo(userLang);
-  const otherLangInfo = getLanguageDisplayInfo(otherPartyLang);
+  const subtitle = language === 'en'
+    ? 'Provide accurate details for admin verification and identity confirmation'
+    : language === 'ta'
+    ? 'நிர்வாகி சரிபார்ப்புக்காக துல்லியமான தகவல்களை வழங்கவும்'
+    : 'පරිපාලක අනුමැතිය සහ අනන්‍යතාව තහවුරු කිරීම සඳහා නිවැරදි තොරතුරු ඇතුළත් කරන්න';
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-        <div className="w-full max-w-2xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_25px_70px_rgba(0,122,75,0.35)] overflow-hidden flex flex-col h-[90vh] max-h-[750px] relative">
-          
-          {/* ========================================================================= */}
-          {/* VIEW 1: INBOX LIST OF RESPONDENTS / CONVERSATIONS                         */}
-          {/* ========================================================================= */}
-          {!activeThread ? (
-            <div className="flex flex-col h-full">
-              {/* Top Header */}
-              <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 p-4 text-white flex items-center justify-between border-b border-emerald-600/50 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-emerald-300 shadow-inner">
-                    <MessageSquare className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                      <span>මැසේජ් Inbox</span>
-                      <span className="bg-emerald-500 text-white text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold">
-                        {conversationThreads.length}
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-emerald-100 font-medium">
-                      ඔබගේ දැන්වීම් සහ ඔබ සහාය දැක්වූ දැන්වීම් සඳහා සංවාද
-                    </p>
-                  </div>
-                </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 py-6 px-3 sm:px-6 flex flex-col justify-center items-center">
+      {/* Top Bar with Language & Back to Login */}
+      <div className="w-full max-w-2xl mb-4 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onNavigateToLogin}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm active:scale-95"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>{language === 'en' ? 'Back to Login' : language === 'ta' ? 'உள்நுழைவுக்குத் திரும்பு' : 'ආපසු පිවිසුමට'}</span>
+        </button>
 
-                <button
-                  onClick={onClose}
-                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-sm transition-all cursor-pointer shadow-sm"
-                  title="වසන්න"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Tabs: All / My Posts / My Offers */}
-              <div className="flex border-b border-slate-200 dark:border-[#102d1d] bg-slate-100/70 dark:bg-[#05140c] px-3 pt-2 gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setInboxTab('all')}
-                  className={`px-3 py-1.5 text-xs font-black rounded-t-xl transition-all ${
-                    inboxTab === 'all'
-                      ? 'bg-white dark:bg-[#071c12] text-emerald-700 dark:text-emerald-300 border-t-2 border-emerald-500 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  සියල්ල ({conversationThreads.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInboxTab('my_posts')}
-                  className={`px-3 py-1.5 text-xs font-black rounded-t-xl transition-all ${
-                    inboxTab === 'my_posts'
-                      ? 'bg-white dark:bg-[#071c12] text-emerald-700 dark:text-emerald-300 border-t-2 border-emerald-500 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  මා පළකළ දැන්වීම් ({conversationThreads.filter(t => t.isCurrentUserAuthor).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInboxTab('my_offers')}
-                  className={`px-3 py-1.5 text-xs font-black rounded-t-xl transition-all ${
-                    inboxTab === 'my_offers'
-                      ? 'bg-white dark:bg-[#071c12] text-emerald-700 dark:text-emerald-300 border-t-2 border-emerald-500 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  මා සහාය වූ සංවාද ({conversationThreads.filter(t => !t.isCurrentUserAuthor).length})
-                </button>
-              </div>
-
-              {/* Search Bar */}
-              <div className="p-3 bg-slate-50 dark:bg-[#05140c] border-b border-slate-200 dark:border-[#102d1d] shrink-0">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="ප්‍රතිචාර දැක්වූ අය, ගැටලුව හෝ පණිවිඩය මඟින් සොයන්න..."
-                    className="w-full bg-white dark:bg-[#081e13] border border-slate-200 dark:border-[#173e28] rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 shadow-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Conversations List */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 bg-[#f8faf9] dark:bg-[#040e08]">
-                {filteredThreads.length === 0 ? (
-                  <div className="py-16 text-center flex flex-col items-center justify-center space-y-3 bg-white dark:bg-[#071b11] rounded-3xl border border-dashed border-slate-300 dark:border-[#17422c] p-6 my-auto">
-                    <Inbox className="w-14 h-14 text-slate-300 dark:text-slate-600 animate-bounce" />
-                    <h4 className="text-sm sm:text-base font-extrabold text-slate-700 dark:text-slate-300">
-                      {conversationThreads.length === 0
-                        ? 'තවම පණිවිඩ හෝ ප්‍රතිචාර ලැබී නොමැත'
-                        : 'සෙවීමට අදාළ ප්‍රතිචාර හමුනොවිණි'}
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
-                      {conversationThreads.length === 0
-                        ? 'දැන්වීමක් පළ කළ විට හෝ සහාය ලබාදුන් විට හුවමාරු වන පණිවිඩ මෙතැන දිස්වේ.'
-                        : 'වෙනත් නමක් හෝ අයිතමයක් මඟින් නැවත උත්සාහ කරන්න.'}
-                    </p>
-                  </div>
-                ) : (
-                  (filteredThreads || []).map((thread, tIdx) => {
-                    const post = thread.post;
-                    const isConfirmed = Boolean(post.isConfirmed);
-
-                    return (
-                      <div
-                        key={`thread_${thread.id || 't'}_${tIdx}`}
-                        onClick={() => setActiveThread(thread)}
-                        className="bg-white dark:bg-[#071c12] border border-emerald-500/30 hover:border-emerald-500 hover:bg-emerald-50/40 dark:hover:bg-[#0a281a] p-3.5 sm:p-4 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99] group space-y-1.5"
-                      >
-                        {/* Line 1: පුද්ගලයාගේ නම + Role Badge + (අවසාන පණිවිඩය යැවූ වෙලාව) */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center shrink-0 shadow-sm ${
-                              thread.isCurrentUserAuthor ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
-                            }`}>
-                              {(thread.respondentName || 'U').charAt(0).toUpperCase()}
-                            </div>
-                            <span className="text-sm font-black text-slate-900 dark:text-white truncate">
-                              {thread.respondentName}
-                            </span>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
-                              thread.isCurrentUserAuthor
-                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                                : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
-                            }`}>
-                              {thread.isCurrentUserAuthor ? 'සහායකයා' : 'දැන්වීම්කරු'}
-                            </span>
-                            {isConfirmed ? (
-                              <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded shrink-0">
-                                ✓ Confirmed
-                              </span>
-                            ) : null}
-                          </div>
-                          
-                          <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono shrink-0 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-emerald-600" />
-                            <span>({thread.lastMessageTime})</span>
-                          </div>
-                        </div>
-
-                        {/* Line 2: දැන්වීමේ සඳහන් ගැටලුව (කුඩා අකුරෙන්) */}
-                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate font-medium flex items-center gap-1.5 pl-10">
-                          <span className="text-amber-700 dark:text-amber-400 font-bold text-[10px] uppercase shrink-0">
-                            #{post.postCode} ගැටලුව:
-                          </span>
-                          <span className="truncate">{post.whatHappened}</span>
-                        </div>
-
-                        {/* Line 3: අවසානෙට දැක්වූ ප්‍රතිචාරය (කුඩා අකුරෙන්) */}
-                        <div className="text-xs text-slate-800 dark:text-slate-200 font-semibold truncate pl-10 flex items-center gap-1.5">
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[11px] shrink-0">
-                            💬 ප්‍රතිචාරය:
-                          </span>
-                          <span className="truncate italic">"{thread.lastMessage}"</span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Bottom Footer */}
-              <div className="p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#102d1d] flex items-center justify-between text-xs shrink-0">
-                <span className="text-slate-500 dark:text-slate-400 font-medium text-[11px]">
-                  සහය සේවා • Inbox පණිවිඩ පද්ධතිය
-                </span>
-                <button
-                  onClick={onClose}
-                  className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
-                >
-                  වසන්න (Close)
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ========================================================================= */
-            /* VIEW 2: DEDICATED CHAT VIEW WHEN CONVERSATION IS CLICKED                  */
-            /* ========================================================================= */
-            <div className="flex flex-col h-full">
-              {/* Header: සහයකයාගේ/දැන්වීම පලකරන්නාගේ නම | ගැටලුව (කෙටියෙන්) | Help id | confirm (Button) */}
-              <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-950 p-3 sm:p-4 text-white border-b border-emerald-600/50 shrink-0 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button
-                      onClick={() => setActiveThread(null)}
-                      className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 text-xs font-bold transition-all cursor-pointer shrink-0"
-                      title="ආපසු Inbox වෙත"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      <span className="hidden sm:inline">ආපසු</span>
-                    </button>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <UserIcon className="w-3.5 h-3.5 text-emerald-300" />
-                        <h3 className="text-sm sm:text-base font-black text-white truncate">
-                          {activeThread.respondentName}
-                        </h3>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black border ${
-                          activeThread.isCurrentUserAuthor
-                            ? 'bg-emerald-400/20 text-emerald-200 border-emerald-400/30'
-                            : 'bg-amber-400/20 text-amber-200 border-amber-400/30'
-                        }`}>
-                          {activeThread.isCurrentUserAuthor ? 'සහායකයා' : 'දැන්වීම්කරු'}
-                        </span>
-                      </div>
-                      
-                      {/* ගැටලුව (කෙටියෙන්, කුඩාවට) */}
-                      <p className="text-[11px] text-emerald-100/90 font-medium truncate max-w-xs sm:max-w-md">
-                        📌 {inspectAndSanitizeMessage(activeThread.post.whatHappened || '', Boolean(activeThread.post.isConfirmed)).sanitizedText}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Confirm Button + Help ID එක */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {activeThread.post.isConfirmed ? (
-                      <span className="text-[10px] bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-black font-mono flex items-center gap-1 shadow-sm">
-                        <CheckCircle className="w-3 h-3" />
-                        <span>CONFIRMED</span>
-                      </span>
-                    ) : activeThread.isCurrentUserAuthor ? (
-                      <span className="text-[10px] bg-emerald-900/70 text-emerald-200 border border-emerald-500/40 px-2 py-1 rounded-lg font-bold">
-                        ඔබගේ දැන්වීමකි
-                      </span>
-                    ) : (
-                      onOpenConfirm && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const p = activeThread.post;
-                            onClose();
-                            onOpenConfirm(p);
-                          }}
-                          className="px-3 py-1 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                        >
-                          <span>Confirm</span>
-                        </button>
-                      )
-                    )}
-
-                    <span className="bg-white/20 text-white font-mono text-[11px] px-2 py-1 rounded-lg border border-white/20 font-black">
-                      {(activeThread.post?.postCode && typeof activeThread.post.postCode === 'string')
-                        ? (activeThread.post.postCode.startsWith('#') ? activeThread.post.postCode : `#${activeThread.post.postCode}`)
-                        : '#POST'}
-                    </span>
-
-                    <button
-                      onClick={onClose}
-                      className="w-7 h-7 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs transition-all cursor-pointer"
-                      title="වසන්න"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* Privacy Reminder */}
-                {!activeThread.post.isConfirmed && (
-                  <div className="bg-amber-400/20 border border-amber-400/30 rounded-xl px-2.5 py-1 text-[10px] text-amber-100 flex items-center gap-1.5">
-                    <ShieldAlert className="w-3 h-3 text-amber-300 shrink-0" />
-                    <span>සහය තහවුරු (Confirm) කරන තුරු පෞද්ගලික දුරකථන අංක හා ලිපින හුවමාරුව තහනම්ය.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* DUAL-LANGUAGE REAL-TIME TRANSLATION BAR (දෙදෙනාගේ භාෂා දෙක ඉහලින් පෙන්වීම) */}
-              <div className="bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* User Language Pill */}
-                  <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2.5 py-1 rounded-xl shadow-inner text-xs">
-                    <span className="text-[10px] text-emerald-300 font-bold uppercase tracking-wider">ඔබගේ භාෂාව:</span>
-                    <select
-                      value={userLang}
-                      onChange={(e) => setUserLang(e.target.value as Language)}
-                      className="bg-emerald-900/90 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer"
-                    >
-                      <option value="si">සිංහල 🇱🇰</option>
-                      <option value="en">English 🇬🇧</option>
-                      <option value="ta">தமிழ் 🇱🇰</option>
-                    </select>
-                  </div>
-
-                  {/* Exchange Arrow Icon */}
-                  <div className="p-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
-                    <ArrowRightLeft className="w-3.5 h-3.5 animate-pulse" />
-                  </div>
-
-                  {/* Other Party Language Pill */}
-                  <div className="flex items-center gap-1.5 bg-teal-950/80 border border-teal-500/50 px-2.5 py-1 rounded-xl shadow-inner text-xs">
-                    <span className="text-[10px] text-teal-300 font-bold uppercase tracking-wider">අනෙක් පාර්ශ්වය:</span>
-                    <select
-                      value={otherPartyLang}
-                      onChange={(e) => setOtherPartyLang(e.target.value as Language)}
-                      className="bg-teal-900/90 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer"
-                    >
-                      <option value="en">English 🇬🇧</option>
-                      <option value="si">සිංහල 🇱🇰</option>
-                      <option value="ta">தமிழ் 🇱🇰</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Real-Time Auto-Translate Badge */}
-                <div className="flex items-center gap-1.5 text-[10px] bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-xl font-bold shadow-sm">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Auto-Translate Active (Singlish / සිංහල ⇄ English / தமிழ்)</span>
-                </div>
-              </div>
-
-              {/* Chat history එක (චැට්කල පිළිවෙලින්) */}
-              <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 bg-[#f6faf8] dark:bg-[#040e08]">
-                {(messages || []).map((msg, msgIdx) => {
-                  const isMe = Boolean(
-                    (user?.name && msg.senderName && msg.senderName.trim().toLowerCase() === user.name.trim().toLowerCase()) ||
-                    (msg.senderPhone && userPhoneClean && normalizePhone(msg.senderPhone) === userPhoneClean)
-                  );
-
-                  const isSeeker = 
-                    msg.senderRole === 'seeker' || 
-                    (activeThread.post.userName && msg.senderName && msg.senderName.trim().toLowerCase() === activeThread.post.userName.trim().toLowerCase());
-
-                  const isRedacted = msg.text.includes('[🔒');
-                  const isConfirmed = Boolean(activeThread.post.isConfirmed);
-                  const showOriginal = Boolean(toggledOriginals[msg.id]);
-
-                  // Multi-language Text Resolution
-                  const rawSanitized = inspectAndSanitizeMessage(msg.text, isConfirmed).sanitizedText;
-                  
-                  let primaryText = rawSanitized;
-                  let secondaryTranslationText = '';
-                  let isAutoTranslated = false;
-
-                  if (msg.audioUrl) {
-                    primaryText = rawSanitized;
-                  } else {
-                    if (msg.translations && msg.translations[userLang]) {
-                      if (isMe) {
-                        primaryText = showOriginal ? (msg.translations[otherPartyLang] || rawSanitized) : rawSanitized;
-                        secondaryTranslationText = msg.translations[otherPartyLang] || '';
-                        if (secondaryTranslationText && secondaryTranslationText.trim().toLowerCase() !== rawSanitized.trim().toLowerCase()) {
-                          isAutoTranslated = true;
-                        }
-                      } else {
-                        const translatedForUser = msg.translations[userLang] || rawSanitized;
-                        primaryText = showOriginal ? rawSanitized : translatedForUser;
-                        secondaryTranslationText = rawSanitized;
-                        if (translatedForUser.trim().toLowerCase() !== rawSanitized.trim().toLowerCase()) {
-                          isAutoTranslated = true;
-                        }
-                      }
-                    } else {
-                      const transResult = translateChatMessage(rawSanitized, userLang);
-                      if (isMe) {
-                        const otherTrans = translateChatMessage(rawSanitized, otherPartyLang);
-                        primaryText = rawSanitized;
-                        secondaryTranslationText = otherTrans.translatedText;
-                        if (otherTrans.translatedText && otherTrans.translatedText !== rawSanitized) {
-                          isAutoTranslated = true;
-                        }
-                      } else {
-                        primaryText = showOriginal ? rawSanitized : (transResult.translatedText || rawSanitized);
-                        secondaryTranslationText = rawSanitized;
-                        if (transResult.translatedText && transResult.translatedText !== rawSanitized) {
-                          isAutoTranslated = true;
-                        }
-                      }
-                    }
-                  }
-
-                  return (
-                    <div
-                      key={`inbox_msg_${msg.id || 'm'}_${msgIdx}`}
-                      className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                    >
-                      {/* Meta header */}
-                      <div className={`flex items-center gap-1.5 mb-1 text-[10px] ${isMe ? 'flex-row-reverse text-emerald-800 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>
-                        <UserIcon className="w-3 h-3 text-[#007a4b] dark:text-[#00c880]" />
-                        <span className="font-bold">
-                          {isMe ? 'ඔබ (You)' : msg.senderName}
-                        </span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
-                          isSeeker 
-                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800' 
-                            : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                        }`}>
-                          {isSeeker ? 'දැන්වීම්කරු' : 'සහායකයා'}
-                        </span>
-                        <span>•</span>
-                        <span className="font-mono text-[9px]">{msg.timestamp}</span>
-                      </div>
-
-                      {/* Bubble */}
-                      <div
-                        className={`max-w-[88%] sm:max-w-[82%] px-4 py-3 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm transition-all ${
-                          isMe
-                            ? 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-tr-none shadow-emerald-950/20'
-                            : isRedacted
-                            ? 'bg-amber-50 dark:bg-amber-950/40 text-slate-800 dark:text-slate-100 border border-amber-300 dark:border-amber-800/80 rounded-tl-none'
-                            : 'bg-white dark:bg-[#0c2217] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#19422d] rounded-tl-none'
-                        }`}
-                      >
-                        {msg.audioUrl ? (
-                          <div className="space-y-1">
-                            <AudioVoicePlayer
-                              audioUrl={msg.audioUrl}
-                              durationSec={msg.audioDurationSec || 5}
-                              isMe={isMe}
-                            />
-                          </div>
-                        ) : (
-                          <div>
-                            <p className="whitespace-pre-wrap break-words font-medium">
-                              {primaryText}
-                            </p>
-
-                            {/* Translation status & toggle UI */}
-                            {isAutoTranslated && (
-                              <div className={`mt-2 pt-1.5 border-t text-[10px] flex items-center justify-between gap-2 ${
-                                isMe ? 'border-white/20 text-emerald-100' : 'border-slate-200 dark:border-emerald-900/40 text-slate-500 dark:text-slate-400'
-                              }`}>
-                                <div className="flex items-center gap-1 min-w-0">
-                                  <Globe className="w-3 h-3 text-amber-300 shrink-0" />
-                                  <span className="truncate">
-                                    {isMe 
-                                      ? `Auto-translated to ${otherLangInfo.nativeName}: "${secondaryTranslationText}"` 
-                                      : showOriginal 
-                                        ? `Showing original text (${msg.detectedLang || 'Sinhala/Singlish'})` 
-                                        : `Auto-translated into ${userLangInfo.nativeName}`}
-                                  </span>
-                                </div>
-
-                                {!isMe && (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleShowOriginal(msg.id)}
-                                    className={`font-bold hover:underline shrink-0 cursor-pointer ml-1 ${
-                                      isMe ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'
-                                    }`}
-                                  >
-                                    {showOriginal ? 'පරිවර්තනය' : 'මුල් පණිවිඩය'}
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* WhatsApp / Phone if confirmed AND contact consent is granted */}
-                        {isConfirmed && activeThread.post.revealContactConsent !== false && !isMe && msg.senderPhone && (
-                          <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-[10px]">
-                            <span className="text-slate-600 dark:text-slate-300 font-mono">
-                              📞 {msg.senderPhone}
-                            </span>
-                            <a
-                              href={`https://wa.me/${msg.senderPhone.replace(/^0/, '94').replace(/\D/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-0.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded font-bold"
-                            >
-                              WhatsApp
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatBottomRef} />
-              </div>
-
-              {/* Bottom: ( Chat type box ) "යවන්න" (button එක) */}
-              <div className="p-3 bg-white dark:bg-[#06180f] border-t border-emerald-200 dark:border-[#0e3a24] shrink-0">
-                {isRecordingVoice ? (
-                  <AudioVoiceRecorder
-                    senderName={user?.name || 'User'}
-                    sourceContext="Direct Chat"
-                    onSendAudio={handleSendVoiceAudio}
-                    onCancel={() => setIsRecordingVoice(false)}
-                  />
-                ) : (
-                  <form onSubmit={handleSend} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsRecordingVoice(true)}
-                      className="p-2.5 rounded-2xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0 transition-all active:scale-95 cursor-pointer"
-                      title="හඬ පණිවිඩයක් (Voice Note)"
-                    >
-                      <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    </button>
-
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        placeholder={
-                          activeThread.post.isConfirmed 
-                            ? userLang === 'en'
-                              ? "Type your message in English / Singlish / Sinhala..."
-                              : userLang === 'ta'
-                              ? "உங்கள் செய்தியை தட்டச்சு செய்யவும்..."
-                              : "සිංහලෙන් හෝ Singlish වලින් පණිවිඩය ලියන්න (Auto translate වේ)..." 
-                            : userLang === 'en'
-                            ? "Type message (contact details allowed after confirm)..."
-                            : "පණිවිඩය ලියන්න (දුරකථන/ලිපින Confirm කළ පසු හුවමාරු වේ)..."
-                        }
-                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#040e08] border-2 border-emerald-300 dark:border-emerald-800/80 rounded-2xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-medium pr-8"
-                      />
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold pointer-events-none hidden sm:block">
-                        {userLangInfo.flag}
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={!inputText.trim() || isSending}
-                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0"
-                    >
-                      <span>{userLang === 'en' ? 'Send' : userLang === 'ta' ? 'அனுப்புக' : 'යවන්න'}</span>
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
-                )}
-              </div>
+        <div className="flex items-center gap-2">
+          {setLanguage && (
+            <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setLanguage('si')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'si' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                සිං
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'en' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('ta')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
+                  language === 'ta' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                தமிழ்
+              </button>
             </div>
           )}
-
+          <FontSizeController language={language} />
         </div>
       </div>
 
-      {/* Policy Violation Warning / Blocked Modal */}
-      <PolicyViolationModal
-        isOpen={showPolicyModal}
-        onClose={() => setShowPolicyModal(false)}
-        strikes={policyStrikes}
-        isBlocked={isBlocked}
-        onNavigateToIssues={onNavigateToIssues}
-        detectedTypes={detectedViolationTypes}
-      />
-    </>
+      {/* Main Registration Card Container */}
+      <div className="w-full max-w-2xl bg-white rounded-3xl p-5 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.45)] border-2 border-emerald-500/80 relative overflow-hidden">
+        {/* Top Decorative Green Accent Bar */}
+        <div className="absolute top-0 left-0 right-0 h-2.5 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600" />
+
+        {/* Header Section */}
+        <div className="text-center mb-6 pt-1">
+          <div className="mb-3 flex justify-center">
+            <AppLogo size="lg" showGlow animated />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black text-emerald-950 tracking-tight mb-1">
+            {mainTitle}
+          </h2>
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold mb-2">
+            <span>සහාය සේවා • සැමට පිහිට</span>
+          </div>
+          <p className="text-slate-600 text-xs sm:text-sm font-semibold max-w-md mx-auto">
+            {subtitle}
+          </p>
+        </div>
+        {/* Error Alert Message */}
+        {errorMessage && (
+          <div className="mb-6 bg-rose-50 border-2 border-rose-300 p-4 rounded-2xl flex items-center gap-3 text-rose-900 text-xs sm:text-sm font-bold shadow-sm animate-shake">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Main Form Fields */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Section A: Personal & Identity Information */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              A. මූලික තොරතුරු සහ අනන්‍යතාව
+            </h3>
+
+            {/* 1. Full Name */}
+            <div className="space-y-1.5">
+              <label className="block text-xs sm:text-sm font-black text-slate-800">
+                1. සම්පූර්ණ නම (Full Name) *
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <UserIcon className="w-4 h-4 text-emerald-600" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="උදා: කේ. ඒ. නිමල් පෙරේරා"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* 2. NIC Number & Real-time Gender/Validity Card */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  2. ජාතික හැඳුනුම්පත් අංකය (NIC Number) *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowNicGuideModal(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>හැඳුනුම්පත් උදවු</span>
+                </button>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={nicNumber}
+                  onChange={(e) => setNicNumber(e.target.value.trim().toUpperCase())}
+                  placeholder="උදා: 970181547V හෝ 199701815470"
+                  maxLength={12}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
+                />
+              </div>
+
+              {/* NIC Validation & Duplicate Security Badge */}
+              {nicNumber.trim() !== '' && (
+                <div className="pt-1">
+                  {nicConflict ? (
+                    <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col gap-2 shadow-sm animate-fadeIn">
+                      <div className="flex items-center gap-2 text-rose-800 font-black text-xs sm:text-sm">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>මෙම ජාතික හැඳුනුම්පත් අංකය දැනටමත් ලියාපදිංචි කර ඇත!</span>
+                      </div>
+                      <p className="text-[11px] text-rose-700 leading-relaxed font-medium">
+                        ආරක්ෂිත හේතූන් මත එකම ජාතික හැඳුනුම්පත් අංකයකින් පද්ධතියේ නිර්මාණය කළ හැක්කේ එක් ගිණුමක් පමණි. වංචනික ලියාපදිංචි කිරීම් වැළැක්වීම සඳහා මෙම හැඳුනුම්පත සඳහා අලුතින් ගිණුම් සෑදීම අවහිර කර ඇත.
+                      </p>
+                      <div className="pt-1 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onNavigateToLogin}
+                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න (Sign In)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : nicInfo && nicInfo.valid ? (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>
+                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {/* Previous Rejection Notice Banner */}
+                  {isPreviousRejected && (
+                    <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col gap-1 text-amber-900 dark:text-amber-200 animate-fadeIn">
+                      <div className="flex items-center gap-1.5 font-black text-xs">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>නැවත ලියාපදිංචි වීමේ අවස්ථාවයි ({((isPreviousRejected as any).submissionCount || 1) + 1} වන උත්සාහය):</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed font-medium">
+                        මෙම හැඳුනුම්පත් අංකය මින්පෙර ප්‍රතික්ෂේප වූවකි. කරුණාකර නිවැරදි සත්‍ය තොරතුරු සහ පැහැදිලි හැඳුනුම්පත් ඡායාරූපයක් ඇතුළත් කර නැවත ඉදිරිපත් කරන්න.
+                      </p>
+                      {(isPreviousRejected as any).rejectionReason && (
+                        <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                          පෙර ප්‍රතික්ෂේප වීමට හේතුව: {(isPreviousRejected as any).rejectionReason}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Phone / WhatsApp Number */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  3. දුරකථන / WhatsApp අංකය *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPhoneHelpModal(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>අංක ආකෘතිය</span>
+                </button>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                </div>
+                <input
+                  type="tel"
+                  required
+                  value={whatsappPhone}
+                  onChange={handlePhoneChange}
+                  placeholder="උදා: 0771234567"
+                  maxLength={10}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section B: Residential & Location Information */}
+          <div className="space-y-4 pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              B. පදිංචි ප්‍රදේශය සහ ලිපිනය
+            </h3>
+
+            {/* 4. District & Police Division Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  4. දිස්ත්‍රික්කය (District) *
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedDistrict}
+                    onChange={(e) => setSelectedDistrict(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  >
+                    {SRI_LANKA_DISTRICTS.map((dist) => (
+                      <option key={dist} value={dist}>
+                        {dist}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  5. පොලිස් බලප්‍රදේශය (Police Division) *
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedPoliceDivision}
+                    onChange={(e) => setSelectedPoliceDivision(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  >
+                    {availableDivisions.map((div) => (
+                      <option key={div} value={div}>
+                        {div}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Permanent Residential Address */}
+            <div className="space-y-1.5">
+              <label className="block text-xs sm:text-sm font-black text-slate-800">
+                6. ස්ථීර පදිංචි ලිපිනය (Address) *
+              </label>
+              <div className="relative">
+                <div className="absolute top-3.5 left-3.5 flex items-center pointer-events-none text-slate-400">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                </div>
+                <textarea
+                  required
+                  rows={2}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="නො: 123, ගංගාරාම පාර, කෝවින්න, කටුනායක"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section C: Security Key & Passwords */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+                C. පිවිසුම් මුරපදය (Security Password)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowPasswordHelpModal(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>මුරපද නීති</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 7. Password / Key */}
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  7. නව මුරපදය (Password) *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    placeholder="අවම අකුරු 6ක්"
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 8. Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="block text-xs sm:text-sm font-black text-slate-800">
+                  8. මුරපදය තහවුරු කරන්න *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmKey}
+                    onChange={(e) => setConfirmKey(e.target.value)}
+                    placeholder="මුරපදය නැවත ඇතුළත් කරන්න"
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Password Match Status Indicator */}
+            {confirmKey && (
+              <div className="pt-0.5">
+                {doKeysMatch ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    මුරපද දෙකම නිවැරදිව ගැලපේ
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    මුරපද දෙක එකිනෙකට නොගැලපේ
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section D: Photo Upload (Fixed Image Upload with Native Overlay) */}
+          <div className="space-y-4 pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
+              D. අනන්‍යතා ඡායාරූපය උඩුගත කිරීම
+            </h3>
+
+            {/* Single Prominent NIC Front Photo Upload Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 space-y-3 shadow-sm hover:border-emerald-500 transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs sm:text-sm font-black text-emerald-950">
+                    9. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
+                  </label>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඔබගේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඉදිරිපස ඡායාරූපය උඩුගත කරන්න.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNicGuideModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>ආදර්ශ හැඳුනුම්පත</span>
+                </button>
+              </div>
+
+              {/* Hidden Native File Inputs */}
+              {/* 1. Standard Chooser (Gallery / Camera / Files) */}
+              <input
+                ref={nicFileInputRef}
+                id="nic-front-file-input"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  handlePhotoUpload(e, setNicFrontPhoto);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+              {/* 2. Direct Camera Trigger */}
+              <input
+                ref={nicCameraInputRef}
+                id="nic-camera-file-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  handlePhotoUpload(e, setNicFrontPhoto);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+
+              {/* Upload Drop Zone / Button */}
+              {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
+                <div className="relative w-full rounded-2xl overflow-hidden bg-slate-50 border-2 border-emerald-400 p-4 flex flex-col items-center justify-center gap-3 shadow-inner">
+                  <div className="relative max-h-56 max-w-full flex items-center justify-center">
+                    <img
+                      src={nicFrontPhoto}
+                      alt="NIC Front"
+                      className="max-h-52 w-auto max-w-full object-contain rounded-xl shadow-md border border-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setNicFrontPhoto('');
+                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
+                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
+                      }}
+                      className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-2 shadow-lg transition-colors cursor-pointer z-30"
+                      title="ඡායාරූපය ඉවත් කරන්න"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2 w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={() => nicFileInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-600" />
+                      <span>වෙනත් ඡායාරූපයක් තෝරන්න</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNicFrontPhoto('');
+                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
+                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <X className="w-3.5 h-3.5 text-rose-600" />
+                      <span>ඡායාරූපය ඉවත් කරන්න</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => nicFileInputRef.current?.click()}
+                  className="relative w-full min-h-[180px] sm:min-h-[210px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/30 flex flex-col items-center justify-center p-4 sm:p-5 shadow-inner transition-all cursor-pointer group"
+                >
+                  {isProcessingPhoto ? (
+                    <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+                      <Loader2 className="w-9 h-9 text-emerald-600 animate-spin" />
+                      <span className="text-xs font-bold text-emerald-950">
+                        ඡායාරූපය සැකසෙමින් පවතී...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-2.5 text-center w-full">
+                      <div className="p-3 bg-emerald-100 text-emerald-800 rounded-full shadow-sm group-hover:scale-105 transition-transform">
+                        <Upload className="w-7 h-7 text-emerald-700 animate-bounce" />
+                      </div>
+                      <span className="text-sm font-black text-emerald-950 tracking-tight">
+                        ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනින් එක් කරන්න (අනිවාර්යයි *)
+                      </span>
+                      <span className="text-xs text-slate-500 max-w-sm font-medium leading-relaxed">
+                        හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඡායාරූපය ලබාගන්න.
+                      </span>
+
+                      {/* Explicit Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2 w-full">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nicCameraInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-md hover:shadow transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4" />
+                          <span>කැමරාවෙන් ඡායාරූපයක් ගන්න</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nicFileInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-emerald-900 border-2 border-emerald-300 hover:border-emerald-500 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4 text-emerald-700" />
+                          <span>ගැලරියෙන් / Files තෝරන්න</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dynamic Admin Terms & Conditions */}
+          {termsAndConditions && (
+            <div className="bg-emerald-50 border-2 border-emerald-200 p-4 rounded-2xl space-y-1 text-slate-800 text-xs">
+              <div className="font-extrabold text-emerald-900 flex items-center gap-1.5 text-xs mb-1">
+                <FileText className="w-4 h-4 text-emerald-700" />
+                <span>ලියාපදිංචි වීමේ කොන්දේසි</span>
+              </div>
+              <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-700 font-medium">
+                {termsAndConditions}
+              </p>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading || Boolean(nicConflict)}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] disabled:opacity-50 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-base flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>ලියාපදිංචි වෙමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>ලියාපදිංචිය යොමු කරන්න</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Footer Navigation */}
+          <div className="text-center pt-2 space-y-2">
+            <p className="text-xs font-bold text-slate-600">
+              දැනටමත් ගිණුමක් තිබේද?{' '}
+              <button
+                type="button"
+                onClick={onNavigateToLogin}
+                className="text-emerald-700 hover:text-emerald-900 underline font-black cursor-pointer"
+              >
+                ඇතුළුවන්න (Sign In)
+              </button>
+            </p>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof onNavigateToIssues === 'function') {
+                    onNavigateToIssues();
+                  } else {
+                    onNavigateToLogin();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-emerald-800 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>ලියාපදිංචි වීමේදී ගැටලුවක්ද? පරිපාලක සහාය ලබාගන්න</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* 1. Modal: NIC Guide Sample Photo */}
+      {showNicGuideModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h4 className="text-sm font-black text-emerald-950">ආදර්ශ ජාතික හැඳුනුම්පත (Specimen)</h4>
+              <button
+                type="button"
+                onClick={() => setShowNicGuideModal(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Specimen Replica Component */}
+            <div className="py-1">
+              <NicSpecimenCard compact={true} />
+            </div>
+
+            <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-1">
+              <div className="text-xs font-black text-emerald-950 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 inline shrink-0" />
+                <span>හැඳුනුම්පතේ ඉදිරිපස පමණක් උඩුගත කරන්න</span>
+              </div>
+              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි හොඳින් ආලෝකය ඇති ස්ථානයක තබා ඡායාරූපය ලබාගන්න.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowNicGuideModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              තේරුම් ගත්තා
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Modal: Phone Number Format Help */}
+      {showPhoneHelpModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-emerald-950">දුරකථන අංක ආකෘතිය</h4>
+              <button
+                type="button"
+                onClick={() => setShowPhoneHelpModal(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
+              <div className="font-bold text-emerald-950">වලංගු ආකෘති:</div>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
+                <li>0771234567 (සාමාන්‍ය ජංගම අංකය)</li>
+                <li>0712345678 (Mobitel)</li>
+                <li>0781234567 (Hutch)</li>
+                <li>0112345678 (ස්ථාවර දුරකථන)</li>
+              </ul>
+              <p className="text-[10px] text-slate-500 pt-1">
+                * +94 හෝ හිස්තැන් ඇතුළත් කිරීම අවශ්‍ය නොවේ. පද්ධතිය විසින් එය ස්වයංක්‍රීයව සකසයි.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPhoneHelpModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              හරි
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Modal: Password Policy Help */}
+      {showPasswordHelpModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-emerald-950">මුරපද ආරක්ෂක උපදෙස්</h4>
+              <button
+                type="button"
+                onClick={() => setShowPasswordHelpModal(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
+              <div className="font-bold text-emerald-950">මුරපද නීති:</div>
+              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
+                <li>අවම වශයෙන් අකුරු හෝ අංක 6ක් තිබිය යුතුය.</li>
+                <li>ඔබට පහසුවෙන් මතක තබාගත හැකි අංකයක් හෝ වචනයක් යොදන්න.</li>
+                <li>තහවුරු කිරීමේ මුරපදය සමඟ හරියටම සමාන විය යුතුය.</li>
+              </ul>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPasswordHelpModal(false)}
+              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+            >
+              තේරුම් ගත්තා
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
+
+export default RegisterForm;
