@@ -136,6 +136,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [termsAndConditions, setTermsAndConditions] = useState<string>('');
   const [nicConflict, setNicConflict] = useState<User | null>(null);
   const [phoneConflict, setPhoneConflict] = useState<boolean>(false);
+  const [isPreviousRejected, setIsPreviousRejected] = useState<User | null>(null);
 
   // --- PURE HELPERS & CALCULATED VALUES (INITIALIZED BEFORE USEEFFECTS) ---
 
@@ -204,12 +205,21 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     if (users && users.length > 0) {
       const match = users.find((u) => isNicConflict(u, clean));
       if (match) {
-        setNicConflict(match);
+        if (match.status === 'rejected') {
+          // Previously rejected! Allow re-registration with audit history
+          setIsPreviousRejected(match);
+          setNicConflict(null);
+        } else {
+          // Active (Approved or Pending): Strictly block duplicate
+          setNicConflict(match);
+          setIsPreviousRejected(null);
+        }
         return;
       }
     }
 
     setNicConflict(null);
+    setIsPreviousRejected(null);
   }, [nicNumber, nicInfo, users]);
 
   // 🛡️ Duplicate Phone Check
@@ -353,9 +363,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const nowStr = new Date().toISOString();
       const cleanNic = nicInfo.cleanNic;
 
+      // Compute re-registration history and attempt counters
+      const prevAttemptCount = (isPreviousRejected as any)?.submissionCount || 1;
+      const attemptNum = isPreviousRejected ? prevAttemptCount + 1 : 1;
+      const existingHistory = (isPreviousRejected as any)?.rejectionHistory || [];
+      
+      const newHistoryItem = isPreviousRejected ? {
+        attempt: prevAttemptCount,
+        date: isPreviousRejected.rejectedAt || isPreviousRejected.updatedAt || isPreviousRejected.registeredAt || nowStr,
+        rejectionReason: (isPreviousRejected as any).rejectionReason || 'පරිපාලක විසින් ප්‍රතික්ෂේප කරන ලදී.',
+        previousName: isPreviousRejected.name,
+        previousAddress: isPreviousRejected.address,
+        previousPhone: isPreviousRejected.phone || isPreviousRejected.whatsappPhone,
+        previousPhotoUrl: isPreviousRejected.nicFrontPhotoUrl || isPreviousRejected.photoUrl,
+      } : null;
+
       // Primary User Profile Model
       const newUser: User = {
-        id: `usr_${Date.now()}`,
+        id: isPreviousRejected?.id || `usr_${Date.now()}`,
         userId: cleanNic,
         nicNumber: cleanNic,
         nic: cleanNic,
@@ -367,13 +392,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         policeDivision: selectedPoliceDivision,
         gender: nicInfo.gender || 'male',
         role: 'user',
-        status: 'pending',
-        credits: 50, // 50 Welcome Free Credits
+        status: 'pending', // Re-entered into pending approval
+        credits: 50,
         trustScore: 85,
         rating: 5.0,
         completedHelpCount: 0,
         registeredAt: nowStr,
-        createdAt: nowStr,
+        createdAt: isPreviousRejected?.registeredAt || nowStr,
+        updatedAt: nowStr,
         password: key.trim(),
         key: key.trim() as any,
         temporaryPassword: '',
@@ -384,7 +410,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         nicFrontPhotoUrl: nicFrontPhoto || '',
         nicBackPhotoUrl: '',
         facePhotoUrl: '',
-      };
+        submissionCount: attemptNum,
+        rejectionHistory: newHistoryItem ? [...existingHistory, newHistoryItem] : existingHistory,
+        isReRegistration: Boolean(isPreviousRejected),
+      } as any;
 
       const registerCallback = onRegister || onRegisterSuccess;
       if (typeof registerCallback === 'function') {
@@ -574,8 +603,26 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>
-                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'}) - ලියාපදිංචි විය හැක.
+                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
                       </span>
+                    </div>
+                  ) : null}
+
+                  {/* Previous Rejection Notice Banner */}
+                  {isPreviousRejected && (
+                    <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col gap-1 text-amber-900 dark:text-amber-200 animate-fadeIn">
+                      <div className="flex items-center gap-1.5 font-black text-xs">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>නැවත ලියාපදිංචි වීමේ අවස්ථාවයි ({((isPreviousRejected as any).submissionCount || 1) + 1} වන උත්සාහය):</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed font-medium">
+                        මෙම හැඳුනුම්පත් අංකය මින්පෙර ප්‍රතික්ෂේප වූවකි. කරුණාකර නිවැරදි සත්‍ය තොරතුරු සහ පැහැදිලි හැඳුනුම්පත් ඡායාරූපයක් ඇතුළත් කර නැවත ඉදිරිපත් කරන්න.
+                      </p>
+                      {(isPreviousRejected as any).rejectionReason && (
+                        <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                          පෙර ප්‍රතික්ෂේප වීමට හේතුව: {(isPreviousRejected as any).rejectionReason}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
