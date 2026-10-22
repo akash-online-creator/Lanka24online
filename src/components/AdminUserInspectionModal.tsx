@@ -209,7 +209,38 @@ _පරිපාලක මණ්ඩලය - සහය සේවා_`;
       window.open(waUrl, '_blank');
     }
 
-    onDelete(currentUser);
+    // Record rejection reason and attempt count into user profile
+    const currentAttempt = (currentUser as any).submissionCount || 1;
+    const history = (currentUser as any).rejectionHistory || [];
+    const newHistoryEntry = {
+      attempt: currentAttempt,
+      date: new Date().toISOString(),
+      rejectionReason: rejectionReason.trim(),
+      previousName: currentUser.name,
+      previousAddress: currentUser.address,
+      previousPhone: rawPhone,
+      previousPhotoUrl: nicPhoto || '',
+    };
+
+    const updatedUserWithRejection: User = {
+      ...currentUser,
+      status: 'rejected',
+      rejectionReason: rejectionReason.trim(),
+      rejectedAt: new Date().toISOString(),
+      submissionCount: currentAttempt,
+      rejectionHistory: [...history, newHistoryEntry],
+      updatedAt: new Date().toISOString(),
+    } as any;
+
+    try {
+      syncUserProfileToFirestore(updatedUserWithRejection);
+    } catch (_) {}
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUserWithRejection);
+    }
+
+    onDelete(updatedUserWithRejection);
     setShowRejectPrompt(false);
     onClose();
   };
@@ -288,6 +319,52 @@ _පරිපාලක මණ්ඩලය - සහය සේවා_`;
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             
             {/* Left Column: User Profile Data (6 Cols) */}
+            <div className="lg:col-span-6 space-y-4">
+              
+              {/* ⚠️ RE-REGISTRATION AUDIT & COMPARISON BANNER */}
+              {((currentUser as any).submissionCount > 1 || ((currentUser as any).rejectionHistory && (currentUser as any).rejectionHistory.length > 0)) && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-950 dark:text-amber-200 space-y-2.5 animate-fadeIn shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-xs flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>නැවත ලියාපදිංචි වූ අයදුම්පතකි ({((currentUser as any).submissionCount || 2)} වන උත්සාහය)</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] uppercase">
+                      Attempt #{((currentUser as any).submissionCount || 2)}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] leading-relaxed text-slate-700 dark:text-amber-100 font-medium">
+                    මෙම හැඳුනුම්පත මින්පෙර ප්‍රතික්ෂේප කර ඇති අතර, පරිශීලකයා විසින් නව තොරතුරු ඇතුළත් කර නැවත ඉදිරිපත් කර ඇත.
+                  </p>
+
+                  {/* Previous Attempt History Logs */}
+                  {((currentUser as any).rejectionHistory && (currentUser as any).rejectionHistory.length > 0) && (
+                    <div className="space-y-1.5 pt-1 border-t border-amber-500/20">
+                      <span className="text-[10px] font-black uppercase text-slate-500 dark:text-amber-400 block tracking-wider">
+                        පෙර ප්‍රතික්ෂේප වීමේ ඉතිහාසය:
+                      </span>
+                      {((currentUser as any).rejectionHistory as any[]).map((h: any, idx: number) => (
+                        <div key={idx} className="p-2.5 rounded-xl bg-white/80 dark:bg-black/40 border border-amber-400/40 text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-amber-300">
+                            <span>උත්සාහය #{h.attempt || idx + 1}</span>
+                            <span className="font-mono text-[10px]">{h.date ? new Date(h.date).toLocaleString('si-LK') : ''}</span>
+                          </div>
+                          <div className="text-rose-600 dark:text-rose-400 font-bold text-[11px]">
+                            ප්‍රතික්ෂේප වීමට හේතුව: {h.rejectionReason}
+                          </div>
+                          {(h.previousName || h.previousAddress) && (
+                            <div className="text-[10px] text-slate-600 dark:text-slate-300 pt-0.5">
+                              {h.previousName ? `කලින් නම: ${h.previousName} | ` : ''}
+                              {h.previousAddress ? `ලිපිනය: ${h.previousAddress}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             <div className="lg:col-span-6 space-y-4">
               <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5 pb-2 border-b border-slate-200 dark:border-[#173a26]">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -709,3 +786,4 @@ _පරිපාලක මණ්ඩලය - සහය සේවා_`;
 };
 
 export default AdminUserInspectionModal;
+
