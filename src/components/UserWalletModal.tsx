@@ -35,24 +35,45 @@ import {
 interface UserWalletModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User;
+  user?: User;
+  currentUser?: User;
   language?: Language;
   initialTab?: 'summary' | 'topup' | 'rates';
   onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
+  onUpdateUser?: (updatedUser: User) => void;
+  theme?: string;
 }
 
 export const UserWalletModal: React.FC<UserWalletModalProps> = ({
   isOpen,
   onClose,
-  user,
+  user: propUser,
+  currentUser,
   language = 'si',
   initialTab = 'summary',
   onOpenQrPay,
+  onUpdateUser,
+  theme,
 }) => {
+  const user = propUser || (currentUser as User);
   const [activeTab, setActiveTab] = useState<'summary' | 'topup' | 'rates'>(initialTab);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
   const [showFeeList, setShowFeeList] = useState(false);
+  const [ratesFilter, setRatesFilter] = useState<'all' | 'free' | 'paid'>('all');
+
+  const allRates = React.useMemo(() => {
+    const feesMap = getEffectiveCategoryFees();
+    return Object.values(feesMap)
+      .filter((item) => item.id >= 1 && item.id <= 21)
+      .sort((a, b) => a.id - b.id);
+  }, [activeTab]);
+
+  const displayRates = React.useMemo(() => {
+    if (ratesFilter === 'free') return allRates.filter((r) => r.isFree || r.fee === 0);
+    if (ratesFilter === 'paid') return allRates.filter((r) => !r.isFree && r.fee > 0);
+    return allRates;
+  }, [allRates, ratesFilter]);
 
   useEffect(() => {
     if (isOpen) {
@@ -180,6 +201,14 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                     <p className="text-[11px] text-amber-100 mt-1 font-medium">
                       සෑම රු. 1.00 ක බැංකු තැන්පතුවක් සඳහාම ක්‍රෙඩිට් 1.00 ක් හිමිවේ.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('rates')}
+                      className="mt-2.5 px-3 py-1.5 rounded-xl bg-black/25 hover:bg-black/40 border border-white/20 text-white text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer w-fit"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-amber-300" />
+                      <span>සේවා ගාස්තු සහ වලංගු කාලසීමාවන් (21 Services) බලන්න ➔</span>
+                    </button>
                   </div>
 
                   {/* Top-up CTA & QR Pay Buttons */}
@@ -537,38 +566,98 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
           {/* TAB 3: CATEGORY & ADVERTISEMENT POSTING FEES */}
           {activeTab === 'rates' && (
             <div className="space-y-4">
-              <div className="bg-slate-50 dark:bg-[#0c1f15] border border-slate-200 dark:border-[#173d27] rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Coins className="w-5 h-5 text-amber-500" />
-                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                    දැන්වීම් පළකිරීමේ ක්‍රෙඩිට් ගාස්තු සටහන (Ad Posting Fees)
+              <div className="bg-gradient-to-r from-emerald-950 via-[#0a2f20] to-teal-950 border border-emerald-500/40 rounded-2xl p-4 text-white shadow-sm">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Coins className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-sm sm:text-base font-black text-white">
+                    සේවා ගාස්තු සහ වලංගු කාලසීමාවන් (Service Fees & Durations)
                   </h3>
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
-                  පද්ධතියේ සෑම දැන්වීමක් හෝ සේවාවක් පළකිරීමට පෙර පහත සඳහන් ගාස්තු ඔබගේ ගිණුමේ ශේෂයෙන් අය කරනු ලැබේ.
+                <p className="text-xs text-emerald-100/90 font-medium leading-relaxed">
+                  සහය සේවා පද්ධතියේ එක් එක් සේවා සහ දැන්වීම් සඳහා අයවන ගාස්තු හා එක් වරක් මුදල් ගෙවූ පසු දැන්වීම වලංගු කාලසීමාවන් පහත දැක්වේ.
                 </p>
               </div>
 
-              {/* Fee Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {Object.values(CATEGORY_CREDIT_FEES).map((item, iIdx) => (
+              {/* Filter Pills */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setRatesFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    ratesFilter === 'all'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-[#071910] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#0c2b1c]'
+                  }`}
+                >
+                  සියලු සේවාවන් (21)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRatesFilter('free')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    ratesFilter === 'free'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-[#071910] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#0c2b1c]'
+                  }`}
+                >
+                  නොමිලේ සේවාවන් (12)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRatesFilter('paid')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    ratesFilter === 'paid'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-[#071910] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#0c2b1c]'
+                  }`}
+                >
+                  ගෙවීම් සහිත සේවාවන් (9)
+                </button>
+              </div>
+
+              {/* 21 Services Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {displayRates.map((item) => (
                   <div
-                    key={`credit_fee_${item.key}_${iIdx}`}
-                    className="bg-white dark:bg-[#08180f] border border-slate-200 dark:border-[#153422] rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-500 transition-all"
+                    key={`credit_fee_${item.key}_${item.id}`}
+                    className={`border rounded-2xl p-3.5 space-y-2 transition-all shadow-2xs ${
+                      item.isFree || item.fee === 0
+                        ? 'bg-emerald-50/50 dark:bg-[#061c12] border-emerald-200 dark:border-[#134228] hover:border-emerald-500'
+                        : 'bg-white dark:bg-[#08180f] border-slate-200 dark:border-[#153422] hover:border-amber-500'
+                    }`}
                   >
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
-                        {item.nameSi}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                        {item.descriptionSi}
-                      </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 font-mono font-black text-xs flex items-center justify-center shrink-0">
+                          {String(item.id).padStart(2, '0')}
+                        </span>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
+                          {item.nameSi}
+                        </h4>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        {item.isFree || item.fee === 0 ? (
+                          <span className="inline-block px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-black text-xs border border-emerald-500/30">
+                            නොමිලේ
+                          </span>
+                        ) : (
+                          <span className="inline-block px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-black text-xs sm:text-sm border border-amber-500/30">
+                            රු. {item.fee.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="inline-block px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-black text-xs sm:text-sm border border-amber-500/30">
-                        රු. {item.fee}
-                      </span>
+
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-1 rounded-xl border border-amber-500/20">
+                      <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="text-slate-600 dark:text-slate-400">වලංගු කාලසීමාව:</span>
+                      <span className="font-extrabold">{item.durationSi}</span>
                     </div>
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                      {item.descriptionSi}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -598,3 +687,4 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
     </div>
   );
 };
+
