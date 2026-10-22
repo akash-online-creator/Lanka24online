@@ -565,11 +565,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   .filter((u) => {
                     if (!userSearch.trim()) return true;
                     const q = userSearch.toLowerCase();
+                    const uNic = (u.nic || u.nicNumber || u.userId || '').toLowerCase();
                     return (
                       (u.name && u.name.toLowerCase().includes(q)) ||
-                      (u.nic && u.nic.toLowerCase().includes(q)) ||
+                      uNic.includes(q) ||
                       (u.whatsappPhone && u.whatsappPhone.includes(q)) ||
-                      (u.city && u.city.toLowerCase().includes(q))
+                      (u.phone && u.phone.includes(q)) ||
+                      (u.city && u.city.toLowerCase().includes(q)) ||
+                      (u.id && u.id.toLowerCase().includes(q))
                     );
                   })
                   .map((u) => {
@@ -618,7 +621,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </div>
                         </td>
                         <td className="py-3 px-3 font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
-                          {u.nic || '-'}
+                          {u.nic || u.nicNumber || u.userId || '-'}
                         </td>
                         <td className="py-3 px-3">
                           <span
