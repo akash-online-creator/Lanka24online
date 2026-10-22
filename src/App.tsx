@@ -407,10 +407,12 @@ export const App: React.FC = () => {
 
       if (matched.role === 'admin' || matched.role === 'super_admin') {
         setActiveView('admin');
-      } else if (matched.status === 'pending') {
-        setActiveView('pending');
-      } else {
+      } else if (matched.status === 'pending' || matched.status === 'rejected') {
+        setActiveView('pending'); // Renders PendingApprovalView (showing pending or rejected UI)
+      } else if (matched.status === 'approved') {
         setActiveView('dashboard');
+      } else {
+        setActiveView('pending');
       }
     } else {
       throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
@@ -427,10 +429,12 @@ export const App: React.FC = () => {
 
     if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
       setActiveView('admin');
-    } else if (authenticatedUser.status === 'pending') {
+    } else if (authenticatedUser.status === 'pending' || authenticatedUser.status === 'rejected') {
       setActiveView('pending');
-    } else {
+    } else if (authenticatedUser.status === 'approved') {
       setActiveView('dashboard');
+    } else {
+      setActiveView('pending');
     }
   }, []);
 
