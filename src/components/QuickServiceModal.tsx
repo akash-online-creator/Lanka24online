@@ -26,7 +26,7 @@ import { HelpPost, Language, LocationOption, User, CategoryItem, TagItem } from 
 import { translations } from '../data/translations';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-import { AiVoiceInlineBar } from './AiVoiceInlineBar';
+// Voice recording bar removed as requested
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 import { generateStartPin, calculatePlatformFee } from '../utils/serviceWorkflowManager';
 import { SUPPORTED_POST_FONTS, injectPostFonts, getFontFamilyById } from '../utils/postFontManager';
@@ -89,7 +89,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
   const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [voiceData, setVoiceData] = useState<any>(null);
+  // Voice recording bar removed
 
   // 📝 2nd Method: Text Post State
   const [textHeadline, setTextHeadline] = useState('');
@@ -176,7 +176,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       setHelpersNeeded(1);
       setWhatsappNumber(userWhatsAppNumber);
       setSelectedTag(null);
-      setVoiceData(null);
+      
       setErrors({});
       setHasAttemptedSubmit(false);
       setIsSuccess(false);
@@ -249,7 +249,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       lat: currentLocation?.lat || 7.1712,
       lng: currentLocation?.lng || 79.8978,
       verifiedOtp: true,
-      category: 'quick_services',
+      category: 'normal_services',
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
@@ -276,7 +276,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       locationName: resolvedLocation,
       lat: currentLocation?.lat,
       lng: currentLocation?.lng,
-      targetModal: 'quick_service',
+      targetModal: 'normal_services',
     });
 
     setIsSuccess(true);
@@ -325,7 +325,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       lat: currentLocation?.lat || 7.1712,
       lng: currentLocation?.lng || 79.8978,
       verifiedOtp: true,
-      category: 'quick_services',
+      category: 'normal_services',
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
@@ -352,7 +352,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       locationName: resolvedLocation,
       lat: currentLocation?.lat,
       lng: currentLocation?.lng,
-      targetModal: 'quick_service',
+      targetModal: 'normal_services',
     });
 
     setIsSuccess(true);
@@ -463,7 +463,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
       lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
-      category: 'quick_services',
+      category: 'normal_services',
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
@@ -479,12 +479,12 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 
     broadcastPushNotification({
       category: 'quick_service',
-      title: '⚡ නව සේවා දැන්වීමක්!',
+      title: '🛠️ නව සාමාන්‍ය සේවා දැන්වීමක්!',
       message: `${whatHappened.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
       locationName: resolvedLocation,
       lat: currentLocation?.lat,
       lng: currentLocation?.lng,
-      targetModal: 'quick_service',
+      targetModal: 'normal_services',
     });
 
     setHasAttemptedSubmit(false);
@@ -504,10 +504,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : 'සේවා ඉල්ලීමක් පළකරන්න'}</span>
+                <span>{editPost ? 'සාමාන්‍ය සේවා දැන්වීම සංස්කරණය' : 'සාමාන්‍ය සේවා ඉල්ලීමක් පළකරන්න'}</span>
               </h2>
               <p className="text-[11px] text-emerald-100 font-medium">
-                අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී සේවාවන් ලබාගන්න
+                සාමාන්‍ය සේවා පුවරුව වෙත ප්‍රජා සහය දැන්වීම් පළකරන්න
               </p>
             </div>
           </div>
@@ -596,7 +596,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
               <TagSelector
                 selectedTag={selectedTag}
                 onSelectTag={(t) => setSelectedTag(t)}
-                activeCategory={categories.find(c => c.id === 'quick_services') || null}
+                activeCategory={categories.find(c => c.id === 'normal_services') || null}
               />
             </div>
 
@@ -747,7 +747,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
               <TagSelector
                 selectedTag={selectedTag}
                 onSelectTag={(t) => setSelectedTag(t)}
-                activeCategory={categories.find(c => c.id === 'quick_services') || null}
+                activeCategory={categories.find(c => c.id === 'normal_services') || null}
               />
             </div>
 
@@ -898,31 +898,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
              📋 METHOD 1: STANDARD QUESTIONNAIRE FORM
              ============================================================== */
           <>
-            {/* AI Voice Inline Bar */}
-            <div className="p-3 bg-emerald-50/70 dark:bg-[#092216] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0">
-              <AiVoiceInlineBar
-                onVoiceDataReceived={(data) => {
-                  setVoiceData(data);
-                  if (data.transcript) {
-                    setWhatHappened(data.transcript);
-                  }
-                  if (data.parsedFields?.whatHappened) {
-                    setWhatHappened(data.parsedFields.whatHappened);
-                  }
-                  if (data.parsedFields?.whatIsNeeded) {
-                    setWhatIsNeeded(data.parsedFields.whatIsNeeded);
-                  }
-                  if (data.parsedFields?.transport) {
-                    setTransport(data.parsedFields.transport);
-                  }
-                  if (data.parsedFields?.payment && data.parsedFields.payment.includes('රු.')) {
-                    setPaymentType('custom');
-                    setCustomPaymentAmount(data.parsedFields.payment.replace(/\D/g, ''));
-                  }
-                }}
-                currentLocation={currentLocation}
-              />
-            </div>
+            
 
             {/* Form Body */}
             <form onSubmit={handleSubmit} className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5 text-left text-sm animate-fadeIn">
@@ -936,7 +912,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
                 <TagSelector
                   selectedTag={selectedTag}
                   onSelectTag={(t) => setSelectedTag(t)}
-                  activeCategory={categories.find(c => c.id === 'quick_services') || null}
+                  activeCategory={categories.find(c => c.id === 'normal_services') || null}
                 />
               </div>
 
