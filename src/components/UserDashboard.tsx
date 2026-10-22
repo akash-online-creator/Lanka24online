@@ -1381,6 +1381,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setIsFindForMeModalOpen(true);
           } else if (catKey === 'from_me_to_you') {
             setIsFromMeToYouModalOpen(true);
+          } else if (catKey === 'professional_services' || catKey === 'professional') {
+            setIsRegisterProfessionalServiceModalOpen(true);
           } else {
             setIsQuickServiceModalOpen(true);
           }
@@ -1497,7 +1499,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         lang={language}
       />
 
-      {/* 2. Standard Help Post Form Modal (General Categories) */}
+      {/* 2. Standard Help Post Form Modal (General Categories - 3-Way Posting) */}
       <HelpPostModal
         isOpen={isHelpPostModalOpen}
         onClose={() => {
@@ -1505,10 +1507,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedCategory(null);
         }}
         onSubmit={handleCreatePost}
+        onSubmitPost={handleCreatePost}
         currentLocation={currentLocation}
         availableLocations={initialLocations}
         selectedCategory={selectedCategory}
         language={language}
+        currentUser={user}
       />
 
       {/* 3. Offer Support / Helper Application Modal */}
@@ -1591,15 +1595,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
       />
 
-      {/* 10. User Settings & Trust Profile Modal */}
+      {/* 10. User Settings & Trust Profile Modal (Profile Overhaul) */}
       <UserSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        user={user}
         currentUser={user}
         onUpdateUser={onUpdateUser}
         language={language}
         theme={theme}
         initialTab={settingsInitialTab}
+        helpPosts={localHelpPosts || helpPosts}
+        onDeletePost={handleDeletePostPermanently}
+        onViewPost={(p) => {
+          setIsSettingsModalOpen(false);
+          setSelectedPostForDetail(p);
+        }}
       />
 
       {/* 11. User Credits & Community Coin Wallet Modal */}
@@ -1700,6 +1711,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={isAppQrModalOpen}
         onClose={() => setIsAppQrModalOpen(false)}
         language={language}
+      />
+
+      {/* Professional Service Registration Modal */}
+      <RegisterProfessionalServiceModal
+        isOpen={isRegisterProfessionalServiceModalOpen}
+        onClose={() => setIsRegisterProfessionalServiceModalOpen(false)}
+        user={user}
+        language={language}
+        currentLocationName={currentLocation?.nameSi}
+        onRegisterService={(newService) => {
+          setIsRegisterProfessionalServiceModalOpen(false);
+          alert(language === 'en' ? '✅ Professional service registered successfully!' : '✅ ඔබගේ වෘත්තීය සේවාව සාර්ථකව ලියාපදිංචි කරන ලදී!');
+        }}
       />
 
       {/* 20. Red Alert Incident Creation Modal */}
@@ -1853,4 +1877,5 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 };
 
 export default UserDashboard;
+
 
