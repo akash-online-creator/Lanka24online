@@ -20,7 +20,8 @@ import {
   Upload,
   Trash2,
   Send,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User, CategoryItem, TagItem } from '../types';
 import { translations } from '../data/translations';
@@ -103,6 +104,8 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [pictureImageBase64, setPictureImageBase64] = useState('');
   const [showCommentsPic, setShowCommentsPic] = useState(true);
   const [showProfilePic, setShowProfilePic] = useState(true);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const picturePostImageRef = useRef<HTMLInputElement | null>(null);
 
   // Shared Anonymous ID for privacy
@@ -198,15 +201,86 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 16:9 Image Change Handler
+  // 16:9 True HD (1280x720) High-Quality Canvas Processing (~90KB - 160KB)
   const handlePicturePostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setIsProcessingImage(true);
     const reader = new FileReader();
     reader.onload = (event: any) => {
-      if (event.target?.result) {
-        setPictureImageBase64(event.target.result);
-      }
+      const img = new Image();
+      img.onload = () => {
+        // High quality True HD 16:9 Canvas (1280 x 720)
+        const targetWidth = 1280;
+        const targetHeight = 720;
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          setPictureImageBase64(event.target?.result || '');
+          setIsProcessingImage(false);
+          return;
+        }
+
+        // Enable ultra-high quality smoothing for maximum sharpness
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Clean dark emerald background
+        ctx.fillStyle = '#06180f';
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+        // Aspect ratios
+        const imgAspect = img.width / img.height;
+        const targetAspect = targetWidth / targetHeight; // 16:9
+
+        let renderWidth = targetWidth;
+        let renderHeight = targetHeight;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        // If source is close to 16:9 (aspect between 1.4 and 2.0), fill and center-crop edge-to-edge
+        // If source is vertical or square, fit entirely inside so no text/info is chopped off!
+        if (imgAspect >= 1.4 && imgAspect <= 2.0) {
+          if (imgAspect > targetAspect) {
+            renderHeight = targetHeight;
+            renderWidth = img.width * (targetHeight / img.height);
+            offsetX = (targetWidth - renderWidth) / 2;
+          } else {
+            renderWidth = targetWidth;
+            renderHeight = img.height * (targetWidth / img.width);
+            offsetY = (targetHeight - renderHeight) / 2;
+          }
+        } else {
+          // Vertical screenshot / document / square: contain fit to preserve all text
+          if (imgAspect > targetAspect) {
+            renderWidth = targetWidth;
+            renderHeight = img.height * (targetWidth / img.width);
+            offsetY = (targetHeight - renderHeight) / 2;
+          } else {
+            renderHeight = targetHeight;
+            renderWidth = img.width * (targetHeight / img.height);
+            offsetX = (targetWidth - renderWidth) / 2;
+          }
+        }
+
+        ctx.drawImage(img, offsetX, offsetY, renderWidth, renderHeight);
+
+        // Export as crisp HD JPEG with 0.85 quality (~90KB to 160KB - crystal clear & light)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        setPictureImageBase64(compressedBase64);
+        setIsProcessingImage(false);
+      };
+      img.onerror = () => {
+        setIsProcessingImage(false);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      setIsProcessingImage(false);
     };
     reader.readAsDataURL(file);
   };
@@ -289,8 +363,9 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   // -------------------------------------------------------------
   // 🚀 SUBMIT METHOD 3: PICTURE POST (16:9 Image)
   // -------------------------------------------------------------
-  const handlePicturePostSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePicturePostSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
+
     if (!pictureHeadline.trim()) {
       alert('කරුණාකර හෙඩ්ලයින් එක (Headline) ඇතුළත් කරන්න.');
       return;
@@ -300,66 +375,75 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       return;
     }
 
-    const isAnon = !showProfilePic;
-    const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
-    const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
-    const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
+    setIsSubmitting(true);
 
-    onSubmitPost({
-      userName: authorDisplayName,
-      userPhotoUrl: authorDisplayPhoto,
-      userPhone: whatsappNumber.trim() || userWhatsAppNumber,
-      userId: currentUser?.userId || currentUser?.id || '',
-      postType: 'picture_post',
-      headline: pictureHeadline.trim(),
-      title: pictureHeadline.trim(),
-      imageUrl: pictureImageBase64,
-      mediaType: 'photo',
-      whatHappened: pictureHeadline.trim(),
-      whatIsNeeded: pictureHeadline.trim(),
-      conditions: 'විශේෂ කොන්දේසි නොමැත.',
-      transport: 'අදාළ නොවේ',
-      payment: 'නොමිලේ / සාකච්ඡා කළ හැක',
-      locationName: resolvedLocation,
-      distanceKm: 0.5,
-      lat: currentLocation?.lat || 7.1712,
-      lng: currentLocation?.lng || 79.8978,
-      verifiedOtp: true,
-      category: 'normal_services',
-      tagName: selectedTag?.tagName,
-      tagCategory: selectedTag?.category,
-      tagId: selectedTag?.id,
-      showComments: showCommentsPic,
-      isAnonymous: isAnon,
-      anonymousId: isAnon ? generatedAnonymousId : undefined,
-      // 🛡️ Secure Admin Audit Trail
-      actualAuthorId: currentUser?.id || currentUser?.userId || 'unknown',
-      actualAuthorName: currentUser?.name || 'Anonymous User',
-      actualAuthorNic: currentUser?.nicNumber || currentUser?.nic || currentUser?.userId || 'N/A',
-      actualAuthorPhone: currentUser?.whatsappPhone || currentUser?.phone || userWhatsAppNumber || 'N/A',
-      likeCount: 0,
-      unlikeCount: 0,
-      unlikesCount: 0,
-      savesCount: 0,
-      commentsCount: 0,
-      commentsList: [],
-    } as any);
+    try {
+      const isAnon = !showProfilePic;
+      const authorDisplayName = isAnon ? generatedAnonymousId : (currentUser?.name || 'සහය ඉල්ලුම්කරු');
+      const authorDisplayPhoto = isAnon ? '' : (currentUser?.photoUrl || '');
+      const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
 
-    broadcastPushNotification({
-      category: 'quick_service',
-      title: '📸 නව Picture පෝස්ට් එකක්!',
-      message: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
-      locationName: resolvedLocation,
-      lat: currentLocation?.lat,
-      lng: currentLocation?.lng,
-      targetModal: 'normal_services',
-    });
+      await onSubmitPost({
+        userName: authorDisplayName,
+        userPhotoUrl: authorDisplayPhoto,
+        userPhone: whatsappNumber.trim() || userWhatsAppNumber,
+        userId: currentUser?.userId || currentUser?.id || '',
+        postType: 'picture_post',
+        headline: pictureHeadline.trim(),
+        title: pictureHeadline.trim(),
+        imageUrl: pictureImageBase64,
+        mediaType: 'photo',
+        whatHappened: pictureHeadline.trim(),
+        whatIsNeeded: pictureHeadline.trim(),
+        conditions: 'විශේෂ කොන්දේසි නොමැත.',
+        transport: 'අදාළ නොවේ',
+        payment: 'නොමිලේ / සාකච්ඡා කළ හැක',
+        locationName: resolvedLocation,
+        distanceKm: 0.5,
+        lat: currentLocation?.lat || 7.1712,
+        lng: currentLocation?.lng || 79.8978,
+        verifiedOtp: true,
+        category: 'normal_services',
+        tagName: selectedTag?.tagName,
+        tagCategory: selectedTag?.category,
+        tagId: selectedTag?.id,
+        showComments: showCommentsPic,
+        isAnonymous: isAnon,
+        anonymousId: isAnon ? generatedAnonymousId : undefined,
+        // 🛡️ Secure Admin Audit Trail
+        actualAuthorId: currentUser?.id || currentUser?.userId || 'unknown',
+        actualAuthorName: currentUser?.name || 'Anonymous User',
+        actualAuthorNic: currentUser?.nicNumber || currentUser?.nic || currentUser?.userId || 'N/A',
+        actualAuthorPhone: currentUser?.whatsappPhone || currentUser?.phone || userWhatsAppNumber || 'N/A',
+        likeCount: 0,
+        unlikeCount: 0,
+        unlikesCount: 0,
+        savesCount: 0,
+        commentsCount: 0,
+        commentsList: [],
+      } as any);
 
-    setIsSuccess(true);
-    setTimeout(() => {
-      setIsSuccess(false);
-      onClose();
-    }, 1500);
+      broadcastPushNotification({
+        category: 'quick_service',
+        title: '📸 නව Picture පෝස්ට් එකක්!',
+        message: `${pictureHeadline.trim().slice(0, 45)}... • 📍 ${resolvedLocation}`,
+        locationName: resolvedLocation,
+        lat: currentLocation?.lat,
+        lng: currentLocation?.lng,
+        targetModal: 'normal_services',
+      });
+
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        onClose();
+      }, 1000);
+    } catch (err) {
+      console.error('Picture post submission error:', err);
+      alert('දැන්වීම පළකිරීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // -------------------------------------------------------------
@@ -725,7 +809,8 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             {/* 06. Submit Button */}
             <div className="pt-2">
               <button
-                type="submit"
+                type="button"
+                onClick={handleTextPostSubmit}
                 className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 transition-all"
               >
                 <Send className="w-4 h-4" />
@@ -788,8 +873,20 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
                 onChange={handlePicturePostImageChange}
               />
 
-              {/* 16:9 Preview Frame */}
-              {pictureImageBase64 ? (
+              {/* 16:9 Preview Frame with Active Loading State */}
+              {isProcessingImage ? (
+                <div className="w-full aspect-video rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 dark:bg-[#071d12] flex flex-col items-center justify-center p-6 text-center shadow-inner animate-pulse">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-3 shadow-xs">
+                    <Loader2 className="w-7 h-7 animate-spin" />
+                  </div>
+                  <span className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-200">
+                    ඡායාරූපය High Quality (HD) ලෙස සකසමින් පවතී...
+                  </span>
+                  <span className="text-[11px] font-semibold text-emerald-700/80 dark:text-emerald-400/80 mt-1">
+                    කරුණාකර මොහොතක් රැඳී සිටින්න
+                  </span>
+                </div>
+              ) : pictureImageBase64 ? (
                 <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md group">
                   <img
                     src={pictureImageBase64}
@@ -882,15 +979,46 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
               </div>
             )}
 
-            {/* Submit Button */}
+            {/* Submit Button with Dynamic Loading & Upload Protection States */}
             <div className="pt-2">
-              <button
-                type="submit"
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 transition-all"
-              >
-                <Send className="w-4 h-4" />
-                <span>Picture Post එක පළ කරන්න (Submit)</span>
-              </button>
+              {isProcessingImage ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/20 border-2 border-amber-500/40 text-amber-900 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed shadow-inner"
+                >
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-600 dark:text-amber-400" />
+                  <span>ඡායාරූපය සකස් වන තුරු කරුණාකර මොහොතක් රැඳී සිටින්න...</span>
+                </button>
+              ) : !pictureImageBase64 ? (
+                <button
+                  type="button"
+                  onClick={() => picturePostImageRef.current?.click()}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border-2 border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-zinc-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 hover:border-emerald-400 transition-all"
+                >
+                  <Camera className="w-4 h-4 text-emerald-600" />
+                  <span>පළමුව 16:9 ඡායාරූපයක් තෝරාගන්න (Select Image)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handlePicturePostSubmit}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 transition-all disabled:opacity-60"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>දැන්වීම පළකරමින් පවතී (Publishing)...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Picture Post එක පළ කරන්න (Submit)</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </form>
         ) : (
