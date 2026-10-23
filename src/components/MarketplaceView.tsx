@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 
 import MarketplaceItemDetailModal from './MarketplaceItemDetailModal';
 
@@ -160,3 +161,4 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 };
 
 export default MarketplaceView;
+
