@@ -41,8 +41,10 @@ export interface LeaderboardEntry {
   userId: string;
 
   username: string;
+  points: number;
 
   totalPoints: number;
+  services: string;
 
   summaryCode: string;
 
@@ -365,7 +367,7 @@ export function formatServicesSummary(
 export function getLeaderboardUsers(
 
   allUsers: User[],
-
+  currentUser?: User | string
   currentUser?: User
 
 ): LeaderboardEntry[] {
@@ -389,21 +391,33 @@ export function getLeaderboardUsers(
   });
 
   parsedUsers.sort((a, b) => b.totalPoints - a.totalPoints);
+  return parsedUsers.map((item, index) => {
+    const isCurrent = currentUser
 
-  return parsedUsers.map((item, index) => ({
+      ? (typeof currentUser === 'string'
+
+          ? item.user.id === currentUser || item.user.username === currentUser || generateUsername(item.user) === currentUser
+
+          : item.user.id === currentUser.id)
+
+      : false;
+
+    return {
 
     rank: index + 1,
 
     userId: item.user.id,
 
     username: generateUsername(item.user),
+      points: item.totalPoints,
 
     totalPoints: item.totalPoints,
+      services: item.summaryCode,
 
     summaryCode: item.summaryCode,
-
+      isCurrentUser: isCurrent,
     isCurrentUser: currentUser ? item.user.id === currentUser.id : false,
-
+    };
   }));
 
 }
