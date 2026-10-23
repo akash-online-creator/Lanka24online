@@ -1,3 +1,4 @@
+import { awardSPoints } from './sPointManager';
 import { User, CreditTransaction, CreditTransactionType, HelpPost } from '../types';
 
 /**
@@ -640,58 +641,9 @@ export const rewardEmergencyContactCredit = (
   user?: User | null,
   serviceName?: string,
   phone?: string
-): { success: boolean; newBalance: number; transaction: CreditTransaction } => {
-  if (!user) {
-    return {
-      success: false,
-      newBalance: 0,
-      transaction: {
-        id: `tx_emg_err_${Date.now()}`,
-        userId: '',
-        userNumericId: '',
-        userName: '',
-        description: '',
-        amount: 0,
-        type: 'reward',
-        title: 'Emergency Reward',
-        timestamp: formatCreditDate(),
-        timestampMs: Date.now(),
-        balanceAfter: 0,
-      },
-    };
-  }
-  const numericId = extractNumericId(user.nicNumber || user.userId);
-  const idKey = user.id || user.userId || '';
-  const currentBalance = getUserCreditBalance(user);
-  const rewardAmount = 2;
-  const newBalance = Number((currentBalance + rewardAmount).toFixed(2));
-
-  const balancesMap = getBalancesMap();
-  balancesMap[numericId] = newBalance;
-  if (idKey) balancesMap[idKey] = newBalance;
-  saveBalancesMap(balancesMap);
-
-  const tx: CreditTransaction = {
-    id: `tx_emg_reward_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    userId: idKey,
-    userNumericId: numericId,
-    userName: user?.name || 'පරිශීලක',
-    userNic: user.nicNumber,
-    userPhone: user.phone,
-    amount: rewardAmount,
-    type: 'reward',
-    title: 'හදිසි අංකයක් එක්කිරීමේ ත්‍යාගය (Emergency Number Reward)',
-    description: `ශ්‍රී ලංකා හදිසි සේවා නාමාවලියට "${serviceName}" අංකය (${phone}) සාර්ථකව එක්කිරීම වෙනුවෙන් පිරිනමන ලද රු. 2.00 ක ක්‍රෙඩිට් ත්‍යාගය`,
-    timestamp: formatCreditDate(),
-    timestampMs: Date.now(),
-    balanceAfter: newBalance,
-  };
-
-  const existingTxs = getStoredCreditTransactions();
-  saveCreditTransactions([tx, ...existingTxs]);
-
-  return { success: true, newBalance, transaction: tx };
-};
+): { success: boolean; newBalance: number; transaction?: CreditTransaction; error?: string } => {
+  const extraDetails = serviceName || phone ? `"${serviceName || ''}" ${phone ? `(${phone})` : ''}`.trim() : undefined;
+  return awardServiceReward(user, 'emergency_numbers', extraDetails);
 
 /**
  * Get category fee amount helper
@@ -1349,7 +1301,20 @@ export const awardServiceReward = (
   rewardKey: string = '',
   extraDetails?: string
 ): { success: boolean; newBalance: number; transaction?: CreditTransaction; error?: string } => {
-  const reward = SERVICE_REWARDS[rewardKey];
+  const REWARD_TO_SPOINT_MAP: Record<string, string> = {
+    red_alert: 'A',
+    blood_donors: 'B',
+    blood_donation: 'B',
+    relief_camps: 'C',
+    safe_location: 'D',
+    quick_service_helper: 'E',
+    general_service_helper: 'F',
+    found_items: 'G',
+    job_post: 'H',
+    accommodation_post: 'I',
+    emergency_numbers: 'J',
+    professional_service: 'K',
+  };
   if (!reward) {
     return {
       success: false,
@@ -1358,11 +1323,20 @@ export const awardServiceReward = (
     };
   }
 
-  return addCreditByAdmin(
+  const spointCode = REWARD_TO_SPOINT_MAP[rewardKey];
+  if (spointCode) {
+    awardSPoints(user, spointCode);
+  }
+  const result = addCreditByAdmin(
     user,
     reward.amount,
     'reward',
     reward.titleSi,
     extraDetails ? `${reward.descriptionSi} (${extraDetails})` : reward.descriptionSi
   );
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sahaya_credits_updated', { detail: { user, balance: result.newBalance } }));
+    window.dispatchEvent(new CustomEvent('sahaya_spoints_updated', { detail: { user } }));
+  }
+  return result;
 };
