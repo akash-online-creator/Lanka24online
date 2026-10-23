@@ -1269,3 +1269,100 @@ export const ADMIN_DEDUCT_REASON_PRESETS = [
   { id: 'other_deduct', label: '✍️ වෙනත් අය කිරීමක් (Other Debit Deduction)', amount: 50, type: 'admin_adjustment' as CreditTransactionType },
 ];
 
+/**
+ * 11 Service Rewards Configuration
+ */
+export const SERVICE_REWARDS: Record<string, { key: string; amount: number; titleSi: string; descriptionSi: string }> = {
+  red_alert: {
+    key: 'red_alert',
+    amount: 2.00,
+    titleSi: 'රතු එළිය දැනුවත්කිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් දැන්වීමක් සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  safe_location: {
+    key: 'safe_location',
+    amount: 2.00,
+    titleSi: 'ස්ථානය සුරැකීමේ ත්‍යාගය',
+    descriptionSi: 'එක් ස්ථානයක් සුරැකීම සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  blood_donors: {
+    key: 'blood_donors',
+    amount: 10.00,
+    titleSi: 'ලේ පරිත්‍යාගශීලී ලියාපදිංචි ත්‍යාගය',
+    descriptionSi: 'ලේ පරිත්‍යාගශීලී ලියාපදිංචිය සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  relief_camps: {
+    key: 'relief_camps',
+    amount: 20.00,
+    titleSi: 'සහන කඳවුරු ලියාපදිංචි ත්‍යාගය',
+    descriptionSi: 'සහන කඳවුරු ලියාපදිංචිය සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  emergency_numbers: {
+    key: 'emergency_numbers',
+    amount: 2.00,
+    titleSi: 'හදිසි අංක එකතුකිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් හදිසි අංකයක් සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  found_items: {
+    key: 'found_items',
+    amount: 2.00,
+    titleSi: 'හමුවූ දේ දැනුවත්කිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් දැනුවත් කිරීමක් සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  professional_service: {
+    key: 'professional_service',
+    amount: 10.00,
+    titleSi: 'වෘත්තීය සේවා පළකිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් වෘත්තියක් පළකිරීමට හිමිවූ ත්‍යාග මුදල',
+  },
+  accommodation_post: {
+    key: 'accommodation_post',
+    amount: 10.00,
+    titleSi: 'නවාතැන් පළකිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් නවාතැන් පළකිරීමක් සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  job_post: {
+    key: 'job_post',
+    amount: 5.00,
+    titleSi: 'රැකියා පළකිරීමේ ත්‍යාගය',
+    descriptionSi: 'එක් රැකියාවක් පළකිරීම සඳහා හිමිවූ ත්‍යාග මුදල',
+  },
+  quick_service_helper: {
+    key: 'quick_service_helper',
+    amount: 10.00,
+    titleSi: 'ඉක්මන් සේවා සහය ලබාදීමේ ත්‍යාගය',
+    descriptionSi: 'ඉක්මන් සේවා සහය ලබාදීම නිවැරදිව අවසන් කළ පසු හිමිවූ ත්‍යාග මුදල',
+  },
+  general_service_helper: {
+    key: 'general_service_helper',
+    amount: 10.00,
+    titleSi: 'සාමාන්‍ය සේවා සහය ලබාදීමේ ත්‍යාගය',
+    descriptionSi: 'සාමාන්‍ය සේවා සහය ලබාදීම නිවැරදිව අවසන් කළ පසු හිමිවූ ත්‍යාග මුදල',
+  },
+};
+
+/**
+ * Award Service Reward to User
+ */
+export const awardServiceReward = (
+  user?: User | null,
+  rewardKey: string = '',
+  extraDetails?: string
+): { success: boolean; newBalance: number; transaction?: CreditTransaction; error?: string } => {
+  const reward = SERVICE_REWARDS[rewardKey];
+  if (!reward) {
+    return {
+      success: false,
+      newBalance: user ? getUserCreditBalance(user) : 0,
+      error: 'Invalid reward key.',
+    };
+  }
+
+  return addCreditByAdmin(
+    user,
+    reward.amount,
+    'reward',
+    reward.titleSi,
+    extraDetails ? `${reward.descriptionSi} (${extraDetails})` : reward.descriptionSi
+  );
+};
