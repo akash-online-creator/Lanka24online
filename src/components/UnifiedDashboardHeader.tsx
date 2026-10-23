@@ -129,29 +129,35 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     };
   }, []);
 
-  const [creditBalance, setCreditBalance] = useState<number>(() => user ? getUserCreditBalance(user) : 0);
-  const [sPointValue, setSPointValue] = useState<number>(() => user ? getUserSPoints(user) : 0);
+  const [creditBalance, setCreditBalance] = useState<number>(() => user ? (Number(getUserCreditBalance(user)) || 0) : 0);
+  const [sPointValue, setSPointValue] = useState<number>(() => {
+    if (!user) return 0;
+    const sp = getUserSPoints(user);
+    return typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0);
+  });
 
   useEffect(() => {
     if (user) {
-      setCreditBalance(getUserCreditBalance(user));
-      setSPointValue(getUserSPoints(user));
+      setCreditBalance(Number(getUserCreditBalance(user)) || 0);
+      const sp = getUserSPoints(user);
+      setSPointValue(typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0));
     }
   }, [user, user?.credits, user?.sPoints]);
 
   useEffect(() => {
     const onCreditsUpdated = (e: any) => {
       if (e.detail?.newBalance !== undefined) {
-        setCreditBalance(e.detail.newBalance);
+        setCreditBalance(Number(e.detail.newBalance) || 0);
       } else if (user) {
-        setCreditBalance(getUserCreditBalance(user));
+        setCreditBalance(Number(getUserCreditBalance(user)) || 0);
       }
     };
     const onSPointsUpdated = (e: any) => {
       if (e.detail?.newPoints !== undefined) {
-        setSPointValue(e.detail.newPoints);
+        setSPointValue(Number(e.detail.newPoints) || 0);
       } else if (user) {
-        setSPointValue(getUserSPoints(user));
+        const sp = getUserSPoints(user);
+        setSPointValue(typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0));
       }
     };
 
@@ -605,7 +611,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   {getLangText('ශේෂය', 'Balance', 'மீதி')}
                 </div>
                 <div className="text-xs font-black font-mono text-emerald-800 dark:text-emerald-300 leading-tight">
-                  {getLangText('රු.', 'Rs.', 'ரூ.')} {creditBalance.toFixed(2)}
+                  {getLangText('රු.', 'Rs.', 'ரூ.')} {(Number(creditBalance) || 0).toFixed(2)}
                 </div>
               </div>
             </button>
@@ -624,7 +630,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 S Point
               </div>
               <div className="text-xs font-black font-mono text-emerald-950 dark:text-emerald-100 leading-tight">
-                {sPointValue.toFixed(1)}
+                {(Number(typeof sPointValue === 'object' && sPointValue !== null ? (sPointValue as any).totalPoints : sPointValue) || 0).toFixed(1)}
               </div>
             </div>
           </button>
@@ -698,4 +704,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     </div>
   );
 };
+
+export default UnifiedDashboardHeader;
 
