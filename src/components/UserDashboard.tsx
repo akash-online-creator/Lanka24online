@@ -69,11 +69,8 @@ import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySeri
 import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
-import { 
-  getUserCreditBalance, 
-  deductPostingFee, 
-  getCategoryFee 
-} from '../utils/creditManager';
+import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
+import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
 import { 
   subscribeToHelpPosts, 
   addHelpPostToFirestore, 
@@ -343,6 +340,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     saveProfessionalServicesToStorage(updated);
   };
 
+  // Insufficient Credits State
+  const [requiredFeeForModal, setRequiredFeeForModal] = useState<number>(0);
+
   // Modals
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isHelpPostModalOpen, setIsHelpPostModalOpen] = useState(false);
@@ -386,6 +386,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
   const [isInsufficientCreditsModalOpen, setIsInsufficientCreditsModalOpen] = useState(false);
+      <InsufficientCreditsModal
+        isOpen={isInsufficientCreditsModalOpen}
+        onClose={() => setIsInsufficientCreditsModalOpen(false)}
+        requiredFee={requiredFeeForModal}
+        currentBalance={user?.creditBalance || 0}
+        onOpenWallet={() => {
+          setIsInsufficientCreditsModalOpen(false);
+          setIsWalletModalOpen(true);
+        }}
+        language={language}
+      />
   const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
   const [moderatingPost, setModeratingPost] = useState<HelpPost | null>(null);
   const [isPosterResponseModalOpen, setIsPosterResponseModalOpen] = useState(false);
@@ -515,6 +526,43 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Core Post Creation Handler (addHelpPostToFirestore)
   const handleCreatePost = async (newPost: Omit<HelpPost, 'id' | 'createdAt' | 'createdAtIso'>) => {
     const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const categoryKey = resolveCategoryKeyForPost(newPost);
+    const feeResult = deductPostingFee(user, categoryKey, postId, (newPost as any).headline || newPost.title);
+
+    if (!feeResult.success) {
+      setRequiredFeeForModal(feeResult.requiredFee);
+      setIsInsufficientCreditsModalOpen(true);
+      return;
+    }
+
+    if (feeResult.requiredFee > 0) {
+      const updatedUser = { ...user, creditBalance: feeResult.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+    }
+
+    if (categoryKey === 'found_items') {
+      const creditRes = awardServiceReward(user, 'found_items');
+      const spointRes = awardSPoints(user, 'G');
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+    } else if (categoryKey === 'job_post') {
+      const creditRes = awardServiceReward(user, 'job_post');
+      const spointRes = awardSPoints(user, 'H');
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+    } else if (categoryKey === 'accommodation_post') {
+      const creditRes = awardServiceReward(user, 'accommodation_post');
+      const spointRes = awardSPoints(user, 'I');
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+    }
     const fullPost: HelpPost = {
       ...newPost,
       id: postId,
@@ -868,6 +916,21 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     handleSaveUpdatedPost(resolvedPost);
     setResolutionPromptPost(null);
+    if (confirmedPost.postType === 'quick_service' || confirmedPost.category === 'quick_services') {
+      const creditRes = awardServiceReward(user, 'quick_service_helper');
+      const spointRes = awardSPoints(user, 'E');
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+    } else {
+      const creditRes = awardServiceReward(user, 'general_service_helper');
+      const spointRes = awardSPoints(user, 'F');
+      const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+      if (onUpdateUser) onUpdateUser(updatedUser);
+      try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+    }
   };
 
   const handlePostponeResolution = (postId: string) => {
@@ -1727,6 +1790,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         language={language}
         currentLocationName={currentLocation?.nameSi}
         onRegisterService={(newService) => {
+          const creditRes = awardServiceReward(user, 'professional_service');
+          const spointRes = awardSPoints(user, 'K');
+          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+          if (onUpdateUser) onUpdateUser(updatedUser);
+          try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+          try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+          setIsRegisterProfessionalServiceModalOpen(false);
           setIsRegisterProfessionalServiceModalOpen(false);
           alert(language === 'en' ? '✅ Professional service registered successfully!' : '✅ ඔබගේ වෘත්තීය සේවාව සාර්ථකව ලියාපදිංචි කරන ලදී!');
         }}
@@ -1739,6 +1809,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentUser={user}
         currentLocation={currentLocation}
         onAlertCreated={(newAlert) => {
+          const creditRes = awardServiceReward(user, 'red_alert');
+          const spointRes = awardSPoints(user, 'A');
+          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+          if (onUpdateUser) onUpdateUser(updatedUser);
+          try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
+          try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
+          if (setRedAlerts) {
           if (setRedAlerts) {
             setRedAlerts((prev) => [newAlert, ...(prev || [])]);
           }
@@ -1884,3 +1961,5 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 };
 
 export default UserDashboard;
+
+
