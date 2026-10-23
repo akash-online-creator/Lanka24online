@@ -659,13 +659,10 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
 
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
                       {item.id >= 19 && item.id <= 21 ? 'කැමතිනම් පමණක් මුදල් ගෙවා ලබාගත හැක - කිසිදු ස්වයංක්‍රීය මුදල් අයවීමක් සිදුනොවේ' : item.descriptionSi}
-                      {item.descriptionSi}
                     </p>
                   </div>
                 ))}
               </div>
-            </div>
-
               {/* 🎁 Service Rewards Section (11 Rewards) */}
               <div className="bg-gradient-to-br from-emerald-900/90 via-[#0a2b1d] to-teal-950/90 border border-emerald-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-md space-y-4">
                 <div className="flex items-center gap-2.5 pb-2 border-b border-emerald-500/30">
@@ -716,6 +713,7 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
               </div>
           )}
 
