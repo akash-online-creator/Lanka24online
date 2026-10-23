@@ -251,9 +251,9 @@ export const DEFAULT_CATEGORY_CREDIT_FEES: Record<string, CategoryFeeDetail> = {
     nameSi: 'වෘත්තීය සේවා නැරඹීම',
     nameEn: 'Browse Professional Services',
     fee: 25,
-    durationSi: 'සතියකට රු. 25.00 බැගින්',
+    durationSi: 'රු. 25.00 ක් ගෙවා සතියක කාලයක් සඳහා පමණි (ස්වයංක්‍රීයව අලුත් නොවේ)',
     durationDays: 7,
-    descriptionSi: 'වෘත්තීය සේවා තොරතුරු නැරඹීම සඳහා සතියකට රු. 25.00 කි',
+    descriptionSi: 'කැමතිනම් පමණක් මුදල් ගෙවා සතියක කාලයක් සඳහා ලබාගත හැක (ස්වයංක්‍රීයව මුදල් අය නොවේ)',
     isFree: false,
   },
   // 20. නවාතැන් සෙවීම : රු. 25.00 : සතියක් නැරඹුම් කාලයක් නොමිලේ
@@ -263,9 +263,9 @@ export const DEFAULT_CATEGORY_CREDIT_FEES: Record<string, CategoryFeeDetail> = {
     nameSi: 'නවාතැන් සෙවීම',
     nameEn: 'Search Accommodation',
     fee: 25,
-    durationSi: 'සතියකට රු. 25.00 බැගින්',
+    durationSi: 'රු. 25.00 ක් ගෙවා සතියක කාලයක් සඳහා පමණි (ස්වයංක්‍රීයව අලුත් නොවේ)',
     durationDays: 7,
-    descriptionSi: 'නවාතැන් සහ කුලී නිවාස සෙවීම සඳහා සතියකට රු. 25.00 කි',
+    descriptionSi: 'කැමතිනම් පමණක් මුදල් ගෙවා සතියක කාලයක් සඳහා ලබාගත හැක (ස්වයංක්‍රීයව මුදල් අය නොවේ)',
     isFree: false,
   },
   // 21. රැකියා සෙවීම : රු. 25.00 : සතියක් නැරඹුම් කාලයක් නොමිලේ
@@ -275,9 +275,9 @@ export const DEFAULT_CATEGORY_CREDIT_FEES: Record<string, CategoryFeeDetail> = {
     nameSi: 'රැකියා සෙවීම',
     nameEn: 'Search Jobs',
     fee: 25,
-    durationSi: 'සතියකට රු. 25.00 බැගින්',
+    durationSi: 'රු. 25.00 ක් ගෙවා සතියක කාලයක් සඳහා පමණි (ස්වයංක්‍රීයව අලුත් නොවේ)',
     durationDays: 7,
-    descriptionSi: 'රැකියා අවස්ථා සෙවීම සඳහා සතියකට රු. 25.00 කි',
+    descriptionSi: 'කැමතිනම් පමණක් මුදල් ගෙවා සතියක කාලයක් සඳහා ලබාගත හැක (ස්වයංක්‍රීයව මුදල් අය නොවේ)',
     isFree: false,
   },
 
@@ -808,6 +808,25 @@ export const deductPostingFee = (
     requiredAmount: requiredFee,
     transaction: tx,
   };
+};
+
+/**
+ * Viewing Pass Management (No recurring billing, No auto-debit, strictly manual opt-in)
+ */
+export const hasActiveViewingPass = (user?: User | null, serviceKey: string = 'browse_pro_services'): boolean => {
+  if (!user) return false;
+  const txs = getUserCreditTransactions(user);
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return txs.some((tx) => tx.categoryKey === serviceKey && tx.amount < 0 && (now - tx.timestampMs) < sevenDaysMs);
+};
+
+export const purchaseViewingPass = (
+  user?: User | null,
+  serviceKey: string = 'browse_pro_services'
+): { success: boolean; newBalance: number; error?: string; transaction?: CreditTransaction } => {
+  // Strictly manual opt-in purchase upon explicit user confirmation
+  return deductPostingFee(user, serviceKey, undefined, 'සතියක නැරඹුම් අවසරපත (Viewing Pass)');
 };
 
 /**
