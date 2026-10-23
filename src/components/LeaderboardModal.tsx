@@ -1,6 +1,3 @@
-Leaderboard Modal Component
-Below is the complete implementation for src/components/LeaderboardModal.tsx written using React, TypeScript, and Tailwind CSS (with lucide-react icons).
-Implementation (LeaderboardModal.tsx)
 import React, { useState, useMemo } from 'react';
 
 import { Search, ChevronDown, ChevronUp, Award, X } from 'lucide-react';
