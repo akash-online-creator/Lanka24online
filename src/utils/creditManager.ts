@@ -682,6 +682,58 @@ export const getCategoryFee = (categoryKey?: string): number => {
 };
 
 /**
+ * Resolves the service category key for any given HelpPost
+ */
+export const resolveCategoryKeyForPost = (post?: any): string => {
+  if (!post) return 'general_help';
+  if (post.categoryKey && DEFAULT_CATEGORY_CREDIT_FEES[post.categoryKey]) {
+    return post.categoryKey;
+  }
+  const catStr = (post.category || post.serviceType || post.tagName || post.tagCategory || '').toLowerCase();
+  const titleStr = (post.headline || post.title || post.whatHappened || '').toLowerCase();
+
+  if (catStr.includes('quick_service') || titleStr.includes('ඉක්මන්') || post.postType === 'quick_service') {
+    return 'quick_services';
+  }
+  if (titleStr.includes('නැති') || catStr.includes('lost')) {
+    return 'lost_item';
+  }
+  if (titleStr.includes('සොරා') || catStr.includes('stolen')) {
+    return 'stolen_item';
+  }
+  if (catStr.includes('find_for_me') || titleStr.includes('සොයාදෙන්න') || post.postType === 'find_for_me') {
+    return 'find_for_me';
+  }
+  if (catStr.includes('exchange') || catStr.includes('හුවමාරු') || titleStr.includes('හුවමාරු') || post.postType === 'from_me_to_you') {
+    return 'exchange';
+  }
+  if (catStr.includes('accommodation') || titleStr.includes('නවාතැන්') || titleStr.includes('බෝඩිම්')) {
+    return 'accommodation_post';
+  }
+  if (catStr.includes('job') || titleStr.includes('රැකියා') || titleStr.includes('ඇබෑර්තු')) {
+    return 'job_post';
+  }
+  if (post.postType === 'pro_service' || catStr.includes('pro_service') || titleStr.includes('වෘත්තීය')) {
+    return 'professional_service';
+  }
+  if (catStr.includes('found') || titleStr.includes('හමුවූ') || titleStr.includes('හමුවනලද')) {
+    return 'found_items';
+  }
+  if (catStr.includes('red_alert') || titleStr.includes('රතු එළිය')) {
+    return 'red_alert';
+  }
+  return 'general_help';
+};
+
+/**
+ * Gets the fee detail specification for a given category key
+ */
+export const getCategoryFeeDetail = (categoryKey: string): CategoryFeeDetail => {
+  const fees = getEffectiveCategoryFees();
+  return fees[categoryKey] || fees['general_help'] || DEFAULT_CATEGORY_CREDIT_FEES['general_help'];
+};
+
+/**
  * Deduct posting fee before creating an Ad / Service / Post
  */
 export const deductPostingFee = (
@@ -1365,4 +1417,5 @@ export const awardServiceReward = (
   }
   return result;
 };
-  
+  return result;
+};
