@@ -160,16 +160,3 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 };
 
 export default MarketplaceView;
-Summary of Changes
-Target
-Description
-Imports
-Imported MarketplaceItemDetailModal directly at top level.
-State Management
-Added selectedDetailItem state initialized to null.
-Card Integration
-Added primary action button with Sinhala/English label triggering state updates.
-Modal Component
-Attached MarketplaceItemDetailModal with required props and balanced JSX tree.
-
-
