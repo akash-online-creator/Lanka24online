@@ -368,7 +368,6 @@ export function getLeaderboardUsers(
 
   allUsers: User[],
   currentUser?: User | string
-  currentUser?: User
 
 ): LeaderboardEntry[] {
 
@@ -416,9 +415,8 @@ export function getLeaderboardUsers(
 
     summaryCode: item.summaryCode,
       isCurrentUser: isCurrent,
-    isCurrentUser: currentUser ? item.user.id === currentUser.id : false,
     };
-  }));
+  });
 
 }
 
