@@ -46,7 +46,6 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
       return matchesUsername || matchesRank;
     });
   }, [resolvedUsers, searchQuery]);
-  }, [users, searchQuery]);
 
   if (!isOpen) return null;
 
