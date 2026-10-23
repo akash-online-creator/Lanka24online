@@ -32,6 +32,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
+import { getUserSPoints } from '../utils/sPointManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface UnifiedDashboardHeaderProps {
@@ -128,7 +129,39 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     };
   }, []);
 
-  const creditBalance = user ? getUserCreditBalance(user) : 0;
+  const [creditBalance, setCreditBalance] = useState<number>(() => user ? getUserCreditBalance(user) : 0);
+  const [sPointValue, setSPointValue] = useState<number>(() => user ? getUserSPoints(user) : 0);
+
+  useEffect(() => {
+    if (user) {
+      setCreditBalance(getUserCreditBalance(user));
+      setSPointValue(getUserSPoints(user));
+    }
+  }, [user, user?.credits, user?.sPoints]);
+
+  useEffect(() => {
+    const onCreditsUpdated = (e: any) => {
+      if (e.detail?.newBalance !== undefined) {
+        setCreditBalance(e.detail.newBalance);
+      } else if (user) {
+        setCreditBalance(getUserCreditBalance(user));
+      }
+    };
+    const onSPointsUpdated = (e: any) => {
+      if (e.detail?.newPoints !== undefined) {
+        setSPointValue(e.detail.newPoints);
+      } else if (user) {
+        setSPointValue(getUserSPoints(user));
+      }
+    };
+
+    window.addEventListener('sahaya_credits_updated', onCreditsUpdated);
+    window.addEventListener('sahaya_spoints_updated', onSPointsUpdated);
+    return () => {
+      window.removeEventListener('sahaya_credits_updated', onCreditsUpdated);
+      window.removeEventListener('sahaya_spoints_updated', onSPointsUpdated);
+    };
+  }, [user]);
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
   const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
 
@@ -591,7 +624,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 S Point
               </div>
               <div className="text-xs font-black font-mono text-emerald-950 dark:text-emerald-100 leading-tight">
-                {user?.sPoints !== undefined ? Number(user.sPoints).toFixed(1) : '0.0'}
+                {sPointValue.toFixed(1)}
               </div>
             </div>
           </button>
