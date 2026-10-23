@@ -1018,6 +1018,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setIsInboxModalOpen(true);
         }}
         inboxCount={inboxRepliesCount}
+        onOpenLeaderboard={() => setIsLeaderboardModalOpen(true)}
         onOpenAssistant={() => {
           if (user?.isDemo) {
             setShowDemoRegisterPrompt(true);
@@ -1760,7 +1761,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       <LeaderboardModal
         isOpen={isLeaderboardModalOpen}
         onClose={() => setIsLeaderboardModalOpen(false)}
-        users={users}
+        currentUser={user}
+        allUsers={users}
         language={language}
       />
 
