@@ -6,7 +6,8 @@ import {
   CATEGORY_CREDIT_FEES, 
   extractNumericId, 
   getUserCreditBalance, 
-  getUserCreditTransactions 
+  getUserCreditTransactions, 
+  SERVICE_REWARDS
 } from '../utils/creditManager';
 import { 
   Coins, 
@@ -664,6 +665,58 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                 ))}
               </div>
             </div>
+
+              {/* 🎁 Service Rewards Section (11 Rewards) */}
+              <div className="bg-gradient-to-br from-emerald-900/90 via-[#0a2b1d] to-teal-950/90 border border-emerald-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-md space-y-4">
+                <div className="flex items-center gap-2.5 pb-2 border-b border-emerald-500/30">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-lg font-black shrink-0 border border-emerald-500/30">
+                    🎁
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-amber-300">
+                      සේවාවන් සඳහා ලැබෙන ත්‍යාග මුදල් (11 Rewards)
+                    </h3>
+                    <p className="text-[11px] text-emerald-100/80 font-medium">
+                      ප්‍රජාවට සහය වෙමින් පහත සේවාවන් සිදුකිරීමේදී ඔබගේ ගිණුමට එකතුවන ත්‍යාග ක්‍රෙඩිට් මුදල්:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    { id: 1, title: 'රතු එළිය', reward: 2.00, desc: 'අනතුරුදායක ස්ථාන හෝ රතු එළි අනතුරු ඇඟවීම් පළකිරීම වෙනුවෙන්' },
+                    { id: 2, title: 'ස්ථානය සුරකීම', reward: 2.00, desc: 'වැදගත් ස්ථාන හා තොරතුරු පද්ධතියට එක්කිරීම වෙනුවෙන්' },
+                    { id: 3, title: 'ලේ පරිත්‍යාගශීලීන්', reward: 10.00, desc: 'ලේ දායකයෙකු ලෙස ලියාපදිංචි වීම හා දත්ත ලබාදීම වෙනුවෙන්' },
+                    { id: 4, title: 'සහන කඳවුරු ලියාපදිංචිය', reward: 20.00, desc: 'ආපදා සහන කඳවුරු හා ආධාර මධ්‍යස්ථාන තොරතුරු එක්කිරීම වෙනුවෙන්' },
+                    { id: 5, title: 'හදිසි සේවා අංක', reward: 2.00, desc: 'ප්‍රාදේශීය හදිසි දුරකථන අංක පද්ධතියට එක්කිරීම වෙනුවෙන්' },
+                    { id: 6, title: 'හමුවනලද', reward: 2.00, desc: 'නැතිවූ හෝ හමුවූ භාණ්ඩ/පුද්ගලයින් පිළිබඳ තොරතුරු පළකිරීම වෙනුවෙන්' },
+                    { id: 7, title: 'වෘත්තීය සේවා පළකිරීම', reward: 10.00, desc: 'තමන්ගේ වෘත්තීය සේවාවන් ඇප් එකෙහි ලියාපදිංචි කිරීම වෙනුවෙන්' },
+                    { id: 8, title: 'නවාතැන් පළකිරීම', reward: 10.00, desc: 'කුලී හෝ නවාතැන් පහසුකම් තොරතුරු පළකිරීම වෙනුවෙන්' },
+                    { id: 9, title: 'රැකියා පළකිරීම', reward: 5.00, desc: 'ඇබෑර්තු හා රැකියා අවස්ථා තොරතුරු පළකිරීම වෙනුවෙන්' },
+                    { id: 10, title: 'ඉක්මන් සේවා සහයකයාහට', reward: 10.00, desc: 'හදිසි ඉක්මන් සහය ඉල්ලීමකට සාර්ථකව ප්‍රතිචාර දැක්වීම වෙනුවෙන්' },
+                    { id: 11, title: 'සාමාන්‍ය සේවා සහයවන්නාහට', reward: 10.00, desc: 'සාමාන්‍ය ප්‍රජා සහය ඉල්ලීමකට සාර්ථකව සහයවීම වෙනුවෙන්' },
+                  ].map((rew) => (
+                    <div key={`reward_card_${rew.id}`} className="bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-3 flex flex-col justify-between gap-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[10px] flex items-center justify-center shrink-0">
+                            {rew.id}
+                          </span>
+                          <h4 className="text-xs font-bold text-white">
+                            {rew.title}
+                          </h4>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-mono font-black text-xs shrink-0 shadow-xs">
+                          +රු. {rew.reward.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-emerald-100/70 font-medium leading-tight">
+                        {rew.desc}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
           )}
 
         </div>
