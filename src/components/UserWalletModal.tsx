@@ -462,6 +462,24 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                   </div>
                 </div>
 
+                {/* 🛡️ Admin Account Verification & Protection Badge */}
+                <div className="bg-emerald-100/80 dark:bg-emerald-950/70 border border-emerald-400/80 dark:border-emerald-600 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="text-xs font-black text-emerald-950 dark:text-emerald-100 block">
+                        ආරක්ෂිත සහ සත්‍යාපිත නිල බැංකු ගිණුම (Admin Verified & Protected)
+                      </span>
+                      <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-medium">
+                        මෙම ගිණුම් විස්තර පරිපාලක විසින් තහවුරු කර ඇති අතර කිසිදු බාහිර පාර්ශවයකට වෙනස් කළ නොහැක.
+                      </span>
+                    </div>
+                  </div>
+                  <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shrink-0">
+                    LOCKED 🔒
+                  </span>
+                </div>
+
                 {/* Bank Details Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   
@@ -740,4 +758,8 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
     </div>
   );
 };
+
+
+
+export default UserWalletModal;
 
