@@ -657,6 +657,7 @@ export const UserWalletModal: React.FC<UserWalletModalProps> = ({
                     </div>
 
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                      {item.id >= 19 && item.id <= 21 ? 'කැමතිනම් පමණක් මුදල් ගෙවා ලබාගත හැක - කිසිදු ස්වයංක්‍රීය මුදල් අයවීමක් සිදුනොවේ' : item.descriptionSi}
                       {item.descriptionSi}
                     </p>
                   </div>
