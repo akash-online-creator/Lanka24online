@@ -13,9 +13,7 @@ export const initialGroupMessages: Record<string, GroupMessage[]> = {};
 const isDummyOrDemoGroup = (groupId: string): boolean => {
 
   return DUMMY_GROUP_IDS.includes(groupId) || groupId.startsWith('grp_demo_');
-
-|---|
-
+};
 export const normalizeUsername = (username: string): string => {
 
   return username.trim().toLowerCase().replace(/^@+/, '');
@@ -391,4 +389,51 @@ export const rejectGroupJoinRequest = (
   return { success: true, message: 'Join request rejected.' };
 
 };
+
+export function getSavedGroupIds(userId?: string): string[] {
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(`sahaya_saved_group_ids_${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function toggleSaveGroupId(userId: string, groupId: string): { isSaved: boolean; savedIds: string[] } {
+  if (!userId) return { isSaved: false, savedIds: [] };
+  try {
+    const current = getSavedGroupIds(userId);
+    let updated: string[];
+    let isSaved: boolean;
+    if (current.includes(groupId)) {
+      updated = current.filter((id) => id !== groupId);
+      isSaved = false;
+    } else {
+      updated = [...current, groupId];
+      isSaved = true;
+    }
+    localStorage.setItem(`sahaya_saved_group_ids_${userId}`, JSON.stringify(updated));
+    return { isSaved, savedIds: updated };
+  } catch {
+    return { isSaved: false, savedIds: [] };
+  }
+}
+
+export function getStoredGroupJoinRequests(): any[] {
+  try {
+    const raw = localStorage.getItem('app_group_work_join_requests');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveGroupJoinRequestsToStorage(requests: any[]): void {
+  try {
+    localStorage.setItem('app_group_work_join_requests', JSON.stringify(requests));
+  } catch (err) {
+    console.error('Error saving group join requests:', err);
+  }
+}
 
