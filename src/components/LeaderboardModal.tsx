@@ -116,7 +116,6 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
       const matchesRank = formattedRank.includes(query) || user.rank.toString() === query;
 
-|---|
 
       return matchesUsername || matchesRank;
 
