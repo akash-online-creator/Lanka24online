@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 
 import { Search, ChevronDown, ChevronUp, Award, X } from 'lucide-react';
 
-import { getLeaderboardUsers, getUserSPoints, S_POINT_RULES } from './sPointManager';
+import { getLeaderboardUsers, getUserSPoints, S_POINT_RULES } from '../utils/sPointManager';
 export interface LeaderboardUser {
   rank: number;
   username: string;
@@ -235,7 +235,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
                       <td className="py-3 px-4 text-right font-mono font-semibold text-slate-700">
 
-                        {user.points.toFixed(1)}
+                        {(user.points ?? (user as any).totalPoints ?? 0).toFixed(1)}
 
                       </td>
 
@@ -243,7 +243,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
                       <td className="py-3 px-4 font-mono text-xs text-slate-600">
 
-                        {user.services}
+                        {user.services ?? (user as any).summaryCode ?? ''}
 
                       </td>
 
@@ -309,7 +309,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600 border-t border-slate-200 pt-3">
 
-                {S_POINT_RULES.map((item) => (
+                {Object.values(S_POINT_RULES).map((item) => (
 
                   <div
 
@@ -327,7 +327,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
                       </strong>{' '}
 
-                      {item.name}
+{item.descriptionSi}
 
                     </span>
 
