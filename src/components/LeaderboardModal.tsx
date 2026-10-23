@@ -1,318 +1,441 @@
+Leaderboard Modal Component
+Below is the complete implementation for src/components/LeaderboardModal.tsx written using React, TypeScript, and Tailwind CSS (with lucide-react icons).
+Implementation (LeaderboardModal.tsx)
 import React, { useState, useMemo } from 'react';
-import { 
-  Trophy, 
-  Award, 
-  ShieldCheck, 
-  Star, 
-  AlertTriangle, 
-  Search, 
-  X
-} from 'lucide-react';
-import { User, Language } from '../types';
-import { maskNicNumber } from '../utils/serviceWorkflowManager';
 
-interface LeaderboardEntry {
+import { Search, ChevronDown, ChevronUp, Award, X } from 'lucide-react';
+
+export interface LeaderboardUser {
+
   rank: number;
-  userId: string;
-  name: string;
-  nicMasked: string;
-  ratingScore: number;
-  completedJobs: number;
-  badgeLevel: 'legend' | 'master' | 'expert' | 'pro' | 'rising';
+
+  username: string;
+
+  points: number;
+
+  services: string; // e.g., "H2, E1, D1, E1"
+
   isCurrentUser?: boolean;
+
 }
 
-interface LeaderboardModalProps {
+export interface LeaderboardModalProps {
+
   isOpen: boolean;
+
   onClose: () => void;
-  currentUser: User;
-  lang?: Language;
-  allUsers?: User[];
+
+  users?: LeaderboardUser[];
+
+  currentUsername?: string;
+
 }
+
+// Reference key mapping for points structure
+
+const SERVICE_POINTS_REFERENCE = [
+
+  { code: 'A', name: 'රතු එළිය (ආපදා දැනුවත් කිරිමකට)', points: 10 },
+
+  { code: 'B', name: 'එක් ලේ දන්දීමක් වෙනුවෙන්', points: 9 },
+
+  { code: 'C', name: 'සහන කදවුරු ලියාපදිංචිය', points: 8 },
+
+  { code: 'D', name: 'ස්ථානය සුරකීම (Public)', points: 7 },
+
+  { code: 'E', name: 'ඉක්මන් සේවා සහයවිමකට', points: 6.5 },
+
+  { code: 'F', name: 'සාමාන්ය සේවා සහයවීමකට', points: 6 },
+
+  { code: 'G', name: 'හමුවනලද', points: 5.5 },
+
+  { code: 'H', name: 'රෑකියා පලකිරිම', points: 5 },
+
+  { code: 'I', name: 'නවාතැන් පළකිරිම', points: 4 },
+
+  { code: 'J', name: 'හදිසි සේවා අංක', points: 3 },
+
+  { code: 'K', name: 'වෘත්තීය සේවා පලකිරිම', points: 2 },
+
+];
+
+// Mock data to display if none is provided via props
+
+const DEFAULT_USERS: LeaderboardUser[] = [
+
+  { rank: 1, username: 'KasunPerera', points: 16.5, services: 'A1, E1' },
+
+  { rank: 2, username: 'AmaliSilva', points: 15.0, services: 'B1, F1' },
+
+  { rank: 3, username: 'NimalFernando', points: 14.5, services: 'C1, E1' },
+
+  { rank: 4, username: 'SahanK', points: 12.0, services: 'F2' },
+
+  { rank: 5, username: 'Dilani_M', points: 10.5, services: 'G1, H1' },
+
+  { rank: 6, username: 'Pathum_Dev', points: 9.0, services: 'B1', isCurrentUser: true },
+
+  { rank: 7, username: 'Ruwan_B', points: 7.0, services: 'D1' },
+
+  { rank: 8, username: 'Kavindi_S', points: 5.5, services: 'G1' },
+
+];
 
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
+
   isOpen,
+
   onClose,
-  currentUser,
-  allUsers = [],
+
+  users = DEFAULT_USERS,
+
+  currentUsername,
+
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
 
-  const leaderboardData: LeaderboardEntry[] = useMemo(() => {
-    let list: LeaderboardEntry[] = [];
+  const [searchQuery, setSearchQuery] = useState('');
 
-    if (allUsers && allUsers.length > 0) {
-      list = allUsers
-        .filter(u => !u.isBlocked && u.role !== 'admin')
-        .map((u, idx) => {
-          const score = u.ratingScore || (1.10 + (idx % 15) * 0.12);
-          const jobs = u.totalCompletedJobs || (idx % 12) + 1;
-          const isMe = Boolean(
-            (currentUser?.userId && u.userId === currentUser.userId) ||
-            (currentUser?.id && u.id === currentUser.id) ||
-            (currentUser?.nicNumber && u.nicNumber === currentUser.nicNumber)
-          );
+  const [isGuideExpanded, setIsGuideExpanded] = useState(false);
 
-          let badgeLevel: LeaderboardEntry['badgeLevel'] = 'rising';
-          if (score >= 3.5) badgeLevel = 'legend';
-          else if (score >= 2.5) badgeLevel = 'master';
-          else if (score >= 1.8) badgeLevel = 'expert';
-          else if (score >= 1.3) badgeLevel = 'pro';
+  // Format rank number to two digits (e.g., 1 -> "01")
 
-          return {
-            rank: 0,
-            userId: u.userId || u.id,
-            name: u.name || 'ප්‍රජා සාමාජිකයා',
-            nicMasked: maskNicNumber(u.nicNumber || u.nic),
-            ratingScore: Math.round(score * 100) / 100,
-            completedJobs: jobs,
-            badgeLevel,
-            isCurrentUser: isMe,
-          };
-        });
-    }
+  const formatRank = (rank: number): string => {
 
-    if (list.length < 5) {
-      const demoLeaders: LeaderboardEntry[] = [
-        { rank: 1, userId: 'demo_1', name: 'සුනිල් ප්‍රනාන්දු', nicMasked: '19842XXXXXXX', ratingScore: 4.85, completedJobs: 54, badgeLevel: 'legend' },
-        { rank: 2, userId: 'demo_2', name: 'කමල් ගුණසේකර', nicMasked: '19901XXXXXXX', ratingScore: 4.60, completedJobs: 42, badgeLevel: 'master' },
-        { rank: 3, userId: 'demo_3', name: 'නලින් කුමාර', nicMasked: '92145XXXXV', ratingScore: 4.35, completedJobs: 38, badgeLevel: 'master' },
-        { rank: 4, userId: 'demo_4', name: 'ප්‍රදීප් රොද්‍රිගු', nicMasked: '88342XXXXV', ratingScore: 3.90, completedJobs: 29, badgeLevel: 'expert' },
-        { rank: 5, userId: 'demo_5', name: 'චාමර වික්‍රමසිංහ', nicMasked: '19951XXXXXXX', ratingScore: 3.65, completedJobs: 24, badgeLevel: 'expert' },
-      ];
+    return rank < 10 ? `0${rank}` : `${rank}`;
 
-      const myScore = currentUser?.ratingScore || 1.15;
-      const myJobs = currentUser?.totalCompletedJobs || 3;
-      const myEntry: LeaderboardEntry = {
-        rank: 0,
-        userId: currentUser?.userId || currentUser?.id || 'me',
-        name: currentUser?.name || 'මගේ ගිණුම',
-        nicMasked: maskNicNumber(currentUser?.nicNumber || currentUser?.nic),
-        ratingScore: myScore,
-        completedJobs: myJobs,
-        badgeLevel: myScore > 2 ? 'pro' : 'rising',
-        isCurrentUser: true,
-      };
+  };
 
-      list = [...demoLeaders, myEntry];
-    }
+  // Filter users based on search input (by rank or username)
 
-    list.sort((a, b) => b.ratingScore - a.ratingScore || b.completedJobs - a.completedJobs);
-    list.forEach((item, index) => {
-      item.rank = index + 1;
+  const filteredUsers = useMemo(() => {
+
+    return users.filter((user) => {
+
+      const query = searchQuery.toLowerCase().trim();
+
+      const formattedRank = formatRank(user.rank);
+
+      const matchesUsername = user.username.toLowerCase().includes(query);
+
+      const matchesRank = formattedRank.includes(query) || user.rank.toString() === query;
+
+|---|
+
+      return matchesUsername || matchesRank;
+
     });
 
-    return list;
-  }, [allUsers, currentUser]);
-
-  const myRankEntry = useMemo(() => {
-    return leaderboardData.find(u => u.isCurrentUser) || {
-      rank: 100,
-      userId: currentUser?.userId || 'me',
-      name: currentUser?.name || 'මම',
-      nicMasked: maskNicNumber(currentUser?.nicNumber || currentUser?.nic),
-      ratingScore: currentUser?.ratingScore || 1.11,
-      completedJobs: currentUser?.totalCompletedJobs || 1,
-      badgeLevel: 'rising' as const,
-      isCurrentUser: true,
-    };
-  }, [leaderboardData, currentUser]);
-
-  const filteredList = useMemo(() => {
-    if (!searchTerm.trim()) return leaderboardData.slice(0, 50);
-    const q = searchTerm.toLowerCase().trim();
-    return leaderboardData.filter(u => 
-      u.name.toLowerCase().includes(q) || u.nicMasked.toLowerCase().includes(q)
-    );
-  }, [leaderboardData, searchTerm]);
-
-  const top3 = useMemo(() => leaderboardData.slice(0, 3), [leaderboardData]);
+  }, [users, searchQuery]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="w-full max-w-2xl bg-gradient-to-b from-white via-emerald-50/20 to-white dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-500/50 rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col max-h-[92vh]">
+
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+
         
+
         {/* Header */}
-        <div className="p-5 pb-3 border-b border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-500 flex items-center justify-center text-slate-950 shadow-md">
-              <Trophy className="w-5 h-5 fill-slate-950" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>ප්‍රජා ශ්‍රේණිගත කිරීම් පුවරුව</span>
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">(Leaderboard)</span>
-              </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                හොඳම සේවාවක් ලබාදුන් සාමාජිකයින්ගේ නිල ලකුණු සටහන
-              </p>
-            </div>
+
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50">
+
+          <div className="flex items-center gap-2">
+
+            <Award className="h-6 w-6 text-amber-500" />
+
+            <h2 className="text-lg font-bold text-slate-800">
+
+              ප්‍රජා ශ්‍රේණිගත කිරීම සහ S-Points (S Point Leaderboard)
+
+            </h2>
+
           </div>
 
           <button
+
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center font-bold transition-all cursor-pointer"
+
+            className="rounded-full p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors"
+
+            aria-label="Close modal"
+
           >
-            <X className="w-5 h-5" />
+
+            <X className="h-5 w-5" />
+
           </button>
+
         </div>
 
-        {/* Scrollable Content */}
-        <div className="overflow-y-auto p-4 sm:p-5 space-y-4 flex-1">
-          
-          {/* Current User Card */}
-          <div className="p-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-3xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-xl font-black font-mono shadow-inner">
-                #{myRankEntry.rank}
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-black">{myRankEntry.name}</span>
-                  <span className="text-[10px] font-mono bg-white/25 px-2 py-0.5 rounded-full font-bold">
-                    {myRankEntry.nicMasked}
-                  </span>
-                </div>
-                <div className="text-xs text-emerald-100 flex items-center gap-2 pt-0.5">
-                  <span>සම්පූර්ණ කළ සේවා: <strong>{myRankEntry.completedJobs}</strong></span>
-                  <span>•</span>
-                  <span>තත්ත්වය: <strong>සක්‍රිය සාමාජික</strong></span>
-                </div>
-              </div>
-            </div>
+        {/* Search Bar */}
 
-            <div className="flex items-center gap-2 bg-slate-950/30 px-3.5 py-1.5 rounded-2xl border border-white/20 self-stretch sm:self-auto justify-center">
-              <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-              <div className="text-right">
-                <span className="text-[9px] uppercase tracking-wider block text-emerald-200">Rating Score</span>
-                <span className="text-base font-black font-mono">{myRankEntry.ratingScore.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
+        <div className="p-4 border-b border-slate-100 bg-white">
 
-          {/* Top 3 Podium Cards */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-1">
-            {top3[1] && (
-              <div className="p-3 bg-white dark:bg-[#071911] border-2 border-slate-300 dark:border-slate-700 rounded-2xl text-center space-y-1 shadow-sm mt-3">
-                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-center font-black mx-auto text-xs">
-                  🥈 2
-                </div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">{top3[1].name}</h4>
-                <span className="text-[9px] font-mono text-slate-500 block">{top3[1].nicMasked}</span>
-                <div className="flex items-center justify-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-black text-xs pt-1">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{top3[1].ratingScore.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-
-            {top3[0] && (
-              <div className="p-3.5 bg-gradient-to-b from-amber-50 to-white dark:from-[#1a180a] dark:to-[#071911] border-2 border-amber-400 rounded-2xl text-center space-y-1 shadow-md scale-105 z-10">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-500 text-slate-950 flex items-center justify-center font-black mx-auto text-sm shadow-md">
-                  👑 1
-                </div>
-                <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">{top3[0].name}</h4>
-                <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-bold block">{top3[0].nicMasked}</span>
-                <div className="flex items-center justify-center gap-1 text-amber-600 dark:text-amber-400 font-mono font-black text-sm pt-1">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{top3[0].ratingScore.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-
-            {top3[2] && (
-              <div className="p-3 bg-white dark:bg-[#071911] border-2 border-amber-700/40 rounded-2xl text-center space-y-1 shadow-sm mt-4">
-                <div className="w-8 h-8 rounded-full bg-amber-800/20 text-amber-800 dark:text-amber-300 flex items-center justify-center font-black mx-auto text-xs">
-                  🥉 3
-                </div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">{top3[2].name}</h4>
-                <span className="text-[9px] font-mono text-slate-500 block">{top3[2].nicMasked}</span>
-                <div className="flex items-center justify-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-black text-xs pt-1">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{top3[2].ratingScore.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Search Bar */}
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
             <input
+
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="නම හෝ NIC අංකය මඟින් සොයන්න..."
-              className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 dark:bg-slate-900/60 border border-emerald-200 dark:border-emerald-900 rounded-2xl text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+
+              placeholder="Username හෝ ස්ථානය (Rank) අනුව සොයන්න..."
+
+              value={searchQuery}
+
+              onChange={(e) => setSearchQuery(e.target.value)}
+
+              className="w-full rounded-lg border border-slate-200 pl-9 pr-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+
             />
-          </div>
 
-          {/* Top Members List */}
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            {filteredList.map((entry) => (
-              <div
-                key={entry.userId}
-                className={`p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center justify-between text-xs ${
-                  entry.isCurrentUser
-                    ? 'bg-emerald-100/90 dark:bg-emerald-950/80 border-emerald-500 shadow-xs'
-                    : 'bg-white dark:bg-[#071911] border-slate-200 dark:border-slate-800/80 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-6 text-center font-mono font-bold text-slate-500">
-                    {entry.rank <= 3 ? ['🥇', '🥈', '🥉'][entry.rank - 1] : `#${entry.rank}`}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-slate-900 dark:text-white truncate">
-                        {entry.name}
-                      </span>
-                      {entry.isCurrentUser && (
-                        <span className="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.2 rounded-full">
-                          ඔබ
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                      NIC: {entry.nicMasked} • සේවා {entry.completedJobs} ක්
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-mono font-black shrink-0">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{entry.ratingScore.toFixed(2)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Disciplinary Policy Notice */}
-          <div className="p-3.5 bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-300 dark:border-rose-900/60 rounded-2xl text-xs space-y-1.5">
-            <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-black">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>විනය නීති සහ ගිණුම් අත්හිටුවීමේ ප්‍රතිපත්තිය (Disciplinary Rules)</span>
-            </div>
-            <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-              සේවා පැහැර හැරීම (No-show), අසතුටුදායක සේවා හෝ පාරිභෝගික පැමිණිලි හේතුවෙන් Rating අගය <strong>0.30</strong> ට වඩා පහත වැටුණහොත්, එම <strong>ජාතික හැඳුනුම්පත් (NIC) අංකයට අදාළ ගිණුම ස්ථිරවම අත්හිටුවනු (Permanent Suspension / Blacklist)</strong> ලැබේ. නැවත එම NIC අංකයෙන් නව ගිණුමක් විවෘත කළ නොහැක.
-            </p>
           </div>
 
         </div>
 
-        {/* Footer */}
-        <div className="p-3.5 bg-slate-50 dark:bg-[#05140d] border-t border-emerald-200/80 dark:border-emerald-900/60 text-center shrink-0">
+        {/* Leaderboard Table Content */}
+
+        <div className="flex-1 overflow-y-auto p-4">
+
+          <table className="w-full text-left border-collapse">
+
+            <thead>
+
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+
+                <th className="py-3 px-4 w-20">ස්ථානය</th>
+
+                <th className="py-3 px-4">Username</th>
+
+                <th className="py-3 px-4 text-right">Point ගණන</th>
+
+                <th className="py-3 px-4">POINT ලැබු සේවාවන් හා වාර ගණාන</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody className="divide-y divide-slate-100 text-sm">
+
+              {filteredUsers.length > 0 ? (
+
+                filteredUsers.map((user) => {
+
+                  const isCurrent =
+
+                    user.isCurrentUser ||
+
+                    (currentUsername && user.username === currentUsername);
+
+                  return (
+
+                    <tr
+
+                      key={user.rank}
+
+                      className={`transition-colors ${
+
+                        isCurrent
+
+                          ? 'bg-blue-50/80 font-medium hover:bg-blue-100/80'
+
+                          : 'hover:bg-slate-50'
+
+                      }`}
+
+                    >
+
+                      {/* Rank Column with Badges */}
+
+                      <td className="py-3 px-4">
+
+                        {user.rank === 1 && (
+
+                          <span className="inline-flex items-center justify-center rounded-md bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800 border border-amber-300 shadow-sm">
+
+                            🥇 {formatRank(user.rank)}
+
+                          </span>
+
+                        )}
+
+                        {user.rank === 2 && (
+
+                          <span className="inline-flex items-center justify-center rounded-md bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 border border-slate-300 shadow-sm">
+
+                            🥈 {formatRank(user.rank)}
+
+                          </span>
+
+                        )}
+
+                        {user.rank === 3 && (
+
+                          <span className="inline-flex items-center justify-center rounded-md bg-amber-700/10 px-2.5 py-1 text-xs font-bold text-amber-900 border border-amber-800/20 shadow-sm">
+
+                            🥉 {formatRank(user.rank)}
+
+                          </span>
+
+                        )}
+
+                        {user.rank > 3 && (
+
+                          <span className="px-2 py-1 text-slate-600 font-mono">
+
+                            {formatRank(user.rank)}
+
+                          </span>
+
+                        )}
+
+                      </td>
+
+                      {/* Username Column */}
+
+                      <td className="py-3 px-4 font-medium text-slate-800">
+
+                        @{user.username}
+
+                        {isCurrent && (
+
+                          <span className="ml-2 inline-block rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+
+                            You
+
+                          </span>
+
+                        )}
+
+                      </td>
+
+                      {/* Points Column */}
+
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-slate-700">
+
+                        {user.points.toFixed(1)}
+
+                      </td>
+
+                      {/* Services Summary Column */}
+
+                      <td className="py-3 px-4 font-mono text-xs text-slate-600">
+
+                        {user.services}
+
+                      </td>
+
+                    </tr>
+
+                  );
+
+                })
+
+              ) : (
+
+                <tr>
+
+                  <td colSpan={4} className="py-8 text-center text-slate-400">
+
+                    ප්‍රතිඵල හමු නොවීය.
+
+                  </td>
+
+                </tr>
+
+              )}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+        {/* Expandable Points Reference Guide */}
+
+        <div className="border-t border-slate-200 bg-slate-50">
+
           <button
-            onClick={onClose}
-            className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+
+            onClick={() => setIsGuideExpanded(!isGuideExpanded)}
+
+            className="flex w-full items-center justify-between px-6 py-3 text-left font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+
           >
-            වසන්න (Close)
+
+            <span className="text-sm">
+
+              සේවාවන් සදහා ලැබෙන ලකුණු හා සේවාවන් පෙන්වන ඉංග්‍රීසි අක්ෂරය
+
+            </span>
+
+            {isGuideExpanded ? (
+
+              <ChevronUp className="h-4 w-4 text-slate-500" />
+
+            ) : (
+
+              <ChevronDown className="h-4 w-4 text-slate-500" />
+
+            )}
+
           </button>
+
+          {isGuideExpanded && (
+
+            <div className="max-h-48 overflow-y-auto px-6 pb-4 pt-1">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600 border-t border-slate-200 pt-3">
+
+                {SERVICE_POINTS_REFERENCE.map((item) => (
+
+                  <div
+
+                    key={item.code}
+
+                    className="flex justify-between items-center rounded bg-white p-2 border border-slate-100 shadow-sm"
+
+                  >
+
+                    <span>
+
+                      <strong className="text-slate-800 font-mono mr-1">
+
+                        {item.code}.
+
+                      </strong>{' '}
+
+                      {item.name}
+
+                    </span>
+
+                    <span className="font-mono font-bold text-blue-600 ml-2">
+
+                      {item.points}
+
+                    </span>
+
+                  </div>
+
+                ))}
+
+              </div>
+
+            </div>
+
+          )}
+
         </div>
 
       </div>
+
     </div>
+
   );
+
 };
+
+export default LeaderboardModal;
+
