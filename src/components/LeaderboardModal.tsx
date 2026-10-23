@@ -2,125 +2,50 @@ import React, { useState, useMemo } from 'react';
 
 import { Search, ChevronDown, ChevronUp, Award, X } from 'lucide-react';
 
+import { getLeaderboardUsers, getUserSPoints, S_POINT_RULES } from './sPointManager';
 export interface LeaderboardUser {
-
   rank: number;
-
   username: string;
-
   points: number;
-
-  services: string; // e.g., "H2, E1, D1, E1"
-
+  services: string;
   isCurrentUser?: boolean;
-
 }
-
 export interface LeaderboardModalProps {
-
   isOpen: boolean;
-
   onClose: () => void;
-
   users?: LeaderboardUser[];
-
+  allUsers?: any[];
+  currentUser?: any;
   currentUsername?: string;
-
 }
-
-// Reference key mapping for points structure
-
-const SERVICE_POINTS_REFERENCE = [
-
-  { code: 'A', name: 'රතු එළිය (ආපදා දැනුවත් කිරිමකට)', points: 10 },
-
-  { code: 'B', name: 'එක් ලේ දන්දීමක් වෙනුවෙන්', points: 9 },
-
-  { code: 'C', name: 'සහන කදවුරු ලියාපදිංචිය', points: 8 },
-
-  { code: 'D', name: 'ස්ථානය සුරකීම (Public)', points: 7 },
-
-  { code: 'E', name: 'ඉක්මන් සේවා සහයවිමකට', points: 6.5 },
-
-  { code: 'F', name: 'සාමාන්ය සේවා සහයවීමකට', points: 6 },
-
-  { code: 'G', name: 'හමුවනලද', points: 5.5 },
-
-  { code: 'H', name: 'රෑකියා පලකිරිම', points: 5 },
-
-  { code: 'I', name: 'නවාතැන් පළකිරිම', points: 4 },
-
-  { code: 'J', name: 'හදිසි සේවා අංක', points: 3 },
-
-  { code: 'K', name: 'වෘත්තීය සේවා පලකිරිම', points: 2 },
-
-];
-
-// Mock data to display if none is provided via props
-
-const DEFAULT_USERS: LeaderboardUser[] = [
-
-  { rank: 1, username: 'KasunPerera', points: 16.5, services: 'A1, E1' },
-
-  { rank: 2, username: 'AmaliSilva', points: 15.0, services: 'B1, F1' },
-
-  { rank: 3, username: 'NimalFernando', points: 14.5, services: 'C1, E1' },
-
-  { rank: 4, username: 'SahanK', points: 12.0, services: 'F2' },
-
-  { rank: 5, username: 'Dilani_M', points: 10.5, services: 'G1, H1' },
-
-  { rank: 6, username: 'Pathum_Dev', points: 9.0, services: 'B1', isCurrentUser: true },
-
-  { rank: 7, username: 'Ruwan_B', points: 7.0, services: 'D1' },
-
-  { rank: 8, username: 'Kavindi_S', points: 5.5, services: 'G1' },
-
-];
-
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
-
   isOpen,
-
   onClose,
-
-  users = DEFAULT_USERS,
-
+  users,
+  allUsers,
+  currentUser,
   currentUsername,
-
 }) => {
-
   const [searchQuery, setSearchQuery] = useState('');
-
   const [isGuideExpanded, setIsGuideExpanded] = useState(false);
-
-  // Format rank number to two digits (e.g., 1 -> "01")
-
+  const activeUsername = currentUsername || currentUser?.username;
+  const resolvedUsers = useMemo(() => {
+    if (users && users.length > 0) return users;
+    if (allUsers && allUsers.length > 0) return getLeaderboardUsers(allUsers, activeUsername);
+    return [];
+  }, [users, allUsers, activeUsername]);
   const formatRank = (rank: number): string => {
-
     return rank < 10 ? `0${rank}` : `${rank}`;
-
   };
-
-  // Filter users based on search input (by rank or username)
-
   const filteredUsers = useMemo(() => {
-
-    return users.filter((user) => {
-
+    return resolvedUsers.filter((user) => {
       const query = searchQuery.toLowerCase().trim();
-
       const formattedRank = formatRank(user.rank);
-
       const matchesUsername = user.username.toLowerCase().includes(query);
-
       const matchesRank = formattedRank.includes(query) || user.rank.toString() === query;
-
-
       return matchesUsername || matchesRank;
-
     });
-
+  }, [resolvedUsers, searchQuery]);
   }, [users, searchQuery]);
 
   if (!isOpen) return null;
@@ -207,7 +132,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
                 <th className="py-3 px-4 text-right">Point ගණන</th>
 
-                <th className="py-3 px-4">POINT ලැබු සේවාවන් හා වාර ගණාන</th>
+                <th className="py-3 px-4">POINT ලැබු සේවාවන් හා වාර ගණන</th>
 
               </tr>
 
@@ -385,7 +310,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600 border-t border-slate-200 pt-3">
 
-                {SERVICE_POINTS_REFERENCE.map((item) => (
+                {S_POINT_RULES.map((item) => (
 
                   <div
 
