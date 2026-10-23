@@ -1,598 +1,394 @@
-import { GroupItem, GroupInviteNotification, GroupJoinRequest, GroupMessage, GroupPermissions, GroupWorkSubCategory, User } from '../types';
-import { filterNonDeletedGroups } from '../utils/deletedPostsManager';
+import { GroupItem, GroupMessage, GroupJoinRequest, GroupMember } from '../types/groupWork';
 
-export const initialGroups: GroupItem[] = [
-  {
-    id: 'grp_kelaniya_care',
-    name: 'කැලණිය ප්‍රජා සත්කාර බලකාය',
-    username: '@kelaniya_care',
-    subCategory: 'social_service',
-    privacy: 'public',
-    photoUrl: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=400&q=80',
-    description: 'කැලණිය සහ අවට ප්‍රදේශයේ ශ්‍රමදාන, රුක් රෝපණ සහ ආපදා සහන මෙහෙයුම් සඳහා එක්වූ තරුණ හා ප්‍රජා කණ්ඩායම.',
-    locationName: 'කැලණිය, කොළඹ පාර',
-    lat: 6.9553,
-    lng: 79.9153,
-    creatorId: '970181547V',
-    creatorName: 'පරිපාලක (System Administrator)',
-    creatorPhone: '0771234567',
-    createdAt: '2026-08-20 10:30',
-    createdAtMs: Date.now() - 7 * 24 * 60 * 60 * 1000,
-    permissions: {
-      editGroupSettings: false, // only admins
-      sendNewMessages: true, // all members can send
-      addOtherMembers: true,
-      inviteViaLinkOrQr: true,
-      adminApproveNewMembers: false,
-      disappearingTimer: 'off'
-    },
-    members: [
-      {
-        userId: '970181547V',
-        name: 'පරිපාලක (System Administrator)',
-        phone: '0771234567',
-        photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-        role: 'admin',
-        status: 'active',
-        joinedAt: '2026-08-20 10:30'
-      },
-      {
-        userId: 'usr_kamal',
-        name: 'කමල් පෙරේරා',
-        phone: '0712233445',
-        role: 'member',
-        status: 'active',
-        joinedAt: '2026-08-21 14:00'
-      },
-      {
-        userId: 'usr_nimal',
-        name: 'නිමල් රත්නායක',
-        phone: '0789988776',
-        role: 'member',
-        status: 'active',
-        joinedAt: '2026-08-22 09:15'
-      }
-    ],
-    inviteCode: 'KELCARE99',
-    isPinned: true
-  },
-  {
-    id: 'grp_dalada_sewa',
-    name: 'ශ්‍රී දළදා පුදබිම ශ්‍රමදාන සංසදය',
-    username: '@dalada_sewa',
-    subCategory: 'religious_activity',
-    privacy: 'private',
-    photoUrl: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=400&q=80',
-    description: 'මහනුවර ශ්‍රී දළදා මාළිගාව සහ අවට විහාරස්ථානවල ආගමික වතාවත්, මල් පූජා සහ පරිශ්‍ර පිරිසිදු කිරීමේ කටයුතු (පෞද්ගලික සාමාජික එකමුතුව).',
-    locationName: 'මහනුවර, දළදා වීදිය',
-    lat: 7.2906,
-    lng: 80.6337,
-    creatorId: '970181547V',
-    creatorName: 'පරිපාලක (System Administrator)',
-    creatorPhone: '0771234567',
-    createdAt: '2026-08-22 08:00',
-    createdAtMs: Date.now() - 5 * 24 * 60 * 60 * 1000,
-    permissions: {
-      editGroupSettings: false,
-      sendNewMessages: true,
-      addOtherMembers: true,
-      inviteViaLinkOrQr: true,
-      adminApproveNewMembers: true,
-      disappearingTimer: 'off'
-    },
-    members: [
-      {
-        userId: '970181547V',
-        name: 'පරිපාලක (System Administrator)',
-        phone: '0771234567',
-        photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-        role: 'admin',
-        status: 'active',
-        joinedAt: '2026-08-22 08:00'
-      }
-    ],
-    inviteCode: 'DALADA77'
-  },
-  {
-    id: 'grp_gam_mithuro',
-    name: 'ගම්පහ තරුණ මිත්‍ර සංසදය',
-    username: '@gampaha_mithuro',
-    subCategory: 'friendly_meetup',
-    privacy: 'public',
-    photoUrl: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=400&q=80',
-    description: 'ගම්පහ සහ තදාසන්න ප්‍රදේශවල ක්‍රීඩා, කඳු නැගීම, සංචාර සහ සතිඅන්ත සුහද හමුවීම් සංවිධානය කරන මිතුරු එකමුතුව.',
-    locationName: 'ගම්පහ, මිරිස්වත්ත',
-    lat: 7.0917,
-    lng: 79.9997,
-    creatorId: 'usr_sunil',
-    creatorName: 'සුනිල් ශාන්ත',
-    creatorPhone: '0712345678',
-    createdAt: '2026-08-25 15:45',
-    createdAtMs: Date.now() - 2 * 24 * 60 * 60 * 1000,
-    permissions: {
-      editGroupSettings: false,
-      sendNewMessages: true,
-      addOtherMembers: true,
-      inviteViaLinkOrQr: true,
-      adminApproveNewMembers: false,
-      disappearingTimer: 'off'
-    },
-    members: [
-      {
-        userId: 'usr_sunil',
-        name: 'සුනිල් ශාන්ත',
-        phone: '0712345678',
-        role: 'admin',
-        status: 'active',
-        joinedAt: '2026-08-25 15:45'
-      }
-    ],
-    inviteCode: 'GAMP770'
-  }
-];
+const STORAGE_KEY_GROUPS = 'app_group_work_groups';
 
-export const initialGroupMessages: Record<string, GroupMessage[]> = {
-  grp_kelaniya_care: [
-    {
-      id: 'msg_1',
-      groupId: 'grp_kelaniya_care',
-      senderId: '970181547V',
-      senderName: 'පරිපාලක (System Administrator)',
-      senderPhone: '0771234567',
-      senderRole: 'admin',
-      text: 'සාදරයෙන් පිළිගන්නවා සියලුම සාමාජිකයන්ව! 🌿 ලබන ඉරිදා උදෑසන 7:30ට කැලණිය රජමහා විහාරය අසල ශ්‍රමදාන ව්‍යාපාරයක් පැවැත්වේ.',
-      timestamp: 'පෙ.ව. 10:35',
-      createdAtMs: Date.now() - 3 * 24 * 60 * 60 * 1000,
-      isPinned: true
-    },
-    {
-      id: 'msg_2',
-      groupId: 'grp_kelaniya_care',
-      senderId: 'usr_kamal',
-      senderName: 'කමල් පෙරේරා',
-      senderPhone: '0712233445',
-      senderRole: 'member',
-      text: 'මම උපකරණ කිහිපයකුත් අරගෙන සහභාගි වෙන්නම් සහෝදරයා. 👍🤝',
-      timestamp: 'පෙ.ව. 11:02',
-      createdAtMs: Date.now() - 2 * 24 * 60 * 60 * 1000
-    },
-    {
-      id: 'msg_loc_1',
-      groupId: 'grp_kelaniya_care',
-      senderId: '970181547V',
-      senderName: 'පරිපාලක (System Administrator)',
-      senderPhone: '0771234567',
-      senderRole: 'admin',
-      text: '📍 ශ්‍රමදානය සඳහා රැස්වන ස්ථානය පහත සිතියමෙන් බලන්න:',
-      timestamp: 'පෙ.ව. 11:15',
-      createdAtMs: Date.now() - 2 * 24 * 60 * 60 * 1000 + 5000,
-      location: {
-        name: 'කැලණිය රජමහා විහාරය ප්‍රධාන පිවිසුම අසල',
-        address: 'විහාර මාවත, කැලණිය, බස්නාහිර පළාත',
-        lat: 6.9553,
-        lng: 79.9153,
-        note: 'උදෑසන 7:30ට ප්‍රධාන ගේට්ටුව අසලට පැමිණෙන්න'
-      }
-    }
-  ]
+const STORAGE_KEY_MESSAGES = 'app_group_work_messages';
+
+const DUMMY_GROUP_IDS = ['grp_kelaniya_care', 'grp_dalada_sewa', 'grp_gam_mithuro'];
+
+export const initialGroups: GroupItem[] = [];
+
+export const initialGroupMessages: Record<string, GroupMessage[]> = {};
+
+const isDummyOrDemoGroup = (groupId: string): boolean => {
+
+  return DUMMY_GROUP_IDS.includes(groupId) || groupId.startsWith('grp_demo_');
+
+|---|
+
+export const normalizeUsername = (username: string): string => {
+
+  return username.trim().toLowerCase().replace(/^@+/, '');
+
 };
 
-const GROUPS_STORAGE_KEY = 'sahaya_group_work_items';
-const GROUP_MESSAGES_STORAGE_KEY = 'sahaya_group_messages_map';
-const GROUP_INVITES_STORAGE_KEY = 'sahaya_group_invites_list';
-const GROUP_JOIN_REQUESTS_STORAGE_KEY = 'sahaya_group_join_requests_list';
-const SAVED_GROUPS_PREFIX = 'sahaya_saved_group_ids_';
+export const getSubCategoryLabel = (category: string, subCategory: string): string => {
 
-export function getStoredGroups(): GroupItem[] {
+  if (!subCategory) return category;
+
+  return `${category} - ${subCategory}`;
+
+};
+
+export const getStoredGroups = (): GroupItem[] => {
+
   try {
-    const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const mapped = parsed.map((g: GroupItem) => ({
-          ...g,
-          privacy: g.privacy || 'public'
-        }));
-        return filterNonDeletedGroups(mapped);
-      }
+
+    const data = localStorage.getItem(STORAGE_KEY_GROUPS);
+
+    if (!data) return [];
+
+    
+
+    const parsed: GroupItem[] = JSON.parse(data);
+
+    const filtered = parsed.filter(group => !isDummyOrDemoGroup(group.id));
+
+    
+
+    if (filtered.length !== parsed.length) {
+
+      localStorage.setItem(STORAGE_KEY_GROUPS, JSON.stringify(filtered));
+
     }
-  } catch {
-    return filterNonDeletedGroups(initialGroups);
-  }
-  return filterNonDeletedGroups(initialGroups);
-}
 
-export function saveGroupsToStorage(groups: GroupItem[]): void {
-  try {
-    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(filterNonDeletedGroups(groups)));
-  } catch (err) {
-    console.error('Error saving groups to storage:', err);
-  }
-}
+    
 
-// Saved Groups Management
-export function getSavedGroupIds(userId?: string): string[] {
-  if (!userId) return [];
-  try {
-    const raw = localStorage.getItem(`${SAVED_GROUPS_PREFIX}${userId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
+    return filtered;
+
+  } catch (error) {
+
+    console.error('Error reading groups from storage:', error);
+
     return [];
-  }
-}
 
-export function toggleSaveGroupId(userId: string, groupId: string): { isSaved: boolean; savedIds: string[] } {
-  if (!userId) return { isSaved: false, savedIds: [] };
-  try {
-    const current = getSavedGroupIds(userId);
-    let updated: string[];
-    let isSaved: boolean;
-    if (current.includes(groupId)) {
-      updated = current.filter((id) => id !== groupId);
-      isSaved = false;
-    } else {
-      updated = [...current, groupId];
-      isSaved = true;
-    }
-    localStorage.setItem(`${SAVED_GROUPS_PREFIX}${userId}`, JSON.stringify(updated));
-    return { isSaved, savedIds: updated };
-  } catch {
-    return { isSaved: false, savedIds: [] };
   }
-}
 
-// Group Join Requests Management
-export function getStoredGroupJoinRequests(): GroupJoinRequest[] {
+};
+
+export const saveGroupsToStorage = (groups: GroupItem[]): void => {
+
   try {
-    const raw = localStorage.getItem(GROUP_JOIN_REQUESTS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
+
+    const filtered = groups.filter(group => !isDummyOrDemoGroup(group.id));
+
+    localStorage.setItem(STORAGE_KEY_GROUPS, JSON.stringify(filtered));
+
+  } catch (error) {
+
+    console.error('Error saving groups to storage:', error);
+
+  }
+
+};
+
+export const getStoredGroupMessages = (groupId: string): GroupMessage[] => {
+
+  if (isDummyOrDemoGroup(groupId)) {
+
     return [];
-  }
-}
 
-export function saveGroupJoinRequestsToStorage(requests: GroupJoinRequest[]): void {
+  }
+
   try {
-    localStorage.setItem(GROUP_JOIN_REQUESTS_STORAGE_KEY, JSON.stringify(requests));
-  } catch (err) {
-    console.error('Error saving join requests:', err);
-  }
-}
 
-// User joins public group or sends join request to private group
-export function handleJoinOrRequestGroup(
-  group: GroupItem, 
-  user: User
-): { 
-  success: boolean; 
-  status: 'active' | 'pending_approval' | 'already_member'; 
-  message: string; 
-  updatedGroup: GroupItem;
-} {
-  const currentUserId = user?.userId || user?.id || '';
-  const userPhone = user?.phone || user?.whatsappNumber || '';
+    const data = localStorage.getItem(STORAGE_KEY_MESSAGES);
+
+    if (!data) return [];
+
+    
+
+    const allMessages: Record<string, GroupMessage[]> = JSON.parse(data);
+
+    return allMessages[groupId] || [];
+
+  } catch (error) {
+
+    console.error(`Error reading messages for group ${groupId}:`, error);
+
+    return [];
+
+  }
+
+};
+
+export const saveGroupMessagesToStorage = (groupId: string, messages: GroupMessage[]): void => {
+
+  if (isDummyOrDemoGroup(groupId)) {
+
+    return;
+
+  }
+
+  try {
+
+    const data = localStorage.getItem(STORAGE_KEY_MESSAGES);
+
+    const allMessages: Record<string, GroupMessage[]> = data ? JSON.parse(data) : {};
+
+    
+
+    allMessages[groupId] = messages;
+
+    localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(allMessages));
+
+  } catch (error) {
+
+    console.error(`Error saving messages for group ${groupId}:`, error);
+
+  }
+
+};
+
+export const isGroupNameTaken = (name: string, currentGroupId?: string): boolean => {
+
+  const groups = getStoredGroups();
+
+  const targetName = name.trim().toLowerCase();
+
   
-  const isAlreadyMember = group.members.some(
-    (m) => (m.userId && m.userId === currentUserId) || (userPhone && m.phone === userPhone)
+
+  return groups.some(group => 
+
+    group.id !== currentGroupId && group.name.trim().toLowerCase() === targetName
+
   );
 
-  if (isAlreadyMember) {
-    const mem = group.members.find((m) => (m.userId && m.userId === currentUserId) || (userPhone && m.phone === userPhone));
-    if (mem?.status === 'active') {
-      return {
-        success: true,
-        status: 'already_member',
-        message: 'ඔබ දැනටමත් මෙම කණ්ඩායමේ සක්‍රීය සාමාජිකයෙකි.',
-        updatedGroup: group
-      };
-    }
+};
+
+export const isGroupUsernameTaken = (username: string, currentGroupId?: string): boolean => {
+
+  const groups = getStoredGroups();
+
+  const targetUsername = normalizeUsername(username);
+
+  
+
+  return groups.some(group => 
+
+    group.id !== currentGroupId && normalizeUsername(group.username || '') === targetUsername
+
+  );
+
+};
+
+export const generateInviteLink = (inviteCode: string): string => {
+
+  const baseUrl = window.location.origin;
+
+  return `${baseUrl}/groups/join?code=${encodeURIComponent(inviteCode)}`;
+
+};
+
+export const findGroupByInviteCode = (inviteCode: string): GroupItem | undefined => {
+
+  const groups = getStoredGroups();
+
+  const cleanCode = inviteCode.trim().toUpperCase();
+
+  return groups.find(group => group.inviteCode?.toUpperCase() === cleanCode);
+
+};
+
+export const handleJoinOrRequestGroup = (
+
+  groupId: string, 
+
+  user: { id: string; name: string; avatar?: string }
+
+): { success: boolean; status: 'joined' | 'requested' | 'already_member' | 'already_requested' | 'error'; message: string } => {
+
+  const groups = getStoredGroups();
+
+  const groupIndex = groups.findIndex(g => g.id === groupId);
+
+  if (groupIndex === -1) {
+
+    return { success: false, status: 'error', message: 'Group not found.' };
+
   }
 
-  // PUBLIC GROUP: Immediate Active Join
-  if (group.privacy === 'public') {
-    const newMember = {
-      userId: currentUserId,
-      name: user?.name || 'සාමාජික',
-      phone: userPhone,
-      photoUrl: user?.photoUrl || '',
-      role: 'member' as const,
-      status: 'active' as const,
-      joinedAt: new Date().toLocaleString()
+  const group = groups[groupIndex];
+
+  const isMember = group.members.some(m => m.id === user.id);
+
+  if (isMember) {
+
+    return { success: false, status: 'already_member', message: 'You are already a member of this group.' };
+
+  }
+
+  const existingRequest = group.pendingRequests?.some(r => r.userId === user.id);
+
+  if (existingRequest) {
+
+    return { success: false, status: 'already_requested', message: 'Your join request is pending approval.' };
+
+  }
+
+  if (group.isPrivate) {
+
+    const newRequest: GroupJoinRequest = {
+
+      id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+
+      userId: user.id,
+
+      userName: user.name,
+
+      userAvatar: user.avatar,
+
+      requestedAt: new Date().toISOString(),
+
+      status: 'pending'
+
     };
 
-    const updatedGroup: GroupItem = {
+    const updatedGroup = {
+
       ...group,
-      members: [...group.members.filter((m) => m.userId !== currentUserId && m.phone !== userPhone), newMember]
+
+      pendingRequests: [...(group.pendingRequests || []), newRequest]
+
     };
 
-    const allGroups = getStoredGroups();
-    const newGroups = (allGroups || []).map((g) => (g && group && g.id === group.id ? updatedGroup : g));
-    saveGroupsToStorage(newGroups);
+    groups[groupIndex] = updatedGroup;
 
-    return {
-      success: true,
-      status: 'active',
-      message: `🎉 ඔබ සාර්ථකව "${group.name}" ප්‍රසිද්ධ කණ්ඩායමට එකතු විය!`,
-      updatedGroup
+    saveGroupsToStorage(groups);
+
+    return { success: true, status: 'requested', message: 'Join request sent to group admins.' };
+
+  } else {
+
+    const newMember: GroupMember = {
+
+      id: user.id,
+
+      name: user.name,
+
+      avatar: user.avatar,
+
+      role: 'member',
+
+      joinedAt: new Date().toISOString()
+
     };
+
+    const updatedGroup = {
+
+      ...group,
+
+      members: [...group.members, newMember],
+
+      memberCount: group.members.length + 1
+
+    };
+
+    groups[groupIndex] = updatedGroup;
+
+    saveGroupsToStorage(groups);
+
+    return { success: true, status: 'joined', message: 'Successfully joined the group!' };
+
   }
 
-  // PRIVATE GROUP: Create Join Request for Admin
-  const existingRequests = getStoredGroupJoinRequests();
-  const alreadyRequested = existingRequests.some(
-    (r) => r.groupId === group.id && (r.userId === currentUserId || (userPhone && r.userPhone === userPhone)) && r.status === 'pending'
-  );
+};
 
-  if (alreadyRequested) {
-    return {
-      success: true,
-      status: 'pending_approval',
-      message: 'ඔබේ ඉල්ලුම්පත දැනටමත් පරිපාලක (Admin) වෙත යවා ඇත. කරුණාකර අනුමැතිය (Approval) ලැබෙන තෙක් රැඳී සිටින්න.',
-      updatedGroup: group
-    };
+export const acceptGroupJoinRequest = (
+
+  groupId: string, 
+
+  requestId: string
+
+): { success: boolean; message: string } => {
+
+  const groups = getStoredGroups();
+
+  const groupIndex = groups.findIndex(g => g.id === groupId);
+
+  if (groupIndex === -1) {
+
+    return { success: false, message: 'Group not found.' };
+
   }
 
-  const newRequest: GroupJoinRequest = {
-    id: `gjr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    groupId: group.id,
-    groupName: group.name,
-    groupUsername: group.username,
-    groupPhotoUrl: group.photoUrl,
-    groupSubCategory: group.subCategory,
-    userId: currentUserId,
-    userName: user?.name || 'පරිශීලක',
-    userPhone: userPhone,
-    userPhotoUrl: user?.photoUrl || '',
-    requestedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    requestedAtMs: Date.now(),
-    status: 'pending'
+  const group = groups[groupIndex];
+
+  const request = group.pendingRequests?.find(r => r.id === requestId);
+
+  if (!request) {
+
+    return { success: false, message: 'Request not found.' };
+
+  }
+
+  const newMember: GroupMember = {
+
+    id: request.userId,
+
+    name: request.userName,
+
+    avatar: request.userAvatar,
+
+    role: 'member',
+
+    joinedAt: new Date().toISOString()
+
   };
 
-  saveGroupJoinRequestsToStorage([newRequest, ...existingRequests]);
+  const updatedGroup = {
 
-  // Also add member as pending_approval in group
-  const pendingMember = {
-    userId: currentUserId,
-    name: user?.name || 'ඉල්ලුම්කරු',
-    phone: userPhone,
-    photoUrl: user?.photoUrl || '',
-    role: 'member' as const,
-    status: 'pending_approval' as const,
-    joinedAt: new Date().toLocaleString()
-  };
-
-  const updatedGroup: GroupItem = {
     ...group,
-    members: [...group.members.filter((m) => m.userId !== currentUserId && m.phone !== userPhone), pendingMember],
-    joinRequests: [...(group.joinRequests || []), newRequest]
+
+    members: [...group.members, newMember],
+
+    memberCount: group.members.length + 1,
+
+    pendingRequests: group.pendingRequests?.filter(r => r.id !== requestId) || []
+
   };
 
-  const allGroups = getStoredGroups();
-  const newGroups = allGroups.map((g) => (g.id === group.id ? updatedGroup : g));
-  saveGroupsToStorage(newGroups);
+  groups[groupIndex] = updatedGroup;
 
-  return {
-    success: true,
-    status: 'pending_approval',
-    message: `📩 "${group.name}" පෞද්ගලික කණ්ඩායමට ඇතුළත් වීමේ ඉල්ලුම්පත Admin වෙත යවන ලදී. Admin විසින් Accept කළ පසු ඔබට කණ්ඩායමට පිවිසිය හැක.`,
-    updatedGroup
+  saveGroupsToStorage(groups);
+
+  return { success: true, message: 'User accepted into the group.' };
+
+};
+
+export const rejectGroupJoinRequest = (
+
+  groupId: string, 
+
+  requestId: string
+
+): { success: boolean; message: string } => {
+
+  const groups = getStoredGroups();
+
+  const groupIndex = groups.findIndex(g => g.id === groupId);
+
+  if (groupIndex === -1) {
+
+    return { success: false, message: 'Group not found.' };
+
+  }
+
+  const group = groups[groupIndex];
+
+  const updatedGroup = {
+
+    ...group,
+
+    pendingRequests: group.pendingRequests?.filter(r => r.id !== requestId) || []
+
   };
-}
 
-// Admin Accepts Join Request
-export function acceptGroupJoinRequest(
-  groupId: string, 
-  requestId: string, 
-  adminUser: User
-): { success: boolean; updatedGroup?: GroupItem } {
-  try {
-    const allGroups = getStoredGroups();
-    const targetGroup = (allGroups || []).find((g) => g && g.id === groupId);
-    if (!targetGroup) return { success: false };
+  groups[groupIndex] = updatedGroup;
 
-    const allRequests = getStoredGroupJoinRequests();
-    const req = (allRequests || []).find((r) => r && r.id === requestId);
-    if (!req) return { success: false };
+  saveGroupsToStorage(groups);
 
-    // Update request status
-    const updatedRequests = (allRequests || []).map((r) => {
-      if (r && r.id === requestId) {
-        return {
-          ...r,
-          status: 'accepted' as const,
-          reviewedBy: adminUser?.name || 'Admin',
-          reviewedAt: new Date().toLocaleString()
-        };
-      }
-      return r;
-    });
-    saveGroupJoinRequestsToStorage(updatedRequests);
+  return { success: true, message: 'Join request rejected.' };
 
-    // Update member status in group to 'active'
-    let memberExisted = false;
-    const updatedMembers = (targetGroup.members || []).map((m) => {
-      if (m && (m.userId === req.userId || (req.userPhone && m.phone === req.userPhone))) {
-        memberExisted = true;
-        return {
-          ...m,
-          status: 'active' as const
-        };
-      }
-      return m;
-    });
+};
 
-    if (!memberExisted) {
-      updatedMembers.push({
-        userId: req.userId,
-        name: req.userName,
-        phone: req.userPhone,
-        photoUrl: req.userPhotoUrl || '',
-        role: 'member',
-        status: 'active',
-        joinedAt: new Date().toLocaleString()
-      });
-    }
-
-    const updatedGroup: GroupItem = {
-      ...targetGroup,
-      members: updatedMembers,
-      joinRequests: (targetGroup.joinRequests || []).filter((r) => r && r.id !== requestId)
-    };
-
-    const newGroups = (allGroups || []).map((g) => (g && g.id === groupId ? updatedGroup : g));
-    saveGroupsToStorage(newGroups);
-
-    return { success: true, updatedGroup };
-  } catch (err) {
-    console.error('Error accepting join request:', err);
-    return { success: false };
-  }
-}
-
-// Admin Rejects Join Request
-export function rejectGroupJoinRequest(
-  groupId: string, 
-  requestId: string, 
-  adminUser: User
-): { success: boolean; updatedGroup?: GroupItem } {
-  try {
-    const allGroups = getStoredGroups();
-    const targetGroup = (allGroups || []).find((g) => g && g.id === groupId);
-    if (!targetGroup) return { success: false };
-
-    const allRequests = getStoredGroupJoinRequests();
-    const req = (allRequests || []).find((r) => r && r.id === requestId);
-    if (!req) return { success: false };
-
-    // Update request status
-    const updatedRequests = (allRequests || []).map((r) => {
-      if (r && r.id === requestId) {
-        return {
-          ...r,
-          status: 'rejected' as const,
-          reviewedBy: adminUser?.name || 'Admin',
-          reviewedAt: new Date().toLocaleString()
-        };
-      }
-      return r;
-    });
-    saveGroupJoinRequestsToStorage(updatedRequests);
-
-    // Remove member or update to 'removed'
-    const updatedMembers = (targetGroup.members || []).filter(
-      (m) => !(m && (m.userId === req.userId || (req.userPhone && m.phone === req.userPhone)))
-    );
-
-    const updatedGroup: GroupItem = {
-      ...targetGroup,
-      members: updatedMembers,
-      joinRequests: (targetGroup.joinRequests || []).filter((r) => r && r.id !== requestId)
-    };
-
-    const newGroups = (allGroups || []).map((g) => (g && g.id === groupId ? updatedGroup : g));
-    saveGroupsToStorage(newGroups);
-
-    return { success: true, updatedGroup };
-  } catch (err) {
-    console.error('Error rejecting join request:', err);
-    return { success: false };
-  }
-}
-
-export function getStoredGroupMessages(groupId: string): GroupMessage[] {
-  try {
-    const raw = localStorage.getItem(GROUP_MESSAGES_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(initialGroupMessages));
-      return initialGroupMessages[groupId] || [];
-    }
-    const parsed: Record<string, GroupMessage[]> = JSON.parse(raw);
-    return parsed[groupId] || [];
-  } catch {
-    return initialGroupMessages[groupId] || [];
-  }
-}
-
-export function saveGroupMessageToStorage(groupId: string, message: GroupMessage): GroupMessage[] {
-  try {
-    const raw = localStorage.getItem(GROUP_MESSAGES_STORAGE_KEY);
-    const parsed: Record<string, GroupMessage[]> = raw ? JSON.parse(raw) : { ...initialGroupMessages };
-    const currentList = parsed[groupId] || [];
-    const updatedList = [...currentList, message];
-    parsed[groupId] = updatedList;
-    localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(parsed));
-    return updatedList;
-  } catch (err) {
-    console.error('Error saving group message:', err);
-    return [];
-  }
-}
-
-export function togglePinGroupMessage(groupId: string, messageId: string): GroupMessage[] {
-  try {
-    const raw = localStorage.getItem(GROUP_MESSAGES_STORAGE_KEY);
-    const parsed: Record<string, GroupMessage[]> = raw ? JSON.parse(raw) : { ...initialGroupMessages };
-    const currentList = parsed[groupId] || [];
-    const updatedList = currentList.map((m) => {
-      if (m.id === messageId) {
-        return { ...m, isPinned: !m.isPinned };
-      }
-      return m;
-    });
-    parsed[groupId] = updatedList;
-    localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(parsed));
-    return updatedList;
-  } catch (err) {
-    console.error('Error toggling pin:', err);
-    return [];
-  }
-}
-
-export function getStoredGroupInvites(): GroupInviteNotification[] {
-  try {
-    const raw = localStorage.getItem(GROUP_INVITES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveGroupInvitesToStorage(invites: GroupInviteNotification[]): void {
-  try {
-    localStorage.setItem(GROUP_INVITES_STORAGE_KEY, JSON.stringify(invites));
-  } catch (err) {
-    console.error('Error saving group invites:', err);
-  }
-}
-
-// Normalization helper for checking duplicate names
-export function normalizeGroupName(name: string): string {
-  if (!name || typeof name !== 'string') return '';
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-// Normalization helper for checking duplicate username
-export function normalizeUsername(username: string): string {
-  if (!username || typeof username !== 'string') return '';
-  let clean = username.trim().toLowerCase();
-  if (clean.startsWith('@')) clean = clean.substring(1);
-  return clean.replace(/[^a-z0-9_]/g, '');
-}
-
-// Check if group name already exists (unique name constraint)
-export function isGroupNameTaken(name: string, excludeGroupId?: string): boolean {
-  const norm = normalizeGroupName(name);
-  if (!norm) return false;
-  const allGroups = getStoredGroups();
-  return allGroups.some((g) => g.id !== excludeGroupId && normalizeGroupName(g.name) === norm);
-}
-
-// Check if username is already taken
-export function isGroupUsernameTaken(username: string, excludeGroupId?: string): boolean {
-  const norm = normalizeUsername(username);
-  if (!norm) return false;
-  const allGroups = getStoredGroups();
-  return allGroups.some((g) => g.id !== excludeGroupId && normalizeUsername(g.username) === norm);
-}
