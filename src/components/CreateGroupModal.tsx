@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 
 import { X, Lock, Globe, ShieldAlert, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
-import { getCurrentUser, getCreditBalance, deductPostingFee } from '../services/userService';
+import { getUserCreditBalance, deductPostingFee } from '../utils/creditManager';
 
-import { isGroupUsernameTaken, Group } from '../services/groupService';
+import { isGroupUsernameTaken, GroupItem, saveGroupsToStorage, getStoredGroups } from '../data/groupWorkData';
+import { User } from '../types';
 
 interface CreateGroupModalProps {
 
@@ -12,7 +13,8 @@ interface CreateGroupModalProps {
 
   onClose: () => void;
 
-  onGroupCreated: (newGroup: Group) => void;
+  onGroupCreated: (newGroup: any) => void;
+  currentUser?: User | null;
 
 }
 
@@ -23,9 +25,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onClose,
 
   onGroupCreated,
-
+  currentUser: propUser,
 }) => {
-
+  const currentUser = propUser || null;
   const [name, setName] = useState('');
 
   const [usernameInput, setUsernameInput] = useState('');
@@ -46,13 +48,12 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentUser = getCurrentUser();
 
   useEffect(() => {
 
     if (isOpen && currentUser) {
 
-      const balance = getCreditBalance(currentUser);
+      const balance = getUserCreditBalance(currentUser);
 
       setCreditBalance(balance);
 
@@ -162,7 +163,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
     if (!usernameInput.trim() || usernameError || !usernameSuccess) {
 
-|---|---|---|Username එකක් ඇතුළත් කරන්න.');
+      alert('කරුණාකර වලංගු Username එකක් ඇතුළත් කරන්න.');
 
       return;
 
@@ -200,11 +201,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
       // Step 4: Deduct fee and dispatch UI update event
 
-      const feeDeducted = deductPostingFee(currentUser, 'group_work', generatedGroupId, name.trim());
+      const feeResult = deductPostingFee(currentUser, 'group_work', generatedGroupId, `කණ්ඩායම: ${name.trim()}`);
 
       
 
-      if (!feeDeducted) {
+      if (!feeResult.success) {
 
         alert('ක්‍රෙඩිට් අය කර ගැනීමට අපොහොසත් විය. කරුණාකර නැවත උත්සාහ කරන්න.');
 
@@ -218,7 +219,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
       // Step 5: Construct new group object
 
-      const newGroup: Group = {
+      const newGroup: any = {
 
         id: generatedGroupId,
 
