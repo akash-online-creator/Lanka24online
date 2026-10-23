@@ -1365,5 +1365,4 @@ export const awardServiceReward = (
   }
   return result;
 };
-  return result;
-};
+  
