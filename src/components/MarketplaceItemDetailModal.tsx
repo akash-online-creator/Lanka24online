@@ -32,7 +32,6 @@ import {
 
 export type Language = 'si' | 'en' | 'ta';
 
-|---|
 
 export interface User {
 
