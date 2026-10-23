@@ -1811,11 +1811,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onAlertCreated={(newAlert) => {
           const creditRes = awardServiceReward(user, 'red_alert');
           const spointRes = awardSPoints(user, 'A');
-          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newBalance };
+          const updatedUser = { ...user, creditBalance: creditRes.newBalance, sPoints: spointRes.newPoints };
           if (onUpdateUser) onUpdateUser(updatedUser);
           try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
           try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
-          if (setRedAlerts) {
           if (setRedAlerts) {
             setRedAlerts((prev) => [newAlert, ...(prev || [])]);
           }
