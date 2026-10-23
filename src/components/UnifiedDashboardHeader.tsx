@@ -25,7 +25,6 @@ import {
   Check,
   Coins,
   Bell,
-  MessageSquare,
   QrCode,
   Volume2,
   Zap,
@@ -34,7 +33,6 @@ import {
 } from 'lucide-react';
 import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
-import { subscribeToSystemSettings } from '../utils/systemSettingsManager';
 
 interface UnifiedDashboardHeaderProps {
   user: User;
@@ -68,6 +66,7 @@ interface UnifiedDashboardHeaderProps {
   onOpenSavedPlaces?: () => void;
   onOpenQuickRegisterHub?: () => void;
   onOpenAppQr?: () => void;
+  onOpenLeaderboard?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
@@ -99,6 +98,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   onOpenSavedPlaces,
   onOpenQuickRegisterHub,
   onOpenAppQr,
+  onOpenLeaderboard,
 }) => {
   const t = translations[language];
   const getLangText = (si: string, en: string, ta: string) => {
@@ -112,7 +112,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
-  const [enableQrPay, setEnableQrPay] = useState(true);
 
   useEffect(() => {
     const updateUnread = () => {
@@ -127,11 +126,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
       window.removeEventListener('sahaya_notifications_updated', updateUnread);
       window.removeEventListener('sahaya_new_notification', updateUnread);
     };
-  }, []); //
-    
-    useEffect(() => {
-  const unsubscribe = subscribeToSystemSettings((s) => setEnableQrPay(s.enableQrPay));
-  return () => unsubscribe();
   }, []);
 
   const creditBalance = user ? getUserCreditBalance(user) : 0;
@@ -314,13 +308,23 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             {onOpenInstallApp && (
               <button
                 type="button"
-                onClick={onOpenInstallApp}
+                onClick={async () => {
+                  try {
+                    const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
+                    const res = await triggerNativeInstallPrompt();
+                    if (res.outcome !== 'accepted') {
+                      onOpenInstallApp();
+                    }
+                  } catch {
+                    onOpenInstallApp();
+                  }
+                }}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={getLangText('App එක Download / Update කරගන්න', 'Download & Update Sahaya Sewa App', 'செயலியை பதிவிறக்குக / புதுப்பிக்க')}
+                title={getLangText('App එක Download කරගන්න', 'Download Sahaya Sewa App', 'செயலியை நிறுவுக')}
               >
                 <span className="text-xs">📲</span>
                 <span className="font-black text-xs">
-                  {language === 'en' ? 'Download & Update' : language === 'ta' ? 'Download & Update' : 'Download & Update'}
+                  {language === 'en' ? 'Download' : language === 'ta' ? 'Download' : 'Download'}
                 </span>
               </button>
             )}
@@ -352,25 +356,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {onOpenInbox && (
-              <button
-                type="button"
-                onClick={onOpenInbox}
-                className="relative p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-white hover:bg-blue-50 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800/80 flex items-center gap-1.5 text-blue-700 dark:text-blue-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
-                title={getLangText('පණිවිඩ (Messages)', 'Message Inbox & Chats', 'செய்திகள் & உரையாடல்கள்')}
-              >
-                <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span className="hidden md:inline text-xs font-bold">
-                  {language === 'en' ? 'Inbox' : language === 'ta' ? 'செய்திகள்' : 'පණිවිඩ'}
-                </span>
-                {typeof inboxCount === 'number' && inboxCount > 0 && (
-                  <span className="min-w-[17px] h-4.5 px-1 rounded-full bg-blue-600 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs">
-                    {inboxCount > 9 ? '9+' : inboxCount}
-                  </span>
-                )}
-              </button>
-            )}
-
             {(onOpenSavedPlaces || onOpenQuickRegisterHub) && (
               <button
                 type="button"
@@ -385,7 +370,17 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-
+            {onOpenAppQr && (
+              <button
+                type="button"
+                onClick={onOpenAppQr}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title="Web QR Code"
+              >
+                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-extrabold text-xs">QR Code</span>
+              </button>
+            )}
 
             {onOpenShortcutHub && (
               <button
@@ -550,7 +545,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             )}
           </button>
 
-          {!isVisitor && onOpenQrPay && enableQrPay && (
+          {!isVisitor && onOpenQrPay && (
             <button
               type="button"
               onClick={() => onOpenQrPay('scan_pay')}
@@ -582,6 +577,24 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </div>
             </button>
           )}
+          <button
+            type="button"
+            onClick={onOpenLeaderboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-400/60 dark:border-emerald-500/50 shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 group"
+            title="S Point Leaderboard"
+          >
+            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shadow-2xs group-hover:rotate-12 transition-transform shrink-0">
+              S
+            </div>
+            <div className="text-left">
+              <div className="text-[8px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 leading-none">
+                S Point
+              </div>
+              <div className="text-xs font-black font-mono text-emerald-950 dark:text-emerald-100 leading-tight">
+                {user?.sPoints !== undefined ? Number(user.sPoints).toFixed(1) : '0.0'}
+              </div>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -652,3 +665,4 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     </div>
   );
 };
+
