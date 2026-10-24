@@ -509,8 +509,20 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
   }, [activeRedAlerts.length, activeAlertIndex]);
 
-  const currentRedAlert = activeRedAlerts.length > 0
-    ? activeRedAlerts[activeAlertIndex % activeRedAlerts.length]
+  const liveTopBannerAlerts = useMemo(() => {
+    return (redAlerts || []).filter((a) => {
+      if (!a) return false;
+      const anyA = a as any;
+      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) || a.fakeReportsCount || 0;
+      const isFake = Boolean(anyA.isFlaggedFake || a.status === 'fake' || Math.max(fakeCount, 4) === fakeCount);
+      const isRemoved = Boolean(a.status === 'cancelled' || anyA.isDeleted || a.cancelledAt || anyA.deletedAt);
+      const isResolved = Boolean(a.status === 'resolved' || a.resolvedAt);
+      return a.status === 'active' && !isRemoved && !isResolved && !isFake;
+    });
+  }, [redAlerts]);
+
+  const currentRedAlert = liveTopBannerAlerts.length !== 0
+    ? liveTopBannerAlerts[activeAlertIndex % liveTopBannerAlerts.length]
     : null;
 
   const getAlertDistanceDisplay = useCallback((alert: RedAlertItem) => {
