@@ -446,14 +446,16 @@ export const App: React.FC = () => {
   }, [users]);
 
   // Registration Handler
-  const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'createdAt' | 'status'>) => {
-    const created: User = {
-      ...newUser,
-      id: `usr_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      status: 'pending', // Awaiting Admin Approval
-      credits: 50, // Welcome Gift Credits
-    };
+  const handleRegister = useCallback(async (newUser: any) => {
+    const resolvedId = newUser && newUser.id ? String(newUser.id) : `usr_${Date.now()}`;
+    const resolvedCreatedAt = newUser && newUser.createdAt ? String(newUser.createdAt) : new Date().toISOString();
+    const created: User = Object.assign({}, newUser, {
+      id: resolvedId,
+      createdAt: resolvedCreatedAt,
+      status: 'pending',
+      credits: 50,
+      creditBalance: 50,
+    });
 
     setUsers((prev) => deduplicateUsers([created, ...prev]));
     setCurrentUser(created);
@@ -578,25 +580,41 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeView === 'register' && (
-          <RegisterForm
-            onRegister={handleRegister}
-            onNavigateToLogin={() => setActiveView('login')}
-            language={language}
-          />
-        )}
+        {activeView === 'register' &&
+          React.createElement(RegisterForm, {
+            onRegister: handleRegister,
+            onNavigateToLogin: () => setActiveView('login'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            language: language,
+            setLanguage: setLanguage,
+            theme: theme,
+            toggleTheme: toggleTheme,
+            users: users,
+          })}
 
-        {activeView === 'pending' && currentUser && (
-          <PendingApprovalView
-            user={currentUser}
-            language={language}
-            onRefreshStatus={() => {
+        {activeView === 'pending' &&
+          currentUser &&
+          React.createElement(PendingApprovalView, {
+            user: currentUser,
+            language: language,
+            onRefreshStatus: async () => {
+              const targetId = currentUser.id ? currentUser.id : currentUser.userId;
+              if (targetId) {
+                const remote = await getUserFromFirestore(String(targetId));
+                if (remote) {
+                  setCurrentUser(remote);
+                  if (remote.status === 'approved') {
+                    setActiveView('dashboard');
+                    return;
+                  }
+                }
+              }
               if (currentUser.status === 'approved') setActiveView('dashboard');
-            }}
-            onNavigateToIssues={() => setActiveView('issues')}
-            onBackToLogin={handleLogout}
-          />
-        )}
+            },
+            onReRegister: () => setActiveView('register'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            onBackToLogin: handleLogout,
+          })}
 
         {activeView === 'admin' && currentUser && (
           <AdminPanel
