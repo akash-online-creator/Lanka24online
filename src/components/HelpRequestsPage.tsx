@@ -20,7 +20,8 @@ import { AccommodationView } from './AccommodationView';
 import { JobsView } from './JobsView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
-import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
+import { subscribeToUserSavedPosts, toggleSavePostInFirestore, subscribeToMarketplaceItems, subscribeToMarketShops } from '../lib/firebase';
+import { getStoredMarketItems, getStoredMarketShops } from '../data/marketplaceData';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
@@ -473,22 +474,59 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
   }, [redAlerts]);
 
-  const categoryCounts = useMemo(() => {
-    const posts = helpPosts || [];
-    return {
-      all: posts.length + activeRedAlerts.length,
-      emergency: activeRedAlerts.length + posts.filter((p) => isEmergencyOrHighPriority(p)).length,
-      quick_services: posts.filter((p) => isQuickService(p)).length,
-      normal_services: posts.filter((p) => !isQuickService(p) && !p.findForMeType && !p.fromMeToYouType && (p.category === 'normal_services' || p.category === 'services' || p.category === 'general' || !p.category || p.serviceType === 'normal_services')).length,
-      professional_services: (professionalServices || []).length + posts.filter((p) => p.category === 'professional_services' || p.serviceType === 'professional_services').length,
-      group_work: posts.filter((p) => p.category === 'group_work' || p.serviceType === 'group_work').length,
-      marketplace: posts.filter((p) => p.category === 'marketplace' || p.serviceType === 'marketplace').length,
-      find_for_me: posts.filter((p) => p.category === 'find_for_me' || p.serviceType === 'find_for_me' || Boolean(p.findForMeType)).length,
+  const [liveMarketItemsCount, setLiveMarketItemsCount] = useState(() => getStoredMarketItems().length);
+  const [liveMarketShopsCount, setLiveMarketShopsCount] = useState(() => getStoredMarketShops().length);
 
-      from_me_to_you: posts.filter((p) => p.category === 'from_me_to_you' || p.serviceType === 'from_me_to_you' || Boolean(p.fromMeToYouType)).length,
+  useEffect(() => {
+    const refreshLocalMarket = () => {
+      setLiveMarketItemsCount(getStoredMarketItems().length);
+      setLiveMarketShopsCount(getStoredMarketShops().length);
+    };
+    window.addEventListener('sahaya_marketplace_updated', refreshLocalMarket);
+    const unsubItems = subscribeToMarketplaceItems((remoteItems) => {
+      if (Array.isArray(remoteItems) && remoteItems.length >= 1) {
+        setLiveMarketItemsCount(remoteItems.length);
+      } else {
+        setLiveMarketItemsCount(getStoredMarketItems().length);
+      }
+    });
+    const unsubShops = subscribeToMarketShops((remoteShops) => {
+      if (Array.isArray(remoteShops) && remoteShops.length >= 1) {
+        setLiveMarketShopsCount(remoteShops.length);
+      } else {
+        setLiveMarketShopsCount(getStoredMarketShops().length);
+      }
+    });
+    return () => {
+      window.removeEventListener('sahaya_marketplace_updated', refreshLocalMarket);
+      unsubItems();
+      unsubShops();
+    };
+  }, []);
+
+  const categoryCounts = useMemo(() => {
+    const posts = Array.isArray(helpPosts) ? helpPosts : [];
+    const mktPostsCount = posts.filter((p) => Boolean(p && (p.category === 'marketplace' ? true : p.serviceType === 'marketplace'))).length;
+    return {
+      all: posts.length,
+      emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length,
+      quick_services: posts.filter((p) => isQuickService(p)).length,
+      normal_services: posts.filter((p) => {
+        if (isQuickService(p)) return false;
+        if (!p.category) return true;
+        if (p.category === 'normal_services') return true;
+        if (p.category === 'services') return true;
+        if (p.category === 'general') return true;
+        return p.serviceType === 'normal_services';
+      }).length,
+      professional_services: posts.filter((p) => Boolean(p && (p.category === 'professional_services' ? true : p.serviceType === 'professional_services'))).length,
+      group_work: posts.filter((p) => Boolean(p && (p.category === 'group_work' ? true : p.serviceType === 'group_work'))).length,
+      marketplace: mktPostsCount + liveMarketItemsCount + liveMarketShopsCount,
+      find_for_me: posts.filter((p) => Boolean(p && (p.category === 'find_for_me' ? true : p.serviceType === 'find_for_me'))).length,
+      from_me_to_you: posts.filter((p) => Boolean(p && (p.category === 'from_me_to_you' ? true : p.serviceType === 'from_me_to_you'))).length,
       saved: savedPostIds.length,
     };
-  }, [helpPosts, savedPostIds, activeRedAlerts.length, professionalServices]);
+  }, [helpPosts, savedPostIds, liveMarketItemsCount, liveMarketShopsCount]);
   // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
