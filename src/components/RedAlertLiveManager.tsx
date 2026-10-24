@@ -52,7 +52,7 @@ import {
 
 import { triggerBrowserNotification, activateBackgroundWakeLock } from '../utils/notificationManager';
 
-import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
+import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySirenLock } from '../utils/sirenAudio';
 
 import { calculateDistanceKm } from '../utils/geoUtils';
 
@@ -300,7 +300,27 @@ export const RedAlertLiveManager: any = ({
     try {
 
       await activateBackgroundWakeLock();
-
+    } catch (_) {}
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const reg: any = await navigator.serviceWorker.ready;
+        const swPayload = {
+          category: 'red_alert',
+          alertId: alertItem.id,
+          alertCode: alertAny.alertCode || '',
+          disasterTitleSi: titleSi,
+          title: `🚨 රතු එළිය හදිසි ආපදාවක්: ${titleSi}`,
+          locationName: locName,
+          distanceKm: distKm.toFixed(1),
+          description: alertItem.description || 'වහාම ආරක්ෂිත පියවර ගන්න. විස්තර බැලීමට සහ සයිරන් නැවැත්වීමට මෙය ක්ලික් කරන්න.',
+        };
+        if (reg && reg.active) {
+          reg.active.postMessage({
+            type: 'TRIGGER_EMERGENCY_RED_ALERT',
+            payload: swPayload,
+          });
+        }
+      }
     } catch (_) {}
 
     try {
@@ -460,7 +480,48 @@ export const RedAlertLiveManager: any = ({
     };
 
     window.addEventListener('sahaya_red_alert_received', handleCustomRedAlert);
-
+    window.addEventListener('sahaya_red_alert_received', handleCustomRedAlert);
+    let bgWorker: any = null;
+    try {
+      const navAny = navigator as any;
+      if (navAny.locks && typeof navAny.locks.request === 'function') {
+        navAny.locks.request('sahaya_24_7_red_alert_watcher_lock', () => new Promise(() => {})).catch(() => {});
+      }
+    } catch {}
+    const handleUserGestureUnlock = () => {
+      try {
+        unlockAudio();
+        activateBackgroundWakeLock().catch(() => {});
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+      } catch {}
+    };
+    window.addEventListener('click', handleUserGestureUnlock, { passive: true });
+    window.addEventListener('touchstart', handleUserGestureUnlock, { passive: true });
+    try {
+      const workerBlob = new Blob(
+        ['setInterval(function(){ postMessage("tick"); }, 3500);'],
+        { type: 'application/javascript' }
+      );
+      bgWorker = new Worker(URL.createObjectURL(workerBlob));
+      bgWorker.onmessage = () => {
+        const currentId = prevAlertIdRef.current;
+        if (!currentId) return;
+        try {
+          const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+          const generalDismissed = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+          const myCreated = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+          const isStopped =
+            (Array.isArray(stoppedSirens) && stoppedSirens.includes(currentId)) ||
+            (Array.isArray(generalDismissed) && generalDismissed.includes(currentId)) ||
+            (Array.isArray(myCreated) && myCreated.includes(currentId));
+          if (!isStopped) {
+            startEmergencySiren();
+          }
+        } catch {}
+      };
+    } catch {}
     const unsubscribe = subscribeToRedAlerts((alerts) => {
 
       const alertList = alerts || [];
@@ -564,21 +625,16 @@ export const RedAlertLiveManager: any = ({
         return;
 
       }
-
-      if (isBrandNewAlert) {
-
+      if (isBrandNewAlert || !isSirenAlreadyStopped) {
         setIsDismissed(false);
-
-        triggerWakeScreenAndNotification(currentActive, distKm, within15Km);
-
+        if (isBrandNewAlert) {
+          triggerWakeScreenAndNotification(currentActive, distKm, within15Km);
+        }
         if (within15Km) {
-
           setShowEmergencyModal(true);
-
           if (!isSirenAlreadyStopped) {
-
             setIsSirenActive(true);
-
+            setEmergencySirenLock(true);
             startEmergencySiren();
 
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
