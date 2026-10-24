@@ -135,13 +135,25 @@ export async function deleteStorageFilesByUrls(urls: string[]): Promise<void> {
 // 👤 USERS CRUD & SYNC
 // ==============================================================
 
-export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
+export async function getUserFromFirestore(userIdOrInput: string) {
   try {
     if (!userIdOrInput) return null;
-    const docRef = doc(db, USERS_COLLECTION, userIdOrInput);
+    const cleanInput = String(userIdOrInput).trim();
+    const docRef = doc(db, USERS_COLLECTION, cleanInput);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       return { id: snap.id, ...snap.data() };
+    }
+    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
+    const allSnap = await getDocs(collection(db, USERS_COLLECTION));
+    for (const d of allSnap.docs) {
+      const data: any = d.data();
+      const dNic = String(data.nic ? data.nic : data.nicNumber ? data.nicNumber : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dUserId = String(data.userId ? data.userId : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dPhone = String(data.whatsappPhone ? data.whatsappPhone : data.phone ? data.phone : '').trim();
+      if (dNic === upperInput) return { id: d.id, ...data };
+      if (dUserId === upperInput) return { id: d.id, ...data };
+      if (cleanInput.length >= 9 && dPhone === cleanInput) return { id: d.id, ...data };
     }
     return null;
   } catch (err) {
@@ -150,10 +162,20 @@ export async function getUserFromFirestore(userIdOrInput: string): Promise<any |
   }
 }
 
-export async function saveUserToFirestore(user: any): Promise<void> {
+export async function saveUserToFirestore(user: any) {
   try {
-    const docRef = doc(db, USERS_COLLECTION, user.id);
-    await setDoc(docRef, sanitizeForFirestore(user), { merge: true });
+    const docId = user && user.id ? String(user.id) : user && user.userId ? String(user.userId) : `usr_${Date.now()}`;
+    const payload: any = { ...user, id: docId };
+    if (
+      payload.idCardPhotoUrl &&
+      payload.nicFrontPhotoUrl &&
+      payload.idCardPhotoUrl === payload.nicFrontPhotoUrl &&
+      String(payload.idCardPhotoUrl).length >= 80000
+    ) {
+      payload.idCardPhotoUrl = '';
+    }
+    const docRef = doc(db, USERS_COLLECTION, docId);
+    await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, USERS_COLLECTION);
   }
