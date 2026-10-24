@@ -134,9 +134,8 @@ export const RedAlertCreateModal: any = ({
 
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const [activeUser, setActiveUser] = useState((currentUser || null) as User | null);
+  const [activeUser, setActiveUser] = useState((currentUser || null) as any);
 
-|---|---|
 
   useEffect(() => {
 
