@@ -1,506 +1,990 @@
-// Emergency Siren Audio Engine for Sahaya Sewa Red Alert System
-// Exclusively configured for: mixkit-manual-siren-fire-alert-1652.wav
-// Bulletproof multi-engine architecture (Web Audio API Buffer + HTML5 Audio Element fallback)
-// Prevents autoplay blocking, cascading aborts, and premature cancellations.
-
 const SIREN_WAV_FILENAME = 'mixkit-manual-siren-fire-alert-1652.wav';
+
 const SIREN_MP3_FILENAME = 'mixkit-manual-siren-fire-alert-1652.mp3';
 
 let isSirenActive = false;
-let htmlAudioElement: HTMLAudioElement | null = null;
-let audioContext: AudioContext | null = null;
-let audioBuffer: AudioBuffer | null = null;
-let activeSourceNode: AudioBufferSourceNode | null = null;
-let activeGainNode: GainNode | null = null;
+
+let htmlAudioElement: any = null;
+
+let audioContext: any = null;
+
+let audioBuffer: any = null;
+
+let activeSourceNode: any = null;
+
+let activeGainNode: any = null;
+
+let synthOscillator: any = null;
+
+let synthGainNode: any = null;
+
+let synthInterval: any = null;
+
+let keepAliveOscillator: any = null;
+
+let keepAliveGain: any = null;
+
 let isPreloading = false;
+
 let isWebAudioPlaying = false;
+
 let vibrationInterval: any = null;
+
 let wakeLockSentinel: any = null;
 
+let webLockHeld = false;
+
 let cachedVolume: number = 1.0;
+
 let cachedIsMuted: boolean = false;
 
-type SirenChangeListener = () => void;
-const listeners = new Set<SirenChangeListener>();
+const listeners = new Set();
 
-export function subscribeToLocalSirenChanges(cb: SirenChangeListener): () => void {
+export function subscribeToLocalSirenChanges(cb: any) {
+
   listeners.add(cb);
+
   return () => {
+
     listeners.delete(cb);
+
   };
+
 }
 
 function notifyLocalChanges() {
-  listeners.forEach((cb) => {
+
+  listeners.forEach((cb: any) => {
+
     try { cb(); } catch {}
+
   });
+
   if (typeof window !== 'undefined') {
+
     window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed'));
+
   }
+
 }
 
 export function getSirenVolume(): number {
+
   if (typeof window !== 'undefined') {
+
     const saved = localStorage.getItem('sahaya_siren_volume');
+
     if (saved !== null) {
+
       const parsed = parseFloat(saved);
-      if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+
+      if (!isNaN(parsed) && Math.max(0, Math.min(1, parsed)) === parsed) {
+
         cachedVolume = parsed;
+
         return parsed;
+
       }
+
     }
+
   }
+
   return cachedVolume;
+
 }
 
 export function setSirenVolume(vol: number): void {
+
   const clamped = Math.max(0, Math.min(1, vol));
+
   cachedVolume = clamped;
+
   try {
+
     if (typeof window !== 'undefined') {
+
       localStorage.setItem('sahaya_siren_volume', clamped.toString());
+
     }
+
   } catch {}
 
   applyLiveVolume();
+
   notifyLocalChanges();
+
 }
 
 export function isDeviceSirenMuted(): boolean {
+
   if (typeof window !== 'undefined') {
+
     const saved = localStorage.getItem('sahaya_siren_device_muted');
+
     if (saved !== null) {
+
       cachedIsMuted = saved === 'true';
+
       return cachedIsMuted;
+
     }
+
   }
+
   return cachedIsMuted;
+
 }
 
 export function setDeviceSirenMuted(muted: boolean): void {
+
   cachedIsMuted = muted;
+
   try {
+
     if (typeof window !== 'undefined') {
+
       localStorage.setItem('sahaya_siren_device_muted', muted ? 'true' : 'false');
+
     }
+
   } catch {}
 
   applyLiveVolume();
+
   notifyLocalChanges();
+
 }
 
 function applyLiveVolume(): void {
+
   const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
+
   if (htmlAudioElement) {
+
     try {
+
       htmlAudioElement.volume = effectiveVolume;
+
     } catch {}
+
   }
+
   if (activeGainNode && audioContext) {
+
     try {
+
       activeGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
+
     } catch {}
+
   }
+
+  if (synthGainNode && audioContext) {
+
+    try {
+
+      synthGainNode.gain.setValueAtTime(effectiveVolume * 0.65, audioContext.currentTime);
+
+    } catch {}
+
+  }
+
 }
 
 function getCandidateUrls(): string[] {
+
   if (typeof window === 'undefined') return [`/${SIREN_WAV_FILENAME}`];
+
   const origin = window.location.origin || '';
+
   const pathname = (window.location.pathname || '/').replace(/\/[^/]*$/, '');
-  
+
   return [
+
     `/${SIREN_WAV_FILENAME}`,
+
     `./${SIREN_WAV_FILENAME}`,
+
     SIREN_WAV_FILENAME,
+
     `${origin}/${SIREN_WAV_FILENAME}`,
+
     `${pathname}/${SIREN_WAV_FILENAME}`.replace(/\/\//g, '/'),
-    // MP3 fallback candidates if WAV decoding is restricted by device/webview
+
     `/${SIREN_MP3_FILENAME}`,
+
     `./${SIREN_MP3_FILENAME}`,
+
     SIREN_MP3_FILENAME
+
   ];
+
 }
 
 export function getCustomSirenAudio(): string {
+
   return `/${SIREN_WAV_FILENAME}`;
+
 }
 
 export function getSirenFileName(): string {
+
   return SIREN_WAV_FILENAME;
+
 }
 
-export async function persistSirenSettings(_audioUrl?: string | null, _fileName?: string, ..._rest: any[]): Promise<void> {
+export async function persistSirenSettings(_audioUrl?: any, _fileName?: any, ..._rest: any[]) {
+
   notifyLocalChanges();
+
 }
 
-export function setCustomSirenAudio(_audioUrl?: string, ..._rest: any[]): void {
+export function setCustomSirenAudio(_audioUrl?: any, ..._rest: any[]): void {
+
   notifyLocalChanges();
+
 }
 
-function getOrCreateAudioContext(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
+function acquirePersistentWebLock() {
+
+  if (webLockHeld || typeof navigator === 'undefined') return;
+
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioContextClass && !audioContext) {
-      audioContext = new AudioContextClass();
+
+    const navAny = navigator as any;
+
+    if (navAny.locks && typeof navAny.locks.request === 'function') {
+
+      webLockHeld = true;
+
+      navAny.locks.request('sahaya_24_7_red_alert_audio_lock', () => new Promise(() => {})).catch(() => {
+
+        webLockHeld = false;
+
+      });
+
     }
-    if (audioContext && audioContext.state === 'suspended') {
-      audioContext.resume().catch(() => {});
-    }
+
   } catch {}
-  return audioContext;
+
 }
 
-function getAudioElement(): HTMLAudioElement | null {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
-  if (!htmlAudioElement) {
-    htmlAudioElement = document.getElementById('sahaya-siren-audio-player') as HTMLAudioElement;
-    if (!htmlAudioElement) {
-      htmlAudioElement = document.createElement('audio');
-      htmlAudioElement.id = 'sahaya-siren-audio-player';
-      htmlAudioElement.preload = 'auto';
-      htmlAudioElement.loop = true;
-      htmlAudioElement.playsInline = true;
-      (htmlAudioElement as any).webkitPlaysInline = true;
-      htmlAudioElement.src = `/${SIREN_WAV_FILENAME}`;
-      document.body.appendChild(htmlAudioElement);
+function getOrCreateAudioContext(): any {
+
+  if (typeof window === 'undefined') return null;
+
+  try {
+
+    const winAny = window as any;
+
+    const AudioContextClass = winAny.AudioContext || winAny.webkitAudioContext;
+
+    if (AudioContextClass && !audioContext) {
+
+      audioContext = new AudioContextClass();
+
     }
-  }
-  return htmlAudioElement;
+
+    if (audioContext && audioContext.state === 'suspended') {
+
+      audioContext.resume().catch(() => {});
+
+    }
+
+  } catch {}
+
+  return audioContext;
+
 }
 
-// 🔓 Preload mixkit-manual-siren-fire-alert-1652 into RAM buffer
-export async function preloadSirenBuffer(): Promise<void> {
+function startSubAudibleKeepAlive() {
+
+  try {
+
+    const ctx = getOrCreateAudioContext();
+
+    if (!ctx || keepAliveOscillator) return;
+
+    keepAliveOscillator = ctx.createOscillator();
+
+    keepAliveGain = ctx.createGain();
+
+    keepAliveOscillator.type = 'sine';
+
+    keepAliveOscillator.frequency.setValueAtTime(20, ctx.currentTime);
+
+    keepAliveGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+
+    keepAliveOscillator.connect(keepAliveGain);
+
+    keepAliveGain.connect(ctx.destination);
+
+    keepAliveOscillator.start(0);
+
+  } catch {}
+
+}
+
+function getAudioElement(): any {
+
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+  if (!htmlAudioElement) {
+
+    htmlAudioElement = document.getElementById('sahaya-siren-audio-player');
+
+    if (!htmlAudioElement) {
+
+      htmlAudioElement = document.createElement('audio');
+
+      htmlAudioElement.id = 'sahaya-siren-audio-player';
+
+      htmlAudioElement.preload = 'auto';
+
+      htmlAudioElement.loop = true;
+
+      htmlAudioElement.playsInline = true;
+
+      htmlAudioElement.webkitPlaysInline = true;
+
+      htmlAudioElement.src = `/${SIREN_WAV_FILENAME}`;
+
+      document.body.appendChild(htmlAudioElement);
+
+    }
+
+  }
+
+  return htmlAudioElement;
+
+}
+
+export async function preloadSirenBuffer() {
+
   if (typeof window === 'undefined') return;
+
   if (audioBuffer) return;
+
   if (isPreloading) return;
+
   isPreloading = true;
 
   try {
+
     const ctx = getOrCreateAudioContext();
+
     if (!ctx) return;
 
     const urls = getCandidateUrls();
-    let arrayBuf: ArrayBuffer | null = null;
+
+    let arrayBuf: any = null;
 
     for (const url of urls) {
+
       try {
+
         const res = await fetch(url);
+
         if (res.ok) {
+
           arrayBuf = await res.arrayBuffer();
-          console.log('✅ Fetched siren audio file from:', url);
+
           break;
+
         }
+
       } catch {}
+
     }
 
     if (arrayBuf && ctx) {
-      audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+
+      audioBuffer = await new Promise((resolve, reject) => {
+
         ctx.decodeAudioData(
-          arrayBuf!,
-          (decoded) => resolve(decoded),
-          (err) => reject(err)
+
+          arrayBuf,
+
+          (decoded: any) => resolve(decoded),
+
+          (err: any) => reject(err)
+
         );
+
       });
-      console.log('✅ Siren WAV Buffer successfully decoded into Web Audio RAM');
-      
-      // If siren was requested while preloading, start buffer playback now
+
       if (isSirenActive && !isWebAudioPlaying) {
+
         startWebAudioPlayback();
+
       }
+
     }
+
   } catch (err) {
+
     console.warn('Siren buffer preload note:', err);
+
   } finally {
+
     isPreloading = false;
+
   }
+
 }
 
-// 🔓 Mobile Audio Engine Hardware Unlock (User Gesture: Touch / Keypad / Click)
 export function unlockAudio(): boolean {
+
   if (typeof window === 'undefined') return false;
+
   try {
+
+    acquirePersistentWebLock();
+
     const ctx = getOrCreateAudioContext();
+
     if (ctx) {
+
       if (ctx.state === 'suspended') {
+
         ctx.resume().catch(() => {});
+
       }
-      // Play a sub-audible 1-millisecond tone to prime the device's hardware audio bus
-      try {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0.0001;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(0);
-        osc.stop(ctx.currentTime + 0.02);
-      } catch {}
+
+      startSubAudibleKeepAlive();
+
     }
 
     const audio = getAudioElement();
+
     if (audio) {
+
       audio.load();
+
     }
 
     preloadSirenBuffer().catch(() => {});
+
   } catch {}
+
   return true;
+
 }
 
-// 📳 Continuous Emergency Vibration
-function startContinuousVibration() {
-  stopContinuousVibration();
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    try {
-      navigator.vibrate([1000, 200, 1000, 200, 1500]);
-      vibrationInterval = setInterval(() => {
-        if (!isSirenActive) {
-          stopContinuousVibration();
-          return;
-        }
-        try {
-          if (navigator.vibrate) {
-            navigator.vibrate([1000, 200, 1000, 200, 1500]);
-          }
-        } catch {}
-      }, 2500);
-    } catch {}
+function startSynthEmergencyBackup() {
+
+  stopSynthEmergencyBackup();
+
+  try {
+
+    const ctx = getOrCreateAudioContext();
+
+    if (!ctx || !isSirenActive) return;
+
+    const effectiveVolume = isDeviceSirenMuted() ? 0 : (getSirenVolume() || 1.0);
+
+    synthOscillator = ctx.createOscillator();
+
+    synthGainNode = ctx.createGain();
+
+    synthOscillator.type = 'sawtooth';
+
+    synthOscillator.frequency.setValueAtTime(880, ctx.currentTime);
+
+    synthGainNode.gain.setValueAtTime(effectiveVolume * 0.65, ctx.currentTime);
+
+    synthOscillator.connect(synthGainNode);
+
+    synthGainNode.connect(ctx.destination);
+
+    synthOscillator.start(0);
+
+    let highTone = false;
+
+    synthInterval = setInterval(() => {
+
+      if (!isSirenActive || !synthOscillator || !audioContext) {
+
+        stopSynthEmergencyBackup();
+
+        return;
+
+      }
+
+      try {
+
+        const now = audioContext.currentTime;
+
+        const targetFreq = highTone ? 1320 : 860;
+
+        synthOscillator.frequency.linearRampToValueAtTime(targetFreq, now + 0.35);
+
+        highTone = !highTone;
+
+      } catch {}
+
+    }, 400);
+
+  } catch {}
+
+}
+
+function stopSynthEmergencyBackup() {
+
+  if (synthInterval) {
+
+    clearInterval(synthInterval);
+
+    synthInterval = null;
+
   }
+
+  if (synthOscillator) {
+
+    try { synthOscillator.stop(); } catch {}
+
+    try { synthOscillator.disconnect(); } catch {}
+
+    synthOscillator = null;
+
+  }
+
+  if (synthGainNode) {
+
+    try { synthGainNode.disconnect(); } catch {}
+
+    synthGainNode = null;
+
+  }
+
+}
+
+function startContinuousVibration() {
+
+  stopContinuousVibration();
+
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+
+    try {
+
+      navigator.vibrate([1000, 200, 1000, 200, 1500, 200, 2000]);
+
+      vibrationInterval = setInterval(() => {
+
+        if (!isSirenActive) {
+
+          stopContinuousVibration();
+
+          return;
+
+        }
+
+        try {
+
+          if (navigator.vibrate) {
+
+            navigator.vibrate([1000, 200, 1000, 200, 1500, 200, 2000]);
+
+          }
+
+        } catch {}
+
+      }, 2800);
+
+    } catch {}
+
+  }
+
 }
 
 function stopContinuousVibration() {
+
   if (vibrationInterval) {
+
     clearInterval(vibrationInterval);
+
     vibrationInterval = null;
+
   }
+
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
+
     try { navigator.vibrate(0); } catch {}
+
   }
+
 }
 
-// 📱 Keep Display & CPU active via WakeLock and MediaSession API
 async function acquireScreenWakeLock() {
+
   try {
+
     if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+
       wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+
     }
+
   } catch {}
 
   try {
+
     if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new (window as any).MediaMetadata({
-        title: '🚨 රතු එළිය - හදිසි ආපදා සයිරන් අනතුරු ඇඟවීම',
-        artist: 'සහය සේවා (Sahaya Sewa Emergency Siren)',
-        album: 'mixkit-manual-siren-fire-alert-1652',
-        artwork: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
-        ]
-      });
+
+      const winAny = window as any;
+
+      if (winAny.MediaMetadata) {
+
+        navigator.mediaSession.metadata = new winAny.MediaMetadata({
+
+          title: '🚨 රතු එළිය - හදිසි ආපදා සයිරන් අනතුරු ඇඟවීම',
+
+          artist: 'සහය සේවා (Sahaya Sewa Emergency Siren)',
+
+          album: '15km Emergency Alert',
+
+          artwork: [
+
+            { src: '/logo.jpg', sizes: '192x192', type: 'image/jpeg' }
+
+          ]
+
+        });
+
+      }
+
       navigator.mediaSession.playbackState = 'playing';
-      navigator.mediaSession.setActionHandler('pause', () => stopEmergencySiren());
-      navigator.mediaSession.setActionHandler('stop', () => stopEmergencySiren());
+
+      navigator.mediaSession.setActionHandler('pause', () => stopEmergencySiren(true));
+
+      navigator.mediaSession.setActionHandler('stop', () => stopEmergencySiren(true));
+
     }
+
   } catch {}
+
 }
 
 function releaseScreenWakeLock() {
+
   try {
+
     if (wakeLockSentinel) {
+
       wakeLockSentinel.release().catch(() => {});
+
       wakeLockSentinel = null;
+
     }
+
   } catch {}
 
   try {
+
     if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+
       navigator.mediaSession.playbackState = 'paused';
+
     }
+
   } catch {}
+
 }
 
-export function initSirenSettings(): () => void {
+export function initSirenSettings() {
+
   if (typeof window !== 'undefined') {
+
+    acquirePersistentWebLock();
+
     const unlocker = () => {
+
       unlockAudio();
+
     };
 
     window.addEventListener('click', unlocker, { passive: true });
+
     window.addEventListener('touchstart', unlocker, { passive: true });
+
     window.addEventListener('pointerdown', unlocker, { passive: true });
+
     window.addEventListener('keydown', unlocker, { passive: true });
 
+    document.addEventListener('visibilitychange', () => {
+
+      const ctx = getOrCreateAudioContext();
+
+      if (ctx && ctx.state === 'suspended') {
+
+        ctx.resume().catch(() => {});
+
+      }
+
+    });
+
     setTimeout(() => {
+
       preloadSirenBuffer().catch(() => {});
+
     }, 200);
+
   }
+
   return () => {};
+
 }
 
-// Helper: Play Web Audio buffer safely
 function startWebAudioPlayback() {
+
   const ctx = getOrCreateAudioContext();
+
   if (!ctx || !audioBuffer || !isSirenActive) return;
 
   try {
+
     if (activeSourceNode) {
+
       try { activeSourceNode.stop(); } catch {}
+
       try { activeSourceNode.disconnect(); } catch {}
+
       activeSourceNode = null;
+
     }
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
+
     activeSourceNode = ctx.createBufferSource();
+
     activeSourceNode.buffer = audioBuffer;
+
     activeSourceNode.loop = true;
 
     if (!activeGainNode) {
+
       activeGainNode = ctx.createGain();
+
       activeGainNode.connect(ctx.destination);
+
     }
+
     activeGainNode.gain.setValueAtTime(effectiveVolume, ctx.currentTime);
+
     activeSourceNode.connect(activeGainNode);
+
     activeSourceNode.start(0);
+
     isWebAudioPlaying = true;
-    console.log('🚨 Web Audio playing siren buffer (loop=true)');
+
+    stopSynthEmergencyBackup();
+
   } catch (err) {
+
     console.warn('Web Audio buffer playback note:', err);
+
   }
+
 }
 
-/**
- * 🚨 ප්‍රධාන සයිරන් ක්‍රියාත්මක කිරීම
- * Exclusively plays 'mixkit-manual-siren-fire-alert-1652.wav' in a continuous loop.
- */
-export function startEmergencySiren(): () => void {
+export function startEmergencySiren() {
+
   try {
-    // If siren is already actively playing, just ensure volume and return
+
     if (isSirenActive && (isWebAudioPlaying || (htmlAudioElement && !htmlAudioElement.paused))) {
+
       applyLiveVolume();
+
       return stopEmergencySiren;
+
     }
 
     isSirenActive = true;
+
+    acquirePersistentWebLock();
+
     acquireScreenWakeLock();
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : (getSirenVolume() || 1.0);
+
     const ctx = getOrCreateAudioContext();
 
-    console.log('🚨 Playing Emergency Siren: mixkit-manual-siren-fire-alert-1652.wav at volume:', effectiveVolume);
-
-    // 1. Web Audio API Engine (Zero-latency instant audio)
     if (ctx) {
+
       if (ctx.state === 'suspended') {
+
         ctx.resume().then(() => {
+
           if (isSirenActive) {
-            startWebAudioPlayback();
+
+            if (audioBuffer) startWebAudioPlayback();
+
+            else startSynthEmergencyBackup();
+
           }
+
         }).catch(() => {});
+
       } else {
-        startWebAudioPlayback();
+
+        if (audioBuffer) startWebAudioPlayback();
+
+        else startSynthEmergencyBackup();
+
       }
+
     }
 
-    // 2. HTML5 Audio Element Fallback / Dual Engine
     const audio = getAudioElement();
+
     if (audio) {
+
       audio.volume = effectiveVolume;
+
       audio.loop = true;
 
-      // Only attempt HTML Audio play if Web Audio hasn't already started
       if (!isWebAudioPlaying || audio.paused) {
+
         const playPromise = audio.play();
+
         if (playPromise !== undefined) {
-          playPromise.then(() => {
-            console.log('✅ HTML Audio playing siren element successfully');
-          }).catch((err) => {
-            console.warn('HTML Audio play note:', err);
-            // If the primary source failed, try relative/fallback path
-            if (isSirenActive && audio.paused) {
+
+          playPromise.catch(() => {
+
+            if (isSirenActive) {
+
+              startSynthEmergencyBackup();
+
               const fallbackUrl = `./${SIREN_WAV_FILENAME}`;
+
               if (audio.src !== fallbackUrl) {
+
                 audio.src = fallbackUrl;
+
                 audio.play().catch(() => {});
+
               }
+
             }
+
           });
+
         }
+
       }
+
     }
 
-    // 3. If audioBuffer wasn't preloaded, initiate preload immediately
     if (!audioBuffer) {
+
       preloadSirenBuffer().catch(() => {});
+
     }
 
-    // 4. Continuous Emergency Vibration
     startContinuousVibration();
 
   } catch (err) {
+
     console.error('Failed to start emergency siren:', err);
+
   }
 
   return stopEmergencySiren;
+
 }
 
 let isEmergencyLocked = false;
 
 export function setEmergencySirenLock(locked: boolean): void {
+
   isEmergencyLocked = locked;
+
 }
 
 export function stopEmergencySiren(force: boolean = false): void {
+
   try {
+
     if (isEmergencyLocked && !force) {
-      console.log('🛡️ Emergency Siren is locked active during critical disaster event. Ignoring non-forced stop.');
+
       return;
+
     }
+
     isEmergencyLocked = false;
+
     isSirenActive = false;
+
     isWebAudioPlaying = false;
 
-    // Stop HTML Audio
     if (htmlAudioElement) {
+
       try {
+
         htmlAudioElement.pause();
+
         htmlAudioElement.currentTime = 0;
+
       } catch {}
+
     }
 
-    // Stop Web Audio Buffer
     if (activeSourceNode) {
+
       try { activeSourceNode.stop(); } catch {}
+
       try { activeSourceNode.disconnect(); } catch {}
+
       activeSourceNode = null;
-    }
-    if (activeGainNode) {
-      try { activeGainNode.disconnect(); } catch {}
-      activeGainNode = null;
+
     }
 
-    // Stop Vibration
+    if (activeGainNode) {
+
+      try { activeGainNode.disconnect(); } catch {}
+
+      activeGainNode = null;
+
+    }
+
+    stopSynthEmergencyBackup();
+
     stopContinuousVibration();
 
-    // Release Screen WakeLock & MediaSession
     releaseScreenWakeLock();
 
   } catch (err) {
+
     console.warn('Error stopping emergency siren:', err);
+
   }
+
 }
 
-export function testEmergencySiren(durationSeconds = 10): Promise<void> {
+export function testEmergencySiren(durationSeconds = 10) {
+
   return new Promise((resolve) => {
+
     startEmergencySiren();
+
     setTimeout(() => {
-      stopEmergencySiren();
-      resolve();
+
+      stopEmergencySiren(true);
+
+      resolve(undefined);
+
     }, durationSeconds * 1000);
+
   });
+
 }
 
 export function isEmergencySirenPlaying(): boolean {
+
   return isSirenActive;
+
 }
 
 export const playSirenSound = startEmergencySiren;
+
