@@ -487,18 +487,7 @@ export async function updateRedAlertStatus(id: string, status: string, reasonOrN
 }
 
 export async function deleteRedAlertInFirestore(id: string) {
-  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  const nowIso = new Date().toISOString();
-  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-  await setDoc(docRef, sanitizeForFirestore({
-    status: 'cancelled',
-    isDeleted: true,
-    cancelledReason: 'දැන්වීම ඉවත් කරන ලදී',
-    cancelledAt: nowIso,
-    deletedAt: nowIso,
-    deletedAtDisplay: nowDisplay,
-    updatedAtServer: serverTimestamp(),
-  }), { merge: true });
+  await deleteDoc(doc(db, RED_ALERTS_COLLECTION, id));
 }
 
 export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any) {
