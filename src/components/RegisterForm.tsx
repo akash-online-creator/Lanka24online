@@ -263,19 +263,19 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
   }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
 
-  // Image Compressor & Light Data URL Generator
-  const processImageFile = async (file: File): Promise<string> => {
+  // Image Compressor & Light Data URL Generator (Optimized for Firestore 1MB limit)
+  const processImageFile = async (file: File) => {
     try {
       return await compressImageFile(file, {
-        maxWidth: 1024,
-        maxHeight: 1024,
-        quality: 0.8,
-        maxSizeMB: 0.5,
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.65,
+        maxSizeMB: 0.18,
       });
     } catch {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
+        reader.onload = () => resolve(String(reader.result));
         reader.onerror = (err) => reject(err);
         reader.readAsDataURL(file);
       });
@@ -326,8 +326,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
-    // 🛡️ Strict Security Rule: One Account per NIC only
-    if (nicConflict || (users && users.some((u) => isNicConflict(u, nicInfo.cleanNic)))) {
+    // 🛡️ Strict Security Rule: One Account per NIC only (Allow rejected accounts to re-register)
+    const hasActiveDuplicate = Array.isArray(users)
+      ? users.some((u) => Boolean(u && u.status !== 'rejected' && isNicConflict(u, nicInfo.cleanNic)))
+      : false;
+    if (nicConflict ? true : hasActiveDuplicate) {
       setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් සකසා ඇත. ආරක්ෂක හේතූන් මත එක් හැඳුනුම්පත් අංකයකින් සැකසිය හැක්කේ එක් ගිණුමක් පමණි. කරුණාකර ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න.');
       window.scrollTo({ top: 150, behavior: 'smooth' });
       return;
@@ -335,13 +338,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
     // 4. Phone Number Validation
     const cleanPhone = whatsappPhone.trim();
-    if (!/^(07[0-9]{8}|01[0-9]{8}|0[0-9]{9})$/.test(cleanPhone)) {
+    const isValidPhone = /^(07[0-9]{8})$/.test(cleanPhone)
+      ? true
+      : /^(0[0-9]{9})$/.test(cleanPhone);
+    if (!isValidPhone) {
       setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකයක් ඇතුළත් කරන්න (උදා: 0771234567).');
       return;
     }
 
     // 5. Address Validation
-    if (!address.trim() || address.trim().length < 5) {
+    if (address.trim().length <= 4) {
       setErrorMessage('කරුණාකර ඔබගේ ස්ථීර ලිපිනය ඇතුළත් කරන්න.');
       return;
     }
@@ -364,50 +370,74 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const cleanNic = nicInfo.cleanNic;
 
       // Compute re-registration history and attempt counters
-      const prevAttemptCount = (isPreviousRejected as any)?.submissionCount || 1;
-      const attemptNum = isPreviousRejected ? prevAttemptCount + 1 : 1;
-      const existingHistory = (isPreviousRejected as any)?.rejectionHistory || [];
-      
+      const rawPrevCount = (isPreviousRejected as any)?.submissionCount;
+      const prevAttemptCount = rawPrevCount ? Number(rawPrevCount) : 1;
+      const rawExistingHistory = (isPreviousRejected as any)?.rejectionHistory;
+      const existingHistory = Array.isArray(rawExistingHistory) ? rawExistingHistory : [];
+
+      const prevDate = isPreviousRejected?.rejectedAt
+        ? isPreviousRejected.rejectedAt
+        : isPreviousRejected?.updatedAt
+        ? isPreviousRejected.updatedAt
+        : isPreviousRejected?.registeredAt
+        ? isPreviousRejected.registeredAt
+        : nowStr;
+      const prevReason = (isPreviousRejected as any)?.rejectionReason
+        ? (isPreviousRejected as any).rejectionReason
+        : 'පරිපාලක විසින් ප්‍රතික්ෂේප කරන ලදී.';
+      const prevPhone = isPreviousRejected?.phone
+        ? isPreviousRejected.phone
+        : isPreviousRejected?.whatsappPhone;
       const newHistoryItem = isPreviousRejected ? {
         attempt: prevAttemptCount,
-        date: isPreviousRejected.rejectedAt || isPreviousRejected.updatedAt || isPreviousRejected.registeredAt || nowStr,
-        rejectionReason: (isPreviousRejected as any).rejectionReason || 'පරිපාලක විසින් ප්‍රතික්ෂේප කරන ලදී.',
+        date: prevDate,
+        rejectionReason: prevReason,
         previousName: isPreviousRejected.name,
         previousAddress: isPreviousRejected.address,
-        previousPhone: isPreviousRejected.phone || isPreviousRejected.whatsappPhone,
-        previousPhotoUrl: isPreviousRejected.nicFrontPhotoUrl || isPreviousRejected.photoUrl,
+        previousPhone: prevPhone,
+        previousPhotoUrl: '',
       } : null;
+
+      const resolvedId = isPreviousRejected?.id ? isPreviousRejected.id : `usr_${Date.now()}`;
+      const resolvedCreatedAt = isPreviousRejected?.registeredAt ? isPreviousRejected.registeredAt : nowStr;
+      const resolvedGender = nicInfo.gender ? nicInfo.gender : 'male';
+      const resolvedCity = selectedPoliceDivision ? selectedPoliceDivision : selectedDistrict;
+      const resolvedPhoto = nicFrontPhoto ? nicFrontPhoto : '';
 
       // Primary User Profile Model
       const newUser: User = {
-        id: isPreviousRejected?.id || `usr_${Date.now()}`,
+        id: resolvedId,
         userId: cleanNic,
         nicNumber: cleanNic,
         nic: cleanNic,
         name: fullName.trim(),
         phone: cleanPhone,
         whatsappPhone: cleanPhone,
+        whatsappNumber: cleanPhone,
         address: address.trim(),
+        city: resolvedCity,
         district: selectedDistrict,
         policeDivision: selectedPoliceDivision,
-        gender: nicInfo.gender || 'male',
+        gender: resolvedGender,
         role: 'user',
-        status: 'pending', // Re-entered into pending approval
+        status: 'pending',
         credits: 50,
+        creditBalance: 50,
+        sPoints: 0,
         trustScore: 85,
         rating: 5.0,
         completedHelpCount: 0,
         registeredAt: nowStr,
-        createdAt: isPreviousRejected?.registeredAt || nowStr,
+        createdAt: resolvedCreatedAt,
         updatedAt: nowStr,
         password: key.trim(),
         key: key.trim() as any,
         temporaryPassword: '',
         isTemporaryPassword: false,
         isPasswordChanged: true,
-        photoUrl: nicFrontPhoto || '',
-        idCardPhotoUrl: nicFrontPhoto || '',
-        nicFrontPhotoUrl: nicFrontPhoto || '',
+        photoUrl: resolvedPhoto,
+        idCardPhotoUrl: '',
+        nicFrontPhotoUrl: resolvedPhoto,
         nicBackPhotoUrl: '',
         facePhotoUrl: '',
         submissionCount: attemptNum,
@@ -415,9 +445,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         isReRegistration: Boolean(isPreviousRejected),
       } as any;
 
-      const registerCallback = onRegister || onRegisterSuccess;
+      const registerCallback = onRegister ? onRegister : onRegisterSuccess;
       if (typeof registerCallback === 'function') {
-        registerCallback(newUser);
+        await registerCallback(newUser);
       } else {
         console.warn('Neither onRegister nor onRegisterSuccess was provided');
       }
