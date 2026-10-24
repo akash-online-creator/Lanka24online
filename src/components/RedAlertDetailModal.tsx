@@ -51,6 +51,7 @@ import { checkIsAdmin } from '../utils/postOwnerHelper';
 import {
 
   addCommentToRedAlert,
+  deleteRedAlertInFirestore,
 
   reportRedAlertAsFake,
 
@@ -98,6 +99,7 @@ export const RedAlertDetailModal: any = ({
 
   onAlertUpdated,
 
+  onAlertDeleted,
 }: RedAlertDetailModalProps) => {
 
   const [localComments, setLocalComments] = useState([] as RedAlertComment[]);
@@ -119,8 +121,7 @@ export const RedAlertDetailModal: any = ({
   const [actionSuccessMsg, setActionSuccessMsg] = useState(null as any);
 
   const [sirenStoppedByMe, setSirenStoppedByMe] = useState(false);
-
-  const [confirmDialog, setConfirmDialog] = useState(null as 'resolve' | 'cancel_delete' | null);
+  const [confirmDialog, setConfirmDialog] = useState(null as any);
 
   const [selectedResolveReason, setSelectedResolveReason] = useState('ආපදා තත්ත්වය සාර්ථකව පාලනය කර සාමාන්‍ය තත්ත්වයට පත් කරන ලදී.');
 
@@ -450,6 +451,26 @@ export const RedAlertDetailModal: any = ({
 
     }
 
+  };
+
+  const handleAdminPermanentDelete = async () => {
+    if (!alert?.id) return;
+    setIsSubmitting(true);
+    stopSirenForThisAlert();
+    try {
+      await deleteRedAlertInFirestore(alert.id);
+      if (onAlertDeleted) {
+        onAlertDeleted(alert.id);
+      }
+      setActionSuccessMsg('🔥 දැන්වීම සියලුම පරිශීලකයන්ට නොපෙනෙන ලෙස සදහටම (Permanently) මකා දමන ලදී!');
+      setConfirmDialog(null);
+      setTimeout(() => onClose(), 600);
+    } catch (err) {
+      console.error('Error permanently deleting alert:', err);
+      setActionSuccessMsg('⚠️ සදහටම මකා දැමීමට නොහැකි විය.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSendReporterUpdate = async (e: React.FormEvent) => {
@@ -1563,15 +1584,27 @@ export const RedAlertDetailModal: any = ({
                   h(MessageSquare, { className: 'w-4 h-4' }),
 
                   h('span', null, `අදහස් දක්වන්න (${localComments.length})`)
-
                 )
-
-              )
-
+              ),
+              isAdmin
+                ? h(
+                    'div',
+                    { className: 'pt-2 border-t border-amber-300 dark:border-amber-800/60' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: () => setConfirmDialog('admin_perm_delete'),
+                        disabled: isSubmitting,
+                        className: 'w-full py-3 px-4 rounded-xl bg-gradient-to-r from-red-700 via-rose-700 to-red-900 hover:from-red-800 hover:to-black text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg border border-red-400/50 active:scale-95 transition-all cursor-pointer'
+                      },
+                      h(Trash2, { className: 'w-4 h-4 text-yellow-300' }),
+                      h('span', null, '🔥 සදහටම මකා දමන්න (Admin Permanent Delete - හැමෝටම නොපෙනෙන ලෙස ඉවත් කරන්න)')
+                    )
+                  )
+                : null
             )
-
           : null,
-
         h(
 
           'div',
@@ -2075,15 +2108,73 @@ export const RedAlertDetailModal: any = ({
                   h('span', null, 'ඔව්, දැන්වීම ඉවත් කරන්න')
 
                 )
-
-              )
-
+              ),
+              isAdmin
+                ? h(
+                    'div',
+                    { className: 'pt-2 border-t border-rose-200 dark:border-rose-900/50' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: handleAdminPermanentDelete,
+                        disabled: isSubmitting,
+                        className: 'w-full py-2.5 px-4 rounded-xl bg-red-900 hover:bg-black text-yellow-300 font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-yellow-400/40'
+                      },
+                      isSubmitting ? h(Loader2, { className: 'w-4 h-4 animate-spin' }) : h(Trash2, { className: 'w-4 h-4' }),
+                      h('span', null, '🔥 Admin: සියලු දෙනාගෙන්ම සදහටම (Permanently) මකා දමන්න')
+                    )
+                  )
+                : null
             )
-
           )
-
         : null,
-
+      confirmDialog === 'admin_perm_delete'
+        ? h(
+            'div',
+            { className: 'absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 rounded-3xl animate-in fade-in duration-150 overflow-y-auto' },
+            h(
+              'div',
+              { className: 'w-full max-w-lg p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-950 border-2 border-red-600 text-slate-900 dark:text-white space-y-4 shadow-2xl' },
+              h(
+                'div',
+                { className: 'flex items-center gap-2.5 font-black text-sm sm:text-base text-red-600 dark:text-red-400' },
+                h(Trash2, { className: 'w-6 h-6 shrink-0' }),
+                h('span', null, '🔥 මෙම දැන්වීම සදහටම (Permanently) මකා දමන්න ද?')
+              ),
+              h(
+                'p',
+                { className: 'text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed' },
+                'මෙමගින් මෙම දැන්වීම Cloud දත්ත ගබඩාවෙන් සහ පහළ දැන්වීම් පුවරුවෙන් සියලුම පරිශීලකයන්ට නොපෙනෙන ලෙස සදහටම ඉවත් කරනු ලැබේ.'
+              ),
+              h(
+                'div',
+                { className: 'flex gap-2 pt-2' },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => setConfirmDialog(null),
+                    disabled: isSubmitting,
+                    className: 'flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer'
+                  },
+                  'අවලංගු කරන්න'
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: handleAdminPermanentDelete,
+                    disabled: isSubmitting,
+                    className: 'flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-600 to-rose-800 hover:from-red-700 hover:to-black text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95'
+                  },
+                  isSubmitting ? h(Loader2, { className: 'w-4 h-4 animate-spin' }) : h(Trash2, { className: 'w-4 h-4' }),
+                  h('span', null, '🔥 ඔව්, සදහටම මකා දමන්න')
+                )
+              )
+            )
+          )
+        : null,
       showFakeReportModal
 
         ? h(
