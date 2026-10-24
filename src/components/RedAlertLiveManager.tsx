@@ -1,26 +1,36 @@
 import React, { useEffect, useState, useRef } from 'react';
 
-import { 
+import {
 
-  X, 
+  X,
 
-  VolumeX, 
+  VolumeX,
 
-  AlertTriangle, 
+  AlertTriangle,
 
-  ShieldAlert, 
+  ShieldAlert,
 
-  CheckCircle2, 
+  CheckCircle2,
 
-  BellRing, 
+  BellRing,
 
-  MapPin, 
+  MapPin,
 
-  Clock, 
+  Clock,
 
-  Radio, 
+  Radio,
 
-  Send 
+  Send,
+
+  Phone,
+
+  Navigation,
+
+  MessageSquare,
+
+  Flag,
+
+  Trash2
 
 } from 'lucide-react';
 
@@ -32,13 +42,15 @@ import {
 
   cancelRedAlertByReporter,
 
-  addReporterUpdateToRedAlert,
+  addCommentToRedAlert,
+
+  reportRedAlertAsFake,
 
   RedAlertItem
 
 } from '../lib/firebase';
 
-import { triggerBrowserNotification } from '../utils/notificationManager';
+import { triggerBrowserNotification, activateBackgroundWakeLock } from '../utils/notificationManager';
 
 import { startEmergencySiren, stopEmergencySiren } from '../utils/sirenAudio';
 
@@ -64,7 +76,7 @@ interface Props {
 
 }
 
-export const RedAlertLiveManager: React.FC<Props> = ({
+export const RedAlertLiveManager: any = ({
 
   currentUserId: propUserId,
 
@@ -72,48 +84,43 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   currentUser,
 
-  redAlerts,
-
-  language = 'si',
-
-  activeView
-
-}) => {
+}: Props) => {
 
   const currentUserId = propUserId || currentUser?.id || currentUser?.userId || 'usr_guest';
 
+|---|---|---|---|---|
 
-  const [activeAlert, setActiveAlert] = useState<RedAlertItem | null>(null);
+  const [activeAlert, setActiveAlert] = useState(null as RedAlertItem | null);
 
-  const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [userDistanceKm, setUserDistanceKm] = useState(0);
 
-  const [isSirenActive, setIsSirenActive] = useState<boolean>(false);
+  const [isWithin15Km, setIsWithin15Km] = useState(true);
 
-  const [showEmergencyModal, setShowEmergencyModal] = useState<boolean>(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
-  const [popupMessage, setPopupMessage] = useState<string | null>(null);
+  const [isSirenActive, setIsSirenActive] = useState(false);
 
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
-  const [showUpdateBox, setShowUpdateBox] = useState<boolean>(false);
+  const [popupMessage, setPopupMessage] = useState(null as string | null);
 
-  const [updateText, setUpdateText] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 👆 Swipe Gesture States for Banner
+  const [commentText, setCommentText] = useState('');
 
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartX, setTouchStartX] = useState(null as number | null);
 
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState(null as number | null);
 
-  const [translateX, setTranslateX] = useState<number>(0);
+  const [translateX, setTranslateX] = useState(0);
 
-  const [translateY, setTranslateY] = useState<number>(0);
+  const [translateY, setTranslateY] = useState(0);
 
-  const [isSwiping, setIsSwiping] = useState<boolean>(false);
+  const [isSwiping, setIsSwiping] = useState(false);
 
-  const prevAlertRef = useRef<RedAlertItem | null>(null);
+  const prevAlertIdRef = useRef(null as string | null);
 
-  const popupTimeoutRef = useRef<any>(null);
+  const popupTimeoutRef = useRef(null as any);
 
   const triggerPopup = (msg: string) => {
 
@@ -129,11 +136,7 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   };
 
-  // 🛑 සියලුම සයිරන් ශබ්ද, කම්පන (Vibration) සහ Native Android Notifications ක්ෂණිකව නැවැත්වීම
-
-  const stopAllAlertEffects = () => {
-
-    // 1. Web HTML5 Siren Audio නැවැත්වීම
+  const stopAllAlertEffects = (alertIdToPersist?: string) => {
 
     try {
 
@@ -145,8 +148,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     }
 
-    // 2. ජංගම දුරකථන Vibration නැවැත්වීම
-
     try {
 
       if (typeof window !== 'undefined' && 'vibrate' in navigator) {
@@ -156,8 +157,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       }
 
     } catch (_) {}
-
-    // 3. Android Native / Flutter Foreground Task Service එක නවත්වන්න පණිවිඩ යැවීම
 
     try {
 
@@ -173,25 +172,49 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     setIsSirenActive(false);
 
+    const targetId = alertIdToPersist || activeAlert?.id;
+
+    if (targetId) {
+
+      try {
+
+        const stoppedList = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+
+        if (Array.isArray(stoppedList) && !stoppedList.includes(targetId)) {
+
+          stoppedList.push(targetId);
+
+          localStorage.setItem('sahaya_siren_stopped_alerts', JSON.stringify(stoppedList));
+
+        }
+
+      } catch (_) {}
+
+    }
+
   };
 
-  // 🔇 පරිශීලකයා විසින් සයිරන් නවත්වා මෙම ඩිවයිස් එකෙන් දැනුම්දීම ඉවත් කිරීම (Dismiss)
+  const handleStopSirenOnly = () => {
+
+    stopAllAlertEffects(activeAlert?.id);
+
+    triggerPopup('🔇 සයිරන් නාදය නවත්වන ලදී. ඔබට දැන් ආපදා විස්තර පරීක්ෂා කළ හැක.');
+
+  };
 
   const handleDismissByUser = () => {
 
-    stopAllAlertEffects();
+    stopAllAlertEffects(activeAlert?.id);
 
     setIsDismissed(true);
 
     setShowEmergencyModal(false);
 
-    // මෙම Alert ID එක localStorage තුළ සටහන් කර නැවත මෙම ඇලර්ට් එක සඳහා සයිරන් වාදනය වීම වළක්වන්න
-
     if (activeAlert?.id) {
 
       try {
 
-        const keys = ['sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${currentUserId}`];
+        const keys = ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${currentUserId}`];
 
         keys.forEach((storageKey) => {
 
@@ -218,8 +241,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     }
 
   };
-
-  // 📱 Touch / Swipe Handlers for Banner
 
   const handleTouchStart = (e: React.TouchEvent) => {
 
@@ -249,7 +270,9 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     if (!isSwiping) return;
 
-    if (Math.abs(translateX) > 75 || translateY < -60) {
+    const absX = Math.abs(translateX);
+
+    if (Math.max(absX, 76) === absX || Math.min(translateY, -61) === translateY) {
 
       handleDismissByUser();
 
@@ -267,21 +290,97 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   };
 
-  // 📡 Real-time Listener: ආපදා තත්ත්වයන් සහ අවලංගු කිරීම් ක්ෂණිකව හඳුනාගැනීම
+  const triggerWakeScreenAndNotification = async (alertItem: RedAlertItem, distKm: number, within15Km: boolean) => {
+
+    const alertAny = alertItem as any;
+
+    const titleSi = alertAny.disasterTitleSi || alertItem.title || 'හදිසි ආපදා අනතුරු ඇඟවීමක්';
+
+    const locName = alertItem.locationName || 'ශ්‍රී ලංකාව';
+
+    try {
+
+      await activateBackgroundWakeLock();
+
+    } catch (_) {}
+
+    try {
+
+      if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+
+        const nativePayload = JSON.stringify({
+
+          alertId: alertItem.id,
+
+          title: `🚨 රතු එළිය: ${titleSi}`,
+
+          location: locName,
+
+          description: alertItem.description || '',
+
+          distanceKm: distKm.toFixed(1),
+
+          within15Km,
+
+          forceWakeScreen: true,
+
+          playSiren: within15Km,
+
+        });
+
+        (window as any).SahayaNativeAlertChannel.postMessage('WAKE_SCREEN_AND_SHOW_NOTIFICATION:' + nativePayload);
+
+        (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + nativePayload);
+
+      }
+
+    } catch (_) {}
+
+    try {
+
+      await triggerBrowserNotification({
+
+        id: `red-alert-${alertItem.id}`,
+
+        type: 'emergency_blood',
+
+        title: `🚨 හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය): ${titleSi}`,
+
+        message: `${locName} ප්‍රදේශයෙන් වාර්තා වී ඇත (ඔබට දුර: කි.මී. ${distKm.toFixed(1)}). විස්තර බැලීමට සහ සයිරන් නැවැත්වීමට මෙය ක්ලික් කරන්න.`,
+
+        timestamp: new Date().toISOString(),
+
+        isRead: false,
+
+        locationName: locName,
+
+        badgeText: '15KM RED ALERT',
+
+        targetPostId: alertItem.id,
+
+        targetModal: 'red_alert',
+
+      });
+
+    } catch (_) {}
+
+  };
 
   useEffect(() => {
 
     let pushListenerHandle: any = null;
 
+    let actionListenerHandle: any = null;
+
     const getUserCoordinates = (): { lat: number; lng: number; isFallback?: boolean } => {
 
       try {
 
-        const nativeLoc = (window as any).sahayaNativeLocation;
+        const nativeGps = (window as any).__sahaya_native_gps || (window as any).sahayaNativeLocation;
 
-        if (nativeLoc && typeof nativeLoc.lat === 'number' && typeof nativeLoc.lng === 'number') {
+        if (nativeGps && typeof nativeGps.lat === 'number' && typeof nativeGps.lng === 'number' && nativeGps.lat !== 0) {
 
-          return { lat: nativeLoc.lat, lng: nativeLoc.lng };
+          return { lat: nativeGps.lat, lng: nativeGps.lng };
 
         }
 
@@ -305,8 +404,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     };
 
-    // FCM / Push notification listener
-
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
 
       const disasterName = notification.data?.disasterType || notification.title || 'Red Alert';
@@ -314,10 +411,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
       triggerPopup(`🚨 RED ALERT: ${disasterName}!`);
 
       setShowEmergencyModal(true);
-
-      startEmergencySiren();
-
-      setIsSirenActive(true);
 
     })
 
@@ -327,23 +420,41 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
       })
 
-      .catch((err) => {
+      .catch(() => {});
 
-        console.warn('Push Notifications listener registration failed:', err);
+    PushNotifications.addListener('pushNotificationActionPerformed', () => {
 
-      });
+      setShowEmergencyModal(true);
 
-    // Custom Event listener for in-app broadcast
+    })
 
-    const handleCustomRedAlert = (e: any) => {
+      .then((handle) => {
 
-      const payload = e.detail;
+        actionListenerHandle = handle;
 
-      if (payload) {
+      })
+
+      .catch(() => {});
+
+    const handleNotificationClick = (e: any) => {
+
+      const detail = e?.detail;
+
+      if (!detail || detail.targetModal === 'red_alert' || String(detail.id || '').includes('red-alert')) {
 
         setShowEmergencyModal(true);
 
-        setIsSirenActive(true);
+      }
+
+    };
+
+    window.addEventListener('sahaya_notification_clicked', handleNotificationClick);
+
+    const handleCustomRedAlert = (e: any) => {
+
+      if (e?.detail) {
+
+        setShowEmergencyModal(true);
 
       }
 
@@ -351,23 +462,23 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     window.addEventListener('sahaya_red_alert_received', handleCustomRedAlert);
 
-    // 🔄 Firestore red_alerts Live Subscription
-
     const unsubscribe = subscribeToRedAlerts((alerts) => {
 
       const alertList = alerts || [];
 
-      const activeAlerts = alertList.filter((a) => a && a.status === 'active');
+      const activeAlerts = alertList
+
+        .filter((a) => a && a.status === 'active' && !a.isFlaggedFake && Math.min((a.fakeReports?.length || a.fakeReportsCount || 0), 3) === (a.fakeReports?.length || a.fakeReportsCount || 0))
+
+        .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
 
       const currentActive = activeAlerts[0] || null;
 
-      const prevAlert = prevAlertRef.current;
-
-      // 🛑 1. කිසිදු සක්‍රීය ආපදාවක් නොමැති විට හෝ ආපදාව විසඳූ/අවලංගු කළ විට සියලුම සයිරන් සහ Dialog ක්ෂණිකව නවත්වන්න
+      const prevAlertId = prevAlertIdRef.current;
 
       if (!currentActive) {
 
-        if (prevAlert || isSirenActive || showEmergencyModal) {
+        if (prevAlertId || isSirenActive || showEmergencyModal) {
 
           stopAllAlertEffects();
 
@@ -375,25 +486,23 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
           setIsDismissed(false);
 
-          triggerPopup('✅ හදිසි ආපදා තත්ත්වය විසඳා හෝ අවලංගු කර ඇත.');
-
         }
 
         setActiveAlert(null);
 
-        prevAlertRef.current = null;
+        prevAlertIdRef.current = null;
 
         return;
 
       }
 
-      // 🚨 2. සක්‍රීය ආපදාවක් පවතින විට
-
-      const isBrandNewAlert = !prevAlert || currentActive.id !== prevAlert.id;
-
-      // මෙම ඩිවයිස් එකේ මෙම ඇලර්ට් එක කලින් dismiss කර ඇත්දැයි බැලීම
+      const isBrandNewAlert = !prevAlertId || currentActive.id !== prevAlertId;
 
       let isDismissedStored = false;
+
+      let isSirenAlreadyStopped = false;
+
+      let isMyCreatedAlert = false;
 
       try {
 
@@ -401,29 +510,49 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
         const userSpecific = JSON.parse(localStorage.getItem(`sahaya_dismissed_alerts_${currentUserId}`) || '[]');
 
+        const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+
+        const myCreated = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+
         isDismissedStored =
 
           (Array.isArray(general) && general.includes(currentActive.id)) ||
 
           (Array.isArray(userSpecific) && userSpecific.includes(currentActive.id));
 
+        isSirenAlreadyStopped = Array.isArray(stoppedSirens) && stoppedSirens.includes(currentActive.id);
+
+        isMyCreatedAlert = Array.isArray(myCreated) && myCreated.includes(currentActive.id);
+
       } catch {}
 
       const userCoords = getUserCoordinates();
 
-      const alertLat = typeof currentActive.latitude === 'number' ? currentActive.latitude : 7.151;
+      const alertAny = currentActive as any;
 
-      const alertLng = typeof currentActive.longitude === 'number' ? currentActive.longitude : 79.885;
+      const alertLat = typeof alertAny.latitude === 'number' ? alertAny.latitude : (typeof currentActive.lat === 'number' ? currentActive.lat : 7.151);
 
-      const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+      const alertLng = typeof alertAny.longitude === 'number' ? alertAny.longitude : (typeof currentActive.lng === 'number' ? currentActive.lng : 79.885);
 
-      const isReporter = Boolean(currentActive.reportedByUserId && currentActive.reportedByUserId === currentUserId);
+      const distKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
 
-      const isWithinRange = distanceKm <= 50.0 || userCoords.isFallback || isReporter;
+      const isReporter = Boolean(isMyCreatedAlert || (currentActive.reportedByUserId && currentActive.reportedByUserId === currentUserId));
+
+      const within15Km = Boolean(Math.min(distKm, 15.0) === distKm || userCoords.isFallback);
+
+      setUserDistanceKm(distKm);
+
+      setIsWithin15Km(within15Km);
 
       setActiveAlert(currentActive);
 
-      prevAlertRef.current = currentActive;
+      prevAlertIdRef.current = currentActive.id;
+
+      if (isReporter) {
+
+        return;
+
+      }
 
       if (isDismissedStored) {
 
@@ -437,51 +566,37 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
       }
 
-      // අලුත් ආපදාවක් නම් සහ dismiss කර නැත්නම් -> සයිරන් පණගන්වා Prominent Modal එක පෙන්වන්න
-
-      if (isBrandNewAlert && isWithinRange) {
+      if (isBrandNewAlert) {
 
         setIsDismissed(false);
 
-        setShowEmergencyModal(true);
+        triggerWakeScreenAndNotification(currentActive, distKm, within15Km);
 
-        setIsSirenActive(true);
+        if (within15Km) {
 
-        startEmergencySiren();
+          setShowEmergencyModal(true);
 
-        // Vibration
+          if (!isSirenAlreadyStopped) {
 
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            setIsSirenActive(true);
 
-          try {
+            startEmergencySiren();
 
-            navigator.vibrate([1000, 200, 1000, 200, 1500, 300, 2000]);
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
 
-          } catch {}
+              try {
 
-        }
+                navigator.vibrate([1000, 200, 1000, 200, 1500, 300, 2000]);
 
-        // Native Android Channel Trigger
+              } catch {}
 
-        if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+            }
 
-          try {
+          }
 
-            (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + JSON.stringify({
-
-              title: currentActive.disasterTitleSi || currentActive.disasterTitle || 'ආපදා අනතුරු ඇඟවීමක්',
-
-              location: currentActive.locationName || '',
-
-              distanceKm: distanceKm.toFixed(1)
-
-            }));
-
-          } catch (_) {}
+          triggerPopup(`🚨 රතු එළිය (15km කලාපය): ${alertAny.disasterTitleSi || currentActive.title || 'හදිසි ආපදාවක්'}!`);
 
         }
-
-        triggerPopup(`🚨 රතු නිවේදනය: ${currentActive.disasterTitleSi || 'ආපදා අනතුරු ඇඟවීමක්'} ක්‍රියාත්මකයි!`);
 
       }
 
@@ -491,17 +606,19 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
       unsubscribe();
 
+      window.removeEventListener('sahaya_notification_clicked', handleNotificationClick);
+
       window.removeEventListener('sahaya_red_alert_received', handleCustomRedAlert);
 
       if (pushListenerHandle) pushListenerHandle.remove();
+
+      if (actionListenerHandle) actionListenerHandle.remove();
 
       if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
 
     };
 
   }, [currentUserId]);
-
-  // ආපදාව පළ කළ තැනැත්තා විසින් එය විසඳන ලදී (Resolved) ලෙස සලකුණු කිරීම
 
   const handleResolve = async () => {
 
@@ -511,15 +628,15 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     try {
 
-      await markRedAlertAsResolved(activeAlert.id, currentUserId, 'තත්ත්වය යහපත් අතට හැරී ඇත');
+      await markRedAlertAsResolved(activeAlert.id, 'ආපදා තත්ත්වය යහපත් අතට හැරී විසඳන ලදී.');
 
-      stopAllAlertEffects();
+      stopAllAlertEffects(activeAlert.id);
 
       setShowEmergencyModal(false);
 
       setIsDismissed(true);
 
-      triggerPopup('✅ ආපදා අනතුරු ඇඟවීම සාර්ථකව විසඳන ලදී.');
+      triggerPopup('✅ ආපදා දැන්වීම විසඳුනු බවට සටහන් විය.');
 
     } finally {
 
@@ -528,8 +645,6 @@ export const RedAlertLiveManager: React.FC<Props> = ({
     }
 
   };
-
-  // ආපදාව පළ කළ තැනැත්තා විසින් එය අවලංගු කිරීම (Cancel Alert)
 
   const handleCancel = async () => {
 
@@ -539,15 +654,15 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
     try {
 
-      await cancelRedAlertByReporter(activeAlert.id, currentUserId, 'අනතුරු ඇඟවීම අවලංගු කරන ලදී');
+      await cancelRedAlertByReporter(activeAlert.id, 'වාර්තාකරු විසින් දැන්වීම ඉවත් කරන ලදී.');
 
-      stopAllAlertEffects();
+      stopAllAlertEffects(activeAlert.id);
 
       setShowEmergencyModal(false);
 
       setIsDismissed(true);
 
-      triggerPopup('🗑️ ආපදා අනතුරු ඇඟවීම අවලංගු කරන ලදී.');
+      triggerPopup('🗑️ ආපදා දැන්වීම ඉවත් කරන ලදී.');
 
     } finally {
 
@@ -557,23 +672,79 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   };
 
-  const handleSendUpdate = async (e: React.FormEvent) => {
+  const handleQuickAddComment = async (e: React.FormEvent) => {
 
     e.preventDefault();
 
-    if (!activeAlert?.id || !updateText.trim() || isSubmitting) return;
+    if (!activeAlert?.id || !commentText.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
 
     try {
 
-      await addReporterUpdateToRedAlert(activeAlert.id, currentUserId, propUserName || 'Reporter', updateText.trim());
+      const newComm = {
 
-      setUpdateText('');
+        id: `comm_${Date.now()}`,
 
-      setShowUpdateBox(false);
+        userId: currentUserId,
 
-      triggerPopup('💬 යාවත්කාලීන පණිවිඩය සාර්ථකව යවන ලදී.');
+        userName: currentUser?.name || propUserName || 'පරිශීලකයෙක්',
+
+        userPhone: currentUser?.phone || '',
+
+        comment: commentText.trim(),
+
+        text: commentText.trim(),
+
+        createdAt: new Date().toISOString(),
+
+        createdAtMs: Date.now(),
+
+        createdAtDisplay: `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+
+      };
+
+      await addCommentToRedAlert(activeAlert.id, newComm);
+
+      setCommentText('');
+
+      triggerPopup('💬 ඔබගේ අදහස සාර්ථකව එක් කරන ලදී.');
+
+    } finally {
+
+      setIsSubmitting(false);
+
+    }
+
+  };
+
+  const handleQuickReportFake = async () => {
+
+    if (!activeAlert?.id || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    try {
+
+      await reportRedAlertAsFake(activeAlert.id, {
+
+        id: `fake_${Date.now()}`,
+
+        userId: currentUserId,
+
+        reportedByUserId: currentUserId,
+
+        userName: currentUser?.name || propUserName || 'පරිශීලක',
+
+        reportedAt: new Date().toISOString(),
+
+        reason: 'බොරුවක් ලෙස වාර්තා කරන ලදී',
+
+      });
+
+      stopAllAlertEffects(activeAlert.id);
+
+      triggerPopup('🚩 මෙම දැන්වීම බොරුවක් ලෙස වාර්තා කරන ලදී.');
 
     } finally {
 
@@ -585,325 +756,603 @@ export const RedAlertLiveManager: React.FC<Props> = ({
 
   const isReporter = Boolean(activeAlert?.reportedByUserId && activeAlert.reportedByUserId === currentUserId);
 
-  return (
+  const activeAny = (activeAlert || {}) as any;
 
-    <>
+  const h = React.createElement;
 
-      {/* 🚨 1. FULLSCREEN / HIGH-PRIORITY PROMINENT EMERGENCY MODAL */}
+  return h(
 
-      {showEmergencyModal && activeAlert && (
+    React.Fragment,
 
-        <div className="fixed inset-0 z-[999999] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fadeIn">
+    null,
 
-          <div className="w-full max-w-lg bg-gradient-to-b from-red-950 via-slate-900 to-black text-white rounded-3xl p-5 sm:p-7 border-4 border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.7)] relative overflow-hidden space-y-4">
+    showEmergencyModal && activeAlert
 
-            
+      ? h(
 
-            {/* Pulsing Alarm Beacon */}
+          'div',
 
-            <div className="flex items-center justify-between border-b border-red-800/60 pb-3">
+          { className: 'fixed inset-0 z-[999999] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-fadeIn' },
 
-              <div className="flex items-center gap-2">
+          h(
 
-                <span className="relative flex h-4 w-4">
+            'div',
 
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            { className: 'w-full max-w-lg bg-gradient-to-b from-red-950 via-slate-900 to-black text-white rounded-3xl p-5 sm:p-6 border-4 border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.75)] relative overflow-hidden space-y-4 my-auto' },
 
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+            h(
 
-                </span>
+              'div',
 
-                <span className="text-red-400 font-black text-xs sm:text-sm tracking-wider uppercase">
+              { className: 'flex items-center justify-between border-b border-red-800/60 pb-3' },
 
-                  🚨 හදිසි ආපදා අනතුරු ඇඟවීමයි!
+              h(
 
-                </span>
+                'div',
 
-              </div>
+                { className: 'flex items-center gap-2' },
 
-              <span className="bg-red-600 text-white font-black text-[11px] px-2.5 py-0.5 rounded-full shadow">
+                h(
 
-                {activeAlert.alertCode || 'RED ALERT'}
+                  'span',
 
-              </span>
+                  { className: 'relative flex h-4 w-4' },
 
-            </div>
+                  h('span', { className: 'animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75' }),
 
-            {/* Disaster Title & Details */}
+                  h('span', { className: 'relative inline-flex rounded-full h-4 w-4 bg-red-500' })
 
-            <div className="space-y-2">
+                ),
 
-              <h2 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                h(
 
-                {activeAlert.disasterTitleSi || activeAlert.disasterTitle || 'හදිසි අනතුරු ඇඟවීමක්'}
+                  'span',
 
-              </h2>
+                  { className: 'text-red-400 font-black text-xs sm:text-sm tracking-wider uppercase' },
 
-              <div className="flex flex-wrap gap-2 text-xs text-red-200">
+                  '🚨 හදිසි ආපදා අනතුරු ඇඟවීමයි (15KM SIREN)!'
 
-                <span className="bg-red-900/60 border border-red-700/60 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                )
 
-                  <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              ),
 
-                  <span>{activeAlert.locationName || 'ස්ථානය සඳහන් කර නැත'}</span>
+              h(
 
-                </span>
+                'div',
 
-                <span className="bg-red-900/60 border border-red-700/60 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                { className: 'flex items-center gap-1.5' },
 
-                  <Clock className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                h(
 
-                  <span>{activeAlert.incidentTime || 'දැන්'}</span>
+                  'span',
 
-                </span>
+                  { className: 'bg-red-600 text-white font-black text-[11px] px-2.5 py-0.5 rounded-full shadow' },
 
-              </div>
+                  activeAny.alertCode || 'RED ALERT'
 
-              <p className="text-sm text-slate-200 bg-black/40 p-3.5 rounded-2xl border border-red-900/40 leading-relaxed font-medium">
+                ),
 
-                {activeAlert.description || 'ආරක්ෂිත ස්ථානයක රැඳී සිටින්න. වැඩිදුර තොරතුරු බලාපොරොත්තු වන්න.'}
+                h(
 
-              </p>
+                  'button',
 
-            </div>
+                  {
 
-            {/* 🛑 BIG PROMINENT DISMISS / CANCEL SIREN BUTTON */}
+                    type: 'button',
 
-            <button
+                    onClick: handleDismissByUser,
 
-              type="button"
+                    className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer',
 
-              onClick={handleDismissByUser}
+                    title: 'වසන්න'
 
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-base sm:text-lg shadow-[0_0_30px_rgba(239,68,68,0.8)] border border-red-300 flex items-center justify-center gap-3 transition-transform active:scale-95 cursor-pointer"
+                  },
 
-            >
+                  h(X, { className: 'w-4 h-4' })
 
-              <VolumeX className="w-6 h-6 animate-pulse" />
+                )
 
-              <span>සයිරන් නවතන්න / දැනුම්දීම ඉවත් කරන්න</span>
+              )
 
-            </button>
+            ),
 
-            {/* 🛡️ Reporter / Admin Controls */}
+            h(
 
-            {isReporter && (
+              'div',
 
-              <div className="pt-3 border-t border-red-900/60 space-y-2">
+              { className: 'space-y-2.5' },
 
-                <p className="text-[11px] text-amber-300 font-bold">ඔබ මෙම ආපදා නිවේදනය පළකළ පරිශීලකයා වේ:</p>
+              h(
 
-                <div className="grid grid-cols-2 gap-2">
+                'h2',
 
-                  <button
+                { className: 'text-xl sm:text-2xl font-black text-white leading-snug' },
 
-                    type="button"
+                activeAny.disasterTitleSi || activeAlert.title || 'හදිසි අනතුරු ඇඟවීමක්'
 
-                    disabled={isSubmitting}
+              ),
 
-                    onClick={handleResolve}
+              h(
 
-                    className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                'div',
 
-                  >
+                { className: 'flex flex-wrap gap-2 text-xs text-red-200' },
 
-                    <CheckCircle2 className="w-4 h-4" />
+                h(
 
-                    <span>විසඳන ලදී</span>
+                  'span',
 
-                  </button>
+                  { className: 'bg-red-900/60 border border-red-700/60 px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold' },
 
-                  <button
+                  h(MapPin, { className: 'w-3.5 h-3.5 text-red-400 shrink-0' }),
 
-                    type="button"
+                  h('span', null, activeAlert.locationName || 'ස්ථානය සඳහන් කර නැත')
 
-                    disabled={isSubmitting}
+                ),
 
-                    onClick={handleCancel}
+                h(
 
-                    className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-black shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                  'span',
 
-                  >
+                  { className: 'bg-red-900/60 border border-red-700/60 px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold' },
 
-                    <X className="w-4 h-4" />
+                  h(Clock, { className: 'w-3.5 h-3.5 text-red-400 shrink-0' }),
 
-                    <span>අවලංගු කරන්න</span>
+                  h('span', null, `${activeAny.incidentDate || ''} ${activeAny.incidentTime || 'දැන්'}`)
 
-                  </button>
+                ),
 
-                </div>
+                h(
 
-              </div>
+                  'span',
 
-            )}
+                  { className: 'bg-amber-500/20 border border-amber-400/50 text-amber-300 px-2.5 py-1 rounded-lg font-mono font-bold' },
 
-          </div>
+                  `ඔබට දුර: කි.මී. ${userDistanceKm.toFixed(1)}`
 
-        </div>
+                )
 
-      )}
+              ),
 
-      {/* 🔔 2. TOP BANNER & TOAST NOTIFICATION LAYER */}
+              h(
 
-      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl space-y-2 pointer-events-none">
+                'p',
 
-        {/* Toast Notification Message */}
+                { className: 'text-sm text-slate-200 bg-black/40 p-3.5 rounded-2xl border border-red-900/40 leading-relaxed font-medium' },
 
-        {popupMessage && (
+                activeAlert.description || 'ආරක්ෂිත ස්ථානයක රැඳී සිටින්න. වැඩිදුර තොරතුරු බලාපොරොත්තු වන්න.'
 
-          <div className="pointer-events-auto bg-slate-900 text-white border-2 border-emerald-500 p-3 sm:p-4 rounded-2xl shadow-2xl flex items-center justify-between">
+              ),
 
-            <p className="text-xs sm:text-sm font-bold leading-relaxed">{popupMessage}</p>
+              activeAny.showReporterInfo && (activeAny.reportedByName || activeAny.reportedByPhone)
 
-            <button
+                ? h(
 
-              type="button"
+                    'div',
 
-              onClick={() => setPopupMessage(null)}
+                    { className: 'p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between text-xs' },
 
-              className="ml-3 p-2 text-slate-400 hover:text-white font-black text-lg cursor-pointer"
+                    h(
 
-              aria-label="Close notification"
+                      'span',
 
-            >
+                      { className: 'font-bold text-emerald-200' },
 
-              ✕
+                      `👤 වාර්තාකරු: ${activeAny.reportedByName || ''} (${activeAny.reportedByPhone || ''})`
 
-            </button>
+                    ),
 
-          </div>
+                    activeAny.reportedByPhone
 
-        )}
+                      ? h(
 
-        {/* Minimized / Persistent Top Alert Strip */}
+                          'a',
 
-        {!isDismissed && activeAlert && !showEmergencyModal && (
+                          {
 
-          <div
+                            href: `tel:${activeAny.reportedByPhone}`,
 
-            onTouchStart={handleTouchStart}
+                            className: 'px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold flex items-center gap-1'
 
-            onTouchMove={handleTouchMove}
+                          },
 
-            onTouchEnd={handleTouchEnd}
+                          h(Phone, { className: 'w-3 h-3' }),
 
-            style={{
+                          h('span', null, 'අමතන්න')
 
-              transform: `translate(${translateX}px, ${translateY}px)`,
+                        )
 
-              opacity: 1 - Math.abs(translateX) / 250 - Math.abs(translateY) / 180,
+                      : null
 
-              transition: isSwiping ? 'none' : 'transform 0.25s ease-out, opacity 0.25s ease-out'
+                  )
 
-            }}
+                : null
 
-            className="pointer-events-auto bg-gradient-to-r from-red-600 via-rose-700 to-red-800 text-white p-3.5 sm:p-4 rounded-3xl shadow-[0_10px_35px_rgba(225,29,72,0.5)] border-2 border-red-300 relative select-none"
+            ),
 
-          >
+            isWithin15Km || isSirenActive
 
-            <div className="flex items-center justify-between gap-2">
+              ? h(
 
-              <span className="bg-white text-red-700 font-black px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow">
+                  'button',
 
-                🚨 ACTIVE: {activeAlert.alertCode || 'EMERGENCY'}
+                  {
 
-              </span>
+                    type: 'button',
 
-              <div className="flex items-center gap-1.5 sm:gap-2">
+                    onClick: handleStopSirenOnly,
 
-                {isSirenActive && (
+                    className: 'w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-base sm:text-lg shadow-[0_0_30px_rgba(239,68,68,0.8)] border-2 border-yellow-300 flex items-center justify-center gap-3 transition-transform active:scale-95 cursor-pointer'
 
-                  <button
+                  },
 
-                    type="button"
+                  h(VolumeX, { className: 'w-6 h-6 animate-pulse text-yellow-300' }),
 
-                    onClick={(e) => {
+                  h('span', null, 'සයිරන් එක නවත්වන්න (Stop Siren)')
+
+                )
+
+              : null,
+
+            h(
+
+              'form',
+
+              { onSubmit: handleQuickAddComment, className: 'flex gap-2 pt-1' },
+
+              h('input', {
+
+                type: 'text',
+
+                value: commentText,
+
+                onChange: (e: any) => setCommentText(e.target.value),
+
+                placeholder: 'මෙම ආපදාව පිළිබඳ ඔබගේ අදහස ඇතුළත් කරන්න...',
+
+                className: 'flex-1 p-2.5 rounded-xl bg-black/50 border border-red-800/60 text-white text-xs'
+
+              }),
+
+              h(
+
+                'button',
+
+                {
+
+                  type: 'submit',
+
+                  disabled: isSubmitting || !commentText.trim(),
+
+                  className: 'px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer disabled:opacity-50'
+
+                },
+
+                h(Send, { className: 'w-3.5 h-3.5' }),
+
+                h('span', null, 'අදහස් දක්වන්න')
+
+              )
+
+            ),
+
+            h(
+
+              'div',
+
+              { className: 'flex items-center justify-between gap-2 pt-1' },
+
+              h(
+
+                'button',
+
+                {
+
+                  type: 'button',
+
+                  onClick: handleQuickReportFake,
+
+                  disabled: isSubmitting,
+
+                  className: 'flex-1 py-2.5 px-3 rounded-xl bg-rose-900/70 hover:bg-rose-800 border border-rose-500/40 text-rose-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer'
+
+                },
+
+                h(Flag, { className: 'w-3.5 h-3.5' }),
+
+                h('span', null, `බොරුවක් ලෙස ප්‍රතිචාර දක්වන්න (${(activeAlert.fakeReports?.length || activeAlert.fakeReportsCount || 0)}/4)`)
+
+              ),
+
+              h(
+
+                'button',
+
+                {
+
+                  type: 'button',
+
+                  onClick: handleDismissByUser,
+
+                  className: 'py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs cursor-pointer'
+
+                },
+
+                'වසන්න'
+
+              )
+
+            ),
+
+            isReporter
+
+              ? h(
+
+                  'div',
+
+                  { className: 'pt-3 border-t border-red-900/60 space-y-2' },
+
+                  h('p', { className: 'text-[11px] text-amber-300 font-bold' }, 'ඔබ මෙම ආපදා නිවේදනය පළකළ වාර්තාකරු වේ:'),
+
+                  h(
+
+                    'div',
+
+                    { className: 'grid grid-cols-2 gap-2' },
+
+                    h(
+
+                      'button',
+
+                      {
+
+                        type: 'button',
+
+                        disabled: isSubmitting,
+
+                        onClick: handleResolve,
+
+                        className: 'py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black shadow flex items-center justify-center gap-1.5 cursor-pointer'
+
+                      },
+
+                      h(CheckCircle2, { className: 'w-4 h-4' }),
+
+                      h('span', null, 'දැන්වීම විසඳුනා')
+
+                    ),
+
+                    h(
+
+                      'button',
+
+                      {
+
+                        type: 'button',
+
+                        disabled: isSubmitting,
+
+                        onClick: handleCancel,
+
+                        className: 'py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-black shadow flex items-center justify-center gap-1.5 cursor-pointer'
+
+                      },
+
+                      h(Trash2, { className: 'w-4 h-4' }),
+
+                      h('span', null, 'දැන්වීම ඉවත් කරන්න')
+
+                    )
+
+                  )
+
+                )
+
+              : null
+
+          )
+
+        )
+
+      : null,
+
+    h(
+
+      'div',
+
+      { className: 'fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl space-y-2 pointer-events-none' },
+
+      popupMessage
+
+        ? h(
+
+            'div',
+
+            { className: 'pointer-events-auto bg-slate-900 text-white border-2 border-emerald-500 p-3 sm:p-4 rounded-2xl shadow-2xl flex items-center justify-between' },
+
+            h('p', { className: 'text-xs sm:text-sm font-bold leading-relaxed' }, popupMessage),
+
+            h(
+
+              'button',
+
+              {
+
+                type: 'button',
+
+                onClick: () => setPopupMessage(null),
+
+                className: 'ml-3 p-2 text-slate-400 hover:text-white font-black text-lg cursor-pointer',
+
+                'aria-label': 'Close notification'
+
+              },
+
+              '✕'
+
+            )
+
+          )
+
+        : null,
+
+      !isDismissed && activeAlert && !showEmergencyModal
+
+        ? h(
+
+            'div',
+
+            {
+
+              onTouchStart: handleTouchStart,
+
+              onTouchMove: handleTouchMove,
+
+              onTouchEnd: handleTouchEnd,
+
+              style: {
+
+                transform: `translate(${translateX}px, ${translateY}px)`,
+
+                opacity: 1 - Math.abs(translateX) / 250 - Math.abs(translateY) / 180,
+
+                transition: isSwiping ? 'none' : 'transform 0.25s ease-out, opacity 0.25s ease-out'
+
+              },
+
+              className: 'pointer-events-auto bg-gradient-to-r from-red-600 via-rose-700 to-red-800 text-white p-3.5 sm:p-4 rounded-3xl shadow-[0_10px_35px_rgba(225,29,72,0.5)] border-2 border-red-300 relative select-none'
+
+            },
+
+            h(
+
+              'div',
+
+              { className: 'flex items-center justify-between gap-2' },
+
+              h(
+
+                'span',
+
+                { className: 'bg-white text-red-700 font-black px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow' },
+
+                `🚨 ACTIVE (15KM): ${activeAny.alertCode || 'EMERGENCY'}`
+
+              ),
+
+              h(
+
+                'div',
+
+                { className: 'flex items-center gap-1.5 sm:gap-2' },
+
+                isSirenActive
+
+                  ? h(
+
+                      'button',
+
+                      {
+
+                        type: 'button',
+
+                        onClick: (e: any) => {
+
+                          e.stopPropagation();
+
+                          handleStopSirenOnly();
+
+                        },
+
+                        className: 'bg-black/70 hover:bg-black/90 text-yellow-300 text-xs font-black px-3 py-1 rounded-full flex items-center gap-1 shadow cursor-pointer active:scale-95 border border-yellow-400/50'
+
+                      },
+
+                      h(VolumeX, { className: 'w-3.5 h-3.5' }),
+
+                      h('span', null, 'සයිරන් නවත්වන්න')
+
+                    )
+
+                  : null,
+
+                h(
+
+                  'button',
+
+                  {
+
+                    type: 'button',
+
+                    onClick: (e: any) => {
 
                       e.stopPropagation();
 
-                      stopAllAlertEffects();
+                      handleDismissByUser();
 
-                    }}
+                    },
 
-                    className="bg-black/60 hover:bg-black/80 text-amber-300 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow cursor-pointer active:scale-95"
+                    className: 'w-8 h-8 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 border border-white/20',
 
-                  >
+                    title: 'ඉවත් කරන්න (Dismiss)',
 
-                    <VolumeX className="w-3.5 h-3.5" />
+                    'aria-label': 'Close alert'
 
-                    <span>Silence</span>
+                  },
 
-                  </button>
+                  h(X, { className: 'w-4 h-4 font-bold' })
 
-                )}
+                )
 
-                <button
+              )
 
-                  type="button"
+            ),
 
-                  onClick={(e) => {
+            h(
 
-                    e.stopPropagation();
+              'h3',
 
-                    handleDismissByUser();
+              { className: 'text-sm sm:text-base font-black mt-1 leading-snug' },
 
-                  }}
+              activeAny.disasterTitleSi || activeAlert.title || 'හදිසි අනතුරු ඇඟවීමයි'
 
-                  className="w-8 h-8 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 border border-white/20"
+            ),
 
-                  title="ඉවත් කරන්න (Dismiss)"
+            h('p', { className: 'text-xs mt-0.5 opacity-90 line-clamp-2' }, activeAlert.description),
 
-                  aria-label="Close alert"
+            h(
 
-                >
+              'div',
 
-                  <X className="w-4 h-4 font-bold" />
+              { className: 'mt-2 pt-2 border-t border-red-400/40 flex items-center justify-between text-[11px]' },
 
-                </button>
+              h('span', null, `📍 ${activeAlert.locationName} (කි.මී. ${userDistanceKm.toFixed(1)})`),
 
-              </div>
+              h(
 
-            </div>
+                'button',
 
-            <h3 className="text-sm sm:text-base font-black mt-1 leading-snug">
+                {
 
-              {activeAlert.disasterTitleSi || activeAlert.disasterTitle || 'හදිසි අනතුරු ඇඟවීමයි'}
+                  type: 'button',
 
-            </h3>
+                  onClick: () => setShowEmergencyModal(true),
 
-            <p className="text-xs mt-0.5 opacity-90 line-clamp-2">
+                  className: 'bg-white text-red-700 font-black px-3 py-1 rounded-lg text-[11px] cursor-pointer shadow'
 
-              {activeAlert.description}
+                },
 
-            </p>
+                'ආපදා විස්තරය බලන්න'
 
-            <div className="mt-2 pt-2 border-t border-red-400/40 flex items-center justify-between text-[11px]">
+              )
 
-              <span>📍 {activeAlert.locationName}</span>
+            )
 
-              <button
+          )
 
-                type="button"
+        : null
 
-                onClick={() => setShowEmergencyModal(true)}
-
-                className="bg-white text-red-700 font-black px-2.5 py-0.5 rounded-lg text-[10px] cursor-pointer"
-
-              >
-
-                විස්තර බලන්න
-
-              </button>
-
-            </div>
-
-          </div>
-
-        )}
-
-      </div>
-
-    </>
+    )
 
   );
 
