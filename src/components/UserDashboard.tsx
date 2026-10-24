@@ -77,7 +77,8 @@ import {
   addReplyToFirestore,
   updateHelpPostInFirestore, 
   deleteHelpPostFromFirestore,
-  sendChatMessageToFirestore
+  sendChatMessageToFirestore,
+  addMarketShopToFirestore
 } from '../lib/firebase';
 import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
@@ -409,7 +410,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isAssistantChatOpen, setIsAssistantChatOpen] = useState(false);
   const [isRedAlertCreateOpen, setIsRedAlertCreateOpen] = useState(false);
   const [selectedAlertForDetail, setSelectedAlertForDetail] = useState<RedAlertItem | null>(null);
-  const [marketplaceShopModalType, setMarketplaceShopModalType] = useState<'retail_shop' | 'wholesale_shop' | 'direct_importer' | 'manufacturer_factory'>('retail_shop');
+  const [marketplaceShopModalType, setMarketplaceShopModalType] = useState('shop' as any);
   const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
   const [isRegisterProfessionalServiceModalOpen, setIsRegisterProfessionalServiceModalOpen] = useState(false);
   const [isInboxModalOpen, setIsInboxModalOpen] = useState(false);
@@ -1893,15 +1894,61 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       />
 
       {/* 18. Quick Registration Hub for Unregistered Viewers */}
-      <QuickRegistrationHubModal
-        isOpen={isQuickRegistrationHubOpen}
-        onClose={() => setIsQuickRegistrationHubOpen(false)}
-        onProceedToRegister={() => {
+      {React.createElement(QuickRegistrationHubModal, {
+        isOpen: isQuickRegistrationHubOpen,
+        onClose: () => setIsQuickRegistrationHubOpen(false),
+        language: language,
+        onSelectUserRegistration: () => {
           setIsQuickRegistrationHubOpen(false);
           if (onNavigate) onNavigate('register');
-        }}
-        language={language}
-      />
+        },
+        onSelectBusinessRegistration: () => {
+          setIsQuickRegistrationHubOpen(false);
+          setMarketplaceShopModalType('business');
+          setIsMarketplaceAddShopModalOpen(true);
+        },
+        onSelectShopRegistration: () => {
+          setIsQuickRegistrationHubOpen(false);
+          setMarketplaceShopModalType('shop');
+          setIsMarketplaceAddShopModalOpen(true);
+        },
+      })}
+
+      {/* 18.5 Direct Business & Shop Registration Modal */}
+      {React.createElement(MarketplaceAddShopModal, {
+        isOpen: isMarketplaceAddShopModalOpen,
+        onClose: () => setIsMarketplaceAddShopModalOpen(false),
+        currentUser: user,
+        allTags: allTags,
+        defaultType: marketplaceShopModalType,
+        onSaveShop: (newShop: MarketShop) => {
+          const currentShops = getStoredMarketShops();
+          const updated = [newShop, ...currentShops.filter((s) => Boolean(s && s.id !== newShop.id))];
+          saveMarketShopsToStorage(updated);
+          addMarketShopToFirestore(newShop).catch((err) => {
+            console.warn('Firestore shop save notice:', err);
+          });
+          try {
+            window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+          } catch {}
+          setIsMarketplaceAddShopModalOpen(false);
+          setBoardCategoryFilter('marketplace');
+          setSelectedCategoryTitle(getLangText('වෙළඳපොල', 'Marketplace', 'සන්‍තෛ'));
+          alert(
+            marketplaceShopModalType === 'business'
+              ? getLangText(
+                  '✅ ඔබගේ ව්‍යාපාරය/ආයතනය සාර්ථකව ලියාපදිංචි කර සහය වෙළඳපොළේ පළ කරන ලදී!',
+                  '✅ Your business / enterprise has been successfully registered and published!',
+                  '✅ உங்கள் வணிகம் வெற்றிகரமாக பதிவு செய்யப்பட்டது!'
+                )
+              : getLangText(
+                  '✅ ඔබගේ වෙළඳසැල/අලෙවිසැල සාර්ථකව ලියාපදිංචි කර සහය වෙළඳපොළේ පළ කරන ලදී!',
+                  '✅ Your shop / store has been successfully registered and published!',
+                  '✅ உங்கள் கடை வெற்றிகரமாக பதிவு செய்யப்பட்டது!'
+                )
+          );
+        },
+      })}
 
       {/* 19. Sahaya Sewa Community App QR Code Display Modal */}
       <AppQrShareModal
