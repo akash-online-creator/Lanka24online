@@ -17,7 +17,6 @@ import { ProfessionalServicesView } from './ProfessionalServicesView';
 import { GroupWorkView } from './GroupWorkView';
 import { MarketplaceView } from './MarketplaceView';
 import { AccommodationView } from './AccommodationView';
-import { JobsView } from './JobsView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
@@ -499,55 +498,6 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
     return `කි.මී. ${distanceKm.toFixed(1)}`;
   }, [currentLocation]);
-
-  // Real-time listener for direct #රැකියා and #නවාතැන custom events
-  useEffect(() => {
-    const handleOpenJobsEvent = () => {
-      setBoardCategoryFilter('jobs');
-      if (setSelectedCategoryTitle) setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
-    };
-    const handleOpenAccEvent = () => {
-      setBoardCategoryFilter('accommodation');
-      if (setSelectedCategoryTitle) setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
-    };
-    window.addEventListener('sahaya_open_jobs_view', handleOpenJobsEvent);
-    window.addEventListener('sahaya_open_accommodation_view', handleOpenAccEvent);
-    return () => {
-      window.removeEventListener('sahaya_open_jobs_view', handleOpenJobsEvent);
-      window.removeEventListener('sahaya_open_accommodation_view', handleOpenAccEvent);
-    };
-  }, []);
-
-  // If #රැකියා is active, display the full JobsView page immediately!
-  if (boardCategoryFilter === 'jobs') {
-    return (
-      <JobsView
-        userLat={currentLocation?.lat}
-        userLng={currentLocation?.lng}
-        userCityName={currentLocation?.nameSi}
-        onBackToBoard={() => {
-          setBoardCategoryFilter('');
-          if (setSelectedCategoryTitle) setSelectedCategoryTitle('');
-        }}
-        language={language}
-      />
-    );
-  }
-
-  // If #නවාතැන is active, display AccommodationView immediately!
-  if (boardCategoryFilter === 'accommodation') {
-    return (
-      <AccommodationView
-        userLat={currentLocation?.lat}
-        userLng={currentLocation?.lng}
-        userCityName={currentLocation?.nameSi}
-        onBackToBoard={() => {
-          setBoardCategoryFilter('');
-          if (setSelectedCategoryTitle) setSelectedCategoryTitle('');
-        }}
-      />
-    );
-  }
 
   return (
     <div className="w-full max-w-3xl mx-auto py-3 sm:py-5 space-y-4 sm:space-y-6 animate-fadeIn pb-16">
@@ -1124,7 +1074,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       </div>
 
       {/* Live Tag Search Bar (only for main feed) */}
-      {!boardCategoryFilter || (boardCategoryFilter !== 'professional_services' && boardCategoryFilter !== 'group_work' && boardCategoryFilter !== 'marketplace') ? (
+      {!boardCategoryFilter || (boardCategoryFilter !== 'professional_services' && boardCategoryFilter !== 'group_work' && boardCategoryFilter !== 'marketplace' && boardCategoryFilter !== 'accommodation') ? (
         <TagSearchBar
           allTags={allTags}
           selectedTagFilter={selectedTagFilter}
@@ -1139,26 +1089,11 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             setBoardCategoryFilter('accommodation');
             setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
           }}
-          onOpenJobs={() => {
-            setBoardCategoryFilter('jobs');
-            setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
-          }}
         />
       ) : null}
 
-      {/* Jobs View (if active) */}
-      {boardCategoryFilter === 'jobs' ? (
-        <JobsView
-          userLat={currentLocation?.lat}
-          userLng={currentLocation?.lng}
-          userCityName={currentLocation?.nameSi}
-          onBackToBoard={() => {
-            setBoardCategoryFilter('');
-            setSelectedCategoryTitle('');
-          }}
-          language={language}
-        />
-      ) : boardCategoryFilter === 'accommodation' ? (
+      {/* Accommodation View (if active) */}
+      {boardCategoryFilter === 'accommodation' ? (
         <AccommodationView
           userLat={currentLocation?.lat}
           userLng={currentLocation?.lng}
@@ -1504,3 +1439,4 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     </div>
   );
 };
+
