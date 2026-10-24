@@ -486,22 +486,37 @@ export async function updateRedAlertStatus(id: string, status: string, reasonOrN
   }), { merge: true });
 }
 
-export async function deleteRedAlertInFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, RED_ALERTS_COLLECTION, id));
-}
-
-export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any): Promise<void> {
+export async function deleteRedAlertInFirestore(id: string) {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   await setDoc(docRef, sanitizeForFirestore({
-    status: 'resolved',
-    resolvedReason: reason || 'Resolved',
-    adminActionNote: reason || '',
-    resolvedAt: new Date().toISOString(),
+    status: 'cancelled',
+    isDeleted: true,
+    cancelledReason: 'දැන්වීම ඉවත් කරන ලදී',
+    cancelledAt: nowIso,
+    deletedAt: nowIso,
+    deletedAtDisplay: nowDisplay,
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function reportRedAlertAsFake(id: string, reportData?: any): Promise<void> {
+export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  await setDoc(docRef, sanitizeForFirestore({
+    status: 'resolved',
+    resolvedReason: reason || 'ආපදා තත්ත්වය විසඳන ලදී',
+    adminActionNote: reason || '',
+    resolvedAt: nowIso,
+    resolvedAtDisplay: nowDisplay,
+    updatedAtServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+}
+
+export async function reportRedAlertAsFake(id: string, reportData?: any) {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
   try {
     const snap = await getDoc(docRef);
@@ -510,23 +525,52 @@ export async function reportRedAlertAsFake(id: string, reportData?: any): Promis
       const data = snap.data();
       reporterUserId = data.reportedByUserId || '';
     }
+    let existingReports: any[] = [];
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      reporterUserId = data.reportedByUserId || '';
+      if (Array.isArray(data.fakeReports)) {
+        existingReports = data.fakeReports;
+      }
+    }
+
+    const newEntry = reportData && typeof reportData === 'object'
+      ? reportData
+      : {
+          id: `fake_${Date.now()}`,
+          userId: typeof reportData === 'string' ? reportData : `usr_${Date.now()}`,
+          reportedAt: new Date().toISOString(),
+          reason: 'බොරුවක් ලෙස වාර්තා කරන ලදී',
+        };
+
+    const alreadyReported = Boolean(
+      newEntry.userId &&
+      existingReports.some((r: any) => r && (r.userId === newEntry.userId || r.reportedByUserId === newEntry.userId))
+    );
+
+    const updatedFakeReports = alreadyReported ? existingReports : [...existingReports, newEntry];
+    const fakeCount = updatedFakeReports.length;
+    const isNowFlaggedFake = Math.max(fakeCount, 4) === fakeCount;
 
     await setDoc(docRef, sanitizeForFirestore({
-      status: 'fake',
-      isFlaggedFake: true,
-      fakeReport: reportData || true,
+      fakeReports: updatedFakeReports,
+      fakeReportsCount: fakeCount,
+      isFlaggedFake: isNowFlaggedFake,
+      ...(isNowFlaggedFake ? {
+        fakeHighlightedAt: new Date().toISOString(),
+        statusChangeMessage: '⚠️ මෙය බොරුවට පළකරන ලද දැන්වීමකි',
+      } : {}),
       updatedAtServer: serverTimestamp(),
     }), { merge: true });
 
-    // 🛡️ Fake Alert Penalty: Deduct Trust Score & Block Reporter
-    if (reporterUserId) {
+    if (isNowFlaggedFake && reporterUserId) {
       const userRef = doc(db, USERS_COLLECTION, reporterUserId);
       await setDoc(userRef, sanitizeForFirestore({
         status: 'blocked',
         isBlocked: true,
         trustScore: 20,
         trustPoints: 20,
-        blockedReason: 'අසත්‍ය (Fake) රතු එළිය අනතුරු ඇඟවීමක් පළ කිරීම හේතුවෙන් ගිණුම ස්වයංක්‍රීයව අත්හිටුවන ලදී (Blocked due to publishing Fake Red Alert).',
+        blockedReason: 'පරිශීලකයන් 4 දෙනෙකු විසින් අසත්‍ය (Fake) රතු එළිය දැන්වීමක් ලෙස තහවුරු කිරීම හේතුවෙන් ගිණුම අත්හිටුවන ලදී.',
         blockedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
       }), { merge: true });
@@ -535,29 +579,82 @@ export async function reportRedAlertAsFake(id: string, reportData?: any): Promis
     console.warn('reportRedAlertAsFake error:', err);
   }
 }
-
-export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any): Promise<void> {
+export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any) {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   await setDoc(docRef, sanitizeForFirestore({
     status: 'cancelled',
-    cancelledReason: reason || 'Cancelled',
-    cancelledAt: new Date().toISOString(),
+    isDeleted: true,
+    cancelledReason: reason || 'වාර්තාකරු විසින් දැන්වීම ඉවත් කරන ලදී',
+    cancelledAt: nowIso,
+    deletedAt: nowIso,
+    deletedAtDisplay: nowDisplay,
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function addReporterUpdateToRedAlert(id: string, updateText: string, metadata?: any): Promise<void> {
+export async function addReporterUpdateToRedAlert(id: string, updateText: string, metadata?: any) {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let existingComments: any[] = [];
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      if (Array.isArray(data.comments)) {
+        existingComments = data.comments;
+      }
+    }
+  } catch (_) {}
+
+  const reporterComment = {
+    id: `comm_${Date.now()}`,
+    userId: metadata?.reporterId || '',
+    userName: `${metadata?.reporterName || 'වාර්තාකරු'} (වාර්තාකරු)`,
+    comment: updateText,
+    text: updateText,
+    createdAt: nowIso,
+    createdAtMs: Date.now(),
+    createdAtDisplay: nowTime,
+    isReporterUpdate: true,
+  };
+  const updatedComments = [...existingComments, reporterComment];
+
   await setDoc(docRef, sanitizeForFirestore({
     latestUpdate: updateText,
     reporterUpdateMetadata: metadata || null,
+    comments: updatedComments,
+    commentsCount: updatedComments.length,
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function addCommentToRedAlert(id: string, commentData: any): Promise<void> {
-  const colRef = collection(db, RED_ALERTS_COLLECTION, id, 'comments');
-  await addDoc(colRef, sanitizeForFirestore({ ...commentData, createdAtServer: serverTimestamp() }));
+export async function addCommentToRedAlert(id: string, commentData: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  let existingComments: any[] = [];
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      if (Array.isArray(data.comments)) {
+        existingComments = data.comments;
+      }
+    }
+  } catch (_) {}
+
+  const updatedComments = [...existingComments, commentData];
+  await setDoc(docRef, sanitizeForFirestore({
+    comments: updatedComments,
+    commentsCount: updatedComments.length,
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+
+  try {
+    const colRef = collection(db, RED_ALERTS_COLLECTION, id, 'comments');
+    await addDoc(colRef, sanitizeForFirestore({ ...commentData, createdAtServer: serverTimestamp() }));
+  } catch (_) {}
 }
 
 export function subscribeToSirenSettings(callback: (settings: any) => void): () => void {
