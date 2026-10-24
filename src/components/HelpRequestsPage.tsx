@@ -17,6 +17,7 @@ import { ProfessionalServicesView } from './ProfessionalServicesView';
 import { GroupWorkView } from './GroupWorkView';
 import { MarketplaceView } from './MarketplaceView';
 import { AccommodationView } from './AccommodationView';
+import { JobsView } from './JobsView';
 import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore } from '../lib/firebase';
@@ -98,7 +99,7 @@ interface HelpRequestsPageProps {
   onOpenChat: (post: HelpPost) => void;
   onOpenConfirm?: (post: HelpPost) => void;
   onOpenSupportOffers: (post: HelpPost) => void;
-  onOpenCreateModal: () => void;
+  onOpenCreateModal: (categoryKey?: string) => void;
   onBackToHome: () => void;
   onRequireRegistration?: () => void;
   onBoostPost?: (post: HelpPost) => void;
@@ -435,26 +436,59 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     };
   }, [visibleCount, newsFeedSortedPosts.length, handleLoadMore]);
 
+  const activeRedAlerts = useMemo(() => {
+    return (redAlerts || []).filter((a) => Boolean(a)).map((a) => {
+      const anyA = a as any;
+      const baseTitle = anyA.disasterTitleSi || a.title || 'හදිසි ආපදා දැන්වීම';
+      const baseDesc = a.description || '';
+      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) || a.fakeReportsCount || 0;
+      const isFake = Boolean(anyA.isFlaggedFake || a.status === 'fake' || Math.max(fakeCount, 4) === fakeCount);
+      const isRemoved = Boolean(a.status === 'cancelled' || anyA.isDeleted);
+      const isResolved = Boolean(a.status === 'resolved');
+      const delTime = anyA.deletedAtDisplay || a.cancelledAt || anyA.deletedAt || '';
+      const resTime = anyA.resolvedAtDisplay || a.resolvedAt || '';
+
+      if (isRemoved) {
+        return {
+          ...a,
+          disasterTitleSi: `🗑️ [ඉවත් කරන ලදී: ${delTime}] ${baseTitle}`,
+          description: `🗑️ මෙම දැන්වීම ඉවත් කරන ලදී (දිනය සහ වේලාව: ${delTime}) • ${baseDesc}`,
+        };
+      }
+      if (isFake) {
+        return {
+          ...a,
+          disasterTitleSi: `⚠️ [මෙය බොරුවට පළකරන ලද දැන්වීමකි] ${baseTitle}`,
+          description: `🚨 මෙය බොරුවට පළකරන ලද දැන්වීමකි (පරිශීලකයන් ${fakeCount} දෙනෙකු බොරුවක් ලෙස වාර්තා කර ඇත) • ${baseDesc}`,
+        };
+      }
+      if (isResolved) {
+        return {
+          ...a,
+          disasterTitleSi: `✅ [විසඳන ලදී: ${resTime}] ${baseTitle}`,
+          description: `✅ මෙම ආපදා දැන්වීම විසඳන ලදී (${resTime}) • ${baseDesc}`,
+        };
+      }
+      return a;
+    });
+  }, [redAlerts]);
+
   const categoryCounts = useMemo(() => {
     const posts = helpPosts || [];
     return {
-      all: posts.length,
-      emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length,
+      all: posts.length + activeRedAlerts.length,
+      emergency: activeRedAlerts.length + posts.filter((p) => isEmergencyOrHighPriority(p)).length,
       quick_services: posts.filter((p) => isQuickService(p)).length,
-      normal_services: posts.filter((p) => !isQuickService(p) && (p.category === 'normal_services' || p.category === 'services' || p.category === 'general' || !p.category || p.serviceType === 'normal_services')).length,
-      professional_services: posts.filter((p) => p.category === 'professional_services' || p.serviceType === 'professional_services').length,
+      normal_services: posts.filter((p) => !isQuickService(p) && !p.findForMeType && !p.fromMeToYouType && (p.category === 'normal_services' || p.category === 'services' || p.category === 'general' || !p.category || p.serviceType === 'normal_services')).length,
+      professional_services: (professionalServices || []).length + posts.filter((p) => p.category === 'professional_services' || p.serviceType === 'professional_services').length,
       group_work: posts.filter((p) => p.category === 'group_work' || p.serviceType === 'group_work').length,
       marketplace: posts.filter((p) => p.category === 'marketplace' || p.serviceType === 'marketplace').length,
-      find_for_me: posts.filter((p) => p.category === 'find_for_me' || p.serviceType === 'find_for_me').length,
-      from_me_to_you: posts.filter((p) => p.category === 'from_me_to_you' || p.serviceType === 'from_me_to_you').length,
+      find_for_me: posts.filter((p) => p.category === 'find_for_me' || p.serviceType === 'find_for_me' || Boolean(p.findForMeType)).length,
+
+      from_me_to_you: posts.filter((p) => p.category === 'from_me_to_you' || p.serviceType === 'from_me_to_you' || Boolean(p.fromMeToYouType)).length,
       saved: savedPostIds.length,
     };
-  }, [helpPosts, savedPostIds]);
-
-  const activeRedAlerts = useMemo(() => {
-    return (redAlerts || []).filter((a) => a.status === 'active' && !a.isFlaggedFake);
-  }, [redAlerts]);
-
+  }, [helpPosts, savedPostIds, activeRedAlerts.length, professionalServices]);
   // 🚨 Dynamic Cycling Carousel state for multiple Red Alerts
   const [activeAlertIndex, setActiveAlertIndex] = useState(0);
   const [isAlertCarouselPaused, setIsAlertCarouselPaused] = useState(false);
@@ -498,6 +532,35 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     }
     return `කි.මී. ${distanceKm.toFixed(1)}`;
   }, [currentLocation]);
+  useEffect(() => {
+    const handleOpenJobsEvent = () => {
+      setBoardCategoryFilter('jobs');
+      if (setSelectedCategoryTitle) setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
+    };
+    const handleOpenAccEvent = () => {
+      setBoardCategoryFilter('accommodation');
+      if (setSelectedCategoryTitle) setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
+    };
+    window.addEventListener('sahaya_open_jobs_view', handleOpenJobsEvent);
+    window.addEventListener('sahaya_open_accommodation_view', handleOpenAccEvent);
+    return () => {
+      window.removeEventListener('sahaya_open_jobs_view', handleOpenJobsEvent);
+      window.removeEventListener('sahaya_open_accommodation_view', handleOpenAccEvent);
+    };
+  }, []);
+
+  if (boardCategoryFilter === 'jobs') {
+    return React.createElement(JobsView, {
+      userLat: currentLocation?.lat,
+      userLng: currentLocation?.lng,
+      userCityName: currentLocation?.nameSi,
+      onBackToBoard: () => {
+        setBoardCategoryFilter('');
+        if (setSelectedCategoryTitle) setSelectedCategoryTitle('');
+      },
+      language: language,
+    });
+  }
 
   return (
     <div className="w-full max-w-3xl mx-auto py-3 sm:py-5 space-y-4 sm:space-y-6 animate-fadeIn pb-16">
@@ -902,12 +965,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           <button
             type="button"
             onClick={() => {
-              setBoardCategoryFilter('');
-              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ප්‍රමුඛතා දැන්වීම්', '🚨 Emergency Alerts', '🚨 அவசர அறிவிப்புகள்'));
+              setBoardCategoryFilter('emergency');
+              setSelectedCategoryTitle(getLangText('🚨 හදිසි / ආපදා (රතු එළිය)', '🚨 Emergency Alerts', '🚨 அவசர அறிவிப்புகள்'));
               setActiveFeedTab('emergency');
             }}
             className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-              activeFeedTab === 'emergency'
+              activeFeedTab === 'emergency' || boardCategoryFilter === 'emergency'
                 ? 'bg-red-600 text-white border-red-500 shadow-md'
                 : 'bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-950 dark:text-red-200 border-red-200 dark:border-red-900/60'
             }`}
@@ -1026,11 +1089,11 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                 return;
               }
               setActiveFeedTab('saved');
-              setBoardCategoryFilter('');
+              setBoardCategoryFilter('saved');
               setSelectedCategoryTitle(getLangText('සුරැකි දැන්වීම්', 'Saved Posts', 'சேமித்தவை'));
             }}
             className={`p-3 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-between gap-2 border-2 shadow-2xs ${
-              activeFeedTab === 'saved'
+              activeFeedTab === 'saved' || boardCategoryFilter === 'saved'
                 ? 'bg-amber-600 text-white border-amber-500 shadow-md'
                 : 'bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-950 dark:text-amber-200 border-amber-200 dark:border-amber-900/60'
             }`}
@@ -1047,7 +1110,6 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
         {/* Active Category Filter Chip (if active) */}
         {boardCategoryFilter && 
-         boardCategoryFilter !== 'quick_services' && 
          boardCategoryFilter !== 'professional_services' && 
          boardCategoryFilter !== 'group_work' && 
          boardCategoryFilter !== 'marketplace' && (
@@ -1058,6 +1120,26 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               </span>
               <span className="font-extrabold">{selectedCategoryTitle || boardCategoryFilter}</span>
             </div>
+            {boardCategoryFilter !== 'saved' &&
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => {
+                    if (boardCategoryFilter === 'emergency' || activeFeedTab === 'emergency') {
+                      if (onOpenRedAlert) onOpenRedAlert();
+                      else onOpenCreateModal('emergency');
+                    } else {
+                      onOpenCreateModal(boardCategoryFilter);
+                    }
+                  },
+                  className:
+                    'px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-all cursor-pointer active:scale-95',
+                },
+                boardCategoryFilter === 'emergency'
+                  ? getLangText('+ 🚨 රතු එළිය දැන්වීමක් පළ කරන්න', '+ 🚨 Post Red Alert', '+ 🚨 சிவப்பு எச்சரிக்கை')
+                  : getLangText('+ දැන්වීමක් පළ කරන්න', '+ Post Ad', '+ விளம்பரம் இடுக')
+              )}
             <button
               type="button"
               onClick={() => {
@@ -1088,6 +1170,10 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           onOpenAccommodation={() => {
             setBoardCategoryFilter('accommodation');
             setSelectedCategoryTitle(getLangText('නවාතැන', 'Accommodation', 'தங்குமிடம்'));
+          }}
+          onOpenJobs={() => {
+            setBoardCategoryFilter('jobs');
+            setSelectedCategoryTitle(getLangText('රැකියා', 'Jobs', 'வேலைகள்'));
           }}
         />
       ) : null}
@@ -1148,7 +1234,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       ) : (
         /* The Facebook-Style News Feed Stream */
         <div className="space-y-4">
-          {newsFeedSortedPosts.length === 0 ? (
+          {(newsFeedSortedPosts.length === 0 && !((activeFeedTab === 'emergency' || boardCategoryFilter === 'emergency' || (!boardCategoryFilter && activeFeedTab === 'all')) && activeRedAlerts.length > 0)) ? (
             <div className="w-full bg-white dark:bg-[#071710] border border-slate-200/90 dark:border-[#132a1d] rounded-3xl p-8 text-center space-y-4 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
                 {activeFeedTab === 'saved' ? (
@@ -1208,7 +1294,14 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
                   <button
                     type="button"
-                    onClick={onOpenCreateModal}
+                    onClick={() => {
+                      if (activeFeedTab === 'emergency' || boardCategoryFilter === 'emergency') {
+                        if (onOpenRedAlert) onOpenRedAlert();
+                        else onOpenCreateModal('emergency');
+                      } else {
+                        onOpenCreateModal(boardCategoryFilter || undefined);
+                      }
+                    }}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-2xl shadow-md transition-all cursor-pointer active:scale-95"
                   >
                     <Plus className="w-4 h-4" />
@@ -1219,8 +1312,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
             </div>
           ) : (
             <div className="space-y-4 sm:space-y-5">
-              {/* Active Red Alert Emergency Cards Pinned at Top of Feed */}
-              {activeRedAlerts.length > 0 && (
+              {/* Active Red Alert Emergency Cards Pinned at Top of Feed (Only in All or Emergency tab) */}
+              {(activeFeedTab === 'emergency' || boardCategoryFilter === 'emergency' || (!boardCategoryFilter && activeFeedTab === 'all')) && activeRedAlerts.length > 0 && (
                 <div className="space-y-3 pb-1">
                   {activeRedAlerts.map((alert, aIdx) => {
                     const config = getDisasterConfig(alert.disasterType);
@@ -1242,7 +1335,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                                   <span>{getLangText('හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)', 'Emergency Disaster Alert', 'சிவப்பு எச்சரிக்கை')}</span>
                                 </span>
                                 <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-black/30 text-yellow-300 font-mono border border-yellow-300/30">
-                                  SIREN 5KM ACTIVE
+                                  SIREN 15KM ACTIVE
                                 </span>
                                 {alert.alertCode && (
                                   <span className="text-[10px] font-mono text-red-100 font-bold bg-black/20 px-2 py-0.5 rounded-md">
@@ -1286,7 +1379,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
                               }}
                               className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                              <span>{getLangText('විස්තර සහ ආරක්ෂිත උපදෙස්', 'View Safety Details', 'பாதுகாப்பு விவரங்கள்')}</span>
+                              <span>{getLangText(`💬 අදහස් දක්වන්න (${(alert.comments && alert.comments.length) || 0}) / විස්තර බලන්න`, 'Comments & Details', 'கருத்துகள் மற்றும் விவரங்கள்')}</span>
                               <ArrowRight className="w-4 h-4" />
                             </button>
                           </div>
