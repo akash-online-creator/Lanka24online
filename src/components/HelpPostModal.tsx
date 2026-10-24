@@ -42,10 +42,15 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
   isOpen,
   onClose,
   onSubmitPost,
-  currentLocation,
+  onSubmit,
+  currentLocation = { id: 'loc_colombo', nameSi: 'කොළඹ', nameEn: 'Colombo', lat: 6.9271, lng: 79.8612 },
   lang,
-}) => {
-  const t = translations[lang];
+  language = 'si',
+  currentUser = null,
+}: any) => {
+  const activeLang = lang ? lang : language ? language : 'si';
+  const rawTranslations: any = translations;
+  const t = rawTranslations[activeLang] ? rawTranslations[activeLang] : rawTranslations.si;
 
   // Form State
   const [step, setStep] = useState<1 | 2>(1); // 1 = Details, 2 = OTP Verification
@@ -237,9 +242,11 @@ export const HelpPostModal: React.FC<HelpPostModalProps> = ({
     recordPostSubmission(userPhone.trim() || 'user');
 
     // Create Post object (දෝෂ නිරාකරණය කර සකස් කළ payload එක)
-    onSubmitPost({
-      title: whatHappened.trim().slice(0, 50) || 'උපකාරක දැන්වීමක්',
+    const submitHandler = onSubmit ? onSubmit : onSubmitPost;
+    if (submitHandler) submitHandler({
+      title: whatHappened.trim().slice(0, 50) ? whatHappened.trim().slice(0, 50) : 'උපකාරක දැන්වීමක්',
       category: 'normal_services',
+      serviceType: 'normal_services',
       postType: 'help_post',
       roleType: 'need_help',
       status: 'active',
