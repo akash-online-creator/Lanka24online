@@ -88,9 +88,8 @@ export const RedAlertLiveManager: any = ({
 
   const currentUserId = propUserId || currentUser?.id || currentUser?.userId || 'usr_guest';
 
-|---|---|---|---|---|
 
-  const [activeAlert, setActiveAlert] = useState(null as RedAlertItem | null);
+  const [activeAlert, setActiveAlert] = useState(null as any);
 
   const [userDistanceKm, setUserDistanceKm] = useState(0);
 
