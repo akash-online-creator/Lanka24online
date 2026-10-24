@@ -116,7 +116,7 @@ export const RedAlertDetailModal: any = ({
 
   const [commenterName, setCommenterName] = useState(currentUser?.name || '');
 
-|---|
+  const [actionSuccessMsg, setActionSuccessMsg] = useState(null as any);
 
   const [sirenStoppedByMe, setSirenStoppedByMe] = useState(false);
 
