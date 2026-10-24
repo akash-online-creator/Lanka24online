@@ -563,6 +563,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
       try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
     }
+    const resolvedPostCategory =
+      (newPost as any).category ||
+      ((newPost as any).findForMeType
+        ? 'find_for_me'
+        : (newPost as any).fromMeToYouType
+        ? 'from_me_to_you'
+        : (newPost as any).postType === 'quick_service'
+        ? 'quick_services'
+        : 'normal_services');
+
     const fullPost: HelpPost = {
       ...newPost,
       id: postId,
@@ -573,7 +583,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       userPhone: (newPost as any).userPhone || user?.whatsappPhone || user?.phone || '',
       status: 'active',
       isResolved: false,
-      postType: (newPost as any).postType || ((newPost as any).category === 'quick_services' ? 'quick_service' : 'help_post'),
+      category: resolvedPostCategory,
+      postType: (newPost as any).postType || (resolvedPostCategory === 'quick_services' ? 'quick_service' : 'help_post'),
     };
 
     setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
@@ -597,8 +608,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     // 2. දැන්වීම් පුවරුව වෙත මාරු වීම (Switch to Notice Board)
     setDashboardView('requests');
-    if ((newPost as any).category === 'quick_services' || (newPost as any).postType === 'quick_service') {
+    if (resolvedPostCategory === 'quick_services') {
       setBoardCategoryFilter('quick_services');
+    } else if (resolvedPostCategory === 'normal_services') {
+      setBoardCategoryFilter('normal_services');
+    } else if (resolvedPostCategory === 'find_for_me') {
+      setBoardCategoryFilter('find_for_me');
+    } else if (resolvedPostCategory === 'from_me_to_you') {
+      setBoardCategoryFilter('from_me_to_you');
     } else {
       setBoardCategoryFilter('');
     }
@@ -819,17 +836,63 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     }
 
     // 2. Category Board Filter
-    if (boardCategoryFilter) {
+    if (boardCategoryFilter && boardCategoryFilter !== 'saved') {
       if (boardCategoryFilter === 'resolved') {
         if (!post.isResolved && post.status !== 'resolved') return false;
-      } else if (boardCategoryFilter === 'urgent') {
-        if (!post.isUrgent && !post.urgencyLevel) return false;
+      } else if (boardCategoryFilter === 'urgent' || boardCategoryFilter === 'emergency') {
+        const isEmergPost =
+          Boolean(post.isUrgent || post.urgencyLevel || post.isPinnedEmergency) ||
+          post.priorityLevel === 'emergency' ||
+          post.priorityLevel === 'high' ||
+          post.category === 'emergency' ||
+          post.category === 'blood_disaster' ||
+          post.tagCategory === 'හදිසි / ආපදා';
+        if (!isEmergPost) return false;
       } else if (boardCategoryFilter === 'group_work') {
         if (post.category !== 'group_work' && post.postType !== 'group_work') return false;
       } else if (boardCategoryFilter === 'marketplace') {
         if (post.category !== 'marketplace' && post.postType !== 'marketplace') return false;
       } else if (boardCategoryFilter === 'quick_services') {
-        if (post.postType !== 'quick_service' && post.category !== 'quick_services') return false;
+        const isQuick =
+          post.postType === 'quick_service' ||
+          post.category === 'quick_services' ||
+          post.category === 'quick' ||
+          post.serviceType === 'quick_services' ||
+          post.tagCategory === 'ඉක්මන් සේවා';
+        if (!isQuick) return false;
+      } else if (boardCategoryFilter === 'normal_services') {
+        const isQuick =
+          post.postType === 'quick_service' ||
+          post.category === 'quick_services' ||
+          post.category === 'quick';
+        const isOtherSpecial =
+          post.category === 'find_for_me' ||
+          post.category === 'from_me_to_you' ||
+          post.category === 'professional_services' ||
+          post.category === 'group_work' ||
+          post.category === 'marketplace' ||
+          post.category === 'emergency' ||
+          Boolean(post.findForMeType) ||
+          Boolean(post.fromMeToYouType);
+        if (isQuick || isOtherSpecial) return false;
+      } else if (boardCategoryFilter === 'find_for_me') {
+        if (
+          post.category !== 'find_for_me' &&
+          post.postType !== 'find_for_me' &&
+          post.serviceType !== 'find_for_me' &&
+          !post.findForMeType
+        ) {
+          return false;
+        }
+      } else if (boardCategoryFilter === 'from_me_to_you') {
+        if (
+          post.category !== 'from_me_to_you' &&
+          post.postType !== 'from_me_to_you' &&
+          post.serviceType !== 'from_me_to_you' &&
+          !post.fromMeToYouType
+        ) {
+          return false;
+        }
       } else if (post.category !== boardCategoryFilter && post.tagCategory !== boardCategoryFilter) {
         return false;
       }
@@ -1336,7 +1399,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setShowDemoRegisterPrompt(true);
             return;
           }
-          setIsCategoryModalOpen(true);
+          const isEmergTitle = Boolean(
+            selectedCategoryTitle &&
+              (selectedCategoryTitle.includes('හදිසි') ||
+                selectedCategoryTitle.includes('ආපදා') ||
+                selectedCategoryTitle.toLowerCase().includes('emergency'))
+          );
+          if (boardCategoryFilter === 'emergency' || boardCategoryFilter === 'red_alert' || isEmergTitle) {
+            if (onOpenRedAlert) onOpenRedAlert();
+            else setIsRedAlertCreateOpen(true);
+          } else if (boardCategoryFilter === 'normal_services' || boardCategoryFilter === 'services' || boardCategoryFilter === 'general') {
+            setIsHelpPostModalOpen(true);
+          } else if (boardCategoryFilter === 'quick_services' || boardCategoryFilter === 'quick') {
+            setIsQuickServiceModalOpen(true);
+          } else if (boardCategoryFilter === 'find_for_me') {
+            setIsFindForMeModalOpen(true);
+          } else if (boardCategoryFilter === 'from_me_to_you') {
+            setIsFromMeToYouModalOpen(true);
+          } else if (boardCategoryFilter === 'professional_services' || boardCategoryFilter === 'professional') {
+            setIsRegisterProfessionalServiceModalOpen(true);
+          } else {
+            setIsCategoryModalOpen(true);
+          }
         }}
         lang={language}
       />
@@ -1405,12 +1489,36 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setTargetPostForOffers(p);
             setIsSupportOffersModalOpen(true);
           }}
-          onOpenCreateModal={() => {
+          onOpenCreateModal={(catKey?: string) => {
             if (user?.isDemo) {
               setShowDemoRegisterPrompt(true);
               return;
             }
-            setIsCategoryModalOpen(true);
+            const activeCat = catKey || boardCategoryFilter;
+            const isEmergTitle = Boolean(
+              selectedCategoryTitle &&
+                (selectedCategoryTitle.includes('හදිසි') ||
+                  selectedCategoryTitle.includes('ආපදා') ||
+                  selectedCategoryTitle.toLowerCase().includes('emergency'))
+            );
+            if (activeCat === 'emergency' || activeCat === 'red_alert' || isEmergTitle) {
+              if (onOpenRedAlert) onOpenRedAlert();
+              else setIsRedAlertCreateOpen(true);
+            } else if (activeCat === 'normal_services' || activeCat === 'services' || activeCat === 'general') {
+              setSelectedCategoryTitle(getLangText('සාමාන්‍ය සේවා', 'General Services', 'பொதுவான சேவைகள்'));
+              setIsHelpPostModalOpen(true);
+            } else if (activeCat === 'quick_services' || activeCat === 'quick') {
+              setSelectedCategoryTitle(getLangText('ක්ෂණික සේවා', 'Quick Services', 'விரைவு சேவை'));
+              setIsQuickServiceModalOpen(true);
+            } else if (activeCat === 'find_for_me') {
+              setIsFindForMeModalOpen(true);
+            } else if (activeCat === 'from_me_to_you') {
+              setIsFromMeToYouModalOpen(true);
+            } else if (activeCat === 'professional_services' || activeCat === 'professional') {
+              setIsRegisterProfessionalServiceModalOpen(true);
+            } else {
+              setIsCategoryModalOpen(true);
+            }
           }}
           onBackToHome={() => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1432,8 +1540,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           })()}
           redAlerts={redAlerts}
-          onViewRedAlertDetail={onViewRedAlertDetail}
-          onOpenRedAlert={onOpenRedAlert}
+          onViewRedAlertDetail={(a) => {
+            if (user?.isDemo) {
+              setShowDemoRegisterPrompt(true);
+              return;
+            }
+            if (onViewRedAlertDetail) onViewRedAlertDetail(a);
+            else setSelectedAlertForDetail(a);
+          }}
+          onOpenRedAlert={() => {
+            if (user?.isDemo) {
+              setShowDemoRegisterPrompt(true);
+              return;
+            }
+            if (onOpenRedAlert) onOpenRedAlert();
+            else setIsRedAlertCreateOpen(true);
+          }}
         />
       </div>
       {/* MODALS implementation matching PDF flow */}
@@ -1446,7 +1568,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedCategoryTitle(catTitle);
           setSelectedCategoryObj(selectedCat || null);
           setIsCategoryModalOpen(false);
-          if (catKey === 'find_for_me') {
+          if (catKey === 'emergency' || catKey === 'red_alert') {
+            if (onOpenRedAlert) onOpenRedAlert();
+            else setIsRedAlertCreateOpen(true);
+          } else if (catKey === 'normal_services' || catKey === 'services' || catKey === 'general') {
+            setSelectedCategory(selectedCat || null);
+            setIsHelpPostModalOpen(true);
+          } else if (catKey === 'find_for_me') {
             setIsFindForMeModalOpen(true);
           } else if (catKey === 'from_me_to_you') {
             setIsFromMeToYouModalOpen(true);
