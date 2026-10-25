@@ -133,7 +133,7 @@ export const RedAlertDetailModal: any = ({
 
   const [showFakeReportModal, setShowFakeReportModal] = useState(false);
 
-  const [fakeReason, setFakeReason] = useState('බොරුවක් / අසත්‍ය පුවතක් (Fake news)');
+  const [fakeReason, setFakeReason] = useState('අසත්‍ය පුවතක් (Fake news)');
 
   const [fakeNotes, setFakeNotes] = useState('');
 
@@ -467,7 +467,7 @@ export const RedAlertDetailModal: any = ({
       setTimeout(() => onClose(), 600);
     } catch (err) {
       console.error('Error permanently deleting alert:', err);
-      setActionSuccessMsg('⚠️ සදහටම මකා දැමීමට නොහැකි විය.');
+      setActionSuccessMsg('⚠️ සදහටම ඉවත්කිරිමට නොහැකි විය.');
     } finally {
       setIsSubmitting(false);
     }
@@ -691,11 +691,11 @@ export const RedAlertDetailModal: any = ({
 
         stopSirenForThisAlert();
 
-        setActionSuccessMsg('⚠️ පරිශීලකයන් 4 දෙනෙකු බොරුවක් ලෙස වාර්තා කළ බැවින් මෙය බොරුවට පළකරන ලද දැන්වීමක් ලෙස Highlight කරන ලදී!');
+        setActionSuccessMsg('⚠️ පරිශීලකයන් 4 දෙනෙකු අසත්‍යක් ලෙස වාර්තා කළ බැවින් මෙය අසත්‍ය පළකරන ලද දැන්වීමක් ලෙස Highlight කරන ලදී!');
 
       } else {
 
-        setActionSuccessMsg(`🚩 බොරුවක් ලෙස ඔබගේ ප්‍රතිචාරය සටහන් විය (${nextCount}/4).`);
+        setActionSuccessMsg(`🚩 අසත්‍ය ලෙස ඔබගේ ප්‍රතිචාරය සටහන් විය (${nextCount}/4).`);
 
       }
 
@@ -903,7 +903,7 @@ export const RedAlertDetailModal: any = ({
 
                       { className: 'bg-yellow-300 text-red-950 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 animate-pulse' },
 
-                      '⚠️ මෙය බොරුවට පළකරන ලද දැන්වීමකි'
+                      '⚠️ මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි'
 
                     )
 
@@ -1087,7 +1087,7 @@ export const RedAlertDetailModal: any = ({
 
                 h(AlertTriangle, { className: 'w-6 h-6 text-red-700 shrink-0' }),
 
-                h('span', null, '⚠️ මෙය බොරුවට පළකරන ලද දැන්වීමකි!')
+                h('span', null, '⚠️ මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි!')
 
               ),
 
@@ -1097,7 +1097,7 @@ export const RedAlertDetailModal: any = ({
 
                 { className: 'text-xs font-extrabold text-red-900' },
 
-                `පරිශීලකයන් ${fakeVotesCount} දෙනෙකු විසින් මෙම දැන්වීම බොරුවක් (Fake Alert) ලෙස වාර්තා කර තහවුරු කර ඇත.`
+                `පරිශීලකයන් ${fakeVotesCount} දෙනෙකු විසින් මෙම දැන්වීම අසත්‍ය ලෙස පලකල දැන්විමක් (Fake Alert) ලෙස වාර්තා කර තහවුරු කර ඇත.`
 
               )
 
@@ -1233,7 +1233,7 @@ export const RedAlertDetailModal: any = ({
 
                 h(VolumeX, { className: 'w-4 h-4' }),
 
-                h('span', null, 'සයිරන් එක නවත්වන්න (Stop Siren)')
+                h('span', null, 'සයිරන් හඩ නවත්වන්න (Stop Siren)')
 
               )
 
@@ -1623,7 +1623,7 @@ export const RedAlertDetailModal: any = ({
 
               { className: 'text-rose-800 dark:text-rose-300 font-black block' },
 
-              '🚩 දැන්වීම බොරුවක් ලෙස ප්‍රතිචාර දැක්වීම'
+              '🚩 දැන්වීම අසත්‍ය ලෙස ප්‍රතිචාර දැක්වීම'
 
             ),
 
@@ -1633,7 +1633,7 @@ export const RedAlertDetailModal: any = ({
 
               { className: 'text-rose-600 dark:text-rose-400 font-medium text-[11px] block' },
 
-              `පරිශීලකයන් 4 දෙනෙකු බොරුවක් ලෙස වාර්තා කළ විගස මෙය බොරුවට පළකරන ලද දැන්වීමක් ලෙස Highlight වේ (දැනට: ${fakeVotesCount}/4)`
+              `පරිශීලකයන් 4 දෙනෙකු අසත්‍ය ලෙස වාර්තා කළ විගස මෙය අසත්‍යලෙස පළකරන ලද දැන්වීමක් ලෙස Highlight වේ (දැනට: ${fakeVotesCount}/4)`
 
             )
 
@@ -1687,7 +1687,7 @@ export const RedAlertDetailModal: any = ({
 
               h(Flag, { className: 'w-3.5 h-3.5' }),
 
-              h('span', null, `බොරුවක් ලෙස වාර්තා කරන්න (${fakeVotesCount}/4)`)
+              h('span', null, `අසත්‍යක් ලෙස වාර්තා කරන්න (${fakeVotesCount}/4)`)
 
             )
 
@@ -2203,7 +2203,7 @@ export const RedAlertDetailModal: any = ({
 
                   h(ShieldAlert, { className: 'w-5 h-5 text-rose-600' }),
 
-                  h('span', null, 'දැන්වීම බොරුවක් ලෙස වාර්තා කරන්න')
+                  h('span', null, 'දැන්වීම අසත්‍යක් ලෙස වාර්තා කරන්න')
 
                 ),
 
@@ -2267,7 +2267,7 @@ export const RedAlertDetailModal: any = ({
 
                         },
 
-                        h('option', { value: 'බොරුවක් / අසත්‍ය පුවතක් (Fake news)' }, 'බොරුවක් / අසත්‍ය පුවතක් (Fake news)'),
+                        h('option', { value: 'අසත්‍ය පුවතක් (Fake news)' }, 'අසත්‍ය පුවතක් (Fake news)'),
 
                         h('option', { value: 'පැරණි සිදුවීමක් (Outdated incident)' }, 'පැරණි සිදුවීමක් (Outdated incident)'),
 
@@ -2295,7 +2295,7 @@ export const RedAlertDetailModal: any = ({
 
                         onChange: (e: any) => setFakeNotes(e.target.value),
 
-                        placeholder: 'මෙය බොරුවක් බව තහවුරු කරන කරුණු...',
+                        placeholder: 'මෙය අසත්‍යක් බව තහවුරු කරන කරුණු...',
 
                         className: 'w-full p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs font-medium'
 
@@ -2345,7 +2345,7 @@ export const RedAlertDetailModal: any = ({
 
                         h(Flag, { className: 'w-4 h-4' }),
 
-                        h('span', null, 'බොරුවක් ලෙස තහවුරු කරන්න')
+                        h('span', null, 'අසත්‍යක් ලෙස තහවුරු කරන්න')
 
                       )
 
