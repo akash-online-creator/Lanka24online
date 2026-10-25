@@ -280,15 +280,60 @@ export async function deleteUserAccount(user: any, _permanent = true): Promise<v
   }
 }
 
+const BUILT_IN_DUMMY_ID_LIST = [
+  "usr_citizen_1",
+  "post_6843", "post_4912", "post_find_1", "post_find_2", "post_from_1", "post_from_2", "post_from_3", "post_1", "post_2", "post_3",
+  "grp_kelaniya_care", "grp_dalada_sewa", "grp_gam_mithuro", "grp_sample_1", "grp_sample_2", "grp_sample_3",
+  "mkt_seller_1", "mkt_seller_2", "mkt_seller_3", "mkt_seller_4", "mkt_seller_5", "mkt_seller_6", "mkt_seller_7", "mkt_seller_8",
+  "mkt_seller_free_1", "mkt_seller_free_2", "mkt_buyer_1", "mkt_buyer_2",
+  "item_1", "item_2", "item_3", "item_4", "item_5", "item_6", "mkt_1", "mkt_2", "mkt_3", "mkt_4", "mkt_5", "mkt_6",
+  "mkt_shop_1", "mkt_shop_2", "mkt_shop_3", "mkt_shop_4", "mkt_biz_1", "mkt_biz_2", "mkt_biz_3", "mkt_biz_4",
+  "shop_1", "shop_2", "shop_3", "shop_4",
+  "ps_1", "ps_2", "ps_3", "ps_4", "pro_1", "pro_2", "pro_3", "pro_4",
+  "bld_1", "bld_2", "bld_3", "bld_4", "bld_5", "rel_1", "rel_2", "rel_3", "rel_4", "rel_5",
+  "donor_1", "donor_2", "donor_3", "donor_4", "donor_5",
+  "center_1", "center_2", "center_3", "deliv_1", "deliv_2", "deliv_3", "deliv_4",
+  "swap_001", "swap_002", "swap_003", "swap_004", "swap_005"
+];
+
+export function isBuiltInDummyRecord(record: any): boolean {
+  if (!record) return false;
+  const id = String(record.id ? record.id : "").trim();
+  if (BUILT_IN_DUMMY_ID_LIST.includes(id)) return true;
+  const regCode = String(record.registrationCode ? record.registrationCode : "").trim();
+  if (regCode === "712845") return true;
+  if (regCode === "593812") return true;
+  if (regCode === "384910") return true;
+  return false;
+}
+
+export function filterAndPurgeDummySnapDocs(snap: any): any[] {
+  const valid: any[] = [];
+  if (!snap) return valid;
+  if (!snap.docs) return valid;
+  for (const d of snap.docs) {
+    const item = { id: d.id, ...d.data() };
+    if (isBuiltInDummyRecord(item)) {
+      try {
+        deleteDoc(d.ref).catch(() => {});
+      } catch (e) {}
+    } else {
+      valid.push(item);
+    }
+  }
+  return valid;
+}
+
 export function subscribeToUsers(callback: (users: any[]) => void): () => void {
   const colRef = collection(db, USERS_COLLECTION);
   return onSnapshot(colRef, (snap) => {
-    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const users = filterAndPurgeDummySnapDocs(snap);
     callback(users);
   }, (err) => {
-    console.warn('subscribeToUsers error:', err);
+    console.warn("subscribeToUsers error:", err);
   });
 }
+
 // ==============================================================
 // 🆘 HELP POSTS OPERATIONS
 // ==============================================================
@@ -296,48 +341,43 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
 export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => void {
   const colRef = collection(db, POSTS_COLLECTION);
   return onSnapshot(colRef, (snap) => {
-    const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const posts = filterAndPurgeDummySnapDocs(snap);
     callback(posts);
   }, (err) => {
-    console.warn('subscribeToHelpPosts error:', err);
+    console.warn("subscribeToHelpPosts error:", err);
   });
 }
 
 export interface PaginatedPostsResult {
   posts: any[];
-  lastDoc: any | null;
+  lastDoc: any;
   hasMore: boolean;
 }
 
-/**
- * 📢 Firestore මගින් දැන්වීම් 4 බැගින් (batch load) අලුත්ම ඒවා උඩින්ම එන සේ ලබා ගැනීම
- */
 export async function fetchHelpPostsPaginated(
-  lastDoc: any | null = null,
+  lastDoc: any = null,
   pageSize: number = 4
-): Promise<PaginatedPostsResult> {
+) {
   try {
     const colRef = collection(db, POSTS_COLLECTION);
-    
-    // createdAt මගින් අලුත්ම දැන්වීම් මුලින්ම (desc) පෙළගැස්වීම
     let q = query(
       colRef,
-      orderBy('createdAt', 'desc'),
+      orderBy("createdAt", "desc"),
       limit(pageSize)
     );
 
     if (lastDoc) {
       q = query(
         colRef,
-        orderBy('createdAt', 'desc'),
+        orderBy("createdAt", "desc"),
         startAfter(lastDoc),
         limit(pageSize)
       );
     }
 
     const snap = await getDocs(q);
-    const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const newLastDoc = snap.docs[snap.docs.length - 1] || null;
+    const posts = filterAndPurgeDummySnapDocs(snap);
+    const newLastDoc = snap.docs.length === 0 ? null : snap.docs[snap.docs.length - 1];
     const hasMore = snap.docs.length === pageSize;
 
     return {
@@ -346,11 +386,10 @@ export async function fetchHelpPostsPaginated(
       hasMore,
     };
   } catch (err) {
-    console.warn('fetchHelpPostsPaginated error:', err);
+    console.warn("fetchHelpPostsPaginated error:", err);
     return { posts: [], lastDoc: null, hasMore: false };
   }
 }
-
 
 export async function addHelpPostToFirestore(postData: any): Promise<string> {
   const postId = postData.id || `post_${Date.now()}`;
@@ -812,54 +851,54 @@ export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void
 // ==============================================================
 
 export function subscribeToMarketplaceItems(callback: (items: any[]) => void): () => void {
-  const colRef = collection(db, 'marketplace');
+  const colRef = collection(db, "marketplace");
   return onSnapshot(colRef, (snap) => {
-    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const items = filterAndPurgeDummySnapDocs(snap);
     callback(items);
   }, () => {});
 }
 
-export async function addMarketplaceItemToFirestore(item: any): Promise<string> {
-  const id = item.id || `item_${Date.now()}`;
-  const docRef = doc(db, 'marketplace', id);
+export async function addMarketplaceItemToFirestore(item: any) {
+  const id = item.id ? item.id : "item_" + Date.now();
+  const docRef = doc(db, "marketplace", id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function deleteMarketplaceItemFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'marketplace', id));
+export async function deleteMarketplaceItemFromFirestore(id: string) {
+  await deleteDoc(doc(db, "marketplace", id));
 }
 
 export function subscribeToMarketShops(callback: (shops: any[]) => void): () => void {
-  const colRef = collection(db, 'market_shops');
+  const colRef = collection(db, "market_shops");
   return onSnapshot(colRef, (snap) => {
-    const shops = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const shops = filterAndPurgeDummySnapDocs(snap);
     callback(shops);
   }, () => {});
 }
 
-export async function addMarketShopToFirestore(shop: any): Promise<string> {
-  const id = shop.id ? shop.id : 'shop_' + Date.now();
-  const docRef = doc(db, 'market_shops', id);
+export async function addMarketShopToFirestore(shop: any) {
+  const id = shop.id ? shop.id : "shop_" + Date.now();
+  const docRef = doc(db, "market_shops", id);
   await setDoc(docRef, sanitizeForFirestore({ ...shop, id }), { merge: true });
   try {
-    const isBusiness = (shop && (shop.type === 'business' ? true : shop.mode === 'business'));
-    const regType = isBusiness ? 'ව්‍යාපාර' : 'වෙළෙඳසැල්';
+    const isBusiness = (shop && (shop.type === "business" ? true : shop.mode === "business"));
+    const regType = isBusiness ? "ව්‍යාපාර" : "වෙළෙඳසැල්";
     const shopTitle = String(shop && (shop.name ? shop.name : (shop.shopName ? shop.shopName : id))).trim();
     notifyAdminViaTelegramOnRegistration({
       registrationType: regType,
       identifierOrName: shopTitle,
-      dedupeKey: 'shop_' + id
+      dedupeKey: "shop_" + id
     });
   } catch (err) {}
   return id;
 }
 
-export async function deleteMarketShopFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'market_shops', id));
+export async function deleteMarketShopFromFirestore(id: string) {
+  await deleteDoc(doc(db, "market_shops", id));
 }
 
-export async function deleteMarketplaceShopFromFirestore(id: string): Promise<void> {
+export async function deleteMarketplaceShopFromFirestore(id: string) {
   await deleteMarketShopFromFirestore(id);
 }
 
@@ -868,50 +907,50 @@ export async function deleteMarketplaceShopFromFirestore(id: string): Promise<vo
 // ==============================================================
 
 export function subscribeToProfessionalServices(callback: (services: any[]) => void): () => void {
-  const colRef = collection(db, 'professional_services');
+  const colRef = collection(db, "professional_services");
   return onSnapshot(colRef, (snap) => {
-    const services = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const services = filterAndPurgeDummySnapDocs(snap);
     callback(services);
   }, () => {});
 }
 
-export async function addProfessionalServiceToFirestore(service: any): Promise<string> {
-  const id = service.id || `pro_${Date.now()}`;
-  const docRef = doc(db, 'professional_services', id);
+export async function addProfessionalServiceToFirestore(service: any) {
+  const id = service.id ? service.id : "pro_" + Date.now();
+  const docRef = doc(db, "professional_services", id);
   await setDoc(docRef, sanitizeForFirestore({ ...service, id }), { merge: true });
   return id;
 }
 
-export async function deleteProfessionalServiceFromFirestore(serviceId: string): Promise<void> {
+export async function deleteProfessionalServiceFromFirestore(serviceId: string) {
   try {
-    const docRef = doc(db, 'professional_services', serviceId);
+    const docRef = doc(db, "professional_services", serviceId);
     await deleteDoc(docRef);
   } catch (err) {
-    console.warn('deleteProfessionalServiceFromFirestore error:', err);
+    console.warn("deleteProfessionalServiceFromFirestore error:", err);
   }
 }
 
 export function subscribeToGroups(callback: (groups: any[]) => void): () => void {
-  const colRef = collection(db, 'groups');
+  const colRef = collection(db, "groups");
   return onSnapshot(colRef, (snap) => {
-    const groups = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const groups = filterAndPurgeDummySnapDocs(snap);
     callback(groups);
   }, () => {});
 }
 
-export async function addGroupToFirestore(group: any): Promise<string> {
-  const id = group.id || `group_${Date.now()}`;
-  const docRef = doc(db, 'groups', id);
+export async function addGroupToFirestore(group: any) {
+  const id = group.id ? group.id : "group_" + Date.now();
+  const docRef = doc(db, "groups", id);
   await setDoc(docRef, sanitizeForFirestore({ ...group, id }), { merge: true });
   return id;
 }
 
-export async function deleteGroupFromFirestore(groupId: string): Promise<void> {
+export async function deleteGroupFromFirestore(groupId: string) {
   try {
-    const docRef = doc(db, 'groups', groupId);
+    const docRef = doc(db, "groups", groupId);
     await deleteDoc(docRef);
   } catch (err) {
-    console.warn('deleteGroupFromFirestore error:', err);
+    console.warn("deleteGroupFromFirestore error:", err);
   }
 }
 
@@ -919,37 +958,37 @@ export async function deleteGroupFromFirestore(groupId: string): Promise<void> {
 // 🩸 BLOOD & DISASTER RELIEF
 // ==============================================================
 
-export async function saveBloodRequestToFirestore(req: any): Promise<string> {
-  const id = req.id || `blood_${Date.now()}`;
-  const docRef = doc(db, 'blood_requests', id);
+export async function saveBloodRequestToFirestore(req: any) {
+  const id = req.id ? req.id : "blood_" + Date.now();
+  const docRef = doc(db, "blood_requests", id);
   await setDoc(docRef, sanitizeForFirestore({ ...req, id }), { merge: true });
   return id;
 }
 
-export async function deleteBloodRequestFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'blood_requests', id));
+export async function deleteBloodRequestFromFirestore(id: string) {
+  await deleteDoc(doc(db, "blood_requests", id));
 }
 
-export async function saveVolunteerDonorToFirestore(donor: any): Promise<string> {
-  const id = donor.id || `donor_${Date.now()}`;
-  const docRef = doc(db, 'volunteer_donors', id);
+export async function saveVolunteerDonorToFirestore(donor: any) {
+  const id = donor.id ? donor.id : "donor_" + Date.now();
+  const docRef = doc(db, "volunteer_donors", id);
   await setDoc(docRef, sanitizeForFirestore({ ...donor, id }), { merge: true });
   return id;
 }
 
-export async function deleteVolunteerDonorFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'volunteer_donors', id));
+export async function deleteVolunteerDonorFromFirestore(id: string) {
+  await deleteDoc(doc(db, "volunteer_donors", id));
 }
 
-export async function saveDisasterReliefToFirestore(relief: any): Promise<string> {
-  const id = relief.id || `relief_${Date.now()}`;
-  const docRef = doc(db, 'disaster_relief', id);
+export async function saveDisasterReliefToFirestore(relief: any) {
+  const id = relief.id ? relief.id : "relief_" + Date.now();
+  const docRef = doc(db, "disaster_relief", id);
   await setDoc(docRef, sanitizeForFirestore({ ...relief, id }), { merge: true });
   return id;
 }
 
-export async function deleteDisasterReliefFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'disaster_relief', id));
+export async function deleteDisasterReliefFromFirestore(id: string) {
+  await deleteDoc(doc(db, "disaster_relief", id));
 }
 
 // ==============================================================
@@ -957,72 +996,70 @@ export async function deleteDisasterReliefFromFirestore(id: string): Promise<voi
 // ==============================================================
 
 export function subscribeToAidCentersFromFirestore(callback: (centers: any[]) => void): () => void {
-  const colRef = collection(db, 'aid_centers');
+  const colRef = collection(db, "aid_centers");
   return onSnapshot(colRef, (snap) => {
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const data = filterAndPurgeDummySnapDocs(snap);
     callback(data);
   }, () => {});
 }
 
-export async function saveAidCenterToFirestore(item: any): Promise<string> {
-  const id = item.id || `aid_center_${Date.now()}`;
-  const docRef = doc(db, 'aid_centers', id);
+export async function saveAidCenterToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_center_" + Date.now();
+  const docRef = doc(db, "aid_centers", id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function updateAidCenterInFirestore(id: string, updateData: any): Promise<void> {
-  const docRef = doc(db, 'aid_centers', id);
+export async function updateAidCenterInFirestore(id: string, updateData: any) {
+  const docRef = doc(db, "aid_centers", id);
   await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
-export async function deleteAidCenterFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'aid_centers', id));
+export async function deleteAidCenterFromFirestore(id: string) {
+  await deleteDoc(doc(db, "aid_centers", id));
 }
 
 export function subscribeToAidDeliveriesFromFirestore(callback: (deliveries: any[]) => void): () => void {
-  const colRef = collection(db, 'aid_deliveries');
+  const colRef = collection(db, "aid_deliveries");
   return onSnapshot(colRef, (snap) => {
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const data = filterAndPurgeDummySnapDocs(snap);
     callback(data);
   }, () => {});
 }
 
-export async function saveAidDeliveryToFirestore(item: any): Promise<string> {
-  const id = item.id || `aid_delivery_${Date.now()}`;
-  const docRef = doc(db, 'aid_deliveries', id);
+export async function saveAidDeliveryToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_delivery_" + Date.now();
+  const docRef = doc(db, "aid_deliveries", id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function updateAidDeliveryInFirestore(id: string, updateData: any): Promise<void> {
-  const docRef = doc(db, 'aid_deliveries', id);
+export async function updateAidDeliveryInFirestore(id: string, updateData: any) {
+  const docRef = doc(db, "aid_deliveries", id);
   await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
-export async function deleteAidDeliveryFromFirestore(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'aid_deliveries', id));
+export async function deleteAidDeliveryFromFirestore(id: string) {
+  await deleteDoc(doc(db, "aid_deliveries", id));
 }
 
 export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any[]) => void): () => void {
-  const colRef = collection(db, 'aid_broadcasts');
+  const colRef = collection(db, "aid_broadcasts");
   return onSnapshot(colRef, (snap) => {
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const data = filterAndPurgeDummySnapDocs(snap);
     callback(data);
   }, () => {});
 }
 
-export async function saveAidBroadcastToFirestore(item: any): Promise<string> {
-  const id = item.id || `aid_broadcast_${Date.now()}`;
-  const docRef = doc(db, 'aid_broadcasts', id);
+export async function saveAidBroadcastToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_broadcast_" + Date.now();
+  const docRef = doc(db, "aid_broadcasts", id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
 // ==============================================================
-// 🗑️ DELETED RECORDS MAP (SYNC ACROSS ALL CLIENTS)
 // ==============================================================
-
 export interface DeletedRecordsMap {
   deletedPostIds?: string[];
   deletedUserIds?: string[];
