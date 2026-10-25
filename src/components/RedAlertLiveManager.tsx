@@ -419,15 +419,19 @@ export const RedAlertLiveManager: any = ({
       } catch (err) {}
     };
     syncServiceWorkerWatchConfig();
-    const handleUserGestureUnlock = () => {
+    let hasUnlockedGesture = false;
+    const handleUserGestureUnlock = (ev?: any) => {
+      if (hasUnlockedGesture) return;
+      const tag = ev && ev.target && ev.target.tagName ? String(ev.target.tagName).toUpperCase() : '';
+      if (tag === 'INPUT' ? true : tag === 'TEXTAREA' ? true : tag === 'SELECT') return;
+      hasUnlockedGesture = true;
       try {
         unlockAudio();
         activateBackgroundWakeLock().catch(() => {});
         syncServiceWorkerWatchConfig();
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().catch(() => {});
-        }
       } catch (err) {}
+      window.removeEventListener('click', handleUserGestureUnlock);
+      window.removeEventListener('touchstart', handleUserGestureUnlock);
     };
     window.addEventListener('click', handleUserGestureUnlock, {
       passive: true
