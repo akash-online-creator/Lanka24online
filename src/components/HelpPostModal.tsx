@@ -161,66 +161,70 @@ const [visibilityMode, setVisibilityMode] = useState('public');
 const [scheduledDate, setScheduledDate] = useState('');
 const [scheduledTime, setScheduledTime] = useState('');
 const [isSuccess, setIsSuccess] = useState(false);
+const wasOpenRef = useRef(false);
 useEffect(() => {
-injectPostFonts();
+  injectPostFonts();
 }, []);
 useEffect(() => {
-if (isOpen) {
-setStep(1);
-setHeadline('');
-setComposerTab('text');
-setPostText('');
-setSelectedFont('noto-sans-sinhala');
-setImageBase64('');
-setIsProcessingImage(false);
-setPollQuestion('');
-setPollOptions(['', '']);
-setSelectedTag(null);
-setNewTagNameInput('');
-setTagSearchQuery('');
-setTagError('');
-setExternalLink('');
-setCopiedLink(false);
-setIsPreviewExpanded(false);
-const defaultName = currentUser?.name ? currentUser.name : 'ලියාපදිංචි පරිශීලක';
-const defaultPhone = currentUser?.whatsappPhone ? currentUser.whatsappPhone : currentUser?.phone ? currentUser.phone : '';
-setUserName(defaultName);
-setUserPhone(defaultPhone);
-setShowAuthorName(true);
-setShowDistance(true);
-setShowComments(true);
-const now = new Date();
-setAutoSavedDate(now.toLocaleDateString('si-LK'));
-setAutoSavedTime(now.toLocaleTimeString([], {
-hour: '2-digit',
-minute: '2-digit'
-}));
-const randDigits = Math.floor(1000 + Math.random() * 9000);
-setGeneratedPostCode('#SRV-' + String(randDigits));
-setVisibilityMode('public');
-const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-setScheduledDate(tomorrow.toISOString().split('T')[0]);
-setScheduledTime('09:00');
-setIsSuccess(false);
-const stored = getStoredTags();
-let customArr: TagItem[] = [];
-try {
-const rawCustom = localStorage.getItem('sahaya_custom_tags');
-if (rawCustom) customArr = JSON.parse(rawCustom);
-} catch (unusedErr0) {}
-setAllTags([...(Array.isArray(customArr) ? customArr : []), ...(Array.isArray(stored) ? stored : [])]);
-const safeLoc = currentLocation ? currentLocation : DEFAULT_LOCATION;
-setCalculatedDistanceKm(0.5);
-if (typeof navigator !== 'undefined' && navigator.geolocation) {
-navigator.geolocation.getCurrentPosition(pos => {
-const dist = calculateDistanceInKm(pos.coords.latitude, pos.coords.longitude, safeLoc.lat, safeLoc.lng);
-setCalculatedDistanceKm(dist);
-}, () => {
-setCalculatedDistanceKm(0.5);
-}, { timeout: 4000 });
-}
-}
-}, [isOpen, currentUser, currentLocation]);
+  if (isOpen && !wasOpenRef.current) {
+    wasOpenRef.current = true;
+    setStep(1);
+    setHeadline('');
+    setComposerTab('text');
+    setPostText('');
+    setSelectedFont('noto-sans-sinhala');
+    setImageBase64('');
+    setIsProcessingImage(false);
+    setPollQuestion('');
+    setPollOptions(['', '']);
+    setSelectedTag(null);
+    setNewTagNameInput('');
+    setTagSearchQuery('');
+    setTagError('');
+    setExternalLink('');
+    setCopiedLink(false);
+    setIsPreviewExpanded(false);
+    const defaultName = currentUser?.name ? currentUser.name : 'ලියාපදිංචි පරිශීලක';
+    const defaultPhone = currentUser?.whatsappPhone ? currentUser.whatsappPhone : currentUser?.phone ? currentUser.phone : '';
+    setUserName(defaultName);
+    setUserPhone(defaultPhone);
+    setShowAuthorName(true);
+    setShowDistance(true);
+    setShowComments(true);
+    const now = new Date();
+    setAutoSavedDate(now.toLocaleDateString('si-LK'));
+    setAutoSavedTime(now.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    }));
+    const randDigits = Math.floor(1000 + Math.random() * 9000);
+    setGeneratedPostCode('#SRV-' + String(randDigits));
+    setVisibilityMode('public');
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    setScheduledDate(tomorrow.toISOString().split('T')[0]);
+    setScheduledTime('09:00');
+    setIsSuccess(false);
+    const stored = getStoredTags();
+    let customArr: TagItem[] = [];
+    try {
+      const rawCustom = localStorage.getItem('sahaya_custom_tags');
+      if (rawCustom) customArr = JSON.parse(rawCustom);
+    } catch (unusedErr0) {}
+    setAllTags([...(Array.isArray(customArr) ? customArr : []), ...(Array.isArray(stored) ? stored : [])]);
+    const safeLoc = currentLocation ? currentLocation : DEFAULT_LOCATION;
+    setCalculatedDistanceKm(0.5);
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        const dist = calculateDistanceInKm(pos.coords.latitude, pos.coords.longitude, safeLoc.lat, safeLoc.lng);
+        setCalculatedDistanceKm(dist);
+      }, () => {
+        setCalculatedDistanceKm(0.5);
+      }, { timeout: 4000 });
+    }
+  } else if (!isOpen) {
+    wasOpenRef.current = false;
+  }
+}, [isOpen]);
 const generalServiceTags = useMemo(() => {
 const combined: TagItem[] = [...DEFAULT_GENERAL_SERVICE_TAGS];
 const excludedCategories = ['පරිත්‍යාග', 'හදිසි / ආපදා', 'ඉක්මන් සේවා', 'වෙළඳපොල', 'සොයාදෙන්න', 'red_alert', 'quick_services', 'marketplace', 'find_for_me', 'from_me_to_you'];
