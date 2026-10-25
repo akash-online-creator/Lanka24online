@@ -96,6 +96,26 @@ interface RegisterFormProps {
   users?: User[];
 }
 
+async function hashUserPassword(rawPass: string): Promise<string> {
+  const clean = (rawPass ? rawPass : '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('sha256_v1$')) return clean;
+  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return 'sha256_v1$' + hex;
+    } catch (e) {}
+  }
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) {
+    h = (h * 33) ^ payload.charCodeAt(i);
+  }
+  return 'sha256_v1$fb_' + String(h >>> 0);
+}
+
 export const RegisterForm: React.FC<RegisterFormProps> = ({
   onRegister,
   onRegisterSuccess,
@@ -404,6 +424,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       const resolvedGender = nicInfo.gender ? nicInfo.gender : 'male';
       const resolvedCity = selectedPoliceDivision ? selectedPoliceDivision : selectedDistrict;
       const resolvedPhoto = nicFrontPhoto ? nicFrontPhoto : '';
+      const hashedPassword = await hashUserPassword(key.trim());
 
       // Primary User Profile Model
       const newUser: User = {
@@ -431,8 +452,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         registeredAt: nowStr,
         createdAt: resolvedCreatedAt,
         updatedAt: nowStr,
-        password: key.trim(),
-        key: key.trim() as any,
+        password: hashedPassword,
+        key: hashedPassword as any,
         temporaryPassword: '',
         isTemporaryPassword: false,
         isPasswordChanged: true,
