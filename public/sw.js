@@ -1,431 +1,783 @@
-const CACHE_NAME = 'sahaya-sewa-v7';
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
-const PRECACHE_ASSETS = [
+import { getApps, getApp } from 'firebase/app';
 
-  '/',
+import { doc, setDoc, collection, addDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 
-  '/index.html',
+import { db } from '../lib/firebase';
 
-  '/manifest.json',
+import { startEmergencySiren, stopEmergencySiren, setEmergencySirenLock } from './sirenAudio';
 
-  '/logo.jpg',
+import { broadcastAppNotification, triggerBrowserNotification, playNotificationSound, AppNotification } from './notificationManager';
 
-  '/mixkit-manual-siren-fire-alert-1652.wav',
+import { calculateDistanceKm } from './geoUtils';
 
-  '/siren.wav'
+import { Capacitor } from '@capacitor/core';
 
-];
+import { PushNotifications } from '@capacitor/push-notifications';
 
-self.addEventListener('install', (event) => {
+import firebaseConfigJson from '../../firebase-applet-config.json';
 
-  self.skipWaiting();
+export type PushCategory = any;
 
-  event.waitUntil(
+export interface FcmPayloadData {
 
-    caches.open(CACHE_NAME).then(async (cache) => {
+  category: any;
 
-      await Promise.allSettled(PRECACHE_ASSETS.map((asset) => cache.add(asset)));
+  title: string;
 
-    })
+  body: string;
 
-  );
+  alertId?: string;
 
-});
+  postId?: string;
 
-self.addEventListener('activate', (event) => {
+  groupId?: string;
 
-  event.waitUntil(
+  locationName?: string;
 
-    caches.keys().then((keys) => {
+  latitude?: any;
 
-      return Promise.all(
+  longitude?: any;
 
-        keys.map((key) => {
+  radiusKm?: number;
 
-          if (key !== CACHE_NAME) {
+  badgeText?: string;
 
-            return caches.delete(key);
+  urgency?: any;
 
-          }
+  senderName?: string;
 
-        })
+  senderId?: string;
 
-      );
+  actionUrl?: string;
 
-    }).then(() => self.clients.claim())
+  createdAtMs?: number;
 
-  );
+}
 
-});
+let messagingInstance: any = null;
 
-self.addEventListener('fetch', (event) => {
+let isFcmInitialized = false;
 
-  if (event.request.method !== 'GET') return;
+function getLocalCoordinates(): { lat: number; lng: number; isFallback?: boolean } {
 
-  const url = new URL(event.request.url);
+  try {
 
-  const isLiveRequest = [
+    const nativeGps = (window as any).__sahaya_native_gps || (window as any).sahayaNativeLocation;
 
-    url.pathname.startsWith('/api'),
+    if (nativeGps && typeof nativeGps.lat === 'number' && typeof nativeGps.lng === 'number' && nativeGps.lat !== 0) {
 
-    url.hostname.includes('firestore'),
+      return { lat: nativeGps.lat, lng: nativeGps.lng };
 
-    url.hostname.includes('googleapis'),
+    }
 
-    url.hostname.includes('firebase')
+    const raw = localStorage.getItem('sahaya_current_location');
 
-  ].some(Boolean);
+    if (raw) {
 
-  if (isLiveRequest) {
+      const parsed = JSON.parse(raw);
 
-    return;
-  }
+      if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
 
-  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
-
-    event.respondWith(
-
-      fetch(event.request)
-
-        .then((networkResponse) => {
-
-          if (networkResponse && networkResponse.status === 200) {
-
-            const copy = networkResponse.clone();
-
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-
-          }
-
-          return networkResponse;
-
-        })
-
-        .catch(() => {
-
-          return caches.match('/index.html') || caches.match('/');
-
-        })
-
-    );
-
-    return;
-
-  }
-
-  event.respondWith(
-
-    caches.match(event.request).then((cachedResponse) => {
-
-      if (cachedResponse) {
-
-        return cachedResponse;
+        return { lat: parsed.lat, lng: parsed.lng };
 
       }
 
-      return fetch(event.request).then((networkResponse) => {
+    }
 
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+  } catch {}
 
-          return networkResponse;
+  return { lat: 7.151, lng: 79.885, isFallback: true };
 
-        }
+}
 
-        if (
+export async function isMessagingSupported() {
 
-          url.pathname.endsWith('.wav') ||
+  if (typeof window === 'undefined') return false;
 
-          url.pathname.endsWith('.mp3') ||
+  if (!('serviceWorker' in navigator)) return false;
 
-          url.pathname.endsWith('.png') ||
+  if (!('Notification' in window)) return false;
 
-          url.pathname.endsWith('.jpg') ||
+  try {
 
-          url.pathname.endsWith('.svg') ||
+    return await isSupported();
 
-          url.pathname.endsWith('.woff2')
+  } catch {
 
-        ) {
-
-          const responseToCache = networkResponse.clone();
-
-          caches.open(CACHE_NAME).then((cache) => {
-
-            cache.put(event.request, responseToCache);
-
-          });
-
-        }
-
-        return networkResponse;
-
-      });
-
-    })
-
-  );
-
-});
-
-async function showHighPriorityEmergencyNotification(payload) {
-
-  const category = payload.category || 'red_alert';
-
-  const disasterTitle = payload.disasterTitleSi || payload.title || 'හදිසි ආපදා අනතුරු ඇඟවීමක්';
-
-  const locationName = payload.locationName || payload.location || 'ශ්‍රී ලංකාව';
-
-  const distanceStr = payload.distanceKm ? ` (ඔබට දුර: කි.මී. ${payload.distanceKm})` : '';
-
-  const desc = payload.description || payload.body || payload.message || 'වහාම ආරක්ෂිත පියවර ගන්න. සම්පූර්ණ විස්තර බැලීමට සහ සයිරන් නැවැත්වීමට මෙය ක්ලික් කරන්න.';
-
-  const alertCode = payload.alertCode ? ` [${payload.alertCode}]` : '';
-
-  const notifTitle = category === 'red_alert'
-
-    ? `🚨 රතු එළිය හදිසි ආපදාවක්: ${disasterTitle}${alertCode}`
-
-    : (payload.title || '🚨 සහය සේවා හදිසි දැනුම්දීම');
-
-  const notifBody = `📍 ස්ථානය: ${locationName}${distanceStr}\n⚠️ ආපදාව: ${disasterTitle}\n📝 විස්තරය: ${desc}`;
-
-  const vibrationPattern = category === 'red_alert'
-
-    ? [1000, 200, 1000, 200, 1500, 200, 2000, 200, 2500]
-
-    : [400, 150, 400, 150, 600];
-
-  const actions = category === 'red_alert'
-
-    ? [
-
-        { action: 'open_red_alert', title: '🚨 ආපදා විස්තරය බලන්න' },
-
-        { action: 'stop', title: '🔇 සයිරන් නවත්වන්න' }
-
-      ]
-
-    : [
-
-        { action: 'open', title: '👁️ විස්තර බලන්න' },
-
-        { action: 'dismiss', title: 'ඉවත් කරන්න' }
-
-      ];
-
-  const tagId = payload.alertId
-
-    ? `sahaya-red-alert-${payload.alertId}`
-
-    : (payload.tag || `sahaya-${category}-${Date.now()}`);
-
-  const options = {
-
-    body: notifBody,
-
-    icon: '/logo.jpg',
-
-    badge: '/logo.jpg',
-
-    tag: tagId,
-
-    renotify: true,
-
-    requireInteraction: true,
-
-    silent: false,
-
-    vibrate: vibrationPattern,
-
-    data: {
-
-      url: '/',
-
-      category,
-
-      alertId: payload.alertId,
-
-      postId: payload.postId,
-
-      groupId: payload.groupId,
-
-      targetModal: 'red_alert',
-
-      payload
-
-    },
-
-    actions
-
-  };
-
-  await self.registration.showNotification(notifTitle, options);
-
-  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-
-  for (const client of clients) {
-
-    client.postMessage({
-
-      type: 'PUSH_NOTIFICATION_RECEIVED',
-
-      payload: {
-
-        ...payload,
-
-        category,
-
-        title: notifTitle,
-
-        body: notifBody,
-
-        locationName
-
-      }
-
-    });
+    return false;
 
   }
 
 }
 
-self.addEventListener('push', (event) => {
+export async function initializeAllNativePushChannels() {
 
-  let data = {};
-
-  if (event.data) {
+  if (Capacitor.isNativePlatform()) {
 
     try {
 
-      data = event.data.json();
+      await PushNotifications.createChannel({
 
-    } catch {
+        id: 'sahaya_emergency_red_alert',
 
-      data = { title: '🚨 සහය සේවා හදිසි දැනුම්දීම', body: event.data.text() };
+        name: '🚨 රතු එළිය ආපදා සයිරනය (Red Alert Siren)',
+
+        description: 'හදිසි ආපදා තත්ත්වයන් සඳහා වන අතිශය හදිසි අනතුරු ඇඟවීම්',
+
+        importance: 5,
+
+        sound: 'siren',
+
+        visibility: 1,
+
+        vibration: true,
+
+        lights: true,
+
+        lightColor: '#ef4444'
+
+      });
+
+      await PushNotifications.createChannel({
+
+        id: 'sos_live_channel',
+
+        name: '📡 SOS Live හදිසි ආපදා (SOS Emergency)',
+
+        description: 'හදිසි ජීවිතාරක්ෂක සහ සජීවී පිහිට ඉල්ලීම්',
+
+        importance: 5,
+
+        sound: 'emergency_blood',
+
+        visibility: 1,
+
+        vibration: true,
+
+        lights: true,
+
+        lightColor: '#dc2626'
+
+      });
+
+      await PushNotifications.createChannel({
+
+        id: 'quick_service_channel',
+
+        name: '⚡ ක්ෂණික සේවා (Quick Urgent Services)',
+
+        description: 'හදිසි කාර්මික, ජල, විදුලි හා තාක්ෂණික සේවා ඉල්ලීම්',
+
+        importance: 4,
+
+        sound: 'quick_service',
+
+        visibility: 1,
+
+        vibration: true,
+
+        lights: true,
+
+        lightColor: '#10b981'
+
+      });
+
+      await PushNotifications.createChannel({
+
+        id: 'group_work_channel',
+
+        name: '👥 කණ්ඩායම් වැඩ සහ ශ්‍රමදාන (Group Work)',
+
+        description: 'ප්‍රජා කණ්ඩායම් ක්‍රියාකාරකම් හා සාමූහික දැනුම්දීම්',
+
+        importance: 4,
+
+        sound: 'group_work',
+
+        visibility: 1,
+
+        vibration: true,
+
+        lights: true,
+
+        lightColor: '#3b82f6'
+
+      });
+
+    } catch (e) {
+
+      console.warn('Native notification channels initialization note:', e);
 
     }
 
   }
 
-  const payload = data.data || data;
+}
 
-  event.waitUntil(showHighPriorityEmergencyNotification(payload));
+export async function registerFcmToken(currentUserId?: string) {
 
-});
+  try {
 
-self.addEventListener('notificationclick', (event) => {
+    await initializeAllNativePushChannels();
 
-  event.notification.close();
+    const supported = await isMessagingSupported();
 
-  const targetData = event.notification.data || {};
+    if (!supported) {
 
-  if (event.action === 'stop' || event.action === 'dismiss') {
+      return null;
 
-    event.waitUntil(
+    }
 
-      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    let permission = Notification.permission;
 
-        for (const client of clientList) {
+    if (permission !== 'granted') {
 
-          client.postMessage({
+      permission = await Notification.requestPermission();
 
-            type: 'STOP_ALERT_AUDIO',
+    }
 
-            action: 'stop',
+    if (permission !== 'granted') {
 
-            alertId: targetData.alertId
+      return null;
+
+    }
+
+    const app = getApps().length !== 0 ? getApp() : undefined;
+
+    if (!app) return null;
+
+    if (!messagingInstance) {
+
+      messagingInstance = getMessaging(app);
+
+    }
+
+    const swRegistration = await navigator.serviceWorker.ready;
+
+    const token = await getToken(messagingInstance, {
+
+      serviceWorkerRegistration: swRegistration,
+
+      vapidKey: (firebaseConfigJson as any).vapidKey || undefined
+
+    });
+
+    if (token) {
+
+      localStorage.setItem('sahaya_fcm_token', token);
+
+      const coords = getLocalCoordinates();
+
+      const sanitizedTokenId = token.slice(-28).replace(/[^a-zA-Z0-9]/g, '_');
+
+      if (db) {
+
+        try {
+
+          const globalTokenRef = doc(db, 'device_push_tokens', sanitizedTokenId);
+
+          await setDoc(globalTokenRef, {
+
+            token,
+
+            userId: currentUserId || 'usr_guest',
+
+            lat: coords.lat,
+
+            lng: coords.lng,
+
+            platform: Capacitor.isNativePlatform() ? 'android_native' : 'web_pwa',
+
+            updatedAtMs: Date.now(),
+
+            serverTimestamp: serverTimestamp()
+
+          }, { merge: true });
+
+          if (currentUserId) {
+
+            const userTokenRef = doc(db, 'users', currentUserId, 'fcm_tokens', sanitizedTokenId);
+
+            await setDoc(userTokenRef, {
+
+              token,
+
+              updatedAtMs: Date.now(),
+
+              platform: Capacitor.isNativePlatform() ? 'android_native' : 'web_pwa'
+
+            }, { merge: true });
+
+          }
+
+        } catch {}
+
+      }
+
+      return token;
+
+    }
+
+  } catch (error) {
+
+    console.warn('FCM registration status:', error);
+
+  }
+
+  return null;
+
+}
+
+export function processIncomingPushAlert(payload: FcmPayloadData) {
+
+  const category = payload.category || 'admin_broadcast';
+
+  const title = payload.title || '🚨 සහය සේවා දැනුම්දීම';
+
+  const message = payload.body || 'නව හදිසි ආපදා යාවත්කාලීනයක් ඇත.';
+
+  const locationName = payload.locationName || '';
+
+  const notifId = payload.alertId ? `red-alert-${payload.alertId}` : `push-${Date.now()}`;
+
+  if (category === 'red_alert') {
+
+    try {
+
+      const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+
+      const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+
+      if (payload.alertId && ((Array.isArray(myAlerts) && myAlerts.includes(payload.alertId)) || (Array.isArray(stoppedSirens) && stoppedSirens.includes(payload.alertId)))) {
+
+        return;
+
+      }
+
+    } catch {}
+
+    let distanceKm = 0;
+
+    const radiusLimit = payload.radiusKm || 15.0;
+
+    if (payload.latitude !== undefined && payload.longitude !== undefined) {
+
+      const alertLat = Number(payload.latitude);
+
+      const alertLng = Number(payload.longitude);
+
+      const userCoords = getLocalCoordinates();
+
+      distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+
+      if (!userCoords.isFallback && Math.max(distanceKm, radiusLimit) === distanceKm && distanceKm !== radiusLimit) {
+
+        return;
+
+      }
+
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: payload }));
+    }
+    setEmergencySirenLock(true);
+    startEmergencySiren();
+    broadcastAppNotification({
+      id: notifId,
+      type: 'emergency_blood',
+      title: '🚨 සහය සේවා (රතු එළිය): ' + title,
+      message: message + ' (ඔබට දුර: කි.මී. ' + distanceKm.toFixed(1) + ')',
+      locationName,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      badgeText: 'රතු එළිය 15KM',
+      targetModal: 'red_alert',
+      targetPostId: payload.alertId
+    });
+    if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+
+      try {
+
+        (window as any).SahayaNativeAlertChannel.postMessage('WAKE_SCREEN_AND_SHOW_NOTIFICATION:' + JSON.stringify(payload));
+
+        (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + JSON.stringify(payload));
+
+      } catch {}
+
+    }
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+
+      navigator.serviceWorker.ready.then((reg: any) => {
+
+        if (reg && reg.active) {
+
+          reg.active.postMessage({
+
+            type: 'TRIGGER_EMERGENCY_RED_ALERT',
+
+            payload: {
+
+              ...payload,
+
+              category: 'red_alert',
+
+              disasterTitleSi: title,
+
+              locationName,
+
+              distanceKm: distanceKm.toFixed(1),
+
+              description: message
+
+            }
 
           });
 
         }
 
-      })
+      }).catch(() => {});
 
-    );
+    }
+
+    triggerBrowserNotification({
+
+      id: notifId,
+
+      type: 'emergency_blood',
+
+      title: `🚨 ${title}`,
+
+      message: `${message} (ඔබට දුර: කි.මී. ${distanceKm.toFixed(1)})`,
+
+      locationName,
+
+      timestamp: new Date().toISOString(),
+
+      isRead: false,
+
+      badgeText: 'රතු එළිය 15KM',
+
+      targetModal: 'red_alert',
+
+      targetPostId: payload.alertId,
+
+    });
+
+    if (typeof window !== 'undefined') {
+
+      window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: payload }));
+
+    }
 
     return;
 
   }
 
-  const targetUrl = targetData.url || '/';
+  switch (category) {
 
-  event.waitUntil(
+    case 'sos_live': {
 
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      playNotificationSound('emergency_blood');
 
-      for (const client of clientList) {
+      const notif: AppNotification = {
 
-        if (client.url && 'focus' in client) {
+        id: notifId,
 
-          client.focus();
+        type: 'emergency_blood',
 
-          client.postMessage({
+        title: `📡 SOS LIVE: ${title}`,
 
-            type: 'NAVIGATE_TO_MODAL',
+        message,
 
-            targetModal: 'red_alert',
+        locationName,
 
-            targetPostId: targetData.alertId || targetData.postId,
+        timestamp: new Date().toISOString(),
 
-            payload: targetData.payload
+        isRead: false,
 
-          });
+        badgeText: 'SOS',
 
-          return;
+        targetModal: 'red_alert',
 
-        }
+        targetPostId: payload.alertId,
 
-      }
+      };
 
-      if (self.clients.openWindow) {
+      broadcastAppNotification(notif);
 
-        return self.clients.openWindow(targetUrl);
+      triggerBrowserNotification(notif);
 
-      }
+      break;
 
-    })
+    }
 
-  );
+    case 'quick_service': {
 
-});
+      playNotificationSound('quick_service');
 
-self.addEventListener('message', (event) => {
+      const notif: AppNotification = {
 
-  if (!event.data) return;
+        id: notifId,
 
-  if (event.data.type === 'TRIGGER_EMERGENCY_RED_ALERT') {
+        type: 'quick_service',
 
-    event.waitUntil(showHighPriorityEmergencyNotification(event.data.payload || {}));
+        title: `⚡ ක්ෂණික සේවය: ${title}`,
 
-  } else if (event.data.type === 'TRIGGER_NOTIFICATION') {
+        message,
 
-    const title = event.data.title || '🚨 සහය සේවා';
+        locationName,
 
-    const options = event.data.options || {};
+        timestamp: new Date().toISOString(),
 
-    event.waitUntil(
+        isRead: false,
 
-      self.registration.showNotification(title, {
+        badgeText: 'ඉක්මන්',
 
-        icon: '/logo.jpg',
+        targetModal: 'quick_service',
 
-        badge: '/logo.jpg',
+        targetPostId: payload.postId,
 
-        renotify: true,
+      };
 
-        requireInteraction: true,
+      broadcastAppNotification(notif);
 
-        silent: false,
+      triggerBrowserNotification(notif);
 
-        vibrate: [1000, 200, 1000, 200, 1500],
+      break;
 
-        ...options
+    }
 
-      })
+    default: {
 
-    );
+      playNotificationSound('admin_broadcast');
+
+      const notif: AppNotification = {
+
+        id: notifId,
+
+        type: 'admin_broadcast',
+
+        title,
+
+        message,
+
+        locationName,
+
+        timestamp: new Date().toISOString(),
+
+        isRead: false,
+
+        badgeText: 'නිවේදන',
+
+        targetModal: 'admin',
+
+      };
+
+      broadcastAppNotification(notif);
+
+      triggerBrowserNotification(notif);
+
+      break;
+
+    }
 
   }
 
-});
+}
+
+export function initFcmNotificationService(currentUserId?: string) {
+
+  if (typeof window === 'undefined') return () => {};
+
+  if (isFcmInitialized) return () => {};
+
+  isFcmInitialized = true;
+
+  registerFcmToken(currentUserId).catch(() => {});
+
+  isMessagingSupported().then((supported) => {
+
+    if (!supported) return;
+
+    try {
+
+      const app = getApps().length !== 0 ? getApp() : undefined;
+
+      if (!app) return;
+
+      const messaging = getMessaging(app);
+
+      onMessage(messaging, (payload) => {
+
+        const data = (payload.data || {}) as any;
+
+        const notification = payload.notification || {};
+
+        processIncomingPushAlert({
+
+          category: data.category || 'red_alert',
+
+          title: notification.title || data.title || '🚨 සහය සේවා හදිසි ආපදා අනතුරු ඇඟවීම',
+
+          body: notification.body || data.body || data.message || '',
+
+          alertId: data.alertId,
+
+          postId: data.postId,
+
+          groupId: data.groupId,
+
+          locationName: data.locationName,
+
+          latitude: data.latitude,
+
+          longitude: data.longitude,
+
+          radiusKm: data.radiusKm ? Number(data.radiusKm) : 15.0,
+
+          badgeText: data.badgeText,
+
+          urgency: data.urgency,
+
+          senderName: data.senderName,
+
+          actionUrl: data.actionUrl
+
+        });
+
+      });
+
+    } catch {}
+
+  });
+
+  let unsubscribeQueue: any = null;
+
+  if (db) {
+
+    try {
+
+      const startTime = Date.now() - 15000;
+
+      const q = query(
+
+        collection(db, 'push_broadcast_queue'),
+
+        where('createdAtMs', '>=', startTime)
+
+      );
+
+      unsubscribeQueue = onSnapshot(q, (snapshot) => {
+
+        snapshot.docChanges().forEach((change) => {
+
+          if (change.type === 'added') {
+
+            const data = change.doc.data() as FcmPayloadData;
+
+            const isSelf = data.senderId && currentUserId && data.senderId === currentUserId;
+
+            if (!isSelf) {
+
+              processIncomingPushAlert(data);
+
+            }
+
+          }
+
+        });
+
+      }, () => {});
+
+    } catch {}
+
+  }
+
+  const handleSwMessage = (event: MessageEvent) => {
+
+    if (!event.data) return;
+
+    if (event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
+
+      processIncomingPushAlert(event.data.payload);
+    } else if (event.data.type === 'STOP_ALERT_AUDIO') {
+      setEmergencySirenLock(false);
+      stopEmergencySiren(true);
+      if (event.data.alertId) {
+        try {
+          ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts'].forEach((k) => {
+            const list = JSON.parse(localStorage.getItem(k) ? (localStorage.getItem(k) as string) : '[]');
+            if (Array.isArray(list) && !list.includes(event.data.alertId)) {
+              list.push(event.data.alertId);
+              localStorage.setItem(k, JSON.stringify(list));
+            }
+          });
+        } catch (err) {}
+      }
+    } else if (event.data.type === 'NAVIGATE_TO_MODAL') {
+
+      window.dispatchEvent(new CustomEvent('sahaya_notification_clicked', { detail: event.data }));
+
+    }
+
+  };
+
+  navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+
+  return () => {
+
+    if (unsubscribeQueue) unsubscribeQueue();
+
+    navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+
+  };
+
+}
+
+export async function broadcastPushNotification(payload: FcmPayloadData) {
+
+  const enrichedPayload: FcmPayloadData = {
+
+    ...payload,
+
+    radiusKm: payload.radiusKm || 15.0,
+
+    createdAtMs: Date.now(),
+
+  };
+
+  if (db) {
+
+    try {
+
+      await addDoc(collection(db, 'push_broadcast_queue'), {
+
+        ...enrichedPayload,
+
+        serverTimestamp: serverTimestamp(),
+
+      });
+
+    } catch {}
+
+  }
+
+  try {
+
+    fetch('/api/push/broadcast', {
+
+      method: 'POST',
+
+      headers: { 'Content-Type': 'application/json' },
+
+      body: JSON.stringify(enrichedPayload),
+
+    }).catch(() => {});
+
+  } catch {}
+
+}
 
