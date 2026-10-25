@@ -57,7 +57,6 @@ export const RedAlertFloatingTrigger = ({
   onOpenCreateModal
 }: RedAlertFloatingTriggerProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState(() => {
     if (typeof window !== "undefined") {
       return {
@@ -132,9 +131,6 @@ export const RedAlertFloatingTrigger = ({
       window.removeEventListener("touchend", onUp);
     };
   }, [position.x, position.y]);
-  if (isMinimized) {
-    return null;
-  }
   return h(React.Fragment, null, h("div", {
     style: {
       left: String(position.x) + "px",
@@ -161,15 +157,7 @@ export const RedAlertFloatingTrigger = ({
     className: "text-[8px] font-black tracking-tighter uppercase text-white leading-tight"
   }, "SOS / රතු"), activeCount >= 1 ? h("span", {
     className: " -top-1 -right-1 absolute px-1.5 py-0.5 rounded-full bg-white text-red-700 text-[10px] font-black border-2 border-red-600 shadow-md"
-  }, String(activeCount)) : null), h("button", {
-    type: "button",
-    onClick: (e: any) => {
-      e.stopPropagation();
-      setIsMinimized(true);
-    },
-    className: "w-5 h-5 rounded-full bg-slate-900/80 text-white text-[10px] font-bold flex items-center justify-center border border-slate-700 cursor-pointer",
-    title: "සඟවන්න"
-  }, "✕")), isMenuOpen ? h("div", {
+  }, String(activeCount)) : null)), isMenuOpen ? h("div", {
     className: "fixed inset-0 z-50 flex items-center justify-center sm:items-end sm:justify-start p-4 sm:p-6 bg-black/60 backdrop-blur-xs",
     onClick: () => setIsMenuOpen(false)
   }, h("div", {
