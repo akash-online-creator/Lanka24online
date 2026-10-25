@@ -484,6 +484,9 @@ export const getUserCreditBalance = (user?: User | null): number => {
     return balancesMap[idKey];
   }
   if (user.credits !== undefined) {
+    if (user.credits === 50) {
+      return 100;
+    }
     return user.credits;
   }
 
@@ -1417,4 +1420,4 @@ export const awardServiceReward = (
   }
   return result;
 };
-  
+
