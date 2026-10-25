@@ -467,102 +467,184 @@ export const PostCard: React.FC<PostCardProps> = ({
   // 🔘 INTERACTIVE ACTION BAR (LIKE, UNLIKE, COMMENT, SAVE)
   // -------------------------------------------------------------
   const renderInteractiveActionBar = () => {
-    return (
-      <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-emerald-950/60 flex items-center justify-between gap-2 text-xs font-bold flex-wrap">
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Like Button */}
-          <button
-            type="button"
-            onClick={handleLikeClick}
-            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+    const h = React.createElement;
+    return h(
+      'div',
+      {
+        className:
+          'mt-3.5 pt-3 border-t border-slate-100 dark:border-emerald-950/60 flex items-center justify-between gap-2 text-xs font-bold flex-wrap',
+      },
+      h(
+        'div',
+        { className: 'flex items-center gap-1 sm:gap-2 flex-wrap' },
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: handleLikeClick,
+            className: `px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
               isLiked
                 ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-black border border-rose-300 dark:border-rose-800'
                 : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
-            }`}
-          >
-            <Heart className={`w-4 h-4 ${isLiked ? 'fill-current text-rose-500' : ''}`} />
-            <span>{likesCount}</span>
-          </button>
-
-          {/* Unlike Button */}
-          <button
-            type="button"
-            onClick={handleUnlikeClick}
-            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+            }`,
+          },
+          h(Heart, { className: `w-4 h-4 ${isLiked ? 'fill-current text-rose-500' : ''}` }),
+          h('span', null, likesCount)
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: handleUnlikeClick,
+            className: `px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
               isUnliked
                 ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-zinc-200 font-black border border-slate-300 dark:border-slate-700'
                 : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
-            }`}
-          >
-            <ThumbsDown className={`w-4 h-4 ${isUnliked ? 'fill-current text-slate-700 dark:text-slate-300' : ''}`} />
-            <span>{unlikesCount}</span>
-          </button>
-
-          {/* Comment Button */}
-          <button
-            type="button"
-            onClick={(e) => {
+            }`,
+          },
+          h(ThumbsDown, {
+            className: `w-4 h-4 ${isUnliked ? 'fill-current text-slate-700 dark:text-slate-300' : ''}`,
+          }),
+          h('span', null, unlikesCount)
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: (e: any) => {
               e.stopPropagation();
               setShowCommentsDrawer((prev) => !prev);
-            }}
-            className="px-3 py-1.5 rounded-xl text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-600" />
-            <span>{localComments.length}</span>
-          </button>
-
-          {/* Save Button */}
-          <button
-            type="button"
-            onClick={handleSaveClick}
-            className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+            },
+            className:
+              'px-3 py-1.5 rounded-xl text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95',
+          },
+          h(MessageSquare, { className: 'w-4 h-4 text-emerald-600' }),
+          h('span', null, localComments.length)
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: handleSaveClick,
+            className: `px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
               isSaved
                 ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-black border border-amber-300 dark:border-amber-800'
                 : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]'
-            }`}
-          >
-            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current text-amber-500' : ''}`} />
-            <span>{savesCount}</span>
-          </button>
-        </div>
-
-        {/* Right: In-App Direct Inbox Message & Delete */}
-        <div className="flex items-center gap-1.5">
-          {/* 💬 In-App Direct Inbox Message Button */}
-          <button
-            type="button"
-            onClick={(e) => {
+            }`,
+          },
+          h(Bookmark, { className: `w-4 h-4 ${isSaved ? 'fill-current text-amber-500' : ''}` }),
+          h('span', null, savesCount)
+        )
+      ),
+      h(
+        'div',
+        { className: 'flex items-center gap-1.5 flex-wrap' },
+        Boolean(onViewPost ? true : onViewDetails)
+          ? h(
+              'button',
+              {
+                type: 'button',
+                onClick: (e: any) => {
+                  e.stopPropagation();
+                  if (isDemo && onRequireRegistration) {
+                    onRequireRegistration();
+                    return;
+                  }
+                  if (onViewPost) onViewPost(post);
+                  else if (onViewDetails) onViewDetails(post.id);
+                },
+                className:
+                  'px-2.5 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-300/80 dark:border-sky-800/60 flex items-center gap-1 transition-all cursor-pointer active:scale-95 text-xs font-bold',
+                title: 'විස්තර බලන්න (View Details)',
+              },
+              h(Eye, { className: 'w-3.5 h-3.5 text-sky-600' }),
+              h('span', null, getLangText('විස්තර', 'View', 'விவரம்'))
+            )
+          : null,
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: (e: any) => {
               e.stopPropagation();
-              if (onOpenChat) {
-                onOpenChat(post);
-              } else if (onOfferSupport) {
-                onOfferSupport(post);
-              } else if (onViewDetails) {
-                onViewDetails(post.id);
+              if (isDemo && onRequireRegistration) {
+                onRequireRegistration();
+                return;
               }
-            }}
-            className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs"
-            title="Inbox පණිවිඩයක් එවන්න (Direct Message)"
-          >
-            <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Inbox</span>
-          </button>
-
-          {canModify && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95"
-              title="ඉවත් කරන්න"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
+              if (onOpenChat) onOpenChat(post);
+              else if (onOfferSupport) onOfferSupport(post);
+              else if (onViewDetails) onViewDetails(post.id);
+            },
+            className:
+              'px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs',
+            title: 'Inbox පණිවිඩයක් එවන්න (Direct Message)',
+          },
+          h(MessageCircle, {
+            className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400',
+          }),
+          h('span', null, 'Inbox')
+        ),
+        Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm)
+          ? h(
+              'button',
+              {
+                type: 'button',
+                onClick: (e: any) => {
+                  e.stopPropagation();
+                  if (isDemo && onRequireRegistration) {
+                    onRequireRegistration();
+                    return;
+                  }
+                  if (ownerCheck && onOpenSupportOffers) onOpenSupportOffers(post);
+                  else if (onOfferSupport) onOfferSupport(post);
+                  else if (onOpenConfirm) onOpenConfirm(post);
+                },
+                className:
+                  'px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
+                title: ownerCheck ? 'සහායකයින් බලන්න' : 'සහාය වන්න (Offer Support)',
+              },
+              h(ownerCheck ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }),
+              h(
+                'span',
+                null,
+                ownerCheck
+                  ? getLangText('සහායකයින්', 'Helpers', 'உதவியாளர்கள்')
+                  : getLangText('සහාය වන්න', 'Help', 'உதவுக')
+              )
+            )
+          : null,
+        canModify && onEditPost
+          ? h(
+              'button',
+              {
+                type: 'button',
+                onClick: (e: any) => {
+                  e.stopPropagation();
+                  onEditPost(post);
+                },
+                className:
+                  'p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-xl cursor-pointer active:scale-95',
+                title: 'සංස්කරණය කරන්න (Edit)',
+              },
+              h(Pencil, { className: 'w-3.5 h-3.5' })
+            )
+          : null,
+        canModify
+          ? h(
+              'button',
+              {
+                type: 'button',
+                onClick: handleDelete,
+                className:
+                  'p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95',
+                title: 'ඉවත් කරන්න',
+              },
+              h(Trash2, { className: 'w-3.5 h-3.5' })
+            )
+          : null
+      )
     );
   };
-
   // -------------------------------------------------------------
   // 🏷️ TOP CARD HEADER (Shared across all modes)
   // -------------------------------------------------------------
@@ -833,7 +915,52 @@ export const PostCard: React.FC<PostCardProps> = ({
           <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-3 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 font-bold text-emerald-950 dark:text-emerald-100">
             {post.whatIsNeeded}
           </div>
+
         )}
+          {React.createElement(
+            'div',
+            { className: 'flex flex-wrap items-center gap-2 pt-1 text-[11px] font-bold' },
+            post.payment &&
+              React.createElement(
+                'span',
+                {
+                  className:
+                    'px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200',
+                },
+                `💰 ගෙවීම්: ${post.payment}`
+              ),
+            post.transport &&
+              React.createElement(
+                'span',
+                {
+                  className:
+                    'px-2.5 py-1 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200',
+                },
+                `🚗 ප්‍රවාහනය: ${post.transport}`
+              ),
+            post.conditions &&
+              React.createElement(
+                'span',
+                {
+                  className:
+                    'px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200',
+                },
+                `📜 කොන්දේසි: ${post.conditions}`
+              ),
+            post.externalLink &&
+              React.createElement(
+                'a',
+                {
+                  href: post.externalLink,
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                  onClick: (e: any) => e.stopPropagation(),
+                  className:
+                    'px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:underline',
+                },
+                '🔗 සබැඳිය (Link)'
+              )
+          )}
 
         {/* Image if present */}
         {post.imageUrl && (
