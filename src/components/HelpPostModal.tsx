@@ -332,7 +332,7 @@ const publicAuthorName = isAnon ? 'නිර්නාමික පරිශී�
 const publicAuthorPhoto = isAnon ? '' : currentUser?.photoUrl ? currentUser.photoUrl : '';
 const finalPostType = composerTab === 'poll' && validPollOptions.length >= 2 ? 'poll_post' : imageBase64 ? 'picture_post' : 'text_post';
 const pollDataObj = validPollOptions.length >= 2 ? {
-question: pollQuestion.trim() ? pollQuestion.trim() : headline.trim(),
+question: headline.trim(),
 options: validPollOptions.map((optText, idx) => ({
 id: 'opt-' + String(idx + 1),
 text: optText,
@@ -413,150 +413,144 @@ onClose();
 }, 1200);
 };
 const renderLive16x9Preview = (isFullModal = false) => {
-const previewHeadline = headline.trim() ? headline.trim() : 'ඔබගේ හෙඩ්ලයින් එක මෙහි කොළ සහ සුදු මිශ්‍ර පසුබිමක දිස්වේ...';
-const previewText = postText.trim();
-const isLongPreviewText = Boolean(Math.max(previewText.length, 150) === previewText.length && previewText.length !== 150);
-const shouldCapPreview16x9 = Boolean(!isFullModal && (isLongPreviewText ? true : Boolean(imageBase64)));
-const displayedText = !isFullModal && isLongPreviewText ? previewText.slice(0, 150) + '...' : previewText;
-return h('div', {
-onClick: () => {
-if (!isFullModal) setIsPreviewExpanded(true);
-},
-className: (isFullModal ? 'w-full' : shouldCapPreview16x9 ? 'w-full aspect-video max-h-[250px] cursor-pointer justify-between' : 'w-full h-auto cursor-pointer') + ' rounded-2xl bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/80 dark:from-[#061a10] dark:via-[#082215] dark:to-[#05150d] border-2 border-emerald-400 dark:border-emerald-700 shadow-md overflow-hidden flex flex-col p-3.5 sm:p-4 relative group transition-all hover:shadow-xl'
-}, h('div', { className: 'flex items-center justify-between gap-2 shrink-0 mb-1.5' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs' }, selectedTag?.tagName ? '#' + String(selectedTag.tagName) : '#සාමාන්‍ය-සේවා'), h('span', { className: 'font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800' }, generatedPostCode ? generatedPostCode : '#SRV-0000'))), h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500/70 shadow-xs shrink-0 mb-2' }, h('h4', {
-className: 'font-black text-slate-950 dark:text-white leading-snug ' + (isFullModal ? 'text-base sm:text-lg' : 'text-xs sm:text-sm line-clamp-1'),
-style: { fontFamily: getFontFamilyById(selectedFont) }
-}, previewHeadline)), h('div', {
-className: 'flex-1 min-h-0 ' + (isFullModal ? 'space-y-3 overflow-y-auto' : 'overflow-hidden flex gap-3 items-center')
-}, imageBase64 ? h('div', { className: isFullModal ? 'w-full aspect-video rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 bg-black' : previewText ? 'w-2/5 h-full rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 shrink-0 bg-black' : 'w-full h-full rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 bg-black' }, h('img', {
-src: imageBase64,
-alt: 'Post preview',
-className: isFullModal ? 'w-full h-full object-contain' : 'w-full h-full object-cover'
-})) : null, h('div', { className: 'flex-1 min-w-0 space-y-1.5' }, displayedText ? h('p', {
-className: (isFullModal ? 'text-sm whitespace-pre-wrap' : 'text-xs line-clamp-3') + ' font-bold text-slate-800 dark:text-zinc-100 leading-relaxed',
-style: { fontFamily: getFontFamilyById(selectedFont) }
-}, displayedText) : null, validPollOptions.length >= 2 ? h('div', { className: 'p-2 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 space-y-1' }, h('div', { className: 'text-[11px] font-black text-emerald-900 dark:text-emerald-200' }, '📊 ' + String(pollQuestion.trim() ? pollQuestion.trim() : headline.trim())), h('div', { className: 'grid grid-cols-1 gap-1' }, (isFullModal ? validPollOptions : validPollOptions.slice(0, 2)).map((opt, i) => h('div', {
-key: i,
-className: 'px-2.5 py-1 rounded-lg bg-white dark:bg-[#06160d] border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-slate-800 dark:text-zinc-200 flex items-center justify-between'
-}, h('span', { className: 'truncate' }, opt), h('span', { className: 'text-[10px] text-emerald-600 font-mono' }, '0%'))))) : null)), h('div', { className: 'pt-1.5 mt-1.5 border-t border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between gap-2 text-[10px] font-bold text-slate-600 dark:text-zinc-400 shrink-0' }, h('span', { className: 'truncate' }, String(showAuthorName ? userName : 'නිර්නාමික (Anonymous)') + ' • ' + String(safeLocation.nameSi) + (showDistance ? ' (' + String(calculatedDistanceKm) + ' km)' : '')), externalLink.trim() ? h('div', {
-className: 'flex items-center gap-1 shrink-0',
-onClick: (e: any) => e.stopPropagation()
-}, h('button', {
-type: 'button',
-onClick: handleOpenExternalLink,
-className: 'px-2 py-0.5 rounded-md bg-sky-600 text-white font-bold flex items-center gap-1 cursor-pointer'
-}, h(ExternalLink, { className: 'w-2.5 h-2.5' }), h('span', null, 'Open')), h('button', {
-type: 'button',
-onClick: handleCopyExternalLink,
-className: 'px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-zinc-200 font-bold flex items-center gap-1 cursor-pointer'
-}, h(copiedLink ? Check : Copy, { className: 'w-2.5 h-2.5' }), h('span', null, copiedLink ? 'Copied' : 'Copy'))) : null));
+  const previewHeadline = headline.trim() ? headline.trim() : composerTab === 'poll' ? 'ඔබගේ මත විමසුම් ප්‍රශ්නය මෙහි දිස්වේ...' : 'ඔබගේ ප්‍රධාන මාතෘකාව මෙහි දිස්වේ...';
+  const previewText = composerTab === 'poll' ? '' : postText.trim();
+  const isLongPreviewText = Boolean(Math.max(previewText.length, 150) === previewText.length && previewText.length !== 150);
+  const shouldCapPreview16x9 = Boolean(!isFullModal && (isLongPreviewText ? true : Boolean(imageBase64)));
+  const displayedText = !isFullModal && isLongPreviewText ? previewText.slice(0, 150) + '...' : previewText;
+  return h('div', {
+    onClick: () => {
+      if (!isFullModal) setIsPreviewExpanded(true);
+    },
+    className: (isFullModal ? 'w-full' : shouldCapPreview16x9 ? 'w-full aspect-video max-h-[250px] cursor-pointer justify-between' : 'w-full h-auto cursor-pointer') + ' rounded-2xl bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/80 dark:from-[#061a10] dark:via-[#082215] dark:to-[#05150d] border-2 border-emerald-400 dark:border-emerald-700 shadow-md overflow-hidden flex flex-col p-3.5 sm:p-4 relative group transition-all hover:shadow-xl'
+  }, h('div', { className: 'flex items-center justify-between gap-2 shrink-0 mb-1.5' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs' }, selectedTag?.tagName ? '#' + String(selectedTag.tagName) : '#සාමාන්‍ය-සේවා'), h('span', { className: 'font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800' }, generatedPostCode ? generatedPostCode : '#SRV-0000'))), h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500/70 shadow-xs shrink-0 mb-2' }, h('h4', {
+    className: 'font-black text-slate-950 dark:text-white leading-snug ' + (isFullModal ? 'text-base sm:text-lg' : 'text-xs sm:text-sm line-clamp-1'),
+    style: { fontFamily: getFontFamilyById(selectedFont) }
+  }, previewHeadline)), h('div', {
+    className: 'flex-1 min-h-0 ' + (isFullModal ? 'space-y-3 overflow-y-auto' : 'overflow-hidden flex gap-3 items-center')
+  }, imageBase64 ? h('div', { className: isFullModal ? 'w-full aspect-video rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 bg-black' : previewText ? 'w-2/5 h-full rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 shrink-0 bg-black' : 'w-full h-full rounded-xl overflow-hidden border border-emerald-300 dark:border-emerald-800 bg-black' }, h('img', {
+    src: imageBase64,
+    alt: 'Post preview',
+    className: isFullModal ? 'w-full h-full object-contain' : 'w-full h-full object-cover'
+  })) : null, h('div', { className: 'flex-1 min-w-0 space-y-1.5' }, displayedText ? h('p', {
+    className: (isFullModal ? 'text-sm whitespace-pre-wrap' : 'text-xs line-clamp-3') + ' font-bold text-slate-800 dark:text-zinc-100 leading-relaxed',
+    style: { fontFamily: getFontFamilyById(selectedFont) }
+  }, displayedText) : null, validPollOptions.length >= 2 ? h('div', { className: 'p-2 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 space-y-1' }, h('div', { className: 'text-[11px] font-black text-emerald-900 dark:text-emerald-200' }, '📊 ' + String(headline.trim() ? headline.trim() : 'මත විමසුම් ප්‍රශ්නය')), h('div', { className: 'grid grid-cols-1 gap-1' }, (isFullModal ? validPollOptions : validPollOptions.slice(0, 2)).map((opt, i) => h('div', {
+    key: i,
+    className: 'px-2.5 py-1 rounded-lg bg-white dark:bg-[#06160d] border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-slate-800 dark:text-zinc-200 flex items-center justify-between'
+  }, h('span', { className: 'truncate' }, opt), h('span', { className: 'text-[10px] text-emerald-600 font-mono' }, '0%'))))) : null)), h('div', { className: 'pt-1.5 mt-1.5 border-t border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between gap-2 text-[10px] font-bold text-slate-600 dark:text-zinc-400 shrink-0' }, h('span', { className: 'truncate' }, String(showAuthorName ? userName : 'නිර්නාමික (Anonymous)') + ' • ' + String(safeLocation.nameSi) + (showDistance ? ' (' + String(calculatedDistanceKm) + ' km)' : '')), externalLink.trim() ? h('div', {
+    className: 'flex items-center gap-1 shrink-0',
+    onClick: (e: any) => e.stopPropagation()
+  }, h('button', {
+    type: 'button',
+    onClick: handleOpenExternalLink,
+    className: 'px-2 py-0.5 rounded-md bg-sky-600 text-white font-bold flex items-center gap-1 cursor-pointer'
+  }, h(ExternalLink, { className: 'w-2.5 h-2.5' }), h('span', null, 'Open')), h('button', {
+    type: 'button',
+    onClick: handleCopyExternalLink,
+    className: 'px-2.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-zinc-200 font-bold flex items-center gap-1 cursor-pointer'
+  }, h(copiedLink ? Check : Copy, { className: 'w-2.5 h-2.5' }), h('span', null, copiedLink ? 'Copied' : 'Copy'))) : null));
 };
 
-  return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn' }, h('div', { className: 'w-full max-w-2xl bg-white dark:bg-[#07190f] border-2 border-emerald-500/80 rounded-3xl shadow-2xl overflow-hidden relative max-h-[94vh] flex flex-col text-slate-800 dark:text-zinc-100' }, h('div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-900 to-[#04160d] px-5 py-3.5 text-white flex items-center justify-between border-b border-emerald-700/60 shrink-0' }, h('div', { className: 'flex items-center gap-3' }, h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-lg shrink-0' }, h(Sparkles, { className: 'w-5 h-5' })), h('div', null, h('h3', { className: 'text-base sm:text-lg font-black leading-tight flex items-center gap-2' }, h('span', null, t?.createNewPostTitle ? t.createNewPostTitle : 'සාමාන්‍ය සේවා දැන්වීම් පුවරුව'), h('span', { className: 'text-[10px] font-mono bg-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded-full border border-emerald-400/40' }, generatedPostCode)), h('p', { className: 'text-[11px] text-emerald-200/90 flex items-center gap-1 mt-0.5' }, h(MapPin, { className: 'w-3 h-3 text-emerald-300' }), h('span', null, `ස්ථානය: ${safeLocation.nameSi} (${safeLocation.nameEn}) • පියවර ${step} / 2`)))), h('button', {
-    type: 'button',
-    onClick: onClose,
-    className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-black text-sm transition-all cursor-pointer active:scale-95',
-    title: 'වසන්න'
-  }, '✕')), h('div', { className: 'px-5 py-2 bg-emerald-50/90 dark:bg-[#05140b] border-b border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between text-xs font-black shrink-0' }, h('button', {
-    type: 'button',
-    onClick: () => setStep(1),
-    className: `flex items-center gap-1.5 cursor-pointer ${step === 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-400'}`
-  }, h('span', {
-    className: `w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 1 ? 'bg-emerald-600 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700'}`
-  }, '1'), h('span', null, 'දැන්වීම සැකසීම සහ 16:9 පෙරදසුන')), h('span', { className: 'text-slate-400' }, '➔'), h('button', {
-    type: 'button',
-    onClick: () => {
-      if (headline.trim() && selectedTag) setStep(2);
-    },
-    className: `flex items-center gap-1.5 cursor-pointer ${step === 2 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-400'}`
-  }, h('span', {
-    className: `w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`
-  }, '2'), h('span', null, 'පෞද්ගලිකත්වය සහ පළකිරීම (Publish)'))), h('div', { className: 'p-4 sm:p-5 overflow-y-auto flex-1 space-y-4' }, isSuccess ? h('div', { className: 'py-12 text-center flex flex-col items-center justify-center space-y-3 animate-fadeIn' }, h('div', { className: 'w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-500 animate-bounce' }, h(CheckCircle2, { className: 'w-10 h-10' })), h('h4', { className: 'text-xl font-bold text-slate-900 dark:text-white' }, visibilityMode === 'schedule' ? 'දැන්වීම නියමිත වේලාවට පළවීම සඳහා සුරකින ලදී!' : 'දැන්වීම සාර්ථකව පළකරන ලදී!'), h('p', { className: 'text-xs sm:text-sm text-slate-500 dark:text-zinc-400 max-w-md' }, `දැන්වීම් අංකය: ${generatedPostCode} • සාමාන්‍ය සේවා පුවරුවට එක් කරන ලදී.`)) : step === 1 ? h('form', {
-    id: 'step1-general-form',
-    onSubmit: handleProceedToStep2,
-    className: 'space-y-4'
-  }, h('div', { className: 'p-3.5 rounded-2xl bg-gradient-to-r from-emerald-200/85 via-white to-emerald-100/90 dark:from-emerald-900/70 dark:via-[#071f13] dark:to-emerald-800/70 border-2 border-emerald-500 shadow-sm space-y-1.5' }, h('label', { className: 'text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center justify-between' }, h('span', null, '1. ප්‍රධාන මාතෘකාව (Head Line) *'), h('span', { className: 'text-[10px] bg-white/90 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400' }, 'කොළ සහ සුදු මිශ්‍ර පසුබිම')), h('input', {
-    type: 'text',
-    required: true,
-    value: headline,
-    onChange: (e: any) => setHeadline(e.target.value),
-    placeholder: 'උදා: කඩවත අවට පළපුරුදු ජලනල කාර්මිකයෙකුගේ සහය අවශ්‍යයි...',
-    className: 'w-full px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-50 via-white to-emerald-50 dark:from-[#05180e] dark:via-[#082416] dark:to-[#05180e] border-2 border-emerald-400 dark:border-emerald-600 text-slate-950 dark:text-white text-xs sm:text-sm font-black focus:ring-2 focus:ring-emerald-500 outline-none placeholder:text-slate-400',
-    style: { fontFamily: getFontFamilyById(selectedFont) }
-  })), h('div', { className: 'rounded-2xl bg-slate-50 dark:bg-[#071c11] border-2 border-slate-200 dark:border-emerald-900/70 overflow-hidden shadow-xs' }, h('div', { className: 'p-2 bg-slate-100 dark:bg-[#05140c] border-b border-slate-200 dark:border-emerald-900/60 flex items-center justify-between gap-2 flex-wrap' }, h('span', { className: 'text-xs font-black text-slate-800 dark:text-emerald-300 px-1' }, '2. දැන්වීම් කොටුව (Facebook Style Post Box):'), h('div', { className: 'flex items-center gap-1.5' }, h('button', {
-    type: 'button',
-    onClick: () => setComposerTab('text'),
-    className: `px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ${composerTab === 'text' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900'}`
-  }, h(Type, { className: 'w-3.5 h-3.5 text-emerald-500' }), h('span', null, 'TEXT')), h('button', {
-    type: 'button',
-    onClick: () => setComposerTab('image'),
-    className: `px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ${composerTab === 'image' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900'}`
-  }, h(ImageIcon, { className: 'w-3.5 h-3.5 text-sky-500' }), h('span', null, 'IMAGE')), h('button', {
-    type: 'button',
-    onClick: () => setComposerTab('poll'),
-    className: `px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ${composerTab === 'poll' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900'}`
-  }, h(BarChart3, { className: 'w-3.5 h-3.5 text-amber-500' }), h('span', null, 'POLL') /* POLL_END */ ))), h('div', { className: 'p-3.5 space-y-3' }, h('div', { className: 'space-y-2' }, h('textarea', {
-    rows: composerTab === 'text' ? 4 : 2,
-    value: postText,
-    onChange: (e: any) => setPostText(e.target.value),
-    placeholder: 'ඔබගේ සේවා අවශ්‍යතාවය හෝ දැන්වීමේ සම්පූර්ණ විස්තරය මෙහි සටහන් කරන්න...',
-    className: 'w-full p-3 rounded-xl bg-white dark:bg-[#06160d] border border-slate-300 dark:border-emerald-800/80 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed',
-    style: { fontFamily: getFontFamilyById(selectedFont) }
-  }), composerTab === 'text' ? h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'text-[10px] font-bold text-slate-500' }, 'අකුරු විලාසය:'), SUPPORTED_POST_FONTS.map(f => h('button', {
-    key: f.id,
-    type: 'button',
-    onClick: () => setSelectedFont(f.id),
-    className: `px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${selectedFont === f.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-zinc-300 border-slate-300 dark:border-slate-700'}`
-  }, f.name))) : null), (composerTab === 'image' ? true : Boolean(imageBase64)) ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-emerald-200 dark:border-emerald-800/80 space-y-2' }, h('input', {
-    ref: imageInputRef,
-    type: 'file',
-    accept: 'image/*',
-    className: 'hidden',
-    onChange: handleImageFileSelect
-  }), imageBase64 ? h('div', { className: 'relative w-full aspect-video rounded-xl overflow-hidden border border-emerald-400 bg-black' }, h('img', {
-    src: imageBase64,
-    alt: 'Selected',
-    className: 'w-full h-full object-cover'
-  }), h('div', { className: 'absolute top-2 right-2 flex items-center gap-1.5' }, h('button', {
-    type: 'button',
-    onClick: () => (imageInputRef.current as any)?.click(),
-    className: 'px-2.5 py-1 rounded-lg bg-white/90 text-slate-900 font-bold text-xs shadow-md cursor-pointer'
-  }, 'වෙනස් කරන්න'), h('button', {
-    type: 'button',
-    onClick: () => setImageBase64(''),
-    className: 'p-1.5 rounded-lg bg-rose-600 text-white shadow-md cursor-pointer'
-  }, h(Trash2, { className: 'w-3.5 h-3.5' })))) : h('button', {
-    type: 'button',
-    onClick: () => (imageInputRef.current as any)?.click(),
-    className: 'w-full py-6 rounded-xl border-2 border-dashed border-emerald-400 dark:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all'
-  }, h(Upload, { className: 'w-6 h-6 text-emerald-600' }), h('span', { className: 'text-xs font-black text-slate-800 dark:text-white' }, isProcessingImage ? 'ඡායාරූපය සකසමින් පවතී...' : '16:9 ඡායාරූපයක් එක් කරන්න (Upload Image)'), h('span', { className: 'text-[10px] text-slate-500' }, 'ගැලරියෙන් හෝ කැමරාවෙන් ඡායාරූපයක් තෝරන්න'))) : null, composerTab === 'poll' ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-amber-300 dark:border-amber-800/80 space-y-2.5' }, h('div', { className: 'flex items-center justify-between' }, h('span', { className: 'text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5' }, h(BarChart3, { className: 'w-4 h-4' }), h('span', null, 'මත විමසුම (Facebook Poll):'))), h('input', {
-    type: 'text',
-    value: pollQuestion,
-    onChange: (e: any) => setPollQuestion(e.target.value),
-    placeholder: 'මත විමසුම් ප්‍රශ්නය (Poll Question)...',
-    className: 'w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#081f13] border border-slate-300 dark:border-emerald-800 text-xs font-bold outline-none'
-  }), h('div', { className: 'space-y-1.5' }, pollOptions.map((opt, idx) => h('div', {
-    key: idx,
-    className: 'flex items-center gap-1.5'
-  }, h('input', {
-    type: 'text',
-    value: opt,
-    onChange: (e: any) => {
-      const next = [...pollOptions];
-      next[idx] = e.target.value;
-      setPollOptions(next);
-    },
-    placeholder: `විකල්පය ${idx + 1} (Option ${idx + 1})`,
-    className: 'flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#081f13] border border-slate-300 dark:border-emerald-800 text-xs font-medium outline-none'
-  }), pollOptions.length > 2 ? h('button', {
-    type: 'button',
-    onClick: () => setPollOptions(pollOptions.filter((_, i) => i !== idx)),
-    className: 'p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer'
-  }, h(Trash2, { className: 'w-3.5 h-3.5' })) : null))), !(pollOptions.length >= 5) ? h('button', {
-    type: 'button',
-    onClick: () => setPollOptions([...pollOptions, '']),
-    className: 'px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-xs font-bold flex items-center gap-1 cursor-pointer'
-  }, h(Plus, { className: 'w-3.5 h-3.5' }), h('span', null, 'තවත් විකල්පයක් එක් කරන්න (Add Option)')) : null) : null)), h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/70 space-y-2.5' }, h('div', { className: 'flex items-center justify-between flex-wrap gap-2' }, h('label', { className: 'text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(Tag, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, '3. සාමාන්‍ය සේවා Tag එක තෝරන්න හෝ අලුතෙන් සාදන්න *:')), selectedTag ? h('span', { className: 'px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-600 text-white' }, `තෝරාගත් Tag: #${selectedTag.tagName}`) : null), h('div', { className: 'flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1' }, generalServiceTags.map(tg => {
+return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn' }, h('div', { className: 'w-full max-w-2xl bg-white dark:bg-[#07190f] border-2 border-emerald-500/80 rounded-3xl shadow-2xl overflow-hidden relative max-h-[94vh] flex flex-col text-slate-800 dark:text-zinc-100' }, h('div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-900 to-[#04160d] px-5 py-3.5 text-white flex items-center justify-between border-b border-emerald-700/60 shrink-0' }, h('div', { className: 'flex items-center gap-3' }, h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-lg shrink-0' }, h(Sparkles, { className: 'w-5 h-5' })), h('div', null, h('h3', { className: 'text-base sm:text-lg font-black leading-tight flex items-center gap-2' }, h('span', null, t?.createNewPostTitle ? t.createNewPostTitle : 'සාමාන්‍ය සේවා දැන්වීම් පුවරුව'), h('span', { className: 'text-[10px] font-mono bg-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded-full border border-emerald-400/40' }, generatedPostCode)), h('p', { className: 'text-[11px] text-emerald-200/90 flex items-center gap-1 mt-0.5' }, h(MapPin, { className: 'w-3 h-3 text-emerald-300' }), h('span', null, 'ස්ථානය: ' + String(safeLocation.nameSi) + ' (' + String(safeLocation.nameEn) + ') • පියවර ' + String(step) + ' / 2') /* STEP_HEADER_END */ ))), h('button', {
+  type: 'button',
+  onClick: onClose,
+  className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-black text-sm transition-all cursor-pointer active:scale-95',
+  title: 'වසන්න'
+}, '✕')), h('div', { className: 'px-5 py-2 bg-emerald-50/90 dark:bg-[#05140b] border-b border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between text-xs font-black shrink-0' }, h('button', {
+  type: 'button',
+  onClick: () => setStep(1),
+  className: 'flex items-center gap-1.5 cursor-pointer ' + (step === 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-400')
+}, h('span', {
+  className: 'w-5 h-5 rounded-full flex items-center justify-center text-[10px] ' + (step === 1 ? 'bg-emerald-600 text-white' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700')
+}, '1'), h('span', null, 'දැන්වීම සැකසීම සහ 16:9 පෙරදසුන')), h('span', { className: 'text-slate-400' }, '➔'), h('button', {
+  type: 'button',
+  onClick: () => {
+    if (headline.trim() && selectedTag) setStep(2);
+  },
+  className: 'flex items-center gap-1.5 cursor-pointer ' + (step === 2 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-400')
+}, h('span', {
+  className: 'w-5 h-5 rounded-full flex items-center justify-center text-[10px] ' + (step === 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500')
+}, '2'), h('span', null, 'පෞද්ගලිකත්වය සහ පළකිරීම (Publish)'))), h('div', { className: 'p-4 sm:p-5 overflow-y-auto flex-1 space-y-4' }, isSuccess ? h('div', { className: 'py-12 text-center flex flex-col items-center justify-center space-y-3 animate-fadeIn' }, h('div', { className: 'w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-500 animate-bounce' }, h(CheckCircle2, { className: 'w-10 h-10' })), h('h4', { className: 'text-xl font-bold text-slate-900 dark:text-white' }, visibilityMode === 'schedule' ? 'දැන්වීම නියමිත වේලාවට පළවීම සඳහා සුරකින ලදී!' : 'දැන්වීම සාර්ථකව පළකරන ලදී!'), h('p', { className: 'text-xs sm:text-sm text-slate-500 dark:text-zinc-400 max-w-md' }, 'දැන්වීම් අංකය: ' + String(generatedPostCode) + ' • සාමාන්‍ය සේවා පුවරුවට එක් කරන ලදී.')) : step === 1 ? h('form', {
+  id: 'step1-general-form',
+  onSubmit: handleProceedToStep2,
+  className: 'space-y-4'
+}, h('div', { className: 'p-3.5 rounded-2xl bg-gradient-to-r from-emerald-200/85 via-white to-emerald-100/90 dark:from-emerald-900/70 dark:via-[#071f13] dark:to-emerald-800/70 border-2 border-emerald-500 shadow-sm space-y-1.5' }, h('label', { className: 'text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center justify-between' }, h('span', null, composerTab === 'poll' ? '1. මත විමසුම් ප්‍රශ්නය (Poll Question) *' : '1. ප්‍රධාන මාතෘකාව (Head Line) *')), h('input', {
+  type: 'text',
+  required: true,
+  value: headline,
+  onChange: (e: any) => setHeadline(e.target.value),
+  placeholder: composerTab === 'poll' ? 'ඔබගේ මත විමසුම් ප්‍රශ්නය මෙහි සටහන් කරන්න...' : 'උදා: කඩවත අවට පළපුරුදු ජලනල කාර්මිකයෙකුගේ සහය අවශ්‍යයි...',
+  className: 'w-full px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-50 via-white to-emerald-50 dark:from-[#05180e] dark:via-[#082416] dark:to-[#05180e] border-2 border-emerald-400 dark:border-emerald-600 text-slate-950 dark:text-white text-xs sm:text-sm font-black focus:ring-2 focus:ring-emerald-500 outline-none placeholder:text-slate-400',
+  style: { fontFamily: getFontFamilyById(selectedFont) }
+})), h('div', { className: 'rounded-2xl bg-slate-50 dark:bg-[#071c11] border-2 border-slate-200 dark:border-emerald-900/70 overflow-hidden shadow-xs' }, h('div', { className: 'p-2 bg-slate-100 dark:bg-[#05140c] border-b border-slate-200 dark:border-emerald-900/60 flex items-center justify-between gap-2 flex-wrap' }, h('span', { className: 'text-xs font-black text-slate-800 dark:text-emerald-300 px-1' }, '2. දැන්වීම් කොටුව:'), h('div', { className: 'flex items-center gap-1.5' }, h('button', {
+  type: 'button',
+  onClick: () => setComposerTab('text'),
+  className: 'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ' + (composerTab === 'text' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900')
+}, h(Type, { className: 'w-3.5 h-3.5 text-emerald-500' }), h('span', null, 'TEXT')), h('button', {
+  type: 'button',
+  onClick: () => setComposerTab('image'),
+  className: 'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ' + (composerTab === 'image' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900')
+}, h(ImageIcon, { className: 'w-3.5 h-3.5 text-sky-500' }), h('span', null, 'IMAGE')), h('button', {
+  type: 'button',
+  onClick: () => setComposerTab('poll'),
+  className: 'px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ' + (composerTab === 'poll' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900')
+}, h(BarChart3, { className: 'w-3.5 h-3.5 text-amber-500' }), h('span', null, 'POLL') /* POLL_END */ ))), h('div', { className: 'p-3.5 space-y-3' }, composerTab !== 'poll' ? h('div', { className: 'space-y-2' }, h('textarea', {
+  rows: composerTab === 'text' ? 4 : 2,
+  value: postText,
+  onChange: (e: any) => setPostText(e.target.value),
+  placeholder: 'ඔබගේ සේවා අවශ්‍යතාවය හෝ දැන්වීමේ සම්පූර්ණ විස්තරය මෙහි සටහන් කරන්න...',
+  className: 'w-full p-3 rounded-xl bg-white dark:bg-[#06160d] border border-slate-300 dark:border-emerald-800/80 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none leading-relaxed',
+  style: { fontFamily: getFontFamilyById(selectedFont) }
+}), composerTab === 'text' ? h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'text-[10px] font-bold text-slate-500' }, 'අකුරු විලාසය:'), SUPPORTED_POST_FONTS.map(f => h('button', {
+  key: f.id,
+  type: 'button',
+  onClick: () => setSelectedFont(f.id),
+  className: 'px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ' + (selectedFont === f.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-zinc-300 border-slate-300 dark:border-slate-700')
+}, f.name))) : null) : null, (composerTab === 'image' ? true : Boolean(imageBase64)) ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-emerald-200 dark:border-emerald-800/80 space-y-2' }, h('input', {
+  ref: imageInputRef,
+  type: 'file',
+  accept: 'image/*',
+  className: 'hidden',
+  onChange: handleImageFileSelect
+}), imageBase64 ? h('div', { className: 'relative w-full aspect-video rounded-xl overflow-hidden border border-emerald-400 bg-black' }, h('img', {
+  src: imageBase64,
+  alt: 'Selected',
+  className: 'w-full h-full object-cover'
+}), h('div', { className: 'absolute top-2 right-2 flex items-center gap-1.5' }, h('button', {
+  type: 'button',
+  onClick: () => (imageInputRef.current as any)?.click(),
+  className: 'px-2.5 py-1 rounded-lg bg-white/90 text-slate-900 font-bold text-xs shadow-md cursor-pointer'
+}, 'වෙනස් කරන්න'), h('button', {
+  type: 'button',
+  onClick: () => setImageBase64(''),
+  className: 'p-1.5 rounded-lg bg-rose-600 text-white shadow-md cursor-pointer'
+}, h(Trash2, { className: 'w-3.5 h-3.5' })))) : h('button', {
+  type: 'button',
+  onClick: () => (imageInputRef.current as any)?.click(),
+  className: 'w-full py-6 rounded-xl border-2 border-dashed border-emerald-400 dark:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all'
+}, h(Upload, { className: 'w-6 h-6 text-emerald-600' }), h('span', { className: 'text-xs font-black text-slate-800 dark:text-white' }, isProcessingImage ? 'ඡායාරූපය සකසමින් පවතී...' : '16:9 ඡායාරූපයක් එක් කරන්න (Upload Image)'), h('span', { className: 'text-[10px] text-slate-500' }, 'ගැලරියෙන් හෝ කැමරාවෙන් ඡායාරූපයක් තෝරන්න'))) : null, composerTab === 'poll' ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-amber-300 dark:border-amber-800/80 space-y-2.5' }, h('div', { className: 'flex items-center justify-between' }, h('span', { className: 'text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5' }, h(BarChart3, { className: 'w-4 h-4' }), h('span', null, 'මත විමසුම් විකල්ප (Poll Options):'))), h('div', { className: 'space-y-1.5' }, pollOptions.map((opt, idx) => h('div', {
+  key: idx,
+  className: 'flex items-center gap-1.5'
+}, h('input', {
+  type: 'text',
+  value: opt,
+  onChange: (e: any) => {
+    const next = [...pollOptions];
+    next[idx] = e.target.value;
+    setPollOptions(next);
+  },
+  placeholder: 'විකල්පය ' + String(idx + 1) + ' (Option ' + String(idx + 1) + ')',
+  className: 'flex-1 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#081f13] border border-slate-300 dark:border-emerald-800 text-xs font-medium outline-none'
+}), pollOptions.length > 2 ? h('button', {
+  type: 'button',
+  onClick: () => setPollOptions(pollOptions.filter((_, i) => i !== idx)),
+  className: 'p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer'
+}, h(Trash2, { className: 'w-3.5 h-3.5' })) : null))), !(pollOptions.length >= 5) ? h('button', {
+  type: 'button',
+  onClick: () => setPollOptions([...pollOptions, '']),
+  className: 'px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-xs font-bold flex items-center gap-1 cursor-pointer'
+}, h(Plus, { className: 'w-3.5 h-3.5' }), h('span', null, 'තවත් විකල්පයක් එක් කරන්න (Add Option)')) : null) : null)), h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071c11] border border-slate-200 dark:border-emerald-900/70 space-y-2.5' }, h('div', { className: 'flex items-center justify-between flex-wrap gap-2' }, h('label', { className: 'text-xs font-black text-slate-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(Tag, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, '3. සාමාන්‍ය සේවා Tag එක තෝරන්න හෝ අලුතෙන් සාදන්න *:')), selectedTag ? h('span', { className: 'px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-600 text-white' }, `තෝරාගත් Tag: #${selectedTag.tagName}`) : null), h('div', { className: 'flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1' }, generalServiceTags.map(tg => {
     const isSel = selectedTag?.tagName === tg.tagName;
     return h('button', {
       key: tg.id,
