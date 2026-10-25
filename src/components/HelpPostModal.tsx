@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileText, Phone, ShieldCheck, CheckCircle2, MapPin, Sparkles, Image as ImageIcon, Trash2, Type, Send, Upload, User as UserIcon, Link as LinkIcon, BarChart3, Plus, ExternalLink, Copy, Check, Calendar, Clock, Globe, Lock, ArrowRight, ArrowLeft, Eye, EyeOff, Navigation, Tag } from 'lucide-react';
 import { HelpPost, Language, LocationOption, TagItem, User } from '../types';
 import { translations } from '../data/translations';
-import { getStoredTags, saveNewTag } from '../utils/tagUtils';
+import { getStoredTags } from '../utils/tagUtils';
 import { SUPPORTED_POST_FONTS, injectPostFonts, getFontFamilyById } from '../utils/postFontManager';
 const h = React.createElement;
 export interface HelpPostModalProps {
@@ -203,7 +203,12 @@ setScheduledDate(tomorrow.toISOString().split('T')[0]);
 setScheduledTime('09:00');
 setIsSuccess(false);
 const stored = getStoredTags();
-setAllTags(stored);
+let customArr: TagItem[] = [];
+try {
+const rawCustom = localStorage.getItem('sahaya_custom_tags');
+if (rawCustom) customArr = JSON.parse(rawCustom);
+} catch (unusedErr0) {}
+setAllTags([...(Array.isArray(customArr) ? customArr : []), ...(Array.isArray(stored) ? stored : [])]);
 const safeLoc = currentLocation ? currentLocation : DEFAULT_LOCATION;
 setCalculatedDistanceKm(0.5);
 if (typeof navigator !== 'undefined' && navigator.geolocation) {
@@ -253,16 +258,16 @@ if (imageInputRef.current) (imageInputRef.current as any).value = '';
 const handleCreateNewGeneralTag = () => {
 const cleanName = newTagNameInput.trim().replace(/^#/, '');
 if (!cleanName) return;
-let createdTag: TagItem;
-try {
-createdTag = saveNewTag(cleanName, 'සාමාන්‍ය සේවා');
-} catch (unusedErr2) {
-createdTag = {
+const createdTag: TagItem = {
 id: 'tag-' + String(Date.now()),
 tagName: cleanName,
 category: 'සාමාන්‍ය සේවා'
 };
-}
+try {
+const existingRaw = localStorage.getItem('sahaya_custom_tags');
+const existingArr = existingRaw ? JSON.parse(existingRaw) : [];
+localStorage.setItem('sahaya_custom_tags', JSON.stringify([createdTag, ...(Array.isArray(existingArr) ? existingArr : [])]));
+} catch (unusedErr2) {}
 setAllTags(prev => [createdTag, ...(prev ? prev : [])]);
 setSelectedTag(createdTag);
 setNewTagNameInput('');
