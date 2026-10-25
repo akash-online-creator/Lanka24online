@@ -455,7 +455,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     let count = 0;
     (helpPosts || []).forEach((post) => {
       if (!post || isPostPermanentlyDeleted(post.id)) return;
-      const isOwner = checkIsPostOwner(post, user);
+      const isOwner = checkIsPostOwner(user, post);
 
       (post.replies || []).forEach((rep) => {
         if (!rep) return;
@@ -489,29 +489,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // All active tags extracted across all visible posts
   const allTags = useMemo<TagItem[]>(() => {
     const tagsFromPosts = (helpPosts || []).map((p) => (p ? p.tagName : undefined)).filter(Boolean) as string[];
-    const staticTags = getStoredTags().map((t) => t.nameSi);
+    const staticTags = getStoredTags().map((t: any) => t?.tagName ? t.tagName : t?.nameSi).filter(Boolean);
     const combined = Array.from(new Set([...tagsFromPosts, ...staticTags]));
     return combined.map((name, i) => ({
       id: `tag_${i}`,
       nameSi: name,
-      nameEn: name,
+      tagName: name,
+      nameSi: name,
       nameTa: name,
-      category: 'general',
+      category: 'සාමාන්‍ය සේවා',
     }));
   }, [helpPosts]);
 
   // Automatic scrolling to community notices upon viewport readiness
-  useEffect(() => {
-    const scrollToNotices = () => {
-      const feed = document.getElementById('help-notices-feed');
-      if (feed) {
-        feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    };
-    const timer = setTimeout(scrollToNotices, 350);
-    return () => clearTimeout(timer);
-  }, []);
-
   // Active Feed Tab: 'local' (<15km) vs 'all_sl' (>15km or all)
   const [dashboardView, setDashboardView] = useState<'home' | 'requests'>('requests');
   const [feedDistanceTab, setFeedDistanceTab] = useState<'local' | 'all_sl'>('all_sl');
@@ -825,7 +815,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     // Hidden posts visibility
     if (post.isHidden) {
-      const isOwner = checkIsPostOwner(post, user);
+      const isOwner = checkIsPostOwner(user, post);
       const isViewerAdmin = checkIsAdmin(user);
       if (!isOwner && !isViewerAdmin) return false;
     }
@@ -913,6 +903,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             : post.fromMeToYouType
         );
         if (isQuick ? true : isEmerg ? true : isOtherSpecial) return false;
+      } else if (boardCategoryFilter === 'find_for_me') {
         if (
           post.category !== 'find_for_me' &&
           post.postType !== 'find_for_me' &&
@@ -935,14 +926,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     }
 
-    // 3. Tag Filter
-    if (selectedTagFilter) {
-      if (post.tagName !== selectedTagFilter) return false;
+    const activeFilterTagName = typeof selectedTagFilter === 'string'
+      ? selectedTagFilter
+      : (selectedTagFilter as any)?.tagName ? (selectedTagFilter as any).tagName : (selectedTagFilter as any)?.nameSi ? (selectedTagFilter as any).nameSi : '';
+    if (activeFilterTagName) {
+      if (post.tagName !== activeFilterTagName) return false;
     }
 
-    // 4. Search Query Filter (Expanded search keywords)
     if (searchQuery.trim()) {
-      const query = searchQuery.trim().toLowerCase();
+      const rawQ = searchQuery.trim();
+      const cleanedQ = activeFilterTagName && rawQ.startsWith(activeFilterTagName + ' - ') ? activeFilterTagName : rawQ;
+      const query = cleanedQ.toLowerCase();
       const keywords = getExpandedSearchKeywords(query);
 
       const postContent = `
@@ -971,7 +965,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     const postNeedingResolution = (helpPosts || []).find((post) => {
       if (!post || post.isResolved || post.status === 'resolved') return false;
-      if (!checkIsPostOwner(post, user)) return false;
+      if (!checkIsPostOwner(user, post)) return false;
       if (postponedResolutionPostIds.includes(post.id)) return false;
 
       // Has accepted replies or satisfied helper count
@@ -1271,7 +1265,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
       {/* User's Own Active Post Quick Actions Floating Strip */}
       {(() => {
-        const myActivePost = (helpPosts || []).find((p) => p && !p.isResolved && checkIsPostOwner(p, user));
+        const myActivePost = (helpPosts || []).find((p) => p && !p.isResolved && checkIsPostOwner(user, p));
         if (!myActivePost) return null;
         return (
           <div className="p-3.5 sm:p-4 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/80 shadow-md flex items-center justify-between gap-3 animate-fadeIn">
@@ -1341,7 +1335,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
             <div className="min-w-0 mt-2">
               <h4 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                {getLangText('හදිසි ලේ අවශ්ෂතා', 'Emergency Blood Needs', 'அவசர இரத்தத் தேவைகள்')}
+                {getLangText('හදිසි ලේ අවශ්‍යතා', 'Emergency Blood Needs', 'அவசர இரத்தத் தேவைகள்')}
               </h4>
             </div>
           </button>
