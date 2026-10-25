@@ -6,7 +6,7 @@ import { GroupChatMapPickerModal } from './GroupChatMapPickerModal';
 
 import { getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
 
-import { addMarketShopToFirestore } from '../lib/firebase';
+import { addMarketShopToFirestore, notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
 
 import { X, Plus, Trash2, Store, Building2, Globe, MapPin, Clock, Check, Layers, Link as LinkIcon, MessageSquare, User as UserIcon, Phone } from 'lucide-react';
 
@@ -538,9 +538,22 @@ console.warn('Local shop storage notice:', err);
 
 }
 
+if (!editShop) {
+  notifyAdminViaTelegramOnRegistration({
+
+    registrationType: mode === 'business' ? 'ව්‍යාපාර' : 'වෙළෙඳසැල්',
+
+    identifierOrName: savedShop.name,
+
+    dedupeKey: 'shop_' + savedShop.id
+
+  });
+
+}
+
 addMarketShopToFirestore(savedShop).catch((err) => {
 
-console.warn('Firestore shop sync notice:', err);
+  console.warn('Firestore shop sync notice:', err);
 
 });
 
