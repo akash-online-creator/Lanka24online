@@ -107,19 +107,6 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   const [donorDistrict, setDonorDistrict] = useState('ගම්පහ');
   const [donorLastDate, setDonorLastDate] = useState('');
 
-  // Auto-scroll to Notice Feed when opening modal or changing activeTab
-  React.useEffect(() => {
-    if (!isOpen) return;
-    const timer = setTimeout(() => {
-      const targetId = activeTab === 'blood_requests' ? 'blood-requests-feed' : 'volunteer-donors-feed';
-      const el = document.getElementById(targetId);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [isOpen, activeTab]);
-
   const bloodGroups: BloodGroup[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
   const districtsList = [
     'all',
@@ -390,84 +377,93 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           </button>
         </div>
 
-        {/* Sub-Navigation Bar (Compact, High-Visibility Responsive Bar) */}
-        <div id="blood-sub-nav" className="p-2 sm:p-2.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* Tab 1: 🩸 හදිසි ලේ අවශ්‍යතා */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('blood_requests')}
-                className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
-                  activeTab === 'blood_requests'
-                    ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white border-red-400 shadow-sm shadow-red-700/30 ring-2 ring-red-400/40'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-red-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <Droplet className={`w-3.5 h-3.5 ${activeTab === 'blood_requests' ? 'text-white fill-white' : 'text-red-500 fill-red-500'}`} />
-                <span>🩸 ලේ අවශ්‍යතා</span>
-                <span className={`px-1.5 py-0.2 rounded-full font-mono text-[9px] font-black ${
-                  activeTab === 'blood_requests' ? 'bg-white text-red-700' : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
-                }`}>
-                  {bloodRequests.length}
+        {/* 🌟 3 LARGE 3D HUB CARDS AT THE TOP (Matching Main Dashboard Hub Style) */}
+        <div className="p-3 sm:p-4 bg-gradient-to-b from-slate-100 to-emerald-50/50 dark:from-[#05140d] dark:to-[#071b12] border-b border-emerald-200/80 dark:border-emerald-900/60 shrink-0 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+            
+            {/* BIG BUTTON 1: 🩸 හදිසි ලේ අවශ්‍යතා */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('blood_requests')}
+              className={`p-4 sm:p-4.5 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[110px] sm:min-h-[125px] relative overflow-hidden active:scale-98 shadow-md ${
+                activeTab === 'blood_requests'
+                  ? 'bg-gradient-to-br from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/40 border-2 border-white ring-4 ring-rose-400/50 scale-[1.02]'
+                  : 'bg-gradient-to-br from-red-700/90 to-rose-800 text-white/95 border border-red-500/40 hover:scale-[1.02] hover:border-white/70 shadow-lg opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-xs group-hover:scale-110 transition-transform">
+                  <Droplet className="w-6 h-6 fill-white text-white" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black bg-white text-red-700 shadow-md flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                  <span>{bloodRequests.length} ඉල්ලීම්</span>
                 </span>
-              </button>
-
-              {/* Tab 2: 💖 පරිත්‍යාගශීලීන් */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('volunteer_donors')}
-                className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
-                  activeTab === 'volunteer_donors'
-                    ? 'bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 text-white border-pink-400 shadow-sm shadow-pink-700/30 ring-2 ring-pink-400/40'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <Heart className={`w-3.5 h-3.5 ${activeTab === 'volunteer_donors' ? 'text-white fill-white' : 'text-pink-500 fill-pink-500'}`} />
-                <span>💖 පරිත්‍යාගශීලීන්</span>
-                <span className={`px-1.5 py-0.2 rounded-full font-mono text-[9px] font-black ${
-                  activeTab === 'volunteer_donors' ? 'bg-white text-pink-800' : 'bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300'
-                }`}>
-                  {volunteerDonors.length}
-                </span>
-              </button>
-            </div>
-
-            {/* Quick link to Transparent Aid Ledger */}
-            {onOpenAidLedger && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenAidLedger();
-                }}
-                className="py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-400/50 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 ml-auto"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>🤝 ආපදා සහන සේවය</span>
-                <ArrowRight className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Tab 1: Blood Requests Feed */}
-        {activeTab === 'blood_requests' && (
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 bg-slate-50/50 dark:bg-[#05140d]">
-            {/* Page Header Banner */}
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-red-600/15 via-rose-600/10 to-transparent border border-red-500/30 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Droplet className="w-5 h-5 text-red-600 fill-red-600" />
-                  <span>🩸 හදිසි ලේ අවශ්‍යතා පුවරුව (Emergency Blood Requests)</span>
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  රෝහල් සහ රෝගීන් සඳහා හදිසි රුධිර අවශ්‍යතා නිරීක්ෂණය සහ ක්ෂණික සම්බන්ධීකරණය.
+              </div>
+              <div className="min-w-0 mt-3">
+                <h4 className="text-sm sm:text-base font-black text-white leading-tight flex items-center gap-1.5">
+                  <span>හදිසි ලේ අවශ්‍යතා</span>
+                  {activeTab === 'blood_requests' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-red-100 font-semibold truncate mt-1">
+                  ලේ ඉල්ලීම් බලන්න / පළකරන්න
                 </p>
               </div>
-            </div>
+            </button>
 
-            {/* CTA Button: Post Blood Request */}
+            {/* BIG BUTTON 2: 💖 ලේ පරිත්‍යාගශීලීන් */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('volunteer_donors')}
+              className={`p-4 sm:p-4.5 rounded-2xl transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[110px] sm:min-h-[125px] relative overflow-hidden active:scale-98 shadow-md ${
+                activeTab === 'volunteer_donors'
+                  ? 'bg-gradient-to-br from-pink-600 via-rose-600 to-red-600 text-white shadow-xl shadow-pink-600/40 border-2 border-white ring-4 ring-pink-400/50 scale-[1.02]'
+                  : 'bg-gradient-to-br from-rose-700/90 to-pink-800 text-white/95 border border-pink-500/40 hover:scale-[1.02] hover:border-white/70 shadow-lg opacity-90 hover:opacity-100'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-xs group-hover:scale-110 transition-transform">
+                  <Heart className="w-6 h-6 fill-white text-white" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black bg-white text-pink-800 shadow-md">
+                  {volunteerDonors.length} දායකයින්
+                </span>
+              </div>
+              <div className="min-w-0 mt-3">
+                <h4 className="text-sm sm:text-base font-black text-white leading-tight flex items-center gap-1.5">
+                  <span>පරිත්‍යාගශීලීන්</span>
+                  {activeTab === 'volunteer_donors' && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-pink-100 font-semibold truncate mt-1">
+                  ස්වේච්ඡා දායක නාමාවලිය
+                </p>
+              </div>
+            </button>
+
+          </div>
+
+          {/* Quick link to Transparent Aid Ledger */}
+          {onOpenAidLedger && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenAidLedger();
+              }}
+              className="w-full py-2.5 sm:py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 text-amber-900 dark:text-amber-200 border-2 border-amber-400/60 flex items-center justify-between text-xs sm:text-sm font-black transition-all cursor-pointer shadow-xs active:scale-98"
+            >
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>🤝 ආපදා සහන සේවය (Disaster Relief Service) විවෘත කරන්න</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            </button>
+          )}
+        </div>
+
+        {/* 🚀 PROMINENT PRIMARY CTA ACTION BUTTON FOR ACTIVE TAB */}
+        <div className="p-3 sm:p-4 bg-white dark:bg-[#06180f] border-b border-emerald-100 dark:border-emerald-900/60 shrink-0 space-y-3">
+          {activeTab === 'blood_requests' && (
             <button
               type="button"
               onClick={() => {
@@ -477,77 +473,91 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 }
                 setShowAddBloodRequestForm(true);
               }}
-              className="w-full py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-red-600/25 hover:shadow-red-600/40 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2.5 border-2 border-red-300/80 group"
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-xl shadow-red-600/30 hover:shadow-red-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-red-300/80 group"
             >
-              <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
-                <Plus className="w-4 h-4 text-white stroke-[3]" />
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Plus className="w-5 h-5 text-white stroke-[3]" />
               </div>
               <span className="tracking-wide">+ හදිසි ලේ අවශ්‍යතාවක් පළකරන්න (Post Blood Request)</span>
-              <Droplet className="w-4 h-4 fill-white text-white animate-bounce" />
+              <Droplet className="w-5 h-5 fill-white text-white animate-bounce" />
             </button>
+          )}
 
-            {/* Filter Bar: Blood Groups & District */}
-            <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {/* Blood group pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto text-xs py-1">
+          {activeTab === 'volunteer_donors' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isDemo) {
+                  if (onRequireRegistration) onRequireRegistration();
+                  return;
+                }
+                setShowRegisterDonorForm(true);
+              }}
+              className="w-full py-4 sm:py-4.5 px-5 rounded-2xl bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 hover:from-pink-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-xl shadow-pink-600/30 hover:shadow-pink-600/50 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-3 border-2 border-pink-300/80 group"
+            >
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                <Heart className="w-5 h-5 fill-white text-white" />
+              </div>
+              <span className="tracking-wide">+ ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස ලියාපදිංචි වන්න (Register as Donor)</span>
+              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+            </button>
+          )}
+
+          {/* Filter Bar (Blood Group & District) */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-emerald-950">
+            {/* Blood group filter */}
+            {(activeTab === 'blood_requests' || activeTab === 'volunteer_donors') && (
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs py-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBloodGroup('all')}
+                  className={`px-3.5 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                    selectedBloodGroup === 'all'
+                      ? 'bg-rose-600 text-white shadow-md scale-105'
+                      : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-emerald-900'
+                  }`}
+                >
+                  සියලු ලේ වර්ග
+                </button>
+                {bloodGroups.map((bg) => (
                   <button
+                    key={bg}
                     type="button"
-                    onClick={() => setSelectedBloodGroup('all')}
-                    className={`px-3 py-1 rounded-xl font-black text-xs cursor-pointer transition-all ${
-                      selectedBloodGroup === 'all'
-                        ? 'bg-rose-600 text-white shadow-md scale-105'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-slate-700'
+                    onClick={() => setSelectedBloodGroup(bg)}
+                    className={`px-3 py-1.5 rounded-xl font-black font-mono text-xs sm:text-sm cursor-pointer transition-all ${
+                      selectedBloodGroup === bg
+                        ? 'bg-rose-600 text-white shadow-md scale-105 ring-2 ring-rose-400'
+                        : 'bg-slate-100 dark:bg-emerald-950 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-emerald-900'
                     }`}
                   >
-                    සියලු වර්ග
+                    {bg}
                   </button>
-                  {bloodGroups.map((bg) => (
-                    <button
-                      key={bg}
-                      type="button"
-                      onClick={() => setSelectedBloodGroup(bg)}
-                      className={`px-2.5 py-1 rounded-xl font-black font-mono text-xs cursor-pointer transition-all ${
-                        selectedBloodGroup === bg
-                          ? 'bg-rose-600 text-white shadow-md scale-105 ring-2 ring-rose-400'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      {bg}
-                    </button>
-                  ))}
-                </div>
-
-                {/* District Select */}
-                <div className="flex items-center gap-1.5 text-xs ml-auto">
-                  <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <select
-                    value={selectedDistrict}
-                    onChange={(e) => setSelectedDistrict(e.target.value)}
-                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 outline-none"
-                  >
-                    <option value="all">📍 සියලු දිස්ත්‍රික්ක</option>
-                    {districtsList.filter((d) => d !== 'all').map((dist) => (
-                      <option key={dist} value={dist}>📍 {dist}</option>
-                    ))}
-                  </select>
-                </div>
+                ))}
               </div>
-            </div>
+            )}
 
-            {/* Header Info Bar (Anchor for Auto-Scroll) */}
-            <div id="blood-requests-feed" className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs scroll-mt-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  සක්‍රිය හදිසි ලේ ඉල්ලීම් ({filteredBloodRequests.length})
-                </span>
-              </div>
-              <span className="text-[11px] text-rose-700 dark:text-rose-300 font-medium">
-                {selectedBloodGroup !== 'all' ? `රුධිර වර්ගය: ${selectedBloodGroup}` : 'සියලු රුධිර වර්ග'} • {selectedDistrict !== 'all' ? `දිස්ත්‍රික්කය: ${selectedDistrict}` : 'දිවයින පුරා'}
-              </span>
+            {/* District select */}
+            <div className="flex items-center gap-2 text-xs sm:text-sm ml-auto">
+              <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+              <select
+                value={selectedDistrict}
+                onChange={(e) => setSelectedDistrict(e.target.value)}
+                className="px-3.5 py-2 bg-slate-50 dark:bg-[#0a2618] border-2 border-emerald-400 dark:border-emerald-800 rounded-xl text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="all">📍 සියලු දිස්ත්‍රික්ක</option>
+                {districtsList.filter((d) => d !== 'all').map((dist) => (
+                  <option key={dist} value={dist}>
+                    📍 {dist}
+                  </option>
+                ))}
+              </select>
             </div>
+          </div>
+        </div>
 
+        {/* Tab 1: Blood Requests Feed */}
+        {activeTab === 'blood_requests' && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-[#05140d]">
             {filteredBloodRequests.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs space-y-2">
                 <Droplet className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
@@ -667,101 +677,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
         {/* Tab 2: Volunteer Donors Directory */}
         {activeTab === 'volunteer_donors' && (
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 bg-slate-50/50 dark:bg-[#05140d]">
-            {/* Page Header Banner */}
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-pink-600/15 via-rose-600/10 to-transparent border border-pink-500/30 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-pink-600 fill-pink-600" />
-                  <span>💖 ස්වේච්ඡා ලේ පරිත්‍යාගශීලීන්ගේ නාමාවලිය (Volunteer Blood Donors)</span>
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  ඕනෑම හදිසි අවස්ථාවකදී ලේ පරිත්‍යාග කිරීමට සූදානම් ස්වේච්ඡා දායකයින්ගේ නාමාවලිය.
-                </p>
-              </div>
-            </div>
-
-            {/* CTA Button: Register Donor */}
-            <button
-              type="button"
-              onClick={() => {
-                if (isDemo) {
-                  if (onRequireRegistration) onRequireRegistration();
-                  return;
-                }
-                setShowRegisterDonorForm(true);
-              }}
-              className="w-full py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 hover:from-pink-700 hover:to-rose-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-pink-600/25 hover:shadow-pink-600/40 hover:scale-[1.01] active:scale-98 transition-all cursor-pointer flex items-center justify-center gap-2.5 border-2 border-pink-300/80 group"
-            >
-              <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
-                <Heart className="w-4 h-4 fill-white text-white" />
-              </div>
-              <span className="tracking-wide">+ ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස ලියාපදිංචි වන්න (Register as Donor)</span>
-              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-            </button>
-
-            {/* Filter Bar: Blood Groups & District */}
-            <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {/* Blood group pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto text-xs py-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBloodGroup('all')}
-                    className={`px-3 py-1 rounded-xl font-black text-xs cursor-pointer transition-all ${
-                      selectedBloodGroup === 'all'
-                        ? 'bg-rose-600 text-white shadow-md scale-105'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    සියලු වර්ග
-                  </button>
-                  {bloodGroups.map((bg) => (
-                    <button
-                      key={bg}
-                      type="button"
-                      onClick={() => setSelectedBloodGroup(bg)}
-                      className={`px-2.5 py-1 rounded-xl font-black font-mono text-xs cursor-pointer transition-all ${
-                        selectedBloodGroup === bg
-                          ? 'bg-rose-600 text-white shadow-md scale-105 ring-2 ring-rose-400'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      {bg}
-                    </button>
-                  ))}
-                </div>
-
-                {/* District Select */}
-                <div className="flex items-center gap-1.5 text-xs ml-auto">
-                  <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <select
-                    value={selectedDistrict}
-                    onChange={(e) => setSelectedDistrict(e.target.value)}
-                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 outline-none"
-                  >
-                    <option value="all">📍 සියලු දිස්ත්‍රික්ක</option>
-                    {districtsList.filter((d) => d !== 'all').map((dist) => (
-                      <option key={dist} value={dist}>📍 {dist}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Header Info Bar (Anchor for Auto-Scroll) */}
-            <div id="volunteer-donors-feed" className="p-3 bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs scroll-mt-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-pink-600 animate-pulse" />
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  ලියාපදිංචි පරිත්‍යාගශීලීන් ({filteredDonors.length})
-                </span>
-              </div>
-              <span className="text-[11px] text-pink-700 dark:text-pink-300 font-medium">
-                {selectedBloodGroup !== 'all' ? `රුධිර වර්ගය: ${selectedBloodGroup}` : 'සියලු රුධිර වර්ග'} • {selectedDistrict !== 'all' ? `දිස්ත්‍රික්කය: ${selectedDistrict}` : 'දිවයින පුරා'}
-              </span>
-            </div>
-
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-[#05140d]">
             {filteredDonors.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs space-y-2">
                 <Heart className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
