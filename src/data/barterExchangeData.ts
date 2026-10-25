@@ -115,7 +115,7 @@ export const findSmartBarterMatches = (
   const normalize = (str: string) =>
     (str || '')
       .toLowerCase()
-      .replace(/[^\w\u0D80-\u0DFF\s]/g, ' ')
+      .replace(/[^\w඀-෿\s]/g, ' ')
       .trim();
 
   const myOfferTokens = normalize(myOfferingTitle).split(/\s+/).filter(t => t.length > 2);
@@ -164,7 +164,7 @@ export const findSmartBarterMatches = (
     if (offerMatchCount > 0) {
       score += Math.min(45, offerMatchCount * 25);
       isReciprocal = true;
-      reasons.push('ඔබ සතු අතිරික්තය මොහුට අවශ්‍ය වේ (ද්විපාර්ශ්වික ගැළපීම)');
+      reasons.push('ඔබ සතු අතිරික්තය මොහුට අවශ්ය වේ (ද්විපාර්ශ්වික ගැළපීම)');
     }
 
     // If both match, boost score to 95-100%
@@ -201,3 +201,4 @@ export const getBarterConditionLabel = (condition?: BarterCondition): { labelSi:
       return { labelSi: 'හොඳ තත්ත්වයේ', color: 'bg-slate-100 text-slate-800 border-slate-200' };
   }
 };
+
