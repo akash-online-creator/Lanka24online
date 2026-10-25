@@ -398,7 +398,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             {(onOpenSavedPlaces || onOpenQuickRegisterHub) && (
               <button
                 type="button"
-                onClick={onOpenSavedPlaces || onOpenQuickRegisterHub}
+                onClick={onOpenSavedPlaces ? onOpenSavedPlaces : onOpenQuickRegisterHub}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
                 title={getLangText('ස්ථානය සුරකින්න', 'Save Place', 'இடத்தை சேமி')}
               >
@@ -477,7 +477,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
             >
               <div className="text-right min-w-0">
                 <div className="flex items-center justify-end gap-1">
-                  <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[90px] sm:max-w-[130px]">
+                  <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[165px] sm:max-w-[230px]">
                     {isAdminUser ? `🛡️ ${user?.name || 'පරිපාලක'}` : (user?.name || 'පරිශීලක')}
                   </h2>
                   {isAdminUser ? (
