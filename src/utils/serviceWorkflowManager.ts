@@ -171,23 +171,35 @@ export async function applyToHelpPost(params: {
     status: 'pending',
 
   };
-
   const existingApplicants = Array.isArray(post.applicants) ? post.applicants : [];
-
   const alreadyApplied = existingApplicants.some((a) => a.helperId === newApplicant.helperId);
-
   const updatedApplicants = alreadyApplied
-
     ? existingApplicants.map((a) => (a.helperId === newApplicant.helperId ? newApplicant : a))
-
     : [...existingApplicants, newApplicant];
+  const existingReplies = Array.isArray(post.replies) ? post.replies : [];
+  const syncedReply: any = {
+    id: applicantId,
+    responderId: helperIdVal,
+    responderName: newApplicant.helperName,
+    responderPhone: newApplicant.helperPhone,
+    responderNic: newApplicant.helperNicMasked,
+    message: 'ඉක්මන් සේවාව සඳහා සහය වීමට කැමැත්ත පළ කර ඇත.',
+    createdAt: newApplicant.appliedAt,
+    distanceKm: distanceKm,
+    isAccepted: false,
+    isConfirmed: false,
+  };
+  const alreadyInReplies = existingReplies.some((r: any) => Boolean(r && (r.responderId === helperIdVal ? true : r.id === applicantId)));
+  const updatedReplies = alreadyInReplies
+    ? existingReplies.map((r: any) => (r && (r.responderId === helperIdVal ? true : r.id === applicantId) ? { ...r, ...syncedReply } : r))
+    : [...existingReplies, syncedReply];
 
   const updatedPost: HelpPost = {
 
     ...post,
 
     applicants: updatedApplicants,
-
+    replies: updatedReplies,
   };
 
   try {
@@ -230,6 +242,7 @@ export async function applyToHelpPost(params: {
 
       await updateHelpPostInFirestore(post.id, {
 
+        replies: updatedReplies,
         applicants: updatedApplicants,
 
       });
@@ -277,12 +290,16 @@ export async function selectHelperApplicant(params: {
     ? currentSelected.map((h) => (h.helperId === applicant.helperId ? acceptedApplicant : h))
 
     : [...currentSelected, acceptedApplicant];
-
   const updatedApplicants = (Array.isArray(post.applicants) ? post.applicants : []).map((a) =>
-
     a.helperId === applicant.helperId ? acceptedApplicant : a
-
   );
+  const existingReplies = Array.isArray(post.replies) ? post.replies : [];
+  const updatedReplies = existingReplies.map((r: any) => {
+    if (r && (r.responderId === applicant.helperId ? true : r.id === applicant.id ? true : r.responderName === applicant.helperName)) {
+      return { ...r, isAccepted: true, isConfirmed: true };
+    }
+    return r;
+  });
 
   const isFullyStaffed = Math.max(updatedSelected.length, needed) === updatedSelected.length;
 
@@ -294,9 +311,11 @@ export async function selectHelperApplicant(params: {
 
     applicants: updatedApplicants,
 
+    replies: updatedReplies,
     selectedHelpers: updatedSelected,
 
     helpersAccepted: updatedSelected.length,
+    confirmedHelperId: applicant.helperId,
 
     isConfirmed: isFullyStaffed,
 
@@ -322,10 +341,12 @@ export async function selectHelperApplicant(params: {
 
         startPin: updatedPost.startPin,
 
+        replies: updatedReplies,
         applicants: updatedApplicants,
 
         selectedHelpers: updatedSelected,
 
+        confirmedHelperId: applicant.helperId,
         helpersAccepted: updatedSelected.length,
 
         isConfirmed: isFullyStaffed,
