@@ -2,9 +2,13 @@ const SIREN_WAV_FILENAME = 'mixkit-manual-siren-fire-alert-1652.wav';
 
 const SIREN_MP3_FILENAME = 'mixkit-manual-siren-fire-alert-1652.mp3';
 
+const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
 let isSirenActive = false;
 
 let htmlAudioElement: any = null;
+
+let silentKeepAliveAudio: any = null;
 
 let audioContext: any = null;
 
@@ -56,13 +60,21 @@ function notifyLocalChanges() {
 
   listeners.forEach((cb: any) => {
 
-    try { cb(); } catch {}
+    try {
+
+      cb();
+
+    } catch (err) {}
 
   });
 
   if (typeof window !== 'undefined') {
 
-    window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed'));
+    window.dispatchEvent(new CustomEvent('sahaya_siren_settings_changed', {
+
+      detail: { isPlaying: isSirenActive }
+
+    }));
 
   }
 
@@ -108,7 +120,7 @@ export function setSirenVolume(vol: number): void {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
   applyLiveVolume();
 
@@ -148,7 +160,7 @@ export function setDeviceSirenMuted(muted: boolean): void {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
   applyLiveVolume();
 
@@ -166,7 +178,7 @@ function applyLiveVolume(): void {
 
       htmlAudioElement.volume = effectiveVolume;
 
-    } catch {}
+    } catch (err) {}
 
   }
 
@@ -176,7 +188,7 @@ function applyLiveVolume(): void {
 
       activeGainNode.gain.setValueAtTime(effectiveVolume, audioContext.currentTime);
 
-    } catch {}
+    } catch (err) {}
 
   }
 
@@ -186,7 +198,7 @@ function applyLiveVolume(): void {
 
       synthGainNode.gain.setValueAtTime(effectiveVolume * 0.65, audioContext.currentTime);
 
-    } catch {}
+    } catch (err) {}
 
   }
 
@@ -194,37 +206,19 @@ function applyLiveVolume(): void {
 
 function getCandidateUrls(): string[] {
 
-  if (typeof window === 'undefined') return [`/${SIREN_WAV_FILENAME}`];
+  if (typeof window === 'undefined') return ['/' + SIREN_WAV_FILENAME];
 
-  const origin = window.location.origin || '';
+  const origin = window.location.origin ? window.location.origin : '';
 
-  const pathname = (window.location.pathname || '/').replace(/\/[^/]*$/, '');
+  const pathname = (window.location.pathname ? window.location.pathname : '/').replace(/\/[^/]*$/, '');
 
-  return [
-
-    `/${SIREN_WAV_FILENAME}`,
-
-    `./${SIREN_WAV_FILENAME}`,
-
-    SIREN_WAV_FILENAME,
-
-    `${origin}/${SIREN_WAV_FILENAME}`,
-
-    `${pathname}/${SIREN_WAV_FILENAME}`.replace(/\/\//g, '/'),
-
-    `/${SIREN_MP3_FILENAME}`,
-
-    `./${SIREN_MP3_FILENAME}`,
-
-    SIREN_MP3_FILENAME
-
-  ];
+  return ['/' + SIREN_WAV_FILENAME, './' + SIREN_WAV_FILENAME, SIREN_WAV_FILENAME, origin + '/' + SIREN_WAV_FILENAME, (pathname + '/' + SIREN_WAV_FILENAME).replace(/\/\//g, '/'), '/' + SIREN_MP3_FILENAME, './' + SIREN_MP3_FILENAME, SIREN_MP3_FILENAME];
 
 }
 
 export function getCustomSirenAudio(): string {
 
-  return `/${SIREN_WAV_FILENAME}`;
+  return '/' + SIREN_WAV_FILENAME;
 
 }
 
@@ -234,13 +228,13 @@ export function getSirenFileName(): string {
 
 }
 
-export async function persistSirenSettings(_audioUrl?: any, _fileName?: any, ..._rest: any[]) {
+export async function persistSirenSettings(audioUrl?: any, fileName?: any, ...rest: any) {
 
   notifyLocalChanges();
 
 }
 
-export function setCustomSirenAudio(_audioUrl?: any, ..._rest: any[]): void {
+export function setCustomSirenAudio(audioUrl?: any, ...rest: any): void {
 
   notifyLocalChanges();
 
@@ -248,11 +242,13 @@ export function setCustomSirenAudio(_audioUrl?: any, ..._rest: any[]): void {
 
 function acquirePersistentWebLock() {
 
-  if (webLockHeld || typeof navigator === 'undefined') return;
+  if (webLockHeld) return;
+
+  if (typeof navigator === 'undefined') return;
 
   try {
 
-    const navAny = navigator as any;
+    const navAny = (navigator as any);
 
     if (navAny.locks && typeof navAny.locks.request === 'function') {
 
@@ -266,7 +262,7 @@ function acquirePersistentWebLock() {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
 }
 
@@ -276,9 +272,9 @@ function getOrCreateAudioContext(): any {
 
   try {
 
-    const winAny = window as any;
+    const winAny = (window as any);
 
-    const AudioContextClass = winAny.AudioContext || winAny.webkitAudioContext;
+    const AudioContextClass = winAny.AudioContext ? winAny.AudioContext : winAny.webkitAudioContext;
 
     if (AudioContextClass && !audioContext) {
 
@@ -292,7 +288,7 @@ function getOrCreateAudioContext(): any {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
   return audioContext;
 
@@ -304,31 +300,73 @@ function startSubAudibleKeepAlive() {
 
     const ctx = getOrCreateAudioContext();
 
-    if (!ctx || keepAliveOscillator) return;
+    if (ctx && !keepAliveOscillator) {
 
-    keepAliveOscillator = ctx.createOscillator();
+      keepAliveOscillator = ctx.createOscillator();
 
-    keepAliveGain = ctx.createGain();
+      keepAliveGain = ctx.createGain();
 
-    keepAliveOscillator.type = 'sine';
+      keepAliveOscillator.type = 'sine';
 
-    keepAliveOscillator.frequency.setValueAtTime(20, ctx.currentTime);
+      keepAliveOscillator.frequency.setValueAtTime(20, ctx.currentTime);
 
-    keepAliveGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+      keepAliveGain.gain.setValueAtTime(0.00001, ctx.currentTime);
 
-    keepAliveOscillator.connect(keepAliveGain);
+      keepAliveOscillator.connect(keepAliveGain);
 
-    keepAliveGain.connect(ctx.destination);
+      keepAliveGain.connect(ctx.destination);
 
-    keepAliveOscillator.start(0);
+      keepAliveOscillator.start(0);
 
-  } catch {}
+    }
+
+  } catch (err) {}
+
+  try {
+
+    if (typeof document !== 'undefined' && !silentKeepAliveAudio) {
+
+      silentKeepAliveAudio = document.getElementById('sahaya-silent-keepalive-audio');
+
+      if (!silentKeepAliveAudio) {
+
+        silentKeepAliveAudio = document.createElement('audio');
+
+        silentKeepAliveAudio.id = 'sahaya-silent-keepalive-audio';
+
+        silentKeepAliveAudio.loop = true;
+
+        silentKeepAliveAudio.preload = 'auto';
+
+        silentKeepAliveAudio.playsInline = true;
+
+        silentKeepAliveAudio.webkitPlaysInline = true;
+
+        silentKeepAliveAudio.volume = 0.001;
+
+        silentKeepAliveAudio.src = SILENT_WAV_DATA_URI;
+
+        document.body.appendChild(silentKeepAliveAudio);
+
+      }
+
+    }
+
+    if (silentKeepAliveAudio && silentKeepAliveAudio.paused) {
+
+      silentKeepAliveAudio.play().catch(() => {});
+
+    }
+
+  } catch (err) {}
 
 }
 
 function getAudioElement(): any {
 
-  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  if (typeof window === 'undefined') return null;
+
+  if (typeof document === 'undefined') return null;
 
   if (!htmlAudioElement) {
 
@@ -348,7 +386,7 @@ function getAudioElement(): any {
 
       htmlAudioElement.webkitPlaysInline = true;
 
-      htmlAudioElement.src = `/${SIREN_WAV_FILENAME}`;
+      htmlAudioElement.src = '/' + SIREN_WAV_FILENAME;
 
       document.body.appendChild(htmlAudioElement);
 
@@ -394,7 +432,7 @@ export async function preloadSirenBuffer() {
 
         }
 
-      } catch {}
+      } catch (err) {}
 
     }
 
@@ -402,23 +440,9 @@ export async function preloadSirenBuffer() {
 
       audioBuffer = await new Promise((resolve, reject) => {
 
-        ctx.decodeAudioData(
-
-          arrayBuf,
-
-          (decoded: any) => resolve(decoded),
-
-          (err: any) => reject(err)
-
-        );
+        ctx.decodeAudioData(arrayBuf, (decoded: any) => resolve(decoded), (err: any) => reject(err));
 
       });
-
-      if (isSirenActive && !isWebAudioPlaying) {
-
-        startWebAudioPlayback();
-
-      }
 
     }
 
@@ -458,7 +482,7 @@ export function unlockAudio(): boolean {
 
     const audio = getAudioElement();
 
-    if (audio) {
+    if (audio && audio.paused && !isSirenActive) {
 
       audio.load();
 
@@ -466,13 +490,61 @@ export function unlockAudio(): boolean {
 
     preloadSirenBuffer().catch(() => {});
 
-  } catch {}
+  } catch (err) {}
 
   return true;
 
 }
 
+function stopSynthEmergencyBackup() {
+
+  if (synthInterval) {
+
+    clearInterval(synthInterval);
+
+    synthInterval = null;
+
+  }
+
+  if (synthOscillator) {
+
+    try {
+
+      synthOscillator.stop();
+
+    } catch (err) {}
+
+    try {
+
+      synthOscillator.disconnect();
+
+    } catch (err) {}
+
+    synthOscillator = null;
+
+  }
+
+  if (synthGainNode) {
+
+    try {
+
+      synthGainNode.disconnect();
+
+    } catch (err) {}
+
+    synthGainNode = null;
+
+  }
+
+}
+
 function startSynthEmergencyBackup() {
+
+  if (isWebAudioPlaying) return;
+
+  if (htmlAudioElement && !htmlAudioElement.paused) return;
+
+  if (synthOscillator) return;
 
   stopSynthEmergencyBackup();
 
@@ -480,9 +552,11 @@ function startSynthEmergencyBackup() {
 
     const ctx = getOrCreateAudioContext();
 
-    if (!ctx || !isSirenActive) return;
+    if (!ctx) return;
 
-    const effectiveVolume = isDeviceSirenMuted() ? 0 : (getSirenVolume() || 1.0);
+    if (!isSirenActive) return;
+
+    const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume() ? getSirenVolume() : 1.0;
 
     synthOscillator = ctx.createOscillator();
 
@@ -504,7 +578,23 @@ function startSynthEmergencyBackup() {
 
     synthInterval = setInterval(() => {
 
-      if (!isSirenActive || !synthOscillator || !audioContext) {
+      if (!isSirenActive) {
+
+        stopSynthEmergencyBackup();
+
+        return;
+
+      }
+
+      if (!synthOscillator) {
+
+        stopSynthEmergencyBackup();
+
+        return;
+
+      }
+
+      if (!audioContext) {
 
         stopSynthEmergencyBackup();
 
@@ -522,39 +612,31 @@ function startSynthEmergencyBackup() {
 
         highTone = !highTone;
 
-      } catch {}
+      } catch (err) {}
 
     }, 400);
 
-  } catch {}
+  } catch (err) {}
 
 }
 
-function stopSynthEmergencyBackup() {
+function stopContinuousVibration() {
 
-  if (synthInterval) {
+  if (vibrationInterval) {
 
-    clearInterval(synthInterval);
+    clearInterval(vibrationInterval);
 
-    synthInterval = null;
-
-  }
-
-  if (synthOscillator) {
-
-    try { synthOscillator.stop(); } catch {}
-
-    try { synthOscillator.disconnect(); } catch {}
-
-    synthOscillator = null;
+    vibrationInterval = null;
 
   }
 
-  if (synthGainNode) {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
 
-    try { synthGainNode.disconnect(); } catch {}
+    try {
 
-    synthGainNode = null;
+      navigator.vibrate(0);
+
+    } catch (err) {}
 
   }
 
@@ -562,7 +644,7 @@ function stopSynthEmergencyBackup() {
 
 function startContinuousVibration() {
 
-  stopContinuousVibration();
+  if (vibrationInterval) return;
 
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
 
@@ -588,29 +670,11 @@ function startContinuousVibration() {
 
           }
 
-        } catch {}
+        } catch (err) {}
 
       }, 2800);
 
-    } catch {}
-
-  }
-
-}
-
-function stopContinuousVibration() {
-
-  if (vibrationInterval) {
-
-    clearInterval(vibrationInterval);
-
-    vibrationInterval = null;
-
-  }
-
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-
-    try { navigator.vibrate(0); } catch {}
+    } catch (err) {}
 
   }
 
@@ -620,19 +684,19 @@ async function acquireScreenWakeLock() {
 
   try {
 
-    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLockSentinel) {
 
       wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
 
     }
 
-  } catch {}
+  } catch (err) {}
 
   try {
 
     if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
 
-      const winAny = window as any;
+      const winAny = (window as any);
 
       if (winAny.MediaMetadata) {
 
@@ -644,11 +708,15 @@ async function acquireScreenWakeLock() {
 
           album: '15km Emergency Alert',
 
-          artwork: [
+          artwork: [{
 
-            { src: '/logo.jpg', sizes: '192x192', type: 'image/jpeg' }
+            src: '/logo.jpg',
 
-          ]
+            sizes: '192x192',
+
+            type: 'image/jpeg'
+
+          }]
 
         });
 
@@ -662,7 +730,7 @@ async function acquireScreenWakeLock() {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
 }
 
@@ -678,7 +746,7 @@ function releaseScreenWakeLock() {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
   try {
 
@@ -688,7 +756,7 @@ function releaseScreenWakeLock() {
 
     }
 
-  } catch {}
+  } catch (err) {}
 
 }
 
@@ -722,6 +790,8 @@ export function initSirenSettings() {
 
       }
 
+      startSubAudibleKeepAlive();
+
     });
 
     setTimeout(() => {
@@ -736,23 +806,57 @@ export function initSirenSettings() {
 
 }
 
-function startWebAudioPlayback() {
+function stopAllPlaybackEnginesOnly() {
+
+  isWebAudioPlaying = false;
+
+  if (activeSourceNode) {
+
+    try {
+
+      activeSourceNode.stop();
+
+    } catch (err) {}
+
+    try {
+
+      activeSourceNode.disconnect();
+
+    } catch (err) {}
+
+    activeSourceNode = null;
+
+  }
+
+  if (htmlAudioElement) {
+
+    try {
+
+      htmlAudioElement.pause();
+
+      htmlAudioElement.currentTime = 0;
+
+    } catch (err) {}
+
+  }
+
+  stopSynthEmergencyBackup();
+
+}
+
+function startWebAudioPlayback(): boolean {
 
   const ctx = getOrCreateAudioContext();
 
-  if (!ctx || !audioBuffer || !isSirenActive) return;
+  if (!ctx) return false;
+
+  if (!audioBuffer) return false;
+
+  if (!isSirenActive) return false;
 
   try {
 
-    if (activeSourceNode) {
-
-      try { activeSourceNode.stop(); } catch {}
-
-      try { activeSourceNode.disconnect(); } catch {}
-
-      activeSourceNode = null;
-
-    }
+    stopAllPlaybackEnginesOnly();
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
 
@@ -778,11 +882,15 @@ function startWebAudioPlayback() {
 
     isWebAudioPlaying = true;
 
-    stopSynthEmergencyBackup();
+    return true;
 
   } catch (err) {
 
     console.warn('Web Audio buffer playback note:', err);
+
+    isWebAudioPlaying = false;
+
+    return false;
 
   }
 
@@ -792,9 +900,15 @@ export function startEmergencySiren() {
 
   try {
 
-    if (isSirenActive && (isWebAudioPlaying || (htmlAudioElement && !htmlAudioElement.paused))) {
+    const isHtmlPlaying = Boolean(htmlAudioElement && !htmlAudioElement.paused);
+
+    const isSynthPlaying = Boolean(synthOscillator);
+
+    if (isSirenActive && (isWebAudioPlaying ? true : isHtmlPlaying ? true : isSynthPlaying)) {
 
       applyLiveVolume();
+
+      notifyLocalChanges();
 
       return stopEmergencySiren;
 
@@ -806,71 +920,107 @@ export function startEmergencySiren() {
 
     acquireScreenWakeLock();
 
-    const effectiveVolume = isDeviceSirenMuted() ? 0 : (getSirenVolume() || 1.0);
+    startSubAudibleKeepAlive();
+
+    const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume() ? getSirenVolume() : 1.0;
 
     const ctx = getOrCreateAudioContext();
 
-    if (ctx) {
+    stopAllPlaybackEnginesOnly();
 
-      if (ctx.state === 'suspended') {
+    let startedSingleStream = false;
 
-        ctx.resume().then(() => {
+    if (ctx && audioBuffer && ctx.state === 'running') {
 
-          if (isSirenActive) {
-
-            if (audioBuffer) startWebAudioPlayback();
-
-            else startSynthEmergencyBackup();
-
-          }
-
-        }).catch(() => {});
-
-      } else {
-
-        if (audioBuffer) startWebAudioPlayback();
-
-        else startSynthEmergencyBackup();
-
-      }
+      startedSingleStream = startWebAudioPlayback();
 
     }
 
-    const audio = getAudioElement();
+    if (!startedSingleStream) {
 
-    if (audio) {
+      const audio = getAudioElement();
 
-      audio.volume = effectiveVolume;
+      if (audio) {
 
-      audio.loop = true;
+        audio.volume = effectiveVolume;
 
-      if (!isWebAudioPlaying || audio.paused) {
+        audio.loop = true;
 
         const playPromise = audio.play();
 
         if (playPromise !== undefined) {
 
+          startedSingleStream = true;
+
           playPromise.catch(() => {
 
-            if (isSirenActive) {
+            if (!isSirenActive) return;
+
+            if (isWebAudioPlaying) return;
+
+            if (audioBuffer && ctx) {
+
+              ctx.resume().then(() => {
+
+                if (isSirenActive && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
+
+                  const ok = startWebAudioPlayback();
+
+                  if (!ok) startSynthEmergencyBackup();
+
+                }
+
+              }).catch(() => {
+
+                startSynthEmergencyBackup();
+
+              });
+
+            } else {
 
               startSynthEmergencyBackup();
-
-              const fallbackUrl = `./${SIREN_WAV_FILENAME}`;
-
-              if (audio.src !== fallbackUrl) {
-
-                audio.src = fallbackUrl;
-
-                audio.play().catch(() => {});
-
-              }
 
             }
 
           });
 
         }
+
+      }
+
+    }
+
+    if (!startedSingleStream) {
+
+      if (ctx && ctx.state === 'suspended') {
+
+        ctx.resume().then(() => {
+
+          if (isSirenActive && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
+
+            if (audioBuffer) {
+
+              const ok = startWebAudioPlayback();
+
+              if (!ok) startSynthEmergencyBackup();
+
+            } else {
+
+              startSynthEmergencyBackup();
+
+            }
+
+          }
+
+        }).catch(() => {
+
+          startSynthEmergencyBackup();
+
+        });
+
+      } else {
+
+        startSynthEmergencyBackup();
 
       }
 
@@ -883,6 +1033,8 @@ export function startEmergencySiren() {
     }
 
     startContinuousVibration();
+
+    notifyLocalChanges();
 
   } catch (err) {
 
@@ -916,43 +1068,25 @@ export function stopEmergencySiren(force: boolean = false): void {
 
     isSirenActive = false;
 
-    isWebAudioPlaying = false;
-
-    if (htmlAudioElement) {
-
-      try {
-
-        htmlAudioElement.pause();
-
-        htmlAudioElement.currentTime = 0;
-
-      } catch {}
-
-    }
-
-    if (activeSourceNode) {
-
-      try { activeSourceNode.stop(); } catch {}
-
-      try { activeSourceNode.disconnect(); } catch {}
-
-      activeSourceNode = null;
-
-    }
+    stopAllPlaybackEnginesOnly();
 
     if (activeGainNode) {
 
-      try { activeGainNode.disconnect(); } catch {}
+      try {
+
+        activeGainNode.disconnect();
+
+      } catch (err) {}
 
       activeGainNode = null;
 
     }
 
-    stopSynthEmergencyBackup();
-
     stopContinuousVibration();
 
     releaseScreenWakeLock();
+
+    notifyLocalChanges();
 
   } catch (err) {
 
@@ -964,7 +1098,7 @@ export function stopEmergencySiren(force: boolean = false): void {
 
 export function testEmergencySiren(durationSeconds = 10) {
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
 
     startEmergencySiren();
 
@@ -987,4 +1121,3 @@ export function isEmergencySirenPlaying(): boolean {
 }
 
 export const playSirenSound = startEmergencySiren;
-
