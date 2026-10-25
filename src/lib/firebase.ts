@@ -523,7 +523,6 @@ export async function markRedAlertAsResolved(id: string, reason?: string, _actor
     resolvedAt: nowIso,
     resolvedAtDisplay: nowDisplay,
     updatedAtServer: serverTimestamp(),
-    updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
@@ -551,7 +550,7 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
           id: `fake_${Date.now()}`,
           userId: typeof reportData === 'string' ? reportData : `usr_${Date.now()}`,
           reportedAt: new Date().toISOString(),
-          reason: 'බොරුවක් ලෙස වාර්තා කරන ලදී',
+          reason: 'අසත්‍යයක් ලෙස වාර්තා කරන ලදී',
         };
 
     const alreadyReported = Boolean(
@@ -569,7 +568,7 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
       isFlaggedFake: isNowFlaggedFake,
       ...(isNowFlaggedFake ? {
         fakeHighlightedAt: new Date().toISOString(),
-        statusChangeMessage: '⚠️ මෙය බොරුවට පළකරන ලද දැන්වීමකි',
+        statusChangeMessage: '⚠️ මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි',
       } : {}),
       updatedAtServer: serverTimestamp(),
     }), { merge: true });
