@@ -377,6 +377,14 @@ export const QuickServiceDetailModal = ({
   const rawPostLocName = currentPost?.locationName ? currentPost.locationName : lang === 'en' ? 'Posted Location' : lang === 'ta' ? 'பதிவு செய்யப்பட்ட இடம்' : 'දැන්වීම පළකළ ස්ථානය'; 
 
   const motorcycleRoute = calculateMotorcycleRoadDistance(postLat, postLng, viewerLat, viewerLng, rawPostLocName, viewerLocName, lang); 
+  const safeRoadDistKm = typeof (motorcycleRoute as any)?.roadDistanceKm === 'number' && !isNaN((motorcycleRoute as any).roadDistanceKm) 
+    ? (motorcycleRoute as any).roadDistanceKm 
+    : typeof (motorcycleRoute as any)?.distanceKm === 'number' && !isNaN((motorcycleRoute as any).distanceKm) 
+    ? (motorcycleRoute as any).distanceKm 
+    : typeof (motorcycleRoute as any)?.straightDistanceKm === 'number' && !isNaN((motorcycleRoute as any).straightDistanceKm) 
+    ? (motorcycleRoute as any).straightDistanceKm 
+    : 0.5; 
+  const safeMapsUrl = (motorcycleRoute as any)?.mapsUrl ? (motorcycleRoute as any).mapsUrl : (motorcycleRoute as any)?.googleMapsUrl ? (motorcycleRoute as any).googleMapsUrl : 'https://www.google.com/maps'; 
 
   const handleConfirmReady = async () => { 
 
@@ -438,7 +446,7 @@ export const QuickServiceDetailModal = ({
 
     try { 
 
-      const updated = await applyToHelpPost({ post: currentPost, helperUser: currentUser, distanceKm: motorcycleRoute.distanceKm }); 
+      const updated = await applyToHelpPost({ post: currentPost, helperUser: currentUser, distanceKm: safeRoadDistKm }); 
 
       setActivePost(updated); 
 
@@ -990,7 +998,7 @@ export const QuickServiceDetailModal = ({
 
                 h('span', { className: 'text-[10px] text-slate-500 dark:text-slate-400 block font-bold' }, getLangText('නියම මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')), 
 
-                h('span', { className: 'text-sm sm:text-base font-black text-emerald-800 dark:text-emerald-200 font-mono' }, motorcycleRoute.distanceKm.toFixed(1) + ' km')
+                h('span', { className: 'text-sm sm:text-base font-black text-emerald-800 dark:text-emerald-200 font-mono' }, Number(safeRoadDistKm).toFixed(1) + ' km')
 
               ), 
 
@@ -998,13 +1006,13 @@ export const QuickServiceDetailModal = ({
 
                 h('span', { className: 'text-[10px] text-slate-500 dark:text-slate-400 block font-bold' }, getLangText('ගතවන කාලය (යතුරුපැදි)', 'Travel Time', 'பயண நேரம்')), 
 
-                h('span', { className: 'text-sm sm:text-base font-black text-teal-800 dark:text-teal-200 font-mono' }, '~' + motorcycleRoute.travelTimeMinutes + ' mins')
+                h('span', { className: 'text-sm sm:text-base font-black text-teal-800 dark:text-teal-200 font-mono' }, '~' + (motorcycleRoute?.travelTimeMinutes ? motorcycleRoute.travelTimeMinutes : 5) + ' mins')
 
               )
 
             ), 
 
-            isConfirmed ? h('a', { href: motorcycleRoute.googleMapsUrl, target: '_blank', rel: 'noopener noreferrer', className: 'w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer' }, h(ExternalLink, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('Google Maps හරහා මාර්ගය බලන්න', 'View in Google Maps', 'கூகிள் வரைபடத்தில் காண்க'))) : h('div', { className: 'p-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-center' }, 
+            isConfirmed ? h('a', { href: safeMapsUrl, target: '_blank', rel: 'noopener noreferrer', className: 'w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer' }, h(ExternalLink, { className: 'w-3.5 h-3.5' }), h('span', null, getLangText('Google Maps හරහා මාර්ගය බලන්න', 'View in Google Maps', 'கூகிள் வரைபடத்தில் காண்க'))) : h('div', { className: 'p-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-center' }, 
 
               h('span', { className: 'text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, getLangText('සේවාව තහවුරු වූ පසු Google Maps සජීවී මාර්ගය විවෘත වේ.', 'Live Google Maps unlocks upon confirmation.', 'உறுதிப்படுத்தப்பட்ட பின் வரைபடம் திறக்கப்படும்.')))
 
