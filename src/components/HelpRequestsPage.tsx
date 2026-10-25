@@ -459,8 +459,8 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       if (isFake) {
         return {
           ...a,
-          disasterTitleSi: `⚠️ [මෙය බොරුවට පළකරන ලද දැන්වීමකි] ${baseTitle}`,
-          description: `🚨 මෙය බොරුවට පළකරන ලද දැන්වීමකි (පරිශීලකයන් ${fakeCount} දෙනෙකු බොරුවක් ලෙස වාර්තා කර ඇත) • ${baseDesc}`,
+          disasterTitleSi: '⚠️ [මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි] ' + baseTitle,
+          description: '🚨 මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි (පරිශීලකයන් ' + fakeCount + ' දෙනෙකු අසත්‍යයක් ලෙස වාර්තා කර ඇත) • ' + baseDesc,
         };
       }
       if (isResolved) {
