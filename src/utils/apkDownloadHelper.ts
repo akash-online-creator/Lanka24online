@@ -66,9 +66,8 @@ export interface AppUpdateInfo {
 
 export function compareVersions(vA: string, vB: string): number {
 
-  const cleanA = (vA || '').replace(/^v/i, '').trim();
-
-  const cleanB = (vA || '').replace(/^v/i, '').trim();
+  const cleanA = (vA ? vA : '').replace(/^v/i, '').trim();
+  const cleanB = (vB ? vB : '').replace(/^v/i, '').trim();
 
 
   if (!cleanA && !cleanB) return 0;
