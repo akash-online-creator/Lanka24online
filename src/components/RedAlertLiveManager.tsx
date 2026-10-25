@@ -436,12 +436,73 @@ export const RedAlertLiveManager: any = ({
       passive: true
     });
     try {
-      const workerBlob = new Blob(['setInterval(function(){ postMessage("tick"); }, 4000);'], {
-        type: 'application/javascript'
+      const workerScript = [
+        'function pollNow() {',
+        '  fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15", { cache: "no-store" })',
+        '    .then(function(r){ return r.ok ? r.json() : null; })',
+        '    .then(function(d){ if (d && d.documents) postMessage({ type: "REST_DOCS", documents: d.documents }); else postMessage({ type: "TICK" }); })',
+        '    .catch(function(){ postMessage({ type: "TICK" }); });',
+        '}',
+        'setInterval(pollNow, 3000);',
+        'pollNow();'
+      ].join(String.fromCharCode(10));
+      const workerBlob = new Blob([workerScript], {
+        type: "application/javascript"
       });
       bgWorker = new Worker(URL.createObjectURL(workerBlob));
-      bgWorker.onmessage = () => {
+      bgWorker.onmessage = (ev: any) => {
         syncServiceWorkerWatchConfig();
+        if (ev && ev.data && ev.data.type === "REST_DOCS" && Array.isArray(ev.data.documents)) {
+          for (const d of ev.data.documents) {
+            if (!d) continue;
+            const fields = d.fields ? d.fields : {};
+            const status = fields.status && fields.status.stringValue ? fields.status.stringValue : "";
+            const isFlaggedFake = Boolean(fields.isFlaggedFake && fields.isFlaggedFake.booleanValue);
+            if (status !== "active" ? true : isFlaggedFake) continue;
+            const nameParts = String(d.name ? d.name : "").split("/");
+            const docId = fields.id && fields.id.stringValue ? fields.id.stringValue : nameParts[nameParts.length - 1];
+            const alertCode = fields.alertCode && fields.alertCode.stringValue ? fields.alertCode.stringValue : "RED ALERT";
+            if (isAlertAlreadyStoppedOrDismissed(docId, alertCode)) continue;
+            const repUid = fields.reportedByUserId && fields.reportedByUserId.stringValue ? fields.reportedByUserId.stringValue : "";
+            const repPhone = fields.reportedByPhone && fields.reportedByPhone.stringValue ? fields.reportedByPhone.stringValue : "";
+            const candidateAlert = {
+              id: docId,
+              alertCode: alertCode,
+              status: "active",
+              reportedByUserId: repUid,
+              reportedByPhone: repPhone,
+              disasterTitleSi: fields.disasterTitleSi && fields.disasterTitleSi.stringValue ? fields.disasterTitleSi.stringValue : fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
+              title: fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
+              locationName: fields.locationName && fields.locationName.stringValue ? fields.locationName.stringValue : "ශ්‍රී ලංකාව",
+              description: fields.description && fields.description.stringValue ? fields.description.stringValue : ""
+            };
+            if (isAlertCreatedByMe(candidateAlert)) continue;
+            const latF = fields.latitude ? fields.latitude : fields.lat;
+            const lngF = fields.longitude ? fields.longitude : fields.lat;
+            const alertLat = latF ? Number(latF.doubleValue !== undefined ? latF.doubleValue : latF.integerValue) : 7.151;
+            const alertLng = lngF ? Number(lngF.doubleValue !== undefined ? lngF.doubleValue : lngF.integerValue) : 79.885;
+            const userCoords = getUserCoordinates();
+            const distKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+            const within15Km = Boolean(Math.min(distKm, 15.0) === distKm ? true : userCoords.isFallback);
+            if (!within15Km) continue;
+            const isNew = prevAlertIdRef.current !== docId;
+            prevAlertIdRef.current = docId;
+            activeAlertRef.current = candidateAlert;
+            setActiveAlert(candidateAlert);
+            setUserDistanceKm(distKm);
+            setIsWithin15Km(true);
+            setIsDismissed(false);
+            setShowEmergencyModal(true);
+            shouldRingRef.current = true;
+            setIsSirenActive(true);
+            setEmergencySirenLock(true);
+            startEmergencySiren();
+            if (isNew) {
+              triggerWakeScreenAndNotification(candidateAlert, distKm, true);
+            }
+            break;
+          }
+        }
         const currentId = prevAlertIdRef.current;
         if (!currentId) return;
         if (!shouldRingRef.current) return;
@@ -804,4 +865,3 @@ export const RedAlertLiveManager: any = ({
     className: 'bg-white text-red-700 font-black px-3 py-1 rounded-lg text-[11px] cursor-pointer shadow'
   }, 'ආපදා විස්තරය බලන්න'))) : null));
 };
-
