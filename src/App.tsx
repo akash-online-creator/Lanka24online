@@ -33,6 +33,57 @@ import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 
+async function hashUserPassword(rawPass: string): Promise<string> {
+  const clean = (rawPass ? rawPass : '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('sha256_v1$')) return clean;
+  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return 'sha256_v1$' + hex;
+    } catch (e) {}
+  }
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) {
+    h = (h * 33) ^ payload.charCodeAt(i);
+  }
+  return 'sha256_v1$fb_' + String(h >>> 0);
+}
+
+function sanitizeUserForSessionStorage(u: User | null): any {
+  if (!u) return null;
+  const copy: any = Object.assign({}, u);
+  delete copy.password;
+  delete copy.key;
+  delete copy.tempPassword;
+  delete copy.temporaryPassword;
+  return copy;
+}
+
+function getSafeUsersForView(allUsers: User[], viewer: User | null, isAdminView: boolean): User[] {
+  const isViewerAdmin = Boolean(isAdminView ? true : checkIsAdmin(viewer));
+  if (isViewerAdmin) return allUsers;
+  const viewerId = viewer?.id ? viewer.id : viewer?.userId ? viewer.userId : '';
+  return (allUsers ? allUsers : []).map((u) => {
+    if (!u) return u;
+    const isSelf = Boolean(viewerId && (u.id === viewerId ? true : u.userId === viewerId));
+    const safeCopy: any = Object.assign({}, u);
+    delete safeCopy.password;
+    delete safeCopy.key;
+    delete safeCopy.tempPassword;
+    delete safeCopy.temporaryPassword;
+    if (!isSelf) {
+      delete safeCopy.nicFrontPhotoUrl;
+      delete safeCopy.nicBackPhotoUrl;
+      delete safeCopy.idCardPhotoUrl;
+    }
+    return safeCopy as User;
+  });
+}
+
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
   const [theme, setTheme] = useState<Theme>(() => {
@@ -173,10 +224,10 @@ export const App: React.FC = () => {
     }
   }, [helpPosts, currentUser]);
 
-  // Persist User Session to LocalStorage
+  // Persist User Session to LocalStorage (Sanitized: strips password/key/temporaryPassword)
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(currentUser)));
     } else {
       localStorage.removeItem('sahaya_sewa_session_user');
     }
@@ -347,11 +398,12 @@ export const App: React.FC = () => {
     // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
     // කිසිදු Backdoor මුරපදයක්, විශ්ව මුරපදයක් හෝ මුරපදය නොමැතිව පිවිසීමක් සිදු නොවේ!
     // මෙම නිශ්චිත ගිණුමට අදාළ ස්ථිර මුරපදය (password / key) හෝ පරිපාලක ලබා දුන් තාවකාලික මුරපදය (temporaryPassword / tempPassword) පමණක් පිළිගැනේ.
-    const userPass = String(matchedUser.password || (matchedUser as any).key || '').trim();
-    const userTempPass = String(matchedUser.temporaryPassword || (matchedUser as any).tempPassword || '').trim();
+    const userPass = String(matchedUser.password ? matchedUser.password : (matchedUser as any).key ? (matchedUser as any).key : '').trim();
+    const userTempPass = String(matchedUser.temporaryPassword ? matchedUser.temporaryPassword : (matchedUser as any).tempPassword ? (matchedUser as any).tempPassword : '').trim();
+    const hashedInputPass = await hashUserPassword(cleanPass);
 
-    const isPermanentMatch = userPass !== '' && cleanPass === userPass;
-    const isTemporaryMatch = userTempPass !== '' && cleanPass === userTempPass;
+    const isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass ? true : userPass === cleanPass));
+    const isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass ? true : userTempPass === cleanPass));
 
     if (!isPermanentMatch && !isTemporaryMatch) {
       throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
@@ -359,6 +411,16 @@ export const App: React.FC = () => {
 
     // 6. මුරපදය නිවැරදි නම් පමණක් Login වීම සම්පූර්ණ කිරීම
     let authenticatedUser: User = { ...matchedUser };
+
+    // පැරණි Plain-text මුරපදයක් නම් ස්වයංක්‍රීයව SHA-256 Hash එකට උසස් කර Firestore හි සුරැකීම
+    if (isPermanentMatch && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
+      authenticatedUser.password = hashedInputPass;
+      (authenticatedUser as any).key = hashedInputPass;
+      updateUserInFirestore(matchedUser.id, {
+        password: hashedInputPass,
+        key: hashedInputPass,
+      }).catch(() => {});
+    }
 
     // තාවකාලික මුරපදයකින් පිවිසියේ නම් මුරපදය වෙනස් කිරීමේ Modal එක විවෘත කිරීමට සටහන් කිරීම
     if (isTemporaryMatch && !isPermanentMatch) {
@@ -368,7 +430,7 @@ export const App: React.FC = () => {
 
     setCurrentUser(authenticatedUser);
     try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(authenticatedUser)));
     } catch (e) {
       console.warn(e);
     }
@@ -448,6 +510,8 @@ export const App: React.FC = () => {
   // Registration Handler
   const handleRegister = useCallback(async (newUser: any) => {
     const resolvedId = newUser && newUser.id ? String(newUser.id) : `usr_${Date.now()}`;
+    const rawPass = String(newUser?.password ? newUser.password : newUser?.key ? newUser.key : '').trim();
+    const hashedPass = rawPass ? await hashUserPassword(rawPass) : '';
     const resolvedCreatedAt = newUser && newUser.createdAt ? String(newUser.createdAt) : new Date().toISOString();
     const created: User = Object.assign({}, newUser, {
       id: resolvedId,
@@ -455,6 +519,8 @@ export const App: React.FC = () => {
       status: 'pending',
       credits: 100,
       creditBalance: 100,
+      password: hashedPass,
+      key: hashedPass,
     });
 
     setUsers((prev) => deduplicateUsers([created, ...prev]));
@@ -475,16 +541,17 @@ export const App: React.FC = () => {
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
-  // 🔑 Permanent Password Update Handler (නව මුරපදය ස්ථිරව සුරැකීම)
+  // 🔑 Permanent Password Update Handler (නව මුරපදය SHA-256 Hash මඟින් ස්ථිරව සුරැකීම)
   const handleSaveNewPassword = useCallback(async (newPassword: string) => {
     if (!currentUser) return;
     const cleanNewPass = newPassword.trim();
     if (!cleanNewPass) return;
+    const hashedNewPass = await hashUserPassword(cleanNewPass);
 
     const updatedUser: User = {
       ...currentUser,
-      password: cleanNewPass,
-      key: cleanNewPass as any,
+      password: hashedNewPass,
+      key: hashedNewPass as any,
       isTemporaryPassword: false,
       isPasswordChanged: true,
       tempPassword: '',
@@ -495,8 +562,8 @@ export const App: React.FC = () => {
     // 1. Update in Firestore
     try {
       await updateUserInFirestore(currentUser.id, {
-        password: cleanNewPass,
-        key: cleanNewPass,
+        password: hashedNewPass,
+        key: hashedNewPass,
         isTemporaryPassword: false,
         isPasswordChanged: true,
         tempPassword: '',
@@ -509,9 +576,9 @@ export const App: React.FC = () => {
 
     // 2. Synchronize local state and session
     setCurrentUser(updatedUser);
-    setUsers((prev) => (prev || []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
+    setUsers((prev) => (prev ? prev : []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
     try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updatedUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(updatedUser)));
     } catch (e) {
       console.warn('LocalStorage session update error:', e);
     }
@@ -642,7 +709,7 @@ export const App: React.FC = () => {
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
             onUpdateUser={(updated) => setCurrentUser(updated)}
-            users={users}
+            users={getSafeUsersForView(users, currentUser, false)}
             setUsers={setUsers}
             helpPosts={helpPosts}
             setHelpPosts={setHelpPosts}
