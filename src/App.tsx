@@ -427,7 +427,7 @@ export const App: React.FC = () => {
       status: 'approved',
       city: 'කොළඹ',
       createdAt: new Date().toISOString(),
-      credits: 50,
+      credits: 100,
     };
 
     const demoUser: User = {
@@ -453,8 +453,8 @@ export const App: React.FC = () => {
       id: resolvedId,
       createdAt: resolvedCreatedAt,
       status: 'pending',
-      credits: 50,
-      creditBalance: 50,
+      credits: 100,
+      creditBalance: 100,
     });
 
     setUsers((prev) => deduplicateUsers([created, ...prev]));
