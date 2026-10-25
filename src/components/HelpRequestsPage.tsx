@@ -505,7 +505,15 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   }, []);
 
   const categoryCounts = useMemo(() => {
-    const posts = Array.isArray(helpPosts) ? helpPosts : [];
+    const isAdminUser = Boolean(user && (user.role === 'admin' ? true : user.role === 'super_admin'));
+    const posts = (Array.isArray(helpPosts) ? helpPosts : []).filter((p: any) => {
+      if (!p ? true : !p.id ? true : p.isDeleted ? true : p.status === 'deleted' ? true : isPostPermanentlyDeleted(p.id)) return false;
+      const isOwner = checkIsPostOwner(user, p);
+      if ((p.isHidden ? true : p.isHiddenByAdmin ? true : p.status === 'hidden') && !isAdminUser && !isOwner) return false;
+      if ((p.visibilityMode === 'private' ? true : p.isPrivate) && !isAdminUser && !isOwner) return false;
+      if (p.visibilityMode === 'schedule' && p.scheduledPublishAt && Date.parse(p.scheduledPublishAt) > Date.now() && !isAdminUser && !isOwner) return false;
+      return true;
+    });
     const mktPostsCount = posts.filter((p) => Boolean(p && (p.category === 'marketplace' ? true : p.serviceType === 'marketplace'))).length;
     return {
       all: posts.length,
@@ -1236,6 +1244,23 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           totalPostsCount={helpPosts.length}
           filteredPostsCount={newsFeedSortedPosts.length}
           posts={helpPosts}
+          shops={getStoredMarketShops()}
+          professionals={professionalServices}
+          users={registeredUsers}
+          onSelectEntityMatch={(match: any) => {
+            if (!match) return;
+            if (match.entityType === 'post' && match.rawEntity) {
+              onViewPost(match.rawEntity);
+            } else if (match.entityType === 'shop' ? true : match.entityType === 'business') {
+              setBoardCategoryFilter('marketplace');
+              setSelectedCategoryTitle(getLangText('වෙළඳපොල', 'Marketplace', 'සන්‍දයි'));
+            } else if (match.entityType === 'professional') {
+              setBoardCategoryFilter('professional_services');
+              setSelectedCategoryTitle(getLangText('වෘත්තීය සේවා', 'Professional Services', 'තො me ්‍යිල්මු \u0bb1ෛ'));
+            } else {
+              setSearchQuery(match.atTag ? match.atTag : '');
+            }
+          }}
           language={language}
           onOpenAccommodation={() => {
             setBoardCategoryFilter('accommodation');
