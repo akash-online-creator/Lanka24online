@@ -213,10 +213,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // User Actions
   const handleApproveUser = async (userToApprove: User) => {
     try {
+      const resolvedGiftCredits = Math.max(100, Number(userToApprove.credits ? userToApprove.credits : 100));
       const updatedUser: User = { 
         ...userToApprove, 
         status: 'approved',
-        credits: userToApprove.credits || 50,
+        credits: resolvedGiftCredits,
+        creditBalance: resolvedGiftCredits,
+        welcomeGiftCredited: true,
       };
       await syncUserProfileToFirestore(updatedUser);
 
