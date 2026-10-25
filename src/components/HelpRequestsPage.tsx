@@ -22,6 +22,7 @@ import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore, subscribeToMarketplaceItems, subscribeToMarketShops } from '../lib/firebase';
 import { getStoredMarketItems, getStoredMarketShops } from '../data/marketplaceData';
+import { getStoredBloodRequests } from '../data/bloodAndDisasterData';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
@@ -297,38 +298,104 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return si;
   };
 
-  // Helper to determine if a post is a high-priority / emergency community alert
-  const isEmergencyOrHighPriority = (post: HelpPost): boolean => {
+  // 1. රතු එළිය (ආපදා දැනුවත් කිරීම්) දැන්වීම් හඳුනාගැනීම
+  const isRedAlertDisasterPost = (post: HelpPost): boolean => {
     if (!post) return false;
-    if (post.isPinnedEmergency) return true;
-    if (post.priorityLevel === 'emergency' || post.priorityLevel === 'high') return true;
-    if (post.postCode?.startsWith('#BLD-') || post.postCode?.startsWith('#EMG-')) return true;
-    if (post.category === 'emergency' || post.category === 'blood_disaster' || post.tagCategory === 'හදිසි / ආපදා') return true;
-    const text = `${post.whatHappened || ''} ${post.whatIsNeeded || ''} ${post.tagName || ''} ${post.category || ''} ${post.tagCategory || ''}`.toLowerCase();
+    const anyPost = post as any;
+    const code = String(post.postCode ? post.postCode : anyPost.alertCode ? anyPost.alertCode : '');
+    if (code.startsWith('#RED-') ? true : code.startsWith('#EMG-')) return true;
+    if (post.category === 'red_alert' ? true : anyPost.postType === 'red_alert' ? true : anyPost.serviceType === 'red_alert') return true;
+    const text = `${post.title ? post.title : ''} ${post.whatHappened ? post.whatHappened : ''} ${post.whatIsNeeded ? post.whatIsNeeded : ''} ${post.tagName ? post.tagName : ''} ${post.tagCategory ? post.tagCategory : ''}`.toLowerCase();
+    const hasBloodKeyword = text.includes('රුධිර') ? true : text.includes('ලේ') ? true : text.includes('blood') ? true : code.startsWith('#BLD-');
+    if (hasBloodKeyword) return false;
     if (
-      text.includes('හදිසි අනතුර') ||
-      text.includes('රුධිර') ||
-      text.includes('ලේ') ||
-      text.includes('blood') ||
-      text.includes('emergency') ||
-      text.includes('ජල ගැලීම්') ||
-      text.includes('ගංවතුර') ||
-      text.includes('නැතිවූ දරුවා') ||
-      text.includes('ආපදා') ||
-      text.includes('icu')
+      text.includes('රතු එළිය')
+        ? true
+        : text.includes('red alert')
+        ? true
+        : text.includes('ආපදා')
+        ? true
+        : text.includes('හදිසි අනතුර')
+        ? true
+        : text.includes('ජල ගැලීම්')
+        ? true
+        : text.includes('ගංවතුර')
+        ? true
+        : text.includes('නායයෑම්')
+        ? true
+        : text.includes('නැතිවූ දරුවා')
+    ) {
+      return true;
+    }
+    if ((post.category === 'emergency' ? true : post.tagCategory === 'හදිසි / ආපදා') && !hasBloodKeyword) {
+      return true;
+    }
+    return false;
+  };
+
+  // 2. ලේ ඉල්ලීම් දැන්වීම් හඳුනාගැනීම
+  const isBloodRequestPost = (post: HelpPost): boolean => {
+    if (!post) return false;
+    const anyPost = post as any;
+    const code = String(post.postCode ? post.postCode : '');
+    if (code.startsWith('#BLD-')) return true;
+    if (post.category === 'blood_disaster' ? true : anyPost.bloodGroup ? true : anyPost.postType === 'blood_request' ? true : anyPost.serviceType === 'blood_donation') return true;
+    const text = `${post.title ? post.title : ''} ${post.whatHappened ? post.whatHappened : ''} ${post.whatIsNeeded ? post.whatIsNeeded : ''} ${post.tagName ? post.tagName : ''}`.toLowerCase();
+    if (
+      text.includes('රුධිර')
+        ? true
+        : text.includes('ලේ අවශ්‍ය')
+        ? true
+        : text.includes('ලේ ඉල්ලී')
+        ? true
+        : text.includes('ලේ පරිත්‍යාග')
+        ? true
+        : text.includes('blood')
+        ? true
+        : text.includes('🩸')
     ) {
       return true;
     }
     return false;
   };
 
-  // Helper to determine if a post is a quick service
+  // Helper to determine if a post is a high-priority / emergency community alert (Red Alert or Blood Request)
+  const isEmergencyOrHighPriority = (post: HelpPost): boolean => {
+    if (!post) return false;
+    if (isRedAlertDisasterPost(post) ? true : isBloodRequestPost(post)) return true;
+    if (post.isPinnedEmergency) return true;
+    if (post.priorityLevel === 'emergency' ? true : post.priorityLevel === 'high') return true;
+    return false;
+  };
+
+  // 4. ඉක්මන් සේවා දැන්වීම් හඳුනාගැනීම
   const isQuickService = (post: HelpPost): boolean => {
     if (!post) return false;
-    if (post.category === 'quick_services' || post.category === 'quick') return true;
-    if (post.tagCategory === 'ඉක්මන් සේවා' || post.tagName?.toLowerCase().includes('quick') || post.tagName?.includes('හදිසි')) return true;
-    if (post.customFieldValues?.f_urgency?.toString().includes('Immediate') || post.customFieldValues?.f_urgency?.toString().includes('හදිසි')) return true;
+    const anyPost = post as any;
+    if (post.category === 'quick_services' ? true : post.category === 'quick' ? true : anyPost.postType === 'quick_service' ? true : anyPost.serviceType === 'quick_services') return true;
+    if (post.tagCategory === 'ඉක්මන් සේවා' ? true : post.tagName?.toLowerCase().includes('quick') ? true : post.tagName?.includes('ඉක්මන්')) return true;
+    if (post.customFieldValues?.f_urgency?.toString().includes('Immediate') ? true : post.customFieldValues?.f_urgency?.toString().includes('හදිසි')) return true;
     return false;
+  };
+
+  // 5. දැන්වීමට ඇති දුර ගණනය කිරීම (ළඟම දැන්වීම් පළමුව පෙන්වීම සඳහා)
+  const getSafePostDistanceKm = (post: HelpPost): number => {
+    if (!post) return 999999;
+    try {
+      if (typeof getPostDistance === 'function') {
+        const d = getPostDistance(post);
+        if (typeof d === 'number' && !isNaN(d) && d >= 0) return d;
+      }
+    } catch (e) {}
+    const anyPost = post as any;
+    const pLat = typeof post.latitude === 'number' ? post.latitude : typeof post.lat === 'number' ? post.lat : typeof anyPost.locationLat === 'number' ? anyPost.locationLat : null;
+    const pLng = typeof post.longitude === 'number' ? post.longitude : typeof post.lng === 'number' ? post.lng : typeof anyPost.locationLng === 'number' ? anyPost.locationLng : null;
+    if (currentLocation && typeof currentLocation.lat === 'number' && typeof currentLocation.lng === 'number' && pLat !== null && pLng !== null) {
+      return calculateDistanceKm(currentLocation.lat, currentLocation.lng, pLat, pLng);
+    }
+    if (typeof post.distanceKm === 'number' && !isNaN(post.distanceKm)) return post.distanceKm;
+    if (typeof anyPost.actualDistanceKm === 'number' && !isNaN(anyPost.actualDistanceKm)) return anyPost.actualDistanceKm;
+    return 999999;
   };
 
   // Parse time for accurate chronological sorting
@@ -352,19 +419,27 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     return 0;
   };
 
-  // Process and sort News Feed posts:
-  // 1. Pinned Emergency & High Priority Community Alerts ALWAYS come first
-  // 2. Boosted Top Ads come next
-  // 3. Quick Services come next
-  // 4. All other posts are sorted chronologically (newest first)
-  // 5. Tab filter applied (All / Emergency only / Quick Services only / Saved posts only)
+  // සේවාවන් අනුව දැන්වීම් පුවරුවේ දැන්වීම් පෙන්විය යුතු පිළිවෙල:
+  // 1. රතු එළිය (ආපදා දැනුවත් කිරීම්) දැන්වීම්
+  // 2. ලේ ඉල්ලීම් දැන්වීම්
+  // 3. Boost දැන්වීම්
+  // 4. ඉක්මන් සේවා දැන්වීම්
+  // 5. දුර අනුව දැන්වීම් (ආසන්නතම දැන්වීම් පළමුව)
+  const getPostServicePriorityRank = (post: HelpPost): number => {
+    if (isRedAlertDisasterPost(post)) return 1;
+    if (isBloodRequestPost(post)) return 2;
+    if (Boolean(post.isBoosted ? true : (post as any).boosted)) return 3;
+    if (isQuickService(post)) return 4;
+    return 5;
+  };
+
   const newsFeedSortedPosts = useMemo(() => {
-    const isAdminUser = Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
-    const sourceList = (filteredPosts || []).filter((p): p is HelpPost => {
-      if (!p || typeof p !== 'object' || !p.id || p.isDeleted || p.status === 'deleted' || isPostPermanentlyDeleted(p.id)) {
+    const isAdminUser = Boolean(user && (user.role === 'admin' ? true : user.role === 'super_admin'));
+    const sourceList = (filteredPosts ? filteredPosts : []).filter((p): p is HelpPost => {
+      if (!p ? true : typeof p !== 'object' ? true : !p.id ? true : p.isDeleted ? true : p.status === 'deleted' ? true : isPostPermanentlyDeleted(p.id)) {
         return false;
       }
-      const isHidden = Boolean(p.isHidden || p.isHiddenByAdmin || p.status === 'hidden');
+      const isHidden = Boolean(p.isHidden ? true : p.isHiddenByAdmin ? true : p.status === 'hidden');
       if (isHidden) {
         const isOwner = checkIsPostOwner(user, p);
         if (!isAdminUser && !isOwner) {
@@ -374,7 +449,48 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       return true;
     });
 
-    let result = sourceList;
+    const existingCodes = new Set(sourceList.map((p) => String(p.postCode ? p.postCode : p.id)));
+    const storedBloodPosts: HelpPost[] = (!boardCategoryFilter ? true : boardCategoryFilter === 'emergency' ? true : boardCategoryFilter === 'blood_disaster')
+      ? (getStoredBloodRequests() ? getStoredBloodRequests() : [])
+          .filter((b: any) => Boolean(b && b.id && !existingCodes.has(String(b.postCode ? b.postCode : b.id))))
+          .map((b: any) => {
+            const bTitle = `🩸 ${b.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${b.hospitalName} (${b.district})`;
+            const bDetails = `රෝගී නම: ${b.patientName} • ලේ වර්ගය: ${b.bloodGroup} • අවශ්‍ය ඒකක: ${b.unitsNeeded} • රෝහල: ${b.hospitalName} • දිස්ත්‍රික්කය: ${b.district} • අවශ්‍ය දිනය: ${b.neededDate ? b.neededDate : 'කඩිනමින්'} • සම්බන්ධීකාරක: ${b.contactName ? b.contactName : 'සම්බන්ධීකාරක'} (${b.contactPhone})${b.additionalNotes ? ` • සටහන්: ${b.additionalNotes}` : ''}`;
+            return {
+              id: b.id,
+              postCode: b.postCode ? b.postCode : '#BLD-100',
+              category: 'blood_disaster',
+              serviceType: 'blood_donation',
+              postType: 'blood_request',
+              bloodGroup: b.bloodGroup,
+              tagCategory: 'හදිසි / ආපදා',
+              tagName: `🩸 හදිසි ${b.bloodGroup} ලේ අවශ්‍යතාවය`,
+              headline: bTitle,
+              title: bTitle,
+              whatHappened: bTitle,
+              whatIsNeeded: bDetails,
+              content: bDetails,
+              locationName: `${b.hospitalName}, ${b.district}`,
+              district: b.district,
+              lat: currentLocation?.lat ? currentLocation.lat : 7.171,
+              lng: currentLocation?.lng ? currentLocation.lng : 79.8986,
+              latitude: currentLocation?.lat ? currentLocation.lat : 7.171,
+              longitude: currentLocation?.lng ? currentLocation.lng : 79.8986,
+              priorityLevel: 'emergency',
+              isPinnedEmergency: true,
+              userId: b.userId ? b.userId : 'blood_requester',
+              userName: b.contactName ? b.contactName : 'සම්බන්ධීකාරක',
+              userPhone: b.contactPhone ? b.contactPhone : '',
+              contactNumber: b.contactPhone ? b.contactPhone : '',
+              contactPersonName: b.contactName ? b.contactName : 'සම්බන්ධීකාරක',
+              status: 'active',
+              createdAt: b.createdAt ? b.createdAt : new Date().toISOString(),
+              createdAtMs: b.createdAtMs ? b.createdAtMs : Date.now(),
+            } as unknown as HelpPost;
+          })
+      : [];
+
+    let result = [...sourceList, ...storedBloodPosts];
 
     // Apply active feed tab filter
     if (activeFeedTab === 'emergency') {
@@ -385,31 +501,33 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       result = result.filter((p) => p?.id && savedPostIds.includes(p.id));
     }
 
-    // Sort: Emergency & Pinned first, then Boosted, then Quick Services, then chronological newest first
+    // Sort strictly by:
+    // 1. රතු එළිය (ආපදා දැනුවත් කිරීම්) දැන්වීම්
+    // 2. ලේ ඉල්ලීම් දැන්වීම්
+    // 3. Boost දැන්වීම්
+    // 4. ඉක්මන් සේවා දැන්වීම්
+    // 5. දුර අනුව දැන්වීම් (ළඟම දැන්වීම් පළමුව)
     return result.sort((a, b) => {
-      if (!a || !b) return 0;
-      const aIsEmerg = isEmergencyOrHighPriority(a);
-      const bIsEmerg = isEmergencyOrHighPriority(b);
-      if (aIsEmerg && !bIsEmerg) return -1;
-      if (!aIsEmerg && bIsEmerg) return 1;
+      if (!a ? true : !b) return 0;
+      const rankA = getPostServicePriorityRank(a);
+      const rankB = getPostServicePriorityRank(b);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
 
-      const aIsBoosted = Boolean(a.isBoosted);
-      const bIsBoosted = Boolean(b.isBoosted);
-      if (aIsBoosted && !bIsBoosted) return -1;
-      if (!aIsBoosted && bIsBoosted) return 1;
+      // 5. දුර අනුව දැන්වීම් (එකම කාණ්ඩය තුළ හෝ සාමාන්‍ය දැන්වීම් අතර ආසන්නතම දැන්වීම පළමුව)
+      const distA = getSafePostDistanceKm(a);
+      const distB = getSafePostDistanceKm(b);
+      if (Math.abs(distA - distB) > 0.05) {
+        return distA - distB;
+      }
 
-      const aIsQuick = isQuickService(a);
-      const bIsQuick = isQuickService(b);
-      if (aIsQuick && !bIsQuick) return -1;
-      if (!aIsQuick && bIsQuick) return 1;
-
-      // If both or neither, sort by post time (descending)
+      // දුර සමාන නම් නවතම දැන්වීම පළමුව
       const timeA = getPostTimestamp(a);
       const timeB = getPostTimestamp(b);
       return timeB - timeA;
     });
-  }, [filteredPosts, activeFeedTab, savedPostIds]);
-
+  }, [filteredPosts, activeFeedTab, savedPostIds, currentLocation]);
   // Automatic Infinite Scroll: Auto-load next 8 posts as soon as user views the last 2 posts
   useEffect(() => {
     if (visibleCount >= newsFeedSortedPosts.length) return;
@@ -438,16 +556,16 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   }, [visibleCount, newsFeedSortedPosts.length, handleLoadMore]);
 
   const activeRedAlerts = useMemo(() => {
-    return (redAlerts || []).filter((a) => Boolean(a)).map((a) => {
+    return (redAlerts ? redAlerts : []).filter((a) => Boolean(a)).map((a) => {
       const anyA = a as any;
-      const baseTitle = anyA.disasterTitleSi || a.title || 'හදිසි ආපදා දැන්වීම';
-      const baseDesc = a.description || '';
-      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) || a.fakeReportsCount || 0;
-      const isFake = Boolean(anyA.isFlaggedFake || a.status === 'fake' || Math.max(fakeCount, 4) === fakeCount);
-      const isRemoved = Boolean(a.status === 'cancelled' || anyA.isDeleted);
+      const baseTitle = anyA.disasterTitleSi ? anyA.disasterTitleSi : a.title ? a.title : 'හදිසි ආපදා දැන්වීම';
+      const baseDesc = a.description ? a.description : '';
+      const fakeCount = (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) ? (Array.isArray(a.fakeReports) ? a.fakeReports.length : 0) : a.fakeReportsCount ? a.fakeReportsCount : 0;
+      const isFake = Boolean(anyA.isFlaggedFake ? true : a.status === 'fake' ? true : Math.max(fakeCount, 4) === fakeCount);
+      const isRemoved = Boolean(a.status === 'cancelled' ? true : anyA.isDeleted);
       const isResolved = Boolean(a.status === 'resolved');
-      const delTime = anyA.deletedAtDisplay || a.cancelledAt || anyA.deletedAt || '';
-      const resTime = anyA.resolvedAtDisplay || a.resolvedAt || '';
+      const delTime = anyA.deletedAtDisplay ? anyA.deletedAtDisplay : a.cancelledAt ? a.cancelledAt : anyA.deletedAt ? anyA.deletedAt : '';
+      const resTime = anyA.resolvedAtDisplay ? anyA.resolvedAtDisplay : a.resolvedAt ? a.resolvedAt : '';
 
       if (isRemoved) {
         return {
