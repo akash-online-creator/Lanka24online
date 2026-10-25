@@ -411,14 +411,15 @@ onClose();
 const renderLive16x9Preview = (isFullModal = false) => {
 const previewHeadline = headline.trim() ? headline.trim() : 'ඔබගේ හෙඩ්ලයින් එක මෙහි කොළ සහ සුදු මිශ්‍ර පසුබිමක දිස්වේ...';
 const previewText = postText.trim();
-const isLongPreviewText = previewText.length > 140;
-const displayedText = !isFullModal && isLongPreviewText ? previewText.slice(0, 140) + '... (සම්පූර්ණ විස්තරය බැලීමට ක්ලික් කරන්න)' : previewText;
+const isLongPreviewText = Boolean(Math.max(previewText.length, 150) === previewText.length && previewText.length !== 150);
+const shouldCapPreview16x9 = Boolean(!isFullModal && (isLongPreviewText ? true : Boolean(imageBase64)));
+const displayedText = !isFullModal && isLongPreviewText ? previewText.slice(0, 150) + '...' : previewText;
 return h('div', {
 onClick: () => {
 if (!isFullModal) setIsPreviewExpanded(true);
 },
-className: (isFullModal ? 'w-full' : 'w-full aspect-video cursor-pointer') + ' rounded-2xl bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/80 dark:from-[#061a10] dark:via-[#082215] dark:to-[#05150d] border-2 border-emerald-400 dark:border-emerald-700 shadow-md overflow-hidden flex flex-col justify-between p-3.5 sm:p-4 relative group transition-all hover:shadow-xl'
-}, h('div', { className: 'flex items-center justify-between gap-2 shrink-0 mb-1.5' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs' }, selectedTag?.tagName ? '#' + String(selectedTag.tagName) : '#සාමාන්‍ය-සේවා'), h('span', { className: 'font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800' }, generatedPostCode ? generatedPostCode : '#SRV-0000')), !isFullModal ? h('span', { className: 'text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-900/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1' }, h(Eye, { className: 'w-3 h-3' }), h('span', null, '16:9 Preview (විශාල කර බලන්න)')) : null), h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500/70 shadow-xs shrink-0 mb-2' }, h('h4', {
+className: (isFullModal ? 'w-full' : shouldCapPreview16x9 ? 'w-full aspect-video max-h-[250px] cursor-pointer justify-between' : 'w-full h-auto cursor-pointer') + ' rounded-2xl bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/80 dark:from-[#061a10] dark:via-[#082215] dark:to-[#05150d] border-2 border-emerald-400 dark:border-emerald-700 shadow-md overflow-hidden flex flex-col p-3.5 sm:p-4 relative group transition-all hover:shadow-xl'
+}, h('div', { className: 'flex items-center justify-between gap-2 shrink-0 mb-1.5' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('span', { className: 'px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs' }, selectedTag?.tagName ? '#' + String(selectedTag.tagName) : '#සාමාන්‍ය-සේවා'), h('span', { className: 'font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800' }, generatedPostCode ? generatedPostCode : '#SRV-0000'))), h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500/70 shadow-xs shrink-0 mb-2' }, h('h4', {
 className: 'font-black text-slate-950 dark:text-white leading-snug ' + (isFullModal ? 'text-base sm:text-lg' : 'text-xs sm:text-sm line-clamp-1'),
 style: { fontFamily: getFontFamilyById(selectedFont) }
 }, previewHeadline)), h('div', {
@@ -490,7 +491,7 @@ className: 'px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-800
     type: 'button',
     onClick: () => setComposerTab('poll'),
     className: `px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all ${composerTab === 'poll' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white dark:bg-[#082014] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-emerald-900'}`
-  }, h(BarChart3, { className: 'w-3.5 h-3.5 text-amber-500' }), h('span', null, 'POLL')))), h('div', { className: 'p-3.5 space-y-3' }, h('div', { className: 'space-y-2' }, h('textarea', {
+  }, h(BarChart3, { className: 'w-3.5 h-3.5 text-amber-500' }), h('span', null, 'POLL') /* POLL_END */ ))), h('div', { className: 'p-3.5 space-y-3' }, h('div', { className: 'space-y-2' }, h('textarea', {
     rows: composerTab === 'text' ? 4 : 2,
     value: postText,
     onChange: (e: any) => setPostText(e.target.value),
@@ -588,11 +589,7 @@ className: 'px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-800
     disabled: !externalLink.trim(),
     onClick: handleCopyExternalLink,
     className: 'px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 disabled:opacity-40 text-slate-800 dark:text-zinc-200 text-xs font-black flex items-center gap-1 cursor-pointer'
-  }, h(copiedLink ? Check : Copy, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, copiedLink ? 'Copied!' : 'Copy'))))), h('div', { className: 'space-y-1.5 pt-1' }, h('div', { className: 'flex items-center justify-between text-xs font-black' }, h('span', { className: 'text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(Eye, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, '5. සජීවී 16:9 දැන්වීම් පෙරදසුන (Live 16:9 Ratio Preview):')), h('button', {
-    type: 'button',
-    onClick: () => setIsPreviewExpanded(true),
-    className: 'text-[11px] font-black text-sky-600 dark:text-sky-400 hover:underline cursor-pointer'
-  }, 'සම්පූර්ණ විස්තරය / පින්තූරය ලොකු කර බලන්න ↗')), renderLive16x9Preview(false)), h('div', { className: 'pt-2 flex items-center justify-end gap-2' }, h('button', {
+  }, h(copiedLink ? Check : Copy, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, copiedLink ? 'Copied!' : 'Copy'))))), h('div', { className: 'space-y-1.5 pt-1' }, h('div', { className: 'flex items-center justify-between text-xs font-black' }, h('span', { className: 'text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(Eye, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, '5. සජීවී දැන්වීම් පෙරදසුන (සම්පූර්ණ විස්තර බැලීමට දැන්වීම මත ක්ලික් කරන්න):'))), renderLive16x9Preview(false)), h('div', { className: 'pt-2 flex items-center justify-end gap-2' }, h('button', {
     type: 'button',
     onClick: onClose,
     className: 'px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-xs font-bold cursor-pointer'
