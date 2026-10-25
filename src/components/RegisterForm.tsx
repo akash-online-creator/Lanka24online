@@ -6,6 +6,7 @@ import {
   SRI_LANKA_POLICE_DIVISIONS 
 } from '../data/sriLankaGeoData';
 import { compressImageFile } from '../utils/imageCompressor';
+import { notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
 import { 
   User as UserIcon, 
   CreditCard, 
@@ -445,6 +446,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         isReRegistration: Boolean(isPreviousRejected),
       } as any;
 
+      notifyAdminViaTelegramOnRegistration({
+        registrationType: 'පුද්ගලික',
+        identifierOrName: formattedNIC + (fullName.trim() ? ' (' + fullName.trim() + ')' : ''),
+        dedupeKey: 'usr_' + formattedNIC
+      });
       const registerCallback = onRegister ? onRegister : onRegisterSuccess;
       if (typeof registerCallback === 'function') {
         await registerCallback(newUser);
