@@ -577,8 +577,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     const fullPost: HelpPost = {
       ...newPost,
       id: postId,
+      postCode: (newPost as any).postCode
+        ? (newPost as any).postCode
+        : `#SRV-${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: new Date().toISOString(),
       createdAtIso: new Date().toISOString(),
+      createdAtMs: Date.now(),
+      serviceType: resolvedPostCategory,
       userId: (newPost as any).userId || user?.userId || user?.id || 'anonymous_user',
       userName: (newPost as any).userName || user?.name || 'Anonymous User',
       userPhone: (newPost as any).userPhone || user?.whatsappPhone || user?.phone || '',
@@ -862,21 +867,52 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           post.tagCategory === 'ඉක්මන් සේවා';
         if (!isQuick) return false;
       } else if (boardCategoryFilter === 'normal_services') {
-        const isQuick =
-          post.postType === 'quick_service' ||
-          post.category === 'quick_services' ||
-          post.category === 'quick';
-        const isOtherSpecial =
-          post.category === 'find_for_me' ||
-          post.category === 'from_me_to_you' ||
-          post.category === 'professional_services' ||
-          post.category === 'group_work' ||
-          post.category === 'marketplace' ||
-          post.category === 'emergency' ||
-          Boolean(post.findForMeType) ||
-          Boolean(post.fromMeToYouType);
-        if (isQuick || isOtherSpecial) return false;
-      } else if (boardCategoryFilter === 'find_for_me') {
+        const isQuick = Boolean(
+          post.postType === 'quick_service'
+            ? true
+            : post.category === 'quick_services'
+            ? true
+            : post.category === 'quick'
+            ? true
+            : post.serviceType === 'quick_services'
+            ? true
+            : post.tagCategory === 'ඉක්මන් සේවා'
+        );
+        const isEmerg = Boolean(
+          post.isUrgent
+            ? true
+            : post.urgencyLevel
+            ? true
+            : post.isPinnedEmergency
+            ? true
+            : post.priorityLevel === 'emergency'
+            ? true
+            : post.priorityLevel === 'high'
+            ? true
+            : post.category === 'emergency'
+            ? true
+            : post.category === 'blood_disaster'
+            ? true
+            : post.category === 'red_alert'
+            ? true
+            : post.tagCategory === 'හදිසි / ආපදා'
+        );
+        const isOtherSpecial = Boolean(
+          post.category === 'find_for_me'
+            ? true
+            : post.category === 'from_me_to_you'
+            ? true
+            : post.category === 'professional_services'
+            ? true
+            : post.category === 'group_work'
+            ? true
+            : post.category === 'marketplace'
+            ? true
+            : post.findForMeType
+            ? true
+            : post.fromMeToYouType
+        );
+        if (isQuick ? true : isEmerg ? true : isOtherSpecial) return false;
         if (
           post.category !== 'find_for_me' &&
           post.postType !== 'find_for_me' &&
@@ -1454,7 +1490,18 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            setSelectedPostForDetail(p);
+            const isQuickPost = Boolean(
+              p?.postType === 'quick_service'
+                ? true
+                : p?.category === 'quick_services'
+                ? true
+                : p?.category === 'quick'
+            );
+            if (isQuickPost) {
+              setSelectedPostForDetail(p);
+            } else {
+              setSelectedPostForOffer(p);
+            }
           }}
           onEditPost={(p) => handleEditPost(p)}
           onToggleHidePost={(p) => handleToggleHidePost(p)}
@@ -1710,6 +1757,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         availableLocations={initialLocations}
         selectedCategory={selectedCategory}
         language={language}
+        lang={language}
         currentUser={user}
       />
 
@@ -1719,6 +1767,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setSelectedPostForOffer(null)}
         post={selectedPostForOffer}
         currentUser={user}
+        currentLocation={currentLocation}
+        lang={language}
         language={language}
         onUpdatePost={handleSaveUpdatedPost}
       />
@@ -1744,9 +1794,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setTargetPostForOffers(null);
         }}
         post={targetPostForOffers}
+        targetPost={targetPostForOffers}
+        userPosts={helpPosts}
         currentUser={user}
+        viewerLocation={currentLocation}
+        lang={language}
         language={language}
         onUpdatePost={handleSaveUpdatedPost}
+        onOpenChat={setSelectedPostForChat as any}
+        onOpenConfirm={setSelectedPostForConfirm as any}
       />
 
       {/* 6. Edit Post Modal */}
@@ -1765,10 +1821,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={Boolean(viewingPost)}
         post={viewingPost}
         onClose={() => setViewingPost(null)}
+        lang={language}
         language={language}
+        viewerLocation={currentLocation}
         currentLocation={currentLocation}
         currentUser={user}
-        onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
+        onOpenChat={setSelectedPostForChat as any}
+        onOfferSupport={setSelectedPostForOffer as any}
+        onEditPost={handleEditPost as any}
+        onDeletePost={setDeletingPost as any}
       />
 
       {/* 8. Delete Post Confirmation Modal */}
