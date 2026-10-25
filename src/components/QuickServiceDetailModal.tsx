@@ -268,7 +268,30 @@ export const QuickServiceDetailModal = ({
 
   const isPostOwner = Boolean(checkIsPostOwner(currentUser, currentPost)); 
 
-  const applicants: HelperApplicant[] = Array.isArray(currentPost?.applicants) ? currentPost.applicants : []; 
+  const applicants: HelperApplicant[] = React.useMemo(() => { 
+    const rawApps: HelperApplicant[] = Array.isArray(currentPost?.applicants) ? [...currentPost.applicants] : []; 
+    const rawReplies: any[] = Array.isArray(currentPost?.replies) ? currentPost.replies : []; 
+    rawReplies.forEach((rep: any, idx: number) => { 
+      if (!rep) return; 
+      const repHelperId = rep.responderId ? rep.responderId : rep.id ? rep.id : 'rep_' + idx; 
+      const exists = rawApps.some(a => Boolean(a && (a.helperId === repHelperId ? true : a.id === rep.id ? true : (a.helperPhone && rep.responderPhone && a.helperPhone === rep.responderPhone)))); 
+      if (!exists) { 
+        rawApps.push({ 
+          id: rep.id ? rep.id : 'app_' + repHelperId, 
+          helperId: repHelperId, 
+          helperName: rep.responderName ? rep.responderName : 'සහායක', 
+          helperPhone: rep.responderPhone ? rep.responderPhone : '', 
+          helperNicMasked: maskNicNumber(rep.responderNic), 
+          helperRating: 4.8, 
+          helperReviewsCount: 1, 
+          appliedAt: rep.createdAt ? rep.createdAt : new Date().toISOString(), 
+          distanceKm: typeof rep.distanceKm === 'number' ? rep.distanceKm : 1.0, 
+          status: rep.isAccepted ? 'accepted' : rep.isConfirmed ? 'accepted' : 'pending' 
+        }); 
+      } 
+    }); 
+    return rawApps; 
+  }, [currentPost?.applicants, currentPost?.replies]); 
 
   const selectedHelpers: HelperApplicant[] = Array.isArray(currentPost?.selectedHelpers) ? currentPost.selectedHelpers : []; 
 
@@ -868,9 +891,11 @@ export const QuickServiceDetailModal = ({
 
         ), 
 
-        h('div', { className: 'pt-2' }, 
-
-          h('button', { type: 'button', onClick: onClose, className: 'w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer' }, 'ලැයිස්තුව වසන්න (Close List)')
+        h('div', { className: 'pt-2 space-y-2' }, 
+          selectedHelpers.length !== 0 ? h('div', { className: 'grid grid-cols-2 gap-2.5' }, 
+            h('button', { type: 'button', onClick: () => onOpenChat(currentPost ? currentPost : post), className: 'w-full py-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-200 border border-emerald-400 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95' }, h(MessageCircle, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, 'සහායකයා සමඟ CHAT')), 
+            h('button', { type: 'button', onClick: () => onOpenConfirm(currentPost ? currentPost : post), className: 'w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95' }, h(CheckCircle, { className: 'w-4 h-4' }), h('span', null, '🚀 සේවා ක්‍රියාවලිය / බිල්පත')) 
+          ) : null, 
 
         )
 
