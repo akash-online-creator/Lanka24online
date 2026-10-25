@@ -194,8 +194,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onViewRedAlertDetail,
   activeRedAlertsCount = 0,
 }) => {
-  const user = propUser || currentUser || ({
-    id: 'usr_guest',
+  const user = useMemo(() => {
+    return propUser ? propUser : currentUser ? currentUser : ({
     name: 'පරිශීලක (User)',
     nic: '000000000V',
     whatsappPhone: '0770000000',
@@ -208,6 +208,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     credits: 100,
     creditBalance: 100,
   } as unknown as User);
+  }, [propUser, currentUser]);
   const t = translations[language];
 
   // Active Location State (Defaults to Kadawatha or saved location)
@@ -794,10 +795,84 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const getPostDistance = (post: HelpPost) => {
     const curLat = currentLocation?.lat;
     const curLng = currentLocation?.lng;
-    if (!post?.lat || !post?.lng || typeof curLat !== 'number' || typeof curLng !== 'number') {
-      return post?.distanceKm || 20;
+    const anyPost = (post ? post : {}) as any;
+    const pLat = typeof post?.latitude === 'number' ? post.latitude : typeof post?.lat === 'number' ? post.lat : typeof anyPost.locationLat === 'number' ? anyPost.locationLat : null;
+    const pLng = typeof post?.longitude === 'number' ? post.longitude : typeof post?.lng === 'number' ? post.lng : typeof anyPost.locationLng === 'number' ? anyPost.locationLng : null;
+    if (pLat === null ? true : pLng === null ? true : typeof curLat !== 'number' ? true : typeof curLng !== 'number') {
+      return typeof post?.distanceKm === 'number' ? post.distanceKm : typeof anyPost.actualDistanceKm === 'number' ? anyPost.actualDistanceKm : 20;
     }
-    return calculateDistanceKm(curLat, curLng, post.lat, post.lng);
+    return calculateDistanceKm(curLat, curLng, pLat, pLng);
+  };
+
+  // සේවාවන් අනුව දැන්වීම් පුවරුවේ දැන්වීම් පෙන්විය යුතු පිළිවෙල (1. රතු එළිය, 2. ලේ ඉල්ලීම්, 3. Boost, 4. ඉක්මන් සේවා, 5. දුර අනුව)
+  const getDashboardPostSortRank = (post: HelpPost): number => {
+    if (!post) return 5;
+    const anyPost = post as any;
+    const code = String(post.postCode ? post.postCode : anyPost.alertCode ? anyPost.alertCode : '');
+    const text = `${post.title ? post.title : ''} ${post.whatHappened ? post.whatHappened : ''} ${post.whatIsNeeded ? post.whatIsNeeded : ''} ${post.tagName ? post.tagName : ''} ${post.tagCategory ? post.tagCategory : ''}`.toLowerCase();
+    const isBlood = Boolean(
+      code.startsWith('#BLD-')
+        ? true
+        : post.category === 'blood_disaster'
+        ? true
+        : anyPost.bloodGroup
+        ? true
+        : anyPost.postType === 'blood_request'
+        ? true
+        : text.includes('රුධිර')
+        ? true
+        : text.includes('ලේ අවශ්‍ය')
+        ? true
+        : text.includes('ලේ ඉල්ලී')
+        ? true
+        : text.includes('blood')
+        ? true
+        : text.includes('🩸')
+    );
+    const isRedAlert = Boolean(
+      !isBlood &&
+        (code.startsWith('#RED-')
+          ? true
+          : code.startsWith('#EMG-')
+          ? true
+          : post.category === 'red_alert'
+          ? true
+          : anyPost.postType === 'red_alert'
+          ? true
+          : text.includes('රතු එළිය')
+          ? true
+          : text.includes('red alert')
+          ? true
+          : text.includes('ආපදා')
+          ? true
+          : text.includes('හදිසි අනතුර')
+          ? true
+          : text.includes('ජල ගැලීම්')
+          ? true
+          : text.includes('ගංවතුර')
+          ? true
+          : text.includes('නායයෑම්')
+          ? true
+          : post.category === 'emergency'
+          ? true
+          : post.tagCategory === 'හදිසි / ආපදා')
+    );
+    if (isRedAlert) return 1;
+    if (isBlood) return 2;
+    if (Boolean(post.isBoosted ? true : anyPost.boosted)) return 3;
+    const isQuick = Boolean(
+      post.postType === 'quick_service'
+        ? true
+        : post.category === 'quick_services'
+        ? true
+        : post.category === 'quick'
+        ? true
+        : post.serviceType === 'quick_services'
+        ? true
+        : post.tagCategory === 'ඉක්මන් සේවා'
+    );
+    if (isQuick) return 4;
+    return 5;
   };
 
   // Category & Distance & Tag Filtering Logic
@@ -958,7 +1033,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     }
 
     return true;
-  });
+  }).sort((a, b) => { const rA = getDashboardPostSortRank(a); const rB = getDashboardPostSortRank(b); if (rA !== rB) return rA - rB; const dA = getPostDistance(a); const dB = getPostDistance(b); if (Math.abs(dA - dB) > 0.05) return dA - dB; return (Number(b.createdAtMs ? b.createdAtMs : 0) - Number(a.createdAtMs ? a.createdAtMs : 0)); });
 
   // Check for posts needing resolution confirmation prompt
   useEffect(() => {
