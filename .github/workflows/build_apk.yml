@@ -199,18 +199,18 @@ jobs:
         run: |
           flutter clean
           flutter pub get
-          flutter build apk --release --no-tree-shake-icons
+          BUILD_NUM=$((10 + ${{ github.run_number }}))
+          flutter build apk --release --no-tree-shake-icons --build-name="1.1.${{ github.run_number }}" --build-number="$BUILD_NUM"
 
-
-      - name: Stage APK Files & Generate Version Manifest
+      - name: Stage APK Files and Generate Version Manifest
         run: |
           mkdir -p public/apk
           cp build/app/outputs/flutter-apk/app-release.apk public/apk/SupportService.apk
-          cat << 'EOF' > public/apk/version.json
-          {
-            "versionCode": 2,
-            "versionName": "1.1",
-            "appName": ".සහය සේවා",
+          BUILD_NUM=$((10 + ${{ github.run_number }}))
+          cat << EOF > public/apk/version.json
+            "versionCode": $BUILD_NUM,
+            "versionName": "1.1.${{ github.run_number }}",
+            "appName": "සහය සේවා",
             "downloadPath": "/apk/SupportService.apk"
           }
           EOF
@@ -220,8 +220,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v1.1
-          name: "Sahaya Sewa v1.1"
+          tag_name: v1.1.${{ github.run_number }}
+          name: "Sahaya Sewa v1.1.${{ github.run_number }}"
           draft: false
           prerelease: false
           make_latest: true
