@@ -542,11 +542,15 @@ export async function preloadSirenBuffer() {
 
 }
 
+let isAudioUnlockedOnce = false;
+
 export function unlockAudio(): boolean {
 
   if (typeof window === 'undefined') return false;
+  if (isAudioUnlockedOnce) return true;
 
   try {
+    isAudioUnlockedOnce = true;
 
     acquirePersistentWebLock();
 
@@ -850,19 +854,19 @@ export function initSirenSettings() {
 
     acquirePersistentWebLock();
 
-    const unlocker = () => {
-
+    const unlocker = (ev?: any) => {
+      const tag = ev && ev.target && ev.target.tagName ? String(ev.target.tagName).toUpperCase() : '';
+      if (tag === 'INPUT' ? true : tag === 'TEXTAREA' ? true : tag === 'SELECT') return;
       unlockAudio();
-
+      window.removeEventListener('click', unlocker);
+      window.removeEventListener('touchstart', unlocker);
+      window.removeEventListener('pointerdown', unlocker);
     };
-
     window.addEventListener('click', unlocker, { passive: true });
 
     window.addEventListener('touchstart', unlocker, { passive: true });
 
     window.addEventListener('pointerdown', unlocker, { passive: true });
-
-    window.addEventListener('keydown', unlocker, { passive: true });
 
     document.addEventListener('visibilitychange', () => {
 
