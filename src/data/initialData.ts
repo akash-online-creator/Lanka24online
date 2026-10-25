@@ -49,9 +49,9 @@ export const initialRegistrationConfig: RegistrationConfig = {
     ta: 'கணக்கு செயல்படுத்தப்படுவதற்கு முன்பு அனைத்து விவரங்களும் நிர்வாகியால் சரிபார்க்கப்பட்டு அங்கீகரிக்கப்படும்.',
   },
   termsAndConditions: {
-    si: '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.',
-    en: '1. False information is strictly prohibited.\n2. Blocked IP, NIC, Phone and Gmail cannot re-register.\n3. Use the platform for genuine service assistance only.',
-    ta: '1. தவறான தகவல்களை வழங்குவது கண்டிப்பாகத் தடைசெய்யப்பட்டுள்ளது.\n2. தடுக்கப்பட்ட IP, NIC, போன் மற்றும் ஜிமெயில் மீண்டும் பதிவு செய்ய முடியாது.\n3. உண்மையான உதவி பெற மட்டுமே தளத்தைப் பயன்படுத்தவும்.',
+    si: '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය. 2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක. 3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.',
+    en: '1. False information is strictly prohibited. 2. Blocked IP, NIC, Phone and Gmail cannot re-register. 3. Use the platform for genuine service assistance only.',
+    ta: '1. தவறான தகவல்களை வழங்குவது கண்டிப்பாகத் தடைசெய்யப்பட்டுள்ளது. 2. தடுக்கப்பட்ட IP, NIC, போன் மற்றும் ஜிமெயில் மீண்டும் பதிவு செய்ய முடியாது. 3. உண்மையான உதவி பெற மட்டுமே தளத்தைப் பயன்படுத்தவும்.',
   },
   showDemoUserLogin: false,
 };
@@ -90,7 +90,7 @@ export const initialCategories: CategoryItem[] = [
     id: 'normal_services',
     nameSi: 'සාමාන්‍ය සේවා',
     nameEn: 'General Services',
-    nameTa: 'பொதுவான சேவைகள்',
+    nameTa: 'பொදුவான சேவைகள்',
     descSi: 'දෛනික සහ සාමාන්‍ය උපකාරී සේවාවන්',
     descEn: 'Daily and general assistance services',
     descTa: 'அன்றாட மற்றும் பொதுவான உதவி சேவைகள்',
@@ -185,3 +185,4 @@ export const initialUsers: User[] = [
 ];
 
 export const initialIssues: Issue[] = [];
+
