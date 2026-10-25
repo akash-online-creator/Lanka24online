@@ -519,8 +519,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Core Post Creation Handler (addHelpPostToFirestore)
   const handleCreatePost = async (newPost: Omit<HelpPost, 'id' | 'createdAt' | 'createdAtIso'>) => {
     const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const categoryKey = resolveCategoryKeyForPost(newPost);
-    const feeResult = deductPostingFee(user, categoryKey, postId, (newPost as any).headline || newPost.title);
+    const rawCode = String((newPost as any).postCode ? (newPost as any).postCode : '');
+    const isFreeBloodPost = Boolean(rawCode.startsWith('#BLD-') ? true : (newPost as any).category === 'blood_disaster' ? true : (newPost as any).category === 'emergency' ? true : (newPost as any).isPinnedEmergency);
+    const categoryKey = isFreeBloodPost ? 'blood_request' : resolveCategoryKeyForPost(newPost);
+    const feeResult = isFreeBloodPost ? { success: true, requiredFee: 0, newBalance: user?.creditBalance ? user.creditBalance : 100 } : deductPostingFee(user, categoryKey, postId, (newPost as any).headline ? (newPost as any).headline : newPost.title);
 
     if (!feeResult.success) {
       setRequiredFeeForModal(feeResult.requiredFee);
@@ -2163,6 +2165,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onUpdateUser={onUpdateUser}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
         currentLocation={currentLocation}
+        onSubmitHelpPost={handleCreatePost}
       />
 
       {/* 24. Transparent Disaster Aid Ledger Modal (සහන ආධාර විනිවිදභාවය) */}
