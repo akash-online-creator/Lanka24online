@@ -279,11 +279,50 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   useEffect(() => {
     if (propHelpPosts) {
-      setLocalHelpPosts(filterNonDeletedPosts(propHelpPosts));
+      const filtered = filterNonDeletedPosts(propHelpPosts);
+      setLocalHelpPosts(filtered);
+      setSelectedPostForDetail((prev) => {
+        if (!prev) return null;
+        const found = filtered.find((item) => Boolean(item && item.id === prev.id));
+        return found ? found : prev;
+      });
+      setSelectedPostForConfirm((prev) => {
+        if (!prev) return null;
+        const found = filtered.find((item) => Boolean(item && item.id === prev.id));
+        return found ? found : prev;
+      });
     }
   }, [propHelpPosts]);
 
-  const helpPosts = localHelpPosts;
+
+  const helpPosts = useMemo(() => {
+    return (localHelpPosts ? localHelpPosts : []).map((p) => {
+      if (!p) return p;
+      const apps = Array.isArray(p.applicants) ? p.applicants : [];
+      const reps = Array.isArray(p.replies) ? p.replies : [];
+      if (apps.length === 0) return p;
+      const mergedReplies = [...reps];
+      apps.forEach((app) => {
+        if (!app) return;
+        const exists = mergedReplies.some((r) => Boolean(r && (r.responderId === app.helperId ? true : r.id === app.id)));
+        if (!exists) {
+          mergedReplies.push({
+            id: app.id ? app.id : 'app_' + app.helperId,
+            responderId: app.helperId,
+            responderName: app.helperName,
+            responderPhone: app.helperPhone,
+            responderNic: app.helperNicMasked,
+            message: 'ඉක්මන් සේවාව සඳහා සහය වීමට කැමැත්ත පළ කර ඇත.',
+            createdAt: app.appliedAt,
+            distanceKm: app.distanceKm,
+            isAccepted: app.status === 'accepted',
+            isConfirmed: app.status === 'accepted',
+          });
+        }
+      });
+      return mergedReplies.length !== reps.length ? { ...p, replies: mergedReplies } : p;
+    });
+  }, [localHelpPosts]);
 
   // Professional Services State (Synced with localStorage and initial data)
   const [professionalServices, setProfessionalServices] = useState<ProfessionalService[]>(() => {
@@ -1365,8 +1404,23 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setTargetPostForOffers(myActivePost);
-                  setIsSupportOffersModalOpen(true);
+                  const isQuickActive = Boolean(
+                    myActivePost.postType === 'quick_service'
+                      ? true
+                      : myActivePost.category === 'quick_services'
+                      ? true
+                      : myActivePost.category === 'quick'
+                      ? true
+                      : myActivePost.serviceType === 'quick_services'
+                      ? true
+                      : myActivePost.tagCategory === 'ඉක්මන් සේවා'
+                  );
+                  if (isQuickActive) {
+                    setSelectedPostForDetail(myActivePost);
+                  } else {
+                    setTargetPostForOffers(myActivePost);
+                    setIsSupportOffersModalOpen(true);
+                  }
                 }}
                 className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
               >
@@ -1568,6 +1622,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 : p?.category === 'quick_services'
                 ? true
                 : p?.category === 'quick'
+                ? true
+                : p?.serviceType === 'quick_services'
+                ? true
+                : p?.tagCategory === 'ඉක්මන් සේවා'
             );
             if (isQuickPost) {
               setSelectedPostForDetail(p);
@@ -1583,7 +1641,22 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            setViewingPost(p);
+            const isQuickPost = Boolean(
+              p?.postType === 'quick_service'
+                ? true
+                : p?.category === 'quick_services'
+                ? true
+                : p?.category === 'quick'
+                ? true
+                : p?.serviceType === 'quick_services'
+                ? true
+                : p?.tagCategory === 'ඉක්මන් සේවා'
+            );
+            if (isQuickPost) {
+              setSelectedPostForDetail(p);
+            } else {
+              setViewingPost(p);
+            }
           }}
           onDeletePost={(p) => setDeletingPost(p)}
           onOpenChat={(p) => {
@@ -1606,8 +1679,23 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            setTargetPostForOffers(p);
-            setIsSupportOffersModalOpen(true);
+            const isQuickPost = Boolean(
+              p?.postType === 'quick_service'
+                ? true
+                : p?.category === 'quick_services'
+                ? true
+                : p?.category === 'quick'
+                ? true
+                : p?.serviceType === 'quick_services'
+                ? true
+                : p?.tagCategory === 'ඉක්මන් සේවා'
+            );
+            if (isQuickPost) {
+              setSelectedPostForDetail(p);
+            } else {
+              setTargetPostForOffers(p);
+              setIsSupportOffersModalOpen(true);
+            }
           }}
           onOpenCreateModal={(catKey?: string) => {
             if (user?.isDemo) {
