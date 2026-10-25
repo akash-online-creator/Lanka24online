@@ -97,3 +97,4 @@ export const getStoredSupportedDisasterIds = (): string[] => {
 export const saveSupportedDisasterIdsToStorage = (ids: string[]) => {
   localStorage.setItem('sahaya_user_supported_disaster_ids', JSON.stringify(ids));
 };
+
