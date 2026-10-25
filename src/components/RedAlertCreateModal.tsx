@@ -315,7 +315,7 @@ export const RedAlertCreateModal: any = ({
 
     userId: `usr_${Date.now()}`,
 
-    name: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
+    name: reporterName.trim() || 'සහය සාමාජිකයෙක්',
 
     nicNumber: '000000000V',
 
@@ -533,11 +533,11 @@ export const RedAlertCreateModal: any = ({
 
         reportedByUserId: uid,
 
-        reportedByName: reporterName.trim() || 'හදිසි සාමාජිකයෙක්',
+        reportedByName: reporterName.trim() || 'සහය සාමාජිකයෙක්',
 
         reportedByPhone: reporterPhone.trim(),
 
-        contactName: showReporterInfo ? (reporterName.trim() || 'හදිසි සාමාජිකයෙක්') : 'නිර්නාමික වාර්තාකරු',
+        contactName: showReporterInfo ? (reporterName.trim() || 'සහය සාමාජිකයෙක්') : 'නිර්නාමික වාර්තාකරු',
 
         contactPhone: showReporterInfo ? reporterPhone.trim() : '',
 
@@ -897,7 +897,7 @@ export const RedAlertCreateModal: any = ({
 
           { className: 'p-3 rounded-2xl bg-amber-500/20 border border-amber-400/50 text-amber-200 text-xs font-bold text-center leading-relaxed' },
 
-          '🔊 ඔබගේ දුරකථනයේ සයිරන් නාදය ක්‍රියාත්මක වේ. කි.මී. 15ක් ඇතුළත සිටින සියලුම පරිශීලකයන් වෙත දැන්වීම සහ සයිරන් අනතුරු ඇඟවීම යොමු කරන ලදී.'
+          '🔊 අපදා දැනුම්දිම ක්‍රියාත්මක වේ. කි.මී. 15ක් ඇතුළත සිටින සියලුම පරිශීලකයන් වෙත දැන්වීම සහ සයිරන් අනතුරු ඇඟවීම යොමු කරන ලදී.'
 
         ),
 
@@ -1695,7 +1695,7 @@ export const RedAlertCreateModal: any = ({
 
                     className: 'h-11 rounded-2xl bg-slate-50 dark:bg-[#0e2115] hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-[#1a3f29] text-slate-600 dark:text-slate-300 text-xs font-black flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-50',
 
-                    title: 'මකන්න (Delete)'
+                    title: 'ඉවත් කරන්න (Delete)'
 
                   },
 
