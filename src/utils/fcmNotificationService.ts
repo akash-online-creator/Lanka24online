@@ -379,11 +379,23 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
       }
 
     }
-
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: payload }));
+    }
     setEmergencySirenLock(true);
-
     startEmergencySiren();
-
+    broadcastAppNotification({
+      id: notifId,
+      type: 'emergency_blood',
+      title: '🚨 සහය සේවා (රතු එළිය): ' + title,
+      message: message + ' (ඔබට දුර: කි.මී. ' + distanceKm.toFixed(1) + ')',
+      locationName,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      badgeText: 'රතු එළිය 15KM',
+      targetModal: 'red_alert',
+      targetPostId: payload.alertId
+    });
     if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
 
       try {
@@ -691,11 +703,20 @@ export function initFcmNotificationService(currentUserId?: string) {
     if (event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
 
       processIncomingPushAlert(event.data.payload);
-
     } else if (event.data.type === 'STOP_ALERT_AUDIO') {
-
+      setEmergencySirenLock(false);
       stopEmergencySiren(true);
-
+      if (event.data.alertId) {
+        try {
+          ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts'].forEach((k) => {
+            const list = JSON.parse(localStorage.getItem(k) ? (localStorage.getItem(k) as string) : '[]');
+            if (Array.isArray(list) && !list.includes(event.data.alertId)) {
+              list.push(event.data.alertId);
+              localStorage.setItem(k, JSON.stringify(list));
+            }
+          });
+        } catch (err) {}
+      }
     } else if (event.data.type === 'NAVIGATE_TO_MODAL') {
 
       window.dispatchEvent(new CustomEvent('sahaya_notification_clicked', { detail: event.data }));
