@@ -3,7 +3,8 @@ import { db } from '../lib/firebase';
 
 export interface SystemSettings {
   enableQrPay: boolean;
-  enableDemoLogin: boolean; // 👤 Admin Toggle for Visitor / Demo Login
+  qrPayExplicitlyEnabledByAdmin?: boolean;
+  enableDemoLogin: boolean;
   maintenanceMode: boolean;
   enableDisasterSirens: boolean;
   updatedAt?: string;
@@ -11,23 +12,26 @@ export interface SystemSettings {
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
-  enableQrPay: true,
-  enableDemoLogin: false, // Default is disabled (Admin can turn it ON)
+  enableQrPay: false,
+  qrPayExplicitlyEnabledByAdmin: false,
+  enableDemoLogin: false,
   maintenanceMode: false,
   enableDisasterSirens: true,
 };
 
-const STORAGE_KEY = 'sahaya_system_settings';
+const STORAGE_KEY = 'sahaya_system_settings_v2';
 
-/**
- * LocalStorage Cache Helper (Zero-delay and Offline fallback)
- */
 export function getCachedSettings(): SystemSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        enableQrPay: Boolean(parsed.enableQrPay && parsed.qrPayExplicitlyEnabledByAdmin),
+      };
     }
   } catch (e) {
     console.warn('[SystemSettings] Error reading cache:', e);
@@ -45,19 +49,17 @@ function saveCachedSettings(settings: SystemSettings): void {
   }
 }
 
-/**
- * Real-time listener for System Settings (QR Pay toggle ආදිය සඳහා)
- */
 export function subscribeToSystemSettings(callback: (settings: SystemSettings) => void) {
-  // 1. තිරය මත ක්ෂණිකව පෙන්වීමට Cache එකෙන් මුලින්ම ලබා දීම
   const cached = getCachedSettings();
   callback(cached);
 
-  if (typeof window === 'undefined' || !db) {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  if (!db) {
     return () => {};
   }
 
-  // 2. යෙදුම තුළ සිදුවන ක්ෂණික වෙනස්කම්වලට සවන් දීම
   const handleLocalUpdate = (e: any) => {
     if (e.detail) {
       callback(e.detail);
@@ -65,14 +67,18 @@ export function subscribeToSystemSettings(callback: (settings: SystemSettings) =
   };
   window.addEventListener('sahaya:system_settings_updated', handleLocalUpdate);
 
-  // 3. Real-time Firestore sync
   try {
     const settingsDocRef = doc(db, 'system_settings', 'general');
     const unsubscribe = onSnapshot(
       settingsDocRef,
       (snapshot) => {
         if (snapshot.exists()) {
-          const merged: SystemSettings = { ...DEFAULT_SETTINGS, ...snapshot.data() };
+          const data: any = snapshot.data() ? snapshot.data() : {};
+          const merged: SystemSettings = {
+            ...DEFAULT_SETTINGS,
+            ...data,
+            enableQrPay: Boolean(data.enableQrPay && data.qrPayExplicitlyEnabledByAdmin),
+          };
           saveCachedSettings(merged);
           callback(merged);
         } else {
@@ -97,12 +103,12 @@ export function subscribeToSystemSettings(callback: (settings: SystemSettings) =
   }
 }
 
-/**
- * Single-fetch for System Settings
- */
-export async function getSystemSettings(): Promise<SystemSettings> {
+export async function getSystemSettings() {
   const cached = getCachedSettings();
-  if (typeof window === 'undefined' || !db) {
+  if (typeof window === 'undefined') {
+    return cached;
+  }
+  if (!db) {
     return cached;
   }
 
@@ -110,7 +116,12 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     const settingsDocRef = doc(db, 'system_settings', 'general');
     const snapshot = await getDoc(settingsDocRef);
     if (snapshot.exists()) {
-      const merged: SystemSettings = { ...DEFAULT_SETTINGS, ...snapshot.data() };
+      const data: any = snapshot.data() ? snapshot.data() : {};
+      const merged: SystemSettings = {
+        ...DEFAULT_SETTINGS,
+        ...data,
+        enableQrPay: Boolean(data.enableQrPay && data.qrPayExplicitlyEnabledByAdmin),
+      };
       saveCachedSettings(merged);
       return merged;
     }
@@ -120,39 +131,39 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   return cached;
 }
 
-/**
- * Admin Updates System Settings (QR Pay සක්‍රිය/අක්‍රිය කිරීම)
- * Supports both Firestore and instant LocalStorage persistence
- */
 export async function updateSystemSettings(
-  newSettings: Partial<SystemSettings>, 
-  adminUid?: string | null
-): Promise<SystemSettings> {
+  newSettings: any,
+  adminUid?: any
+) {
   const current = getCachedSettings();
-  // undefined වීම වැළැක්වීම සඳහා ආරක්ෂිත fallback අගයක් යෙදීම
-  const safeAdminId = adminUid || 'admin_user';
+  const safeAdminId = adminUid ? String(adminUid) : 'admin_user';
   const nowIso = new Date().toISOString();
+
+  const nextEnableQrPay = newSettings.enableQrPay !== undefined ? Boolean(newSettings.enableQrPay) : current.enableQrPay;
 
   const updated: SystemSettings = {
     ...current,
     ...newSettings,
+    enableQrPay: nextEnableQrPay,
+    qrPayExplicitlyEnabledByAdmin: nextEnableQrPay,
     updatedAt: nowIso,
     updatedBy: safeAdminId,
   };
 
-  // 1. ප්‍රථමයෙන් ක්ෂණිකව LocalStorage තුළ සුරැකීම (බටනය වහාම Off වේ)
   saveCachedSettings(updated);
 
-  // 2. Cloud Firestore සමඟ සමමුහුර්ත කිරීම (undefined fields සම්පූර්ණයෙන්ම ඉවත් කර)
   if (db) {
     try {
       const settingsDocRef = doc(db, 'system_settings', 'general');
-      const cleanPayload: Record<string, any> = {
+      const cleanPayload: any = {
         updatedAt: nowIso,
         updatedBy: safeAdminId,
       };
 
-      if (newSettings.enableQrPay !== undefined) cleanPayload.enableQrPay = Boolean(newSettings.enableQrPay);
+      if (newSettings.enableQrPay !== undefined) {
+        cleanPayload.enableQrPay = Boolean(newSettings.enableQrPay);
+        cleanPayload.qrPayExplicitlyEnabledByAdmin = Boolean(newSettings.enableQrPay);
+      }
       if (newSettings.enableDemoLogin !== undefined) cleanPayload.enableDemoLogin = Boolean(newSettings.enableDemoLogin);
       if (newSettings.maintenanceMode !== undefined) cleanPayload.maintenanceMode = Boolean(newSettings.maintenanceMode);
       if (newSettings.enableDisasterSirens !== undefined) cleanPayload.enableDisasterSirens = Boolean(newSettings.enableDisasterSirens);
@@ -166,4 +177,3 @@ export async function updateSystemSettings(
 
   return updated;
 }
-
