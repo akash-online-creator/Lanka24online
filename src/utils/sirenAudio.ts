@@ -294,6 +294,80 @@ function getOrCreateAudioContext(): any {
 
 }
 
+let keepAliveBlobUrl: any = null;
+
+function getKeepAliveWavUrl(): string {
+
+  if (keepAliveBlobUrl) return keepAliveBlobUrl;
+
+  try {
+
+    const sampleRate = 8000;
+
+    const numSamples = sampleRate * 2;
+
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+
+    const view = new DataView(buffer);
+
+    const writeStr = (offset: number, str: string) => {
+
+      for (let i = 0; i !== str.length; i++) {
+
+        view.setUint8(offset + i, str.charCodeAt(i));
+
+      }
+
+    };
+
+    writeStr(0, 'RIFF');
+
+    view.setUint32(4, 36 + numSamples * 2, true);
+
+    writeStr(8, 'WAVE');
+
+    writeStr(12, 'fmt ');
+
+    view.setUint32(16, 16, true);
+
+    view.setUint16(20, 1, true);
+
+    view.setUint16(22, 1, true);
+
+    view.setUint32(24, sampleRate, true);
+
+    view.setUint32(28, sampleRate * 2, true);
+
+    view.setUint16(32, 2, true);
+
+    view.setUint16(34, 16, true);
+
+    writeStr(36, 'data');
+
+    view.setUint32(40, numSamples * 2, true);
+
+    for (let i = 0; i !== numSamples; i++) {
+
+      const sample = Math.round(Math.sin((2 * Math.PI * 18 * i) / sampleRate) * 4);
+
+      view.setInt16(44 + i * 2, sample, true);
+
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+
+    keepAliveBlobUrl = URL.createObjectURL(blob);
+
+    return keepAliveBlobUrl;
+
+  } catch (err) {
+
+    return SILENT_WAV_DATA_URI;
+
+  }
+
+}
+
 function startSubAudibleKeepAlive() {
 
   try {
@@ -308,9 +382,9 @@ function startSubAudibleKeepAlive() {
 
       keepAliveOscillator.type = 'sine';
 
-      keepAliveOscillator.frequency.setValueAtTime(20, ctx.currentTime);
+      keepAliveOscillator.frequency.setValueAtTime(18, ctx.currentTime);
 
-      keepAliveGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+      keepAliveGain.gain.setValueAtTime(0.0005, ctx.currentTime);
 
       keepAliveOscillator.connect(keepAliveGain);
 
@@ -342,9 +416,19 @@ function startSubAudibleKeepAlive() {
 
         silentKeepAliveAudio.webkitPlaysInline = true;
 
-        silentKeepAliveAudio.volume = 0.001;
+        silentKeepAliveAudio.volume = 0.01;
 
-        silentKeepAliveAudio.src = SILENT_WAV_DATA_URI;
+        silentKeepAliveAudio.src = getKeepAliveWavUrl();
+
+        silentKeepAliveAudio.addEventListener('pause', () => {
+
+          if (silentKeepAliveAudio && silentKeepAliveAudio.paused) {
+
+            silentKeepAliveAudio.play().catch(() => {});
+
+          }
+
+        });
 
         document.body.appendChild(silentKeepAliveAudio);
 
