@@ -205,7 +205,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     status: 'approved',
     role: 'user',
     trustScore: 85,
-    creditBalance: 50,
+    credits: 100,
+    creditBalance: 100,
   } as unknown as User);
   const t = translations[language];
 
@@ -1659,9 +1660,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentLocation={currentLocation}
         lang={language}
         onUpdatePost={handleSaveUpdatedPost}
+        onPostUpdated={handleSaveUpdatedPost}
         onOpenChat={(p) => {
           setSelectedPostForDetail(null);
           setSelectedPostForChat(p);
+        }}
+        onOpenConfirm={(p) => {
+          setSelectedPostForDetail(null);
+          setSelectedPostForConfirm(p);
         }}
         onConfirmCompletion={(p) => {
           setSelectedPostForDetail(null);
