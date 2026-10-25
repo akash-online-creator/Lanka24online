@@ -512,12 +512,32 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       emergency: posts.filter((p) => isEmergencyOrHighPriority(p)).length,
       quick_services: posts.filter((p) => isQuickService(p)).length,
       normal_services: posts.filter((p) => {
+        if (!p) return false;
         if (isQuickService(p)) return false;
-        if (!p.category) return true;
-        if (p.category === 'normal_services') return true;
-        if (p.category === 'services') return true;
-        if (p.category === 'general') return true;
-        return p.serviceType === 'normal_services';
+        if (isEmergencyOrHighPriority(p)) return false;
+        const isOtherSpecial = Boolean(
+          p.category === 'find_for_me'
+            ? true
+            : p.category === 'from_me_to_you'
+            ? true
+            : p.category === 'professional_services'
+            ? true
+            : p.category === 'group_work'
+            ? true
+            : p.category === 'marketplace'
+            ? true
+            : p.category === 'emergency'
+            ? true
+            : p.category === 'blood_disaster'
+            ? true
+            : p.category === 'red_alert'
+            ? true
+            : p.findForMeType
+            ? true
+            : p.fromMeToYouType
+        );
+        if (isOtherSpecial) return false;
+        return true;
       }).length,
       professional_services: posts.filter((p) => Boolean(p && (p.category === 'professional_services' ? true : p.serviceType === 'professional_services'))).length,
       group_work: posts.filter((p) => Boolean(p && (p.category === 'group_work' ? true : p.serviceType === 'group_work'))).length,
