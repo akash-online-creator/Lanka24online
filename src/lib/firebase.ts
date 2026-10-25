@@ -162,9 +162,49 @@ export async function getUserFromFirestore(userIdOrInput: string) {
   }
 }
 
+const ADMIN_TELEGRAM_BOT_TOKEN = '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
+const ADMIN_TELEGRAM_CHAT_ID = '1349273525';
+const notifiedTelegramRegKeys = new Set();
+
+export async function notifyAdminViaTelegramOnRegistration(params: {
+  registrationType: string;
+  identifierOrName: string;
+  dateTime?: string;
+  dedupeKey?: string;
+}) {
+  try {
+    const key = params.dedupeKey ? String(params.dedupeKey) : params.registrationType + '_' + params.identifierOrName;
+    if (notifiedTelegramRegKeys.has(key)) return;
+    notifiedTelegramRegKeys.add(key);
+
+    const now = new Date();
+    const formattedDateTime = params.dateTime
+      ? params.dateTime
+      : now.toLocaleDateString('si-LK') + ' ' + now.toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const textMessage =
+      '🔔 නව ලියාපදිංචි වීමක් (සහය සේවා)\n\n' +
+      '1. ලියාපදිංචි වූ ආකාරය: ' + params.registrationType + '\n' +
+      '2. හැඳුනුම්පත් අංකය / ව්‍යාපාර හෝ වෙළෙඳසැල් නම: ' + params.identifierOrName + '\n' +
+      '3. දිනය සහ වේලාව: ' + formattedDateTime;
+
+    const tgUrl = 'https://api.telegram.org/bot' + ADMIN_TELEGRAM_BOT_TOKEN + '/sendMessage';
+    await fetch(tgUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: ADMIN_TELEGRAM_CHAT_ID,
+        text: textMessage
+      })
+    });
+  } catch (err) {
+    console.warn('Telegram admin notification note:', err);
+  }
+}
+
 export async function saveUserToFirestore(user: any) {
   try {
-    const docId = user && user.id ? String(user.id) : user && user.userId ? String(user.userId) : `usr_${Date.now()}`;
+    const docId = user && user.id ? String(user.id) : user && user.userId ? String(user.userId) : 'usr_' + Date.now();
     const payload: any = { ...user, id: docId };
     if (
       payload.idCardPhotoUrl &&
@@ -176,6 +216,15 @@ export async function saveUserToFirestore(user: any) {
     }
     const docRef = doc(db, USERS_COLLECTION, docId);
     await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+    if (user && (user.status === 'pending' ? true : !user.isApproved)) {
+      const nicVal = String(user.nicNumber ? user.nicNumber : (user.nic ? user.nic : (user.userId ? user.userId : docId))).trim();
+      const nameVal = user.name ? ' (' + String(user.name).trim() + ')' : '';
+      notifyAdminViaTelegramOnRegistration({
+        registrationType: 'පුද්ගලික',
+        identifierOrName: nicVal + nameVal,
+        dedupeKey: 'usr_' + nicVal
+      });
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, USERS_COLLECTION);
   }
@@ -790,9 +839,19 @@ export function subscribeToMarketShops(callback: (shops: any[]) => void): () => 
 }
 
 export async function addMarketShopToFirestore(shop: any): Promise<string> {
-  const id = shop.id || `shop_${Date.now()}`;
+  const id = shop.id ? shop.id : 'shop_' + Date.now();
   const docRef = doc(db, 'market_shops', id);
   await setDoc(docRef, sanitizeForFirestore({ ...shop, id }), { merge: true });
+  try {
+    const isBusiness = (shop && (shop.type === 'business' ? true : shop.mode === 'business'));
+    const regType = isBusiness ? 'ව්‍යාපාර' : 'වෙළෙඳසැල්';
+    const shopTitle = String(shop && (shop.name ? shop.name : (shop.shopName ? shop.shopName : id))).trim();
+    notifyAdminViaTelegramOnRegistration({
+      registrationType: regType,
+      identifierOrName: shopTitle,
+      dedupeKey: 'shop_' + id
+    });
+  } catch (err) {}
   return id;
 }
 
