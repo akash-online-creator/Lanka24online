@@ -433,6 +433,29 @@ export const RedAlertLiveManager: any = ({
     };
     syncServiceWorkerWatchConfig();
     let hasUnlockedGesture = false;
+    let keepAliveCtx: any = null;
+    const startSilentBackgroundKeepAlive = () => {
+      try {
+        if (keepAliveCtx) return;
+        const AudioCtx = (window as any).AudioContext ? (window as any).AudioContext : (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        keepAliveCtx = new AudioCtx();
+        const osc = keepAliveCtx.createOscillator();
+        const gain = keepAliveCtx.createGain();
+        gain.gain.value = 0.00001;
+        osc.frequency.value = 1;
+        osc.connect(gain);
+        gain.connect(keepAliveCtx.destination);
+        osc.start();
+        if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && (navigator as any).mediaSession) {
+          (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+            title: 'සහය සේවා - 24/7 ආපදා ආරක්ෂණ රේඩාර්',
+            artist: 'Sahaya Sewa Red Alert Active',
+            album: 'Sri Lanka Disaster Network'
+          });
+        }
+      } catch (err) {}
+    };
     const handleUserGestureUnlock = (ev?: any) => {
       if (hasUnlockedGesture) return;
       const tag = ev && ev.target && ev.target.tagName ? String(ev.target.tagName).toUpperCase() : '';
@@ -440,6 +463,7 @@ export const RedAlertLiveManager: any = ({
       hasUnlockedGesture = true;
       try {
         unlockAudio();
+        startSilentBackgroundKeepAlive();
         activateBackgroundWakeLock().catch(() => {});
         syncServiceWorkerWatchConfig();
       } catch (err) {}
@@ -454,13 +478,21 @@ export const RedAlertLiveManager: any = ({
     });
     try {
       const workerScript = [
+        'var urls = [',
+        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15",',
+        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents/red_alerts?pageSize=15",',
+        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15"',
+        '];',
         'function pollNow() {',
-        '  fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15", { cache: "no-store" })',
-        '    .then(function(r){ return r.ok ? r.json() : null; })',
-        '    .then(function(d){ if (d && d.documents) postMessage({ type: "REST_DOCS", documents: d.documents }); else postMessage({ type: "TICK" }); })',
-        '    .catch(function(){ postMessage({ type: "TICK" }); });',
+        '  urls.forEach(function(u) {',
+        '    fetch(u, { cache: "no-store" })',
+        '      .then(function(r){ return r.ok ? r.json() : null; })',
+        '      .then(function(d){ if (d && d.documents) postMessage({ type: "REST_DOCS", documents: d.documents }); })',
+        '      .catch(function(){});',
+        '  });',
+        '  postMessage({ type: "TICK" });',
         '}',
-        'setInterval(pollNow, 3000);',
+        'setInterval(pollNow, 2500);',
         'pollNow();'
       ].join(String.fromCharCode(10));
       const workerBlob = new Blob([workerScript], {
