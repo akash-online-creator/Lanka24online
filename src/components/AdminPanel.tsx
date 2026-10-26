@@ -29,7 +29,7 @@ import { AdminUserInspectionModal } from './AdminUserInspectionModal';
 import { AdminEditUserModal } from './AdminEditUserModal';
 import { AdminPasswordResetsManagement } from './AdminPasswordResetsManagement';
 import { AdminAiKnowledgeManagement } from './AdminAiKnowledgeManagement';
-import { Sparkles, Sliders, QrCode, UserCheck } from 'lucide-react';
+import { Sparkles, Sliders, QrCode, UserCheck, ShieldCheck } from 'lucide-react';
 import { subscribeToSystemSettings, updateSystemSettings, getCachedSettings, SystemSettings } from '../utils/systemSettingsManager';
 import { 
   Users, 
