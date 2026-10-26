@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Heart, 
   Droplet, 
@@ -44,7 +44,9 @@ import {
   deleteDisasterReliefFromFirestore,
   saveBloodRequestToFirestore,
   saveVolunteerDonorToFirestore,
-  saveDisasterReliefToFirestore
+  saveDisasterReliefToFirestore,
+  subscribeToBloodRequestsFromFirestore,
+  subscribeToVolunteerDonorsFromFirestore
 } from '../lib/firebase';
 import { broadcastAppNotification } from '../utils/notificationManager';
 
@@ -57,6 +59,8 @@ interface BloodAndDisasterModalProps {
   onRequireRegistration?: () => void;
   onOpenAidLedger?: () => void;
   onSubmitHelpPost?: (post: any) => Promise<any>;
+  currentLocation?: any;
+  onUpdateUser?: (user: any) => void;
 }
 
 export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
@@ -68,6 +72,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   onRequireRegistration,
   onOpenAidLedger,
   onSubmitHelpPost,
+  currentLocation,
 }) => {
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors'>(initialTab || 'blood_requests');
@@ -78,6 +83,35 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
 
   // User Supported / Offered tracking
   const [supportedBloodIds, setSupportedBloodIds] = useState<string[]>(() => getStoredSupportedBloodIds());
+
+  useEffect(() => {
+    const unsubBlood = subscribeToBloodRequestsFromFirestore((cloudRequests: any) => {
+      if (Array.isArray(cloudRequests)) {
+        const local = getStoredBloodRequests();
+        const map = new Map();
+        local.forEach((b: any) => { if (b && b.id) map.set(b.id, b); });
+        cloudRequests.forEach((b: any) => { if (b && b.id) map.set(b.id, b); });
+        const merged = Array.from(map.values());
+        setBloodRequests(merged);
+        saveBloodRequestsToStorage(merged);
+      }
+    });
+    const unsubDonors = subscribeToVolunteerDonorsFromFirestore((cloudDonors: any) => {
+      if (Array.isArray(cloudDonors)) {
+        const local = getStoredVolunteerDonors();
+        const map = new Map();
+        local.forEach((d: any) => { if (d && d.id) map.set(d.id, d); });
+        cloudDonors.forEach((d: any) => { if (d && d.id) map.set(d.id, d); });
+        const merged = Array.from(map.values());
+        setVolunteerDonors(merged);
+        saveVolunteerDonorsToStorage(merged);
+      }
+    });
+    return () => {
+      unsubBlood();
+      unsubDonors();
+    };
+  }, []);
 
   // Filter States
   const [selectedBloodGroup, setSelectedBloodGroup] = useState<string>('all');
@@ -177,19 +211,34 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     
     // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag
     if (onSubmitHelpPost) {
+      const bloodTitle = `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName} (${newDistrict})`;
+      const bloodDetails = `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate ? newNeededDate : 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName ? newContactName : 'සම්බන්ධීකාරක'} (${newContactPhone})${newNotes ? ` • සටහන්: ${newNotes}` : ''}`;
       onSubmitHelpPost({
-        category: 'emergency',
+        category: 'blood_disaster',
+        serviceType: 'blood_donation',
+        postType: 'blood_request',
+        bloodGroup: newBloodGroup,
         tagCategory: 'හදිසි / ආපදා',
         tagName: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවය`,
-        whatHappened: `🩸 ${newBloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${newHospitalName}`,
-        whatIsNeeded: `රෝගී නම: ${newPatientName} • ලේ වර්ගය: ${newBloodGroup} • අවශ්‍ය ඒකක: ${newUnitsNeeded} • රෝහල: ${newHospitalName} • දිස්ත්‍රික්කය: ${newDistrict} • අවශ්‍ය දිනය: ${newNeededDate || 'කඩිනමින්'} • සම්බන්ධීකාරක: ${newContactName || 'සම්බන්ධීකාරක'} (${newContactPhone}) ${newNotes ? `• සටහන්: ${newNotes}` : ''}`,
+        headline: bloodTitle,
+        title: bloodTitle,
+        whatHappened: bloodTitle,
+        whatIsNeeded: bloodDetails,
+        content: bloodDetails,
         locationName: `${newHospitalName}, ${newDistrict}`,
         district: newDistrict,
+        lat: currentLocation?.lat ? currentLocation.lat : 7.171,
+        lng: currentLocation?.lng ? currentLocation.lng : 79.8986,
+        latitude: currentLocation?.lat ? currentLocation.lat : 7.171,
+        longitude: currentLocation?.lng ? currentLocation.lng : 79.8986,
         priorityLevel: 'emergency',
         isPinnedEmergency: true,
+        userName: newContactName ? newContactName : currentUser?.name ? currentUser.name : 'සම්බන්ධීකාරක',
+        userPhone: newContactPhone,
         contactNumber: newContactPhone,
-        contactPersonName: newContactName || 'සම්බන්ධීකාරක',
-        status: 'open',
+        contactPersonName: newContactName ? newContactName : 'සම්බන්ධීකාරක',
+        status: 'active',
+        status: 'active',
         postCode: newRequest.postCode,
       }).catch((e) => console.warn('Sync blood to help posts notice:', e));
     }
