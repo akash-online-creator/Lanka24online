@@ -111,6 +111,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
       saveGroupsToStorage(merged);
     });
     return () => unsub();
+  }, [currentUserId]);
 
   const showToast = (text: string, type: string = 'success') => {
     setToastMessage({ text, type: (type as any) });
@@ -156,6 +157,16 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
     addGroupToFirestore(enrichedGroup).catch((err) => {
       console.warn('Firestore add group notice:', err);
     });
+    setIsCreateModalOpen(false);
+    showToast(
+      getLangText(
+        'නව කණ්ඩායම සාර්ථකව නිර්මාණය කරන ලදී!',
+        'Group created successfully!',
+        'குழு வெற்றிகரமாக உருவாக்கப்பட்டது!'
+      ),
+      'success'
+    );
+  };
 
   const handleUpdateGroup = (updatedGroup: GroupItem) => {
     const updated = groups.map((g) => (g.id === updatedGroup.id ? updatedGroup : g));
