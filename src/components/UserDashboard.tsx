@@ -40,7 +40,7 @@ import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
 import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
-import { deleteProfessionalServiceFromFirestore } from '../lib/firebase';
+import { deleteProfessionalServiceFromFirestore, subscribeToProfessionalServices, addProfessionalServiceToFirestore } from '../lib/firebase';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -329,7 +329,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     return getStoredProfessionalServices();
   });
 
-  // 🔄 20-Second Auto-Sync Listener for all services in UserDashboard
   useEffect(() => {
     const handleSync = () => {
       try {
@@ -340,16 +339,44 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     };
 
+    const unsubPro = subscribeToProfessionalServices((cloudServices: any) => {
+      if (Array.isArray(cloudServices)) {
+        const local = getStoredProfessionalServices();
+        const map = new Map();
+        local.forEach((s: any) => { if (s && s.id) map.set(s.id, s); });
+        cloudServices.forEach((s: any) => { if (s && s.id) map.set(s.id, s); });
+        const merged = Array.from(map.values());
+        setProfessionalServices(merged);
+        saveProfessionalServicesToStorage(merged);
+      }
+    });
+
+    const unsubPosts = subscribeToHelpPosts((cloudPosts: any) => {
+      if (Array.isArray(cloudPosts) && cloudPosts.length !== 0) {
+        const filtered = filterNonDeletedPosts(cloudPosts);
+        setLocalHelpPosts(filtered);
+        if (typeof setHelpPosts === 'function') {
+          setHelpPosts(filtered);
+        }
+      }
+    });
+
     window.addEventListener('sahaya_sync_all_services', handleSync);
-    return () => window.removeEventListener('sahaya_sync_all_services', handleSync);
+    return () => {
+      window.removeEventListener('sahaya_sync_all_services', handleSync);
+      unsubPro();
+      unsubPosts();
+    };
   }, []);
 
   const handleAddProfessionalService = (newService: ProfessionalService) => {
-    const updated = [newService, ...professionalServices];
+    const updated = [newService, ...(professionalServices ? professionalServices : []).filter((s) => Boolean(s && s.id !== newService.id))];
     setProfessionalServices(updated);
     saveProfessionalServicesToStorage(updated);
+    addProfessionalServiceToFirestore(newService).catch((err) => {
+      console.warn('Professional service save to firestore notice:', err);
+    });
   };
-
   const handleDeleteProfessionalService = (serviceId: string) => {
     if (!serviceId) return;
     const updated = (professionalServices || []).filter((s) => s && s.id !== serviceId);
@@ -629,6 +656,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
     if (typeof onAddPost === 'function') {
       onAddPost(fullPost);
+    }
+    if (typeof setHelpPosts === 'function') {
+      setHelpPosts((prev) => [fullPost, ...(prev ? prev : [])]);
     }
 
     try {
@@ -2009,6 +2039,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 9. Message Inbox Modal (Poster-Helper Direct Communications) */}
       <MessageInboxModal
         isOpen={isInboxModalOpen}
+        users={users}
         onClose={() => setIsInboxModalOpen(false)}
         currentUser={user}
         helpPosts={helpPosts}
@@ -2197,7 +2228,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           if (onUpdateUser) onUpdateUser(updatedUser);
           try { window.dispatchEvent(new CustomEvent('sahaya_credits_updated')); } catch {}
           try { window.dispatchEvent(new CustomEvent('sahaya_spoints_updated')); } catch {}
-          setIsRegisterProfessionalServiceModalOpen(false);
+          handleAddProfessionalService(newService);
           setIsRegisterProfessionalServiceModalOpen(false);
           alert(language === 'en' ? '✅ Professional service registered successfully!' : '✅ ඔබගේ වෘත්තීය සේවාව සාර්ථකව ලියාපදිංචි කරන ලදී!');
         }}
