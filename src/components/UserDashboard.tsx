@@ -949,6 +949,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   // Category & Distance & Tag Filtering Logic
   const filteredPosts = (helpPosts || []).filter((post) => {
     if (!post || !post.id || post.isDeleted || post.status === 'deleted' || isPostPermanentlyDeleted(post.id)) return false;
+    if (String(post.id).startsWith('direct_user_chat_') || post.postCode === 'USER-CHAT' || (post as any).isDirectChat) return false;
 
     // Check if post author is blocked
     if (isAuthorBlockedStatus(post)) {
