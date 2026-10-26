@@ -1,1006 +1,1143 @@
-import React, { useState, useEffect, useMemo } from 'react';
+
 import {
+
   X,
+
   MapPin,
+
   Navigation,
+
   Globe,
+
   Lock,
+
   Share2,
+
   Trash2,
+
   ExternalLink,
+
   Plus,
+
   Compass,
+
   CheckCircle2,
+
   Search,
+
   RefreshCw,
+
   Info,
+
   Shield,
-  Layers,
-  Pencil
+
+  Layers
+
 } from 'lucide-react';
+
 import { User, LocationOption, Language } from '../types';
-import { calculateDistanceKm, calculateRoadDistanceKm, resolveExactLocation } from '../utils/geoUtils';
-import { checkIsAdmin } from '../utils/postOwnerHelper';
-import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
-import { db } from '../lib/firebase';
+
+import { calculateDistanceKm, resolveExactLocation } from '../utils/geoUtils';
+
+// Road distance approximation helper (Inlined to avoid version mismatch in geoUtils)
+const calculateRoadDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const straightKm = calculateDistanceKm(lat1, lon1, lat2, lon2);
+  if (straightKm < 0.05) return straightKm;
+  const winding = straightKm < 5 ? 1.28 : straightKm < 20 ? 1.22 : 1.15;
+  return Number((straightKm * winding).toFixed(1));
+};
+// High accuracy GPS location helper (Inlined to avoid external dependency)
+const getHighAccuracyLocation = async (timeoutMs = 10000): Promise<{ lat: number; lng: number; accuracyMeters: number }> => {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve({ lat: 7.0786, lng: 79.8913, accuracyMeters: 50 });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Number(pos.coords.latitude.toFixed(6)),
+          lng: Number(pos.coords.longitude.toFixed(6)),
+          accuracyMeters: Math.round(pos.coords.accuracy || 10),
+        });
+      },
+      () => {
+        resolve({ lat: 7.0786, lng: 79.8913, accuracyMeters: 50 });
+      },
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
+    );
+  });
+};
+
 import {
-  collection,
-  addDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp,
-  updateDoc
-} from 'firebase/firestore';
+  db,
+  subscribeToSavedPlacesFromFirestore,
+  savePlaceToFirestore,
+  deletePlaceFromFirestore
+} from '../lib/firebase';
 
 export interface SavedPlaceItem {
+
   id: string;
+
   name: string;
+
   description?: string;
+
   lat: number;
+
   lng: number;
+
   accuracyMeters?: number;
+
   isPublic: boolean;
+
   userId: string;
+
   userName: string;
+
   userPhone?: string;
+
   createdAt?: string;
+
   createdAtMs: number;
+
 }
 
 interface SavedPlacesModalProps {
+
   isOpen: boolean;
+
   onClose: () => void;
+
   currentUser?: User | null;
+
   currentLocation?: LocationOption;
+
   language?: Language;
+
 }
 
 const LOCAL_STORAGE_KEY = 'sahaya_saved_places_v1';
 
 // Default starter community public landmarks (Sri Lanka)
+
 const DEFAULT_COMMUNITY_PLACES: SavedPlaceItem[] = [
+
   {
+
     id: 'plc_ja_ela_town',
+
     name: 'ජා-ඇල නගර සභාව හා පොදු බස් නැවතුම',
+
     description: 'ජා-ඇල නගර මධ්‍යය, ප්‍රධාන බස් නැවතුම්පොළ සහ පොදු පහසුකම් කලාපය',
+
     lat: 7.0786,
+
     lng: 79.8913,
+
     isPublic: true,
+
     userId: 'system_admin',
+
     userName: 'සහය සේවා ප්‍රජා සිතියම',
+
     createdAtMs: 1710000000000,
+
   },
+
   {
+
     id: 'plc_ja_ela_station',
+
     name: 'ජා-ඇල දුම්රිය ස්ථානය',
+
     description: 'පුත්තලම මාර්ගයේ ප්‍රධාන දුම්රිය නැවතුම',
+
     lat: 7.0765,
+
     lng: 79.8932,
+
     isPublic: true,
+
     userId: 'system_admin',
+
     userName: 'සහය සේවා ප්‍රජා සිතියම',
+
     createdAtMs: 1710000000000,
+
   },
+
   {
+
     id: 'plc_ragama_hospital',
+
     name: 'රාගම ශික්ෂණ රෝහල',
+
     description: 'හදිසි ප්‍රතිකාර ඒකකය හා ප්‍රධාන රෝහල් සංකීර්ණය',
+
     lat: 7.0270,
+
     lng: 79.9215,
+
     isPublic: true,
+
     userId: 'system_admin',
+
     userName: 'සහය සේවා සෞඛ්‍ය ඒකකය',
+
     createdAtMs: 1710000000000,
+
   },
+
   {
+
     id: 'plc_katunayake_airport',
+
     name: 'කටුනායක ගුවන් තොටුපළ මංසන්ධිය',
+
     description: 'අධිවේගී පිවිසුම හා ගුවන් තොටුපළ වටරවුම',
+
     lat: 7.1802,
+
     lng: 79.8841,
+
     isPublic: true,
+
     userId: 'system_admin',
+
     userName: 'සහය සේවා ප්‍රජා සිතියම',
+
     createdAtMs: 1710000000000,
+
   },
+
   {
+
     id: 'plc_colombo_fort',
+
     name: 'කොළඹ කොටුව මධ්‍යම දුම්රිය ස්ථානය',
+
     description: 'ශ්‍රී ලංකාවේ ප්‍රධාන මධ්‍යම ප්‍රවාහන හුවමාරු කේන්ද්‍රස්ථානය',
+
     lat: 6.9344,
+
     lng: 79.8504,
+
     isPublic: true,
+
     userId: 'system_admin',
+
     userName: 'සහය සේවා ප්‍රජා සිතියම',
+
     createdAtMs: 1710000000000,
+
   }
+
 ];
 
 export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
+
   isOpen,
+
   onClose,
+
   currentUser,
+
   currentLocation,
+
   language = 'si',
+
 }) => {
-  // Effective active user (from props or localStorage session)
-  const activeUser = currentUser || (() => {
-    try {
-      const saved = localStorage.getItem('sahaya_sewa_session_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  })();
 
-  const currentUserId = activeUser?.id || activeUser?.userId || 'usr_guest';
-  const currentUserName = activeUser?.name || 'පරිශීලක';
+  const currentUserId = currentUser?.id ? currentUser.id : currentUser?.userId ? currentUser.userId : 'usr_guest';
 
-  // Robust Admin check (supports admin roles, identifiers, super admin and demo testing)
-  const isAdmin = Boolean(
-    activeUser?.role === 'admin' ||
-    activeUser?.role === 'super_admin' ||
-    (activeUser as any)?.isAdmin === true ||
-    (activeUser as any)?.isSuperAdmin === true ||
-    (activeUser as any)?.userId?.toString().toLowerCase().includes('admin') ||
-    activeUser?.id === 'usr_admin' ||
-    activeUser?.id === 'admin' ||
-    (activeUser as any)?.nic === '970181547V' ||
-    (activeUser as any)?.nicNumber === '970181547V' ||
-    checkIsAdmin(activeUser)
-  );
+  const currentUserName = currentUser?.name ? currentUser.name : 'පරිශීලක';
 
   // Form State
-  const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
+
   const [placeName, setPlaceName] = useState('');
+
   const [description, setDescription] = useState('');
+
   const [isPublic, setIsPublic] = useState(true); // true = Public, false = Private
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // GPS State
+
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>({
+
     lat: currentLocation?.lat || 7.0786,
+
     lng: currentLocation?.lng || 79.8913,
+
   });
+
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+
   const [isLocating, setIsLocating] = useState(false);
+
   const [resolvedAddress, setResolvedAddress] = useState<string>(currentLocation?.nameSi || '');
 
   // Places List & Filter State
+
   const [places, setPlaces] = useState<SavedPlaceItem[]>(() => {
+
     try {
+
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+
       if (stored) {
+
         const parsed = JSON.parse(stored);
+
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+
       }
+
     } catch {}
+
     return DEFAULT_COMMUNITY_PLACES;
+
   });
 
   const [activeTab, setActiveTab] = useState<'all' | 'my' | 'public'>('all');
+
   const [searchQuery, setSearchQuery] = useState('');
+
   const [showAddForm, setShowAddForm] = useState(false);
+
   const [sharedToast, setSharedToast] = useState<string | null>(null);
 
   const getLang = (si: string, en: string, ta: string) => {
+
     if (language === 'en') return en;
+
     if (language === 'ta') return ta;
+
     return si;
+
   };
 
   // Helper: Detect active GPS location with Meter-Level Precision (No Stale Caching)
+
   const handleDetectGps = async () => {
+
     setIsLocating(true);
+
     try {
+
       const fix = await getHighAccuracyLocation(10000);
+
       setCurrentCoords({ lat: fix.lat, lng: fix.lng });
+
       setGpsAccuracy(fix.accuracyMeters);
 
-      try {
-        const resolved = await resolveExactLocation(fix.lat, fix.lng);
-        if (resolved?.shortDisplaySi) {
-          setResolvedAddress(resolved.shortDisplaySi);
-        }
-      } catch {}
+      // Resolve address
+
+      const addr = await resolveExactLocation(fix.lat, fix.lng);
+
+      setResolvedAddress(addr.nameSi || addr.nameEn || `${fix.lat.toFixed(4)}, ${fix.lng.toFixed(4)}`);
+
     } catch (e) {
-      console.debug('High accuracy GPS fetch notice:', e);
+
+      console.error('High accuracy GPS error:', e);
+
     } finally {
+
       setIsLocating(false);
+
     }
+
   };
 
-  // Pre-load GPS & Sync Firestore on Open
+  // Firestore Live Listener
+
   useEffect(() => {
-    if (isOpen) {
-      handleDetectGps();
-      setShowAddForm(false);
-      setPlaceName('');
-      setDescription('');
-      setIsPublic(true);
-      setSaveSuccessMsg(null);
+    const unsub = subscribeToSavedPlacesFromFirestore((remotePlaces) => {
+      setPlaces((prev) => {
+        const map = new Map();
+        DEFAULT_COMMUNITY_PLACES.forEach((p) => map.set(p.id, p));
+        (prev ? prev : []).forEach((p) => {
+          if (p && p.id) map.set(p.id, p);
+        });
+        (remotePlaces ? remotePlaces : []).forEach((p: any) => {
+          if (p && p.id) map.set(p.id, p);
+        });
+        const merged = Array.from(map.values()).sort((a: any, b: any) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+    });
+    return () => unsub();
 
-      // 🔄 Real-time sync with Firebase Cloud Firestore
-      try {
-        const q = query(collection(db, 'saved_places'), orderBy('createdAtMs', 'desc'));
-        const unsubscribe = onSnapshot(
-          q,
-          (snapshot) => {
-            const firestorePlaces: SavedPlaceItem[] = [];
-            snapshot.forEach((docSnap) => {
-              const data = docSnap.data();
-              firestorePlaces.push({
-                id: docSnap.id,
-                name: data.name || '',
-                description: data.description || '',
-                lat: data.lat || 0,
-                lng: data.lng || 0,
-                accuracyMeters: data.accuracyMeters,
-                isPublic: data.isPublic !== false,
-                userId: data.userId || '',
-                userName: data.userName || 'ප්‍රජා සාමාජිකයෙක්',
-                userPhone: data.userPhone,
-                createdAt: data.createdAt,
-                createdAtMs: data.createdAtMs || Date.now(),
-              });
-            });
+  }, []);
 
-            if (firestorePlaces.length > 0) {
-              setPlaces((prev) => {
-                // Merge default and firestore places
-                const idSet = new Set(firestorePlaces.map((p) => p.id));
-                const merged = [
-                  ...firestorePlaces,
-                  ...DEFAULT_COMMUNITY_PLACES.filter((p) => !idSet.has(p.id)),
-                ];
-                try {
-                  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
-                } catch {}
-                return merged;
-              });
-            }
-          },
-          (err) => {
-            console.debug('Firestore saved_places subscription notice:', err);
-          }
-        );
+  // Filtered List
 
-        return () => unsubscribe();
-      } catch (e) {
-        console.debug('Firestore initialization note:', e);
+  const filteredPlaces = useMemo(() => {
+
+    return places.filter((p) => {
+
+      // Tab filter
+
+      if (activeTab === 'my' && p.userId !== currentUserId) return false;
+
+      if (activeTab === 'public' && !p.isPublic) return false;
+
+      // Privacy: Private places only visible to their creator
+
+      if (!p.isPublic && p.userId !== currentUserId) return false;
+
+      // Search filter
+
+      if (searchQuery.trim()) {
+
+        const q = searchQuery.toLowerCase().trim();
+
+        const matchesName = p.name.toLowerCase().includes(q);
+
+        const matchesDesc = p.description?.toLowerCase().includes(q);
+
+        return matchesName || matchesDesc;
+
       }
-    }
-  }, [isOpen]);
 
-  // Edit Place Handlers
-  const handleStartEditPlace = (place: SavedPlaceItem) => {
-    setEditingPlaceId(place.id);
-    setPlaceName(place.name);
-    setDescription(place.description || '');
-    setIsPublic(place.isPublic);
-    setCurrentCoords({ lat: place.lat, lng: place.lng });
-    setShowAddForm(true);
-  };
+      return true;
 
-  const handleCancelForm = () => {
-    setEditingPlaceId(null);
-    setPlaceName('');
-    setDescription('');
-    setShowAddForm(false);
-  };
+    });
 
-  // Save New Place Handler
+  }, [places, activeTab, currentUserId, searchQuery]);
+
+  // Handle Create Place
+
   const handleSavePlace = async (e: React.FormEvent) => {
+
     e.preventDefault();
-    if (!placeName.trim()) {
-      alert(getLang('කරුණාකර ස්ථානයේ නම ඇතුළත් කරන්න.', 'Please enter the place name.', 'தயவுசெய்து இடத்தின் பெயரை உள்ளிடவும்.'));
-      return;
-    }
+
+    if (!placeName.trim()) return;
 
     setIsSubmitting(true);
 
-    if (editingPlaceId) {
-      // Update existing place
-      const updatedList = places.map((p) => {
-        if (p.id === editingPlaceId) {
-          return {
-            ...p,
-            name: placeName.trim(),
-            description: description.trim(),
-            isPublic,
-            lat: currentCoords.lat,
-            lng: currentCoords.lng,
-            accuracyMeters: gpsAccuracy || p.accuracyMeters,
-          };
-        }
-        return p;
-      });
-      setPlaces(updatedList);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
-      } catch {}
-
-      try {
-        await updateDoc(doc(db, 'saved_places', editingPlaceId), {
-          name: placeName.trim(),
-          description: description.trim(),
-          isPublic,
-          lat: currentCoords.lat,
-          lng: currentCoords.lng,
-          accuracyMeters: gpsAccuracy || null,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        console.debug('Firestore update fallback notice:', err);
-      }
-
-      setEditingPlaceId(null);
-      setPlaceName('');
-      setDescription('');
-      setShowAddForm(false);
-      setSaveSuccessMsg(getLang('✅ ස්ථානයේ තොරතුරු සාර්ථකව යාවත්කාලීන කරන ලදී!', '✅ Place details updated successfully!', '✅ இடம் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!'));
-      setTimeout(() => setSaveSuccessMsg(null), 4000);
-      setIsSubmitting(false);
-      return;
-    }
-
     const newPlace: SavedPlaceItem = {
-      id: `plc_${Date.now()}`,
+
+      id: `plc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+
       name: placeName.trim(),
-      description: description.trim(),
+
+      description: description.trim() || undefined,
+
       lat: currentCoords.lat,
+
       lng: currentCoords.lng,
+
       accuracyMeters: gpsAccuracy || undefined,
-      isPublic,
+
+      isPublic: isPublic,
+
       userId: currentUserId,
+
       userName: currentUserName,
-      userPhone: currentUser?.phone || currentUser?.whatsappNumber,
+
+      userPhone: currentUser?.phone || undefined,
+
       createdAt: new Date().toISOString(),
+
       createdAtMs: Date.now(),
+
     };
 
     try {
-      // 1. Save to local storage first (instant responsiveness)
-      const updatedList = [newPlace, ...places.filter((p) => p.id !== newPlace.id)];
-      setPlaces(updatedList);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
-      } catch {}
 
-      // 2. Sync to Firebase Cloud Firestore if online
-      try {
-        await addDoc(collection(db, 'saved_places'), {
-          ...newPlace,
-          serverTimestamp: serverTimestamp(),
-        });
-      } catch (err) {
-        console.debug('Firestore addDoc fallback notice:', err);
-      }
+      // 1. Save to local storage first (instant responsiveness)
+
+      setPlaces((prev) => {
+
+        const updated = [newPlace, ...prev];
+
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+
+        return updated;
+
+      });
+
+      // 2. Save to Firestore with exact place ID so all users see it in real-time
+      await savePlaceToFirestore(newPlace);
+
+      setSaveSuccessMsg(getLang('ස්ථානය සාර්ථකව සුරකින ලදී!', 'Place saved successfully!', 'இடம் வெற்றிகரமாகச் சேமிக்கப்பட்டது!'));
 
       setPlaceName('');
+
       setDescription('');
+
       setShowAddForm(false);
-      setSaveSuccessMsg(
-        isPublic
-          ? getLang('✅ ස්ථානය ප්‍රජාවට පොදුවේ සාර්ථකව සුරකින ලදී!', '✅ Public location saved successfully!', '✅ பொது இடம் வெற்றிகரமாக சேமிக்கப்பட்டது!')
-          : getLang('🔒 ස්ථානය ඔබගේ පුද්ගලික ගිණුමට සාර්ථකව සුරකින ලදී!', '🔒 Private location saved successfully!', '🔒 தனிப்பட்ட இடம் வெற்றிகரமாக சேமிக்கப்பட்டது!')
-      );
 
       setTimeout(() => setSaveSuccessMsg(null), 4000);
-    } catch {
-      alert(getLang('ස්ථානය සුරැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න.', 'Failed to save location. Please try again.', 'இடத்தை சேமிக்க முடியவில்லை.'));
+
+    } catch (err) {
+
+      console.error('Error saving place:', err);
+
     } finally {
+
       setIsSubmitting(false);
+
     }
+
   };
 
-  // Delete Place Handler
+  // Handle Delete Place
+
   const handleDeletePlace = async (placeId: string) => {
-    const target = places.find((p) => p.id === placeId);
-    const isTargetOwner = target ? (target.userId === currentUserId || (target.userId === 'system_admin' && isAdmin)) : false;
-    const confirmPrompt = isAdmin && !isTargetOwner
-      ? getLang('මෙම ස්ථානය පද්ධතියෙන් ඉවත් කිරීමට ඇඩ්මින් ලෙස ඔබට සහතිකද?', 'Are you sure you want to delete this place as Admin?', 'நிர்வாகியாக இந்த இடத்தை நீக்க விரும்புகிறீர்களா?')
-      : getLang('මෙම ස්ථානය ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this place?', 'இந்த இடத்தை நீக்க விரும்புகிறீர்களா?');
 
-    if (!window.confirm(confirmPrompt)) {
-      return;
-    }
-
-    const updated = places.filter((p) => p.id !== placeId);
-    setPlaces(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch {}
+    if (!window.confirm(getLang('මෙම ස්ථානය මකා දැමීමට ඔබට අවශ්‍ය බව තහවුරු කරන්නද?', 'Are you sure you want to delete this place?', 'இந்த இடத்தை நீக்க விரும்புகிறீர்களா?'))) return;
 
     try {
-      await deleteDoc(doc(db, 'saved_places', placeId));
-    } catch (e) {
-      console.debug('Firestore delete notice:', e);
+
+      setPlaces((prev) => {
+
+        const updated = prev.filter((p) => p.id !== placeId);
+
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+
+        return updated;
+
+      });
+
+      await deletePlaceFromFirestore(placeId);
+
+    } catch (err) {
+
+      console.error('Error deleting place:', err);
+
     }
+
   };
 
-  // Share Place Handler
-  const handleSharePlace = async (place: SavedPlaceItem, distanceFormatted: string) => {
-    const isOwner = place.userId === currentUserId || place.userId === 'system_admin';
-    if (!place.isPublic && !isOwner) {
-      alert(getLang('මෙය පෞද්ගලික ස්ථානයක් බැවින් බෙදාහදා ගැනීමට නොහැක.', 'This is a private location and cannot be shared.', 'இது ஒரு தனிப்பட்ட இடம்.'));
-      return;
-    }
+  // Google Maps Direct Direction Launcher
 
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentCoords.lat},${currentCoords.lng}&destination=${place.lat},${place.lng}&travelmode=driving`;
-    const shareText = `📍 සහය සේවා - සුරකින ලද ස්ථානය:\n📌 ${place.name}\n${place.description ? `📝 ${place.description}\n` : ''}📏 දුර: ඔබ සිටින තැන සිට ${distanceFormatted}\n🗺️ Google Maps මාර්ගය: ${mapsUrl}`;
+  const handleOpenGoogleMaps = (p: SavedPlaceItem) => {
 
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({
-          title: `📍 ${place.name} - සහය සේවා`,
-          text: shareText,
-          url: mapsUrl,
-        });
-        return;
-      } catch {}
-    }
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=driving`;
 
-    // Fallback: Copy to clipboard
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setSharedToast(getLang('📋 ස්ථානයේ තොරතුරු සහ Link එක Copy විය!', '📋 Place details & link copied!', '📋 இணைப்பு நகலெடுக்கப்பட்டது!'));
+    window.open(url, '_blank');
+
+  };
+
+  // Share Place URL
+
+  const handleSharePlace = (p: SavedPlaceItem) => {
+
+    const shareText = `📍 ${p.name}\n${p.description ? p.description + '\n' : ''}Google Maps: https://maps.google.com/?q=${p.lat},${p.lng}\n(සහය සේවා ප්‍රජා සිතියම - Sahaya Sewa)`;
+
+    if (navigator.share) {
+
+      navigator.share({ title: p.name, text: shareText }).catch(() => {});
+
+    } else {
+
+      navigator.clipboard.writeText(shareText);
+
+      setSharedToast(getLang('තොරතුරු පිටපත් කරන ලදී!', 'Copied to clipboard!', 'நகலெடுக்கப்பட்டது!'));
+
       setTimeout(() => setSharedToast(null), 3000);
-    } catch {
-      window.open(mapsUrl, '_blank');
+
     }
+
   };
-
-  // Format Distance Helper (Real Road Driving Distance matching Google Maps)
-  const formatDistance = (roadKm: number): string => {
-    if (roadKm < 1.0) {
-      const meters = Math.round(roadKm * 1000);
-      return `${meters} m (${getLang('මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')})`;
-    }
-    const km = roadKm.toFixed(1);
-    return `${km} km (${getLang('මාර්ග දුර', 'Road Distance', 'சாலை தூரம்')})`;
-  };
-
-  // Compute & Sort Places by Exact Distance from Current GPS Coordinates
-  const sortedAndFilteredPlaces = useMemo(() => {
-    return places
-      .map((place) => {
-        // Calculate realistic driving road distance calibrated to Google Maps (e.g. 26.9km aerial -> 31.0km road)
-        const roadKm = calculateRoadDistanceKm(
-          currentCoords.lat,
-          currentCoords.lng,
-          place.lat,
-          place.lng
-        );
-        const estDriveMins = Math.max(2, Math.round((roadKm / 32) * 60));
-        return {
-          ...place,
-          distanceKm: roadKm,
-          estDriveMins,
-          distanceFormatted: formatDistance(roadKm),
-        };
-      })
-      .filter((place) => {
-        const isOwner = Boolean(
-          place.userId === currentUserId ||
-          (currentUserId !== 'usr_guest' && (place.userId === activeUser?.id || place.userId === activeUser?.userId)) ||
-          (activeUser?.phone && place.userPhone && activeUser.phone.replace(/\D/g, '').endsWith(place.userPhone.replace(/\D/g, '').slice(-7))) ||
-          (isAdmin && place.userId === 'system_admin')
-        );
-
-        // Privacy filter: Private places visible to creator or Admin
-        if (!place.isPublic && !isOwner && !isAdmin) {
-          return false;
-        }
-
-        // Tab filter
-        if (activeTab === 'my') {
-          return isOwner;
-        }
-        if (activeTab === 'public') {
-          return place.isPublic;
-        }
-
-        return true;
-      })
-      .filter((place) => {
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        return (
-          place.name.toLowerCase().includes(q) ||
-          (place.description && place.description.toLowerCase().includes(q)) ||
-          place.userName.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => a.distanceKm - b.distanceKm); // Closest first!
-  }, [places, currentCoords, currentUserId, activeTab, searchQuery, language, isAdmin, activeUser]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-[#07170e] text-slate-900 dark:text-zinc-100 rounded-3xl shadow-2xl border-2 border-emerald-500/40 flex flex-col max-h-[92vh] overflow-hidden">
-        
+
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+
+      <div className="w-full max-w-2xl bg-gradient-to-b from-white via-emerald-50/20 to-white dark:from-[#06180f] dark:via-[#04120a] dark:to-[#06180f] border-2 border-emerald-500/50 rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,122,75,0.3)] overflow-hidden flex flex-col max-h-[92vh]">
+
         {/* Modal Header */}
-        <div className="px-5 py-4 bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white flex items-center justify-between shrink-0 shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
-              <MapPin className="w-5 h-5 text-amber-300 animate-pulse" />
+
+        <div className="p-4 sm:p-5 pb-3 border-b border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between shrink-0">
+
+          <div className="flex items-center gap-2.5">
+
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md">
+
+              <MapPin className="w-5 h-5" />
+
             </div>
+
             <div>
-              <h2 className="text-base sm:text-lg font-black tracking-tight">
-                {getLang('📍 ස්ථානය සුරකින්න සහ ප්‍රජා ස්ථාන', 'Save Location & Community Places', 'இடங்களை சேமிக்கவும்')}
+
+              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+
+                <span>{getLang('සුරැකි ස්ථාන සහ ප්‍රජා සිතියම', 'Saved Places & Community Map', 'சேமிக்கப்பட்ட இடங்கள்')}</span>
+
               </h2>
-              <p className="text-[11px] text-emerald-100 font-medium">
-                {getLang(
-                  'ස්ථාන සුරකින්න • ඔබ සිටින තැන සිට ඇති දුර අනුව නැරඹීම',
-                  'Save spots & browse by live GPS proximity',
-                  'நேரடி ஜிபிஎஸ் தூரத்தின்படி இடங்களை சேமித்து பார்க்கவும்'
-                )}
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+
+                {getLang('ඔබගේ නිතර අවශ්‍ය ස්ථාන සහ ප්‍රජා සේවා කේන්ද්‍රස්ථාන', 'Personal locations & community service hubs', 'உங்கள் முக்கிய இடங்கள்')}
+
               </p>
+
             </div>
+
           </div>
+
           <button
-            type="button"
+
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer transition-all active:scale-95"
+
+            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center font-bold transition-all cursor-pointer"
+
           >
-            <X className="w-4 h-4" />
+
+            <X className="w-5 h-5" />
+
           </button>
+
         </div>
 
-        {/* Live GPS Status Bar */}
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 border-b border-emerald-200 dark:border-emerald-800/40 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="font-bold text-emerald-900 dark:text-emerald-200">
-              {resolvedAddress ? `📍 ${resolvedAddress}` : `GPS: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}`}
-            </span>
-            {gpsAccuracy && (
-              <span className="px-1.5 py-0.5 rounded-md bg-white dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-[10px] font-mono border border-emerald-300 dark:border-emerald-700">
-                ±{gpsAccuracy}m
-              </span>
-            )}
-          </div>
+        {/* Toast Alerts */}
 
-          <button
-            type="button"
-            disabled={isLocating}
-            onClick={handleDetectGps}
-            className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold hover:underline cursor-pointer disabled:opacity-50 text-[11px]"
-          >
-            <RefreshCw className={`w-3 h-3 ${isLocating ? 'animate-spin' : ''}`} />
-            <span>{isLocating ? getLang('GPS සොයමින්...', 'Locating...', 'ஜிபிஎஸ்...') : getLang('GPS Refresh', 'Refresh GPS', 'புதுப்பிக்கவும்')}</span>
-          </button>
-        </div>
-
-        {/* Success Alert Banner */}
         {saveSuccessMsg && (
-          <div className="mx-4 mt-3 p-3 bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-400 text-emerald-800 dark:text-emerald-200 rounded-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+
+          <div className="mx-4 mt-2 p-2.5 bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-500 text-emerald-800 dark:text-emerald-200 text-xs rounded-xl flex items-center gap-2">
+
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+
             <span>{saveSuccessMsg}</span>
+
           </div>
+
         )}
 
-        {/* Shared Link Copied Toast */}
         {sharedToast && (
-          <div className="mx-4 mt-3 p-3 bg-blue-100 dark:bg-blue-950/80 border border-blue-400 text-blue-800 dark:text-blue-200 rounded-2xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
-            <Share2 className="w-4 h-4 text-blue-600 shrink-0" />
+
+          <div className="mx-4 mt-2 p-2.5 bg-teal-100 dark:bg-teal-950/80 border border-teal-500 text-teal-800 dark:text-teal-200 text-xs rounded-xl flex items-center gap-2">
+
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600" />
+
             <span>{sharedToast}</span>
+
           </div>
+
         )}
 
-        {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-          
-          {/* Action Header: Toggle Add Form */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'all'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
-                }`}
-              >
-                {getLang('සියල්ල (දුර අනුව)', 'All (By Proximity)', 'அனைத்தும்')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('my')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'my'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
-                }`}
-              >
-                {getLang('🔒 මගේ ස්ථාන', 'My Places', 'என் இடங்கள்')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('public')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'public'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
-                }`}
-              >
-                {getLang('🌐 ප්‍රජා ස්ථාන', 'Public Community', 'பொது')}
-              </button>
+        {/* Main Content Body */}
+
+        <div className="overflow-y-auto p-4 sm:p-5 space-y-4 flex-1">
+
+          {/* Action Header: Search & Add Place Button */}
+
+          <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+
+            <div className="relative flex-1">
+
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+
+              <input
+
+                type="text"
+
+                value={searchQuery}
+
+                onChange={(e) => setSearchQuery(e.target.value)}
+
+                placeholder={getLang('ස්ථාන නමකින් සොයන්න...', 'Search saved places...', 'தேடுங்கள்...')}
+
+                className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-900/60 border border-emerald-200 dark:border-emerald-900 rounded-2xl text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+
+              />
+
             </div>
 
             <button
-              type="button"
-              onClick={() => setShowAddForm((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 shrink-0"
+
+              onClick={() => {
+
+                setShowAddForm(!showAddForm);
+
+                if (!showAddForm) handleDetectGps();
+
+              }}
+
+              className="py-2 px-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-2xl shadow-md flex items-center justify-center gap-1.5 transition-all shrink-0 cursor-pointer"
+
             >
-              {showAddForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              <span>{showAddForm ? getLang('වසන්න', 'Close', 'மூடு') : getLang('📍 නව ස්ථානයක් සුරකින්න', 'Save This Spot', 'இடத்தை சேமி')}</span>
+
+              <Plus className="w-4 h-4" />
+
+              <span>{showAddForm ? getLang('පෝරමය වසන්න', 'Close Form', 'படிவத்தை மூடு') : getLang('නව ස්ථානයක් එක් කරන්න', 'Add New Place', 'புதிய இடம்')}</span>
+
             </button>
+
           </div>
 
-          {/* Add New Location Accordion Form */}
+          {/* Add New Place Form Box */}
+
           {showAddForm && (
-            <form
-              onSubmit={handleSavePlace}
-              className="p-4 sm:p-5 rounded-3xl bg-slate-50 dark:bg-emerald-950/20 border-2 border-emerald-400/60 space-y-4 animate-fadeIn"
-            >
-              <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-800/40 pb-2">
+
+            <form onSubmit={handleSavePlace} className="p-4 bg-emerald-50/60 dark:bg-[#071911] border-2 border-emerald-500/40 rounded-3xl space-y-3 animate-fadeIn">
+
+              <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-900/60 pb-2">
+
                 <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  {editingPlaceId ? (
-                    <>
-                      <Pencil className="w-4 h-4 text-amber-500" />
-                      {getLang('ස්ථානයේ තොරතුරු සංස්කරණය (Edit Location)', 'Edit Location Details', 'இடத்தைத் திருத்துக')}
-                    </>
-                  ) : (
-                    <>
-                      <Compass className="w-4 h-4 text-emerald-600" />
-                      {getLang('වත්මන් GPS ස්ථානය සුරැකීම', 'Save Current GPS Location', 'தற்பෝதைய ஜிපිஎஸ் இருப்பிடத்தை சேமிக்கவும்')}
-                    </>
-                  )}
+
+                  <Compass className="w-4 h-4" />
+
+                  <span>{getLang('වත්මන් ස්ථානය සිතියමට සුරකින්න', 'Save Active GPS Location', 'இடத்தைச் சேமி')}</span>
+
                 </span>
-                <span className="text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">
-                  Lat: {currentCoords.lat.toFixed(4)} • Lng: {currentCoords.lng.toFixed(4)}
-                </span>
+
+                <button
+
+                  type="button"
+
+                  onClick={handleDetectGps}
+
+                  disabled={isLocating}
+
+                  className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 hover:underline cursor-pointer"
+
+                >
+
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+
+                  <span>{isLocating ? getLang('GPS ලබාගනිමින්...', 'Locating...', 'இடம் பெறுகிறது...') : getLang('නැවත GPS සොයන්න', 'Refresh GPS', 'புதுப்பிக்க')}</span>
+
+                </button>
+
               </div>
 
-              {/* Input 1: Place Name */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 block">
-                  {getLang('ස්ථානයේ නම (Place Name) *', 'Place Name *', 'இடத்தின் பெயர் *')}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={placeName}
-                  onChange={(e) => setPlaceName(e.target.value)}
-                  placeholder={getLang(
-                    'උදා: මගේ නිවස, ජා-ඇල සතිපොළ අසල, ව්‍යාපාරික ස්ථානය...',
-                    'e.g. My Home, Near Ja-Ela Market, Workshop...',
-                    'எ.கா: என் வீடு, சந்தை அருகில்...'
-                  )}
-                  className="w-full bg-white dark:bg-zinc-800 px-3 py-2.5 rounded-xl border border-slate-300 dark:border-zinc-700 text-xs sm:text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+              {/* Coordinates Indicator */}
 
-              {/* Input 2: Description (Optional) */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 block">
-                  {getLang('විස්තරය / සලකුණු (Landmark / Note) - විකල්පයි', 'Landmark / Note (Optional)', 'விளக்கம் / குறிப்பு (விருப்பமானது)')}
-                </label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder={getLang(
-                    'පහසුවෙන් සොයාගැනීමට සලකුණක් හෝ අමතර විස්තරයක්...',
-                    'Helpful landmark or description...',
-                    'குறிப்பு...'
-                  )}
-                  className="w-full bg-white dark:bg-zinc-800 px-3 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900/80 rounded-2xl border border-emerald-200 dark:border-emerald-900 text-[11px] text-slate-700 dark:text-slate-300 space-y-1">
 
-              {/* Input 3: Privacy & Visibility Toggle */}
-              <div className="space-y-2 pt-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 block">
-                  {getLang('ප්‍රවේශ සීමාව සහ දෘශ්‍යතාව (Visibility) *', 'Visibility & Privacy *', 'பார்வை மற்றும் தனியுரிமை *')}
-                </label>
+                <div className="flex items-center justify-between">
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Option A: Public */}
-                  <button
-                    type="button"
-                    onClick={() => setIsPublic(true)}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
-                      isPublic
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 shadow-sm'
-                        : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isPublic ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                      <Globe className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-black text-slate-900 dark:text-white block">
-                        {getLang('🌐 ප්‍රජාවට පොදුයි (Public)', 'Public (Everyone)', 'பொதுவானது')}
-                      </span>
-                      <p className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5 leading-snug">
-                        {getLang(
-                          'අනෙක් සියලු සාමාජිකයින්ට ඔවුන් ඉන්න තැන සිට ඇති දුර අනුව පෙනේ. ඕනෑම කෙනෙකුට Share කළ හැක.',
-                          'Visible to everyone sorted by proximity. Shareable by anyone.',
-                          'அனைவருக்கும் தெரியும்.'
-                        )}
-                      </p>
-                    </div>
-                  </button>
+                  <span>{getLang('අක්ෂාංශ / දේශාංශ:', 'Coordinates:', 'ஆயத்தொலைவுகள்:')}</span>
 
-                  {/* Option B: Private */}
-                  <button
-                    type="button"
-                    onClick={() => setIsPublic(false)}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
-                      !isPublic
-                        ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500 shadow-sm'
-                        : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${!isPublic ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-black text-slate-900 dark:text-white block">
-                        {getLang('🔒 පෞද්ගලිකයි (Private)', 'Private (Only Me)', 'தனிப்பட்டது')}
-                      </span>
-                      <p className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5 leading-snug">
-                        {getLang(
-                          'ඔබට පමණක් පෙනේ. ඔබගේ ගිණුමට පමණක් සුරැකේ. ඔබ කැමති නම් ඔබට පමණක් Share කළ හැක.',
-                          'Only visible to you. Kept private in your account.',
-                          'உங்களுக்கு மட்டுமே தெரியும்.'
-                        )}
-                      </p>
-                    </div>
-                  </button>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+
+                    {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
+
+                  </span>
+
                 </div>
+
+                {resolvedAddress && (
+
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+
+                    📍 {resolvedAddress}
+
+                  </div>
+
+                )}
+
+                {gpsAccuracy && (
+
+                  <div className="text-[10px] text-emerald-600 font-bold">
+
+                    ⚡ {getLang(`GPS නිරවද්‍යතාවය: මීටර් ${Math.round(gpsAccuracy)} ක් ඇතුළත`, `GPS Accuracy: within ${Math.round(gpsAccuracy)}m`, `துல்லியம்: ${Math.round(gpsAccuracy)}m`)}
+
+                  </div>
+
+                )}
+
+              </div>
+
+              {/* Form Input: Name */}
+
+              <div>
+
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+
+                  {getLang('ස්ථානයේ නම *', 'Place Name *', 'இடத்தின் பெயர் *')}
+
+                </label>
+
+                <input
+
+                  type="text"
+
+                  required
+
+                  value={placeName}
+
+                  onChange={(e) => setPlaceName(e.target.value)}
+
+                  placeholder={getLang('උදා: මගේ නිවස, ජා-ඇල සේවා ස්ථානය, ප්‍රධාන ඩිපෝව', 'e.g., My Home, Ja-Ela Workshop, Main Depot', 'உதாரணம்: எனது வீடு')}
+
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+
+                />
+
+              </div>
+
+              {/* Form Input: Description */}
+
+              <div>
+
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+
+                  {getLang('විස්තරය (විකල්ප)', 'Description (Optional)', 'விளக்கம்')}
+
+                </label>
+
+                <input
+
+                  type="text"
+
+                  value={description}
+
+                  onChange={(e) => setDescription(e.target.value)}
+
+                  placeholder={getLang('ස්ථානයට ළඟාවීමට විශේෂ සලකුණු හෝ මාර්ග උපදෙස්', 'Landmarks or arrival directions', 'அடையாளங்கள்')}
+
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+
+                />
+
+              </div>
+
+              {/* Form Input: Privacy Toggle */}
+
+              <div className="flex items-center gap-3 pt-1">
+
+                <button
+
+                  type="button"
+
+                  onClick={() => setIsPublic(true)}
+
+                  className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+
+                    isPublic
+
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+
+                  }`}
+
+                >
+
+                  <Globe className="w-3.5 h-3.5" />
+
+                  <span>{getLang('ප්‍රජාවට පොදුයි (Public)', 'Public to Community', 'பொதுவானது')}</span>
+
+                </button>
+
+                <button
+
+                  type="button"
+
+                  onClick={() => setIsPublic(false)}
+
+                  className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+
+                    !isPublic
+
+                      ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+
+                  }`}
+
+                >
+
+                  <Lock className="w-3.5 h-3.5" />
+
+                  <span>{getLang('මට පමණයි (Private)', 'Only for Me', 'தனிப்பட்டது')}</span>
+
+                </button>
+
               </div>
 
               {/* Submit Button */}
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleCancelForm}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 cursor-pointer"
-                >
-                  {getLang('අවලංගු කරන්න', 'Cancel', 'ரத்து')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-black shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {editingPlaceId ? <Pencil className="w-3.5 h-3.5 text-amber-300" /> : <MapPin className="w-3.5 h-3.5" />}
-                  <span>
-                    {isSubmitting
-                      ? getLang('සුරකිමින්...', 'Saving...', 'சேமிக்கிறது...')
-                      : editingPlaceId
-                      ? getLang('💾 වෙනස්කම් සුරකින්න', 'Save Changes', 'மாற்றங்களை சேமிக்கவும்')
-                      : getLang('💾 ස්ථානය සුරකින්න', 'Save Spot Now', 'சேமிக்கவும்')}
-                  </span>
-                </button>
-              </div>
+
+              <button
+
+                type="submit"
+
+                disabled={isSubmitting || !placeName.trim()}
+
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
+
+              >
+
+                {isSubmitting ? getLang('සුරකිමින් පවතී...', 'Saving...', 'சேமிக்கிறது...') : getLang('ස්ථානය සුරකින්න (Save Place)', 'Save Place to Map', 'சேமிக்கவும்')}
+
+              </button>
+
             </form>
+
           )}
 
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={getLang(
-                'ස්ථාන නාමයෙන් හෝ විස්තරයෙන් සොයන්න...',
-                'Search saved places by name or landmark...',
-                'இடங்களைத் தேடுங்கள்...'
-              )}
-              className="w-full bg-slate-50 dark:bg-zinc-800/60 pl-10 pr-4 py-2 rounded-2xl border border-slate-200 dark:border-zinc-700 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+          {/* Filter Tabs: All / My Places / Community Public */}
+
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+
+            <button
+
+              onClick={() => setActiveTab('all')}
+
+              className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+
+                activeTab === 'all'
+
+                  ? 'bg-white dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-500/30'
+
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+
+              }`}
+
+            >
+
+              {getLang('සියල්ල', 'All Places', 'அனைத்தும்')} ({places.length})
+
+            </button>
+
+            <button
+
+              onClick={() => setActiveTab('my')}
+
+              className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+
+                activeTab === 'my'
+
+                  ? 'bg-white dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-500/30'
+
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+
+              }`}
+
+            >
+
+              {getLang('මගේ ස්ථාන', 'My Places', 'எனது')}
+
+            </button>
+
+            <button
+
+              onClick={() => setActiveTab('public')}
+
+              className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+
+                activeTab === 'public'
+
+                  ? 'bg-white dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-500/30'
+
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+
+              }`}
+
+            >
+
+              {getLang('ප්‍රජා සිතියම', 'Community Hubs', 'பொது')}
+
+            </button>
+
           </div>
 
-          {/* Places List - Sorted by Proximity */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-zinc-400 px-1">
-              <span>
-                {getLang(
-                  `ස්ථාන ${sortedAndFilteredPlaces.length} ක් හමුවිය (ළඟම ඇති ස්ථානයේ සිට පිළිවෙළට)`,
-                  `Showing ${sortedAndFilteredPlaces.length} places (Sorted nearest to farthest)`,
-                  `${sortedAndFilteredPlaces.length} இடங்கள்`
-                )}
-              </span>
-            </div>
+          {/* Places Cards List */}
 
-            {sortedAndFilteredPlaces.length === 0 ? (
-              <div className="text-center py-10 px-4 rounded-3xl bg-slate-50 dark:bg-zinc-800/40 border border-dashed border-slate-200 dark:border-zinc-700 space-y-2">
-                <MapPin className="w-8 h-8 text-slate-400 mx-auto opacity-40" />
-                <p className="text-xs font-bold text-slate-600 dark:text-zinc-400">
-                  {getLang('කිසිදු සුරකින ලද ස්ථානයක් හමු නොවීය.', 'No saved places found in this view.', 'சேமிக்கப்பட்ட இடங்கள் எதுவும் இல்லை.')}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-zinc-500">
-                  {getLang(
-                    'ඉහත "📍 නව ස්ථානයක් සුරකින්න" ඔබා ඔබ සිටින ස්ථානය සටහන් කරන්න.',
-                    'Tap "Save This Spot" above to record your current location.',
-                    'புதிய இடத்தை சேமிக்க மேலே கிளிக் செய்யவும்.'
-                  )}
-                </p>
+          <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+
+            {filteredPlaces.length === 0 ? (
+
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
+
+                {getLang('ස්ථාන කිසිවක් හමු නොවීය.', 'No saved places found in this view.', 'இடங்கள் எதுவும் இல்லை.')}
+
               </div>
+
             ) : (
-              sortedAndFilteredPlaces.map((place) => {
-                const isOwner = Boolean(
-                  place.userId === currentUserId ||
-                  (currentUserId !== 'usr_guest' && (place.userId === activeUser?.id || place.userId === activeUser?.userId)) ||
-                  (activeUser?.phone && place.userPhone && activeUser.phone.replace(/\D/g, '').endsWith(place.userPhone.replace(/\D/g, '').slice(-7))) ||
-                  (isAdmin && place.userId === 'system_admin')
-                );
-                const canModify = isOwner || isAdmin;
-                const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentCoords.lat},${currentCoords.lng}&destination=${place.lat},${place.lng}&travelmode=driving`;
+
+              filteredPlaces.map((p) => {
+
+                const isMyPlace = p.userId === currentUserId;
+
+                const distanceKm = currentLocation
+
+                  ? calculateDistanceKm(currentLocation.lat, currentLocation.lng, p.lat, p.lng)
+
+                  : null;
 
                 return (
+
                   <div
-                    key={place.id}
-                    className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#07170e] border-2 border-slate-200/80 dark:border-zinc-800 hover:border-emerald-400/60 dark:hover:border-emerald-600 transition-all shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+
+                    key={p.id}
+
+                    className="p-3.5 bg-white dark:bg-[#071911] border border-emerald-200/80 dark:border-emerald-900/60 hover:border-emerald-500/60 rounded-2xl shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+
                   >
-                    {/* Left: Place Info & Distance Badge */}
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                          <Navigation className="w-2.5 h-2.5 rotate-45 text-emerald-600 fill-current" />
-                          <span>{place.distanceFormatted}</span>
+
+                    <div className="min-w-0 space-y-1">
+
+                      <div className="flex items-center gap-2">
+
+                        <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+
+                          {p.name}
+
                         </span>
 
-                        {place.estDriveMins && place.estDriveMins > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                            <span>🚗 {place.estDriveMins < 60 ? `~${place.estDriveMins} min` : `~${Math.floor(place.estDriveMins / 60)}h ${place.estDriveMins % 60}m`}</span>
-                          </span>
-                        )}
+                        {p.isPublic ? (
 
-                        {place.isPublic ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+
                             <Globe className="w-2.5 h-2.5" />
-                            <span>{getLang('ප්‍රජාවට පොදුයි', 'Public', 'பொது')}</span>
+
+                            <span>Public</span>
+
                           </span>
+
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+
+                          <span className="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+
                             <Lock className="w-2.5 h-2.5" />
-                            <span>{getLang('පෞද්ගලිකයි', 'Private', 'தனிப்பட்டது')}</span>
+
+                            <span>Private</span>
+
                           </span>
+
                         )}
 
-                        {isOwner && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                            {getLang('මගේ සටහනක්', 'My Entry', 'என் பதிவு')}
-                          </span>
-                        )}
                       </div>
 
-                      <h4 className="text-sm font-black text-slate-900 dark:text-zinc-100 truncate">
-                        {place.name}
-                      </h4>
+                      {p.description && (
 
-                      {place.description && (
-                        <p className="text-xs text-slate-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
-                          {place.description}
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2">
+
+                          {p.description}
+
                         </p>
+
                       )}
 
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
-                        <span>Lat: {place.lat.toFixed(4)}, Lng: {place.lng.toFixed(4)}</span>
-                        {place.userName && (
-                          <span>• {place.userName}</span>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-3 pt-0.5 font-mono">
+
+                        {distanceKm !== null && (
+
+                          <span className="font-bold text-emerald-700 dark:text-emerald-400">
+
+                            📏 ~{distanceKm.toFixed(1)} km දුරින්
+
+                          </span>
+
                         )}
+
+                        <span>📍 {p.lat.toFixed(4)}, {p.lng.toFixed(4)}</span>
+
+                        {p.userName && (
+
+                          <span className="hidden sm:inline">• {p.userName}</span>
+
+                        )}
+
                       </div>
+
                     </div>
 
-                    {/* Right: Actions (Directions, Share, Delete) */}
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                      
-                      {/* 1. Navigate via Google Maps */}
-                      <a
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
-                        title={getLang('Google Maps හරහා මාර්ගය සොයන්න', 'Directions via Google Maps', 'வழிசெலுத்தல்')}
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>{getLang('මාර්ගය', 'Route', 'வழி')}</span>
-                      </a>
+                    {/* Action Buttons: Navigate / Share / Delete */}
 
-                      {/* 2. Share Place */}
+                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+
                       <button
-                        type="button"
-                        onClick={() => handleSharePlace(place, place.distanceFormatted)}
-                        className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-bold border border-slate-300 dark:border-zinc-700 transition-all active:scale-95 cursor-pointer"
-                        title={getLang('ස්ථානය බෙදාගන්න (Share)', 'Share Location', 'பகிர்')}
+
+                        onClick={() => handleOpenGoogleMaps(p)}
+
+                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+
+                        title={getLang('Google Maps මඟින් මාර්ගය පෙන්වන්න', 'Open Directions in Google Maps', 'வரைபடம்')}
+
                       >
-                        <Share2 className="w-3.5 h-3.5" />
-                        <span>{getLang('Share', 'Share', 'பகிர்')}</span>
+
+                        <Navigation className="w-3.5 h-3.5" />
+
+                        <span>{getLang('මාර්ගය', 'Directions', 'வழி')}</span>
+
                       </button>
 
-                      {/* 3. Edit Place (Owner or Admin) */}
-                      {canModify && (
+                      <button
+
+                        onClick={() => handleSharePlace(p)}
+
+                        className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 flex items-center justify-center transition-all cursor-pointer"
+
+                        title={getLang('ස්ථානය බෙදාගන්න (Share)', 'Share Place', 'பகிரவும்')}
+
+                      >
+
+                        <Share2 className="w-3.5 h-3.5" />
+
+                      </button>
+
+                      {isMyPlace && (
+
                         <button
-                          type="button"
-                          onClick={() => handleStartEditPlace(place)}
-                          className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-                          title={
-                            !isOwner && isAdmin
-                              ? getLang('ඇඩ්මින් ලෙස සංස්කරණය කරන්න', 'Edit as Admin', 'நிர்வாகியாக திருத்துக')
-                              : getLang('සංස්කරණය කරන්න (Edit)', 'Edit Place', 'திருத்துக')
-                          }
+
+                          onClick={() => handleDeletePlace(p.id)}
+
+                          className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-all cursor-pointer"
+
+                          title={getLang('ස්ථානය මකා දමන්න', 'Delete Place', 'நீக்கு')}
+
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+
+                          <Trash2 className="w-3.5 h-3.5" />
+
                         </button>
+
                       )}
 
-                      {/* 4. Delete Place (Owner or Admin) */}
-                      {canModify && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePlace(place.id)}
-                          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
-                            !isOwner && isAdmin
-                              ? 'bg-rose-100 dark:bg-rose-950/80 hover:bg-rose-200 dark:hover:bg-rose-900 text-rose-600 border border-rose-300 dark:border-rose-700'
-                              : 'bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-600 border border-rose-200 dark:border-rose-900'
-                          }`}
-                          title={
-                            !isOwner && isAdmin
-                              ? getLang('ඇඩ්මින් ලෙස ඉවත් කරන්න', 'Delete as Admin', 'நிர்வாகியாக நீக்கு')
-                              : getLang('ඉවත් කරන්න', 'Delete', 'நீக்கு')
-                          }
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                     </div>
+
                   </div>
+
                 );
+
               })
+
             )}
+
           </div>
 
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 bg-slate-100 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
-          <div className="flex items-center gap-1">
-            <Info className="w-3.5 h-3.5 text-emerald-600" />
-            <span>
-              {getLang(
-                'ස්ථාන සුරැකීමේදී ඔබගේ දුරකථනයේ Auto GPS ඛණ්ඩාංක සෘජුවම භාවිත කෙරේ.',
-                'Auto GPS coordinates are recorded directly on save.',
-                'தானியங்கி ஜிபிஎஸ் ஒருங்கிணைப்புகள் பயன்படுத்தப்படுகின்றன.'
-              )}
-            </span>
-          </div>
+
+        <div className="p-3.5 bg-slate-50 dark:bg-[#05140d] border-t border-emerald-200/80 dark:border-emerald-900/60 text-center shrink-0">
+
           <button
-            type="button"
+
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 text-slate-800 dark:text-zinc-200 font-bold text-xs cursor-pointer"
+
+            className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+
           >
-            {getLang('වසන්න', 'Close', 'மூடு')}
+
+            {getLang('වසන්න (Close)', 'Close', 'மூடு')}
+
           </button>
+
         </div>
 
       </div>
+
     </div>
+
   );
+
 };
+
