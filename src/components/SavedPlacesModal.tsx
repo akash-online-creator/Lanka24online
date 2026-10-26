@@ -1,4 +1,5 @@
 
+import React, { useState, useEffect, useMemo } from 'react';
 import {
 
   X,
@@ -1140,4 +1141,6 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
   );
 
 };
+
+export default SavedPlacesModal;
 
