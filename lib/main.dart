@@ -460,7 +460,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             } catch (e) {
               debugPrint('Native red alert wake-up notice: $e');
             }
-          }
           } else if (text.startsWith('SYNC_WATCHER_CONFIG:')) {
             try {
               final jsonStr = text.substring('SYNC_WATCHER_CONFIG:'.length);
@@ -469,6 +468,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             } catch (e) {
               debugPrint('Error syncing watcher config: $e');
             }
+          }
         },
       );
 
