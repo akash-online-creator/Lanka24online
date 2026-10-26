@@ -20,10 +20,7 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        // පෙර තිබූ sample mock blood requests (bld_) ස්වයංක්‍රීයව පෙරීම
-        return filterNonDeletedBloodRequests(
-          parsed.filter((b: BloodDonationRequest) => b && !b.id?.startsWith('bld_'))
-        );
+        return filterNonDeletedBloodRequests(parsed);
       }
     } catch (e) { /* ignore */ }
   }
@@ -40,10 +37,7 @@ export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        // පෙර තිබූ sample mock donors (donor_) ස්වයංක්‍රීයව පෙරීම
-        return filterNonDeletedDonors(
-          parsed.filter((d: VolunteerDonor) => d && !d.id?.startsWith('donor_'))
-        );
+        return filterNonDeletedDonors(parsed);
       }
     } catch (e) { /* ignore */ }
   }
@@ -60,10 +54,7 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        // පෙර තිබූ sample mock relief items (rel_) ස්වයංක්‍රීයව පෙරීම
-        return filterNonDeletedDisasterItems(
-          parsed.filter((r: DisasterReliefItem) => r && !r.id?.startsWith('rel_'))
-        );
+        return filterNonDeletedDisasterItems(parsed);
       }
     } catch (e) { /* ignore */ }
   }
