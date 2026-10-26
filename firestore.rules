@@ -156,13 +156,24 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // ⚙️ 14. System Settings (පද්ධති සැකසුම්)
+    // ⚙️ 14. System Settings & Admin Official Bank Info (පද්ධති සැකසුම් සහ නිල බැංකු ගිණුම)
     // ===============================================================
+    // Admin Bank Deposit Info - ඕනෑම කෙනෙකුට කියවිය හැක (Public Read), වෙනස් කළ හැක්කේ Admin ට පමණි (Admin Only Write)
+    match /systemSettings/bank_info {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /system_metadata/bank_deposit_info {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /systemSettings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
     match /system_metadata/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // ===============================================================
@@ -184,6 +195,75 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /saved_places/{placeId} {
+      allow read, write: if true;
+    }
+
+    match /groups/{groupId} {
+      allow read, write: if true;
+      match /{allChildren=**} {
+        allow read, write: if true;
+      }
+    }
+
+    match /professional_services/{serviceId} {
+      allow read, write: if true;
+    }
+
+    match /device_push_tokens/{tokenId} {
+      allow read, write: if true;
+    }
+
+    match /blood_requests/{reqId} {
+      allow read, write: if true;
+    }
+
+    match /volunteer_donors/{donorId} {
+      allow read, write: if true;
+    }
+
+    match /disaster_relief/{reliefId} {
+      allow read, write: if true;
+    }
+
+    match /aid_centers/{centerId} {
+      allow read, write: if true;
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow read, write: if true;
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow read, write: if true;
+    }
+
+    match /jobs/{jobId} {
+      allow read, write: if true;
+    }
+
+    match /accommodations/{accId} {
+      allow read, write: if true;
+    }
+
+    match /barter_items/{itemId} {
+      allow read, write: if true;
+    }
+
+    match /password_reset_requests/{reqId} {
+      allow read, write: if true;
+    }
+
+    match /pending_ai_queries/{queryId} {
+      allow read, write: if true;
+    }
+
+    match /verified_ai_knowledge/{itemId} {
+      allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if true;
+    }
   }
 }
-
