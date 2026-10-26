@@ -268,8 +268,11 @@ jobs:
               "",
               "import android.Manifest;",
               "import android.content.Context;",
+              "import android.os.Handler;",
+              "import android.os.Looper;",
               "import android.content.Intent;",
               "import android.content.pm.PackageManager;",
+              "import android.content.pm.ServiceInfo;",
               "import android.net.Uri;",
               "import android.os.Build;",
               "import android.os.Bundle;",
@@ -293,14 +296,13 @@ jobs:
               "                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON",
               "            );",
               "        }",
-              "        if (Build.VERSION.SDK_INT >= 33) {",
-              "            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {",
-              "                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);",
+              "        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {",
+              "            @Override",
+              "            public void run() {",
+              "                requestDisableBatteryOptimization();",
+              "                startRedAlertService();",
               "            }",
-              "        }",
-              "        requestDisableBatteryOptimization();",
-              "        startRedAlertService();",
-              "    }",
+              "        }, 3500);",
               "",
               "    private void requestDisableBatteryOptimization() {",
               "        try {",
@@ -399,7 +401,13 @@ jobs:
               "            .setContentIntent(pendingIntent)",
               "            .setOngoing(true)",
               "            .build();",
-              "        startForeground(7771, notif);",
+              "        try {",
+              "            if (Build.VERSION.SDK_INT >= 34) {",
+              "                startForeground(7771, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);",
+              "            } else {",
+              "                startForeground(7771, notif);",
+              "            }",
+              "        } catch (Exception ignored) {}",
               "    }",
               "",
               "    @Override",
@@ -600,19 +608,21 @@ jobs:
               f.write(chr(10).join(main_lines) + chr(10))
           with open(os.path.join(pkg_dir, "RedAlertMonitorService.java"), "w") as f:
               f.write(chr(10).join(svc_lines) + chr(10))
+          import re
           manifest_path = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(manifest_path):
               with open(manifest_path, "r") as f:
                   m = f.read()
-              perms = ["android.permission.INTERNET", "android.permission.WAKE_LOCK", "android.permission.VIBRATE", "android.permission.FOREGROUND_SERVICE", "android.permission.POST_NOTIFICATIONS", "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "android.permission.SCHEDULE_EXACT_ALARM"]
+              perms = ["android.permission.INTERNET", "android.permission.WAKE_LOCK", "android.permission.VIBRATE", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK", "android.permission.POST_NOTIFICATIONS", "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "android.permission.SCHEDULE_EXACT_ALARM"]
               perm_tags = ""
               for p in perms:
                   if p not in m:
                       perm_tags += chr(60) + "uses-permission android:name=\"" + p + "\"" + chr(47) + chr(62) + chr(10) + "    "
               if perm_tags:
                   m = m.replace(chr(60) + "application", perm_tags + chr(60) + "application", 1)
+              m = re.sub(r"android:foregroundServiceType=\"[^\"]*\"", "android:foregroundServiceType=\"dataSync\"", m)
               if "RedAlertMonitorService" not in m:
-                  svc_tag = "    " + chr(60) + "service android:name=\".RedAlertMonitorService\" android:enabled=\"true\" android:exported=\"false\" android:stopWithTask=\"false\"" + chr(47) + chr(62) + chr(10) + "    " + chr(60) + chr(47) + "application" + chr(62)
+                  svc_tag = "    " + chr(60) + "service android:name=\".RedAlertMonitorService\" android:foregroundServiceType=\"dataSync\" android:enabled=\"true\" android:exported=\"false\" android:stopWithTask=\"false\"" + chr(47) + chr(62) + chr(10) + "    " + chr(60) + chr(47) + "application" + chr(62)
                   m = m.replace(chr(60) + chr(47) + "application" + chr(62), svc_tag, 1)
               with open(manifest_path, "w") as f:
                   f.write(m)
