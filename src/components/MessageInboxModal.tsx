@@ -14,7 +14,9 @@ ShieldAlert,
 Sparkles,
 Globe,
 Mic,
-Check
+Check,
+UserPlus,
+X
 } from 'lucide-react';
 import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -115,11 +117,46 @@ try {
 localStorage.setItem(MESSENGER_HISTORY_PREFIX + postId + '' + partnerKey, JSON.stringify(msgs.slice(-150)));
 } catch (e) {}
 }
+const DIRECT_CONTACTS_PREFIX = 'sahaya_direct_chat_contacts_v1_';
+
+export interface DirectChatContact {
+  username: string;
+  userId?: string;
+  phone?: string;
+  addedAt: number;
+}
+
+function loadDirectContacts(userKey: string): DirectChatContact[] {
+  try {
+    const raw = localStorage.getItem(DIRECT_CONTACTS_PREFIX + userKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveDirectContacts(userKey: string, list: DirectChatContact[]): void {
+  try {
+    localStorage.setItem(DIRECT_CONTACTS_PREFIX + userKey, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('sahaya_direct_contacts_updated'));
+  } catch (e) {}
+}
+
+function makeDirectRoomId(myIdentifier: string, targetIdentifier: string): string {
+  const cleanA = (myIdentifier ? myIdentifier : 'user').trim().toLowerCase().replace(/[^a-z0-9\u0D80-\u0DFF\u0B80-\u0BFF]/g, '_');
+  const cleanB = (targetIdentifier ? targetIdentifier : 'partner').trim().toLowerCase().replace(/[^a-z0-9\u0D80-\u0DFF\u0B80-\u0BFF]/g, '_');
+  const pair = [cleanA, cleanB].sort();
+  return 'direct_user_chat_' + pair[0] + '__' + pair[1];
+}
+
 export interface MessageInboxModalProps {
 isOpen: boolean;
 onClose: () => void;
 user?: UserType;
 currentUser?: UserType;
+users?: UserType[];
 helpPosts: HelpPost[];
 lang?: Language;
 language?: Language;
@@ -141,8 +178,9 @@ lastMessageTime: string;
 lastMessageTimeMs: number;
 repliesCount: number;
 isCurrentUserAuthor: boolean;
+isDirectUsernameChat?: boolean;
 }
-export const MessageInboxModal = ({ isOpen, onClose, user: userProp, currentUser, helpPosts, lang: langProp, language, onOpenConfirm,
+export const MessageInboxModal = ({ isOpen, onClose, user: userProp, currentUser, users = [], helpPosts, lang: langProp, language, onOpenConfirm,
 onNavigateToIssues, }: MessageInboxModalProps) => {
 const user = (currentUser ? currentUser : userProp) as UserType;
 const activePropLang = (langProp ? langProp : language ? language : 'si') as Language;
@@ -168,11 +206,14 @@ const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 const [toggledOriginals, setToggledOriginals] = useState({} as any);
 const [liveTranslations, setLiveTranslations] = useState({} as any);
 const chatBottomRef = useRef(null as any);
+const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+const [newChatUsername, setNewChatUsername] = useState('');
+const [directContacts, setDirectContacts] = useState(() => loadDirectContacts(userKey));
 const [showPolicyModal, setShowPolicyModal] = useState(false);
 const [policyStrikes, setPolicyStrikes] = useState(() => getUserStrikes(userKey));
 const [isBlocked, setIsBlocked] = useState(() => isUserPolicyBlocked(userKey));
 const [detectedViolationTypes, setDetectedViolationTypes] = useState([] as any[]);
-useEffect(() => { const saved = loadPermanentUserLang(userKey, activePropLang); setUserLangState(saved); }, [userKey, isOpen]);
+useEffect(() => { const saved = loadPermanentUserLang(userKey, activePropLang); setUserLangState(saved); setDirectContacts(loadDirectContacts(userKey)); }, [userKey, isOpen]);
 useEffect(() => { const onLangEvent = (ev: any) => { if (ev && ev.detail && ev.detail.lang) { setUserLangState(ev.detail.lang); } };
 window.addEventListener('sahaya_chat_lang_changed', onLangEvent); return () => window.removeEventListener('sahaya_chat_lang_changed', onLangEvent);
 }, []);
@@ -180,7 +221,7 @@ const handleSelectOwnLanguage = (nextLang: Language) => {
 setUserLangState(nextLang);
 savePermanentUserLang(nextLang, userKey);
 };
-useEffect(() => { if (isOpen) { setPolicyStrikes(getUserStrikes(userKey)); setIsBlocked(isUserPolicyBlocked(userKey)); } }, [isOpen, userKey]);
+useEffect(() => { if (isOpen) { setPolicyStrikes(getUserStrikes(userKey)); setIsBlocked(isUserPolicyBlocked(userKey)); setDirectContacts(loadDirectContacts(userKey)); } }, [isOpen, userKey]);
 const userPhoneClean = normalizePhoneStr(user?.phone ? user.phone : (user as any)?.whatsappNumber);
 const currentUserId = user?.userId ? user.userId : (user as any)?.id ? (user as any).id : '';
 const isMeMessage = (msg: any): boolean => {
@@ -221,7 +262,86 @@ const localWithAuthor = loadLocalPartnerMessages(post.id, authorPartnerKey);
 const localWithMe = loadLocalPartnerMessages(post.id, myPartnerKey);
 return localWithAuthor.length !== 0 ? true : localWithMe.length !== 0;
 };
-const conversationThreads: ConversationThread[] = useMemo(() => { const list: ConversationThread[] = []; (helpPosts ? helpPosts : []).forEach((post) => {
+const matchingUsersForNewChat = useMemo(() => {
+  const q = newChatUsername.trim().toLowerCase();
+  const safeUsers = Array.isArray(users) ? users : [];
+  const filtered = safeUsers.filter((u: any) => {
+    if (!u) return false;
+    const uId = u.id ? u.id : u.userId ? u.userId : '';
+    if (currentUserId && uId === currentUserId) return false;
+    if (user?.name && u.name && u.name.trim().toLowerCase() === user.name.trim().toLowerCase()) return false;
+    if (!q) return true;
+    const nameMatch = Boolean(u.name && u.name.toLowerCase().includes(q));
+    const idMatch = Boolean(uId && String(uId).toLowerCase().includes(q));
+    const nicMatch = Boolean(u.nicNumber && String(u.nicNumber).toLowerCase().includes(q));
+    return nameMatch ? true : idMatch ? true : nicMatch;
+  });
+  return filtered.slice(0, 8);
+}, [users, newChatUsername, currentUserId, user?.name]);
+const buildDirectThread = (contact: DirectChatContact): ConversationThread => {
+  const cleanTargetName = contact.username ? contact.username.trim() : 'පරිශීලක';
+  const myIdentity = user?.name ? user.name.trim() : userKey;
+  const roomPostId = makeDirectRoomId(myIdentity, cleanTargetName);
+  const pKey = makePartnerKey(cleanTargetName, contact.phone, contact.userId);
+  const localMsgs = loadLocalPartnerMessages(roomPostId, pKey);
+  const lastLocal = localMsgs.length !== 0 ? localMsgs[localMsgs.length - 1] : null;
+  const bestMs = lastLocal && lastLocal.createdAtMs ? lastLocal.createdAtMs : contact.addedAt ? contact.addedAt : Date.now();
+  const bestMsg = lastLocal && lastLocal.text ? lastLocal.text : 'Username හරහා සෘජු චැට් සංවාදය (Direct Chat)';
+  const virtualPost: HelpPost = {
+    id: roomPostId,
+    postCode: 'USER-CHAT',
+    userId: currentUserId ? currentUserId : 'usr_direct',
+    userName: user?.name ? user.name : 'පරිශීලක',
+    userPhone: user?.phone ? user.phone : '',
+    category: 'normal_services' as any,
+    whatHappened: '@' + cleanTargetName + ' සමඟ සෘජු චැට් සංවාදය',
+    whatIsNeeded: 'Direct Chat',
+    locationName: 'Online Chat',
+    createdAt: new Date(bestMs).toISOString(),
+    createdAtMs: bestMs,
+    status: 'confirmed' as any,
+    isConfirmed: true,
+    revealContactConsent: false,
+    replies: []
+  };
+  return {
+    id: roomPostId + '_direct_' + pKey,
+    partnerKey: pKey,
+    post: virtualPost,
+    respondentName: cleanTargetName,
+    respondentPhone: contact.phone ? contact.phone : '',
+    respondentId: contact.userId ? contact.userId : '',
+    lastMessage: bestMsg,
+    lastMessageTime: getAccurateElapsedTime(new Date(bestMs).toISOString(), bestMs),
+    lastMessageTimeMs: bestMs,
+    repliesCount: Math.max(1, localMsgs.length),
+    isCurrentUserAuthor: true,
+    isDirectUsernameChat: true
+  };
+};
+const handleStartChatWithUsername = (targetUsernameRaw: string, matchedUser?: UserType) => {
+  const cleanTarget = (matchedUser && matchedUser.name ? matchedUser.name : targetUsernameRaw ? targetUsernameRaw : '').trim().replace(/^@/, '');
+  if (!cleanTarget) return;
+  const newContact: DirectChatContact = {
+    username: cleanTarget,
+    userId: matchedUser ? (matchedUser.userId ? matchedUser.userId : matchedUser.id) : undefined,
+    phone: matchedUser ? (matchedUser.phone ? matchedUser.phone : (matchedUser as any).whatsappPhone) : undefined,
+    addedAt: Date.now()
+  };
+  const existingList = loadDirectContacts(userKey);
+  const existsIdx = existingList.findIndex((c) => c && c.username && c.username.trim().toLowerCase() === cleanTarget.toLowerCase());
+  const updatedContacts = existsIdx !== -1 ? existingList.map((c, idx) => (idx === existsIdx ? { ...c, ...newContact, addedAt: Date.now() } : c)) : [newContact, ...existingList];
+  saveDirectContacts(userKey, updatedContacts);
+  setDirectContacts(updatedContacts);
+  const threadObj = buildDirectThread(newContact);
+  setActiveThread(threadObj);
+  setIsNewChatOpen(false);
+  setNewChatUsername('');
+  setInboxTab('all');
+};
+const conversationThreads: ConversationThread[] = useMemo(() => { const list: ConversationThread[] = [];
+(directContacts ? directContacts : []).forEach((contact) => { if (contact && contact.username) list.push(buildDirectThread(contact)); });
+(helpPosts ? helpPosts : []).forEach((post) => {
 if (!post ? true : !post.id ? true : post.isDeleted) return; if (isUserPostAuthor(post)) { const helperMap: any = {}; const registerHelper = (name?: string, phone?: string, id?: string, msgText?: string, timeStr?: string, timeMs?: number) => {
 const cleanName = name ? name.trim() : ''; if (!cleanName) return; if (user?.name && cleanName.toLowerCase() === user.name.trim().toLowerCase()) return;
 const pKey = makePartnerKey(cleanName, phone, id); const resolvedMs = timeMs ? timeMs : parseTimeToMs(timeStr); const localMsgs = loadLocalPartnerMessages(post.id, pKey);
@@ -243,7 +363,7 @@ const finalMsg = lastLocal && lastLocal.text ? lastLocal.text : latestReply?.mes
 : 'සංවාදය ආරම්භ විය'; list.push({ id: post.id + 'helper' + authorKey, partnerKey: authorKey, post: post, respondentName: post.userName ? post.userName : 'දැන්වීම්කරු',
 respondentPhone: post.userPhone ? post.userPhone : '', respondentId: post.userId ? post.userId : '', lastMessage: finalMsg, lastMessageTime: getAccurateElapsedTime(latestReply?.createdAt ? latestReply.createdAt : post.createdAt, finalMs),
 lastMessageTimeMs: finalMs, repliesCount: replies.length + localMsgs.length, isCurrentUserAuthor: false, }); } }); list.sort((a, b) => b.lastMessageTimeMs - a.lastMessageTimeMs);
-return list; }, [helpPosts, user, isOpen]);
+return list; }, [helpPosts, user, isOpen, directContacts]);
 useEffect(() => { if (isOpen && !activeThread && conversationThreads.length !== 0) { setActiveThread(conversationThreads[0]); } }, [isOpen, conversationThreads.length]);
 useEffect(() => { if (!isOpen ? true : !activeThread?.post?.id) return; const currentPost = activeThread.post; const partnerKey = activeThread.partnerKey;
 const unsubscribe = subscribeToChatMessages(currentPost.id, (firestoreMsgs) => { const localSaved = loadLocalPartnerMessages(currentPost.id, partnerKey);
@@ -438,9 +558,56 @@ h( 'div', { className: (activeThread ? 'hidden md:flex ' : 'flex ') + 'w-full md
 h( 'div', { className: 'flex items-center gap-2.5' }, h( 'div', { className: 'w-10 h-10 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-inner' },
 h(MessageSquare, { className: 'w-5 h-5' }) ), h( 'div', null, h( 'h3', { className: 'text-base font-black text-white flex items-center gap-2' },
 h('span', null, 'Messenger චැට්'), h('span', { className: 'bg-white/20 text-white text-[11px] px-2 py-0.5 rounded-full font-mono font-bold' }, conversationThreads.length)
-), h('p', { className: 'text-[10px] text-emerald-100 font-medium' }, 'එක් එක් පුද්ගලයාගේ චැට් ඉතිහාසය') ) ), h( 'button', { type: 'button',
-onClick: onClose, className: 'md:hidden w-8 h-8 rounded-full bg-white/20 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs cursor-pointer'
-}, '✕' ) ), h( 'div', { className: 'flex border-b border-slate-200 dark:border-[#102d1d] bg-slate-100/70 dark:bg-[#041009] px-2.5 pt-2 gap-1 shrink-0' },
+), h('p', { className: 'text-[10px] text-emerald-100 font-medium' }, 'පෙර පණිවිඩ සහ Username මඟින් නව චැට්') ) ),
+h('div', { className: 'flex items-center gap-1.5 shrink-0' },
+  h('button', {
+    type: 'button',
+    onClick: () => setIsNewChatOpen(!isNewChatOpen),
+    className: 'px-2.5 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer border ' + (isNewChatOpen ? 'bg-amber-400 text-slate-950 border-amber-300' : 'bg-white/20 hover:bg-white/30 text-white border-white/30'),
+    title: 'Username එක හරහා නව Chat එකක් අරඹන්න'
+  }, h(UserPlus, { className: 'w-3.5 h-3.5' }), h('span', null, 'නව Chat')),
+  h('button', { type: 'button', onClick: onClose, className: 'md:hidden w-8 h-8 rounded-full bg-white/20 hover:bg-rose-600 text-white flex items-center justify-center font-bold text-xs cursor-pointer' }, '✕')
+) ),
+isNewChatOpen ? h('div', { className: 'p-3 bg-gradient-to-b from-emerald-50 to-white dark:from-[#082416] dark:to-[#05140c] border-b-2 border-emerald-500/50 space-y-2 shrink-0 animate-fadeIn' },
+  h('div', { className: 'flex items-center justify-between' },
+    h('span', { className: 'text-[11px] font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5' }, h(UserPlus, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, 'Username මඟින් නව Chat එකක් අරඹන්න:')),
+    h('button', { type: 'button', onClick: () => setIsNewChatOpen(false), className: 'text-slate-400 hover:text-rose-500 text-xs font-bold cursor-pointer' }, h(X, { className: 'w-3.5 h-3.5' }))
+  ),
+  h('form', {
+    onSubmit: (e: any) => {
+      e.preventDefault();
+      if (newChatUsername.trim()) {
+        const exactMatch = matchingUsersForNewChat.find((u: any) => u && u.name && u.name.trim().toLowerCase() === newChatUsername.trim().toLowerCase());
+        handleStartChatWithUsername(newChatUsername, exactMatch);
+      }
+    },
+    className: 'flex items-center gap-1.5'
+  },
+    h('input', {
+      type: 'text',
+      value: newChatUsername,
+      onChange: (e: any) => setNewChatUsername(e.target.value),
+      placeholder: 'Username / නම හෝ ID ඇතුළත් කරන්න...',
+      className: 'flex-1 bg-white dark:bg-[#041009] border border-emerald-400 dark:border-emerald-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none'
+    }),
+    h('button', {
+      type: 'submit',
+      disabled: !newChatUsername.trim(),
+      className: 'px-3 py-2 rounded-xl bg-gradient-to-r from-[#0084ff] to-emerald-600 hover:from-[#0073e6] hover:to-emerald-700 disabled:opacity-40 text-white font-black text-xs shadow-sm cursor-pointer shrink-0'
+    }, 'Chat අරඹන්න')
+  ),
+  matchingUsersForNewChat.length !== 0 ? h('div', { className: 'max-h-32 overflow-y-auto space-y-1 pt-1' },
+    matchingUsersForNewChat.map((u: any, uIdx: number) => h('div', {
+      key: (u.id ? u.id : 'usr') + '_' + uIdx,
+      onClick: () => handleStartChatWithUsername(u.name ? u.name : u.userId, u),
+      className: 'px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#092215] hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50 border border-slate-200 dark:border-emerald-800/60 flex items-center justify-between gap-2 cursor-pointer'
+    },
+      h('span', { className: 'text-xs font-black text-slate-800 dark:text-slate-100 truncate' }, u.name ? u.name : u.userId),
+      h('span', { className: 'px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-black shrink-0' }, '💬 Chat')
+    ))
+  ) : null
+) : null,
+h( 'div', { className: 'flex border-b border-slate-200 dark:border-[#102d1d] bg-slate-100/70 dark:bg-[#041009] px-2.5 pt-2 gap-1 shrink-0' },
 h( 'button', { type: 'button', onClick: () => setInboxTab('all'), className: 'px-2.5 py-1.5 text-[11px] font-black rounded-t-xl transition-all cursor-pointer ' +
 (inboxTab === 'all' ? 'bg-white dark:bg-[#071c12] text-emerald-700 dark:text-emerald-300 border-t-2 border-emerald-500 shadow-xs' : 'text-slate-500')
 }, 'සියල්ල (' + conversationThreads.length + ')' ), h( 'button', { type: 'button', onClick: () => setInboxTab('my_posts'), className:
