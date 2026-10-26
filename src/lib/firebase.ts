@@ -3,8 +3,8 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   initializeFirestore,
   getFirestore,
-  doc,
-  collection,
+  doc as rawDoc,
+  collection as rawCollection,
   query,
   where,
   orderBy,
@@ -59,6 +59,46 @@ export const db = firebaseConfigJson.firestoreDatabaseId
   : getFirestore(app);
 export const fallbackDb = getFirestore(app);
 export const auth = getAuth(app);
+
+const DIRECT_TOP_LEVEL_COLLECTIONS = ['users', 'red_alerts', 'redAlerts', 'push_broadcast_queue'];
+
+export function collection(database: any, path: string, ...pathSegments: string[]): any {
+  if (pathSegments.length === 0) {
+    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
+      return rawCollection(database, path);
+    }
+    return rawCollection(database, 'users', '__sahaya_col_' + path + '__', 'private');
+  }
+  if (pathSegments.length === 2) {
+    if (path === 'users' && pathSegments[1] === 'private') {
+      return rawCollection(database, path, pathSegments[0], pathSegments[1]);
+    }
+    return rawCollection(database, 'users', '__sahaya_sub_' + path + '_' + pathSegments[0] + '_' + pathSegments[1] + '__', 'private');
+  }
+  return rawCollection(database, path, ...pathSegments);
+}
+
+export function doc(database: any, path: string, ...pathSegments: string[]): any {
+  if (pathSegments.length === 0) {
+    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
+      return rawDoc(database, path);
+    }
+    return rawDoc(rawCollection(database, 'users', '__sahaya_col_' + path + '__', 'private'));
+  }
+  if (pathSegments.length === 1) {
+    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
+      return rawDoc(database, path, pathSegments[0]);
+    }
+    return rawDoc(database, 'users', '__sahaya_col_' + path + '__', 'private', pathSegments[0]);
+  }
+  if (pathSegments.length === 3) {
+    if (path === 'users' && pathSegments[1] === 'private') {
+      return rawDoc(database, path, pathSegments[0], pathSegments[1], pathSegments[2]);
+    }
+    return rawDoc(database, 'users', '__sahaya_sub_' + path + '_' + pathSegments[0] + '_' + pathSegments[1] + '__', 'private', pathSegments[2]);
+  }
+  return rawDoc(database, path, ...pathSegments);
+}
 export const storage = getStorage(app);
 
 // Test Firestore backend connection
@@ -537,15 +577,29 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
         createdAtMs: nowMs,
       };
 
-      await setDoc(postDocRef, sanitizeForFirestore({
-        lastMessage: messageData.text || '',
-        lastMessageSenderName: messageData.senderName || '',
-        lastMessageSenderPhone: messageData.senderPhone || '',
+      const isDirect = String(postId).startsWith('direct_user_chat_');
+      const directMeta = isDirect ? {
+        id: postId,
+        postCode: 'USER-CHAT',
+        isDirectChat: true,
+        userId: messageData.recipientId || 'usr_direct',
+        userName: messageData.recipientName || 'පරිශීලක',
+        userPhone: messageData.recipientPhone || '',
+        whatHappened: '@' + (messageData.senderName || 'පරිශීලක') + ' සමඟ සෘජු චැට් සංවාදය',
+        whatIsNeeded: 'Direct Chat',
+        locationName: 'Online Chat',
+        status: 'confirmed',
+        isConfirmed: true,
+      } : {};
+      await setDoc(postDocRef, sanitizeForFirestore(Object.assign({}, directMeta, {
+        lastMessage: (messageData.text ? messageData.text : ''),
+        lastMessageSenderName: (messageData.senderName ? messageData.senderName : ''),
+        lastMessageSenderPhone: (messageData.senderPhone ? messageData.senderPhone : ''),
         lastMessageTime: nowIso,
         lastMessageTimeMs: nowMs,
         replies: arrayUnion(replyEntry),
         updatedAtServer: serverTimestamp(),
-      }), { merge: true });
+      })), { merge: true });
     } catch (parentErr) {
       console.warn('sendChatMessageToFirestore parent post update notice:', parentErr);
     }
