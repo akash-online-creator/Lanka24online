@@ -1,4 +1,4 @@
-import React from 'react'; 
+import React from 'react';
 
 import { MessageCircle, CheckCircle, MapPin, Users, Compass, Clock, Calendar, Sparkles, ExternalLink, User, Trash2, X, Search, Gift, Truck, Phone, MessageSquare, ShieldCheck, Pencil, Lock, Languages, Loader2, Check, Star, UserPlus, Bell, Hourglass, KeyRound } from 'lucide-react'; 
 
