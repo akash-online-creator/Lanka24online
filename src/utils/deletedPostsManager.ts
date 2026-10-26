@@ -131,7 +131,7 @@ const blob = new Blob([jsonString], { type: 'application/json' });
 const url = URL.createObjectURL(blob);
 const link = document.createElement('a');
 link.href = url;
-link.download = "deleted_" + entityType + "" + itemId + "" + timestamp + ".json";
+link.download = "deleted_" + entityType + "_" + itemId + "_" + timestamp + ".json";
 document.body.appendChild(link);
 link.click();
 document.body.removeChild(link);
@@ -311,7 +311,7 @@ recentlyDownloadedBackupIds.delete(safeId);
 try {
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const safeId = (post.id ? post.id : post.postCode) ? post.id ? post.id : post.postCode : 'unknown';
-const filename = "deleted_post_" + safeId + "" + timestamp + ".json";
+const filename = "deleted_post_" + safeId + "_" + timestamp + ".json";
 const pAny = (post as any);
 const backupPayload = {
 backupType: 'DELETED_HELP_POST_BACKUP',
@@ -388,7 +388,6 @@ const deletedIds = new Set(getStoredDeletedBloodIds());
 return requests.filter(r => {
 if (!r ? !r : !r.id) return false;
 if (deletedIds.has(r.id) ? deletedIds.has(r.id) : DUMMY_BLOOD_IDS.has(r.id)) return false;
-if (/^bld[0-9]+$/.test(r.id)) return false;
 return true;
 });
 }
@@ -411,7 +410,6 @@ const deletedIds = new Set(getStoredDeletedDisasterIds());
 return items.filter(d => {
 if (!d ? !d : !d.id) return false;
 if (deletedIds.has(d.id) ? deletedIds.has(d.id) : DUMMY_DISASTER_IDS.has(d.id)) return false;
-if (/^rel_[0-9]+$/.test(d.id)) return false;
 return true;
 });
 }
@@ -434,7 +432,6 @@ const deletedIds = new Set(getStoredDeletedDonorIds());
 return donors.filter(d => {
 if (!d ? !d : !d.id) return false;
 if (deletedIds.has(d.id) ? deletedIds.has(d.id) : DUMMY_DONOR_IDS.has(d.id)) return false;
-if (/^donor_[0-9]+$/.test(d.id)) return false;
 return true;
 });
 }
@@ -457,8 +454,6 @@ const deletedIds = new Set(getStoredDeletedMarketplaceIds());
 return items.filter(item => {
 if (!item ? !item : !item.id) return false;
 if (deletedIds.has(item.id) ? deletedIds.has(item.id) : DUMMY_MARKET_ITEM_IDS.has(item.id)) return false;
-if (/^mkt_seller_[0-9]+$/.test(item.id) ? true : /^mkt_buyer_[0-9]+$/.test(item.id)) return false;
-if (/^mkt_seller_free_[0-9]+$/.test(item.id)) return false;
 return true;
 });
 }
@@ -481,8 +476,6 @@ const deletedIds = new Set(getStoredDeletedMarketShopIds());
 return shops.filter(shop => {
 if (!shop ? !shop : !shop.id) return false;
 if (deletedIds.has(shop.id) ? deletedIds.has(shop.id) : DUMMY_MARKET_SHOP_IDS.has(shop.id)) return false;
-if (/^mkt_shop_[0-9]+$/.test(shop.id) ? true : /^mkt_biz_[0-9]+$/.test(shop.id)) return false;
-if (/^shop_[0-9]+$/.test(shop.id)) return false;
 return true;
 });
 }
@@ -505,7 +498,6 @@ const deletedIds = new Set(getStoredDeletedProServiceIds());
 return services.filter(s => {
 if (!s ? !s : !s.id) return false;
 if (deletedIds.has(s.id) ? deletedIds.has(s.id) : DUMMY_PRO_SERVICE_IDS.has(s.id)) return false;
-if (/^ps_[0-9]+$/.test(s.id)) return false;
 return true;
 });
 }
