@@ -519,7 +519,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     return (helpPosts || []).filter((post) => {
       if (!post || (!post.isResolved && !post.confirmedHelperId)) return false;
-      if (post.confirmedHelperId === user.id) return true;
+      if (user?.id && post.confirmedHelperId === user.id) return true;
       if (userPhoneNorm && post.confirmedHelperPhone && normalizePhone(post.confirmedHelperPhone) === userPhoneNorm) {
         return true;
       }
@@ -536,7 +536,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       id: `tag_${i}`,
       nameSi: name,
       tagName: name,
-      nameSi: name,
+      nameEn: name,
       nameTa: name,
       category: 'සාමාන්‍ය සේවා',
     }));
