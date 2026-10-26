@@ -14,7 +14,7 @@ ShieldAlert,
 Sparkles,
 Globe,
 Mic,
-CheckCheck
+Check
 } from 'lucide-react';
 import { HelpPost, PostReply, User as UserType, Language, ChatMessage, TelegramMediaRecord } from '../types';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
@@ -515,7 +515,7 @@ h( 'span', { className: 'flex items-center gap-1 truncate' }, h(Globe, { classNa
 h('span', { className: 'text-slate-600 dark:text-slate-300 font-mono' }, '📞 ' + msg.senderPhone), h( 'a', { href: 'https://wa.me/' + formattedPhone,
 target: '_blank', rel: 'noopener noreferrer', className: 'px-2 py-0.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded font-bold'
 }, 'WhatsApp' ) ) : null, mine ? h( 'div', { className: 'mt-1 flex items-center justify-end gap-1 text-[9px] text-emerald-100/90' },
-h(CheckCheck, { className: 'w-3 h-3' }), h('span', null, 'Sent') ) : null ) ) ); }), h('div', { ref: chatBottomRef }) ), h( 'div', { className: 'p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
+h(Check, { className: 'w-3 h-3' }), h('span', null, 'Sent') ) : null ) ) ); }), h('div', { ref: chatBottomRef }) ), h( 'div', { className: 'p-3 bg-white dark:bg-[#06180f] border-t border-slate-200 dark:border-[#0e3a24] shrink-0' },
 isRecordingVoice ? h(AudioVoiceRecorder, { senderName: user?.name ? user.name : 'User', sourceContext: 'Direct Chat', onSendAudio: handleSendVoiceAudio,
 onCancel: () => setIsRecordingVoice(false) }) : h( 'form', { onSubmit: handleSend, className: 'flex items-center gap-2' }, h( 'button',
 { type: 'button', onClick: () => setIsRecordingVoice(true), className: 'w-10 h-10 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 transition-all active:scale-95 cursor-pointer',
