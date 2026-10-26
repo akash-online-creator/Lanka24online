@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v9';
+const CACHE_NAME = 'sahaya-sewa-v10';
 
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/logo.jpg', '/mixkit-manual-siren-fire-alert-1652.wav', '/siren.wav'];
 
@@ -38,27 +38,20 @@ async function pollFirestoreRedAlertsInBackground() {
 
   try {
 
-    const urlsToPoll = [
-      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15',
-      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15'
-    ];
-    if (watcherConfig && watcherConfig.firestoreUrl && !urlsToPoll.includes(watcherConfig.firestoreUrl)) {
-      urlsToPoll.unshift(watcherConfig.firestoreUrl);
+    const urlsToCheck = [];
+    if (watcherConfig && watcherConfig.firestoreRestUrl) {
+      urlsToCheck.push(watcherConfig.firestoreRestUrl);
     }
+    urlsToCheck.push('https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15');
+    urlsToCheck.push('https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15');
     let docs = [];
-    for (const u of urlsToPoll) {
+    for (const u of urlsToCheck) {
       try {
-        const r = await fetch(u, { cache: 'no-store' });
-        if (r && r.ok) {
-          const d = await r.json();
-          if (d && Array.isArray(d.documents) && d.documents.length !== 0) {
-            docs = docs.concat(d.documents);
-          }
-        }
-      } catch (e) {}
-    }
-    if (docs.length === 0) return;
-
+        const res = await fetch(u, { cache: 'no-store' });
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.documents) && data.documents.length !== 0) {
+            docs = docs.concat(data.documents);
     for (const docItem of docs) {
 
       const fields = docItem.fields ? docItem.fields : {};
@@ -377,33 +370,38 @@ async function showHighPriorityEmergencyNotification(payload) {
 }
 
 self.addEventListener('push', event => {
-
-  let data = {};
-
-  if (event.data) {
-
-    try {
-
-      data = event.data.json();
-
-    } catch (err) {
-
-      data = {
-
-        title: '🚨 සහය සේවා හදිසි දැනුම්දීම',
-
-        body: event.data.text()
-
-      };
-
+  event.waitUntil((async () => {
+    let data = null;
+    if (event.data) {
+      try {
+        data = event.data.json();
+      } catch (err) {
+        const txt = event.data.text();
+        if (txt && txt.trim()) {
+          data = {
+            title: '🚨 සහය සේවා හදිසි දැනුම්දීම',
+            body: txt
+          };
+        }
+      }
     }
+    if (data) {
+      const payload = data.data ? data.data : data;
+      if (payload.alertId) {
+        notifiedAlertIdsInSw.add(payload.alertId);
+      }
+      await showHighPriorityEmergencyNotification(payload);
+    }
+    await pollFirestoreRedAlertsInBackground();
+  })());
+});
 
-  }
+self.addEventListener('sync', event => {
+  event.waitUntil(pollFirestoreRedAlertsInBackground());
+});
 
-  const payload = data.data ? data.data : data;
-
-  event.waitUntil(showHighPriorityEmergencyNotification(payload));
-
+self.addEventListener('periodicsync', event => {
+  event.waitUntil(pollFirestoreRedAlertsInBackground());
 });
 
 self.addEventListener('notificationclick', event => {
