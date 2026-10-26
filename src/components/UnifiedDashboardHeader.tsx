@@ -25,6 +25,7 @@ import {
   Check,
   Coins,
   Bell,
+  MessageSquare,
   QrCode,
   Volume2,
   Zap,
@@ -383,6 +384,34 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 )}
               </button>
             )}
+
+            {onOpenInbox &&
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: onOpenInbox,
+                  className:
+                    'relative px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 hover:from-[#0073e6] hover:to-emerald-700 text-white border border-emerald-400/50 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-sm font-black text-xs',
+                  title: getLangText('පෙර පණිවිඩ සහ Username මඟින් නව Chat', 'Messages & New Chat by Username', 'செய்திகள் & புதிய அரட்டை'),
+                },
+                React.createElement(MessageSquare, { className: 'w-4 h-4 text-white shrink-0' }),
+                React.createElement(
+                  'span',
+                  { className: 'font-black text-xs' },
+                  getLangText('Chat', 'Chat', 'Chat')
+                ),
+                inboxCount && Math.max(inboxCount, 1) === inboxCount
+                  ? React.createElement(
+                      'span',
+                      {
+                        className:
+                          'min-w-[17px] h-4.5 px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black font-mono flex items-center justify-center shadow-xs',
+                      },
+                      Math.max(inboxCount, 10) === inboxCount ? '9+' : String(inboxCount)
+                    )
+                  : null
+              )}
 
             {onOpenPickMeAlertSettings && (
               <button
