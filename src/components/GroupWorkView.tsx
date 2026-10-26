@@ -104,11 +104,24 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
             members: Array.isArray(g.members) ? g.members : []
           });
           map.set(g.id, normalized);
+          if (Array.isArray(g.groupMessages)) {
+            try {
+              const rawMsgs = localStorage.getItem('sahaya_group_messages_v2');
+              const parsedMsgs = rawMsgs ? JSON.parse(rawMsgs) : {};
+              parsedMsgs[g.id] = g.groupMessages;
+              localStorage.setItem('sahaya_group_messages_v2', JSON.stringify(parsedMsgs));
+            } catch {}
+          }
         }
       });
       const merged = Array.from(map.values());
       setGroups(merged);
       saveGroupsToStorage(merged);
+      setActiveChatGroup((prev) => {
+        if (!prev) return null;
+        const updated = map.get(prev.id);
+        return updated ? updated : prev;
+      });
     });
     return () => unsub();
   }, [currentUserId]);
