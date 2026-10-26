@@ -1,5 +1,6 @@
 import { GroupItem, GroupInviteNotification, GroupJoinRequest, GroupMessage, GroupPermissions, GroupWorkSubCategory, User } from '../types';
 import { filterNonDeletedGroups } from '../utils/deletedPostsManager';
+import { updateGroupInFirestore } from '../lib/firebase';
 
 export const initialGroups: GroupItem[] = [];
 export const initialGroupMessages: Record<string, GroupMessage[]> = {};
@@ -99,8 +100,9 @@ export function handleJoinOrRequestGroup(
   const currentUserId = user?.userId || user?.id || '';
   const userPhone = user?.phone || user?.phoneNumber || '';
 
-  const isMember = group.members.some(
-    (m) => (m.userId && m.userId === currentUserId) || (m.phone && m.phone === userPhone)
+  const safeMembers = Array.isArray(group.members) ? group.members : [];
+  const isMember = safeMembers.some(
+    (m) => (m.userId && m.userId === currentUserId) ? true : Boolean(m.phone && m.phone === userPhone)
   );
 
   if (isMember) {
@@ -148,13 +150,16 @@ export function handleJoinOrRequestGroup(
     joinedAt: new Date().toLocaleString()
   };
 
+  const updatedMembers = [...safeMembers.filter((m) => m.userId !== currentUserId && m.phone !== userPhone), newMember];
   const updatedGroup: GroupItem = {
     ...group,
-    members: [...group.members.filter((m) => m.userId !== currentUserId && m.phone !== userPhone), newMember]
+    members: updatedMembers,
+    membersCount: updatedMembers.length
   };
 
   const updatedAll = allGroups.map((g) => (g.id === groupId ? updatedGroup : g));
   saveGroupsToStorage(updatedAll);
+  updateGroupInFirestore(groupId, { members: updatedMembers, membersCount: updatedMembers.length }).catch(() => {});
 
   return { success: true, status: 'joined', message: 'කණ්ඩායමට සාර්ථකව එක් විය!' };
 }
@@ -183,13 +188,17 @@ export function acceptGroupJoinRequest(
     joinedAt: new Date().toLocaleString()
   };
 
+  const safeGroupMembers = Array.isArray(group.members) ? group.members : [];
+  const updatedGroupMembers = [...safeGroupMembers.filter((m) => m.userId !== req.userId), newMember];
   const updatedGroup: GroupItem = {
     ...group,
-    members: [...group.members.filter((m) => m.userId !== req.userId), newMember]
+    members: updatedGroupMembers,
+    membersCount: updatedGroupMembers.length
   };
 
   const updatedGroups = allGroups.map((g) => (g.id === groupId ? updatedGroup : g));
   saveGroupsToStorage(updatedGroups);
+  updateGroupInFirestore(groupId, { members: updatedGroupMembers, membersCount: updatedGroupMembers.length }).catch(() => {});
 
   const updatedRequests = allRequests.map((r) => (r.id === requestId ? { ...r, status: 'accepted' as const } : r));
   saveGroupJoinRequestsToStorage(updatedRequests);
