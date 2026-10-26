@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   initializeFirestore,
   getFirestore,
@@ -57,12 +57,16 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = firebaseConfigJson.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
   : getFirestore(app);
+export const fallbackDb = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // Test Firestore backend connection
 async function testConnection() {
   try {
+    if (auth && !auth.currentUser) {
+      await signInAnonymously(auth).catch(() => {});
+    }
     const { getDocFromServer } = await import('firebase/firestore');
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
@@ -339,13 +343,35 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
 // ==============================================================
 
 export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => void {
-  const colRef = collection(db, POSTS_COLLECTION);
-  return onSnapshot(colRef, (snap) => {
-    const posts = filterAndPurgeDummySnapDocs(snap);
-    callback(posts);
+  let primaryPosts: any[] = [];
+  let legacyPosts: any[] = [];
+  let fallbackPosts: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
+      if (p && p.id) map.set(String(p.id), p);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, POSTS_COLLECTION), (snap) => {
+    primaryPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
   }, (err) => {
-    console.warn("subscribeToHelpPosts error:", err);
+    console.warn("subscribeToHelpPosts primary notice:", err);
   });
+  const unsub2 = onSnapshot(collection(db, 'helpPosts'), (snap) => {
+    legacyPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {});
+  const unsub3 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, POSTS_COLLECTION), (snap) => {
+    fallbackPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+    unsub3();
+  };
 }
 
 export interface PaginatedPostsResult {
@@ -391,24 +417,43 @@ export async function fetchHelpPostsPaginated(
   }
 }
 
-export async function addHelpPostToFirestore(postData: any): Promise<string> {
-  const postId = postData.id || `post_${Date.now()}`;
+export async function addHelpPostToFirestore(postData: any) {
+  const postId = postData.id ? String(postData.id) : 'post_' + Date.now();
+  const uid = auth && auth.currentUser && auth.currentUser.uid ? auth.currentUser.uid : (postData.userId ? postData.userId : (postData.authorId ? postData.authorId : 'usr_guest'));
+  const enriched = sanitizeForFirestore({
+    ...postData,
+    id: postId,
+    authorId: postData.authorId ? postData.authorId : uid,
+    userId: postData.userId ? postData.userId : uid,
+    createdAtServer: serverTimestamp()
+  });
   try {
-    const docRef = doc(db, POSTS_COLLECTION, postId);
-    await setDoc(docRef, sanitizeForFirestore({ ...postData, id: postId, createdAtServer: serverTimestamp() }));
+    await setDoc(doc(db, POSTS_COLLECTION, postId), enriched, { merge: true });
+    setDoc(doc(db, 'helpPosts', postId), enriched, { merge: true }).catch(() => {});
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true }).catch(() => {});
+    }
     return postId;
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, POSTS_COLLECTION);
+    try {
+      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true });
+    } catch (_) {}
     return postId;
   }
 }
 
-export async function updateHelpPostInFirestore(postId: string, updateData: any): Promise<void> {
+export async function updateHelpPostInFirestore(postId: string, updateData: any) {
+  const sanitized = sanitizeForFirestore(updateData);
   try {
-    const docRef = doc(db, POSTS_COLLECTION, postId);
-    await setDoc(docRef, sanitizeForFirestore(updateData), { merge: true });
+    await setDoc(doc(db, POSTS_COLLECTION, postId), sanitized, { merge: true });
+    setDoc(doc(db, 'helpPosts', postId), sanitized, { merge: true }).catch(() => {});
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true }).catch(() => {});
+    }
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+    try {
+      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true });
+    } catch (_) {}
   }
 }
 
@@ -570,19 +615,39 @@ export function subscribeToUserSavedPosts(userId: string, callback: (postIds: st
 // ==============================================================
 
 export function subscribeToRedAlerts(callback: (alerts: any[]) => void): () => void {
-  const colRef = collection(db, RED_ALERTS_COLLECTION);
-  return onSnapshot(colRef, (snap) => {
-    const alerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    callback(alerts);
+  let primaryAlerts: any[] = [];
+  let fallbackAlerts: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackAlerts, ...primaryAlerts].forEach((a) => {
+      if (a && a.id) map.set(String(a.id), a);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, RED_ALERTS_COLLECTION), (snap) => {
+    primaryAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
   }, (err) => {
     console.warn('subscribeToRedAlerts error:', err);
   });
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, RED_ALERTS_COLLECTION), (snap) => {
+    fallbackAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
 }
 
-export async function createRedAlertInFirestore(alertData: any): Promise<string> {
-  const id = alertData.id || `red_alert_${Date.now()}`;
-  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  await setDoc(docRef, sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() }), { merge: true });
+export async function createRedAlertInFirestore(alertData: any) {
+  const id = alertData.id ? String(alertData.id) : 'red_alert_' + Date.now();
+  const payload = sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() });
+  await setDoc(doc(db, RED_ALERTS_COLLECTION, id), payload, { merge: true });
+  setDoc(doc(db, 'redAlerts', id), payload, { merge: true }).catch(() => {});
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, RED_ALERTS_COLLECTION, id), payload, { merge: true }).catch(() => {});
+  }
   return id;
 }
 
@@ -931,27 +996,151 @@ export async function deleteProfessionalServiceFromFirestore(serviceId: string) 
 }
 
 export function subscribeToGroups(callback: (groups: any[]) => void): () => void {
-  const colRef = collection(db, "groups");
-  return onSnapshot(colRef, (snap) => {
-    const groups = filterAndPurgeDummySnapDocs(snap);
-    callback(groups);
+  let primaryGroups: any[] = [];
+  let fallbackGroups: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackGroups, ...primaryGroups].forEach((g) => {
+      if (g && g.id) map.set(String(g.id), g);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, "groups"), (snap) => {
+    primaryGroups = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
   }, () => {});
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "groups"), (snap) => {
+    fallbackGroups = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
 }
 
 export async function addGroupToFirestore(group: any) {
-  const id = group.id ? group.id : "group_" + Date.now();
-  const docRef = doc(db, "groups", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...group, id }), { merge: true });
+  const id = group.id ? String(group.id) : "group_" + Date.now();
+  const payload = sanitizeForFirestore({ ...group, id, updatedAtMs: Date.now() });
+  await setDoc(doc(db, "groups", id), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "groups", id), payload, { merge: true }).catch(() => {});
+  }
   return id;
+}
+export async function updateGroupInFirestore(groupId: string, groupData: any) {
+  if (!groupId) return;
+  const payload = sanitizeForFirestore({ ...groupData, id: groupId, updatedAtMs: Date.now() });
+  await setDoc(doc(db, "groups", groupId), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "groups", groupId), payload, { merge: true }).catch(() => {});
+  }
 }
 
 export async function deleteGroupFromFirestore(groupId: string) {
   try {
-    const docRef = doc(db, "groups", groupId);
-    await deleteDoc(docRef);
+    await deleteDoc(doc(db, "groups", groupId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, "groups", groupId)).catch(() => {});
+    }
   } catch (err) {
     console.warn("deleteGroupFromFirestore error:", err);
   }
+}
+export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) => void): () => void {
+  let primaryPlaces: any[] = [];
+  let fallbackPlaces: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackPlaces, ...primaryPlaces].forEach((p) => {
+      if (p && p.id) map.set(String(p.id), p);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, "saved_places"), (snap) => {
+    primaryPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {});
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "saved_places"), (snap) => {
+    fallbackPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
+}
+export async function savePlaceToFirestore(place: any) {
+  const id = place.id ? String(place.id) : "plc_" + Date.now();
+  const payload = sanitizeForFirestore({ ...place, id, updatedAtServer: serverTimestamp() });
+  await setDoc(doc(db, "saved_places", id), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "saved_places", id), payload, { merge: true }).catch(() => {});
+  }
+  return id;
+}
+export async function deletePlaceFromFirestore(placeId: string) {
+  if (!placeId) return;
+  try {
+    await deleteDoc(doc(db, "saved_places", placeId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, "saved_places", placeId)).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("deletePlaceFromFirestore error:", err);
+  }
+}
+export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
+  return onSnapshot(collection(db, "blood_requests"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]) => void): () => void {
+  return onSnapshot(collection(db, "volunteer_donors"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
+  return onSnapshot(collection(db, "jobs"), (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, () => {});
+}
+export async function saveJobToFirestore(job: any) {
+  const id = job.id ? String(job.id) : "job_" + Date.now();
+  await setDoc(doc(db, "jobs", id), sanitizeForFirestore({ ...job, id }), { merge: true });
+  return id;
+}
+export async function deleteJobFromFirestore(jobId: string) {
+  if (!jobId) return;
+  await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
+}
+export function subscribeToAccommodationsFromFirestore(callback: (items: any[]) => void): () => void {
+  return onSnapshot(collection(db, "accommodations"), (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, () => {});
+}
+export async function saveAccommodationToFirestore(item: any) {
+  const id = item.id ? String(item.id) : "acc_" + Date.now();
+  await setDoc(doc(db, "accommodations", id), sanitizeForFirestore({ ...item, id }), { merge: true });
+  return id;
+}
+export async function deleteAccommodationFromFirestore(id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, "accommodations", id)).catch(() => {});
+}
+export function subscribeToBarterItemsFromFirestore(callback: (items: any[]) => void): () => void {
+  return onSnapshot(collection(db, "barter_items"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+export async function saveBarterItemToFirestore(item: any) {
+  const id = item.id ? String(item.id) : "barter_" + Date.now();
+  await setDoc(doc(db, "barter_items", id), sanitizeForFirestore({ ...item, id }), { merge: true });
+  return id;
+}
+export async function deleteBarterItemFromFirestore(id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, "barter_items", id)).catch(() => {});
 }
 
 // ==============================================================
