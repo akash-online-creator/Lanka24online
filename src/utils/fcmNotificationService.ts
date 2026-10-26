@@ -216,15 +216,27 @@ export async function initializeAllNativePushChannels() {
 
 }
 
+const SAHAYA_VAPID_PUBLIC_KEY = 'BCCmGXeIae2pqzekOU9_6I7hhrYhfntoUIqviG3ik-rLzvzKeEep2TCLeJVjFX0NOHydP-hN1946MQ47wtXetcs';
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+
+  return Uint8Array.from(rawData, (ch) => ch.charCodeAt(0));
+
+}
+
 export async function registerFcmToken(currentUserId?: string) {
 
   try {
 
     await initializeAllNativePushChannels();
 
-    const supported = await isMessagingSupported();
-
-    if (!supported) {
+    if (typeof window === 'undefined' ? true : !('serviceWorker' in navigator) ? true : !('Notification' in window)) {
 
       return null;
 
@@ -244,25 +256,81 @@ export async function registerFcmToken(currentUserId?: string) {
 
     }
 
-    const app = getApps().length !== 0 ? getApp() : undefined;
+    const swRegistration = await navigator.serviceWorker.ready;
 
-    if (!app) return null;
+    let endpoint = '';
 
-    if (!messagingInstance) {
+    let p256dh = '';
 
-      messagingInstance = getMessaging(app);
+    let auth = '';
+
+    if (swRegistration && swRegistration.pushManager) {
+
+      try {
+
+        let sub = await swRegistration.pushManager.getSubscription();
+
+        if (!sub) {
+
+          sub = await swRegistration.pushManager.subscribe({
+
+            userVisibleOnly: true,
+
+            applicationServerKey: urlBase64ToUint8Array(SAHAYA_VAPID_PUBLIC_KEY) as any
+
+          });
+
+        }
+
+        if (sub) {
+
+          const subJson: any = sub.toJSON ? sub.toJSON() : {};
+
+          endpoint = sub.endpoint ? sub.endpoint : subJson.endpoint ? subJson.endpoint : '';
+
+          p256dh = subJson.keys && subJson.keys.p256dh ? subJson.keys.p256dh : '';
+
+          auth = subJson.keys && subJson.keys.auth ? subJson.keys.auth : '';
+
+        }
+
+      } catch (subErr) {
+
+        console.warn('WebPush VAPID subscribe note:', subErr);
+
+      }
 
     }
 
-    const swRegistration = await navigator.serviceWorker.ready;
+    let token = endpoint;
 
-    const token = await getToken(messagingInstance, {
+    if (!token) {
 
-      serviceWorkerRegistration: swRegistration,
+      try {
 
-      vapidKey: (firebaseConfigJson as any).vapidKey || undefined
+        const app = getApps().length !== 0 ? getApp() : undefined;
 
-    });
+        if (app) {
+
+          if (!messagingInstance) {
+
+            messagingInstance = getMessaging(app);
+
+          }
+
+          token = await getToken(messagingInstance, {
+
+            serviceWorkerRegistration: swRegistration,
+
+            vapidKey: (firebaseConfigJson as any).vapidKey ? (firebaseConfigJson as any).vapidKey : SAHAYA_VAPID_PUBLIC_KEY
+
+          });
+
+        }
+
+      } catch (e) {}
+
+    }
 
     if (token) {
 
@@ -282,44 +350,26 @@ export async function registerFcmToken(currentUserId?: string) {
 
             token,
 
-            userId: currentUserId || 'usr_guest',
+            endpoint: endpoint ? endpoint : token,
+
+            p256dh,
+
+            auth,
+
+            userId: currentUserId ? currentUserId : 'usr_guest',
 
             lat: coords.lat,
 
             lng: coords.lng,
 
             platform: Capacitor.isNativePlatform() ? 'android_native' : 'web_pwa',
-
             updatedAtMs: Date.now(),
-
             serverTimestamp: serverTimestamp()
-
           }, { merge: true });
-
-          if (currentUserId) {
-
-            const userTokenRef = doc(db, 'users', currentUserId, 'fcm_tokens', sanitizedTokenId);
-
-            await setDoc(userTokenRef, {
-
-              token,
-
-              updatedAtMs: Date.now(),
-
-              platform: Capacitor.isNativePlatform() ? 'android_native' : 'web_pwa'
-
-            }, { merge: true });
-
-          }
-
-        } catch {}
-
+        } catch (e) {}
       }
-
       return token;
-
     }
-
   } catch (error) {
 
     console.warn('FCM registration status:', error);
