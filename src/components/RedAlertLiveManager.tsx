@@ -442,7 +442,7 @@ export const RedAlertLiveManager: any = ({
     try {
       const workerScript = [
         'function pollNow() {',
-        '  fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15", { cache: "no-store" })',
+        '  fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15", { cache: "no-store" })',
         '    .then(function(r){ return r.ok ? r.json() : null; })',
         '    .then(function(d){ if (d && d.documents) postMessage({ type: "REST_DOCS", documents: d.documents }); else postMessage({ type: "TICK" }); })',
         '    .catch(function(){ postMessage({ type: "TICK" }); });',
