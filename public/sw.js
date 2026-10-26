@@ -38,15 +38,26 @@ async function pollFirestoreRedAlertsInBackground() {
 
   try {
 
-    const url = 'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15';
-
-    const res = await fetch(url, { cache: 'no-store' });
-
-    if (!res.ok) return;
-
-    const data = await res.json();
-
-    const docs = data && data.documents ? data.documents : [];
+    const urlsToPoll = [
+      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15',
+      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15'
+    ];
+    if (watcherConfig && watcherConfig.firestoreUrl && !urlsToPoll.includes(watcherConfig.firestoreUrl)) {
+      urlsToPoll.unshift(watcherConfig.firestoreUrl);
+    }
+    let docs = [];
+    for (const u of urlsToPoll) {
+      try {
+        const r = await fetch(u, { cache: 'no-store' });
+        if (r && r.ok) {
+          const d = await r.json();
+          if (d && Array.isArray(d.documents) && d.documents.length !== 0) {
+            docs = docs.concat(d.documents);
+          }
+        }
+      } catch (e) {}
+    }
+    if (docs.length === 0) return;
 
     for (const docItem of docs) {
 
