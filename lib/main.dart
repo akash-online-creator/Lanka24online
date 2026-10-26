@@ -96,6 +96,99 @@ void startSosCallback() {
 }
 
 class SahayaSosTaskHandler extends TaskHandler {
+  final Set<String> seenAlertIds = <String>{};
+  final Set<String> ignoredAlertIds = <String>{};
+  String watchedUserId = '';
+  bool isFirstPoll = true;
+
+  Future<void> pollFirestoreRedAlerts() async {
+    final urls = [
+      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15',
+      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents/red_alerts?pageSize=15',
+      'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15'
+    ];
+    for (final url in urls) {
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 4);
+        final req = await client.getUrl(Uri.parse(url));
+        final resp = await req.close().timeout(const Duration(seconds: 4));
+        if (resp.statusCode == 200) {
+          final body = await resp.transform(utf8.decoder).join();
+          final parsed = jsonDecode(body);
+          final docs = parsed['documents'];
+          if (docs is List) {
+            for (final doc in docs) {
+              if (doc is! Map) continue;
+              final fields = doc['fields'];
+              if (fields is! Map) continue;
+              final statusObj = fields['status'];
+              final status = statusObj is Map ? (statusObj['stringValue'] ?? '') : '';
+              if (status != 'active') continue;
+              final fakeObj = fields['isFlaggedFake'];
+              final isFake = fakeObj is Map ? (fakeObj['booleanValue'] == true) : false;
+              if (isFake) continue;
+
+              final nameStr = (doc['name'] ?? '').toString();
+              final nameParts = nameStr.split('/');
+              final idObj = fields['id'];
+              final docId = (idObj is Map && idObj['stringValue'] != null)
+                  ? idObj['stringValue'].toString()
+                  : nameParts.last;
+              if (docId.isEmpty) continue;
+              if (seenAlertIds.contains(docId)) continue;
+              if (ignoredAlertIds.contains(docId)) continue;
+
+              final repObj = fields['reportedByUserId'];
+              final repUid = repObj is Map ? (repObj['stringValue'] ?? '').toString() : '';
+              if (watchedUserId.isNotEmpty && repUid.isNotEmpty && repUid == watchedUserId) {
+                seenAlertIds.add(docId);
+                continue;
+              }
+
+              seenAlertIds.add(docId);
+              if (isFirstPoll) continue;
+
+              final titleSiObj = fields['disasterTitleSi'];
+              final titleObj = fields['title'];
+              final locObj = fields['locationName'];
+              final descObj = fields['description'];
+
+              final titleSi = (titleSiObj is Map && titleSiObj['stringValue'] != null)
+                  ? titleSiObj['stringValue'].toString()
+                  : (titleObj is Map && titleObj['stringValue'] != null)
+                      ? titleObj['stringValue'].toString()
+                      : 'හදිසි ආපදා අනතුරු ඇඟවීමක්';
+              final locName = (locObj is Map && locObj['stringValue'] != null)
+                  ? locObj['stringValue'].toString()
+                  : 'ශ්‍රී ලංකාව';
+              final desc = (descObj is Map && descObj['stringValue'] != null)
+                  ? descObj['stringValue'].toString()
+                  : 'වහාම පරීක්ෂා කරන්න.';
+
+              await FlutterForegroundTask.updateService(
+                notificationTitle: '🚨 රතු එළිය: $titleSi',
+                notificationText: '$locName ප්‍රදේශයෙන් වාර්තා වී ඇත! $desc',
+              );
+              FlutterForegroundTask.wakeUpScreen();
+              FlutterForegroundTask.launchApp();
+              FlutterForegroundTask.sendDataToMain({
+                'type': 'NATIVE_BG_RED_ALERT',
+                'alertId': docId,
+                'title': titleSi,
+                'locationName': locName,
+                'description': desc,
+              });
+              break;
+            }
+          }
+        }
+        client.close();
+      } catch (_) {}
+    }
+    isFirstPoll = false;
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     debugPrint('🚨 Sahaya Sewa On-Demand SOS Live Tracking Started');
@@ -104,6 +197,7 @@ class SahayaSosTaskHandler extends TaskHandler {
   @override
   void onRepeatEvent(DateTime timestamp) async {
     try {
+      await pollFirestoreRedAlerts();
       Position pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 5),
@@ -122,7 +216,19 @@ class SahayaSosTaskHandler extends TaskHandler {
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
 
   @override
-  void onReceiveData(Object data) {}
+  void onReceiveData(Object data) {
+    if (data is Map) {
+      if (data['userId'] != null) {
+        watchedUserId = data['userId'].toString();
+      }
+      final ignored = data['ignoredAlertIds'];
+      if (ignored is List) {
+        for (final id in ignored) {
+          if (id != null) ignoredAlertIds.add(id.toString());
+        }
+      }
+    }
+  }
 
   @override
   void onNotificationButtonPressed(String id) {}
@@ -173,11 +279,21 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
     _initEmergencySirenChannel();
     _start24x7BackgroundAlertService();
     _requestAllInitialPermissions();
     _setupWebView();
     _startServerAndLoad();
+  }
+
+  void _onReceiveTaskData(Object data) {
+    if (data is Map && data['type'] == 'NATIVE_BG_RED_ALERT') {
+      final payloadJson = jsonEncode(data);
+      _controller.runJavaScript("""
+        window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: $payloadJson }));
+      """);
+    }
   }
 
   // 1. App Launch Initial Permissions Auto-Request
@@ -243,7 +359,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       iosNotificationOptions: const IOSNotificationOptions(showNotification: true, playSound: true),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(5000),
-        autoRunOnBoot: false,
+        autoRunOnBoot: true,
+        allowWifiLock: true,
         allowWakeLock: true,
       ),
     );
@@ -344,6 +461,14 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
               debugPrint('Native red alert wake-up notice: $e');
             }
           }
+          } else if (text.startsWith('SYNC_WATCHER_CONFIG:')) {
+            try {
+              final jsonStr = text.substring('SYNC_WATCHER_CONFIG:'.length);
+              final parsed = jsonDecode(jsonStr);
+              FlutterForegroundTask.sendDataToTask(parsed);
+            } catch (e) {
+              debugPrint('Error syncing watcher config: $e');
+            }
         },
       );
 
