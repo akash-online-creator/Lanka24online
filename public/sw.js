@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v8';
+const CACHE_NAME = 'sahaya-sewa-v9';
 
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/logo.jpg', '/mixkit-manual-siren-fire-alert-1652.wav', '/siren.wav'];
 
@@ -179,7 +179,7 @@ self.addEventListener('fetch', event => {
 
   }
 
-  if (event.request.mode === 'navigate' ? true : url.pathname === '/' ? true : url.pathname.endsWith('.html')) {
+  if (event.request.mode === 'navigate' ? true : url.pathname === '/' ? true : url.pathname.endsWith('.html') ? true : url.pathname.endsWith('.js') ? true : url.pathname.endsWith('.css')) {
 
     event.respondWith(fetch(event.request).then(networkResponse => {
 
