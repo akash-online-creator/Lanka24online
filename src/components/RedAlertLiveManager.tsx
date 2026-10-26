@@ -410,11 +410,24 @@ export const RedAlertLiveManager: any = ({
                   userId: currentUserId,
                   lat: coords.lat,
                   lng: coords.lng,
+                  firestoreRestUrl: 'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15',
                   ignoredAlertIds: [].concat(stoppedSirens, dismissed, myCreated)
                 }
               });
             }
           }).catch(() => {});
+        }
+        if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+          const coords = getUserCoordinates();
+          const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') ? (localStorage.getItem('sahaya_siren_stopped_alerts') as string) : '[]');
+          const dismissed = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') ? (localStorage.getItem('sahaya_dismissed_alerts') as string) : '[]');
+          const myCreated = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') ? (localStorage.getItem('sahaya_my_created_alerts') as string) : '[]');
+          (window as any).SahayaNativeAlertChannel.postMessage('SYNC_WATCHER_CONFIG:' + JSON.stringify({
+            userId: currentUserId,
+            lat: coords.lat,
+            lng: coords.lng,
+            ignoredAlertIds: [].concat(stoppedSirens, dismissed, myCreated)
+          }));
         }
       } catch (err) {}
     };
