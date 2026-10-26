@@ -462,15 +462,15 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         nicFrontPhotoUrl: resolvedPhoto,
         nicBackPhotoUrl: '',
         facePhotoUrl: '',
-        submissionCount: attemptNum,
+        submissionCount: prevAttemptCount,
         rejectionHistory: newHistoryItem ? [...existingHistory, newHistoryItem] : existingHistory,
         isReRegistration: Boolean(isPreviousRejected),
       } as any;
 
       notifyAdminViaTelegramOnRegistration({
         registrationType: 'පුද්ගලික',
-        identifierOrName: formattedNIC + (fullName.trim() ? ' (' + fullName.trim() + ')' : ''),
-        dedupeKey: 'usr_' + formattedNIC
+        identifierOrName: cleanNic + (fullName.trim() ? ' (' + fullName.trim() + ')' : ''),
+        dedupeKey: 'usr_' + cleanNic
       });
       const registerCallback = onRegister ? onRegister : onRegisterSuccess;
       if (typeof registerCallback === 'function') {
