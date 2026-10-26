@@ -239,6 +239,7 @@ export function saveGroupMessageToStorage(groupId: string, message: GroupMessage
     const updatedList = [...currentList, message];
     parsed[groupId] = updatedList;
     localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(parsed));
+    updateGroupInFirestore(groupId, { groupMessages: updatedList }).catch(() => {});
     return updatedList;
   } catch (err) {
     console.error('Error saving group message:', err);
@@ -255,6 +256,7 @@ export function togglePinGroupMessage(groupId: string, messageId: string): Group
     const updatedList = currentList.map((m) => (m.id === messageId ? { ...m, isPinned: !m.isPinned } : m));
     parsed[groupId] = updatedList;
     localStorage.setItem(GROUP_MESSAGES_STORAGE_KEY, JSON.stringify(parsed));
+    updateGroupInFirestore(groupId, { groupMessages: updatedList }).catch(() => {});
     return updatedList;
   } catch (err) {
     console.error('Error toggling pin on message:', err);
