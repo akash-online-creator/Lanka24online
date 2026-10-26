@@ -46,7 +46,7 @@ import {
 } from '../data/groupWorkData';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { addDeletedGroupId } from '../utils/deletedPostsManager';
-import { deleteGroupFromFirestore } from '../lib/firebase';
+import { subscribeToGroups, addGroupToFirestore, updateGroupInFirestore, deleteGroupFromFirestore } from '../lib/firebase';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupChatModal } from './GroupChatModal';
 import { Trash2 } from 'lucide-react';
@@ -90,10 +90,30 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
 
   useEffect(() => {
     reloadData();
-  }, [currentUserId]);
+    const unsub = subscribeToGroups((remoteGroups) => {
+      const localList = getStoredGroups();
+      const map = new Map();
+      (localList ? localList : []).forEach((g) => {
+        if (g && g.id) map.set(g.id, g);
+      });
+      (remoteGroups ? remoteGroups : []).forEach((g: any) => {
+        if (g && g.id) {
+          const normalized = Object.assign({}, g, {
+            isPrivate: Boolean(g.isPrivate ? true : g.privacy === 'private'),
+            privacy: g.privacy ? g.privacy : (g.isPrivate ? 'private' : 'public'),
+            members: Array.isArray(g.members) ? g.members : []
+          });
+          map.set(g.id, normalized);
+        }
+      });
+      const merged = Array.from(map.values());
+      setGroups(merged);
+      saveGroupsToStorage(merged);
+    });
+    return () => unsub();
 
-  const showToast = (text: string, type: 'success' | 'info' | 'warning' = 'success') => {
-    setToastMessage({ text, type });
+  const showToast = (text: string, type: string = 'success') => {
+    setToastMessage({ text, type: (type as any) });
     setTimeout(() => {
       setToastMessage(null);
     }, 3000);
@@ -106,24 +126,42 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
   };
 
   const handleGroupCreated = (newGroup: GroupItem) => {
-    const updated = [newGroup, ...groups];
+    const creatorId = currentUserId ? currentUserId : 'usr_creator';
+    const creatorPhone = currentUser?.whatsappPhone ? currentUser.whatsappPhone : currentUser?.phone ? currentUser.phone : '';
+    const enrichedGroup: any = Object.assign({}, newGroup, {
+      isPrivate: Boolean(newGroup.isPrivate ? true : newGroup.privacy === 'private'),
+      privacy: newGroup.privacy ? newGroup.privacy : (newGroup.isPrivate ? 'private' : 'public'),
+      creatorId: newGroup.creatorId ? newGroup.creatorId : creatorId,
+      createdAtMs: (newGroup as any).createdAtMs ? (newGroup as any).createdAtMs : Date.now(),
+      members: Array.isArray(newGroup.members) && newGroup.members.length > 0 ? newGroup.members : [
+        {
+          id: creatorId,
+          userId: creatorId,
+          name: currentUser?.name ? currentUser.name : 'නිර්මාතෘ',
+          phone: creatorPhone,
+          photoUrl: currentUser?.photoUrl ? currentUser.photoUrl : '',
+          role: 'admin',
+          status: 'active',
+          joinedAt: new Date().toLocaleString()
+        }
+      ],
+      permissions: newGroup.permissions ? newGroup.permissions : {
+        sendNewMessages: true,
+        adminApproveNewMembers: Boolean(newGroup.isPrivate ? true : newGroup.privacy === 'private')
+      }
+    });
+    const updated = [enrichedGroup, ...groups.filter((g) => g && g.id !== enrichedGroup.id)];
     setGroups(updated);
     saveGroupsToStorage(updated);
-    setIsCreateModalOpen(false);
-    showToast(
-      getLangText(
-        'කණ්ඩායම සාර්ථකව නිර්මාණය කරන ලදී!',
-        'Group created successfully!',
-        'குழு வெற்றிகரமாக உருவாக்கப்பட்டது!'
-      ),
-      'success'
-    );
-  };
+    addGroupToFirestore(enrichedGroup).catch((err) => {
+      console.warn('Firestore add group notice:', err);
+    });
 
   const handleUpdateGroup = (updatedGroup: GroupItem) => {
     const updated = groups.map((g) => (g.id === updatedGroup.id ? updatedGroup : g));
     setGroups(updated);
     saveGroupsToStorage(updated);
+    updateGroupInFirestore(updatedGroup.id, updatedGroup).catch(() => {});
     if (activeChatGroup && activeChatGroup.id === updatedGroup.id) {
       setActiveChatGroup(updatedGroup);
     }
