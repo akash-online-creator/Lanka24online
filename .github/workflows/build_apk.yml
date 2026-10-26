@@ -523,7 +523,7 @@ jobs:
           mkdir -p public/apk &&
           cp build/app/outputs/flutter-apk/app-release.apk public/apk/SupportService.apk &&
           BUILD_NUM=$((10 + ${{ github.run_number }})) &&
-          python3 -c "import json; json.dump({'versionCode': $BUILD_NUM, 'versionName': '1.1.${{ github.run_number }}', 'appName': 'සහය සේවා', 'downloadPath': '/apk/SupportService.apk'}, open('public/apk/version.json', 'w'), indent=2)"
+          python3 -c "import json; json.dump(dict(versionCode=$BUILD_NUM, versionName='1.1.${{ github.run_number }}', appName='සහය සේවා', downloadPath='/apk/SupportService.apk'), open('public/apk/version.json', 'w'), indent=2)"
 
       - name: Upload APK to GitHub Releases
         uses: softprops/action-gh-release@v2
