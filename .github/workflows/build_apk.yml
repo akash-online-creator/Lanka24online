@@ -107,27 +107,134 @@ jobs:
           fi
 
 
-          python3 -c "
+          rm -f android/settings.gradle.kts android/build.gradle.kts android/app/build.gradle.kts
+          python3 -c '
           import os
-          p = 'android/settings.gradle'
-          if os.path.exists(p):
-              with open(p, 'r') as f:
-                  c = f.read()
-              if 'download.flutter.io' not in c:
-                  c = c.replace('repositories {', 'repositories {\n        maven { url "https://storage.googleapis.com/download.flutter.io" }')
-                  with open(p, 'w') as f:
-                      f.write(c)
-          bg = 'android/app/build.gradle'
-          if os.path.exists(bg):
-              with open(bg, 'r') as f:
-                  bc = f.read()
-              if '27.0.12077973' not in bc:
-                  bc = bc.replace('android {', 'android {\n    ndkVersion = "27.0.12077973"')
-                  with open(bg, 'w') as f:
-                      f.write(bc)
-          "
-          find android/app/src/main/res -name "ic_launcher*.xml" -delete
-          rm -rf android/app/src/main/java/io
+          os.makedirs("android/app", exist_ok=True)
+          settings_lines = [
+              "pluginManagement {",
+              "    def flutterSdkPath = {",
+              "        def properties = new Properties()",
+              "        file(\"local.properties\").withInputStream { properties.load(it) }",
+              "        def flutterSdkPath = properties.getProperty(\"flutter.sdk\")",
+              "        assert flutterSdkPath != null, \"flutter.sdk not set in local.properties\"",
+              "        return flutterSdkPath",
+              "}()",
+              "",
+              "    includeBuild(\"$flutterSdkPath/packages/flutter_tools/gradle\")",
+              "",
+              "    repositories {",
+              "        google()",
+              "        mavenCentral()",
+              "        gradlePluginPortal()",
+              "        maven { url \"https://storage.googleapis.com/download.flutter.io\" }",
+              "    }",
+              "}",
+              "",
+              "plugins {",
+              "    id \"dev.flutter.flutter-plugin-loader\" version \"1.0.0\"",
+              "    id \"com.android.application\" version \"8.6.0\" apply false",
+              "    id \"org.jetbrains.kotlin.android\" version \"1.9.24\" apply false",
+              "}",
+              "",
+              "include \":app\""
+          ]
+          with open("android/settings.gradle", "w") as f:
+              f.write(chr(10).join(settings_lines) + chr(10))
+          
+          root_gradle_lines = [
+              "allprojects {",
+              "    repositories {",
+              "        google()",
+              "        mavenCentral()",
+              "        maven {",
+              "            url \"https://storage.googleapis.com/download.flutter.io\"",
+              "        }",
+              "    }",
+              "}",
+              "",
+              "rootProject.buildDir = \"../build\"",
+              "subprojects {",
+              "    project.buildDir = \"${rootProject.buildDir}/${project.name}\"",
+              "}",
+              "subprojects {",
+              "    project.evaluationDependsOn(\":app\")",
+              "}",
+              "",
+              "tasks.register(\"clean\", Delete) {",
+              "    delete rootProject.buildDir",
+              "}"
+          ]
+          with open("android/build.gradle", "w") as f:
+              f.write(chr(10).join(root_gradle_lines) + chr(10))
+          
+          app_gradle_lines = [
+              "plugins {",
+              "    id \"com.android.application\"",
+              "    id \"kotlin-android\"",
+              "    id \"dev.flutter.flutter-gradle-plugin\"",
+              "}",
+              "",
+              "def localProperties = new Properties()",
+              "def localPropertiesFile = rootProject.file(\"local.properties\")",
+              "if (localPropertiesFile.exists()) {",
+              "    localPropertiesFile.withReader(\"UTF-8\") { reader ->",
+              "        localProperties.load(reader)",
+              "    }",
+              "}",
+              "",
+              "def flutterVersionCode = localProperties.getProperty(\"flutter.versionCode\") ?: \"1\"",
+              "def flutterVersionName = localProperties.getProperty(\"flutter.versionName\") ?: \"1.0\"",
+              "",
+              "android {",
+              "    namespace \"com.sahayasewa.app\"",
+              "    compileSdk 35",
+              "    ndkVersion = \"27.0.12077973\"",
+              "",
+              "    compileOptions {",
+              "        sourceCompatibility = JavaVersion.VERSION_17",
+              "        targetCompatibility = JavaVersion.VERSION_17",
+              "    }",
+              "",
+              "    kotlinOptions {",
+              "        jvmTarget = \"17\"",
+              "    }",
+              "",
+              "    sourceSets {",
+              "        main.java.srcDirs += \"src/main/java\"",
+              "    }",
+              "",
+              "    defaultConfig {",
+              "        applicationId \"com.sahayasewa.app\"",
+              "        minSdk 21",
+              "        targetSdk 35",
+              "        versionCode flutterVersionCode.toInteger()",
+              "        versionName flutterVersionName",
+              "        multiDexEnabled true",
+              "    }",
+              "",
+              "    buildTypes {",
+              "        release {",
+              "            signingConfig signingConfigs.debug",
+              "            minifyEnabled false",
+              "            shrinkResources false",
+              "        }",
+              "    }",
+              "}",
+              "",
+              "flutter {",
+              "    source \"../..\"",
+              "}",
+              "",
+              "dependencies {",
+              "    implementation \"org.jetbrains.kotlin:kotlin-stdlib:1.9.24\"",
+              "}"
+          ]
+          with open("android/app/build.gradle", "w") as f:
+              f.write(chr(10).join(app_gradle_lines) + chr(10))
+          '
+          find android/app/src/main/res -name "ic_launcher*.xml" -delete || true
+          rm -rf android/app/src/main/java/io android/app/src/main/kotlin
 
           python3 -m pip install pillow --quiet
           python3 -c "
