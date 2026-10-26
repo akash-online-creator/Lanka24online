@@ -314,7 +314,6 @@ if (!s) return true;
 const id = String(s.id ? s.id : '');
 if (!id) return true;
 if (DUMMY_PRO_SERVICE_IDS.includes(id)) return true;
-if (/^ps_[0-9]+$/.test(id)) return true;
 return false;
 };
 export const getStoredProfessionalServices = (): ProfessionalService[] => {
