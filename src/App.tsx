@@ -233,6 +233,24 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser && (activeView === 'dashboard' ? true : activeView === 'admin' ? true : activeView === 'pending')) {
+      setActiveView('login');
+    }
+  }, [currentUser, activeView]);
+
+  useEffect(() => {
+    const handlePreloadError = () => {
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+          window.location.reload();
+        });
+      }
+    };
+    window.addEventListener('vite:preloadError', handlePreloadError);
+    return () => window.removeEventListener('vite:preloadError', handlePreloadError);
+  }, []);
+
   // Global Event Listener for Post Deletions triggered across components
   useEffect(() => {
     const handleGlobalPostDeleted = () => {
