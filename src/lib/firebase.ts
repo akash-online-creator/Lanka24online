@@ -84,6 +84,7 @@ const DIRECT_TOP_LEVEL_COLLECTIONS = [
   'aid_deliveries',
   'aid_broadcasts',
   'barter_items',
+  'barter_proposals',
   'sos_live_sessions',
   'password_reset_requests',
   'pending_ai_queries',
@@ -1176,7 +1177,6 @@ export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]
   }, () => {});
 }
 
-// Disaster Relief Real-time Listener (Added to fix build error)
 export function subscribeToDisasterReliefFromFirestore(callback: (items: any[]) => void): () => void {
   return onSnapshot(collection(db, "disaster_relief"), (snap) => {
     callback(filterAndPurgeDummySnapDocs(snap));
@@ -1273,6 +1273,19 @@ export async function saveBarterItemToFirestore(item: any) {
 export async function deleteBarterItemFromFirestore(id: string) {
   if (!id) return;
   await deleteDoc(doc(db, "barter_items", id)).catch(() => {});
+}
+
+// 🚀 Barter Proposals Real-time Functions (Added to fix build error)
+export function subscribeToBarterProposalsFromFirestore(callback: (proposals: any[]) => void): () => void {
+  return onSnapshot(collection(db, "barter_proposals"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+
+export async function saveBarterProposalToFirestore(proposal: any) {
+  const id = proposal.id ? String(proposal.id) : "prop_" + Date.now();
+  await setDoc(doc(db, "barter_proposals", id), sanitizeForFirestore({ ...proposal, id, updatedAtServer: serverTimestamp() }), { merge: true });
+  return id;
 }
 
 // ==============================================================
