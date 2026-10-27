@@ -1,9 +1,9 @@
 {
   "appName": "Sahaya Sewa",
-  "versionName": "1.0.8",
-  "versionCode": 8,
-  "fileName": "sahayasewa-latest.apk",
-  "downloadPath": "/apk/sahayasewa-latest.apk",
-  "releaseNotes": "සහය සේවා නවතම සංස්කරණය (Direct APK Download & Update Support)",
-  "updatedAt": "2026-10-05T08:00:00Z"
+  "versionName": "1.1.862",
+  "versionCode": 862,
+  "fileName": "app-release.apk",
+  "downloadPath": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
+  "releaseNotes": "සහය සේවා නවතම සංස්කරණය v1.1.862 (Direct APK Download & Update Support)",
+  "updatedAt": "2026-10-27T16:58:00Z"
 }

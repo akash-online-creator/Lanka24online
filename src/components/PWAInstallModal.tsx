@@ -99,7 +99,7 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
       setApkDownloadNotice(true);
     } catch (err) {
       console.error('Direct APK download trigger failed:', err);
-      window.location.href = '/apk/sahayasewa-latest.apk';
+      window.location.href = FALLBACK_APK_DIRECT_URL;
     } finally {
       setIsDownloadingApk(false);
     }
