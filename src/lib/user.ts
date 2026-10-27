@@ -1,6 +1,8 @@
 /**
  * User & NIC Management Library Helper
  * Provides exports for user authentication, verification, blacklist checking, and IP logging.
+ * 
+ * FIXED VERSION: Resolved Silent Errors, ID Collisions, and Sync Issues.
  */
 
 import { db, syncUserProfileToFirestore } from './firebase';
@@ -36,13 +38,13 @@ export async function getUserFromFirestore(userIdOrNic: string): Promise<any | n
       return { id: snap.id, ...snap.data() };
     }
   } catch (e) {
-    console.warn('getUserFromFirestore error:', e);
+    console.error('getUserFromFirestore error:', e);
   }
   return null;
 }
 
 /**
- * Checks whether a given NIC number already exists in Firestore or local storage.
+ * Checks whether a given NIC number already exists in Firestore.
  */
 export async function nicExists(nic: string): Promise<boolean> {
   if (!nic) return false;
@@ -52,19 +54,16 @@ export async function nicExists(nic: string): Promise<boolean> {
     const snap = await getDocs(q);
     if (!snap.empty) return true;
   } catch (e) {
-    console.warn('Firestore nicExists lookup failed, checking local cache:', e);
+    console.error('Firestore nicExists lookup failed:', e);
+    // වැරදීමකින් හෝ අන්තර්ජාලය නැතිවී lookup එක අසාර්ථක වුවහොත්, අනුපිටපත් (Duplicate) 
+    // සෑදීම වැළැක්වීමට මෙතැනදී කෙලින්ම Error එකක් ලබාදෙයි.
+    throw new Error('දත්ත සමුදාය හා සම්බන්ධ වීමට නොහැක. කරුණාකර අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කරන්න.');
   }
-
-  try {
-    const localUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
-    return localUsers.some((u: any) => u && u.nicNumber && u.nicNumber.trim().toUpperCase() === cleanNic);
-  } catch (e) {
-    return false;
-  }
+  return false;
 }
 
 /**
- * Saves or updates a user in the database.
+ * Saves or updates a user in the database with strict error handling.
  */
 export async function saveUser(userData: UserData): Promise<{ success: boolean; user?: any; error?: string }> {
   try {
@@ -73,7 +72,11 @@ export async function saveUser(userData: UserData): Promise<{ success: boolean; 
     }
 
     const cleanNic = userData.nicNumber.trim().toUpperCase();
-    const userId = userData.id || userData.userId || `usr_${Date.now()}`;
+    
+    // FIX 1: Date.now() වෙනුවට Firebase මඟින්ම ලබාදෙන Unique ID (doc id) එකක් භාවිතා කිරීම. 
+    // මේ නිසා ID ගැටෙන (Collisions) අවදානම 0% කි.
+    const userId = userData.id || userData.userId || doc(collection(db, 'users')).id;
+    
     const formattedUser = {
       ...userData,
       id: userId,
@@ -83,20 +86,24 @@ export async function saveUser(userData: UserData): Promise<{ success: boolean; 
       createdAt: userData.createdAt || new Date().toISOString(),
     };
 
-    // Save to Firestore
+    // FIX 2: Firebase වෙත Sync වීම අනිවාර්ය කර ඇත.
     try {
       await syncUserProfileToFirestore(userId, formattedUser);
-    } catch (e) {
-      console.warn('Firestore sync user error:', e);
+    } catch (e: any) {
+      console.error('Firestore sync user error:', e);
+      // Firebase වෙත save වීම අසාර්ථක වුවහොත් Silent Error එකක් නොදී පරිශීලකයාට දෝෂය පෙන්වයි.
+      return { success: false, error: 'දත්ත ගබඩා කිරීම අසාර්ථකයි. අන්තර්ජාල සම්බන්ධතාවය පරීක්ෂා කර නැවත උත්සාහ කරන්න.' };
     }
 
-    // Save to local cache
+    // Firebase වෙත සාර්ථකව Sync වූ පසුව පමණක් Local Cache එක Update කරයි.
     try {
       const localUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
       const filtered = localUsers.filter((u: any) => u && u.nicNumber && u.nicNumber.trim().toUpperCase() !== cleanNic);
       filtered.push(formattedUser);
       localStorage.setItem('sahaya_users', JSON.stringify(filtered));
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Local cache update failed:', e);
+    }
 
     return { success: true, user: formattedUser };
   } catch (err: any) {
@@ -127,16 +134,17 @@ export async function findUserByNic(nic: string): Promise<UserData | null> {
       return { id: docSnap.id, ...docSnap.data() } as UserData;
     }
   } catch (e) {
-    console.warn('Firestore findUserByNic error:', e);
+    console.error('Firestore findUserByNic error:', e);
+    // අන්තර්ජාලය නොමැතිව දත්ත කියවීමේදී (Read only) පමණක් Local Cache එක පරීක්ෂා කිරීම ආරක්ෂිතයි.
+    try {
+      const localUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
+      const matched = localUsers.find((u: any) => u && u.nicNumber && u.nicNumber.trim().toUpperCase() === cleanNic);
+      return matched || null;
+    } catch (err) {
+      return null;
+    }
   }
-
-  try {
-    const localUsers = JSON.parse(localStorage.getItem('sahaya_users') || '[]');
-    const matched = localUsers.find((u: any) => u && u.nicNumber && u.nicNumber.trim().toUpperCase() === cleanNic);
-    return matched || null;
-  } catch (e) {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -174,7 +182,7 @@ export async function appendIpHistory(userIdOrNic: string, ip: string): Promise<
       }
     }
   } catch (e) {
-    console.warn('Failed to append IP history:', e);
+    console.error('Failed to append IP history:', e);
   }
 }
 
