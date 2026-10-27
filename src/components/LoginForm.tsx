@@ -16,8 +16,6 @@ import { DevicePinLoginView } from './DevicePinLoginView';
 
 import { requestNotificationPermission } from '../utils/notificationManager';
 
-import { triggerDirectApkDownload } from '../utils/apkDownloadHelper';
-
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 
 import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
@@ -382,30 +380,6 @@ return 'English';
 
 };
 
-const handleDirectAPKDownload = async () => {
-
-if (isDownloading) return;
-
-setIsDownloading(true);
-
-try {
-
-await triggerDirectApkDownload();
-
-} catch (err) {
-
-console.error('APK Download trigger error:', err);
-
-} finally {
-
-setTimeout(() => setIsDownloading(false), 3000);
-
-}
-
-};
-
-const h = React.createElement;
-
 return h('div',
 
 { className: 'w-full max-w-[420px] mx-auto px-3 py-1 flex flex-col items-center' }, h('div',
@@ -737,68 +711,10 @@ language === 'en'
 ? '👤 Sign In as Visitor (User Demo)'
 
 : language === 'ta'
-
 ? '👤 பார்வையாளராக நுழைக (User Demo)'
-
 : '👤 නරඹන්නා ලෙස පිවිසෙන්න (User Demo)'
-
 )))
-
-: null, h('div',
-
-{ className: 'mt-2 pt-2 border-t border-slate-100 dark:border-[#173222]' }, h('button',
-
-{
-
-type: 'button',
-
-disabled: isDownloading,
-
-onClick: handleDirectAPKDownload,
-
-className:
-
-'w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white text-xs font-black shadow-md shadow-emerald-950/20 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-80',
-
-},
-
-isDownloading
-
-? h(React.Fragment,
-
-null, h(Loader2, { className: 'w-4 h-4 text-amber-300 animate-spin' }), h('span',
-
-null,
-
-language === 'en'
-
-? '⏳ Downloading APK File...'
-
-: language === 'ta'
-
-? '⏳ செயலி பதிவிறக்கம் செய்யப்படுகிறது...'
-
-: '⏳ APK ගොනුව බාගත වෙමින් පවතී...'
-
-))
-
-: h(React.Fragment,
-
-null, h(Download, { className: 'w-4 h-4 text-amber-300' }), h('span',
-
-null,
-
-language === 'en'
-
-? '📲 Download & Install Mobile App (APK)'
-
-: language === 'ta'
-
-? '📲 செயலியை பதிவிறக்கம் செய்க (Download APK)'
-
-: '📲 සහය සේවා App එක Phone එකට Download කරගන්න'
-
-))))), h('div',
+: null), h('div',
 
 { className: 'mt-2 text-center pb-1 flex items-center justify-center gap-3 text-xs' },
 
