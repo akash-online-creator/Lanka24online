@@ -345,29 +345,6 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
               </button>
             )}
 
-            {onOpenInstallApp && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const { triggerNativeInstallPrompt } = await import('../utils/pwaHelper');
-                    const res = await triggerNativeInstallPrompt();
-                    if (res.outcome !== 'accepted') {
-                      onOpenInstallApp();
-                    }
-                  } catch {
-                    onOpenInstallApp();
-                  }
-                }}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-[#00663e] text-white font-black text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
-                title={getLangText('App එක Download කරගන්න', 'Download Sahaya Sewa App', 'செயலியை நிறுவுக')}
-              >
-                <span className="text-xs">📲</span>
-                <span className="font-black text-xs">
-                  {language === 'en' ? 'Download' : language === 'ta' ? 'Download' : 'Download'}
-                </span>
-              </button>
-            )}
 
             {onOpenNotifications && (
               <button
