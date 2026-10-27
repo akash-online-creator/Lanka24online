@@ -540,7 +540,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
               {/* Current Coords Display */}
               <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between">
                 <div>
-                  <span className="font-semibold">{getLang('ඛණ්ඩාංක:', 'Coordinates:', 'ஆයத்தொலைவுகள்:')}</span> {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
+                  <span className="font-semibold">{getLang('ඛණ්ඩාංක:', 'Coordinates:', 'ஆயத்தொலைவுகள்:')}</span> {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
                   {gpsAccuracy && <span className="ml-2 text-slate-400">(±{Math.round(gpsAccuracy)}m)</span>}
                 </div>
                 {resolvedAddress && <span className="text-emerald-600 font-medium truncate max-w-[200px]">{resolvedAddress}</span>}
@@ -586,7 +586,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                   <div>
                     <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                       {isPublic
-                        ? getLang('පොදු ස්ථානයක් ලෙස පලකරන්න (Public)', 'Publish as Public Location', 'பொது இடமாக வெளியிடு')}
+                        ? getLang('පොදු ස්ථානයක් ලෙස පලකරන්න (Public)', 'Publish as Public Location', 'பொது இடமாக வெளியிடு')
                         : getLang('පෞද්ගලික ස්ථානයක් (Private)', 'Save as Private Location', 'தனிப்பட்ட இடமாக சேமி')}
                     </div>
                     <div className="text-[11px] text-slate-500">
