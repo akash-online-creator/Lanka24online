@@ -379,6 +379,8 @@ if (lang === 'ta') return 'தமிழ்';
 return 'English';
 
 };
+const h = React.createElement;
+
 
 return h('div',
 
