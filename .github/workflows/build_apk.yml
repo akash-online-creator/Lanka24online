@@ -1,6 +1,4 @@
 name: Build Release APK
-
-
 on:
   push:
     branches:
@@ -9,12 +7,8 @@ on:
       - 'public/apk/**'
       - '**.md'
   workflow_dispatch:
-
-
 permissions:
   contents: write
-
-
 jobs:
   build:
     name: Build Release APK
@@ -24,8 +18,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-
       - name: Setup Firebase Config
         run: |
           if [ -n "${{ secrets.FIREBASE_CONFIG }}" ]; then
@@ -43,99 +35,83 @@ jobs:
               except Exception:
                   pass
           if not valid:
-              cfg = {
-                  'projectId': 'gen-lang-client-0262698872',
-                  'appId': '1:503381962483:web:4bda294cd68823f579d186',
-                  'apiKey': 'AIzaSyBtTtuWnl4-orEHh9JkPHtkE5_z794EhpQ',
-                  'authDomain': 'gen-lang-client-0262698872.firebaseapp.com',
-                  'firestoreDatabaseId': 'ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f',
-                  'storageBucket': 'gen-lang-client-0262698872.firebasestorage.app',
-                  'messagingSenderId': '503381962483',
-                  'measurementId': '',
-                  'oAuthClientId': '503381962483-rh75ngs14tg41fd5728i5ef7rcjk86dn.apps.googleusercontent.com',
-                  'recaptchaSiteKey': ''
-              }
+              cfg = dict(
+                  projectId='gen-lang-client-0262698872',
+                  appId='1:503381962483:web:4bda294cd68823f579d186',
+                  apiKey='AIzaSyBtTtuWnl4-orEHh9JkPHtkE5_z794EhpQ',
+                  authDomain='gen-lang-client-0262698872.firebaseapp.com',
+                  firestoreDatabaseId='ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f',
+                  storageBucket='gen-lang-client-0262698872.firebasestorage.app',
+                  messagingSenderId='503381962483',
+                  measurementId='',
+                  oAuthClientId='503381962483-rh75ngs14tg41fd5728i5ef7rcjk86dn.apps.googleusercontent.com',
+                  recaptchaSiteKey=''
+              )
               with open('firebase-applet-config.json', 'w') as f:
                   json.dump(cfg, f, indent=2)
               print('Generated valid firebase-applet-config.json')
           "
-
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-
       - name: Install and Build Web
         run: |
           npm install --legacy-peer-deps --no-audit
           npm run build
           mkdir -p assets/web
           cp -r dist/* assets/web/ 2>/dev/null || true
-
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: 'stable'
-
-
       - name: Precache Flutter Android Artifacts
         run: flutter precache --android
-
-
       - name: Configure Android Build & Fix Dependencies
         run: |
           flutter pub add geolocator_android:4.6.1 --dev || true
           if [ -f scripts/prepare_android.py ]; then
             python3 scripts/prepare_android.py
           fi
-
-
           rm -f android/settings.gradle.kts android/build.gradle.kts android/app/build.gradle.kts
           python3 -c '
           import os
           os.makedirs("android/app", exist_ok=True)
           settings_lines = [
-              "pluginManagement {",
-              "    def flutterSdkPath = {",
+              "pluginManagement \x7b",
+              "    def flutterSdkPath = \x7b",
               "        def properties = new Properties()",
-              "        file(\"local.properties\").withInputStream { properties.load(it) }",
+              "        file(\"local.properties\").withInputStream \x7b properties.load(it) \x7d",
               "        def flutterSdkPath = properties.getProperty(\"flutter.sdk\")",
               "        assert flutterSdkPath != null, \"flutter.sdk not set in local.properties\"",
               "        return flutterSdkPath",
-              "}()",
+              "\x7d()",
               "",
               "    includeBuild(\"$flutterSdkPath/packages/flutter_tools/gradle\")",
               "",
-              "    repositories {",
+              "    repositories \x7b",
               "        google()",
               "        mavenCentral()",
               "        gradlePluginPortal()",
-              "        maven { url \"https://storage.googleapis.com/download.flutter.io\" }",
-              "    }",
-              "}",
+              "        maven \x7b url \"https://storage.googleapis.com/download.flutter.io\" \x7d",
+              "    \x7d",
+              "\x7d",
               "",
-              "plugins {",
+              "plugins \x7b",
               "    id \"dev.flutter.flutter-plugin-loader\" version \"1.0.0\"",
               "    id \"com.android.application\" version \"8.6.0\" apply false",
               "    id \"org.jetbrains.kotlin.android\" version \"1.9.24\" apply false",
-              "}",
+              "\x7d",
               "",
               "include \":app\""
           ]
@@ -143,106 +119,105 @@ jobs:
               f.write(chr(10).join(settings_lines) + chr(10))
           
           root_gradle_lines = [
-              "allprojects {",
-              "    repositories {",
+              "allprojects \x7b",
+              "    repositories \x7b",
               "        google()",
               "        mavenCentral()",
-              "        maven {",
+              "        maven \x7b",
               "            url \"https://storage.googleapis.com/download.flutter.io\"",
-              "        }",
-              "    }",
-              "}",
+              "        \x7d",
+              "    \x7d",
+              "\x7d",
               "",
               "rootProject.buildDir = \"../build\"",
-              "subprojects {",
-              "    project.buildDir = \"${rootProject.buildDir}/${project.name}\"",
-              "}",
-              "subprojects {",
+              "subprojects \x7b",
+              "    project.buildDir = \"$\x7brootProject.buildDir\x7d/$\x7bproject.name\x7d\"",
+              "\x7d",
+              "subprojects \x7b",
               "    project.evaluationDependsOn(\":app\")",
-              "}",
+              "\x7d",
               "",
-              "tasks.register(\"clean\", Delete) {",
+              "tasks.register(\"clean\", Delete) \x7b",
               "    delete rootProject.buildDir",
-              "}"
+              "\x7d"
           ]
           with open("android/build.gradle", "w") as f:
               f.write(chr(10).join(root_gradle_lines) + chr(10))
           
           app_gradle_lines = [
-              "plugins {",
+              "plugins \x7b",
               "    id \"com.android.application\"",
               "    id \"kotlin-android\"",
               "    id \"dev.flutter.flutter-gradle-plugin\"",
-              "}",
+              "\x7d",
               "",
               "def localProperties = new Properties()",
               "def localPropertiesFile = rootProject.file(\"local.properties\")",
-              "if (localPropertiesFile.exists()) {",
-              "    localPropertiesFile.withReader(\"UTF-8\") { reader ->",
+              "if (localPropertiesFile.exists()) \x7b",
+              "    localPropertiesFile.withReader(\"UTF-8\") \x7b reader ->",
               "        localProperties.load(reader)",
-              "    }",
-              "}",
+              "    \x7d",
+              "\x7d",
               "",
               "def flutterVersionCode = localProperties.getProperty(\"flutter.versionCode\") ?: \"1\"",
               "def flutterVersionName = localProperties.getProperty(\"flutter.versionName\") ?: \"1.0\"",
               "",
-              "android {",
+              "android \x7b",
               "    namespace \"com.sahayasewa.app\"",
               "    compileSdk 35",
               "    ndkVersion = \"27.0.12077973\"",
               "",
-              "    compileOptions {",
+              "    compileOptions \x7b",
               "        sourceCompatibility = JavaVersion.VERSION_17",
               "        targetCompatibility = JavaVersion.VERSION_17",
-              "    }",
+              "    \x7d",
               "",
-              "    kotlinOptions {",
+              "    kotlinOptions \x7b",
               "        jvmTarget = \"17\"",
-              "    }",
+              "    \x7d",
               "",
-              "    sourceSets {",
+              "    sourceSets \x7b",
               "        main.java.srcDirs += \"src/main/java\"",
-              "    }",
+              "    \x7d",
               "",
-              "    defaultConfig {",
+              "    defaultConfig \x7b",
               "        applicationId \"com.sahayasewa.app\"",
               "        minSdk 21",
               "        targetSdk 35",
               "        versionCode flutterVersionCode.toInteger()",
               "        versionName flutterVersionName",
               "        multiDexEnabled true",
-              "    }",
+              "    \x7d",
               "",
-              "    buildTypes {",
-              "        release {",
+              "    buildTypes \x7b",
+              "        release \x7b",
               "            signingConfig signingConfigs.debug",
               "            minifyEnabled false",
               "            shrinkResources false",
-              "        }",
-              "    }",
-              "}",
+              "        \x7d",
+              "    \x7d",
+              "\x7d",
               "",
-              "flutter {",
+              "flutter \x7b",
               "    source \"../..\"",
-              "}",
+              "\x7d",
               "",
-              "dependencies {",
+              "dependencies \x7b",
               "    implementation \"org.jetbrains.kotlin:kotlin-stdlib:1.9.24\"",
-              "}"
+              "\x7d"
           ]
           with open("android/app/build.gradle", "w") as f:
               f.write(chr(10).join(app_gradle_lines) + chr(10))
           '
           find android/app/src/main/res -name "ic_launcher*.xml" -delete || true
           rm -rf android/app/src/main/java/io android/app/src/main/kotlin
-
           python3 -m pip install pillow --quiet
           python3 -c "
           import os
           from PIL import Image
-          densities = {'mipmap-mdpi': 48, 'mipmap-hdpi': 72, 'mipmap-xhdpi': 96, 'mipmap-xxhdpi': 144, 'mipmap-xxxhdpi': 192}
+          densities = [('mipmap-mdpi', 48), ('mipmap-hdpi', 72), ('mipmap-xhdpi', 96), ('mipmap-xxhdpi', 144), ('mipmap-xxxhdpi', 192)]
           logo = next((p for p in ['assets/web/logo.jpg', 'assets/web/logo.png', 'public/logo.png', 'dist/logo.png'] if os.path.exists(p)), None)
-          for folder, size in densities.items():
+          for folder, size in densities:
               d = os.path.join('android/app/src/main/res', folder)
               os.makedirs(d, exist_ok=True)
               p = os.path.join(d, 'ic_launcher.png')
@@ -254,11 +229,9 @@ jobs:
                       pass
               Image.new('RGBA', (size, size), (0, 122, 75, 255)).save(p, 'PNG')
           "
-
           FLUTTER_BIN=$(which flutter)
           FLUTTER_DIR=$(dirname $(dirname "$FLUTTER_BIN"))
           echo "flutter.sdk=$FLUTTER_DIR" > android/local.properties
-
           python3 -c '
           import os
           pkg_dir = "android/app/src/main/java/com/sahayasewa/app"
@@ -281,54 +254,55 @@ jobs:
               "import android.view.WindowManager;",
               "import io.flutter.embedding.android.FlutterActivity;",
               "",
-              "public class MainActivity extends FlutterActivity {",
+              "public class MainActivity extends FlutterActivity \x7b",
               "    @Override",
-              "    protected void onCreate(Bundle savedInstanceState) {",
+              "    protected void onCreate(Bundle savedInstanceState) \x7b",
               "        super.onCreate(savedInstanceState);",
-              "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {",
+              "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) \x7b",
               "            setShowWhenLocked(true);",
               "            setTurnScreenOn(true);",
-              "        } else {",
+              "        \x7d else \x7b",
               "            getWindow().addFlags(",
               "                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED +",
               "                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON +",
               "                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD +",
               "                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON",
               "            );",
-              "        }",
-              "        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {",
+              "        \x7d",
+              "        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() \x7b",
               "            @Override",
-              "            public void run() {",
+              "            public void run() \x7b",
               "                requestDisableBatteryOptimization();",
               "                startRedAlertService();",
-              "            }",
-              "        }, 3500);",
+              "            \x7d",
+              "        \x7d, 3500);",
+              "    \x7d",
               "",
-              "    private void requestDisableBatteryOptimization() {",
-              "        try {",
-              "            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {",
+              "    private void requestDisableBatteryOptimization() \x7b",
+              "        try \x7b",
+              "            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) \x7b",
               "                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);",
               "                String pkg = getPackageName();",
-              "                if (pm != null && !pm.isIgnoringBatteryOptimizations(pkg)) {",
+              "                if (pm != null && !pm.isIgnoringBatteryOptimizations(pkg)) \x7b",
               "                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);",
               "                    intent.setData(Uri.parse(\"package:\" + pkg));",
               "                    startActivity(intent);",
-              "                }",
-              "            }",
-              "        } catch (Exception ignored) {}",
-              "    }",
+              "                \x7d",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
+              "    \x7d",
               "",
-              "    private void startRedAlertService() {",
-              "        try {",
+              "    private void startRedAlertService() \x7b",
+              "        try \x7b",
               "            Intent svc = new Intent(this, RedAlertMonitorService.class);",
-              "            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {",
+              "            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) \x7b",
               "                startForegroundService(svc);",
-              "            } else {",
+              "            \x7d else \x7b",
               "                startService(svc);",
-              "            }",
-              "        } catch (Exception ignored) {}",
-              "    }",
-              "}"
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
+              "    \x7d",
+              "\x7d"
           ]
           svc_lines = [
               "package com.sahayasewa.app;",
@@ -341,6 +315,7 @@ jobs:
               "import android.app.Service;",
               "import android.content.Context;",
               "import android.content.Intent;",
+              "import android.content.pm.ServiceInfo;",
               "import android.content.SharedPreferences;",
               "import android.media.AudioAttributes;",
               "import android.media.Ringtone;",
@@ -363,29 +338,29 @@ jobs:
               "import org.json.JSONArray;",
               "import org.json.JSONObject;",
               "",
-              "public class RedAlertMonitorService extends Service {",
+              "public class RedAlertMonitorService extends Service \x7b",
               "    private static final String MONITOR_CHANNEL_ID = \"sahaya_bg_monitor_channel\";",
               "    private static final String ALERT_CHANNEL_ID = \"sahaya_emergency_red_alert_native\";",
               "    private final ExecutorService executor = Executors.newSingleThreadExecutor();",
               "    private final Handler handler = new Handler(Looper.getMainLooper());",
               "    private boolean isRunning = false;",
               "",
-              "    private final Runnable pollRunnable = new Runnable() {",
+              "    private final Runnable pollRunnable = new Runnable() \x7b",
               "        @Override",
-              "        public void run() {",
+              "        public void run() \x7b",
               "            if (!isRunning) return;",
-              "            executor.execute(new Runnable() {",
+              "            executor.execute(new Runnable() \x7b",
               "                @Override",
-              "                public void run() {",
+              "                public void run() \x7b",
               "                    checkFirestoreRedAlerts();",
-              "                }",
-              "            });",
+              "                \x7d",
+              "            \x7d);",
               "            handler.postDelayed(this, 5000);",
-              "        }",
-              "    };",
+              "        \x7d",
+              "    \x7d;",
               "",
               "    @Override",
-              "    public void onCreate() {",
+              "    public void onCreate() \x7b",
               "        super.onCreate();",
               "        createChannels();",
               "        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O",
@@ -401,27 +376,27 @@ jobs:
               "            .setContentIntent(pendingIntent)",
               "            .setOngoing(true)",
               "            .build();",
-              "        try {",
-              "            if (Build.VERSION.SDK_INT >= 34) {",
+              "        try \x7b",
+              "            if (Build.VERSION.SDK_INT >= 34) \x7b",
               "                startForeground(7771, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);",
-              "            } else {",
+              "            \x7d else \x7b",
               "                startForeground(7771, notif);",
-              "            }",
-              "        } catch (Exception ignored) {}",
-              "    }",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
+              "    \x7d",
               "",
               "    @Override",
-              "    public int onStartCommand(Intent intent, int flags, int startId) {",
-              "        if (!isRunning) {",
+              "    public int onStartCommand(Intent intent, int flags, int startId) \x7b",
+              "        if (!isRunning) \x7b",
               "            isRunning = true;",
               "            handler.post(pollRunnable);",
-              "        }",
+              "        \x7d",
               "        return START_STICKY;",
-              "    }",
+              "    \x7d",
               "",
               "    @Override",
-              "    public void onTaskRemoved(Intent rootIntent) {",
-              "        try {",
+              "    public void onTaskRemoved(Intent rootIntent) \x7b",
+              "        try \x7b",
               "            Intent restartIntent = new Intent(getApplicationContext(), RedAlertMonitorService.class);",
               "            restartIntent.setPackage(getPackageName());",
               "            int pFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M",
@@ -431,27 +406,27 @@ jobs:
               "                ? PendingIntent.getForegroundService(getApplicationContext(), 1, restartIntent, pFlags)",
               "                : PendingIntent.getService(getApplicationContext(), 1, restartIntent, pFlags);",
               "            AlarmManager am = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);",
-              "            if (am != null) {",
+              "            if (am != null) \x7b",
               "                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 1000, restartPi);",
-              "            }",
-              "        } catch (Exception ignored) {}",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
               "        super.onTaskRemoved(rootIntent);",
-              "    }",
+              "    \x7d",
               "",
               "    @Override",
-              "    public void onDestroy() {",
+              "    public void onDestroy() \x7b",
               "        isRunning = false;",
               "        handler.removeCallbacks(pollRunnable);",
               "        super.onDestroy();",
-              "    }",
+              "    \x7d",
               "",
               "    @Override",
-              "    public IBinder onBind(Intent intent) {",
+              "    public IBinder onBind(Intent intent) \x7b",
               "        return null;",
-              "    }",
+              "    \x7d",
               "",
-              "    private void createChannels() {",
-              "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {",
+              "    private void createChannels() \x7b",
+              "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) \x7b",
               "            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);",
               "            if (nm == null) return;",
               "            NotificationChannel monitorChan = new NotificationChannel(",
@@ -467,29 +442,29 @@ jobs:
               "                NotificationManager.IMPORTANCE_HIGH",
               "            );",
               "            alertChan.enableVibration(true);",
-              "            alertChan.setVibrationPattern(new long[]{0, 1000, 300, 1000, 300, 1500});",
+              "            alertChan.setVibrationPattern(new long[]\x7b0, 1000, 300, 1000, 300, 1500\x7d);",
               "            Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);",
-              "            if (alarmSound == null) {",
+              "            if (alarmSound == null) \x7b",
               "                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);",
-              "            }",
+              "            \x7d",
               "            AudioAttributes attrs = new AudioAttributes.Builder()",
               "                .setUsage(AudioAttributes.USAGE_ALARM)",
               "                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)",
               "                .build();",
               "            alertChan.setSound(alarmSound, attrs);",
               "            nm.createNotificationChannel(alertChan);",
-              "        }",
-              "    }",
+              "        \x7d",
+              "    \x7d",
               "",
-              "    private void checkFirestoreRedAlerts() {",
-              "        String[] urls = new String[]{",
+              "    private void checkFirestoreRedAlerts() \x7b",
+              "        String[] urls = new String[]\x7b",
               "            \"https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=10\",",
               "            \"https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=10\"",
-              "        };",
+              "        \x7d;",
               "        SharedPreferences prefs = getSharedPreferences(\"sahaya_native_alerts\", MODE_PRIVATE);",
-              "        for (String urlStr : urls) {",
+              "        for (String urlStr : urls) \x7b",
               "            HttpURLConnection conn = null;",
-              "            try {",
+              "            try \x7b",
               "                URL url = new URL(urlStr);",
               "                conn = (HttpURLConnection) url.openConnection();",
               "                conn.setRequestMethod(\"GET\");",
@@ -499,14 +474,14 @@ jobs:
               "                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));",
               "                StringBuilder sb = new StringBuilder();",
               "                String line;",
-              "                while ((line = reader.readLine()) != null) {",
+              "                while ((line = reader.readLine()) != null) \x7b",
               "                    sb.append(line);",
-              "                }",
+              "                \x7d",
               "                reader.close();",
               "                JSONObject json = new JSONObject(sb.toString());",
               "                if (!json.has(\"documents\")) continue;",
               "                JSONArray docs = json.getJSONArray(\"documents\");",
-              "                for (int i = 0; i != docs.length(); i++) {",
+              "                for (int i = 0; i != docs.length(); i++) \x7b",
               "                    JSONObject doc = docs.getJSONObject(i);",
               "                    String fullName = doc.optString(\"name\", \"\");",
               "                    String[] parts = fullName.split(\"/\");",
@@ -523,64 +498,64 @@ jobs:
               "                    String locName = getStringField(fields, \"locationName\", \"\\u0dc1\\u0dca\\200d\\u0dbb\\u0dd3 \\u0dbd\\u0d82\\u0d9a\\u0dcf\\u0dc0\");",
               "                    String desc = getStringField(fields, \"description\", \"\\u0dc0\\u0dc4\\u0dcf\\u0db8 \\u0d86\\u0dbb\\u0d9a\\u0dca\\u0dc2\\u0dd2\\u0dad \\u0db4\\u0dd2\\u0dba\\u0dc0\\u0dbb \\u0d9c\\u0db1\\u0dca\\u0db1.\");",
               "                    triggerNativeEmergencyAlert(docId, titleSi, locName, desc);",
-              "                }",
-              "            } catch (Exception ignored) {",
-              "            } finally {",
+              "                \x7d",
+              "            \x7d catch (Exception ignored) \x7b",
+              "            \x7d finally \x7b",
               "                if (conn != null) conn.disconnect();",
-              "            }",
-              "        }",
-              "    }",
+              "            \x7d",
+              "        \x7d",
+              "    \x7d",
               "",
-              "    private String getStringField(JSONObject fields, String key, String fallback) {",
+              "    private String getStringField(JSONObject fields, String key, String fallback) \x7b",
               "        JSONObject obj = fields.optJSONObject(key);",
-              "        if (obj != null && obj.has(\"stringValue\")) {",
+              "        if (obj != null && obj.has(\"stringValue\")) \x7b",
               "            return obj.optString(\"stringValue\", fallback);",
-              "        }",
+              "        \x7d",
               "        return fallback;",
-              "    }",
+              "    \x7d",
               "",
-              "    private void triggerNativeEmergencyAlert(String docId, String titleSi, String locName, String desc) {",
-              "        try {",
+              "    private void triggerNativeEmergencyAlert(String docId, String titleSi, String locName, String desc) \x7b",
+              "        try \x7b",
               "            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);",
-              "            if (pm != null) {",
+              "            if (pm != null) \x7b",
               "                PowerManager.WakeLock wl = pm.newWakeLock(",
               "                    PowerManager.PARTIAL_WAKE_LOCK + PowerManager.ACQUIRE_CAUSES_WAKEUP,",
               "                    \"sahayasewa:redalert_wakelock\"",
               "                );",
               "                wl.acquire(10000);",
-              "            }",
-              "        } catch (Exception ignored) {}",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
               "",
-              "        try {",
+              "        try \x7b",
               "            Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);",
               "            if (alarmUri == null) alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);",
               "            final Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), alarmUri);",
-              "            if (ringtone != null) {",
+              "            if (ringtone != null) \x7b",
               "                ringtone.play();",
-              "                handler.postDelayed(new Runnable() {",
+              "                handler.postDelayed(new Runnable() \x7b",
               "                    @Override",
-              "                    public void run() {",
-              "                        try {",
+              "                    public void run() \x7b",
+              "                        try \x7b",
               "                            if (ringtone.isPlaying()) ringtone.stop();",
-              "                        } catch (Exception ignored) {}",
-              "                    }",
-              "                }, 12000);",
-              "            }",
-              "        } catch (Exception ignored) {}",
+              "                        \x7d catch (Exception ignored) \x7b\x7d",
+              "                    \x7d",
+              "                \x7d, 12000);",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
               "",
-              "        try {",
+              "        try \x7b",
               "            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);",
-              "            if (v != null) {",
-              "                long[] pattern = new long[]{0, 1000, 300, 1000, 300, 1500};",
-              "                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {",
+              "            if (v != null) \x7b",
+              "                long[] pattern = new long[]\x7b0, 1000, 300, 1000, 300, 1500\x7d;",
+              "                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) \x7b",
               "                    v.vibrate(VibrationEffect.createWaveform(pattern, -1));",
-              "                } else {",
+              "                \x7d else \x7b",
               "                    v.vibrate(pattern, -1);",
-              "                }",
-              "            }",
-              "        } catch (Exception ignored) {}",
+              "                \x7d",
+              "            \x7d",
+              "        \x7d catch (Exception ignored) \x7b\x7d",
               "",
-              "        try {",
+              "        try \x7b",
               "            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);",
               "            if (nm == null) return;",
               "            Intent openIntent = new Intent(this, MainActivity.class);",
@@ -596,13 +571,13 @@ jobs:
               "             .setSmallIcon(android.R.drawable.ic_dialog_alert)",
               "             .setContentIntent(pi)",
               "             .setAutoCancel(true);",
-              "            if (!(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)) {",
+              "            if (!(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)) \x7b",
               "                b.setPriority(Notification.PRIORITY_MAX);",
-              "            }",
+              "            \x7d",
               "            nm.notify(Math.abs(docId.hashCode()), b.build());",
-              "        } catch (Exception ignored) {}",
-              "    }",
-              "}"
+              "        \x7d catch (Exception ignored) \x7b\x7d",
+              "    \x7d",
+              "\x7d"
           ]
           with open(os.path.join(pkg_dir, "MainActivity.java"), "w") as f:
               f.write(chr(10).join(main_lines) + chr(10))
