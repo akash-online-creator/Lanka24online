@@ -60,7 +60,34 @@ export const db = firebaseConfigJson.firestoreDatabaseId
 export const fallbackDb = getFirestore(app);
 export const auth = getAuth(app);
 
-const DIRECT_TOP_LEVEL_COLLECTIONS = ['users', 'red_alerts', 'redAlerts', 'push_broadcast_queue'];
+// සියලුම Public Collections සෘජුවම Top-Level එකේ පිහිටවන පරිදි සකසන ලද ලැයිස්තුව
+const DIRECT_TOP_LEVEL_COLLECTIONS = [
+  'users',
+  'posts',
+  'helpPosts',
+  'groups',
+  'community_groups',
+  'red_alerts',
+  'redAlerts',
+  'push_broadcast_queue',
+  'marketplace',
+  'market_shops',
+  'issues',
+  'jobs',
+  'accommodations',
+  'professional_services',
+  'saved_places',
+  'blood_requests',
+  'volunteer_donors',
+  'aid_centers',
+  'aid_deliveries',
+  'aid_broadcasts',
+  'barter_items',
+  'sos_live_sessions',
+  'password_reset_requests',
+  'pending_ai_queries',
+  'verified_ai_knowledge'
+];
 
 export function collection(database: any, path: string, ...pathSegments: string[]): any {
   if (pathSegments.length === 0) {
@@ -143,7 +170,6 @@ export function handleFirestoreError(error: any, operation: OperationType | stri
 export function sanitizeForFirestore(obj: any): any {
   if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
-  // Preserve Firestore FieldValue and serverTimestamp
   if (obj._methodName || (obj.constructor && obj.constructor.name === 'FieldValue')) return obj;
   if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
   const sanitized: Record<string, any> = {};
@@ -156,9 +182,6 @@ export function sanitizeForFirestore(obj: any): any {
   return sanitized;
 }
 
-/**
- * Delete media files from Firebase Storage by URL
- */
 export async function deleteStorageFilesByUrls(urls: string[]): Promise<void> {
   if (!Array.isArray(urls) || urls.length === 0) return;
 
@@ -206,7 +229,7 @@ export async function getUserFromFirestore(userIdOrInput: string) {
   }
 }
 
-const ADMIN_TELEGRAM_BOT_TOKEN = '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
+const ADMIN_TELEGRAM_BOT_TOKEN = env.VITE_TELEGRAM_BOT_TOKEN || '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
 const ADMIN_TELEGRAM_CHAT_ID = '1349273525';
 const notifiedTelegramRegKeys = new Set();
 
@@ -502,7 +525,6 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
   try {
     const docRef = doc(db, POSTS_COLLECTION, postId);
 
-    // 1. Storage media cleanup if any
     if (imageUrls && imageUrls.length > 0) {
       await deleteStorageFilesByUrls(imageUrls);
     } else {
@@ -522,10 +544,8 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       } catch (e) {}
     }
 
-    // 2. Primary document deletion
     await deleteDoc(docRef);
 
-    // 3. Update deleted records map
     const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
     await setDoc(
       deletedRecordsRef,
@@ -564,8 +584,6 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
     const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
     await addDoc(colRef, sanitizeForFirestore(fullMsg));
 
-    // 🚀 CRITICAL: Update the parent post document so that post.replies and activity timestamps are updated!
-    // This allows MessageInboxModal, MessageInboxBubble, and Realtime Listeners to instantly notify the post owner!
     try {
       const postDocRef = doc(db, POSTS_COLLECTION, postId);
       const replyEntry = {
@@ -611,10 +629,8 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
 export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) => void): () => void {
   if (!postId) return () => {};
   const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
-  // Listen without an index-requiring orderBy so missing fields or lack of composite index will never fail
   return onSnapshot(colRef, (snap) => {
     const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Robust in-memory sort by createdAtMs / createdAt / server timestamp
     msgs.sort((a: any, b: any) => {
       const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
       const timeB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
@@ -738,10 +754,6 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
   try {
     const snap = await getDoc(docRef);
     let reporterUserId = '';
-    if (snap.exists()) {
-      const data = snap.data();
-      reporterUserId = data.reportedByUserId || '';
-    }
     let existingReports: any[] = [];
     if (snap.exists()) {
       const data = snap.data() || {};
@@ -796,6 +808,7 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
     console.warn('reportRedAlertAsFake error:', err);
   }
 }
+
 export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any) {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
   const nowIso = new Date().toISOString();
@@ -951,6 +964,7 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     return null;
   }
 }
+
 // ==============================================================
 // 📋 ISSUES MANAGEMENT
 // ==============================================================
@@ -1082,6 +1096,7 @@ export async function addGroupToFirestore(group: any) {
   }
   return id;
 }
+
 export async function updateGroupInFirestore(groupId: string, groupData: any) {
   if (!groupId) return;
   const payload = sanitizeForFirestore({ ...groupData, id: groupId, updatedAtMs: Date.now() });
@@ -1101,6 +1116,7 @@ export async function deleteGroupFromFirestore(groupId: string) {
     console.warn("deleteGroupFromFirestore error:", err);
   }
 }
+
 export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) => void): () => void {
   let primaryPlaces: any[] = [];
   let fallbackPlaces: any[] = [];
@@ -1124,6 +1140,7 @@ export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) =>
     unsub2();
   };
 }
+
 export async function savePlaceToFirestore(place: any) {
   const id = place.id ? String(place.id) : "plc_" + Date.now();
   const payload = sanitizeForFirestore({ ...place, id, updatedAtServer: serverTimestamp() });
@@ -1133,6 +1150,7 @@ export async function savePlaceToFirestore(place: any) {
   }
   return id;
 }
+
 export async function deletePlaceFromFirestore(placeId: string) {
   if (!placeId) return;
   try {
@@ -1144,54 +1162,87 @@ export async function deletePlaceFromFirestore(placeId: string) {
     console.warn("deletePlaceFromFirestore error:", err);
   }
 }
+
 export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
   return onSnapshot(collection(db, "blood_requests"), (snap) => {
     callback(filterAndPurgeDummySnapDocs(snap));
   }, () => {});
 }
+
 export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]) => void): () => void {
   return onSnapshot(collection(db, "volunteer_donors"), (snap) => {
     callback(filterAndPurgeDummySnapDocs(snap));
   }, () => {});
 }
+
+// Job Storage & Comments Real-time Functions
 export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
   return onSnapshot(collection(db, "jobs"), (snap) => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }, () => {});
 }
+
 export async function saveJobToFirestore(job: any) {
   const id = job.id ? String(job.id) : "job_" + Date.now();
   await setDoc(doc(db, "jobs", id), sanitizeForFirestore({ ...job, id }), { merge: true });
   return id;
 }
+
 export async function deleteJobFromFirestore(jobId: string) {
   if (!jobId) return;
   await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
 }
+
+// 🚀 ADDED: Job Comments Real-time Listener to fix Vite Build Error
+export function subscribeToJobCommentsFromFirestore(jobId: string, callback: (comments: any[]) => void) {
+  if (!jobId) return () => {};
+  try {
+    const commentsRef = collection(db, 'jobs', jobId, 'comments');
+    const q = query(commentsRef, orderBy('createdAt', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+      const comments: any[] = [];
+      snapshot.forEach((docSnap) => {
+        comments.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      callback(comments);
+    }, (error) => {
+      console.warn('Error listening to job comments:', error);
+    });
+  } catch (error) {
+    console.error('subscribeToJobCommentsFromFirestore error:', error);
+    return () => {};
+  }
+}
+
 export function subscribeToAccommodationsFromFirestore(callback: (items: any[]) => void): () => void {
   return onSnapshot(collection(db, "accommodations"), (snap) => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }, () => {});
 }
+
 export async function saveAccommodationToFirestore(item: any) {
   const id = item.id ? String(item.id) : "acc_" + Date.now();
   await setDoc(doc(db, "accommodations", id), sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
+
 export async function deleteAccommodationFromFirestore(id: string) {
   if (!id) return;
   await deleteDoc(doc(db, "accommodations", id)).catch(() => {});
 }
+
 export function subscribeToBarterItemsFromFirestore(callback: (items: any[]) => void): () => void {
   return onSnapshot(collection(db, "barter_items"), (snap) => {
     callback(filterAndPurgeDummySnapDocs(snap));
   }, () => {});
 }
+
 export async function saveBarterItemToFirestore(item: any) {
   const id = item.id ? String(item.id) : "barter_" + Date.now();
   await setDoc(doc(db, "barter_items", id), sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
+
 export async function deleteBarterItemFromFirestore(id: string) {
   if (!id) return;
   await deleteDoc(doc(db, "barter_items", id)).catch(() => {});
@@ -1302,7 +1353,9 @@ export async function saveAidBroadcastToFirestore(item: any) {
 }
 
 // ==============================================================
+// 🗑️ DELETED RECORDS MAP
 // ==============================================================
+
 export interface DeletedRecordsMap {
   deletedPostIds?: string[];
   deletedUserIds?: string[];
@@ -1399,7 +1452,6 @@ export async function deletePasswordResetRequestFromFirestore(id: string): Promi
     handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
   }
 }
-
 
 // ==============================================================
 // 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
@@ -1525,4 +1577,3 @@ export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
     handleFirestoreError(err, OperationType.DELETE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
   }
 }
-
