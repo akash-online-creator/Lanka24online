@@ -5,13 +5,13 @@ service cloud.firestore {
     // ===============================================================
     // 🛡️ 1. Core Security & Authentication Helper Functions
     // ===============================================================
+    // සටහන: "සහය සේවා" පද්ධතිය තුළ පරිශීලකයින් ලොග් වන්නේ ජාතික හැඳුනුම්පත් අංකය (NIC) 
+    // සහ මුරපදය/PIN භාවිතා කරමින් Custom Session ක්‍රමවේදයකට බැවින් (Firebase Auth Anonymous 
+    // හෝ Unauthenticated Client SDK හරහා), සියලුම පොදු දැන්වීම්, ස්ථාන, කණ්ඩායම් සහ සේවා 
+    // අන් අයට බාධාවකින් තොරව පෙනීමට සහ Sync වීමට පහත නීති සකසා ඇත.
 
     function isAuthenticated() {
       return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isAdmin() {
@@ -25,245 +25,259 @@ service cloud.firestore {
       );
     }
 
-    function isApprovedUser() {
-      return isAuthenticated() && (
-        isAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved')
-      );
-    }
-
     // ===============================================================
     // 👤 2. Users Collection (පරිශීලක ගිණුම් කළමනාකරණය)
     // ===============================================================
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, create, update: if true;
+      allow delete: if true;
 
-      match /{allChildren=**} {
+      match /private/{docId} {
+        allow read, write: if true;
+      }
+
+      match /saved_posts/{postId} {
         allow read, write: if true;
       }
     }
 
     // ===============================================================
-    // 📢 3. Help Posts & Community Interactions (posts & helpPosts)
+    // 📢 3. Help Posts & Notices (ප්‍රධාන දැන්වීම් පුවරුව - 'posts' සහ 'helpPosts')
     // ===============================================================
     match /posts/{postId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
+      allow read, create, update, delete: if true;
+
+      match /replies/{replyId} {
+        allow read, write: if true;
+      }
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+
+      match /reactions/{reactionId} {
         allow read, write: if true;
       }
     }
 
     match /helpPosts/{postId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
+      allow read, create, update, delete: if true;
+
+      match /replies/{replyId} {
+        allow read, write: if true;
+      }
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+
+      match /reactions/{reactionId} {
         allow read, write: if true;
       }
     }
 
     // ===============================================================
-    // 🚨 4. Red Alerts (හදිසි ආපදා සහ අනතුරු ඇඟවීම්)
+    // 📍 4. Saved Places (ස්ථාන සුරකීම - 'saved_places')
+    // ===============================================================
+    match /saved_places/{placeId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 👥 5. Community Groups (කණ්ඩායම් සහ ශ්‍රමදාන - 'groups')
+    // ===============================================================
+    match /groups/{groupId} {
+      allow read, create, update, delete: if true;
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /joinRequests/{requestId} {
+        allow read, write: if true;
+      }
+    }
+
+    // ===============================================================
+    // 🚨 6. Red Alerts & SOS Live Tracker (රතු එළිය සහ SOS සජීවී ලුහුබැඳීම)
     // ===============================================================
     match /red_alerts/{alertId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
         allow read, write: if true;
       }
     }
+
     match /redAlerts/{alertId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
         allow read, write: if true;
       }
     }
-    match /push_broadcast_queue/{queueId} {
-      allow read, write: if true;
+
+    match /sos_live_sessions/{sessionId} {
+      allow read, create, update, delete: if true;
     }
 
     // ===============================================================
-    // 🛠️ 5. Issues & User Reports (ගැටළු සහ පැමිණිලි කළමනාකරණය)
+    // 🛒 7. Marketplace, Shops & Professional Services (වෙළඳපොළ සහ වෘත්තීය සේවා)
+    // ===============================================================
+    match /marketplace/{itemId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /market_shops/{shopId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /professional_services/{serviceId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 💼 8. Jobs, Accommodations & Barter Exchange (රැකියා, නවාතැන් සහ භාණ්ඩ හුවමාරුව)
+    // ===============================================================
+    match /jobs/{jobId} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /job_comments/{commentId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /accommodations/{accId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /barter_items/{itemId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /barter_proposals/{proposalId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 🩸 9. Blood Donation, Disaster Relief & Transparent Aid Ledger
+    // ===============================================================
+    match /blood_requests/{reqId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /volunteer_donors/{donorId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /disaster_relief/{reliefId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_centers/{centerId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 🛠️ 10. Issues, Password Resets, System Settings, Credits & AI Knowledge
     // ===============================================================
     match /issues/{issueId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
+      allow read, create, update, delete: if true;
     }
 
-    // ===============================================================
-    // 💰 6. Credits & Transactions (ණය කළමනාකරණය)
-    // ===============================================================
+    match /password_reset_requests/{resetId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /passwordResets/{resetId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /system_metadata/{docId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /systemSettings/{settingId} {
+      allow read, create, update, delete: if true;
+    }
+
     match /credits/{userId} {
-      allow read, write: if true;
+      allow read, create, update, delete: if true;
     }
 
     match /creditTransactions/{transactionId} {
-      allow read, write: if true;
+      allow read, create, update, delete: if true;
     }
 
-    // ===============================================================
-    // ☎️ 7. Emergency Directory (හදිසි ඇමතුම් නාමාවලිය)
-    // ===============================================================
     match /emergencyDirectory/{contactId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true;
     }
 
-    // ===============================================================
-    // 📖 8. Search Dictionary & Keywords (සෙවුම් ශබ්දකෝෂය)
-    // ===============================================================
     match /searchDictionary/{wordId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
 
-    // ===============================================================
-    // 🧠 9. AI Knowledge Base (කෘතිම බුද්ධි දැනුම් පද්ධතිය)
-    // ===============================================================
+    match /pending_ai_queries/{queryId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /verified_ai_knowledge/{knowledgeId} {
+      allow read, create, update, delete: if true;
+    }
+
     match /aiKnowledge/{knowledgeId} {
-      allow read, write: if true;
+      allow read, create, update, delete: if true;
     }
 
-    // ===============================================================
-    // 🟢 10. Presence Tracking (සජීවී පරිශීලක ක්‍රියාකාරීත්වය)
-    // ===============================================================
     match /presence/{userId} {
       allow read, write: if true;
     }
 
-    // ===============================================================
-    // 🔔 11. Notifications (දැනුම්දීම් පද්ධතිය)
-    // ===============================================================
     match /notifications/{notificationId} {
-      allow read, write: if true;
+      allow read, create, update, delete: if true;
     }
 
-    // ===============================================================
-    // 💬 12. Messages & Direct Chat (පරිශීලක පණිවිඩ හුවමාරුව)
-    // ===============================================================
+    match /push_broadcast_queue/{queueId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /fcm_tokens/{tokenId} {
+      allow read, create, update, delete: if true;
+    }
+
     match /chats/{chatId} {
       allow read, write: if true;
 
-      match /{allChildren=**} {
+      match /messages/{messageId} {
         allow read, write: if true;
       }
     }
 
-    // ===============================================================
-    // 🔑 13. Password Resets (මුරපද යළි පිහිටුවීම් ඉල්ලීම්)
-    // ===============================================================
-    match /passwordResets/{resetId} {
-      allow read, write: if true;
-    }
-
-    // ===============================================================
-    // ⚙️ 14. System Settings & Admin Official Bank Info (පද්ධති සැකසුම් සහ නිල බැංකු ගිණුම)
-    // ===============================================================
-    // Admin Bank Deposit Info - ඕනෑම කෙනෙකුට කියවිය හැක (Public Read), වෙනස් කළ හැක්කේ Admin ට පමණි (Admin Only Write)
-    match /systemSettings/bank_info {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    match /system_metadata/bank_deposit_info {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    match /systemSettings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    match /system_metadata/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // ===============================================================
-    // 📜 15. Audit Logs (පරිපාලක ක්‍රියාකාරකම් ලඝු සටහන්)
-    // ===============================================================
     match /auditLogs/{logId} {
-      allow read, write: if true;
-    }
-
-    match /sos_live_sessions/{sessionId} {
-      allow read, write: if true;
-    }
-
-    match /marketplace/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /market_shops/{shopId} {
-      allow read, write: if true;
-    }
-
-    match /saved_places/{placeId} {
-      allow read, write: if true;
-    }
-
-    match /groups/{groupId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    match /professional_services/{serviceId} {
-      allow read, write: if true;
-    }
-
-    match /device_push_tokens/{tokenId} {
-      allow read, write: if true;
-    }
-
-    match /blood_requests/{reqId} {
-      allow read, write: if true;
-    }
-
-    match /volunteer_donors/{donorId} {
-      allow read, write: if true;
-    }
-
-    match /disaster_relief/{reliefId} {
-      allow read, write: if true;
-    }
-
-    match /aid_centers/{centerId} {
-      allow read, write: if true;
-    }
-
-    match /aid_deliveries/{deliveryId} {
-      allow read, write: if true;
-    }
-
-    match /aid_broadcasts/{broadcastId} {
-      allow read, write: if true;
-    }
-
-    match /jobs/{jobId} {
-      allow read, write: if true;
-    }
-
-    match /accommodations/{accId} {
-      allow read, write: if true;
-    }
-
-    match /barter_items/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /password_reset_requests/{reqId} {
-      allow read, write: if true;
-    }
-
-    match /pending_ai_queries/{queryId} {
-      allow read, write: if true;
-    }
-
-    match /verified_ai_knowledge/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /{document=**} {
-      allow read, write: if true;
+      allow read, create: if true;
+      allow update, delete: if false;
     }
   }
 }
