@@ -1,10 +1,10 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import {
   initializeFirestore,
   getFirestore,
-  doc as rawDoc,
-  collection as rawCollection,
+  doc,
+  collection,
   query,
   where,
   orderBy,
@@ -57,56 +57,12 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = firebaseConfigJson.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
   : getFirestore(app);
-export const fallbackDb = getFirestore(app);
 export const auth = getAuth(app);
-
-const DIRECT_TOP_LEVEL_COLLECTIONS = ['users', 'red_alerts', 'redAlerts', 'push_broadcast_queue'];
-
-export function collection(database: any, path: string, ...pathSegments: string[]): any {
-  if (pathSegments.length === 0) {
-    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
-      return rawCollection(database, path);
-    }
-    return rawCollection(database, 'users', '__sahaya_col_' + path + '__', 'private');
-  }
-  if (pathSegments.length === 2) {
-    if (path === 'users' && pathSegments[1] === 'private') {
-      return rawCollection(database, path, pathSegments[0], pathSegments[1]);
-    }
-    return rawCollection(database, 'users', '__sahaya_sub_' + path + '_' + pathSegments[0] + '_' + pathSegments[1] + '__', 'private');
-  }
-  return rawCollection(database, path, ...pathSegments);
-}
-
-export function doc(database: any, path: string, ...pathSegments: string[]): any {
-  if (pathSegments.length === 0) {
-    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
-      return rawDoc(database, path);
-    }
-    return rawDoc(rawCollection(database, 'users', '__sahaya_col_' + path + '__', 'private'));
-  }
-  if (pathSegments.length === 1) {
-    if (DIRECT_TOP_LEVEL_COLLECTIONS.includes(path)) {
-      return rawDoc(database, path, pathSegments[0]);
-    }
-    return rawDoc(database, 'users', '__sahaya_col_' + path + '__', 'private', pathSegments[0]);
-  }
-  if (pathSegments.length === 3) {
-    if (path === 'users' && pathSegments[1] === 'private') {
-      return rawDoc(database, path, pathSegments[0], pathSegments[1], pathSegments[2]);
-    }
-    return rawDoc(database, 'users', '__sahaya_sub_' + path + '_' + pathSegments[0] + '_' + pathSegments[1] + '__', 'private', pathSegments[2]);
-  }
-  return rawDoc(database, path, ...pathSegments);
-}
 export const storage = getStorage(app);
 
 // Test Firestore backend connection
 async function testConnection() {
   try {
-    if (auth && !auth.currentUser) {
-      await signInAnonymously(auth).catch(() => {});
-    }
     const { getDocFromServer } = await import('firebase/firestore');
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
@@ -179,25 +135,13 @@ export async function deleteStorageFilesByUrls(urls: string[]): Promise<void> {
 // 👤 USERS CRUD & SYNC
 // ==============================================================
 
-export async function getUserFromFirestore(userIdOrInput: string) {
+export async function getUserFromFirestore(userIdOrInput: string): Promise<any | null> {
   try {
     if (!userIdOrInput) return null;
-    const cleanInput = String(userIdOrInput).trim();
-    const docRef = doc(db, USERS_COLLECTION, cleanInput);
+    const docRef = doc(db, USERS_COLLECTION, userIdOrInput);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       return { id: snap.id, ...snap.data() };
-    }
-    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
-    const allSnap = await getDocs(collection(db, USERS_COLLECTION));
-    for (const d of allSnap.docs) {
-      const data: any = d.data();
-      const dNic = String(data.nic ? data.nic : data.nicNumber ? data.nicNumber : '').trim().toUpperCase().replace(/\s+/g, '');
-      const dUserId = String(data.userId ? data.userId : '').trim().toUpperCase().replace(/\s+/g, '');
-      const dPhone = String(data.whatsappPhone ? data.whatsappPhone : data.phone ? data.phone : '').trim();
-      if (dNic === upperInput) return { id: d.id, ...data };
-      if (dUserId === upperInput) return { id: d.id, ...data };
-      if (cleanInput.length >= 9 && dPhone === cleanInput) return { id: d.id, ...data };
     }
     return null;
   } catch (err) {
@@ -206,69 +150,10 @@ export async function getUserFromFirestore(userIdOrInput: string) {
   }
 }
 
-const ADMIN_TELEGRAM_BOT_TOKEN = '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
-const ADMIN_TELEGRAM_CHAT_ID = '1349273525';
-const notifiedTelegramRegKeys = new Set();
-
-export async function notifyAdminViaTelegramOnRegistration(params: {
-  registrationType: string;
-  identifierOrName: string;
-  dateTime?: string;
-  dedupeKey?: string;
-}) {
+export async function saveUserToFirestore(user: any): Promise<void> {
   try {
-    const key = params.dedupeKey ? String(params.dedupeKey) : params.registrationType + '_' + params.identifierOrName;
-    if (notifiedTelegramRegKeys.has(key)) return;
-    notifiedTelegramRegKeys.add(key);
-
-    const now = new Date();
-    const formattedDateTime = params.dateTime
-      ? params.dateTime
-      : now.toLocaleDateString('si-LK') + ' ' + now.toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-    const textMessage =
-      '🔔 නව ලියාපදිංචි වීමක් (සහය සේවා)\n\n' +
-      '1. ලියාපදිංචි වූ ආකාරය: ' + params.registrationType + '\n' +
-      '2. හැඳුනුම්පත් අංකය / ව්‍යාපාර හෝ වෙළෙඳසැල් නම: ' + params.identifierOrName + '\n' +
-      '3. දිනය සහ වේලාව: ' + formattedDateTime;
-
-    const tgUrl = 'https://api.telegram.org/bot' + ADMIN_TELEGRAM_BOT_TOKEN + '/sendMessage';
-    await fetch(tgUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: ADMIN_TELEGRAM_CHAT_ID,
-        text: textMessage
-      })
-    });
-  } catch (err) {
-    console.warn('Telegram admin notification note:', err);
-  }
-}
-
-export async function saveUserToFirestore(user: any) {
-  try {
-    const docId = user && user.id ? String(user.id) : user && user.userId ? String(user.userId) : 'usr_' + Date.now();
-    const payload: any = { ...user, id: docId };
-    if (
-      payload.idCardPhotoUrl &&
-      payload.nicFrontPhotoUrl &&
-      payload.idCardPhotoUrl === payload.nicFrontPhotoUrl &&
-      String(payload.idCardPhotoUrl).length >= 80000
-    ) {
-      payload.idCardPhotoUrl = '';
-    }
-    const docRef = doc(db, USERS_COLLECTION, docId);
-    await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
-    if (user && (user.status === 'pending' ? true : !user.isApproved)) {
-      const nicVal = String(user.nicNumber ? user.nicNumber : (user.nic ? user.nic : (user.userId ? user.userId : docId))).trim();
-      const nameVal = user.name ? ' (' + String(user.name).trim() + ')' : '';
-      notifyAdminViaTelegramOnRegistration({
-        registrationType: 'පුද්ගලික',
-        identifierOrName: nicVal + nameVal,
-        dedupeKey: 'usr_' + nicVal
-      });
-    }
+    const docRef = doc(db, USERS_COLLECTION, user.id);
+    await setDoc(docRef, sanitizeForFirestore(user), { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, USERS_COLLECTION);
   }
@@ -324,57 +209,13 @@ export async function deleteUserAccount(user: any, _permanent = true): Promise<v
   }
 }
 
-const BUILT_IN_DUMMY_ID_LIST = [
-  "usr_citizen_1",
-  "post_6843", "post_4912", "post_find_1", "post_find_2", "post_from_1", "post_from_2", "post_from_3", "post_1", "post_2", "post_3",
-  "grp_kelaniya_care", "grp_dalada_sewa", "grp_gam_mithuro", "grp_sample_1", "grp_sample_2", "grp_sample_3",
-  "mkt_seller_1", "mkt_seller_2", "mkt_seller_3", "mkt_seller_4", "mkt_seller_5", "mkt_seller_6", "mkt_seller_7", "mkt_seller_8",
-  "mkt_seller_free_1", "mkt_seller_free_2", "mkt_buyer_1", "mkt_buyer_2",
-  "item_1", "item_2", "item_3", "item_4", "item_5", "item_6", "mkt_1", "mkt_2", "mkt_3", "mkt_4", "mkt_5", "mkt_6",
-  "mkt_shop_1", "mkt_shop_2", "mkt_shop_3", "mkt_shop_4", "mkt_biz_1", "mkt_biz_2", "mkt_biz_3", "mkt_biz_4",
-  "shop_1", "shop_2", "shop_3", "shop_4",
-  "ps_1", "ps_2", "ps_3", "ps_4", "pro_1", "pro_2", "pro_3", "pro_4",
-  "bld_1", "bld_2", "bld_3", "bld_4", "bld_5", "rel_1", "rel_2", "rel_3", "rel_4", "rel_5",
-  "donor_1", "donor_2", "donor_3", "donor_4", "donor_5",
-  "center_1", "center_2", "center_3", "deliv_1", "deliv_2", "deliv_3", "deliv_4",
-  "swap_001", "swap_002", "swap_003", "swap_004", "swap_005"
-];
-
-export function isBuiltInDummyRecord(record: any): boolean {
-  if (!record) return false;
-  const id = String(record.id ? record.id : "").trim();
-  if (BUILT_IN_DUMMY_ID_LIST.includes(id)) return true;
-  const regCode = String(record.registrationCode ? record.registrationCode : "").trim();
-  if (regCode === "712845") return true;
-  if (regCode === "593812") return true;
-  if (regCode === "384910") return true;
-  return false;
-}
-
-export function filterAndPurgeDummySnapDocs(snap: any): any[] {
-  const valid: any[] = [];
-  if (!snap) return valid;
-  if (!snap.docs) return valid;
-  for (const d of snap.docs) {
-    const item = { id: d.id, ...d.data() };
-    if (isBuiltInDummyRecord(item)) {
-      try {
-        deleteDoc(d.ref).catch(() => {});
-      } catch (e) {}
-    } else {
-      valid.push(item);
-    }
-  }
-  return valid;
-}
-
 export function subscribeToUsers(callback: (users: any[]) => void): () => void {
   const colRef = collection(db, USERS_COLLECTION);
   return onSnapshot(colRef, (snap) => {
-    const users = filterAndPurgeDummySnapDocs(snap);
+    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(users);
   }, (err) => {
-    console.warn("subscribeToUsers error:", err);
+    console.warn('subscribeToUsers error:', err);
   });
 }
 
@@ -383,67 +224,50 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
 // ==============================================================
 
 export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => void {
-  let primaryPosts: any[] = [];
-  let legacyPosts: any[] = [];
-  let fallbackPosts: any[] = [];
-  const emitMerged = () => {
-    const map = new Map();
-    [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
-      if (p && p.id) map.set(String(p.id), p);
-    });
-    callback(Array.from(map.values()));
-  };
-  const unsub1 = onSnapshot(collection(db, POSTS_COLLECTION), (snap) => {
-    primaryPosts = filterAndPurgeDummySnapDocs(snap);
-    emitMerged();
+  const colRef = collection(db, POSTS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(posts);
   }, (err) => {
-    console.warn("subscribeToHelpPosts primary notice:", err);
+    console.warn('subscribeToHelpPosts error:', err);
   });
-  const unsub2 = onSnapshot(collection(db, 'helpPosts'), (snap) => {
-    legacyPosts = filterAndPurgeDummySnapDocs(snap);
-    emitMerged();
-  }, () => {});
-  const unsub3 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, POSTS_COLLECTION), (snap) => {
-    fallbackPosts = filterAndPurgeDummySnapDocs(snap);
-    emitMerged();
-  }, () => {}) : () => {};
-  return () => {
-    unsub1();
-    unsub2();
-    unsub3();
-  };
 }
 
 export interface PaginatedPostsResult {
   posts: any[];
-  lastDoc: any;
+  lastDoc: any | null;
   hasMore: boolean;
 }
 
+/**
+ * 📢 Firestore මගින් දැන්වීම් 4 බැගින් (batch load) අලුත්ම ඒවා උඩින්ම එන සේ ලබා ගැනීම
+ */
 export async function fetchHelpPostsPaginated(
-  lastDoc: any = null,
+  lastDoc: any | null = null,
   pageSize: number = 4
-) {
+): Promise<PaginatedPostsResult> {
   try {
     const colRef = collection(db, POSTS_COLLECTION);
+    
+    // createdAt මගින් අලුත්ම දැන්වීම් මුලින්ම (desc) පෙළගැස්වීම
     let q = query(
       colRef,
-      orderBy("createdAt", "desc"),
+      orderBy('createdAt', 'desc'),
       limit(pageSize)
     );
 
     if (lastDoc) {
       q = query(
         colRef,
-        orderBy("createdAt", "desc"),
+        orderBy('createdAt', 'desc'),
         startAfter(lastDoc),
         limit(pageSize)
       );
     }
 
     const snap = await getDocs(q);
-    const posts = filterAndPurgeDummySnapDocs(snap);
-    const newLastDoc = snap.docs.length === 0 ? null : snap.docs[snap.docs.length - 1];
+    const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const newLastDoc = snap.docs[snap.docs.length - 1] || null;
     const hasMore = snap.docs.length === pageSize;
 
     return {
@@ -452,48 +276,28 @@ export async function fetchHelpPostsPaginated(
       hasMore,
     };
   } catch (err) {
-    console.warn("fetchHelpPostsPaginated error:", err);
+    console.warn('fetchHelpPostsPaginated error:', err);
     return { posts: [], lastDoc: null, hasMore: false };
   }
 }
-
-export async function addHelpPostToFirestore(postData: any) {
-  const postId = postData.id ? String(postData.id) : 'post_' + Date.now();
-  const uid = auth && auth.currentUser && auth.currentUser.uid ? auth.currentUser.uid : (postData.userId ? postData.userId : (postData.authorId ? postData.authorId : 'usr_guest'));
-  const enriched = sanitizeForFirestore({
-    ...postData,
-    id: postId,
-    authorId: postData.authorId ? postData.authorId : uid,
-    userId: postData.userId ? postData.userId : uid,
-    createdAtServer: serverTimestamp()
-  });
+export async function addHelpPostToFirestore(postData: any): Promise<string> {
+  const postId = postData.id || `post_${Date.now()}`;
   try {
-    await setDoc(doc(db, POSTS_COLLECTION, postId), enriched, { merge: true });
-    setDoc(doc(db, 'helpPosts', postId), enriched, { merge: true }).catch(() => {});
-    if (fallbackDb !== db) {
-      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true }).catch(() => {});
-    }
+    const docRef = doc(db, POSTS_COLLECTION, postId);
+    await setDoc(docRef, sanitizeForFirestore({ ...postData, id: postId, createdAtServer: serverTimestamp() }));
     return postId;
   } catch (err) {
-    try {
-      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true });
-    } catch (_) {}
+    handleFirestoreError(err, OperationType.CREATE, POSTS_COLLECTION);
     return postId;
   }
 }
 
-export async function updateHelpPostInFirestore(postId: string, updateData: any) {
-  const sanitized = sanitizeForFirestore(updateData);
+export async function updateHelpPostInFirestore(postId: string, updateData: any): Promise<void> {
   try {
-    await setDoc(doc(db, POSTS_COLLECTION, postId), sanitized, { merge: true });
-    setDoc(doc(db, 'helpPosts', postId), sanitized, { merge: true }).catch(() => {});
-    if (fallbackDb !== db) {
-      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true }).catch(() => {});
-    }
+    const docRef = doc(db, POSTS_COLLECTION, postId);
+    await setDoc(docRef, sanitizeForFirestore(updateData), { merge: true });
   } catch (err) {
-    try {
-      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true });
-    } catch (_) {}
+    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
   }
 }
 
@@ -552,74 +356,18 @@ export async function addReplyToFirestore(postId: string, replyData: any): Promi
 
 export async function sendChatMessageToFirestore(postId: string, messageData: any): Promise<void> {
   try {
-    if (!postId) return;
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
-    const fullMsg = {
-      ...messageData,
-      createdAt: messageData.createdAt || nowIso,
-      createdAtMs: messageData.createdAtMs || nowMs,
-      createdAtServer: serverTimestamp(),
-    };
     const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
-    await addDoc(colRef, sanitizeForFirestore(fullMsg));
-
-    // 🚀 CRITICAL: Update the parent post document so that post.replies and activity timestamps are updated!
-    // This allows MessageInboxModal, MessageInboxBubble, and Realtime Listeners to instantly notify the post owner!
-    try {
-      const postDocRef = doc(db, POSTS_COLLECTION, postId);
-      const replyEntry = {
-        id: `rep_${nowMs}_${Math.random().toString(36).substring(2, 7)}`,
-        responderName: messageData.senderName || 'පරිශීලක',
-        responderPhone: messageData.senderPhone || '',
-        message: messageData.text || '',
-        createdAt: nowIso,
-        createdAtMs: nowMs,
-      };
-
-      const isDirect = String(postId).startsWith('direct_user_chat_');
-      const directMeta = isDirect ? {
-        id: postId,
-        postCode: 'USER-CHAT',
-        isDirectChat: true,
-        userId: messageData.recipientId || 'usr_direct',
-        userName: messageData.recipientName || 'පරිශීලක',
-        userPhone: messageData.recipientPhone || '',
-        whatHappened: '@' + (messageData.senderName || 'පරිශීලක') + ' සමඟ සෘජු චැට් සංවාදය',
-        whatIsNeeded: 'Direct Chat',
-        locationName: 'Online Chat',
-        status: 'confirmed',
-        isConfirmed: true,
-      } : {};
-      await setDoc(postDocRef, sanitizeForFirestore(Object.assign({}, directMeta, {
-        lastMessage: (messageData.text ? messageData.text : ''),
-        lastMessageSenderName: (messageData.senderName ? messageData.senderName : ''),
-        lastMessageSenderPhone: (messageData.senderPhone ? messageData.senderPhone : ''),
-        lastMessageTime: nowIso,
-        lastMessageTimeMs: nowMs,
-        replies: arrayUnion(replyEntry),
-        updatedAtServer: serverTimestamp(),
-      })), { merge: true });
-    } catch (parentErr) {
-      console.warn('sendChatMessageToFirestore parent post update notice:', parentErr);
-    }
+    await addDoc(colRef, sanitizeForFirestore({ ...messageData, createdAtServer: serverTimestamp() }));
   } catch (err) {
     console.warn('sendChatMessageToFirestore error:', err);
   }
 }
 
 export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) => void): () => void {
-  if (!postId) return () => {};
   const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
-  // Listen without an index-requiring orderBy so missing fields or lack of composite index will never fail
-  return onSnapshot(colRef, (snap) => {
+  const q = query(colRef, orderBy('createdAt', 'asc'));
+  return onSnapshot(q, (snap) => {
     const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Robust in-memory sort by createdAtMs / createdAt / server timestamp
-    msgs.sort((a: any, b: any) => {
-      const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-      const timeB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-      return timeA - timeB;
-    });
     callback(msgs);
   }, (err) => {
     console.warn('subscribeToChatMessages error:', err);
@@ -669,39 +417,19 @@ export function subscribeToUserSavedPosts(userId: string, callback: (postIds: st
 // ==============================================================
 
 export function subscribeToRedAlerts(callback: (alerts: any[]) => void): () => void {
-  let primaryAlerts: any[] = [];
-  let fallbackAlerts: any[] = [];
-  const emitMerged = () => {
-    const map = new Map();
-    [...fallbackAlerts, ...primaryAlerts].forEach((a) => {
-      if (a && a.id) map.set(String(a.id), a);
-    });
-    callback(Array.from(map.values()));
-  };
-  const unsub1 = onSnapshot(collection(db, RED_ALERTS_COLLECTION), (snap) => {
-    primaryAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    emitMerged();
+  const colRef = collection(db, RED_ALERTS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const alerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(alerts);
   }, (err) => {
     console.warn('subscribeToRedAlerts error:', err);
   });
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, RED_ALERTS_COLLECTION), (snap) => {
-    fallbackAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    emitMerged();
-  }, () => {}) : () => {};
-  return () => {
-    unsub1();
-    unsub2();
-  };
 }
 
-export async function createRedAlertInFirestore(alertData: any) {
-  const id = alertData.id ? String(alertData.id) : 'red_alert_' + Date.now();
-  const payload = sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() });
-  await setDoc(doc(db, RED_ALERTS_COLLECTION, id), payload, { merge: true });
-  setDoc(doc(db, 'redAlerts', id), payload, { merge: true }).catch(() => {});
-  if (fallbackDb !== db) {
-    setDoc(doc(fallbackDb, RED_ALERTS_COLLECTION, id), payload, { merge: true }).catch(() => {});
-  }
+export async function createRedAlertInFirestore(alertData: any): Promise<string> {
+  const id = alertData.id || `red_alert_${Date.now()}`;
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  await setDoc(docRef, sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() }), { merge: true });
   return id;
 }
 
@@ -715,25 +443,22 @@ export async function updateRedAlertStatus(id: string, status: string, reasonOrN
   }), { merge: true });
 }
 
-export async function deleteRedAlertInFirestore(id: string) {
+export async function deleteRedAlertInFirestore(id: string): Promise<void> {
   await deleteDoc(doc(db, RED_ALERTS_COLLECTION, id));
 }
 
-export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any) {
+export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any): Promise<void> {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  const nowIso = new Date().toISOString();
-  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   await setDoc(docRef, sanitizeForFirestore({
     status: 'resolved',
-    resolvedReason: reason || 'ආපදා තත්ත්වය විසඳන ලදී',
+    resolvedReason: reason || 'Resolved',
     adminActionNote: reason || '',
-    resolvedAt: nowIso,
-    resolvedAtDisplay: nowDisplay,
+    resolvedAt: new Date().toISOString(),
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function reportRedAlertAsFake(id: string, reportData?: any) {
+export async function reportRedAlertAsFake(id: string, reportData?: any): Promise<void> {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
   try {
     const snap = await getDoc(docRef);
@@ -742,52 +467,23 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
       const data = snap.data();
       reporterUserId = data.reportedByUserId || '';
     }
-    let existingReports: any[] = [];
-    if (snap.exists()) {
-      const data = snap.data() || {};
-      reporterUserId = data.reportedByUserId || '';
-      if (Array.isArray(data.fakeReports)) {
-        existingReports = data.fakeReports;
-      }
-    }
-
-    const newEntry = reportData && typeof reportData === 'object'
-      ? reportData
-      : {
-          id: `fake_${Date.now()}`,
-          userId: typeof reportData === 'string' ? reportData : `usr_${Date.now()}`,
-          reportedAt: new Date().toISOString(),
-          reason: 'අසත්‍යයක් ලෙස වාර්තා කරන ලදී',
-        };
-
-    const alreadyReported = Boolean(
-      newEntry.userId &&
-      existingReports.some((r: any) => r && (r.userId === newEntry.userId || r.reportedByUserId === newEntry.userId))
-    );
-
-    const updatedFakeReports = alreadyReported ? existingReports : [...existingReports, newEntry];
-    const fakeCount = updatedFakeReports.length;
-    const isNowFlaggedFake = Math.max(fakeCount, 4) === fakeCount;
 
     await setDoc(docRef, sanitizeForFirestore({
-      fakeReports: updatedFakeReports,
-      fakeReportsCount: fakeCount,
-      isFlaggedFake: isNowFlaggedFake,
-      ...(isNowFlaggedFake ? {
-        fakeHighlightedAt: new Date().toISOString(),
-        statusChangeMessage: '⚠️ මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි',
-      } : {}),
+      status: 'fake',
+      isFlaggedFake: true,
+      fakeReport: reportData || true,
       updatedAtServer: serverTimestamp(),
     }), { merge: true });
 
-    if (isNowFlaggedFake && reporterUserId) {
+    // 🛡️ Fake Alert Penalty: Deduct Trust Score & Block Reporter
+    if (reporterUserId) {
       const userRef = doc(db, USERS_COLLECTION, reporterUserId);
       await setDoc(userRef, sanitizeForFirestore({
         status: 'blocked',
         isBlocked: true,
         trustScore: 20,
         trustPoints: 20,
-        blockedReason: 'පරිශීලකයන් 4 දෙනෙකු විසින් අසත්‍ය (Fake) රතු එළිය දැන්වීමක් ලෙස තහවුරු කිරීම හේතුවෙන් ගිණුම අත්හිටුවන ලදී.',
+        blockedReason: 'අසත්‍ය (Fake) රතු එළිය අනතුරු ඇඟවීමක් පළ කිරීම හේතුවෙන් ගිණුම ස්වයංක්‍රීයව අත්හිටුවන ලදී (Blocked due to publishing Fake Red Alert).',
         blockedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
       }), { merge: true });
@@ -796,82 +492,29 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
     console.warn('reportRedAlertAsFake error:', err);
   }
 }
-export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any) {
+
+export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any): Promise<void> {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  const nowIso = new Date().toISOString();
-  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   await setDoc(docRef, sanitizeForFirestore({
     status: 'cancelled',
-    isDeleted: true,
-    cancelledReason: reason || 'වාර්තාකරු විසින් දැන්වීම ඉවත් කරන ලදී',
-    cancelledAt: nowIso,
-    deletedAt: nowIso,
-    deletedAtDisplay: nowDisplay,
+    cancelledReason: reason || 'Cancelled',
+    cancelledAt: new Date().toISOString(),
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function addReporterUpdateToRedAlert(id: string, updateText: string, metadata?: any) {
+export async function addReporterUpdateToRedAlert(id: string, updateText: string, metadata?: any): Promise<void> {
   const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  const nowIso = new Date().toISOString();
-  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let existingComments: any[] = [];
-  try {
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data() || {};
-      if (Array.isArray(data.comments)) {
-        existingComments = data.comments;
-      }
-    }
-  } catch (_) {}
-
-  const reporterComment = {
-    id: `comm_${Date.now()}`,
-    userId: metadata?.reporterId || '',
-    userName: `${metadata?.reporterName || 'වාර්තාකරු'} (වාර්තාකරු)`,
-    comment: updateText,
-    text: updateText,
-    createdAt: nowIso,
-    createdAtMs: Date.now(),
-    createdAtDisplay: nowTime,
-    isReporterUpdate: true,
-  };
-  const updatedComments = [...existingComments, reporterComment];
-
   await setDoc(docRef, sanitizeForFirestore({
     latestUpdate: updateText,
     reporterUpdateMetadata: metadata || null,
-    comments: updatedComments,
-    commentsCount: updatedComments.length,
     updatedAtServer: serverTimestamp(),
   }), { merge: true });
 }
 
-export async function addCommentToRedAlert(id: string, commentData: any) {
-  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
-  let existingComments: any[] = [];
-  try {
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data() || {};
-      if (Array.isArray(data.comments)) {
-        existingComments = data.comments;
-      }
-    }
-  } catch (_) {}
-
-  const updatedComments = [...existingComments, commentData];
-  await setDoc(docRef, sanitizeForFirestore({
-    comments: updatedComments,
-    commentsCount: updatedComments.length,
-    updatedAtServer: serverTimestamp(),
-  }), { merge: true });
-
-  try {
-    const colRef = collection(db, RED_ALERTS_COLLECTION, id, 'comments');
-    await addDoc(colRef, sanitizeForFirestore({ ...commentData, createdAtServer: serverTimestamp() }));
-  } catch (_) {}
+export async function addCommentToRedAlert(id: string, commentData: any): Promise<void> {
+  const colRef = collection(db, RED_ALERTS_COLLECTION, id, 'comments');
+  await addDoc(colRef, sanitizeForFirestore({ ...commentData, createdAtServer: serverTimestamp() }));
 }
 
 export function subscribeToSirenSettings(callback: (settings: any) => void): () => void {
@@ -906,7 +549,6 @@ export async function createOrUpdateSosLiveSession(session: any): Promise<string
   }, { merge: true });
   return id;
 }
-
 export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
   const cleanData = sanitizeForFirestore(locationData);
@@ -951,6 +593,7 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     return null;
   }
 }
+
 // ==============================================================
 // 📋 ISSUES MANAGEMENT
 // ==============================================================
@@ -970,54 +613,44 @@ export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void
 // ==============================================================
 
 export function subscribeToMarketplaceItems(callback: (items: any[]) => void): () => void {
-  const colRef = collection(db, "marketplace");
+  const colRef = collection(db, 'marketplace');
   return onSnapshot(colRef, (snap) => {
-    const items = filterAndPurgeDummySnapDocs(snap);
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(items);
   }, () => {});
 }
 
-export async function addMarketplaceItemToFirestore(item: any) {
-  const id = item.id ? item.id : "item_" + Date.now();
-  const docRef = doc(db, "marketplace", id);
+export async function addMarketplaceItemToFirestore(item: any): Promise<string> {
+  const id = item.id || `item_${Date.now()}`;
+  const docRef = doc(db, 'marketplace', id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function deleteMarketplaceItemFromFirestore(id: string) {
-  await deleteDoc(doc(db, "marketplace", id));
+export async function deleteMarketplaceItemFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'marketplace', id));
 }
 
 export function subscribeToMarketShops(callback: (shops: any[]) => void): () => void {
-  const colRef = collection(db, "market_shops");
+  const colRef = collection(db, 'market_shops');
   return onSnapshot(colRef, (snap) => {
-    const shops = filterAndPurgeDummySnapDocs(snap);
+    const shops = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(shops);
   }, () => {});
 }
 
-export async function addMarketShopToFirestore(shop: any) {
-  const id = shop.id ? shop.id : "shop_" + Date.now();
-  const docRef = doc(db, "market_shops", id);
+export async function addMarketShopToFirestore(shop: any): Promise<string> {
+  const id = shop.id || `shop_${Date.now()}`;
+  const docRef = doc(db, 'market_shops', id);
   await setDoc(docRef, sanitizeForFirestore({ ...shop, id }), { merge: true });
-  try {
-    const isBusiness = (shop && (shop.type === "business" ? true : shop.mode === "business"));
-    const regType = isBusiness ? "ව්‍යාපාර" : "වෙළෙඳසැල්";
-    const shopTitle = String(shop && (shop.name ? shop.name : (shop.shopName ? shop.shopName : id))).trim();
-    notifyAdminViaTelegramOnRegistration({
-      registrationType: regType,
-      identifierOrName: shopTitle,
-      dedupeKey: "shop_" + id
-    });
-  } catch (err) {}
   return id;
 }
 
-export async function deleteMarketShopFromFirestore(id: string) {
-  await deleteDoc(doc(db, "market_shops", id));
+export async function deleteMarketShopFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'market_shops', id));
 }
 
-export async function deleteMarketplaceShopFromFirestore(id: string) {
+export async function deleteMarketplaceShopFromFirestore(id: string): Promise<void> {
   await deleteMarketShopFromFirestore(id);
 }
 
@@ -1026,212 +659,88 @@ export async function deleteMarketplaceShopFromFirestore(id: string) {
 // ==============================================================
 
 export function subscribeToProfessionalServices(callback: (services: any[]) => void): () => void {
-  const colRef = collection(db, "professional_services");
+  const colRef = collection(db, 'professional_services');
   return onSnapshot(colRef, (snap) => {
-    const services = filterAndPurgeDummySnapDocs(snap);
+    const services = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(services);
   }, () => {});
 }
 
-export async function addProfessionalServiceToFirestore(service: any) {
-  const id = service.id ? service.id : "pro_" + Date.now();
-  const docRef = doc(db, "professional_services", id);
+export async function addProfessionalServiceToFirestore(service: any): Promise<string> {
+  const id = service.id || `pro_${Date.now()}`;
+  const docRef = doc(db, 'professional_services', id);
   await setDoc(docRef, sanitizeForFirestore({ ...service, id }), { merge: true });
   return id;
 }
 
-export async function deleteProfessionalServiceFromFirestore(serviceId: string) {
+export async function deleteProfessionalServiceFromFirestore(serviceId: string): Promise<void> {
   try {
-    const docRef = doc(db, "professional_services", serviceId);
+    const docRef = doc(db, 'professional_services', serviceId);
     await deleteDoc(docRef);
   } catch (err) {
-    console.warn("deleteProfessionalServiceFromFirestore error:", err);
+    console.warn('deleteProfessionalServiceFromFirestore error:', err);
   }
 }
 
 export function subscribeToGroups(callback: (groups: any[]) => void): () => void {
-  let primaryGroups: any[] = [];
-  let fallbackGroups: any[] = [];
-  const emitMerged = () => {
-    const map = new Map();
-    [...fallbackGroups, ...primaryGroups].forEach((g) => {
-      if (g && g.id) map.set(String(g.id), g);
-    });
-    callback(Array.from(map.values()));
-  };
-  const unsub1 = onSnapshot(collection(db, "groups"), (snap) => {
-    primaryGroups = filterAndPurgeDummySnapDocs(snap);
-    emitMerged();
+  const colRef = collection(db, 'groups');
+  return onSnapshot(colRef, (snap) => {
+    const groups = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(groups);
   }, () => {});
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "groups"), (snap) => {
-    fallbackGroups = filterAndPurgeDummySnapDocs(snap);
-    emitMerged();
-  }, () => {}) : () => {};
-  return () => {
-    unsub1();
-    unsub2();
-  };
 }
 
-export async function addGroupToFirestore(group: any) {
-  const id = group.id ? String(group.id) : "group_" + Date.now();
-  const payload = sanitizeForFirestore({ ...group, id, updatedAtMs: Date.now() });
-  await setDoc(doc(db, "groups", id), payload, { merge: true });
-  if (fallbackDb !== db) {
-    setDoc(doc(fallbackDb, "groups", id), payload, { merge: true }).catch(() => {});
-  }
+export async function addGroupToFirestore(group: any): Promise<string> {
+  const id = group.id || `group_${Date.now()}`;
+  const docRef = doc(db, 'groups', id);
+  await setDoc(docRef, sanitizeForFirestore({ ...group, id }), { merge: true });
   return id;
-}
-export async function updateGroupInFirestore(groupId: string, groupData: any) {
-  if (!groupId) return;
-  const payload = sanitizeForFirestore({ ...groupData, id: groupId, updatedAtMs: Date.now() });
-  await setDoc(doc(db, "groups", groupId), payload, { merge: true });
-  if (fallbackDb !== db) {
-    setDoc(doc(fallbackDb, "groups", groupId), payload, { merge: true }).catch(() => {});
-  }
 }
 
-export async function deleteGroupFromFirestore(groupId: string) {
+export async function deleteGroupFromFirestore(groupId: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, "groups", groupId));
-    if (fallbackDb !== db) {
-      deleteDoc(doc(fallbackDb, "groups", groupId)).catch(() => {});
-    }
+    const docRef = doc(db, 'groups', groupId);
+    await deleteDoc(docRef);
   } catch (err) {
-    console.warn("deleteGroupFromFirestore error:", err);
+    console.warn('deleteGroupFromFirestore error:', err);
   }
-}
-export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) => void): () => void {
-  let primaryPlaces: any[] = [];
-  let fallbackPlaces: any[] = [];
-  const emitMerged = () => {
-    const map = new Map();
-    [...fallbackPlaces, ...primaryPlaces].forEach((p) => {
-      if (p && p.id) map.set(String(p.id), p);
-    });
-    callback(Array.from(map.values()));
-  };
-  const unsub1 = onSnapshot(collection(db, "saved_places"), (snap) => {
-    primaryPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    emitMerged();
-  }, () => {});
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "saved_places"), (snap) => {
-    fallbackPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    emitMerged();
-  }, () => {}) : () => {};
-  return () => {
-    unsub1();
-    unsub2();
-  };
-}
-export async function savePlaceToFirestore(place: any) {
-  const id = place.id ? String(place.id) : "plc_" + Date.now();
-  const payload = sanitizeForFirestore({ ...place, id, updatedAtServer: serverTimestamp() });
-  await setDoc(doc(db, "saved_places", id), payload, { merge: true });
-  if (fallbackDb !== db) {
-    setDoc(doc(fallbackDb, "saved_places", id), payload, { merge: true }).catch(() => {});
-  }
-  return id;
-}
-export async function deletePlaceFromFirestore(placeId: string) {
-  if (!placeId) return;
-  try {
-    await deleteDoc(doc(db, "saved_places", placeId));
-    if (fallbackDb !== db) {
-      deleteDoc(doc(fallbackDb, "saved_places", placeId)).catch(() => {});
-    }
-  } catch (err) {
-    console.warn("deletePlaceFromFirestore error:", err);
-  }
-}
-export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
-  return onSnapshot(collection(db, "blood_requests"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
-  }, () => {});
-}
-export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]) => void): () => void {
-  return onSnapshot(collection(db, "volunteer_donors"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
-  }, () => {});
-}
-export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
-  return onSnapshot(collection(db, "jobs"), (snap) => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, () => {});
-}
-export async function saveJobToFirestore(job: any) {
-  const id = job.id ? String(job.id) : "job_" + Date.now();
-  await setDoc(doc(db, "jobs", id), sanitizeForFirestore({ ...job, id }), { merge: true });
-  return id;
-}
-export async function deleteJobFromFirestore(jobId: string) {
-  if (!jobId) return;
-  await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
-}
-export function subscribeToAccommodationsFromFirestore(callback: (items: any[]) => void): () => void {
-  return onSnapshot(collection(db, "accommodations"), (snap) => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, () => {});
-}
-export async function saveAccommodationToFirestore(item: any) {
-  const id = item.id ? String(item.id) : "acc_" + Date.now();
-  await setDoc(doc(db, "accommodations", id), sanitizeForFirestore({ ...item, id }), { merge: true });
-  return id;
-}
-export async function deleteAccommodationFromFirestore(id: string) {
-  if (!id) return;
-  await deleteDoc(doc(db, "accommodations", id)).catch(() => {});
-}
-export function subscribeToBarterItemsFromFirestore(callback: (items: any[]) => void): () => void {
-  return onSnapshot(collection(db, "barter_items"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
-  }, () => {});
-}
-export async function saveBarterItemToFirestore(item: any) {
-  const id = item.id ? String(item.id) : "barter_" + Date.now();
-  await setDoc(doc(db, "barter_items", id), sanitizeForFirestore({ ...item, id }), { merge: true });
-  return id;
-}
-export async function deleteBarterItemFromFirestore(id: string) {
-  if (!id) return;
-  await deleteDoc(doc(db, "barter_items", id)).catch(() => {});
 }
 
 // ==============================================================
 // 🩸 BLOOD & DISASTER RELIEF
 // ==============================================================
 
-export async function saveBloodRequestToFirestore(req: any) {
-  const id = req.id ? req.id : "blood_" + Date.now();
-  const docRef = doc(db, "blood_requests", id);
+export async function saveBloodRequestToFirestore(req: any): Promise<string> {
+  const id = req.id || `blood_${Date.now()}`;
+  const docRef = doc(db, 'blood_requests', id);
   await setDoc(docRef, sanitizeForFirestore({ ...req, id }), { merge: true });
   return id;
 }
 
-export async function deleteBloodRequestFromFirestore(id: string) {
-  await deleteDoc(doc(db, "blood_requests", id));
+export async function deleteBloodRequestFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'blood_requests', id));
 }
 
-export async function saveVolunteerDonorToFirestore(donor: any) {
-  const id = donor.id ? donor.id : "donor_" + Date.now();
-  const docRef = doc(db, "volunteer_donors", id);
+export async function saveVolunteerDonorToFirestore(donor: any): Promise<string> {
+  const id = donor.id || `donor_${Date.now()}`;
+  const docRef = doc(db, 'volunteer_donors', id);
   await setDoc(docRef, sanitizeForFirestore({ ...donor, id }), { merge: true });
   return id;
 }
 
-export async function deleteVolunteerDonorFromFirestore(id: string) {
-  await deleteDoc(doc(db, "volunteer_donors", id));
+export async function deleteVolunteerDonorFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'volunteer_donors', id));
 }
 
-export async function saveDisasterReliefToFirestore(relief: any) {
-  const id = relief.id ? relief.id : "relief_" + Date.now();
-  const docRef = doc(db, "disaster_relief", id);
+export async function saveDisasterReliefToFirestore(relief: any): Promise<string> {
+  const id = relief.id || `relief_${Date.now()}`;
+  const docRef = doc(db, 'disaster_relief', id);
   await setDoc(docRef, sanitizeForFirestore({ ...relief, id }), { merge: true });
   return id;
 }
 
-export async function deleteDisasterReliefFromFirestore(id: string) {
-  await deleteDoc(doc(db, "disaster_relief", id));
+export async function deleteDisasterReliefFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'disaster_relief', id));
 }
 
 // ==============================================================
@@ -1239,70 +748,71 @@ export async function deleteDisasterReliefFromFirestore(id: string) {
 // ==============================================================
 
 export function subscribeToAidCentersFromFirestore(callback: (centers: any[]) => void): () => void {
-  const colRef = collection(db, "aid_centers");
+  const colRef = collection(db, 'aid_centers');
   return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(data);
   }, () => {});
 }
 
-export async function saveAidCenterToFirestore(item: any) {
-  const id = item.id ? item.id : "aid_center_" + Date.now();
-  const docRef = doc(db, "aid_centers", id);
+export async function saveAidCenterToFirestore(item: any): Promise<string> {
+  const id = item.id || `aid_center_${Date.now()}`;
+  const docRef = doc(db, 'aid_centers', id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function updateAidCenterInFirestore(id: string, updateData: any) {
-  const docRef = doc(db, "aid_centers", id);
+export async function updateAidCenterInFirestore(id: string, updateData: any): Promise<void> {
+  const docRef = doc(db, 'aid_centers', id);
   await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
-export async function deleteAidCenterFromFirestore(id: string) {
-  await deleteDoc(doc(db, "aid_centers", id));
+export async function deleteAidCenterFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'aid_centers', id));
 }
 
 export function subscribeToAidDeliveriesFromFirestore(callback: (deliveries: any[]) => void): () => void {
-  const colRef = collection(db, "aid_deliveries");
+  const colRef = collection(db, 'aid_deliveries');
   return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(data);
   }, () => {});
 }
 
-export async function saveAidDeliveryToFirestore(item: any) {
-  const id = item.id ? item.id : "aid_delivery_" + Date.now();
-  const docRef = doc(db, "aid_deliveries", id);
+export async function saveAidDeliveryToFirestore(item: any): Promise<string> {
+  const id = item.id || `aid_delivery_${Date.now()}`;
+  const docRef = doc(db, 'aid_deliveries', id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
 
-export async function updateAidDeliveryInFirestore(id: string, updateData: any) {
-  const docRef = doc(db, "aid_deliveries", id);
+export async function updateAidDeliveryInFirestore(id: string, updateData: any): Promise<void> {
+  const docRef = doc(db, 'aid_deliveries', id);
   await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
 }
 
-export async function deleteAidDeliveryFromFirestore(id: string) {
-  await deleteDoc(doc(db, "aid_deliveries", id));
+export async function deleteAidDeliveryFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'aid_deliveries', id));
 }
 
 export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any[]) => void): () => void {
-  const colRef = collection(db, "aid_broadcasts");
+  const colRef = collection(db, 'aid_broadcasts');
   return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(data);
   }, () => {});
 }
 
-export async function saveAidBroadcastToFirestore(item: any) {
-  const id = item.id ? item.id : "aid_broadcast_" + Date.now();
-  const docRef = doc(db, "aid_broadcasts", id);
+export async function saveAidBroadcastToFirestore(item: any): Promise<string> {
+  const id = item.id || `aid_broadcast_${Date.now()}`;
+  const docRef = doc(db, 'aid_broadcasts', id);
   await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
   return id;
 }
+// ==============================================================
+// 🗑️ DELETED RECORDS MAP (SYNC ACROSS ALL CLIENTS)
+// ==============================================================
 
-// ==============================================================
-// ==============================================================
 export interface DeletedRecordsMap {
   deletedPostIds?: string[];
   deletedUserIds?: string[];
@@ -1399,7 +909,6 @@ export async function deletePasswordResetRequestFromFirestore(id: string): Promi
     handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
   }
 }
-
 
 // ==============================================================
 // 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
@@ -1525,4 +1034,3 @@ export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
     handleFirestoreError(err, OperationType.DELETE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
   }
 }
-
