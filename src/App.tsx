@@ -13,10 +13,8 @@ import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
 import { RedAlertLiveManager } from './components/RedAlertLiveManager';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
-import { AppUpdateModal } from './components/AppUpdateModal';
 import { DevicePinSetupModal } from './components/DevicePinSetupModal';
 import { getStoredDevicePin } from './utils/devicePinManager';
-import { checkForAppUpdate, AppUpdateInfo } from './utils/apkDownloadHelper';
 import {
   subscribeToUsers,
   subscribeToHelpPosts,
@@ -32,6 +30,57 @@ import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
+
+async function hashUserPassword(rawPass: string): Promise<string> {
+  const clean = (rawPass ? rawPass : '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('sha256_v1$')) return clean;
+  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return 'sha256_v1$' + hex;
+    } catch (e) {}
+  }
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) {
+    h = (h * 33) ^ payload.charCodeAt(i);
+  }
+  return 'sha256_v1$fb_' + String(h >>> 0);
+}
+
+function sanitizeUserForSessionStorage(u: User | null): any {
+  if (!u) return null;
+  const copy: any = Object.assign({}, u);
+  delete copy.password;
+  delete copy.key;
+  delete copy.tempPassword;
+  delete copy.temporaryPassword;
+  return copy;
+}
+
+function getSafeUsersForView(allUsers: User[], viewer: User | null, isAdminView: boolean): User[] {
+  const isViewerAdmin = Boolean(isAdminView ? true : checkIsAdmin(viewer));
+  if (isViewerAdmin) return allUsers;
+  const viewerId = viewer?.id ? viewer.id : viewer?.userId ? viewer.userId : '';
+  return (allUsers ? allUsers : []).map((u) => {
+    if (!u) return u;
+    const isSelf = Boolean(viewerId && (u.id === viewerId ? true : u.userId === viewerId));
+    const safeCopy: any = Object.assign({}, u);
+    delete safeCopy.password;
+    delete safeCopy.key;
+    delete safeCopy.tempPassword;
+    delete safeCopy.temporaryPassword;
+    if (!isSelf) {
+      delete safeCopy.nicFrontPhotoUrl;
+      delete safeCopy.nicBackPhotoUrl;
+      delete safeCopy.idCardPhotoUrl;
+    }
+    return safeCopy as User;
+  });
+}
 
 export const App: React.FC = () => {
   // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
@@ -95,39 +144,8 @@ export const App: React.FC = () => {
   const [issues, setIssues] = useState<Issue[]>([]);
 
   // Current User Session & Navigation View
-  // 🚀 In-App Version Update Check State
-  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
-  useEffect(() => {
-    // Check for updates 1.5s after app launch
-    const updateTimer = setTimeout(async () => {
-      try {
-        const info = await checkForAppUpdate();
-        if (info && info.hasUpdate) {
-          const lastDismissed = localStorage.getItem('sahaya_update_dismissed_time');
-          // Only show if not dismissed in the last 6 hours
-          if (!lastDismissed || Date.now() - parseInt(lastDismissed, 10) > 6 * 3600 * 1000) {
-            setUpdateInfo(info);
-            setIsUpdateModalOpen(true);
-          }
-        }
-      } catch (err) {
-        console.debug('In-app update check note:', err);
-      }
-    }, 1500);
-
-    return () => clearTimeout(updateTimer);
-  }, []);
-
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('sahaya_sewa_session_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
     try {
@@ -135,14 +153,6 @@ export const App: React.FC = () => {
       const storedPin = getStoredDevicePin();
       if (storedPin) {
         return 'login';
-      }
-
-      const saved = localStorage.getItem('sahaya_sewa_session_user');
-      if (saved) {
-        const u: User = JSON.parse(saved);
-        if (u.role === 'admin' || u.role === 'super_admin') return 'admin';
-        if (u.status === 'pending') return 'pending';
-        return 'dashboard';
       }
 
       // 2. Check if permissions setup has been completed on initial launch
@@ -188,14 +198,32 @@ export const App: React.FC = () => {
     }
   }, [helpPosts, currentUser]);
 
-  // Persist User Session to LocalStorage
+  // Persist User Session to LocalStorage (Sanitized: strips password/key/temporaryPassword)
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(currentUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(currentUser)));
     } else {
       localStorage.removeItem('sahaya_sewa_session_user');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser && (activeView === 'dashboard' ? true : activeView === 'admin' ? true : activeView === 'pending')) {
+      setActiveView('login');
+    }
+  }, [currentUser, activeView]);
+
+  useEffect(() => {
+    const handlePreloadError = () => {
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+          window.location.reload();
+        });
+      }
+    };
+    window.addEventListener('vite:preloadError', handlePreloadError);
+    return () => window.removeEventListener('vite:preloadError', handlePreloadError);
+  }, []);
 
   // Global Event Listener for Post Deletions triggered across components
   useEffect(() => {
@@ -299,89 +327,123 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Login Handler
+  // 🛡️ Strict Login Handler (ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදයෙන් පමණක් ඇතුල් වීමට ඉඩ දීම)
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
-    const cleanId = userIdOrNic.trim();
-    const cleanPass = passKey.trim();
+    const cleanId = (userIdOrNic || '').trim();
+    const cleanPass = (passKey || '').trim();
+
+    if (!cleanId) {
+      throw new Error('කරුණාකර ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න.');
+    }
+    if (!cleanPass) {
+      throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
+    }
 
     const norm = normalizeNIC(cleanId);
-    let matched = users.find(
-      (u) =>
-        (
-          normalizeNIC(u.nic || '') === norm || 
-          normalizeNIC(u.nicNumber || '') === norm || 
-          u.id === cleanId || 
-          u.userId === cleanId || 
-          u.whatsappPhone === cleanId
-        ) &&
-        (
-          u.temporaryPassword === cleanPass || 
-          (u as any).tempPassword === cleanPass || 
-          u.password === cleanPass || 
-          (u as any).key === cleanPass || 
-          cleanPass === '1691@@Devhas' || 
-          cleanPass === 'testPass123' || 
-          cleanPass === '545554'
-        )
-    );
 
-    if (!matched) {
+    // 1. පරිශීලක ලැයිස්තුවෙන් (users) අදාළ NIC හෝ User ID හිමි ගිණුම සෙවීම
+    let matchedUser = users.find((u) => {
+      if (!u) return false;
+      const uNic = normalizeNIC(u.nic || u.nicNumber || '');
+      const uUserId = normalizeNIC(u.userId || '');
+      const uId = (u.id || '').trim();
+      const uPhone = (u.whatsappPhone || u.phone || '').trim();
+      const uEmail = (u.email || '').trim().toLowerCase();
+
+      return (
+        (norm !== '' && (uNic === norm || uUserId === norm)) ||
+        (cleanId !== '' && uId === cleanId) ||
+        (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin')) ||
+        (cleanId.length >= 9 && (uPhone === cleanId || uEmail === cleanId.toLowerCase()))
+      );
+    });
+
+    // 2. Local memory එකෙහි නැතිනම් Firestore වෙතින් Document ID අනුව සෙවීම
+    if (!matchedUser) {
       try {
         const remoteUser = await getUserFromFirestore(cleanId);
         if (remoteUser) {
-          matched = remoteUser;
+          matchedUser = remoteUser;
         }
       } catch (_) {}
     }
 
-    if (!matched) {
-      if (cleanId.toLowerCase().includes('admin') || cleanId === '970181547V' || cleanId === '000000000V' || norm === '970181547V') {
-        matched = users.find((u) => u.role === 'admin' || u.role === 'super_admin' || u.id === 'usr_admin') || initialUsers[0];
+    // 3. initialUsers (පද්ධතියේ මූලික පරිශීලකයින්) අතර සෙවීම
+    if (!matchedUser) {
+      matchedUser = initialUsers.find((u) => {
+        if (!u) return false;
+        const uNic = normalizeNIC(u.nicNumber || u.nic || '');
+        const uUserId = normalizeNIC(u.userId || '');
+        return (
+          (norm !== '' && (uNic === norm || uUserId === norm)) ||
+          u.id === cleanId ||
+          (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin'))
+        );
+      });
+    }
+
+    // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
+    if (!matchedUser) {
+      throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
+    }
+
+    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
+    // කිසිදු Backdoor මුරපදයක්, විශ්ව මුරපදයක් හෝ මුරපදය නොමැතිව පිවිසීමක් සිදු නොවේ!
+    // මෙම නිශ්චිත ගිණුමට අදාළ ස්ථිර මුරපදය (password / key) හෝ පරිපාලක ලබා දුන් තාවකාලික මුරපදය (temporaryPassword / tempPassword) පමණක් පිළිගැනේ.
+    const userPass = String(matchedUser.password ? matchedUser.password : (matchedUser as any).key ? (matchedUser as any).key : '').trim();
+    const userTempPass = String(matchedUser.temporaryPassword ? matchedUser.temporaryPassword : (matchedUser as any).tempPassword ? (matchedUser as any).tempPassword : '').trim();
+    const hashedInputPass = await hashUserPassword(cleanPass);
+
+    const isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass ? true : userPass === cleanPass));
+    const isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass ? true : userTempPass === cleanPass));
+
+    if (!isPermanentMatch && !isTemporaryMatch) {
+      throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
+    }
+
+    // 6. මුරපදය නිවැරදි නම් පමණක් Login වීම සම්පූර්ණ කිරීම
+    let authenticatedUser: User = { ...matchedUser };
+
+    // පැරණි Plain-text මුරපදයක් නම් ස්වයංක්‍රීයව SHA-256 Hash එකට උසස් කර Firestore හි සුරැකීම
+    if (isPermanentMatch && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
+      authenticatedUser.password = hashedInputPass;
+      (authenticatedUser as any).key = hashedInputPass;
+      updateUserInFirestore(matchedUser.id, {
+        password: hashedInputPass,
+        key: hashedInputPass,
+      }).catch(() => {});
+    }
+
+    // තාවකාලික මුරපදයකින් පිවිසියේ නම් මුරපදය වෙනස් කිරීමේ Modal එක විවෘත කිරීමට සටහන් කිරීම
+    if (isTemporaryMatch && !isPermanentMatch) {
+      authenticatedUser.isTemporaryPassword = true;
+      (authenticatedUser as any).tempPassword = cleanPass;
+    }
+
+    setCurrentUser(authenticatedUser);
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(authenticatedUser)));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    // 4-digit device PIN එක පරීක්ෂා කිරීම (Demo පරිශීලකයින් හැර)
+    const isDemoUser = authenticatedUser.id === 'demo_user' || authenticatedUser.userId === 'demo_user' || authenticatedUser.isDemo || authenticatedUser.nic === '000000000V';
+    if (!isDemoUser) {
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = authenticatedUser.id || authenticatedUser.userId || authenticatedUser.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== authenticatedUser.nicNumber)) {
+        setIsPinSetupRequired(true);
+        return;
       }
     }
 
-    if (matched) {
-      // Check if logged in with temporary password
-      if (
-        matched.isTemporaryPassword || 
-        (matched as any).tempPassword === cleanPass || 
-        matched.temporaryPassword === cleanPass || 
-        cleanPass === '545554'
-      ) {
-        matched = {
-          ...matched,
-          isTemporaryPassword: true,
-          tempPassword: cleanPass
-        };
-      }
-
-      setCurrentUser(matched);
-      try {
-        localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(matched));
-      } catch (e) {
-        console.warn(e);
-      }
-
-      // Check if 4-digit device PIN is already configured (Skip for Demo users)
-      const isDemoUser = matched.id === 'demo_user' || matched.userId === 'demo_user' || matched.isDemo || matched.nic === '000000000V';
-      if (!isDemoUser) {
-        const storedPin = getStoredDevicePin();
-        const currentMatchedId = matched.id || matched.userId || matched.nicNumber;
-        if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== matched.nicNumber)) {
-          setIsPinSetupRequired(true);
-          return;
-        }
-      }
-
-      if (matched.role === 'admin' || matched.role === 'super_admin') {
-        setActiveView('admin');
-      } else if (matched.status === 'pending') {
-        setActiveView('pending');
-      } else {
-        setActiveView('dashboard');
-      }
+    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setActiveView('pending');
     } else {
-      throw new Error('පරිශීලක නාමය (User ID/NIC) හෝ මුරපදය වැරදියි. කරුණාකර නැවත උත්සාහ කරන්න.');
+      setActiveView('dashboard');
     }
   }, [users]);
   // Device PIN Login Success Handler
@@ -419,7 +481,7 @@ export const App: React.FC = () => {
       status: 'approved',
       city: 'කොළඹ',
       createdAt: new Date().toISOString(),
-      credits: 50,
+      credits: 100,
     };
 
     const demoUser: User = {
@@ -438,14 +500,20 @@ export const App: React.FC = () => {
   }, [users]);
 
   // Registration Handler
-  const handleRegister = useCallback(async (newUser: Omit<User, 'id' | 'createdAt' | 'status'>) => {
-    const created: User = {
-      ...newUser,
-      id: `usr_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      status: 'pending', // Awaiting Admin Approval
-      credits: 50, // Welcome Gift Credits
-    };
+  const handleRegister = useCallback(async (newUser: any) => {
+    const resolvedId = newUser && newUser.id ? String(newUser.id) : `usr_${Date.now()}`;
+    const rawPass = String(newUser?.password ? newUser.password : newUser?.key ? newUser.key : '').trim();
+    const hashedPass = rawPass ? await hashUserPassword(rawPass) : '';
+    const resolvedCreatedAt = newUser && newUser.createdAt ? String(newUser.createdAt) : new Date().toISOString();
+    const created: User = Object.assign({}, newUser, {
+      id: resolvedId,
+      createdAt: resolvedCreatedAt,
+      status: 'pending',
+      credits: 100,
+      creditBalance: 100,
+      password: hashedPass,
+      key: hashedPass,
+    });
 
     setUsers((prev) => deduplicateUsers([created, ...prev]));
     setCurrentUser(created);
@@ -465,16 +533,17 @@ export const App: React.FC = () => {
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
-  // 🔑 Permanent Password Update Handler (නව මුරපදය ස්ථිරව සුරැකීම)
+  // 🔑 Permanent Password Update Handler (නව මුරපදය SHA-256 Hash මඟින් ස්ථිරව සුරැකීම)
   const handleSaveNewPassword = useCallback(async (newPassword: string) => {
     if (!currentUser) return;
     const cleanNewPass = newPassword.trim();
     if (!cleanNewPass) return;
+    const hashedNewPass = await hashUserPassword(cleanNewPass);
 
     const updatedUser: User = {
       ...currentUser,
-      password: cleanNewPass,
-      key: cleanNewPass as any,
+      password: hashedNewPass,
+      key: hashedNewPass as any,
       isTemporaryPassword: false,
       isPasswordChanged: true,
       tempPassword: '',
@@ -485,8 +554,8 @@ export const App: React.FC = () => {
     // 1. Update in Firestore
     try {
       await updateUserInFirestore(currentUser.id, {
-        password: cleanNewPass,
-        key: cleanNewPass,
+        password: hashedNewPass,
+        key: hashedNewPass,
         isTemporaryPassword: false,
         isPasswordChanged: true,
         tempPassword: '',
@@ -499,9 +568,9 @@ export const App: React.FC = () => {
 
     // 2. Synchronize local state and session
     setCurrentUser(updatedUser);
-    setUsers((prev) => (prev || []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
+    setUsers((prev) => (prev ? prev : []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
     try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(updatedUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(updatedUser)));
     } catch (e) {
       console.warn('LocalStorage session update error:', e);
     }
@@ -570,25 +639,41 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeView === 'register' && (
-          <RegisterForm
-            onRegister={handleRegister}
-            onNavigateToLogin={() => setActiveView('login')}
-            language={language}
-          />
-        )}
+        {activeView === 'register' &&
+          React.createElement(RegisterForm, {
+            onRegister: handleRegister,
+            onNavigateToLogin: () => setActiveView('login'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            language: language,
+            setLanguage: setLanguage,
+            theme: theme,
+            toggleTheme: toggleTheme,
+            users: users,
+          })}
 
-        {activeView === 'pending' && currentUser && (
-          <PendingApprovalView
-            user={currentUser}
-            language={language}
-            onRefreshStatus={() => {
+        {activeView === 'pending' &&
+          currentUser &&
+          React.createElement(PendingApprovalView, {
+            user: currentUser,
+            language: language,
+            onRefreshStatus: async () => {
+              const targetId = currentUser.id ? currentUser.id : currentUser.userId;
+              if (targetId) {
+                const remote = await getUserFromFirestore(String(targetId));
+                if (remote) {
+                  setCurrentUser(remote);
+                  if (remote.status === 'approved') {
+                    setActiveView('dashboard');
+                    return;
+                  }
+                }
+              }
               if (currentUser.status === 'approved') setActiveView('dashboard');
-            }}
-            onNavigateToIssues={() => setActiveView('issues')}
-            onBackToLogin={handleLogout}
-          />
-        )}
+            },
+            onReRegister: () => setActiveView('register'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            onBackToLogin: handleLogout,
+          })}
 
         {activeView === 'admin' && currentUser && (
           <AdminPanel
@@ -616,7 +701,7 @@ export const App: React.FC = () => {
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
             onUpdateUser={(updated) => setCurrentUser(updated)}
-            users={users}
+            users={getSafeUsersForView(users, currentUser, false)}
             setUsers={setUsers}
             helpPosts={helpPosts}
             setHelpPosts={setHelpPosts}
@@ -702,22 +787,6 @@ export const App: React.FC = () => {
           }}
         />
       )}
-
-      {/* 🚀 In-App Version Update Notification Modal */}
-      {updateInfo && (
-        <AppUpdateModal
-          isOpen={isUpdateModalOpen}
-          onClose={() => {
-            setIsUpdateModalOpen(false);
-            try {
-              localStorage.setItem('sahaya_update_dismissed_time', Date.now().toString());
-            } catch {}
-          }}
-          updateInfo={updateInfo}
-          language={language}
-        />
-      )}
-
       {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
       {sosViewerSessionId && (
         <SosLiveViewerModal
@@ -738,4 +807,5 @@ export const App: React.FC = () => {
 };
 
 export default App;
+
 
