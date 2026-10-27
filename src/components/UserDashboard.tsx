@@ -501,16 +501,82 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     fixedAmount?: number;
   } | undefined>(undefined);
 
-  // Navigation handler when user clicks a notification toast or modal item
-  const handleOpenFromNotification = (notif: AppNotification) => {
+  // 🎯 One-Tap Full-Body Notification Navigation: Clicking ANYWHERE on a notification opens the relevant message/request directly
+  const navigateToNotificationTarget = useCallback((targetModal?: string, targetPostId?: string) => {
     setIsNotificationModalOpen(false);
-    if (notif.relatedPostId) {
-      const target = (helpPosts || []).find((p) => p && p.id === notif.relatedPostId);
+    if (!targetModal && !targetPostId) return;
+
+    if (targetModal === 'blood' || targetModal === 'emergency_blood') {
+      setIsBloodAndDisasterModalOpen(true);
+      setBloodModalInitialTab('blood_requests');
+    } else if (targetModal === 'aid_ledger' || targetModal === 'disaster_relief') {
+      setIsAidLedgerModalOpen(true);
+    } else if (targetModal === 'quick_service') {
+      if (targetPostId) {
+        const found = (helpPosts || []).find((p) => p && p.id === targetPostId);
+        if (found) {
+          setSelectedPostForDetail(found);
+          return;
+        }
+      }
+      setBoardCategoryFilter('quick_services');
+    } else if (targetModal === 'group_work' || targetModal === 'group') {
+      setBoardCategoryFilter('group_work');
+    } else if (targetModal === 'chat' || targetModal === 'inbox') {
+      setIsInboxModalOpen(true);
+    } else if (targetModal === 'marketplace') {
+      setIsMarketplaceLowestModalOpen(true);
+    } else if (targetModal === 'find_for_me') {
+      setIsFindForMeModalOpen(true);
+    } else if (targetModal === 'from_me_to_you') {
+      setIsFromMeToYouModalOpen(true);
+    } else if (targetModal === 'red_alert' && targetPostId) {
+      const alert = (redAlerts || []).find((a: any) => a && (a.id === targetPostId || a.alertCode === targetPostId));
+      if (alert) setSelectedAlertForDetail(alert);
+    } else if (targetPostId) {
+      const target = (helpPosts || []).find((p) => p && p.id === targetPostId);
       if (target) {
         setSelectedPostForDetail(target);
       }
     }
+  }, [helpPosts, redAlerts]);
+
+  // Navigation handler when user clicks a notification toast or modal item
+  const handleOpenFromNotification = (notif: AppNotification) => {
+    setIsNotificationModalOpen(false);
+    const modal = notif.targetModal || (notif as any).modal;
+    const postId = notif.targetPostId || notif.relatedPostId;
+    navigateToNotificationTarget(modal, postId);
   };
+
+  useEffect(() => {
+    const handleNotificationClickEvent = (e: any) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      const targetModal = detail.targetModal || (detail.data && detail.data.targetModal);
+      const targetPostId = detail.targetPostId || detail.relatedPostId || (detail.data && detail.data.targetPostId);
+      navigateToNotificationTarget(targetModal, targetPostId);
+    };
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NAVIGATE_TO_MODAL') {
+        const { targetModal, targetPostId } = event.data;
+        navigateToNotificationTarget(targetModal, targetPostId);
+      }
+    };
+
+    window.addEventListener('sahaya_notification_clicked', handleNotificationClickEvent);
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    }
+
+    return () => {
+      window.removeEventListener('sahaya_notification_clicked', handleNotificationClickEvent);
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      }
+    };
+  }, [navigateToNotificationTarget]);
 
   const handleClearAllNotifications = () => {
     // Local clear

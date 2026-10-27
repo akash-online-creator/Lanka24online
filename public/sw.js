@@ -326,15 +326,10 @@ async function showHighPriorityEmergencyNotification(payload) {
       postId: payload.postId,
 
       groupId: payload.groupId,
-
-      targetModal: 'red_alert',
-
+      targetModal: payload.targetModal || (payload.alertId ? 'red_alert' : 'detail'),
+      targetPostId: payload.targetPostId || payload.alertId || payload.postId,
       payload
-
-    },
-
-    actions
-
+    }
   };
 
   await self.registration.showNotification(notifTitle, options);
@@ -471,19 +466,12 @@ self.addEventListener('notificationclick', event => {
       if (client.url && 'focus' in client) {
 
         client.focus();
-
         client.postMessage({
-
           type: 'NAVIGATE_TO_MODAL',
-
-          targetModal: 'red_alert',
-
-          targetPostId: targetData.alertId ? targetData.alertId : targetData.postId,
-
+          targetModal: targetData.targetModal || (targetData.alertId ? 'red_alert' : 'detail'),
+          targetPostId: targetData.targetPostId || targetData.alertId || targetData.postId,
           payload: targetData.payload
-
         });
-
         return;
 
       }

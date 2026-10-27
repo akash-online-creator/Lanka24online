@@ -21,6 +21,8 @@ export interface AppNotification {
   timestamp: string;
   isRead: boolean;
   locationName?: string;
+  lat?: number;
+  lng?: number;
   badgeText?: string;
   targetPostId?: string;
   targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert' | 'admin';
@@ -193,18 +195,14 @@ export const triggerBrowserNotification = async (notif: AppNotification) => {
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: notif.id || `notif-${Date.now()}`,
-          vibrate: [300, 100, 300, 100, 500],
+          vibrate: [200, 100, 200],
           data: {
             url: '/',
             targetPostId: notif.targetPostId,
             targetModal: notif.targetModal,
             notifId: notif.id
           },
-          requireInteraction: notif.type === 'emergency_blood' || notif.type === 'aid_ledger',
-          actions: [
-            { action: 'open', title: '👁️ විස්තර බලන්න' },
-            { action: 'dismiss', title: 'ඉවත් කරන්න' }
-          ]
+          requireInteraction: false
         };
         await (registration as any).showNotification(notifTitle, swOptions);
         return;
@@ -316,7 +314,7 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
   const updated = [newNotif, ...current.filter(n => n.id !== newNotif.id)].slice(0, 50);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
-  // Trigger PickMe style persistent ringtone & background push if it's quick_service, emergency_blood, or aid_ledger
+  // Trigger Telegram / WhatsApp style ringtone & background push if it's quick_service, emergency_blood, aid_ledger, or group_work
   if (newNotif.type === 'quick_service') {
     triggerPickMeAlert({
       kind: 'quick_service',
@@ -325,6 +323,8 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
       locationName: newNotif.locationName,
       targetModal: 'quick_service',
       targetPostId: newNotif.targetPostId,
+      lat: newNotif.lat,
+      lng: newNotif.lng,
     });
   } else if (newNotif.type === 'emergency_blood') {
     triggerPickMeAlert({
@@ -334,6 +334,8 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
       locationName: newNotif.locationName,
       targetModal: 'blood',
       targetPostId: newNotif.targetPostId,
+      lat: newNotif.lat,
+      lng: newNotif.lng,
     });
   } else if (newNotif.type === 'aid_ledger') {
     triggerPickMeAlert({
@@ -343,6 +345,19 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
       locationName: newNotif.locationName,
       targetModal: 'aid_ledger',
       targetPostId: newNotif.targetPostId,
+      lat: newNotif.lat,
+      lng: newNotif.lng,
+    });
+  } else if (newNotif.type === 'group_work') {
+    triggerPickMeAlert({
+      kind: 'general',
+      title: newNotif.title,
+      message: newNotif.message,
+      locationName: newNotif.locationName,
+      targetModal: 'group_work',
+      targetPostId: newNotif.targetPostId,
+      lat: newNotif.lat,
+      lng: newNotif.lng,
     });
   } else {
     // Standard chime

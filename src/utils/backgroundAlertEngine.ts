@@ -4,6 +4,8 @@
 
 import { activateBackgroundWakeLock } from './notificationManager';
 import { startEmergencySiren, stopEmergencySiren } from './sirenAudio';
+import { getLastKnownLocation } from './autoGpsService';
+import { calculateDistanceKm } from './geoUtils';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
@@ -103,8 +105,8 @@ export function savePickMeAlertSettings(settings: Partial<BackgroundAlertSetting
   } catch {}
 }
 
-// Soft pleasant notification chime (single tone, non-annoying)
-function playGentleNotificationChime(vol: number) {
+// 🔔 Telegram / WhatsApp Style Double Melodic Chime (Crisp resonant 2-tone chime)
+export function playTelegramWhatsAppChime(vol: number = 0.8) {
   try {
     if (typeof window === 'undefined') return;
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -118,26 +120,38 @@ function playGentleNotificationChime(vol: number) {
     }
 
     const now = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const safeVol = Math.max(0.08, Math.min(vol * 0.45, 0.5));
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, now); // D5
-    osc.frequency.setValueAtTime(880, now + 0.12); // A5
+    // Note 1: First Ding (E6 - 1318.5 Hz)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(1318.5, now);
+    gain1.gain.setValueAtTime(safeVol, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
 
-    const safeVol = Math.max(0.05, Math.min(vol * 0.3, 0.4));
-    gain.gain.setValueAtTime(safeVol, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.5);
+    // Note 2: Second Dong (A6 - 1760.0 Hz)
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1760.0, now + 0.14);
+    gain2.gain.setValueAtTime(safeVol * 0.9, now + 0.14);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.14);
+    osc2.stop(now + 0.48);
   } catch (e) {
     // silently catch if browser policy blocks audio before user interaction
   }
 }
+
+// Backwards compatibility alias
+export const playGentleNotificationChime = playTelegramWhatsAppChime;
 
 // 📱 Initialize Capacitor Native Emergency Siren Channel (Respects Silent Mode)
 export async function initializeNativeSirenChannel() {
@@ -169,6 +183,10 @@ export function triggerPickMeAlert(params: {
   targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert';
   targetPostId?: string;
   forceRingtone?: boolean;
+  lat?: number;
+  lng?: number;
+  userLat?: number;
+  userLng?: number;
 }): boolean {
   const settings = getPickMeAlertSettings();
 
@@ -178,6 +196,29 @@ export function triggerPickMeAlert(params: {
   if (params.kind === 'red_alert' && !settings.soundTypes.red_alert && !params.forceRingtone) return false;
   if (params.kind === 'emergency_blood' && !settings.soundTypes.emergency_blood && !params.forceRingtone) return false;
   if (params.kind === 'disaster_relief' && !settings.soundTypes.disaster_relief && !params.forceRingtone) return false;
+
+  // 📍 15km Proximity Geofence Filter:
+  // For emergency_blood, quick_service, disaster_relief:
+  // Only play Telegram/WhatsApp chime and double vibration if within 15km.
+  // Beyond 15km, do NOT ring, do NOT vibrate, do NOT fire push notification (silent bulletin board only).
+  if (params.kind !== 'red_alert') {
+    let userCoords = (params.userLat && params.userLng) ? { lat: params.userLat, lng: params.userLng } : null;
+    if (!userCoords) {
+      const lastLoc = getLastKnownLocation();
+      if (lastLoc && lastLoc.lat && lastLoc.lng) {
+        userCoords = { lat: lastLoc.lat, lng: lastLoc.lng };
+      }
+    }
+
+    if (userCoords && params.lat && params.lng) {
+      const distKm = calculateDistanceKm(userCoords.lat, userCoords.lng, params.lat, params.lng);
+      if (distKm > 15.0) {
+        // Exceeds 15km distance threshold: Suppress audible chime, vibration, and push notification
+        console.debug(`[Proximity Alert Filter] Item is ${distKm.toFixed(1)}km away (>15km limit). Silent bulletin mode only.`);
+        return false;
+      }
+    }
+  }
 
   // Stop any previous state
   stopPickMeAlert();
@@ -211,7 +252,8 @@ export function triggerPickMeAlert(params: {
       } catch {}
     }
   } else {
-    playGentleNotificationChime(settings.volume);
+    // 🔔 Telegram / WhatsApp style Double Melodic Chime & Double Vibration
+    playTelegramWhatsAppChime(settings.volume);
     if (settings.vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate([200, 100, 200]);
@@ -276,7 +318,7 @@ async function fireBackgroundPushNotification(params: {
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: tagId,
-          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [300, 100, 300],
+          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [200, 100, 200],
           requireInteraction: params.kind === 'red_alert',
           data: {
             url: '/',
@@ -284,10 +326,6 @@ async function fireBackgroundPushNotification(params: {
             targetPostId: params.targetPostId,
             kind: params.kind,
           },
-          actions: [
-            { action: 'open', title: '👁️ විස්තර බලන්න (Open)' },
-            { action: 'dismiss', title: 'ඉවත් කරන්න (Dismiss)' },
-          ],
         });
         return;
       }
