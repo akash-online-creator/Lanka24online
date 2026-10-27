@@ -79,6 +79,7 @@ const DIRECT_TOP_LEVEL_COLLECTIONS = [
   'saved_places',
   'blood_requests',
   'volunteer_donors',
+  'disaster_relief',
   'aid_centers',
   'aid_deliveries',
   'aid_broadcasts',
@@ -1175,6 +1176,13 @@ export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]
   }, () => {});
 }
 
+// Disaster Relief Real-time Listener (Added to fix build error)
+export function subscribeToDisasterReliefFromFirestore(callback: (items: any[]) => void): () => void {
+  return onSnapshot(collection(db, "disaster_relief"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+
 // Job Storage & Comments Real-time Functions
 export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
   return onSnapshot(collection(db, "jobs"), (snap) => {
@@ -1193,7 +1201,6 @@ export async function deleteJobFromFirestore(jobId: string) {
   await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
 }
 
-// 🚀 Job Comments Listener Function
 export function subscribeToJobCommentsFromFirestore(jobId: string, callback: (comments: any[]) => void) {
   if (!jobId) return () => {};
   try {
@@ -1214,7 +1221,6 @@ export function subscribeToJobCommentsFromFirestore(jobId: string, callback: (co
   }
 }
 
-// 🚀 Job Comment Save Function
 export async function saveJobCommentToFirestore(jobId: string, commentData: any): Promise<string> {
   if (!jobId) return '';
   try {
