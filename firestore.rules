@@ -6,14 +6,17 @@ service cloud.firestore {
     // 🛡️ 1. Core Security & Authentication Helper Functions
     // ===============================================================
 
+    // පරිශීලකයා ලොග් වී ඇත්දැයි තහවුරු කිරීම
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    // ලොග් වූ පරිශීලකයා ලබා දී ඇති ID එකේ හිමිකරුදැයි බැලීම
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // පරිපාලක (Admin) බලතල පරීක්ෂා කිරීම (Token Claims, Database Role සහ Hardcoded Whitelist)
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'admin' ||
@@ -25,6 +28,7 @@ service cloud.firestore {
       );
     }
 
+    // පරිශීලක ගිණුම Admin විසින් අනුමත කර (approved) ඇත්දැයි පරීක්ෂා කිරීම
     function isApprovedUser() {
       return isAuthenticated() && (
         isAdmin() ||
@@ -37,75 +41,131 @@ service cloud.firestore {
     // 👤 2. Users Collection (පරිශීලක ගිණුම් කළමනාකරණය)
     // ===============================================================
     match /users/{userId} {
-      allow read, write: if true;
+      // ලියාපදිංචි වූ ඕනෑම පරිශීලකයෙකුට අන් අයගේ ප්‍රසිද්ධ profile තොරතුරු කියවිය හැක
+      allow read: if isAuthenticated();
 
-      match /{allChildren=**} {
-        allow read, write: if true;
+      // නව ගිණුමක් සෑදීම (පරිශීලකයාට තමාගේම ID එකෙන් පමණක් සෑදිය හැක, පෙරනිමි තත්ත්වය 'pending' විය යුතුය)
+      allow create: if isOwner(userId) && (
+        !('role' in request.resource.data) || request.resource.data.role == 'user'
+      );
+
+      // ගිණුම් තොරතුරු යාවත්කාලීන කිරීම:
+      // - Admin හට ඕනෑම ක්ෂේත්‍රයක් වෙනස් කළ හැක (role, status, credits, trustScore ඇතුළුව).
+      // - සාමාන්‍ය හිමිකරුට තම profile තොරතුරු වෙනස් කළ හැකි නමුත්, role, status, credits වැනි ආරක්ෂිත ක්ෂේත්‍ර වෙනස් කළ නොහැක!
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 
+          'status', 
+          'credits', 
+          'trustScore', 
+          'isBlocked', 
+          'verified'
+        ])
+      );
+
+      // පරිශීලක ගිණුමක් ස්ථිරවම මකා දැමීම Admin ට පමණි
+      allow delete: if isAdmin();
+
+      // පරිශීලකයාගේ පුද්ගලික රහස්‍ය තොරතුරු (Private Subcollection)
+      match /private/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
     // ===============================================================
-    // 📢 3. Help Posts & Community Interactions (posts & helpPosts)
+    // 📢 3. Help Posts & Community Interactions
     // ===============================================================
-    match /posts/{postId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
     match /helpPosts/{postId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
+      // ප්‍රජා උපකාරක දැන්වීම් ඕනෑම අයෙකුට ප්‍රසිද්ධියේ කියවිය හැක
+      allow read: if true;
+
+      // Post එකක් සෑදිය හැක්කේ Admin අනුමත කළ (Approved) පරිශීලකයින්ට පමණි
+      allow create: if isApprovedUser() && request.resource.data.authorId == request.auth.uid;
+
+      // Post එකක් යාවත්කාලීන කිරීම (Update) හෝ මැකීම (Delete) කළ හැක්කේ එම Post එක දැමූ අයිතිකරුට හෝ Admin ට පමණි
+      allow update, delete: if isAdmin() || (
+        isAuthenticated() && resource.data.authorId == request.auth.uid
+      );
+
+      // උපකාරක දැන්වීම් යටතේ Comments Subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+        allow update: if isAdmin() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+        allow delete: if isAdmin() || (
+          isAuthenticated() && (
+            resource.data.authorId == request.auth.uid || 
+            get(/databases/$(database)/documents/helpPosts/$(postId)).data.authorId == request.auth.uid
+          )
+        );
+      }
+
+      // Reactions / Likes Subcollection
+      match /reactions/{reactionId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && request.auth.uid == reactionId;
       }
     }
-
     // ===============================================================
     // 🚨 4. Red Alerts (හදිසි ආපදා සහ අනතුරු ඇඟවීම්)
     // ===============================================================
-    match /red_alerts/{alertId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
     match /redAlerts/{alertId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-    match /push_broadcast_queue/{queueId} {
-      allow read, write: if true;
+      // ඕනෑම අයෙකුට ප්‍රසිද්ධියේ අනතුරු ඇඟවීම් කියවිය හැක
+      allow read: if true;
+
+      // නව අනතුරු ඇඟවීම් නිකුත් කිරීම, සංස්කරණය හෝ මැකීම Admin ට පමණි
+      allow write: if isAdmin();
     }
 
     // ===============================================================
     // 🛠️ 5. Issues & User Reports (ගැටළු සහ පැමිණිලි කළමනාකරණය)
     // ===============================================================
     match /issues/{issueId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
+      // ලොග් වූ ඕනෑම පරිශීලකයෙකුට ගැටළුවක් වාර්තා කළ හැක
+      allow create: if isAuthenticated() && request.resource.data.reportedBy == request.auth.uid;
+
+      // ගැටළුව වාර්තා කළ තැනැත්තාට හෝ Admin ට පමණක් එය කියවිය හැක
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.reportedBy == request.auth.uid);
+
+      // ගැටළුවේ තත්ත්වය (Status: 'in_progress', 'resolved', 'closed') යාවත්කාලීන කිරීම Admin ට පමණි
+      allow update: if isAdmin();
+
+      // ගැටළු ලේඛනයක් මැකීම Admin ට පමණි
+      allow delete: if isAdmin();
     }
 
     // ===============================================================
     // 💰 6. Credits & Transactions (ණය කළමනාකරණය)
     // ===============================================================
     match /credits/{userId} {
-      allow read, write: if true;
+      // තම ණය ශේෂය බැලීම අයිතිකරුට හෝ Admin ට පමණි
+      allow read: if isOwner(userId) || isAdmin();
+
+      // ණය ශේෂය වෙනස් කිරීම Admin ට පමණි (පරිශීලකයින්ට තමාගේ credits වෙනස් කළ නොහැක)
+      allow write: if isAdmin();
     }
 
     match /creditTransactions/{transactionId} {
-      allow read, write: if true;
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.userId == request.auth.uid || 
+          resource.data.senderId == request.auth.uid || 
+          resource.data.receiverId == request.auth.uid
+        )
+      );
+      // ගනුදෙනු ලඝු සටහන් සෑදීම සහ වෙනස් කිරීම Admin ට පමණි
+      allow write: if isAdmin();
     }
 
     // ===============================================================
     // ☎️ 7. Emergency Directory (හදිසි ඇමතුම් නාමාවලිය)
     // ===============================================================
     match /emergencyDirectory/{contactId} {
+      // මහජනතාවට හදිසි අංක කියවිය හැක
       allow read: if true;
+
+      // අංක ඇතුළත් කිරීම, සංස්කරණය හෝ මැකීම Admin ට පමණි
       allow write: if isAdmin();
     }
 
@@ -113,38 +173,59 @@ service cloud.firestore {
     // 📖 8. Search Dictionary & Keywords (සෙවුම් ශබ්දකෝෂය)
     // ===============================================================
     match /searchDictionary/{wordId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // ===============================================================
     // 🧠 9. AI Knowledge Base (කෘතිම බුද්ධි දැනුම් පද්ධතිය)
     // ===============================================================
     match /aiKnowledge/{knowledgeId} {
-      allow read, write: if true;
+      // ලොග් වූ පරිශීලකයින්ට කියවිය හැක
+      allow read: if isAuthenticated();
+
+      // AI දැනුම වෙනස් කිරීම Admin ට පමණි
+      allow write: if isAdmin();
     }
 
     // ===============================================================
     // 🟢 10. Presence Tracking (සජීවී පරිශීලක ක්‍රියාකාරීත්වය)
     // ===============================================================
     match /presence/{userId} {
-      allow read, write: if true;
+      allow read: if isAuthenticated();
+      // පරිශීලකයාට තමාගේ online/offline තත්ත්වය යාවත්කාලීන කළ හැක
+      allow write: if isOwner(userId) || isAdmin();
     }
 
     // ===============================================================
     // 🔔 11. Notifications (දැනුම්දීම් පද්ධතිය)
     // ===============================================================
     match /notifications/{notificationId} {
-      allow read, write: if true;
+      // තමාට අදාළ දැනුම්දීම් බැලීම සහ කියවූ බව සටහන් කිරීම
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // ===============================================================
     // 💬 12. Messages & Direct Chat (පරිශීලක පණිවිඩ හුවමාරුව)
     // ===============================================================
     match /chats/{chatId} {
-      allow read, write: if true;
+      // Chat එකෙහි සහභාගිවන්නන්ට පමණක් කියවීමට සහ ලිවීමට අවසර ඇත
+      allow read, write: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || 
+        request.auth.uid in request.resource.data.participants || 
+        isAdmin()
+      );
 
-      match /{allChildren=**} {
-        allow read, write: if true;
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants || 
+          isAdmin()
+        );
+        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.senderId == request.auth.uid);
       }
     }
 
@@ -152,118 +233,31 @@ service cloud.firestore {
     // 🔑 13. Password Resets (මුරපද යළි පිහිටුවීම් ඉල්ලීම්)
     // ===============================================================
     match /passwordResets/{resetId} {
-      allow read, write: if true;
+      // ඕනෑම අයෙකුට මුරපදය අමතක වූ විට ඉල්ලීමක් ඇතුළත් කළ හැක
+      allow create: if true;
+      // ඉල්ලීම් පරීක්ෂා කිරීම, කළමනාකරණය හෝ මැකීම Admin ට පමණි
+      allow read, update, delete: if isAdmin();
     }
 
     // ===============================================================
-    // ⚙️ 14. System Settings & Admin Official Bank Info (පද්ධති සැකසුම් සහ නිල බැංකු ගිණුම)
+    // ⚙️ 14. System Settings (පද්ධති සැකසුම්)
     // ===============================================================
-    // Admin Bank Deposit Info - ඕනෑම කෙනෙකුට කියවිය හැක (Public Read), වෙනස් කළ හැක්කේ Admin ට පමණි (Admin Only Write)
-    match /systemSettings/bank_info {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    match /system_metadata/bank_deposit_info {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
     match /systemSettings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    match /system_metadata/{settingId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
     // ===============================================================
-    // 📜 15. Audit Logs (පරිපාලක ක්‍රියාකාරකම් ලඝු සටහන්)
+    // 📜 15. Audit Logs (පරිපාලක ක්‍රියාකාරකම් ලඝු සටහන් - Immutable)
     // ===============================================================
     match /auditLogs/{logId} {
-      allow read, write: if true;
+      // ආරක්ෂක ලඝු සටහන් බැලිය හැක්කේ Admin ට පමණි
+      allow read: if isAdmin();
+      // ලොග් වූ ඕනෑම ක්‍රියාවක් සටහන් කළ හැක
+      allow create: if isAuthenticated();
+      // කිසිවෙකුට ලඝු සටහන් සංස්කරණය කිරීමට හෝ මැකීමට අවසර නැත (වෙනස් කළ නොහැක)
+      allow update, delete: if false;
     }
 
-    match /sos_live_sessions/{sessionId} {
-      allow read, write: if true;
-    }
-
-    match /marketplace/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /market_shops/{shopId} {
-      allow read, write: if true;
-    }
-
-    match /saved_places/{placeId} {
-      allow read, write: if true;
-    }
-
-    match /groups/{groupId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
-    }
-
-    match /professional_services/{serviceId} {
-      allow read, write: if true;
-    }
-
-    match /device_push_tokens/{tokenId} {
-      allow read, write: if true;
-    }
-
-    match /blood_requests/{reqId} {
-      allow read, write: if true;
-    }
-
-    match /volunteer_donors/{donorId} {
-      allow read, write: if true;
-    }
-
-    match /disaster_relief/{reliefId} {
-      allow read, write: if true;
-    }
-
-    match /aid_centers/{centerId} {
-      allow read, write: if true;
-    }
-
-    match /aid_deliveries/{deliveryId} {
-      allow read, write: if true;
-    }
-
-    match /aid_broadcasts/{broadcastId} {
-      allow read, write: if true;
-    }
-
-    match /jobs/{jobId} {
-      allow read, write: if true;
-    }
-
-    match /accommodations/{accId} {
-      allow read, write: if true;
-    }
-
-    match /barter_items/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /password_reset_requests/{reqId} {
-      allow read, write: if true;
-    }
-
-    match /pending_ai_queries/{queryId} {
-      allow read, write: if true;
-    }
-
-    match /verified_ai_knowledge/{itemId} {
-      allow read, write: if true;
-    }
-
-    match /{document=**} {
-      allow read, write: if true;
-    }
   }
 }
