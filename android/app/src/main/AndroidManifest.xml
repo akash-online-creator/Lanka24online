@@ -59,7 +59,7 @@
     </queries>
 
     <application
-        android:label="සහාය සේවා"
+        android:label="1+ සහය සේවා"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
