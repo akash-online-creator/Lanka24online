@@ -55,7 +55,6 @@ import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
 import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
 import { SosLiveTrackerModal } from './SosLiveTrackerModal';
 import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
-import { PWAInstallModal } from './PWAInstallModal';
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 import { SavedPlacesModal } from './SavedPlacesModal';
 import { AppQrShareModal } from './AppQrShareModal';
@@ -1362,7 +1361,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setQrPayInitialTab(tab);
           setIsQrPayModalOpen(true);
         } : undefined}
-        onOpenInstallApp={() => setIsPwaInstallModalOpen(true)}
         onOpenSavedPlaces={() => setIsSavedPlacesModalOpen(true)}
         onOpenQuickRegisterHub={() => setIsQuickRegistrationHubOpen(true)}
         onOpenAppQr={() => setIsAppQrModalOpen(true)}
@@ -2131,12 +2129,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         }}
       />
 
-      {/* 16. App Installation & PWA Offline Setup Modal */}
-      <PWAInstallModal
-        isOpen={isPwaInstallModalOpen}
-        onClose={() => setIsPwaInstallModalOpen(false)}
-        language={language}
-      />
 
       {/* 17. Saved Places & Favorite Locations Modal */}
       <SavedPlacesModal
