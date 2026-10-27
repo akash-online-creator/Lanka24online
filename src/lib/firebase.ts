@@ -1577,3 +1577,24 @@ export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
     handleFirestoreError(err, OperationType.DELETE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
   }
 }
+// 🚀 Job Comment Save Function (Fixes Build Error)
+export async function saveJobCommentToFirestore(jobId: string, commentData: any): Promise<string> {
+  if (!jobId) return '';
+  try {
+    const commentsRef = collection(db, 'jobs', jobId, 'comments');
+    const commentId = commentData.id || `comment_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const payload = sanitizeForFirestore({
+      ...commentData,
+      id: commentId,
+      createdAt: commentData.createdAt || new Date().toISOString(),
+      createdAtServer: serverTimestamp()
+    });
+    
+    await setDoc(doc(commentsRef, commentId), payload, { merge: true });
+    return commentId;
+  } catch (error) {
+    console.error('saveJobCommentToFirestore error:', error);
+    return '';
+  }
+}
+
