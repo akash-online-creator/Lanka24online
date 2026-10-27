@@ -28,14 +28,12 @@ interface QuickServiceModalProps {
   onClose: () => void;
   onSubmitPost: (post: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>) => void;
   currentLocation: LocationOption;
-  availableLocations?: LocationOption[];
+  availableLocations: LocationOption[];
   currentUser: User;
   categories?: CategoryItem[];
   lang?: Language;
   editPost?: HelpPost | null;
   onUpdatePost?: (post: HelpPost) => void;
-  categoryTitle?: string;
-  selectedCategoryObj?: CategoryItem | null;
 }
 
 export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
@@ -49,8 +47,6 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   lang = 'si',
   editPost,
   onUpdatePost,
-  categoryTitle,
-  selectedCategoryObj,
 }) => {
   const t = translations[lang] || translations.si;
 
@@ -79,6 +75,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
   const [customPaymentAmount, setCustomPaymentAmount] = useState('');
   const [helpersNeeded, setHelpersNeeded] = useState<number>(1);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [voiceData, setVoiceData] = useState<any>(null);
 
   // Validation Error States
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -129,6 +126,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       setHelpersNeeded(1);
       setWhatsappNumber(userWhatsAppNumber);
       setSelectedTag(null);
+      setVoiceData(null);
       setErrors({});
       setHasAttemptedSubmit(false);
     }
@@ -213,7 +211,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       return;
     }
 
-    const resolvedLocation = currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක';
+    const resolvedLocation = voiceData?.location || (currentLocation?.nameSi ? `${currentLocation.nameSi} (${currentLocation.nameEn || ''})` : 'කෝවින්න, කටුනායක');
     const autoPlatformFee = calculatePlatformFee(paymentText);
     const newStartPin = generateStartPin();
     const finalTransportFee = transport === 'ඔබ එවන්න :ප්‍රවාහන ගාස්තු ගෙවන්නම්' ? (Number(customTransportFee) || 0) : 0;
@@ -243,10 +241,10 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       selectedHelpers: [],
       locationName: resolvedLocation,
       distanceKm: 0.8,
-      latitude: currentLocation?.lat || 7.1712,
-      longitude: currentLocation?.lng || 79.8978,
-      lat: currentLocation?.lat || 7.1712,
-      lng: currentLocation?.lng || 79.8978,
+      latitude: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
+      longitude: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
+      lat: voiceData?.coords?.lat || currentLocation?.lat || 7.1712,
+      lng: voiceData?.coords?.lng || currentLocation?.lng || 79.8978,
       verifiedOtp: true,
       category: 'quick_services',
       postType: 'quick_service',
@@ -256,6 +254,14 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
       tagName: selectedTag?.tagName,
       tagCategory: selectedTag?.category,
       tagId: selectedTag?.id,
+      audioUrl: (voiceData as any)?.audioUrl,
+      audioDurationSec: (voiceData as any)?.durationSec,
+      voiceSentDate: (voiceData as any)?.date,
+      voiceSentTime: (voiceData as any)?.time,
+      voiceSentLocation: (voiceData as any)?.location,
+      voiceCoordinates: (voiceData as any)?.coords,
+      isVoicePost: Boolean((voiceData as any)?.audioUrl),
+      voiceTranscript: (voiceData as any)?.transcript,
     });
 
     broadcastPushNotification({
@@ -285,7 +291,7 @@ export const QuickServiceModal: React.FC<QuickServiceModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : (categoryTitle ? `⚡ ${categoryTitle} ඉල්ලීමක් පළකරන්න` : '⚡ ඉක්මන් සේවා ඉල්ලීමක් පළකරන්න')}</span>
+                <span>{editPost ? 'සේවා දැන්වීම සංස්කරණය' : 'සේවා ඉල්ලීමක් පළකරන්න'}</span>
               </h2>
               <p className="text-[11px] text-emerald-100 font-medium">
                 අවට සිටින සහායකයින් සමඟ සම්බන්ධ වී සේවාවන් ලබාගන්න
