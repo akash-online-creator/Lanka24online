@@ -1,0 +1,317 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // 🛡️ 1. Core Security & Authentication Helper Functions
+    // ===============================================================
+    // සටහන: "සහය සේවා" පද්ධතිය තුළ පරිශීලකයින් ලොග් වන්නේ ජාතික හැඳුනුම්පත් අංකය (NIC) 
+    // සහ මුරපදය/PIN භාවිතා කරමින් Custom Session ක්‍රමවේදයකට බැවින් (Firebase Auth Anonymous 
+    // හෝ Unauthenticated Client SDK හරහා), සියලුම පොදු දැන්වීම්, ස්ථාන, කණ්ඩායම් සහ සේවා 
+    // අන් අයට බාධාවකින් තොරව පෙනීමට සහ Sync වීමට පහත නීති සකසා ඇත.
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'super_admin' ||
+        request.auth.token.email == 'admin@sahaya.lk' ||
+        request.auth.token.email == 'www.akash.online@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
+      );
+    }
+
+    // ===============================================================
+    // 👤 2. Users Collection (පරිශීලක ගිණුම් කළමනාකරණය)
+    // ===============================================================
+    match /users/{userId} {
+      allow read, create, update: if true;
+      allow delete: if false; // User accounts cannot be permanently deleted via client SDK
+
+      match /private/{docId} {
+        allow read, write: if true;
+      }
+
+      match /saved_posts/{postId} {
+        allow read, write: if true;
+      }
+
+      match /fcm_tokens/{tokenId} {
+        allow read, write: if true;
+      }
+    }
+
+    // ===============================================================
+    // 📢 3. Help Posts & Notices (ප්‍රධාන දැන්වීම් පුවරුව - 'posts' සහ 'helpPosts')
+    // ===============================================================
+    match /posts/{postId} {
+      allow read, create, update, delete: if true;
+
+      match /replies/{replyId} {
+        allow read, write: if true;
+      }
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+
+      match /reactions/{reactionId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /helpPosts/{postId} {
+      allow read, create, update, delete: if true;
+
+      match /replies/{replyId} {
+        allow read, write: if true;
+      }
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+
+      match /reactions/{reactionId} {
+        allow read, write: if true;
+      }
+    }
+
+    // ===============================================================
+    // 📍 4. Saved Places (ස්ථාන සුරකීම - 'saved_places')
+    // ===============================================================
+    match /saved_places/{placeId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 👥 5. Community Groups (කණ්ඩායම් සහ ශ්‍රමදාන - 'groups')
+    // ===============================================================
+    match /groups/{groupId} {
+      allow read, create, update, delete: if true;
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+
+      match /joinRequests/{requestId} {
+        allow read, write: if true;
+      }
+    }
+
+    // ===============================================================
+    // 🚨 6. Red Alerts & SOS Live Tracker (රතු එළිය සහ SOS සජීවී ලුහුබැඳීම)
+    // ===============================================================
+    match /red_alerts/{alertId} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /redAlerts/{alertId} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /sos_live_sessions/{sessionId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 🛒 7. Marketplace, Shops & Professional Services (වෙළඳපොළ සහ වෘත්තීය සේවා)
+    // ===============================================================
+    match /marketplace/{itemId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /market_shops/{shopId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /professional_services/{serviceId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 💼 8. Jobs, Accommodations & Barter Exchange (රැකියා, නවාතැන් සහ භාණ්ඩ හුවමාරුව)
+    // ===============================================================
+    match /jobs/{jobId} {
+      allow read, create, update, delete: if true;
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /job_comments/{commentId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /accommodations/{accId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /barter_items/{itemId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /barter_proposals/{proposalId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 🩸 9. Blood Donation, Disaster Relief & Transparent Aid Ledger
+    // ===============================================================
+    match /blood_requests/{reqId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /volunteer_donors/{donorId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /disaster_relief/{reliefId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_centers/{centerId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_deliveries/{deliveryId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aid_broadcasts/{broadcastId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // ===============================================================
+    // 🛠️ 10. Issues, Password Resets, System Settings, Credits & AI Knowledge
+    // ===============================================================
+    match /issues/{issueId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /password_reset_requests/{resetId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /passwordResets/{resetId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /system_metadata/{docId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /system_settings/{settingId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /systemSettings/{settingId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /credits/{userId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /credit_balances/{userId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /creditTransactions/{transactionId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /credit_transactions/{transactionId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /s_points/{userId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /emergencyDirectory/{contactId} {
+      allow read, write: if true;
+    }
+
+    match /emergency_directory/{contactId} {
+      allow read, write: if true;
+    }
+
+    match /searchDictionary/{wordId} {
+      allow read, write: if true;
+    }
+
+    match /search_dictionary/{wordId} {
+      allow read, write: if true;
+    }
+
+    match /pending_ai_queries/{queryId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /verified_ai_knowledge/{knowledgeId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /aiKnowledge/{knowledgeId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /presence/{userId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{notificationId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /push_broadcast_queue/{queueId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /device_push_tokens/{tokenId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /fcm_tokens/{tokenId} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /chats/{chatId} {
+      allow read, write: if true;
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    match /auditLogs/{logId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+  }
+}
