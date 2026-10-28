@@ -2,6 +2,18 @@
 <html lang="si">
   <head>
     <meta charset="UTF-8" />
+
+    <!-- 📲 Direct APK Download Script (කෙලින්ම APK එක Download වීමට) -->
+    <script>
+      (function() {
+        var p = window.location.pathname.toLowerCase();
+        var s = window.location.search.toLowerCase();
+        if (p === '/download' || p === '/download/' || p === '/app.apk' || s.indexOf('download=apk') !== -1) {
+          window.location.replace("https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t");
+        }
+      })();
+    </script>
+
     <link rel="icon" type="image/jpeg" href="/logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>සහය සේවා</title>
