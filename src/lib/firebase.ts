@@ -656,6 +656,100 @@ export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) 
   });
 }
 
+export async function deleteChatMessageForEveryone(
+  postId: string,
+  messageId: string,
+  deletedByName: string,
+  deletedByUid?: string
+): Promise<void> {
+  try {
+    if (!postId || !messageId) return;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // 1. Update in messages subcollection if doc exists
+    if (!messageId.startsWith('local_') && !messageId.startsWith('rep_') && !messageId.startsWith('init_')) {
+      const msgDocRef = doc(db, POSTS_COLLECTION, postId, 'messages', messageId);
+      await updateDoc(msgDocRef, sanitizeForFirestore({
+        isDeletedForEveryone: true,
+        text: '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)',
+        originalText: '',
+        audioUrl: null,
+        imageUrl: null,
+        videoUrl: null,
+        deletedAt: nowIso,
+        deletedAtMs: nowMs,
+        deletedBy: deletedByName || 'User',
+        deletedByUid: deletedByUid || '',
+        updatedAtServer: serverTimestamp(),
+      })).catch((err) => {
+        console.warn('deleteChatMessageForEveryone updateDoc err:', err);
+      });
+    }
+
+    // 2. Also update parent post replies if the message is in post.replies
+    try {
+      const postRef = doc(db, POSTS_COLLECTION, postId);
+      const postSnap = await getDoc(postRef);
+      if (postSnap.exists()) {
+        const postData = postSnap.data();
+        if (Array.isArray(postData.replies)) {
+          let modified = false;
+          const updatedReplies = postData.replies.map((r: any) => {
+            if (r.id === messageId || (r.createdAtMs && Math.abs(r.createdAtMs - nowMs) < 300000 && r.responderName === deletedByName)) {
+              modified = true;
+              return {
+                ...r,
+                isDeletedForEveryone: true,
+                message: '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)',
+                deletedAt: nowIso,
+                deletedAtMs: nowMs,
+                deletedBy: deletedByName,
+              };
+            }
+            return r;
+          });
+          if (modified) {
+            await updateDoc(postRef, {
+              replies: updatedReplies,
+              updatedAtServer: serverTimestamp(),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('deleteChatMessageForEveryone parent post reply update notice:', e);
+    }
+  } catch (err) {
+    console.warn('deleteChatMessageForEveryone error:', err);
+  }
+}
+
+export async function togglePinChatMessage(
+  postId: string,
+  messageId: string,
+  isPinned: boolean,
+  pinnedByName?: string
+): Promise<void> {
+  try {
+    if (!postId || !messageId) return;
+    const nowMs = Date.now();
+    if (!messageId.startsWith('local_') && !messageId.startsWith('rep_') && !messageId.startsWith('init_')) {
+      const msgDocRef = doc(db, POSTS_COLLECTION, postId, 'messages', messageId);
+      await updateDoc(msgDocRef, sanitizeForFirestore({
+        isPinned: isPinned,
+        pinnedAtMs: isPinned ? nowMs : null,
+        pinnedBy: isPinned ? (pinnedByName || '') : null,
+        updatedAtServer: serverTimestamp(),
+      })).catch((err) => {
+        console.warn('togglePinChatMessage updateDoc err:', err);
+      });
+    }
+  } catch (err) {
+    console.warn('togglePinChatMessage error:', err);
+  }
+}
+
 export async function restorePostsBackupData(posts: any[]): Promise<void> {
   try {
     const batch = writeBatch(db);

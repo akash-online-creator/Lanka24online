@@ -294,6 +294,18 @@ export interface ChatMessage {
     ta?: string;
   };
   originalText?: string;
+  isDeletedForEveryone?: boolean;
+  deletedAt?: string;
+  deletedAtMs?: number;
+  deletedBy?: string;
+  deletedByUid?: string;
+  isPinned?: boolean;
+  pinnedAtMs?: number;
+  pinnedBy?: string;
+  recipientKey?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  recipientId?: string;
 }
 
 export interface UserLoginLog {
