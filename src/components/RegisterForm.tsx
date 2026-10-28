@@ -1,39 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Language, Theme } from '../types';
 import { translations } from '../data/translations';
-import { 
-  SRI_LANKA_DISTRICTS, 
-  SRI_LANKA_POLICE_DIVISIONS 
+import {
+  SRI_LANKA_DISTRICTS,
+  SRI_LANKA_POLICE_DIVISIONS
 } from '../data/sriLankaGeoData';
 import { compressImageFile } from '../utils/imageCompressor';
 import { notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
-import { 
-  User as UserIcon, 
-  CreditCard, 
-  Phone, 
-  MapPin, 
-  Lock, 
-  Upload, 
-  CheckCircle2, 
-  ArrowLeft, 
-  Loader2, 
-  FileText, 
-  Eye, 
-  EyeOff, 
-  X, 
+import {
+  User as UserIcon,
+  CreditCard,
+  Phone,
+  MapPin,
+  Lock,
+  Upload,
+  CheckCircle2,
+  ArrowLeft,
+  Loader2,
+  FileText,
+  Eye,
+  EyeOff,
+  X,
   AlertTriangle,
   HelpCircle,
-  Camera
+  Camera,
+  Trash2
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
 import { FontSizeController } from './FontSizeController';
 import { NicSpecimenCard } from './NicSpecimenCard';
-// ✅ නිවැරදි කළ කේතය (පේළිය 30):
-const getSystemTermsAndConditions = async (): Promise<string> => 
-  '1. ව්‍යාජ විස්තර ඇතුළත් කිරීම තහනම්ය.\n2. බ්ලොක් කළ ගිණුම්වල IP, NIC, දුරකථන සහ Gmail නැවත ලියාපදිංචි විය නොහැක.\n3. සාමකාමී සහ සත්‍ය සේවාවන් සඳහා පමණක් පද්ධතිය භාවිතා කරන්න.';
 
-// 🛡️ Advanced Sri Lankan NIC Matching & Fraud Prevention Helper
+// කොන්දේසි සහ රීති
+const getSystemTermsAndConditions = async (): Promise<string> =>
+  '1. ඔබගේ තොරතුරු නිවැරදි ලෙස ඇතුළත් කරන්න.\n2. පද්ධතියට ඔබ පිවිසෙන විට IP, NIC, දුරකථන සහ Gmail මගින් හඳුනාගැනීම සිදු කෙරේ.\n3. අනවශ්‍ය ලෙස ගිණුම් සෑදීමෙන් වළකින්න.';
+
+// 🛡️ Sri Lankan NIC Matching & Fraud Prevention Helper (දෝෂ නිවැරදි කරන ලද)
 const isNicConflict = (existingUser: Partial<User>, inputNic: string): boolean => {
   if (!existingUser || !inputNic) return false;
 
@@ -60,13 +62,14 @@ const isNicConflict = (existingUser: Partial<User>, inputNic: string): boolean =
 
     const oldYear = 1900 + parseInt(oldNic.substring(0, 2), 10);
     const oldDay = parseInt(oldNic.substring(2, 5), 10);
-    const oldSeq = oldNic.substring(5, 8);
+    // නිවැරදි කරන ලද: පැරණි හැඳුනුම්පතේ අනුක්‍රමික අංක 4 (index 5 සිට 9 දක්වා)
+    const oldSeq = oldNic.substring(5, 9);
 
     const newYear = parseInt(newNic.substring(0, 4), 10);
     const newDay = parseInt(newNic.substring(4, 7), 10);
-    const newSeq = newNic.substring(7, 11);
+    // නිවැරදි කරන ලද: නව හැඳුනුම්පතේ අනුක්‍රමික අංක 5 (index 7 සිට 12 දක්වා)
+    const newSeq = newNic.substring(7, 12);
 
-    // Exact Birth Year + Birth Day-of-year match
     if (oldYear === newYear && oldDay === newDay) {
       if (newSeq.includes(oldSeq) || newSeq.endsWith(oldSeq)) {
         return true;
@@ -129,24 +132,23 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 }) => {
   const t = (translations[language] || translations.si) as any;
 
-  // 10 Key Profile State Variables
+  // Form State Variables
   const [fullName, setFullName] = useState('');
   const [nicNumber, setNicNumber] = useState('');
   const [whatsappPhone, setWhatsappPhone] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('Gampaha');
   const [selectedPoliceDivision, setSelectedPoliceDivision] = useState('Katunayake');
   const [address, setAddress] = useState('');
-  const [key, setKey] = useState(''); // Password / Pin
+  const [city, setCity] = useState('');
+  const [key, setKey] = useState('');
   const [confirmKey, setConfirmKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Photos State (Front of NIC is sufficient)
+  // Photos State (Front of NIC)
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
-
-  const nicFileInputRef = useRef<HTMLInputElement | null>(null);
-  const nicCameraInputRef = useRef<HTMLInputElement | null>(null);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState<boolean>(false);
+  const nicFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // UI Flow & Validation State
   const [loading, setLoading] = useState(false);
@@ -154,12 +156,17 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [showNicGuideModal, setShowNicGuideModal] = useState(false);
   const [showPhoneHelpModal, setShowPhoneHelpModal] = useState(false);
   const [showPasswordHelpModal, setShowPasswordHelpModal] = useState(false);
-  const [termsAndConditions, setTermsAndConditions] = useState<string>('');
   const [nicConflict, setNicConflict] = useState<User | null>(null);
-  const [phoneConflict, setPhoneConflict] = useState<boolean>(false);
   const [isPreviousRejected, setIsPreviousRejected] = useState<User | null>(null);
 
-  // --- PURE HELPERS & CALCULATED VALUES (INITIALIZED BEFORE USEEFFECTS) ---
+  // Available Police Divisions for selected District
+  const availableDivisions = (SRI_LANKA_POLICE_DIVISIONS as any)[selectedDistrict] || [];
+
+  useEffect(() => {
+    if (availableDivisions.length > 0 && !availableDivisions.includes(selectedPoliceDivision)) {
+      setSelectedPoliceDivision(availableDivisions[0]);
+    }
+  }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
 
   // 1. NIC Helper Validator & Gender Evaluator
   const evaluateNicInfo = (nic: string) => {
@@ -191,9 +198,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   const nicInfo = evaluateNicInfo(nicNumber);
 
-  // 2. Password / Key Strength Evaluator (Minimum 6 Characters)
+  // 2. Password Strength Evaluator
   const isKeyValid = key.trim().length >= 6;
-  const doKeysMatch = key === confirmKey && key.trim() !== '';
 
   // 3. Phone Sanitizer for Sri Lankan Numbers
   const sanitizePhone = (val: string) => {
@@ -211,27 +217,80 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setWhatsappPhone(sanitized);
   };
 
-  // --- USEEFFECT HOOKS (ALL DEPENDENCIES ARE NOW FULLY INITIALIZED) ---
+  // 4. Image Upload & Compression Handler
+  const handleImageFileChange = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('කරුණාකර වලංගු ඡායාරූපයක් (JPG, PNG හෝ WEBP) තෝරන්න.');
+      return;
+    }
 
-  // 🛡️ Realtime Live Duplicate NIC & Fraud Prevention Security Checker
+    setIsProcessingPhoto(true);
+    setErrorMessage(null);
+
+    try {
+      let compressedDataUrl: string;
+      if (typeof compressImageFile === 'function') {
+        compressedDataUrl = await compressImageFile(file, {
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.8
+        });
+      } else {
+        compressedDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      }
+      setNicFrontPhoto(compressedDataUrl);
+    } catch (err: any) {
+      setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageFileChange(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleImageFileChange(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Realtime Live Duplicate NIC Security Checker
   useEffect(() => {
     if (!nicInfo || !nicInfo.valid) {
       setNicConflict(null);
+      setIsPreviousRejected(null);
       return;
     }
 
     const clean = nicInfo.cleanNic;
-    
-    // Check in-memory users from props
+
     if (users && users.length > 0) {
       const match = users.find((u) => isNicConflict(u, clean));
       if (match) {
         if (match.status === 'rejected') {
-          // Previously rejected! Allow re-registration with audit history
           setIsPreviousRejected(match);
           setNicConflict(null);
         } else {
-          // Active (Approved or Pending): Strictly block duplicate
           setNicConflict(match);
           setIsPreviousRejected(null);
         }
@@ -241,146 +300,65 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
     setNicConflict(null);
     setIsPreviousRejected(null);
-  }, [nicNumber, nicInfo, users]);
+  }, [nicNumber, users]);
 
-  // 🛡️ Duplicate Phone Check
-  useEffect(() => {
-    const cleanP = sanitizePhone(whatsappPhone);
-    if (cleanP && cleanP.length >= 10 && users && users.length > 0) {
-      const matchPhone = users.some(
-        (u) =>
-          u.phone &&
-          (u.phone.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, '') ||
-           u.whatsappPhone?.replace(/[^0-9]/g, '') === cleanP.replace(/[^0-9]/g, ''))
-      );
-      setPhoneConflict(matchPhone);
-    } else {
-      setPhoneConflict(false);
-    }
-  }, [whatsappPhone, users]);
-
-  // Load Dynamic System Terms & Conditions from Firebase
-  useEffect(() => {
-    let isMounted = true;
-    getSystemTermsAndConditions()
-      .then((terms) => {
-        if (isMounted && terms) {
-          setTermsAndConditions(terms);
-        }
-      })
-      .catch((err) => {
-        console.warn('System terms load notice:', err);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Update Police Divisions list when District changes
-  const availableDivisions = SRI_LANKA_POLICE_DIVISIONS[selectedDistrict] || [];
-  useEffect(() => {
-    if (availableDivisions.length > 0 && !availableDivisions.includes(selectedPoliceDivision)) {
-      setSelectedPoliceDivision(availableDivisions[0]);
-    }
-  }, [selectedDistrict, availableDivisions, selectedPoliceDivision]);
-
-  // Image Compressor & Light Data URL Generator (Optimized for Firestore 1MB limit)
-  const processImageFile = async (file: File) => {
-    try {
-      return await compressImageFile(file, {
-        maxWidth: 800,
-        maxHeight: 800,
-        quality: 0.65,
-        maxSizeMB: 0.18,
-      });
-    } catch {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = (err) => reject(err);
-        reader.readAsDataURL(file);
-      });
-    }
-  };
-
-  const handlePhotoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    setter: (val: string) => void
-  ) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      try {
-        setIsProcessingPhoto(true);
-        setErrorMessage(null);
-        const processed = await processImageFile(file);
-        setter(processed);
-      } catch (err) {
-        console.error('Error processing photo:', err);
-        setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් සිදුවිය. කරුණාකර වෙනත් ඡායාරූපයක් තෝරන්න.');
-      } finally {
-        setIsProcessingPhoto(false);
-      }
-    }
-  };
-
-  // Form Submission & Account Creation Handler
+  // Form Submission Handler (දෝෂ නිවැරදි කරන ලද)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    // 1. Mandatory NIC Front Photo Validation
+    // Validation 1: NIC Front Photo
     if (!nicFrontPhoto || nicFrontPhoto.trim() === '') {
-      setErrorMessage('කරුණාකර ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපය (NIC Front Photo) උඩුගත කරන්න.');
-      window.scrollTo({ top: 300, behavior: 'smooth' });
+      setErrorMessage('ලියාපදිංචි වීමට පෙර ඔබගේ ජාතික හැඳුනුම්පත් ඡායාරූපය (NIC Front Photo) ඇතුළත් කිරීම අනිවාර්ය වේ.');
+      window.scrollTo({ top: 200, behavior: 'smooth' });
       return;
     }
 
-    // 2. Full Name Validation
+    // Validation 2: Full Name
     if (!fullName.trim() || fullName.trim().length < 3) {
-      setErrorMessage('කරුණාකර ඔබගේ සම්පූර්ණ නම නිවැරදිව ඇතුළත් කරන්න (අවම වශයෙන් අකුරු 3ක්).');
+      setErrorMessage('කරුණාකර ඔබගේ සම්පූර්ණ නම ඇතුළත් කරන්න (අඩුම තරමින් අකුරු 3ක්).');
       return;
     }
 
-    // 3. NIC Number Validation & Strict Duplicate Fraud Guard
+    // Validation 3: NIC Format & Duplicate Check
     if (!nicInfo || !nicInfo.valid) {
-      setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකයක් ඇතුළත් කරන්න (පැරණි: 970181547V හෝ නව: 199701815470).');
+      setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකය ඇතුළත් කරන්න (උදාහරණ: 970181547V හෝ 199701815470).');
       return;
     }
 
-    // 🛡️ Strict Security Rule: One Account per NIC only (Allow rejected accounts to re-register)
     const hasActiveDuplicate = Array.isArray(users)
       ? users.some((u) => Boolean(u && u.status !== 'rejected' && isNicConflict(u, nicInfo.cleanNic)))
       : false;
-    if (nicConflict ? true : hasActiveDuplicate) {
-      setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් සකසා ඇත. ආරක්ෂක හේතූන් මත එක් හැඳුනුම්පත් අංකයකින් සැකසිය හැක්කේ එක් ගිණුමක් පමණි. කරුණාකර ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න.');
+
+    // නිවැරදි කරන ලද: nicConflict විචල්‍ය දෝෂය ඉවත් කිරීම
+    if (nicConflict || hasActiveDuplicate) {
+      setErrorMessage('මෙම ජාතික හැඳුනුම්පත් අංකයෙන් (NIC) දැනටමත් ගිණුමක් පවතී. එක් අයෙකුට සාදාගත හැක්කේ එක් ගිණුමක් පමණි.');
       window.scrollTo({ top: 150, behavior: 'smooth' });
       return;
     }
 
-    // 4. Phone Number Validation
+    // Validation 4: Phone Number
     const cleanPhone = whatsappPhone.trim();
-    const isValidPhone = /^(07[0-9]{8})$/.test(cleanPhone)
-      ? true
-      : /^(0[0-9]{9})$/.test(cleanPhone);
+    const isValidPhone = /^(07[0-9]{8})$/.test(cleanPhone) || /^(0[0-9]{9})$/.test(cleanPhone);
     if (!isValidPhone) {
-      setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකයක් ඇතුළත් කරන්න (උදා: 0771234567).');
+      setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකය ඇතුළත් කරන්න (උදා: 0771234567).');
       return;
     }
 
-    // 5. Address Validation
+    // Validation 5: Address
     if (address.trim().length <= 4) {
-      setErrorMessage('කරුණාකර ඔබගේ ස්ථීර ලිපිනය ඇතුළත් කරන්න.');
+      setErrorMessage('කරුණාකර ඔබගේ ලිපිනය නිවැරදිව සටහන් කරන්න.');
       return;
     }
 
-    // 6. Security Key / Password Validation
+    // Validation 6: Password / PIN
     if (!isKeyValid) {
-      setErrorMessage('මුරපදය සඳහා අවම වශයෙන් අකුරු හෝ අංක 6ක් ඇතුළත් කරන්න.');
+      setErrorMessage('කරුණාකර අවම වශයෙන් රහස් පදයට (PIN) අකුරු 6ක් ඇතුළත් කරන්න.');
       return;
     }
 
     if (key !== confirmKey) {
-      setErrorMessage('තහවුරු කිරීමේ මුරපදය නොගැලපේ. කරුණාකර නැවත පරීක්ෂා කරන්න.');
+      setErrorMessage('ඇතුළත් කළ රහස් පදයන් එකිනෙකට නොගැලපේ. කරුණාකර නැවත පරීක්ෂා කරන්න.');
       return;
     }
 
@@ -389,58 +367,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     try {
       const nowStr = new Date().toISOString();
       const cleanNic = nicInfo.cleanNic;
-
-      // Compute re-registration history and attempt counters
-      const rawPrevCount = (isPreviousRejected as any)?.submissionCount;
-      const prevAttemptCount = rawPrevCount ? Number(rawPrevCount) : 1;
-      const rawExistingHistory = (isPreviousRejected as any)?.rejectionHistory;
-      const existingHistory = Array.isArray(rawExistingHistory) ? rawExistingHistory : [];
-
-      const prevDate = isPreviousRejected?.rejectedAt
-        ? isPreviousRejected.rejectedAt
-        : isPreviousRejected?.updatedAt
-        ? isPreviousRejected.updatedAt
-        : isPreviousRejected?.registeredAt
-        ? isPreviousRejected.registeredAt
-        : nowStr;
-      const prevReason = (isPreviousRejected as any)?.rejectionReason
-        ? (isPreviousRejected as any).rejectionReason
-        : 'පරිපාලක විසින් ප්‍රතික්ෂේප කරන ලදී.';
-      const prevPhone = isPreviousRejected?.phone
-        ? isPreviousRejected.phone
-        : isPreviousRejected?.whatsappPhone;
-      const newHistoryItem = isPreviousRejected ? {
-        attempt: prevAttemptCount,
-        date: prevDate,
-        rejectionReason: prevReason,
-        previousName: isPreviousRejected.name,
-        previousAddress: isPreviousRejected.address,
-        previousPhone: prevPhone,
-        previousPhotoUrl: '',
-      } : null;
-
-      const resolvedId = isPreviousRejected?.id ? isPreviousRejected.id : `usr_${Date.now()}`;
-      const resolvedCreatedAt = isPreviousRejected?.registeredAt ? isPreviousRejected.registeredAt : nowStr;
-      const resolvedGender = nicInfo.gender ? nicInfo.gender : 'male';
-      const resolvedCity = selectedPoliceDivision ? selectedPoliceDivision : selectedDistrict;
-      const resolvedPhoto = nicFrontPhoto ? nicFrontPhoto : '';
       const hashedPassword = await hashUserPassword(key.trim());
 
-      // Primary User Profile Model
+      // නිවැරදි කරන ලද: නගරය (City) නිවැරදිව ලබා දීම
+      const resolvedCity = (city && city.trim()) ? city.trim() : (selectedPoliceDivision || selectedDistrict);
+
       const newUser: User = {
-        id: resolvedId,
+        id: isPreviousRejected?.id ? isPreviousRejected.id : `usr_${cleanNic}_${Date.now()}`,
         userId: cleanNic,
         nicNumber: cleanNic,
         nic: cleanNic,
         name: fullName.trim(),
         phone: cleanPhone,
         whatsappPhone: cleanPhone,
-        whatsappNumber: cleanPhone,
         address: address.trim(),
         city: resolvedCity,
         district: selectedDistrict,
         policeDivision: selectedPoliceDivision,
-        gender: resolvedGender,
+        gender: nicInfo.gender ? nicInfo.gender : 'male',
         role: 'user',
         status: 'pending',
         credits: 100,
@@ -448,776 +392,423 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         sPoints: 0,
         trustScore: 85,
         rating: 5.0,
-        completedHelpCount: 0,
         registeredAt: nowStr,
-        createdAt: resolvedCreatedAt,
+        createdAt: isPreviousRejected?.createdAt ? isPreviousRejected.createdAt : nowStr,
         updatedAt: nowStr,
         password: hashedPassword,
-        key: hashedPassword as any,
-        temporaryPassword: '',
-        isTemporaryPassword: false,
-        isPasswordChanged: true,
-        photoUrl: resolvedPhoto,
-        idCardPhotoUrl: '',
-        nicFrontPhotoUrl: resolvedPhoto,
-        nicBackPhotoUrl: '',
-        facePhotoUrl: '',
-        submissionCount: prevAttemptCount,
-        rejectionHistory: newHistoryItem ? [...existingHistory, newHistoryItem] : existingHistory,
+        photoUrl: nicFrontPhoto,
+        nicFrontPhotoUrl: nicFrontPhoto,
         isReRegistration: Boolean(isPreviousRejected),
       } as any;
 
-      notifyAdminViaTelegramOnRegistration({
-        registrationType: 'පුද්ගලික',
-        identifierOrName: cleanNic + (fullName.trim() ? ' (' + fullName.trim() + ')' : ''),
-        dedupeKey: 'usr_' + cleanNic
-      });
+      try {
+        notifyAdminViaTelegramOnRegistration({
+          registrationType: 'ලියාපදිංචිය',
+          identifierOrName: `${cleanNic} (${fullName.trim()})`,
+          dedupeKey: `usr_${cleanNic}`
+        });
+      } catch (telegramErr) {
+        console.warn('Telegram notification skipped:', telegramErr);
+      }
+
       const registerCallback = onRegister ? onRegister : onRegisterSuccess;
       if (typeof registerCallback === 'function') {
         await registerCallback(newUser);
-      } else {
-        console.warn('Neither onRegister nor onRegisterSuccess was provided');
       }
     } catch (err: any) {
-      console.error('Registration processing error:', err);
-      setErrorMessage(err.message || 'ලියාපදිංචි කිරීමේදී දෝෂයක් සිදුවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      setErrorMessage(err.message || 'ලියාපදිංචි වීමේදී අභ්‍යන්තර දෝෂයක් සිදුවිය.');
     } finally {
       setLoading(false);
     }
   };
-
-  // Localized Titles
-  const mainTitle = language === 'en' 
-    ? 'Create New Member Account' 
-    : language === 'ta' 
-    ? 'புதிய உறுப்பினர் கணக்கை உருவாக்கவும்' 
-    : 'නව සාමාජික ගිණුමක් සකසන්න';
-
-  const subtitle = language === 'en'
-    ? 'Provide accurate details for admin verification and identity confirmation'
-    : language === 'ta'
-    ? 'நிர்வாகி சரிபார்ப்புக்காக துல்லியமான தகவல்களை வழங்கவும்'
-    : 'පරිපාලක අනුමැතිය සහ අනන්‍යතාව තහවුරු කිරීම සඳහා නිවැරදි තොරතුරු ඇතුළත් කරන්න';
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 py-6 px-3 sm:px-6 flex flex-col justify-center items-center">
-      {/* Top Bar with Language & Back to Login */}
-      <div className="w-full max-w-2xl mb-4 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 py-8 px-4 sm:px-6 lg:px-8 transition-colors">
+      {/* Header, Back Button & Logo */}
+      <div className="max-w-xl mx-auto mb-6 flex justify-between items-center">
         <button
           type="button"
           onClick={onNavigateToLogin}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm active:scale-95"
+          className="flex items-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-medium text-sm transition-colors cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>{language === 'en' ? 'Back to Login' : language === 'ta' ? 'உள்நுழைவுக்குத் திரும்பு' : 'ආපසු පිවිසුමට'}</span>
+          <ArrowLeft className="w-5 h-5 mr-1" />
+          ආපසු (ඇතුළු වීමේ පිටුවට)
         </button>
-
-        <div className="flex items-center gap-2">
-          {setLanguage && (
-            <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10 backdrop-blur-md">
-              <button
-                type="button"
-                onClick={() => setLanguage('si')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
-                  language === 'si' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                සිං
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguage('en')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
-                  language === 'en' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguage('ta')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-colors ${
-                  language === 'ta' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                தமிழ்
-              </button>
-            </div>
-          )}
-          <FontSizeController language={language} />
-        </div>
+        <AppLogo size="sm" />
       </div>
 
-      {/* Main Registration Card Container */}
-      <div className="w-full max-w-2xl bg-white rounded-3xl p-5 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.45)] border-2 border-emerald-500/80 relative overflow-hidden">
-        {/* Top Decorative Green Accent Bar */}
-        <div className="absolute top-0 left-0 right-0 h-2.5 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600" />
+      <div className="max-w-xl mx-auto bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">
+          නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වන්න
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
+          ඔබගේ නිවැරදි තොරතුරු ඇතුළත් කර පද්ධතිය හා සම්බන්ධ වන්න
+        </p>
 
-        {/* Header Section */}
-        <div className="text-center mb-6 pt-1">
-          <div className="mb-3 flex justify-center">
-            <AppLogo size="lg" showGlow animated />
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-emerald-950 tracking-tight mb-1">
-            {mainTitle}
-          </h2>
-          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold mb-2">
-            <span>සහාය සේවා • සැමට පිහිට</span>
-          </div>
-          <p className="text-slate-600 text-xs sm:text-sm font-semibold max-w-md mx-auto">
-            {subtitle}
-          </p>
-        </div>
-        {/* Error Alert Message */}
         {errorMessage && (
-          <div className="mb-6 bg-rose-50 border-2 border-rose-300 p-4 rounded-2xl flex items-center gap-3 text-rose-900 text-xs sm:text-sm font-bold shadow-sm animate-shake">
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-            <span>{errorMessage}</span>
+          <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/40 border-l-4 border-rose-500 text-rose-700 dark:text-rose-300 rounded text-sm flex items-start gap-2">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div>{errorMessage}</div>
           </div>
         )}
 
-        {/* Main Form Fields */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Section A: Personal & Identity Information */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
-              A. මූලික තොරතුරු සහ අනන්‍යතාව
-            </h3>
-
-            {/* 1. Full Name */}
-            <div className="space-y-1.5">
-              <label className="block text-xs sm:text-sm font-black text-slate-800">
-                1. සම්පූර්ණ නම (Full Name) *
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <UserIcon className="w-4 h-4 text-emerald-600" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="උදා: කේ. ඒ. නිමල් පෙරේරා"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* 2. NIC Number & Real-time Gender/Validity Card */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  2. ජාතික හැඳුනුම්පත් අංකය (NIC Number) *
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowNicGuideModal(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                >
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  <span>හැඳුනුම්පත් උදවු</span>
-                </button>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <CreditCard className="w-4 h-4 text-emerald-600" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={nicNumber}
-                  onChange={(e) => setNicNumber(e.target.value.trim().toUpperCase())}
-                  placeholder="උදා: 970181547V හෝ 199701815470"
-                  maxLength={12}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
-                />
-              </div>
-
-              {/* NIC Validation & Duplicate Security Badge */}
-              {nicNumber.trim() !== '' && (
-                <div className="pt-1">
-                  {nicConflict ? (
-                    <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col gap-2 shadow-sm animate-fadeIn">
-                      <div className="flex items-center gap-2 text-rose-800 font-black text-xs sm:text-sm">
-                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span>මෙම ජාතික හැඳුනුම්පත් අංකය දැනටමත් ලියාපදිංචි කර ඇත!</span>
-                      </div>
-                      <p className="text-[11px] text-rose-700 leading-relaxed font-medium">
-                        ආරක්ෂිත හේතූන් මත එකම ජාතික හැඳුනුම්පත් අංකයකින් පද්ධතියේ නිර්මාණය කළ හැක්කේ එක් ගිණුමක් පමණි. වංචනික ලියාපදිංචි කිරීම් වැළැක්වීම සඳහා මෙම හැඳුනුම්පත සඳහා අලුතින් ගිණුම් සෑදීම අවහිර කර ඇත.
-                      </p>
-                      <div className="pt-1 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={onNavigateToLogin}
-                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                        >
-                          <span>ඔබගේ මුරපදය භාවිතයෙන් ඇතුළුවන්න (Sign In)</span>
-                        </button>
-                      </div>
-                    </div>
-                  ) : nicInfo && nicInfo.valid ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>
-                        වලංගු හැඳුනුම්පතකි ({nicInfo.gender === 'female' ? 'ස්ත්‍රී' : 'පුරුෂ'}, උපන් වර්ෂය: {nicInfo.birthYear || 'නොදනී'})
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>හැඳුනුම්පත් අංකයේ ආකෘතිය වැරදියි (අංක 9ක් සමග V/X හෝ අංක 12ක් විය යුතුය)</span>
-                    </div>
-                  )}
-
-                  {/* Previous Rejection Notice Banner */}
-                  {isPreviousRejected && (
-                    <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col gap-1 text-amber-900 dark:text-amber-200 animate-fadeIn">
-                      <div className="flex items-center gap-1.5 font-black text-xs">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>නැවත ලියාපදිංචි වීමේ අවස්ථාවයි ({((isPreviousRejected as any).submissionCount || 1) + 1} වන උත්සාහය):</span>
-                      </div>
-                      <p className="text-[11px] leading-relaxed font-medium">
-                        මෙම හැඳුනුම්පත් අංකය මින්පෙර ප්‍රතික්ෂේප වූවකි. කරුණාකර නිවැරදි සත්‍ය තොරතුරු සහ පැහැදිලි හැඳුනුම්පත් ඡායාරූපයක් ඇතුළත් කර නැවත ඉදිරිපත් කරන්න.
-                      </p>
-                      {(isPreviousRejected as any).rejectionReason && (
-                        <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300">
-                          පෙර ප්‍රතික්ෂේප වීමට හේතුව: {(isPreviousRejected as any).rejectionReason}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 3. Phone / WhatsApp Number */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  3. දුරකථන / WhatsApp අංකය *
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPhoneHelpModal(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                >
-                  <HelpCircle className="w-3.5 h-3.5" />
-                  <span>අංක ආකෘතිය</span>
-                </button>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Phone className="w-4 h-4 text-emerald-600" />
-                </div>
-                <input
-                  type="tel"
-                  required
-                  value={whatsappPhone}
-                  onChange={handlePhoneChange}
-                  placeholder="උදා: 0771234567"
-                  maxLength={10}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors tracking-wide"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section B: Residential & Location Information */}
-          <div className="space-y-4 pt-2">
-            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
-              B. පදිංචි ප්‍රදේශය සහ ලිපිනය
-            </h3>
-
-            {/* 4. District & Police Division Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  4. දිස්ත්‍රික්කය (District) *
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedDistrict}
-                    onChange={(e) => setSelectedDistrict(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
-                  >
-                    {SRI_LANKA_DISTRICTS.map((dist) => (
-                      <option key={dist} value={dist}>
-                        {dist}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
-                    ▼
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  5. පොලිස් බලප්‍රදේශය (Police Division) *
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedPoliceDivision}
-                    onChange={(e) => setSelectedPoliceDivision(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors appearance-none cursor-pointer"
-                  >
-                    {availableDivisions.map((div) => (
-                      <option key={div} value={div}>
-                        {div}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
-                    ▼
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 6. Permanent Residential Address */}
-            <div className="space-y-1.5">
-              <label className="block text-xs sm:text-sm font-black text-slate-800">
-                6. ස්ථීර පදිංචි ලිපිනය (Address) *
-              </label>
-              <div className="relative">
-                <div className="absolute top-3.5 left-3.5 flex items-center pointer-events-none text-slate-400">
-                  <MapPin className="w-4 h-4 text-emerald-600" />
-                </div>
-                <textarea
-                  required
-                  rows={2}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="නො: 123, ගංගාරාම පාර, කෝවින්න, කටුනායක"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section C: Security Key & Passwords */}
-          <div className="space-y-4 pt-2">
+          {/* 🌟 Single Prominent NIC Front Photo Upload Box (බොත්තම් රහිතව මුළු කොටුවම ක්ලික් වන පරිදි) */}
+          <div className="bg-emerald-50/20 dark:bg-emerald-950/20 p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 space-y-3 shadow-sm hover:border-emerald-400 transition-colors">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
-                C. පිවිසුම් මුරපදය (Security Password)
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowPasswordHelpModal(true)}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>මුරපද නීති</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* 7. Password / Key */}
-              <div className="space-y-1.5">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  7. නව මුරපදය (Password) *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Lock className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    placeholder="අවම අකුරු 6ක්"
-                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 text-emerald-950 dark:text-emerald-200 font-bold text-sm sm:text-base">
+                <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span>හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය</span>
+                <span className="text-xs bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                  අනිවාර්යයි
+                </span>
               </div>
-
-              {/* 8. Confirm Password */}
-              <div className="space-y-1.5">
-                <label className="block text-xs sm:text-sm font-black text-slate-800">
-                  8. මුරපදය තහවුරු කරන්න *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Lock className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    required
-                    value={confirmKey}
-                    onChange={(e) => setConfirmKey(e.target.value)}
-                    placeholder="මුරපදය නැවත ඇතුළත් කරන්න"
-                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-900 text-sm font-bold focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Password Match Status Indicator */}
-            {confirmKey && (
-              <div className="pt-0.5">
-                {doKeysMatch ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    මුරපද දෙකම නිවැරදිව ගැලපේ
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    මුරපද දෙක එකිනෙකට නොගැලපේ
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Section D: Photo Upload (Fixed Image Upload with Native Overlay) */}
-          <div className="space-y-4 pt-2">
-            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl inline-block border border-emerald-200">
-              D. අනන්‍යතා ඡායාරූපය උඩුගත කිරීම
-            </h3>
-
-            {/* Single Prominent NIC Front Photo Upload Card */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 space-y-3 shadow-sm hover:border-emerald-500 transition-colors">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <label className="block text-xs sm:text-sm font-black text-emerald-950">
-                    9. ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (NIC Front Photo) *
-                  </label>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඔබගේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඉදිරිපස ඡායාරූපය උඩුගත කරන්න.
-                  </p>
-                </div>
+              {nicFrontPhoto && (
                 <button
                   type="button"
-                  onClick={() => setShowNicGuideModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNicFrontPhoto('');
+                  }}
+                  className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium flex items-center gap-1 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                 >
-                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ආදර්ශ හැඳුනුම්පත</span>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  ඉවත් කරන්න
                 </button>
-              </div>
-
-              {/* Hidden Native File Inputs */}
-              {/* 1. Standard Chooser (Gallery / Camera / Files) */}
-              <input
-                ref={nicFileInputRef}
-                id="nic-front-file-input"
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  handlePhotoUpload(e, setNicFrontPhoto);
-                  e.target.value = '';
-                }}
-                className="hidden"
-              />
-              {/* 2. Direct Camera Trigger */}
-              <input
-                ref={nicCameraInputRef}
-                id="nic-camera-file-input"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => {
-                  handlePhotoUpload(e, setNicFrontPhoto);
-                  e.target.value = '';
-                }}
-                className="hidden"
-              />
-
-              {/* Upload Drop Zone / Button */}
-              {nicFrontPhoto && nicFrontPhoto.trim() !== '' ? (
-                <div className="relative w-full rounded-2xl overflow-hidden bg-slate-50 border-2 border-emerald-400 p-4 flex flex-col items-center justify-center gap-3 shadow-inner">
-                  <div className="relative max-h-56 max-w-full flex items-center justify-center">
-                    <img
-                      src={nicFrontPhoto}
-                      alt="NIC Front"
-                      className="max-h-52 w-auto max-w-full object-contain rounded-xl shadow-md border border-slate-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setNicFrontPhoto('');
-                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
-                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
-                      }}
-                      className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-2 shadow-lg transition-colors cursor-pointer z-30"
-                      title="ඡායාරූපය ඉවත් කරන්න"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-center gap-2 w-full pt-1">
-                    <button
-                      type="button"
-                      onClick={() => nicFileInputRef.current?.click()}
-                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-slate-600" />
-                      <span>වෙනත් ඡායාරූපයක් තෝරන්න</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNicFrontPhoto('');
-                        if (nicFileInputRef.current) nicFileInputRef.current.value = '';
-                        if (nicCameraInputRef.current) nicCameraInputRef.current.value = '';
-                      }}
-                      className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <X className="w-3.5 h-3.5 text-rose-600" />
-                      <span>ඡායාරූපය ඉවත් කරන්න</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  onClick={() => nicFileInputRef.current?.click()}
-                  className="relative w-full min-h-[180px] sm:min-h-[210px] rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-50/40 via-white to-emerald-50/40 border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/30 flex flex-col items-center justify-center p-4 sm:p-5 shadow-inner transition-all cursor-pointer group"
-                >
-                  {isProcessingPhoto ? (
-                    <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
-                      <Loader2 className="w-9 h-9 text-emerald-600 animate-spin" />
-                      <span className="text-xs font-bold text-emerald-950">
-                        ඡායාරූපය සැකසෙමින් පවතී...
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-2.5 text-center w-full">
-                      <div className="p-3 bg-emerald-100 text-emerald-800 rounded-full shadow-sm group-hover:scale-105 transition-transform">
-                        <Upload className="w-7 h-7 text-emerald-700 animate-bounce" />
-                      </div>
-                      <span className="text-sm font-black text-emerald-950 tracking-tight">
-                        ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය මෙතැනින් එක් කරන්න (අනිවාර්යයි *)
-                      </span>
-                      <span className="text-xs text-slate-500 max-w-sm font-medium leading-relaxed">
-                        හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි ඡායාරූපය ලබාගන්න.
-                      </span>
-
-                      {/* Explicit Action Buttons */}
-                      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2 w-full">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            nicCameraInputRef.current?.click();
-                          }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-md hover:shadow transition-all active:scale-95 cursor-pointer"
-                        >
-                          <Camera className="w-4 h-4" />
-                          <span>කැමරාවෙන් ඡායාරූපයක් ගන්න</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            nicFileInputRef.current?.click();
-                          }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-emerald-900 border-2 border-emerald-300 hover:border-emerald-500 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
-                        >
-                          <Upload className="w-4 h-4 text-emerald-700" />
-                          <span>ගැලරියෙන් / Files තෝරන්න</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
-          </div>
 
-          {/* Dynamic Admin Terms & Conditions */}
-          {termsAndConditions && (
-            <div className="bg-emerald-50 border-2 border-emerald-200 p-4 rounded-2xl space-y-1 text-slate-800 text-xs">
-              <div className="font-extrabold text-emerald-900 flex items-center gap-1.5 text-xs mb-1">
-                <FileText className="w-4 h-4 text-emerald-700" />
-                <span>ලියාපදිංචි වීමේ කොන්දේසි</span>
-              </div>
-              <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-700 font-medium">
-                {termsAndConditions}
-              </p>
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={loading || Boolean(nicConflict)}
-              className="w-full bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] disabled:opacity-50 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.35)] border-b-4 border-emerald-950 transition-all cursor-pointer text-base flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>ලියාපදිංචි වෙමින් පවතී...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>ලියාපදිංචිය යොමු කරන්න</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Footer Navigation */}
-          <div className="text-center pt-2 space-y-2">
-            <p className="text-xs font-bold text-slate-600">
-              දැනටමත් ගිණුමක් තිබේද?{' '}
-              <button
-                type="button"
-                onClick={onNavigateToLogin}
-                className="text-emerald-700 hover:text-emerald-900 underline font-black cursor-pointer"
-              >
-                ඇතුළුවන්න (Sign In)
-              </button>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපයක් පහත කොටුව මත ක්ලික් කර උඩුගත කරන්න.
             </p>
 
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof onNavigateToIssues === 'function') {
-                    onNavigateToIssues();
-                  } else {
-                    onNavigateToLogin();
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-emerald-800 cursor-pointer"
+            {nicFrontPhoto ? (
+              /* ඡායාරූපය තෝරාගත් පසු පෙන්වන Preview එක */
+              <div
+                onClick={() => nicFileInputRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                className="relative rounded-xl overflow-hidden border-2 border-emerald-400 dark:border-emerald-600 bg-slate-900 group cursor-pointer shadow-md"
               >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>ලියාපදිංචි වීමේදී ගැටලුවක්ද? පරිපාලක සහාය ලබාගන්න</span>
-              </button>
+                <img
+                  src={nicFrontPhoto}
+                  alt="NIC Front Preview"
+                  className="w-full h-48 sm:h-56 object-contain bg-slate-950/80"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="bg-white/95 text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md">
+                    <Upload className="w-3.5 h-3.5" />
+                    ඡායාරූපය වෙනස් කිරීමට ක්ලික් කරන්න
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* කිසිදු අමතර බොත්තමක් නොමැතිව මුළු කොටුවේ ඕනෑම තැනක් ක්ලික් කළ විට Upload වන අංගය */
+              <div
+                onClick={() => nicFileInputRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                className="border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 sm:p-8 text-center transition-all bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/80 flex flex-col items-center justify-center gap-3 cursor-pointer group"
+              >
+                <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900 group-hover:bg-emerald-200 group-hover:scale-105 transition-all flex items-center justify-center text-emerald-600 dark:text-emerald-300 shadow-sm">
+                  {isProcessingPhoto ? (
+                    <Loader2 className="w-7 h-7 animate-spin" />
+                  ) : (
+                    <Upload className="w-7 h-7" />
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-emerald-950 dark:text-emerald-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-300 transition-colors">
+                    {isProcessingPhoto ? 'ඡායාරූපය සකසමින් පවතී...' : 'ඡායාරූපය උඩුගත කිරීමට මෙතන ක්ලික් කරන්න'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    (නැතහොත් ඡායාරූපය මෙතැනට ඇද දමන්න - Drag & Drop)
+                  </p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                    JPG, PNG හෝ WEBP (උපරිම 5MB)
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Hidden Single File Input */}
+            <input
+              ref={nicFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileInputChange}
+            />
+          </div>
+
+          {/* Full Name Input */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+              සම්පූර්ණ නම (Full Name) *
+            </label>
+            <div className="relative">
+              <UserIcon className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                placeholder="උදා: කමල් පෙරේරා"
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              />
             </div>
           </div>
+
+          {/* NIC Number Input */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                ජාතික හැඳුනුම්පත් අංකය (NIC Number) *
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowNicGuideModal(true)}
+                className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" /> උපදෙස්
+              </button>
+            </div>
+            <div className="relative">
+              <CreditCard className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                value={nicNumber}
+                onChange={(e) => setNicNumber(e.target.value)}
+                required
+                placeholder="උදා: 970181547V හෝ 199701815470"
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition uppercase"
+              />
+            </div>
+          </div>
+
+          {/* Phone Number Input */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                දුරකථන / WhatsApp අංකය *
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowPhoneHelpModal(true)}
+                className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" /> උපදෙස්
+              </button>
+            </div>
+            <div className="relative">
+              <Phone className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+              <input
+                type="tel"
+                value={whatsappPhone}
+                onChange={handlePhoneChange}
+                required
+                placeholder="0771234567"
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              />
+            </div>
+          </div>
+
+          {/* District & Police Division Selectors */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                දිස්ත්‍රික්කය (District)
+              </label>
+              <select
+                value={selectedDistrict}
+                onChange={(e) => setSelectedDistrict(e.target.value)}
+                className="w-full py-2.5 px-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              >
+                {SRI_LANKA_DISTRICTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                පොලිස් බලප්‍රදේශය (Police Division)
+              </label>
+              <select
+                value={selectedPoliceDivision}
+                onChange={(e) => setSelectedPoliceDivision(e.target.value)}
+                className="w-full py-2.5 px-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              >
+                {availableDivisions.map((p: string) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* City / Town Input */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+              නගරය (City / Town)
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="උදා: කටුනායක"
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              />
+            </div>
+          </div>
+
+          {/* Address Input */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+              ලිපිනය (Address) *
+            </label>
+            <textarea
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              rows={2}
+              required
+              placeholder="ඔබගේ නිවැරදි ලිපිනය"
+              className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+            />
+          </div>
+
+          {/* Password / PIN Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  රහස් පදය (PIN) *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordHelpModal(true)}
+                  className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" /> උපදෙස්
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  required
+                  placeholder="අවම අකුරු 6ක්"
+                  className="w-full pl-10 pr-10 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                රහස් පදය තහවුරු කරන්න *
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmKey}
+                  onChange={(e) => setConfirmKey(e.target.value)}
+                  required
+                  placeholder="නැවත ඇතුළත් කරන්න"
+                  className="w-full pl-10 pr-10 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 bg-[#00a86b] hover:bg-[#00925c] active:bg-[#008050] text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+            {loading ? 'ලියාපදිංචි වෙමින් පවතී...' : 'නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වන්න'}
+          </button>
         </form>
       </div>
 
-      {/* 1. Modal: NIC Guide Sample Photo */}
+      {/* Helper Modals */}
       {showNicGuideModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h4 className="text-sm font-black text-emerald-950">ආදර්ශ ජාතික හැඳුනුම්පත (Specimen)</h4>
-              <button
-                type="button"
-                onClick={() => setShowNicGuideModal(false)}
-                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Specimen Replica Component */}
-            <div className="py-1">
-              <NicSpecimenCard compact={true} />
-            </div>
-
-            <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-1">
-              <div className="text-xs font-black text-emerald-950 flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 inline shrink-0" />
-                <span>හැඳුනුම්පතේ ඉදිරිපස පමණක් උඩුගත කරන්න</span>
-              </div>
-              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                හැඳුනුම්පත් අංකය සහ හැඳුනුම්පතේ ඡායාරූපය පමණක් පැහැදිලිව පෙනෙන පරිදි හොඳින් ආලෝකය ඇති ස්ථානයක තබා ඡායාරූපය ලබාගන්න.
-              </p>
-            </div>
-
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <button
-              type="button"
               onClick={() => setShowNicGuideModal(false)}
-              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
             >
-              තේරුම් ගත්තා
+              <X className="w-5 h-5" />
             </button>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
+              ජාතික හැඳුනුම්පත් ආකෘති මාර්ගෝපදේශය
+            </h3>
+            <NicSpecimenCard />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">
+              පැරණි ආකෘතිය: අංක 9ක් සහ V හෝ X අකුර (උදා: 970181547V)<br />
+              නව ආකෘතිය: ඉලක්කම් 12කින් යුත් අංකය (උදා: 199701815470)
+            </p>
           </div>
         </div>
       )}
 
-      {/* 2. Modal: Phone Number Format Help */}
       {showPhoneHelpModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-black text-emerald-950">දුරකථන අංක ආකෘතිය</h4>
-              <button
-                type="button"
-                onClick={() => setShowPhoneHelpModal(false)}
-                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
-              <div className="font-bold text-emerald-950">වලංගු ආකෘති:</div>
-              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
-                <li>0771234567 (සාමාන්‍ය ජංගම අංකය)</li>
-                <li>0712345678 (Mobitel)</li>
-                <li>0781234567 (Hutch)</li>
-                <li>0112345678 (ස්ථාවර දුරකථන)</li>
-              </ul>
-              <p className="text-[10px] text-slate-500 pt-1">
-                * +94 හෝ හිස්තැන් ඇතුළත් කිරීම අවශ්‍ය නොවේ. පද්ධතිය විසින් එය ස්වයංක්‍රීයව සකසයි.
-              </p>
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <button
-              type="button"
               onClick={() => setShowPhoneHelpModal(false)}
-              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
             >
-              හරි
+              <X className="w-5 h-5" />
             </button>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
+              දුරකථන අංක මාර්ගෝපදේශය
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              ශ්‍රී ලාංකික වලංගු ජංගම දුරකථන අංකයක් ඇතුළත් කරන්න (උදා: 0771234567, 0712345678, 0701234567 ආදිය). ජාත්‍යන්තර ආකෘතිය (+94) ස්වයංක්‍රීයව පරිවර්තනය වේ.
+            </p>
           </div>
         </div>
       )}
 
-      {/* 3. Modal: Password Policy Help */}
       {showPasswordHelpModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 border-2 border-emerald-500 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-black text-emerald-950">මුරපද ආරක්ෂක උපදෙස්</h4>
-              <button
-                type="button"
-                onClick={() => setShowPasswordHelpModal(false)}
-                className="p-1 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
-              <div className="font-bold text-emerald-950">මුරපද නීති:</div>
-              <ul className="list-disc pl-4 space-y-1 text-slate-700 font-medium text-[11px]">
-                <li>අවම වශයෙන් අකුරු හෝ අංක 6ක් තිබිය යුතුය.</li>
-                <li>ඔබට පහසුවෙන් මතක තබාගත හැකි අංකයක් හෝ වචනයක් යොදන්න.</li>
-                <li>තහවුරු කිරීමේ මුරපදය සමඟ හරියටම සමාන විය යුතුය.</li>
-              </ul>
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <button
-              type="button"
               onClick={() => setShowPasswordHelpModal(false)}
-              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
             >
-              තේරුම් ගත්තා
+              <X className="w-5 h-5" />
             </button>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
+              රහස් පද (PIN) මාර්ගෝපදේශය
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              ඔබගේ ගිණුමේ ආරක්ෂාව සඳහා අවම වශයෙන් අක්ෂර හෝ ඉලක්කම් 6ක රහස් පදයක් භාවිතා කරන්න.
+            </p>
           </div>
         </div>
       )}
