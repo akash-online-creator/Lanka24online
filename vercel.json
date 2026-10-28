@@ -20,7 +20,7 @@
       "destination": "https://supporservice.online/api/$1"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|download|app\\.apk).*)",
       "destination": "/index.html"
     }
   ],
