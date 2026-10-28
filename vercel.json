@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "redirects": [
     {
-      "source": "/download",
+      "source": "/download(.*)",
       "destination": "https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t",
       "permanent": false
     },
@@ -20,7 +20,7 @@
       "destination": "https://supporservice.online/api/$1"
     },
     {
-      "source": "/((?!api/|download|app\\.apk).*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
