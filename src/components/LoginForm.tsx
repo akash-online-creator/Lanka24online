@@ -622,55 +622,33 @@ t.orDivider ? t.orDivider : 'හෝ'
 ), h('div', { className: 'flex-1 border-t border-slate-200/80 dark:border-[#162e20]' })), h('button',
 
 {
-
-type: 'button',
-
-disabled: isLoading,
-
-onClick: () => setIsQuickRegistrationHubOpen(true),
-
-className:
-
-'w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black py-2.5 px-4 rounded-xl shadow-md hover:scale-[1.01] active:scale-98 transition-all text-xs sm:text-sm cursor-pointer flex items-center justify-center gap-2 border border-emerald-400/50',
-
-}, h(Sparkles, { className: 'w-4 h-4 text-amber-300 animate-pulse' }), h('span',
-
-null,
-
-language === 'en'
-
-? '✨ Register Now (Registration Hub)'
-
-: language === 'ta'
-
-? '✨ பதிவு செய்க (பதிவு மையம்)'
-
-: '✨ ලියාපදිංචි වන්න (ලියාපදිංචි හබ් එක)'
-
+  type: 'button',
+  disabled: isLoading,
+  onClick: onNavigateToRegister,
+  className: 'w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all transform active:scale-95 flex items-center justify-center space-x-2 border border-emerald-400/30 mb-2 cursor-pointer'
+}, h('span',
+  null,
+  language === 'en'
+    ? 'Register as a New Member'
+    : language === 'ta'
+    ? 'புதிய உறுப்பினராக பதிவு செய்யவும்'
+    : 'නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වන්න'
 )), h('button',
-
 {
-
-type: 'button',
-
-disabled: isLoading,
-
-onClick: onNavigateToRegister,
-
-className: 'w-full text-center text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer pt-1',
-
+  type: 'button',
+  disabled: isLoading,
+  onClick: () => setIsQuickRegistrationHubOpen(true),
+  className: 'w-full py-2.5 px-4 rounded-xl border border-emerald-600/30 bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100/60 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-sm'
 },
-
-language === 'en'
-
-? 'Or register directly as a new member →'
-
-: language === 'ta'
-
-? 'அல்லது புதிய உறுப்பினராக பதிவு செய்யவும் →'
-
-: 'හෝ සෘජුවම නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වීමට →'
-
+  h(Sparkles, { className: 'w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse' }),
+  h('span',
+    null,
+    language === 'en'
+      ? '✨ Register Now (Registration Hub)'
+      : language === 'ta'
+      ? '✨ பதிவு செய்க (பதிவு மையம்)'
+      : '✨ ලියාපදිංචි වන්න (ලියාපදිංචි හබ් එක)'
+  )
 )),
 
 showDemoUserLogin && systemSettings.enableDemoLogin
