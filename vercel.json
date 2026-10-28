@@ -5,12 +5,12 @@
   "redirects": [
     {
       "source": "/download(.*)",
-      "destination": "https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t",
+      "destination": "https://drive.usercontent.google.com/download?id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t&export=download&confirm=t",
       "permanent": false
     },
     {
       "source": "/app.apk",
-      "destination": "https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t",
+      "destination": "https://drive.usercontent.google.com/download?id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t&export=download&confirm=t",
       "permanent": false
     }
   ],
