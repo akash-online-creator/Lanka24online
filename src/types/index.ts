@@ -588,6 +588,14 @@ export interface GroupPermissions {
   inviteViaLinkOrQr: boolean; // whether members can invite via link or QR
   adminApproveNewMembers: boolean; // when turned on, admin must approve anyone who wants to join
   disappearingTimer?: 'off' | '24h' | '7d' | '90d';
+  // Telegram-style permissions
+  sendMedia?: boolean;
+  sendStickersGifs?: boolean;
+  sendPolls?: boolean;
+  embedLinks?: boolean;
+  pinMessages?: boolean;
+  changeChatInfo?: boolean;
+  slowMode?: 'off' | '10s' | '30s' | '1m' | '5m' | '15m';
 }
 
 export type GroupMemberRole = 'admin' | 'moderator' | 'member';
@@ -602,6 +610,8 @@ export interface GroupMember {
   role: GroupMemberRole;
   status: GroupMemberStatus;
   joinedAt: string;
+  customTitle?: string; // e.g. 'Owner', 'Admin', 'සම්බන්ධීකාරක'
+  isMuted?: boolean;
   customPermissions?: Partial<GroupPermissions>;
 }
 
@@ -659,6 +669,27 @@ export interface GroupJoinRequest {
   reviewedAt?: string;
 }
 
+export interface GroupRecentAction {
+  id: string;
+  adminId: string;
+  adminName: string;
+  action: string;
+  timestamp: string;
+  timestampMs: number;
+}
+
+export interface GroupInviteLinkItem {
+  id: string;
+  name?: string;
+  code: string;
+  link: string;
+  createdAt: string;
+  expiresAt?: string;
+  usageLimit?: number;
+  usageCount: number;
+  requiresApproval?: boolean;
+}
+
 export interface GroupItem {
   id: string;
   name: string; // unique, e.g. "කැලණිය ප්‍රජා සත්කාර බලකාය"
@@ -686,6 +717,16 @@ export interface GroupItem {
   category?: string;
   isPrivate?: boolean;
   isPinned?: boolean;
+  // Telegram-specific group features
+  chatHistoryVisible?: boolean; // 'visible' (true) or 'hidden' (false) for new members
+  appearanceColor?: string; // Theme accent e.g. '#22c55e', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'
+  topicsEnabled?: boolean; // Divided into topics
+  reactionsSetting?: 'all' | 'some' | 'off';
+  welcomeMessageEnabled?: boolean;
+  welcomeMessageText?: string;
+  inviteLinksList?: GroupInviteLinkItem[];
+  recentActions?: GroupRecentAction[];
+  communityName?: string;
 }
 
 export interface GroupInviteNotification {

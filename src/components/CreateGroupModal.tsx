@@ -217,36 +217,86 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
       window.dispatchEvent(new Event('sahaya_credits_updated'));
 
-      // Step 5: Construct new group object
+      // Step 5: Construct new group object with creator as Owner/Admin
+      const currentUserId = currentUser.id || currentUser.userId || `usr_${Date.now()}`;
+      const creatorPhone = currentUser.phone || (currentUser as any).whatsappPhone || '';
+      const creatorName = currentUser.name || 'නිර්මාතෘ';
+      const creatorPhoto = currentUser.photoUrl || (currentUser as any).avatarUrl || '';
 
       const newGroup: any = {
-
         id: generatedGroupId,
-
         name: name.trim(),
-
         username: formattedUsername,
-
         description: description.trim(),
-
         privacy,
-
+        isPrivate: privacy === 'private',
         category,
-
+        creatorId: currentUserId,
+        creatorName: creatorName,
+        creatorPhone: creatorPhone,
         createdBy: currentUser,
-
         createdAt: new Date().toISOString(),
-
+        createdAtMs: Date.now(),
         membersCount: 1,
-
-        inviteCode: privacy === 'private' ? generatedInviteCode : undefined,
-
-        inviteLink: inviteLink,
-
+        inviteCode: generatedInviteCode,
+        inviteLink: inviteLink || `https://supporservice.online/?join=${generatedGroupId}`,
+        chatHistoryVisible: true,
+        appearanceColor: '#22c55e',
+        topicsEnabled: false,
+        reactionsSetting: 'all',
+        welcomeMessageEnabled: false,
+        welcomeMessageText: 'සාදරයෙන් පිළිගනිමු! කරුණාකර කණ්ඩායමේ නීති රීති වලට ගරු කරන්න.',
+        permissions: {
+          editGroupSettings: true,
+          sendNewMessages: true,
+          addOtherMembers: true,
+          inviteViaLinkOrQr: true,
+          adminApproveNewMembers: privacy === 'private',
+          disappearingTimer: 'off',
+          sendMedia: true,
+          sendStickersGifs: true,
+          sendPolls: true,
+          embedLinks: true,
+          pinMessages: true,
+          changeChatInfo: false,
+          slowMode: 'off',
+        },
+        members: [
+          {
+            id: currentUserId,
+            userId: currentUserId,
+            name: creatorName,
+            phone: creatorPhone,
+            photoUrl: creatorPhoto,
+            role: 'admin',
+            customTitle: 'Owner (නිර්මාතෘ)',
+            status: 'active',
+            joinedAt: new Date().toLocaleString(),
+          },
+        ],
+        inviteLinksList: [
+          {
+            id: `link_${generatedGroupId}_primary`,
+            code: generatedInviteCode,
+            link: inviteLink || `https://supporservice.online/?join=${generatedGroupId}`,
+            createdAt: new Date().toLocaleDateString(),
+            usageCount: 1,
+            requiresApproval: privacy === 'private',
+          },
+        ],
+        recentActions: [
+          {
+            id: `act_${Date.now()}`,
+            adminId: currentUserId,
+            adminName: creatorName,
+            action: 'කණ්ඩායම නිර්මාණය කර Admin බලතල සක්‍රීය කරන ලදී (Group Created & Admin Initialized)',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestampMs: Date.now(),
+          },
+        ],
       };
 
       onGroupCreated(newGroup);
-
       onClose();
 
     } catch (error) {

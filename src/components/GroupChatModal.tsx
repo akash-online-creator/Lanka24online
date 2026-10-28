@@ -46,6 +46,7 @@ import { GroupChatMapPickerModal } from './GroupChatMapPickerModal';
 import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
 import { ChatLocationCard } from './ChatLocationCard';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
+import { TelegramGroupEditModal } from './TelegramGroupEditModal';
 import { 
   getStoredGroupMessages, 
   saveGroupMessageToStorage, 
@@ -86,6 +87,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isTelegramEditOpen, setIsTelegramEditOpen] = useState(false);
 
   // Map Location Sharing States
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
@@ -118,7 +120,11 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     (m) => m && (m.userId === currentUserId || (currentUser?.phone && m.phone === currentUser?.phone))
   );
 
-  const isAdmin = currentMemberRecord?.role === 'admin' || group?.creatorId === currentUserId;
+  const isAdmin = currentMemberRecord?.role === 'admin' || 
+    group?.creatorId === currentUserId ||
+    (group?.createdBy as any)?.id === currentUserId ||
+    (group?.createdBy as any)?.userId === currentUserId ||
+    (currentUser as any)?.role === 'admin';
   const canSendMessages = isAdmin || Boolean(group?.permissions?.sendNewMessages);
   const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings);
   const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers);
@@ -423,6 +429,18 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsTelegramEditOpen(true)}
+                className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                title="කණ්ඩායම් සැකසුම් (Telegram Admin Settings)"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">සැකසුම්</span>
+              </button>
+            )}
+
             {canInviteViaLink && (
               <button
                 type="button"
@@ -492,6 +510,11 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
                   {group.description}
                 </p>
+                {group.welcomeMessageEnabled && group.welcomeMessageText && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium italic">
+                    💬 "{group.welcomeMessageText}"
+                  </div>
+                )}
                 <div className="mt-2 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                   🛡️ Admin: {group.creatorName} {isAdmin && group.creatorPhone ? `(${group.creatorPhone})` : ''}
                 </div>
@@ -722,6 +745,21 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
                   <p className="text-[11px] text-zinc-500 leading-relaxed pt-1">{group.description}</p>
                 </div>
+
+                {/* Telegram Admin Settings Button */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGroupInfo(false);
+                      setIsTelegramEditOpen(true);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-emerald-600 hover:from-sky-700 hover:to-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer transition-transform active:scale-95"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>කණ්ඩායම් පාලන සැකසුම් (Telegram Admin Settings)</span>
+                  </button>
+                )}
 
                 {/* Pending Join Requests (for Admin) */}
                 {isAdmin && groupJoinRequests.length > 0 && (
@@ -979,6 +1017,24 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           onClose={() => setViewingLocation(null)}
           location={viewingLocation}
         />
+
+        {/* Telegram Group Edit Modal */}
+        {isTelegramEditOpen && (
+          <TelegramGroupEditModal
+            isOpen={isTelegramEditOpen}
+            onClose={() => setIsTelegramEditOpen(false)}
+            group={group}
+            currentUser={currentUser}
+            onGroupUpdated={(updated) => {
+              setGroup(updated);
+              if (onUpdateGroup) onUpdateGroup(updated);
+            }}
+            onGroupDeleted={() => {
+              setIsTelegramEditOpen(false);
+              onClose();
+            }}
+          />
+        )}
       </div>
     </div>
   );

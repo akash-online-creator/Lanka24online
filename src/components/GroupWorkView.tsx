@@ -49,7 +49,8 @@ import { addDeletedGroupId } from '../utils/deletedPostsManager';
 import { subscribeToGroups, addGroupToFirestore, updateGroupInFirestore, deleteGroupFromFirestore } from '../lib/firebase';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupChatModal } from './GroupChatModal';
-import { Trash2 } from 'lucide-react';
+import { TelegramGroupEditModal } from './TelegramGroupEditModal';
+import { Trash2, Settings } from 'lucide-react';
 
 interface GroupWorkViewProps {
   currentUser: User;
@@ -77,6 +78,7 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
   const [allJoinRequests, setAllJoinRequests] = useState<GroupJoinRequest[]>(() => getStoredGroupJoinRequests());
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'warning' } | null>(null);
+  const [editingGroupForAdmin, setEditingGroupForAdmin] = useState<GroupItem | null>(null);
 
   const currentUserId = currentUser?.userId || currentUser?.id || '';
 
@@ -692,13 +694,25 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
                         </button>
 
                         {(isCreator || isUserAdmin) && (
-                          <button
-                            onClick={(e) => handleDeleteGroup(group, e)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                            title="Delete Group"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGroupForAdmin(group);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors"
+                              title="කණ්ඩායම් සැකසුම් (Telegram Admin Settings)"
+                            >
+                              <Settings className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteGroup(group, e)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                              title="Delete Group"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -837,6 +851,24 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
           lang={language}
           registeredUsers={registeredUsers}
           onUpdateGroup={handleUpdateGroup}
+        />
+      )}
+
+      {/* Telegram Group Edit Modal */}
+      {editingGroupForAdmin && (
+        <TelegramGroupEditModal
+          isOpen={Boolean(editingGroupForAdmin)}
+          onClose={() => setEditingGroupForAdmin(null)}
+          group={editingGroupForAdmin}
+          currentUser={currentUser}
+          onGroupUpdated={(updated) => {
+            handleUpdateGroup(updated);
+            setEditingGroupForAdmin(null);
+          }}
+          onGroupDeleted={(delId) => {
+            setGroups((prev) => prev.filter((g) => g.id !== delId));
+            setEditingGroupForAdmin(null);
+          }}
         />
       )}
     </div>
