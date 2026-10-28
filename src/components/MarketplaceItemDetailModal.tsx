@@ -115,55 +115,34 @@ export const MarketplaceItemDetailModal: React.FC<MarketplaceItemDetailModalProp
 
 }) => {
 
-  if (!isOpen || !item) return null;
-
   // Find alternative listings matching the title keywords or category tag, excluding current item
-
   const comparisonItems = useMemo(() => {
-
     if (!item) return [];
-
     const currentTitleTokens = item.title
-
       .toLowerCase()
-
       .split(' ')
-
       .filter((token) => token.length > 2);
 
     return allItems
-
       .filter((otherItem) => {
-
         if (otherItem.id === item.id) return false;
-
         // Tag match
-
         if (
-
           item.categoryTag &&
-
           otherItem.categoryTag &&
-
           item.categoryTag.toLowerCase() === otherItem.categoryTag.toLowerCase()
-
         ) {
-
           return true;
-
         }
 
         // Title token match
-
         const otherTitle = otherItem.title.toLowerCase();
-
         return currentTitleTokens.some((token) => otherTitle.includes(token));
-
       })
-
       .sort((a, b) => a.price - b.price);
-
   }, [item, allItems]);
+
+  if (!isOpen || !item) return null;
 
   const handleCall = (phone?: string) => {
 

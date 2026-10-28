@@ -556,6 +556,9 @@ if (m && !isMeMessage(m)) { if (m.senderLang === 'si' ? true : m.senderLang === 
 } const det = detectLanguageOfText(m.text ? m.text : ''); if (det === 'en') return 'en'; if (det === 'ta') return 'ta'; return 'si';
 } } return userLang === 'en' ? 'si' : 'en'; }, [messages, userLang]);
 useEffect(() => { if (activeThread) { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); } }, [messages.length, activeThread?.id]);
+const pinnedMessage = useMemo(() => {
+  return messages.find((m) => m && m.isPinned && !m.isDeletedForEveryone);
+}, [messages]);
 if (!isOpen) return null;
 
 const filteredThreads = conversationThreads.filter((thread) => { if (inboxTab === 'my_posts' && !thread.isCurrentUserAuthor) return false;
@@ -706,9 +709,6 @@ originalText: rawSanitized,
 };
 const userLangInfo = getLanguageDisplayInfo(userLang);
 const otherLangInfo = getLanguageDisplayInfo(detectedOtherPartyLang);
-const pinnedMessage = useMemo(() => {
-  return messages.find((m) => m && m.isPinned && !m.isDeletedForEveryone);
-}, [messages]);
 return h( React.Fragment, null, h( 'div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn' },
 h( 'div', { className: 'w-full max-w-5xl bg-white dark:bg-[#06180f] border-2 border-emerald-500/70 rounded-[2rem] shadow-[0_25px_70px_rgba(0,122,75,0.35)] overflow-hidden flex flex-col md:flex-row h-[90vh] max-h-[780px] relative' },
 h( 'div', { className: (activeThread ? 'hidden md:flex ' : 'flex ') + 'w-full md:w-80 lg:w-96 flex-col border-r border-slate-200 dark:border-emerald-900/60 bg-white dark:bg-[#05140c] h-full shrink-0'
