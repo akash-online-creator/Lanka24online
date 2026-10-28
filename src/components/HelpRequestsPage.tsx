@@ -22,7 +22,7 @@ import { BulletinBoardGuideModal } from './BulletinBoardGuideModal';
 import { BoostPostModal } from './BoostPostModal';
 import { subscribeToUserSavedPosts, toggleSavePostInFirestore, subscribeToMarketplaceItems, subscribeToMarketShops } from '../lib/firebase';
 import { getStoredMarketItems, getStoredMarketShops } from '../data/marketplaceData';
-import { getStoredBloodRequests } from '../data/bloodAndDisasterData';
+import { getStoredBloodRequests, getStoredDisasterReliefItems } from '../data/bloodAndDisasterData';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
@@ -168,6 +168,18 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   // Feed Filter Tab: 'all' | 'emergency' | 'quick_services' | 'saved'
   const [activeFeedTab, setActiveFeedTab] = useState<'all' | 'emergency' | 'quick_services' | 'saved'>('all');
   
+  // Real-time synchronization tick for blood requests & disaster relief items
+  const [bloodDisasterSyncTick, setBloodDisasterSyncTick] = useState(0);
+  useEffect(() => {
+    const handleSync = () => setBloodDisasterSyncTick((t) => t + 1);
+    window.addEventListener('sahaya_blood_disaster_updated', handleSync);
+    window.addEventListener('sahaya_sync_all_services', handleSync);
+    return () => {
+      window.removeEventListener('sahaya_blood_disaster_updated', handleSync);
+      window.removeEventListener('sahaya_sync_all_services', handleSync);
+    };
+  }, []);
+
   // Show / Hide Category Grid toggle (strictly closed by default so user always lands directly on Posts Feed)
   const [showCategoryGrid, setShowCategoryGrid] = useState(false);
 
@@ -490,7 +502,46 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           })
       : [];
 
-    let result = [...sourceList, ...storedBloodPosts];
+    const storedDisasterPosts: HelpPost[] = (!boardCategoryFilter ? true : boardCategoryFilter === 'emergency' ? true : boardCategoryFilter === 'blood_disaster' ? true : boardCategoryFilter === 'aid_ledger')
+      ? (getStoredDisasterReliefItems() ? getStoredDisasterReliefItems() : [])
+          .filter((d: any) => Boolean(d && d.id && !existingCodes.has(String(d.id))))
+          .map((d: any) => {
+            const dTitle = `📦 ${d.title || 'හදිසි ආපදා සහනාධාර අවශ්‍යතාවය'}: ${d.locationName || d.district}`;
+            const dDetails = `ස්ථානය: ${d.locationName || d.district} • දිස්ත්‍රික්කය: ${d.district} • අවශ්‍ය ප්‍රමාණය: ${d.targetQuantity || 'අවශ්‍ය පරිදි'} • විස්තර: ${d.description || ''} • සම්බන්ධීකාරක: ${d.contactPerson || 'සම්බන්ධීකාරක'} (${d.contactPhone || ''})`;
+            return {
+              id: d.id,
+              postCode: `#EMG-${String(d.id).slice(-4)}`,
+              category: 'emergency',
+              serviceType: 'disaster_relief',
+              postType: 'disaster_relief',
+              tagCategory: 'හදිසි / ආපදා',
+              tagName: `📦 හදිසි ආපදා සහන: ${d.type || 'අත්‍යවශ්‍ය'}`,
+              headline: dTitle,
+              title: dTitle,
+              whatHappened: dTitle,
+              whatIsNeeded: dDetails,
+              content: dDetails,
+              locationName: `${d.locationName || d.district}, ${d.district}`,
+              district: d.district,
+              lat: currentLocation?.lat ? currentLocation.lat : 7.171,
+              lng: currentLocation?.lng ? currentLocation.lng : 79.8986,
+              latitude: currentLocation?.lat ? currentLocation.lat : 7.171,
+              longitude: currentLocation?.lng ? currentLocation.lng : 79.8986,
+              priorityLevel: 'emergency',
+              isPinnedEmergency: true,
+              userId: d.userId ? d.userId : 'disaster_requester',
+              userName: d.contactPerson ? d.contactPerson : 'සම්බන්ධීකාරක',
+              userPhone: d.contactPhone ? d.contactPhone : '',
+              contactNumber: d.contactPhone ? d.contactPhone : '',
+              contactPersonName: d.contactPerson ? d.contactPerson : 'සම්බන්ධීකාරක',
+              status: 'active',
+              createdAt: d.createdAt ? d.createdAt : new Date().toISOString(),
+              createdAtMs: d.createdAtMs ? d.createdAtMs : Date.now(),
+            } as unknown as HelpPost;
+          })
+      : [];
+
+    let result = [...sourceList, ...storedBloodPosts, ...storedDisasterPosts];
 
     // Apply active feed tab filter
     if (activeFeedTab === 'emergency') {
@@ -527,7 +578,7 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       const timeB = getPostTimestamp(b);
       return timeB - timeA;
     });
-  }, [filteredPosts, activeFeedTab, savedPostIds, currentLocation]);
+  }, [filteredPosts, activeFeedTab, savedPostIds, currentLocation, boardCategoryFilter, bloodDisasterSyncTick]);
   // Automatic Infinite Scroll: Auto-load next 8 posts as soon as user views the last 2 posts
   useEffect(() => {
     if (visibleCount >= newsFeedSortedPosts.length) return;

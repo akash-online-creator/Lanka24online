@@ -22,6 +22,18 @@ export const INITIAL_VOLUNTEER_DONORS: VolunteerDonor[] = [];
 // 📦 ආපදා සහන අවශ්‍යතා ආරම්භයේදී පිරිසිදුව හිස්ව තැබීම (සාම්පල දත්ත ඉවත් කර ඇත)
 export const INITIAL_DISASTER_RELIEF_ITEMS: DisasterReliefItem[] = [];
 
+const sortByNewest = <T extends { createdAtMs?: number }>(list: T[]): T[] => {
+  return [...list].sort((a, b) => Number(b?.createdAtMs || 0) - Number(a?.createdAtMs || 0));
+};
+
+const emitBloodDisasterUpdated = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+    } catch {}
+  }
+};
+
 // Real-time Firestore Cloud Sync Listeners
 if (typeof window !== 'undefined') {
   try {
@@ -29,15 +41,15 @@ if (typeof window !== 'undefined') {
       if (!Array.isArray(remoteReqs)) return;
       const map = new Map<string, BloodDonationRequest>();
       getStoredBloodRequests().forEach((r) => {
-        if (r && r.id && !r.id.startsWith('bld_')) map.set(r.id, r);
+        if (r && r.id) map.set(String(r.id), r);
       });
       remoteReqs.forEach((r: any) => {
-        if (r && r.id && !String(r.id).startsWith('bld_')) map.set(r.id, r as BloodDonationRequest);
+        if (r && r.id) map.set(String(r.id), r as BloodDonationRequest);
       });
-      const merged = filterNonDeletedBloodRequests(Array.from(map.values()));
+      const merged = sortByNewest(filterNonDeletedBloodRequests(Array.from(map.values())));
       try {
         localStorage.setItem('sahaya_blood_requests', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+        emitBloodDisasterUpdated();
       } catch {}
     });
 
@@ -45,15 +57,15 @@ if (typeof window !== 'undefined') {
       if (!Array.isArray(remoteDonors)) return;
       const map = new Map<string, VolunteerDonor>();
       getStoredVolunteerDonors().forEach((d) => {
-        if (d && d.id && !d.id.startsWith('donor_')) map.set(d.id, d);
+        if (d && d.id) map.set(String(d.id), d);
       });
       remoteDonors.forEach((d: any) => {
-        if (d && d.id && !String(d.id).startsWith('donor_')) map.set(d.id, d as VolunteerDonor);
+        if (d && d.id) map.set(String(d.id), d as VolunteerDonor);
       });
       const merged = filterNonDeletedDonors(Array.from(map.values()));
       try {
         localStorage.setItem('sahaya_volunteer_donors', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+        emitBloodDisasterUpdated();
       } catch {}
     });
 
@@ -61,15 +73,15 @@ if (typeof window !== 'undefined') {
       if (!Array.isArray(remoteRelief)) return;
       const map = new Map<string, DisasterReliefItem>();
       getStoredDisasterReliefItems().forEach((r) => {
-        if (r && r.id && !r.id.startsWith('rel_')) map.set(r.id, r);
+        if (r && r.id) map.set(String(r.id), r);
       });
       remoteRelief.forEach((r: any) => {
-        if (r && r.id && !String(r.id).startsWith('rel_')) map.set(r.id, r as DisasterReliefItem);
+        if (r && r.id) map.set(String(r.id), r as DisasterReliefItem);
       });
-      const merged = filterNonDeletedDisasterItems(Array.from(map.values()));
+      const merged = sortByNewest(filterNonDeletedDisasterItems(Array.from(map.values())));
       try {
         localStorage.setItem('sahaya_disaster_relief', JSON.stringify(merged));
-        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+        emitBloodDisasterUpdated();
       } catch {}
     });
   } catch {}
@@ -81,8 +93,8 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return filterNonDeletedBloodRequests(
-          parsed.filter((b: BloodDonationRequest) => b && !b.id?.startsWith('bld_'))
+        return sortByNewest(
+          filterNonDeletedBloodRequests(parsed.filter((b: BloodDonationRequest) => Boolean(b && b.id)))
         );
       }
     } catch (e) { /* ignore */ }
@@ -91,8 +103,9 @@ export const getStoredBloodRequests = (): BloodDonationRequest[] => {
 };
 
 export const saveBloodRequestsToStorage = (requests: BloodDonationRequest[]) => {
-  const cleaned = filterNonDeletedBloodRequests(requests);
+  const cleaned = sortByNewest(filterNonDeletedBloodRequests(requests));
   localStorage.setItem('sahaya_blood_requests', JSON.stringify(cleaned));
+  emitBloodDisasterUpdated();
   cleaned.forEach((req) => {
     saveBloodRequestToFirestore(req).catch(() => {});
   });
@@ -104,9 +117,7 @@ export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return filterNonDeletedDonors(
-          parsed.filter((d: VolunteerDonor) => d && !d.id?.startsWith('donor_'))
-        );
+        return filterNonDeletedDonors(parsed.filter((d: VolunteerDonor) => Boolean(d && d.id)));
       }
     } catch (e) { /* ignore */ }
   }
@@ -116,6 +127,7 @@ export const getStoredVolunteerDonors = (): VolunteerDonor[] => {
 export const saveVolunteerDonorsToStorage = (donors: VolunteerDonor[]) => {
   const cleaned = filterNonDeletedDonors(donors);
   localStorage.setItem('sahaya_volunteer_donors', JSON.stringify(cleaned));
+  emitBloodDisasterUpdated();
   cleaned.forEach((donor) => {
     saveVolunteerDonorToFirestore(donor).catch(() => {});
   });
@@ -127,8 +139,8 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
     try {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return filterNonDeletedDisasterItems(
-          parsed.filter((r: DisasterReliefItem) => r && !r.id?.startsWith('rel_'))
+        return sortByNewest(
+          filterNonDeletedDisasterItems(parsed.filter((r: DisasterReliefItem) => Boolean(r && r.id)))
         );
       }
     } catch (e) { /* ignore */ }
@@ -137,8 +149,9 @@ export const getStoredDisasterReliefItems = (): DisasterReliefItem[] => {
 };
 
 export const saveDisasterReliefItemsToStorage = (items: DisasterReliefItem[]) => {
-  const cleaned = filterNonDeletedDisasterItems(items);
+  const cleaned = sortByNewest(filterNonDeletedDisasterItems(items));
   localStorage.setItem('sahaya_disaster_relief', JSON.stringify(cleaned));
+  emitBloodDisasterUpdated();
   cleaned.forEach((item) => {
     saveDisasterReliefToFirestore(item).catch(() => {});
   });

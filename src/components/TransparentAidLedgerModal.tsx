@@ -104,6 +104,7 @@ interface TransparentAidLedgerModalProps {
   lang?: Language;
   onRequireRegistration?: () => void;
   onSubmitHelpPost?: (post: any) => Promise<any>;
+  helpPosts?: any[];
 }
 
 export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps> = ({
@@ -113,6 +114,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   lang = 'si',
   onRequireRegistration,
   onSubmitHelpPost,
+  helpPosts,
 }) => {
   // Top-Level Mode Selector: 'disaster_requests' vs 'relief_camps' (Default to disaster_requests as requested in prompt)
   const [mainSection, setMainSection] = useState<'disaster_requests' | 'relief_camps'>('disaster_requests');
@@ -121,9 +123,9 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   const isDemo = Boolean(currentUser?.isDemo);
   const isAdmin = !isDemo && checkIsAdmin(currentUser);
 
-  // Navigation Tabs for Relief Camps (සහන කඳවුරු) - Strictly Admin-only for public_ledger!
-  const [activeTab, setActiveTab] = useState<'public_ledger' | 'register_center' | 'log_delivery' | 'recipient_confirm' | 'broadcasts'>(
-    isAdmin ? 'public_ledger' : 'register_center'
+  // Navigation Tabs for Relief Camps (සහන කඳවුරු) - Public can view camps_list, while public_ledger is strictly admin-only!
+  const [activeTab, setActiveTab] = useState<'public_ledger' | 'camps_list' | 'register_center' | 'log_delivery' | 'recipient_confirm' | 'broadcasts'>(
+    isAdmin ? 'public_ledger' : 'camps_list'
   );
 
   // Admin Surveillance & Audit States
@@ -135,10 +137,14 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
   const [centerAuditSearch, setCenterAuditSearch] = useState('');
   const [centerAuditStatusFilter, setCenterAuditStatusFilter] = useState<'all' | 'verified' | 'blocked'>('all');
 
+  // Public Camp List Search & Filter
+  const [campSearchQuery, setCampSearchQuery] = useState('');
+  const [campDistrictFilter, setCampDistrictFilter] = useState('all');
+
   // Security guard: ensure non-admin users cannot access public_ledger under any circumstances
   React.useEffect(() => {
     if (!isAdmin && activeTab === 'public_ledger') {
-      setActiveTab('register_center');
+      setActiveTab('camps_list');
     }
   }, [isAdmin, activeTab]);
 
@@ -233,16 +239,28 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 
     const unsubRelief = subscribeToDisasterReliefFromFirestore((remoteRelief) => {
       if (Array.isArray(remoteRelief) && remoteRelief.length > 0) {
-        setDisasterReliefItems(remoteRelief);
+        setDisasterItems(remoteRelief);
         saveDisasterReliefItemsToStorage(remoteRelief);
       }
     });
+
+    const handleLocalSync = () => {
+      setDisasterItems(getStoredDisasterReliefItems());
+      setCenters(getStoredAidCenters());
+      setDeliveries(getStoredAidDeliveries());
+      setBroadcasts(getStoredCommunityBroadcasts());
+    };
+
+    window.addEventListener('sahaya_blood_disaster_updated', handleLocalSync);
+    window.addEventListener('sahaya_sync_all_services', handleLocalSync);
 
     return () => {
       unsubCenters();
       unsubDeliveries();
       unsubBroadcasts();
       unsubRelief();
+      window.removeEventListener('sahaya_blood_disaster_updated', handleLocalSync);
+      window.removeEventListener('sahaya_sync_all_services', handleLocalSync);
     };
   }, []);
 
@@ -365,6 +383,25 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       return true;
     });
   }, [broadcasts, selectedScopeFilter]);
+
+  // Filtered Camps for Public Camps View
+  const filteredCamps = useMemo(() => {
+    return centers.filter(c => {
+      if (c.status === 'blocked') return false;
+      if (campDistrictFilter !== 'all' && c.district !== campDistrictFilter) return false;
+      if (campSearchQuery.trim()) {
+        const q = campSearchQuery.toLowerCase();
+        return (
+          (c.centerName || '').toLowerCase().includes(q) ||
+          (c.centerCode || '').toLowerCase().includes(q) ||
+          (c.town || '').toLowerCase().includes(q) ||
+          (c.district || '').toLowerCase().includes(q) ||
+          (c.coordinatorName || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [centers, campDistrictFilter, campSearchQuery]);
 
   // ----------------------------------------------------
   // Handlers
@@ -886,8 +923,51 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
     alert(`ස්තූතියි! ${item.district} (${item.title}) සහනාධාරය සඳහා ඔබ සහය දැක්වීමට ඉදිරිපත් වීම අගය කරමු.\n\n📞 සම්බන්ධීකාරක අංකය: ${item.contactPhone}\n(දැන් ඔබට සෘජුවම අමතා සම්බන්ධීකාරක සමඟ සම්බන්ධ විය හැක)`);
   };
 
+  // Bridge helpPosts with disaster relief items
+  const allMergedDisasterItems = useMemo(() => {
+    const map = new Map<string, DisasterReliefItem>();
+    for (const item of disasterItems) {
+      if (item && item.id) map.set(String(item.id), item);
+    }
+    if (helpPosts && helpPosts.length > 0) {
+      for (const p of helpPosts) {
+        if (!p) continue;
+        const isDisaster = 
+          (p.category === 'emergency' && !p.tagName?.includes('ලේ') && !p.whatHappened?.includes('ලේ')) ||
+          p.category === 'flood' || 
+          p.category === 'landslide' ||
+          p.category === 'disaster' ||
+          (p.tagName && (p.tagName.includes('ආපදා') || p.tagName.includes('සහන') || p.tagName.includes('ගංවතුර') || p.tagName.includes('නාය'))) ||
+          (p.whatHappened && (p.whatHappened.includes('ආපදා') || p.whatHappened.includes('ගංවතුර') || p.whatHappened.includes('නාය')));
+
+        if (isDisaster) {
+          const id = String(p.id || `rel_hp_${Date.now()}`);
+          if (!map.has(id)) {
+            map.set(id, {
+              id,
+              type: 'general',
+              title: p.tagName || p.whatHappened || 'හදිසි ආපදා සහන ඉල්ලීම',
+              description: p.whatIsNeeded || p.whatHappened || '',
+              locationName: p.locationName || p.district || 'ප්‍රදේශය',
+              district: p.district || 'ගම්පහ',
+              urgency: 'high',
+              targetQuantity: 'අවශ්‍ය පරිදි',
+              contactPerson: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
+              contactPhone: p.contactNumber || p.phone || '',
+              createdAt: p.createdAt || 'දැන්',
+              createdAtMs: p.createdAtMs || Date.now(),
+              status: 'urgent',
+              userId: p.userId,
+            });
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  }, [disasterItems, helpPosts]);
+
   const filteredDisasterItems = useMemo(() => {
-    return disasterItems.filter((item) => {
+    return allMergedDisasterItems.filter((item) => {
       if (selectedDisasterDistrict !== 'all' && item.district !== selectedDisasterDistrict) return false;
       if (disasterSearchQuery.trim()) {
         const q = disasterSearchQuery.toLowerCase();
@@ -900,7 +980,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       }
       return true;
     });
-  }, [disasterItems, selectedDisasterDistrict, disasterSearchQuery]);
+  }, [allMergedDisasterItems, selectedDisasterDistrict, disasterSearchQuery]);
   if (!isOpen) return null;
 
   return (
@@ -974,7 +1054,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
                 <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] sm:text-xs font-black shadow-md ${
                   mainSection === 'disaster_requests' ? 'bg-white text-teal-800' : 'bg-teal-50 dark:bg-teal-900 text-teal-700 dark:text-teal-200 border border-teal-200 dark:border-teal-700'
                 }`}>
-                  {disasterItems.length} ඉල්ලීම්
+                  {allMergedDisasterItems.length} ඉල්ලීම්
                 </span>
               </div>
               <div className="min-w-0 mt-2">
@@ -1252,6 +1332,25 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
 {/* Navigation Sub-Buttons (Compact, High-Visibility Responsive Bar) */}
         <div id="relief-camps-nav" className="p-2 sm:p-2.5 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Button 0: 📍 සහන කඳවුරු ලැයිස්තුව (Public) */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('camps_list'); setSuccessMessage(null); }}
+              className={`py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer font-black text-xs border shadow-xs active:scale-95 ${
+                activeTab === 'camps_list'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-emerald-400 shadow-sm shadow-emerald-700/30 ring-2 ring-emerald-400/40'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <Building className="w-3.5 h-3.5 text-emerald-500" />
+              <span>📍 සහන කඳවුරු</span>
+              <span className={`px-1.5 py-0.2 rounded-full font-mono text-[9px] font-black ${
+                activeTab === 'camps_list' ? 'bg-white text-emerald-900' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+              }`}>
+                {centers.filter(c => c.status !== 'blocked').length}
+              </span>
+            </button>
+
             {/* Admin-Only Tab: 📊 පොදු ලෙජරය (පරිපාලක සඳහා පමණි) */}
             {isAdmin && (
               <button
@@ -1784,6 +1883,192 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
                         );
                       })}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ==================================================== */}
+          {/* TAB: 📍 PUBLIC CAMPS & AID CENTERS LIST             */}
+          {/* ==================================================== */}
+          {activeTab === 'camps_list' && (
+            <div className="space-y-4">
+              {/* Header Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-600/15 via-teal-600/10 to-transparent border border-emerald-500/30 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Building className="w-5 h-5 text-emerald-600" />
+                    <span>📍 ලියාපදිංචි සහන කඳවුරු සහ ආධාර මධ්‍යස්ථාන ({filteredCamps.length})</span>
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    දිවයින පුරා ආපදා සහන කඳවුරු, හදිසි අවශ්‍යතා සහ භාරකාර සම්බන්ධීකාරක තොරතුරු.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isDemo) {
+                      if (onRequireRegistration) onRequireRegistration();
+                      return;
+                    }
+                    setActiveTab('register_center');
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ නව කඳවුරක් ලියාපදිංචි කරන්න</span>
+                </button>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                <div className="flex items-center gap-2 text-xs">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span className="font-bold text-slate-700 dark:text-slate-300">දිස්ත්‍රික්කය:</span>
+                  <select
+                    value={campDistrictFilter}
+                    onChange={(e) => setCampDistrictFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-xs outline-none"
+                  >
+                    {districtsList.map((dist) => (
+                      <option key={`camp_dist_${dist}`} value={dist}>
+                        {dist === 'all' ? '📍 සියලු දිස්ත්‍රික්ක' : `📍 ${dist}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={campSearchQuery}
+                    onChange={(e) => setCampSearchQuery(e.target.value)}
+                    placeholder="කඳවුරේ නම, නගරය හෝ කේතය සොයන්න..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs outline-none"
+                  />
+                  {campSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCampSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Camps Grid / List */}
+              {filteredCamps.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <Building className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs">තෝරාගත් දිස්ත්‍රික්කය හෝ සෙවුම සඳහා සක්‍රිය සහන කඳවුරු හමු නොවීය.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {filteredCamps.map((camp) => (
+                    <div
+                      key={camp.id}
+                      className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-emerald-500/30 hover:border-emerald-500 shadow-sm transition-all space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 uppercase">
+                              {camp.centerType === 'camp' ? '⛺ සහන කඳවුර' : camp.centerType === 'temple' ? '🛕 විහාරස්ථානය' : camp.centerType === 'school' ? '🏫 පාසල' : camp.centerType === 'community_center' ? '🏢 ප්‍රජා ශාලාව' : '🏛️ මධ්‍යස්ථානය'}
+                            </span>
+                            <h4 className="text-sm font-black text-slate-900 dark:text-white mt-1">
+                              {camp.centerName}
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              📍 {camp.town}, {camp.district} {camp.address ? `• ${camp.address}` : ''}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyCode(camp.centerCode)}
+                              className="px-2.5 py-1 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-200 font-mono font-black text-xs border border-teal-300 dark:border-teal-700 flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                              title="කේතය කොපි කරන්න"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>#{camp.centerCode}</span>
+                            </button>
+                            {copiedCode === camp.centerCode && (
+                              <span className="text-[9px] text-teal-600 dark:text-teal-300 font-bold">කොපි විය!</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Population stats */}
+                        <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl">
+                          <span>👥 පුද්ගලයින්: <strong>{camp.peopleCount || 0}</strong></span>
+                          <span>👨‍👩‍👧‍👦 පවුල්: <strong>{camp.familiesCount || 0}</strong></span>
+                        </div>
+
+                        {/* Urgent needs pills */}
+                        {camp.urgentNeeds && camp.urgentNeeds.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 block">
+                              🚨 හදිසි අවශ්‍යතා:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {camp.urgentNeeds.map((need) => {
+                                const cat = AID_CATEGORIES.find(c => c.id === need);
+                                return (
+                                  <span
+                                    key={need}
+                                    className="px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold text-[10px] border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                                  >
+                                    <span>{cat?.icon || '📦'}</span>
+                                    <span>{cat?.titleSi || need}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {camp.notes && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                            "{camp.notes}"
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Coordinator & Action */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-xs">
+                          <span className="text-slate-400 text-[10px] block">සම්බන්ධීකාරක:</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{camp.coordinatorName}</span>
+                          {camp.coordinatorPhone && (
+                            <a
+                              href={`tel:${camp.coordinatorPhone}`}
+                              className="text-emerald-600 dark:text-emerald-400 font-mono font-bold ml-1 hover:underline inline-flex items-center gap-1"
+                            >
+                              <Phone className="w-3 h-3 inline" />
+                              <span>{isDemo ? maskPhone(camp.coordinatorPhone, true) : camp.coordinatorPhone}</span>
+                            </a>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDonorTargetCode(camp.centerCode);
+                            handleLookupDonorCode(camp.centerCode);
+                            setActiveTab('log_delivery');
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer ml-auto"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>ආධාර භාරදෙන්න</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

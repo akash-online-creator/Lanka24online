@@ -446,18 +446,26 @@ export const SriLankaDisasterMap: React.FC<SriLankaDisasterMapProps> = ({
   const disastersByDistrict = useMemo(() => {
     const map = new Map<string, DisasterReliefItem[]>();
     for (const item of disasterItems) {
-      const dKey = (item?.district || '').trim().toLowerCase();
-      if (!dKey) continue;
-      const existing = map.get(dKey) || [];
-      existing.push(item);
-      map.set(dKey, existing);
+      const raw = (item?.district || '').trim().toLowerCase();
+      if (!raw) continue;
+      const norm = raw.replace(/ය$/, '');
+      const existingRaw = map.get(raw) || [];
+      existingRaw.push(item);
+      map.set(raw, existingRaw);
+
+      if (norm !== raw) {
+        const existingNorm = map.get(norm) || [];
+        existingNorm.push(item);
+        map.set(norm, existingNorm);
+      }
     }
     return map;
   }, [disasterItems]);
 
   const getDistrictDisasters = (districtNameSi: string, districtNameEn?: string): DisasterReliefItem[] => {
-    const dKeySi = (districtNameSi || '').trim().toLowerCase();
-    const listSi = disastersByDistrict.get(dKeySi) || [];
+    const rawSi = (districtNameSi || '').trim().toLowerCase();
+    const normSi = rawSi.replace(/ය$/, '');
+    const listSi = disastersByDistrict.get(rawSi) || disastersByDistrict.get(normSi) || [];
     if (listSi.length > 0) return listSi;
     if (districtNameEn) {
       const dKeyEn = (districtNameEn || '').trim().toLowerCase();

@@ -44,7 +44,9 @@ import {
   deleteDisasterReliefFromFirestore,
   saveBloodRequestToFirestore,
   saveVolunteerDonorToFirestore,
-  saveDisasterReliefToFirestore
+  saveDisasterReliefToFirestore,
+  subscribeToBloodRequestsFromFirestore,
+  subscribeToVolunteerDonorsFromFirestore
 } from '../lib/firebase';
 import { broadcastAppNotification } from '../utils/notificationManager';
 
@@ -57,6 +59,7 @@ interface BloodAndDisasterModalProps {
   onRequireRegistration?: () => void;
   onOpenAidLedger?: () => void;
   onSubmitHelpPost?: (post: any) => Promise<any>;
+  helpPosts?: any[];
 }
 
 export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
@@ -68,6 +71,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   onRequireRegistration,
   onOpenAidLedger,
   onSubmitHelpPost,
+  helpPosts,
 }) => {
   const isDemo = Boolean(currentUser?.isDemo);
   const [activeTab, setActiveTab] = useState<'blood_requests' | 'volunteer_donors'>(initialTab || 'blood_requests');
@@ -75,6 +79,39 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
   // States
   const [bloodRequests, setBloodRequests] = useState<BloodDonationRequest[]>(() => getStoredBloodRequests());
   const [volunteerDonors, setVolunteerDonors] = useState<VolunteerDonor[]>(() => getStoredVolunteerDonors());
+  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+
+  // Real-time Firestore sync & local event sync
+  React.useEffect(() => {
+    const refresh = () => {
+      setBloodRequests(getStoredBloodRequests());
+      setVolunteerDonors(getStoredVolunteerDonors());
+    };
+
+    const unsubBlood = subscribeToBloodRequestsFromFirestore((reqs) => {
+      if (reqs && reqs.length >= 0) {
+        saveBloodRequestsToStorage(reqs);
+        setBloodRequests(getStoredBloodRequests());
+      }
+    });
+
+    const unsubDonors = subscribeToVolunteerDonorsFromFirestore((donors) => {
+      if (donors && donors.length >= 0) {
+        saveVolunteerDonorsToStorage(donors);
+        setVolunteerDonors(getStoredVolunteerDonors());
+      }
+    });
+
+    window.addEventListener('sahaya_blood_disaster_updated', refresh);
+    window.addEventListener('sahaya_sync_all_services', refresh);
+
+    return () => {
+      unsubBlood();
+      unsubDonors();
+      window.removeEventListener('sahaya_blood_disaster_updated', refresh);
+      window.removeEventListener('sahaya_sync_all_services', refresh);
+    };
+  }, []);
 
   // User Supported / Offered tracking
   const [supportedBloodIds, setSupportedBloodIds] = useState<string[]>(() => getStoredSupportedBloodIds());
@@ -132,6 +169,14 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     'ගාල්ල',
     'මාතර',
     'හම්බන්තොට',
+    'යාපනය',
+    'කිලිනොච්චිය',
+    'මන්නාරම',
+    'වවුනියාව',
+    'මුලතිව්',
+    'මඩකලපුව',
+    'අම්පාර',
+    'ත්‍රිකුණාමලය',
     'කුරුණෑගල',
     'පුත්තලම',
     'අනුරාධපුර',
@@ -140,7 +185,6 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     'මොණරාගල',
     'රත්නපුර',
     'කෑගල්ල',
-    'යාපනය',
   ];
 
   // Submit Blood Request
@@ -187,6 +231,8 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     });
 
     setShowAddBloodRequestForm(false);
+    setActiveTab('blood_requests');
+    setBannerMessage(`🩸 ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ අවශ්‍යතාවය සාර්ථකව පළ කරන ලදී! පහත ලැයිස්තුවේ දැන් දිස්වේ.`);
     
     // Also save to Main Help Posts Notice Board with High-Priority Pinned Emergency flag
     if (onSubmitHelpPost) {
@@ -207,11 +253,10 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       }).catch((e) => console.warn('Sync blood to help posts notice:', e));
     }
 
-    onClose();
     setTimeout(() => {
-      const el = document.getElementById('help-notices-feed');
+      const el = document.getElementById('blood-requests-feed');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }, 300);
+    }, 200);
   };
 
   // Register Donor
@@ -238,8 +283,15 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     setVolunteerDonors(updated);
     saveVolunteerDonorsToStorage(updated);
     saveVolunteerDonorToFirestore(newDonor).catch((err) => console.warn('saveVolunteerDonorToFirestore error:', err));
+
     setShowRegisterDonorForm(false);
-    alert('ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස සාර්ථකව ලියාපදිංචි විය! ඔබගේ සහයට ස්තූතියි.');
+    setActiveTab('volunteer_donors');
+    setBannerMessage(`💖 ${donorName} ස්වේච්ඡා ලේ පරිත්‍යාගශීලියෙකු ලෙස සාර්ථකව ලියාපදිංචි විය!`);
+
+    setTimeout(() => {
+      const el = document.getElementById('volunteer-donors-feed');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 200);
   };
 
   // Support / Unlock Handlers
@@ -329,8 +381,55 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     alert('පරිත්‍යාගශීලියා සාර්ථකව ඉවත් කරන ලදී.');
   };
 
+  // Merge any blood emergency posts from helpPosts
+  const allMergedBloodRequests = useMemo(() => {
+    const map = new Map<string, BloodDonationRequest>();
+    for (const b of bloodRequests) {
+      if (b && b.id) map.set(String(b.id), b);
+    }
+    if (helpPosts && helpPosts.length > 0) {
+      for (const p of helpPosts) {
+        if (!p) continue;
+        const isBlood = 
+          p.category === 'emergency' || 
+          p.category === 'blood' || 
+          p.isPinnedEmergency || 
+          (p.tagName && (p.tagName.includes('ලේ') || p.tagName.toLowerCase().includes('blood'))) ||
+          (p.whatHappened && (p.whatHappened.includes('ලේ') || p.whatHappened.includes('රුධිරය'))) ||
+          (p.whatIsNeeded && (p.whatIsNeeded.includes('ලේ') || p.whatIsNeeded.includes('රුධිරය')));
+        
+        if (isBlood) {
+          const id = String(p.id || `bld_hp_${Date.now()}`);
+          if (!map.has(id)) {
+            const bgMatch = `${p.tagName || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''}`.match(/(A\+|A-|B\+|B-|AB\+|AB-|O\+|O-)/i);
+            const bg = (bgMatch ? bgMatch[1].toUpperCase() : 'O+') as BloodGroup;
+            map.set(id, {
+              id,
+              postCode: p.postCode || `#BLD-${id.slice(-4)}`,
+              patientName: p.contactPersonName || p.authorName || 'රෝගියා',
+              bloodGroup: bg,
+              unitsNeeded: 1,
+              hospitalName: p.locationName || p.district || 'රෝහල',
+              district: p.district || 'කොළඹ',
+              urgency: 'urgent',
+              neededDate: 'හදිසි (Urgent)',
+              contactName: p.contactPersonName || p.authorName || 'සම්බන්ධීකාරක',
+              contactPhone: p.contactNumber || p.phone || '',
+              additionalNotes: p.whatIsNeeded || p.whatHappened || '',
+              status: 'active',
+              createdAt: p.createdAt || 'දැන්',
+              createdAtMs: p.createdAtMs || Date.now(),
+              userId: p.userId,
+            });
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  }, [bloodRequests, helpPosts]);
+
   const filteredBloodRequests = useMemo(() => {
-    return bloodRequests.filter((b) => {
+    return allMergedBloodRequests.filter((b) => {
       if (selectedBloodGroup !== 'all' && b.bloodGroup !== selectedBloodGroup) return false;
       if (selectedDistrict !== 'all' && b.district !== selectedDistrict) return false;
       if (searchQuery.trim()) {
@@ -344,7 +443,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       }
       return true;
     });
-  }, [bloodRequests, selectedBloodGroup, selectedDistrict, searchQuery]);
+  }, [allMergedBloodRequests, selectedBloodGroup, selectedDistrict, searchQuery]);
 
   const filteredDonors = useMemo(() => {
     return volunteerDonors.filter((d) => {
@@ -352,7 +451,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       if (selectedDistrict !== 'all' && d.district !== selectedDistrict) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        return (d.name || '').toLowerCase().includes(q) || (d.district || '').toLowerCase().includes(q);
+        return (d.name || '').toLowerCase().includes(q) || (d.district || '').toLowerCase().includes(q) || (d.bloodGroup || '').toLowerCase().includes(q);
       }
       return true;
     });
@@ -409,7 +508,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                 <span className={`px-1.5 py-0.2 rounded-full font-mono text-[9px] font-black ${
                   activeTab === 'blood_requests' ? 'bg-white text-red-700' : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
                 }`}>
-                  {bloodRequests.length}
+                  {allMergedBloodRequests.length}
                 </span>
               </button>
 
@@ -451,6 +550,23 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
           </div>
         </div>
 
+        {/* Status Confirmation Banner */}
+        {bannerMessage && (
+          <div className="p-3 mx-3 mt-3 sm:mx-5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2 text-xs font-bold animate-fadeIn shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>{bannerMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBannerMessage(null)}
+              className="p-1 hover:bg-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-300"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Tab 1: Blood Requests Feed */}
         {activeTab === 'blood_requests' && (
           <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 bg-slate-50/50 dark:bg-[#05140d]">
@@ -486,7 +602,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
               <Droplet className="w-4 h-4 fill-white text-white animate-bounce" />
             </button>
 
-            {/* Filter Bar: Blood Groups & District */}
+            {/* Filter Bar: Blood Groups & District & Search */}
             <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 {/* Blood group pills */}
@@ -532,6 +648,27 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="රෝහල, රෝගියා හෝ දිස්ත්‍රික්කය අනුව සොයන්න..."
+                  className="w-full pl-9 pr-8 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-rose-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -746,6 +883,27 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="පරිත්‍යාගශීලියාගේ නම හෝ දිස්ත්‍රික්කය අනුව සොයන්න..."
+                  className="w-full pl-9 pr-8 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-pink-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 

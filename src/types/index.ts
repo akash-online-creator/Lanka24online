@@ -1134,7 +1134,7 @@ export interface AidRecipientCenter {
   fraudWarningAcceptedAt: string;
   createdAt: string;
   createdAtMs: number;
-  status: 'active' | 'closed' | 'verified';
+  status: 'active' | 'closed' | 'verified' | 'blocked';
   totalDeliveriesCount: number;
   totalEstimatedValue: number;
   totalItemsDeliveredSummary?: string;

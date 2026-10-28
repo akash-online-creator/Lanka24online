@@ -1554,10 +1554,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (user?.isDemo) {
-                setShowDemoRegisterPrompt(true);
-                return;
-              }
               setBloodModalInitialTab('blood_requests');
               setIsBloodAndDisasterModalOpen(true);
             }}
@@ -1582,10 +1578,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (user?.isDemo) {
-                setShowDemoRegisterPrompt(true);
-                return;
-              }
               setIsAidLedgerModalOpen(true);
             }}
             className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-indigo-800 hover:from-emerald-700 hover:to-teal-800 text-white shadow-lg hover:shadow-xl shadow-emerald-600/30 border-2 border-emerald-300/80 active:scale-95 transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[96px] sm:min-h-[108px]"
@@ -2350,10 +2342,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         currentUser={user}
         initialTab={bloodModalInitialTab}
         lang={language}
-        onUpdateUser={onUpdateUser}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
-        currentLocation={currentLocation}
         onSubmitHelpPost={handleCreatePost}
+        onOpenAidLedger={() => setIsAidLedgerModalOpen(true)}
+        helpPosts={helpPosts}
       />
 
       {/* 24. Transparent Disaster Aid Ledger Modal (සහන ආධාර විනිවිදභාවය) */}
@@ -2362,9 +2354,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onClose={() => setIsAidLedgerModalOpen(false)}
         currentUser={user}
         lang={language}
-        onUpdateUser={onUpdateUser}
         onRequireRegistration={() => setShowDemoRegisterPrompt(true)}
-        currentLocation={currentLocation}
+        onSubmitHelpPost={handleCreatePost}
+        helpPosts={helpPosts}
       />
 
       {/* 25. Emergency Services Hotline Directory Modal (119/1990/Hotlines) */}

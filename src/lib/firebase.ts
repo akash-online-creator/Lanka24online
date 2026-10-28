@@ -1247,15 +1247,61 @@ export async function deletePlaceFromFirestore(placeId: string) {
     console.warn("deletePlaceFromFirestore error:", err);
   }
 }
-export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
-  return onSnapshot(collection(db, "blood_requests"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
+function subscribeMergedEmergencyCollection(colName: string, callback: (items: any[]) => void): () => void {
+  let primaryDocs: any[] = [];
+  let fallbackDocs: any[] = [];
+
+  const emit = () => {
+    const map = new Map<string, any>();
+    for (const d of fallbackDocs) {
+      if (d && d.id) map.set(String(d.id), d);
+    }
+    for (const d of primaryDocs) {
+      if (d && d.id) map.set(String(d.id), d);
+    }
+    callback(Array.from(map.values()));
+  };
+
+  const unsub1 = onSnapshot(collection(db, colName), (snap) => {
+    primaryDocs = filterAndPurgeDummySnapDocs(snap);
+    emit();
   }, () => {});
+
+  if (fallbackDb && fallbackDb !== db) {
+    const unsub2 = onSnapshot(collection(fallbackDb, colName), (snap) => {
+      fallbackDocs = filterAndPurgeDummySnapDocs(snap);
+      emit();
+    }, () => {});
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }
+
+  return unsub1;
+}
+
+async function dualSaveDoc(colName: string, id: string, data: any) {
+  const sanitized = sanitizeForFirestore({ ...data, id });
+  await setDoc(doc(db, colName, id), sanitized, { merge: true }).catch(() => {});
+  if (fallbackDb && fallbackDb !== db) {
+    await setDoc(doc(fallbackDb, colName, id), sanitized, { merge: true }).catch(() => {});
+  }
+}
+
+async function dualDeleteDoc(colName: string, id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, colName, id)).catch(() => {});
+  if (fallbackDb && fallbackDb !== db) {
+    await deleteDoc(doc(fallbackDb, colName, id)).catch(() => {});
+  }
+}
+
+export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("blood_requests", callback);
 }
 export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]) => void): () => void {
-  return onSnapshot(collection(db, "volunteer_donors"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
-  }, () => {});
+  return subscribeMergedEmergencyCollection("volunteer_donors", callback);
 }
 export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
   return onSnapshot(collection(db, "jobs"), (snap) => {
@@ -1306,35 +1352,32 @@ export async function deleteBarterItemFromFirestore(id: string) {
 
 export async function saveBloodRequestToFirestore(req: any) {
   const id = req.id ? req.id : "blood_" + Date.now();
-  const docRef = doc(db, "blood_requests", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...req, id }), { merge: true });
+  await dualSaveDoc("blood_requests", id, req);
   return id;
 }
 
 export async function deleteBloodRequestFromFirestore(id: string) {
-  await deleteDoc(doc(db, "blood_requests", id));
+  await dualDeleteDoc("blood_requests", id);
 }
 
 export async function saveVolunteerDonorToFirestore(donor: any) {
   const id = donor.id ? donor.id : "donor_" + Date.now();
-  const docRef = doc(db, "volunteer_donors", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...donor, id }), { merge: true });
+  await dualSaveDoc("volunteer_donors", id, donor);
   return id;
 }
 
 export async function deleteVolunteerDonorFromFirestore(id: string) {
-  await deleteDoc(doc(db, "volunteer_donors", id));
+  await dualDeleteDoc("volunteer_donors", id);
 }
 
 export async function saveDisasterReliefToFirestore(relief: any) {
   const id = relief.id ? relief.id : "relief_" + Date.now();
-  const docRef = doc(db, "disaster_relief", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...relief, id }), { merge: true });
+  await dualSaveDoc("disaster_relief", id, relief);
   return id;
 }
 
 export async function deleteDisasterReliefFromFirestore(id: string) {
-  await deleteDoc(doc(db, "disaster_relief", id));
+  await dualDeleteDoc("disaster_relief", id);
 }
 
 // ==============================================================
@@ -1342,66 +1385,53 @@ export async function deleteDisasterReliefFromFirestore(id: string) {
 // ==============================================================
 
 export function subscribeToAidCentersFromFirestore(callback: (centers: any[]) => void): () => void {
-  const colRef = collection(db, "aid_centers");
-  return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
-    callback(data);
-  }, () => {});
+  return subscribeMergedEmergencyCollection("aid_centers", callback);
 }
 
 export async function saveAidCenterToFirestore(item: any) {
   const id = item.id ? item.id : "aid_center_" + Date.now();
-  const docRef = doc(db, "aid_centers", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
+  await dualSaveDoc("aid_centers", id, item);
   return id;
 }
 
 export async function updateAidCenterInFirestore(id: string, updateData: any) {
-  const docRef = doc(db, "aid_centers", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
+  await dualSaveDoc("aid_centers", id, { ...updateData, updatedAtServer: serverTimestamp() });
 }
 
 export async function deleteAidCenterFromFirestore(id: string) {
-  await deleteDoc(doc(db, "aid_centers", id));
+  await dualDeleteDoc("aid_centers", id);
 }
 
 export function subscribeToAidDeliveriesFromFirestore(callback: (deliveries: any[]) => void): () => void {
-  const colRef = collection(db, "aid_deliveries");
-  return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
-    callback(data);
-  }, () => {});
+  return subscribeMergedEmergencyCollection("aid_deliveries", callback);
 }
 
 export async function saveAidDeliveryToFirestore(item: any) {
   const id = item.id ? item.id : "aid_delivery_" + Date.now();
-  const docRef = doc(db, "aid_deliveries", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
+  await dualSaveDoc("aid_deliveries", id, item);
   return id;
 }
 
 export async function updateAidDeliveryInFirestore(id: string, updateData: any) {
-  const docRef = doc(db, "aid_deliveries", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
+  await dualSaveDoc("aid_deliveries", id, { ...updateData, updatedAtServer: serverTimestamp() });
 }
 
 export async function deleteAidDeliveryFromFirestore(id: string) {
-  await deleteDoc(doc(db, "aid_deliveries", id));
+  await dualDeleteDoc("aid_deliveries", id);
 }
 
 export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any[]) => void): () => void {
-  const colRef = collection(db, "aid_broadcasts");
-  return onSnapshot(colRef, (snap) => {
-    const data = filterAndPurgeDummySnapDocs(snap);
-    callback(data);
-  }, () => {});
+  return subscribeMergedEmergencyCollection("aid_broadcasts", callback);
 }
 
 export async function saveAidBroadcastToFirestore(item: any) {
   const id = item.id ? item.id : "aid_broadcast_" + Date.now();
-  const docRef = doc(db, "aid_broadcasts", id);
-  await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
+  await dualSaveDoc("aid_broadcasts", id, item);
   return id;
+}
+
+export async function deleteAidBroadcastFromFirestore(id: string) {
+  await dualDeleteDoc("aid_broadcasts", id);
 }
 
 // ==============================================================
@@ -1632,9 +1662,7 @@ export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
 }
 
 export function subscribeToDisasterReliefFromFirestore(callback: (items: any[]) => void): () => void {
-  return onSnapshot(collection(db, "disaster_relief"), (snap) => {
-    callback(filterAndPurgeDummySnapDocs(snap));
-  }, () => {});
+  return subscribeMergedEmergencyCollection("disaster_relief", callback);
 }
 
 export function subscribeToBarterProposalsFromFirestore(callback: (proposals: any[]) => void): () => void {

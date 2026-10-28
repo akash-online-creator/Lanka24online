@@ -1,7 +1,12 @@
 import { AidRecipientCenter, AidDeliveryRecord, AidCommunityBroadcastPost, AidCategory, AidCenterType, BroadcastScope } from '../types';
 import { addAppNotification } from '../utils/notificationManager';
+import {
+  subscribeToAidCentersFromFirestore,
+  subscribeToAidDeliveriesFromFirestore,
+  subscribeToAidBroadcastsFromFirestore,
+} from '../lib/firebase';
 
-export const AID_CATEGORIES: any = [{
+export const AID_CATEGORIES: any[] = [{
 id: 'dry_rations',
 titleSi: 'වියළි ආහාර / සලාක',
 titleEn: 'Dry Rations',
@@ -63,7 +68,7 @@ icon: '📦',
 color: 'bg-slate-500'
 }];
 
-export const AID_CENTER_TYPES: any = [{
+export const AID_CENTER_TYPES: any[] = [{
 id: 'camp',
 titleSi: 'ආපදා සහන කඳවුර (Relief Camp)',
 titleEn: 'Relief Camp',
@@ -100,7 +105,7 @@ titleEn: 'Main Distribution Hub',
 icon: '📦'
 }];
 
-export const BROADCAST_SCOPES: any = [{
+export const BROADCAST_SCOPES: any[] = [{
 id: 'village',
 titleSi: 'ගම (Village)',
 titleEn: 'Village Level',
@@ -143,96 +148,229 @@ const AID_CENTERS_KEY = 'sahaya_transparent_aid_centers';
 const AID_DELIVERIES_KEY = 'sahaya_transparent_aid_deliveries';
 const AID_BROADCASTS_KEY = 'sahaya_transparent_aid_broadcasts';
 
+const DELETED_AID_CENTER_IDS_KEY = 'sahaya_deleted_aid_center_ids';
+const DELETED_AID_DELIVERY_IDS_KEY = 'sahaya_deleted_aid_delivery_ids';
+const DELETED_AID_BROADCAST_IDS_KEY = 'sahaya_deleted_aid_broadcast_ids';
+
 const DUMMY_CENTER_IDS = ['center_1', 'center_2', 'center_3'];
 const DUMMY_CENTER_CODES = ['712845', '593812', '384910'];
 const DUMMY_DELIVERY_IDS = ['deliv_1', 'deliv_2', 'deliv_3', 'deliv_4'];
 const DUMMY_BROADCAST_IDS = ['post_1', 'post_2', 'post_3'];
 
+const readDeletedSet = (key: string): Set<string> => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.map(String));
+    }
+  } catch {}
+  return new Set();
+};
+
+const appendDeletedId = (key: string, id: string) => {
+  if (!id) return;
+  try {
+    const set = readDeletedSet(key);
+    set.add(String(id));
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
+  } catch {}
+};
+
+export const addDeletedAidCenterId = (id: string) => appendDeletedId(DELETED_AID_CENTER_IDS_KEY, id);
+export const addDeletedAidDeliveryId = (id: string) => appendDeletedId(DELETED_AID_DELIVERY_IDS_KEY, id);
+export const addDeletedAidBroadcastId = (id: string) => appendDeletedId(DELETED_AID_BROADCAST_IDS_KEY, id);
+
+const emitAidLedgerUpdated = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_aid_ledger_updated'));
+    } catch {}
+  }
+};
+
+export const filterValidAidCenters = (centers: any[]): AidRecipientCenter[] => {
+  const deleted = readDeletedSet(DELETED_AID_CENTER_IDS_KEY);
+  return (Array.isArray(centers) ? centers : [])
+    .filter(
+      (c: any) =>
+        c &&
+        c.id &&
+        !deleted.has(String(c.id)) &&
+        !DUMMY_CENTER_IDS.includes(String(c.id)) &&
+        !DUMMY_CENTER_CODES.includes(String(c.centerCode))
+    )
+    .sort((a: any, b: any) => Number(b?.createdAtMs || 0) - Number(a?.createdAtMs || 0));
+};
+
+export const filterValidAidDeliveries = (deliveries: any[]): AidDeliveryRecord[] => {
+  const deleted = readDeletedSet(DELETED_AID_DELIVERY_IDS_KEY);
+  return (Array.isArray(deliveries) ? deliveries : [])
+    .filter(
+      (d: any) =>
+        d &&
+        d.id &&
+        !deleted.has(String(d.id)) &&
+        !DUMMY_DELIVERY_IDS.includes(String(d.id)) &&
+        !DUMMY_CENTER_CODES.includes(String(d.centerCode))
+    )
+    .sort((a: any, b: any) => Number(b?.submittedAtMs || b?.createdAtMs || 0) - Number(a?.submittedAtMs || a?.createdAtMs || 0));
+};
+
+export const filterValidAidBroadcasts = (broadcasts: any[]): AidCommunityBroadcastPost[] => {
+  const deleted = readDeletedSet(DELETED_AID_BROADCAST_IDS_KEY);
+  return (Array.isArray(broadcasts) ? broadcasts : [])
+    .filter(
+      (b: any) =>
+        b &&
+        b.id &&
+        !deleted.has(String(b.id)) &&
+        !DUMMY_BROADCAST_IDS.includes(String(b.id))
+    )
+    .sort((a: any, b: any) => Number(b?.createdAtMs || 0) - Number(a?.createdAtMs || 0));
+};
+
+// Background Firestore Cloud Sync so Aid Centers, Deliveries & Broadcasts stay warm in localStorage even before modal opens
+if (typeof window !== 'undefined') {
+  try {
+    subscribeToAidCentersFromFirestore((remoteCenters) => {
+      if (!Array.isArray(remoteCenters)) return;
+      const map = new Map<string, AidRecipientCenter>();
+      getStoredAidCenters().forEach((c) => {
+        if (c && c.id) map.set(String(c.id), c);
+      });
+      remoteCenters.forEach((c: any) => {
+        if (c && c.id) map.set(String(c.id), c as AidRecipientCenter);
+      });
+      const merged = filterValidAidCenters(Array.from(map.values()));
+      try {
+        localStorage.setItem(AID_CENTERS_KEY, JSON.stringify(merged));
+        emitAidLedgerUpdated();
+      } catch {}
+    });
+
+    subscribeToAidDeliveriesFromFirestore((remoteDeliveries) => {
+      if (!Array.isArray(remoteDeliveries)) return;
+      const map = new Map<string, AidDeliveryRecord>();
+      getStoredAidDeliveries().forEach((d) => {
+        if (d && d.id) map.set(String(d.id), d);
+      });
+      remoteDeliveries.forEach((d: any) => {
+        if (d && d.id) map.set(String(d.id), d as AidDeliveryRecord);
+      });
+      const merged = filterValidAidDeliveries(Array.from(map.values()));
+      try {
+        localStorage.setItem(AID_DELIVERIES_KEY, JSON.stringify(merged));
+        emitAidLedgerUpdated();
+      } catch {}
+    });
+
+    subscribeToAidBroadcastsFromFirestore((remoteBroadcasts) => {
+      if (!Array.isArray(remoteBroadcasts)) return;
+      const map = new Map<string, AidCommunityBroadcastPost>();
+      getStoredCommunityBroadcasts().forEach((b) => {
+        if (b && b.id) map.set(String(b.id), b);
+      });
+      remoteBroadcasts.forEach((b: any) => {
+        if (b && b.id) map.set(String(b.id), b as AidCommunityBroadcastPost);
+      });
+      const merged = filterValidAidBroadcasts(Array.from(map.values()));
+      try {
+        localStorage.setItem(AID_BROADCASTS_KEY, JSON.stringify(merged));
+        emitAidLedgerUpdated();
+      } catch {}
+    });
+  } catch {}
+}
+
 export const getStoredAidCenters = (): AidRecipientCenter[] => {
-try {
-const saved = localStorage.getItem(AID_CENTERS_KEY);
-if (saved) {
-const parsed = JSON.parse(saved);
-if (Array.isArray(parsed)) {
-return parsed.filter((c: any) => c && !DUMMY_CENTER_IDS.includes(c.id) && !DUMMY_CENTER_CODES.includes(c.centerCode));
-}
-}
-} catch (e) {
-console.error('Error reading aid centers from localStorage:', e);
-}
-return [];
+  try {
+    const saved = localStorage.getItem(AID_CENTERS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return filterValidAidCenters(parsed);
+      }
+    }
+  } catch (e) {
+    console.error('Error reading aid centers from localStorage:', e);
+  }
+  return [];
 };
 
 export const saveAidCentersToStorage = (centers: any) => {
-try {
-const cleaned = (centers ? centers : []).filter((c: any) => c && !DUMMY_CENTER_IDS.includes(c.id) && !DUMMY_CENTER_CODES.includes(c.centerCode));
-localStorage.setItem(AID_CENTERS_KEY, JSON.stringify(cleaned));
-} catch (e) {
-console.error('Error saving aid centers to localStorage:', e);
-}
+  try {
+    const cleaned = filterValidAidCenters(centers ? centers : []);
+    localStorage.setItem(AID_CENTERS_KEY, JSON.stringify(cleaned));
+    emitAidLedgerUpdated();
+  } catch (e) {
+    console.error('Error saving aid centers to localStorage:', e);
+  }
 };
 
 export const getStoredAidDeliveries = (): AidDeliveryRecord[] => {
-try {
-const saved = localStorage.getItem(AID_DELIVERIES_KEY);
-if (saved) {
-const parsed = JSON.parse(saved);
-if (Array.isArray(parsed)) {
-return parsed.filter((d: any) => d && !DUMMY_DELIVERY_IDS.includes(d.id) && !DUMMY_CENTER_CODES.includes(d.centerCode));
-}
-}
-} catch (e) {
-console.error('Error reading aid deliveries from localStorage:', e);
-}
-return [];
+  try {
+    const saved = localStorage.getItem(AID_DELIVERIES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return filterValidAidDeliveries(parsed);
+      }
+    }
+  } catch (e) {
+    console.error('Error reading aid deliveries from localStorage:', e);
+  }
+  return [];
 };
 
 export const saveAidDeliveriesToStorage = (deliveries: any) => {
-try {
-const cleaned = (deliveries ? deliveries : []).filter((d: any) => d && !DUMMY_DELIVERY_IDS.includes(d.id) && !DUMMY_CENTER_CODES.includes(d.centerCode));
-localStorage.setItem(AID_DELIVERIES_KEY, JSON.stringify(cleaned));
-} catch (e) {
-console.error('Error saving aid deliveries to localStorage:', e);
-}
+  try {
+    const cleaned = filterValidAidDeliveries(deliveries ? deliveries : []);
+    localStorage.setItem(AID_DELIVERIES_KEY, JSON.stringify(cleaned));
+    emitAidLedgerUpdated();
+  } catch (e) {
+    console.error('Error saving aid deliveries to localStorage:', e);
+  }
 };
 
 export const getStoredCommunityBroadcasts = (): AidCommunityBroadcastPost[] => {
-try {
-const saved = localStorage.getItem(AID_BROADCASTS_KEY);
-if (saved) {
-const parsed = JSON.parse(saved);
-if (Array.isArray(parsed)) {
-return parsed.filter((b: any) => b && !DUMMY_BROADCAST_IDS.includes(b.id));
-}
-}
-} catch (e) {
-console.error('Error reading broadcasts from localStorage:', e);
-}
-return [];
+  try {
+    const saved = localStorage.getItem(AID_BROADCASTS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return filterValidAidBroadcasts(parsed);
+      }
+    }
+  } catch (e) {
+    console.error('Error reading broadcasts from localStorage:', e);
+  }
+  return [];
 };
 
 export const saveCommunityBroadcastsToStorage = (broadcasts: any) => {
-try {
-const cleaned = (broadcasts ? broadcasts : []).filter((b: any) => b && !DUMMY_BROADCAST_IDS.includes(b.id));
-localStorage.setItem(AID_BROADCASTS_KEY, JSON.stringify(cleaned));
-} catch (e) {
-console.error('Error saving broadcasts to localStorage:', e);
-}
+  try {
+    const cleaned = filterValidAidBroadcasts(broadcasts ? broadcasts : []);
+    localStorage.setItem(AID_BROADCASTS_KEY, JSON.stringify(cleaned));
+    emitAidLedgerUpdated();
+  } catch (e) {
+    console.error('Error saving broadcasts to localStorage:', e);
+  }
 };
 
 export const findAidCenterByCode = (code: string): any => {
-const cleanCode = code.trim().replace(/\D/g, '');
-const centers = getStoredAidCenters();
-return centers.find(c => c.centerCode === cleanCode);
+  const cleanCode = code.trim().replace(/\D/g, '');
+  const centers = getStoredAidCenters();
+  return centers.find(c => c.centerCode === cleanCode);
 };
 
 export const notifyRecipientOfLoggedAid = (record: any, center: any) => {
-addAppNotification({
-type: 'general',
-title: '📦 නව ආධාර ලැබීමක් සටහන් විය! (අංක ' + center.centerCode + ')',
-message: record.donorName + ' විසින් ' + record.quantity + ' (' + record.categoryTitleSi + ') ඔබගේ මධ්‍යස්ථානය වෙත ලබාදුන් බව සටහන් කර ඇත. කරුණාකර තහවුරු කරන්න.',
-locationName: center.town,
-badgeText: 'ආධාර තහවුරු',
-targetModal: 'blood'
-});
+  addAppNotification({
+    type: 'aid_ledger',
+    title: '📦 නව ආධාර ලැබීමක් සටහන් විය! (අංක ' + center.centerCode + ')',
+    message: record.donorName + ' විසින් ' + record.quantity + ' (' + record.categoryTitleSi + ') ඔබගේ මධ්‍යස්ථානය වෙත ලබාදුන් බව සටහන් කර ඇත. කරුණාකර තහවුරු කරන්න.',
+    locationName: center.town,
+    badgeText: 'ආධාර තහවුරු',
+    targetModal: 'aid_ledger'
+  });
 };
