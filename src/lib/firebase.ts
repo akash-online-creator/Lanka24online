@@ -1047,6 +1047,12 @@ export async function stopSosLiveSession(sessionId: string, reason?: string): Pr
     status: 'ended', 
     isActive: false, 
     deactivationReason: reason || 'Resolved',
+    latitude: null,
+    longitude: null,
+    currentLocation: null,
+    latestAudioBase64: null,
+    isSilentAudioStreaming: false,
+    endedAtMs: Date.now(),
     updatedAtServer: serverTimestamp(),
     updatedAtMs: Date.now() 
   }, { merge: true });

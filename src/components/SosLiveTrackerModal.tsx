@@ -476,6 +476,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const continuousRecorderRef = useRef<MediaRecorder | null>(null);
   const isContinuousAudioRunningRef = useRef<boolean>(false);
   const audioTimerIntervalRef = useRef<any>(null);
+  const segmentTimerRef = useRef<any>(null);
+  const segmentTimeoutRef = useRef<any>(null);
 
   // 7. Map & Watcher Refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -580,58 +582,120 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     }
   }, [isSirenOn, startHighDecibelSiren, stopHighDecibelSiren]);
 
-  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER
+  // 🎙️ CONTINUOUS BACKGROUND AUDIO EVIDENCE RECORDER (Robust 5s Standalone Clips with Complete Container Headers)
   const startAudioRecordingLoop = useCallback(async () => {
     if (isContinuousAudioRunningRef.current) return;
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      console.warn('MediaDevices getUserMedia API not supported');
+      alert('හඬ පටිගත කිරීම සඳහා ඔබගේ උපකරණයේ MediaDevices සහය නොදක්වයි.');
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+
       audioStreamRef.current = stream;
       isContinuousAudioRunningRef.current = true;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : '';
-
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      continuousRecorderRef.current = recorder;
-
-      recorder.ondataavailable = async (e: BlobEvent) => {
-        if (e.data && e.data.size > 0) {
-          const reader = new FileReader();
-          reader.readAsDataURL(e.data);
-          reader.onloadend = async () => {
-            const base64Data = reader.result as string;
-            setRecordedAudioUrl(base64Data);
-
-            const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
-            if (activeSessionId) {
-              try {
-                await updateSosLiveLocation(activeSessionId, {
-                  latestAudioBase64: base64Data,
-                  lastAudioSyncAt: Date.now(),
-                  isSilentAudioStreaming: true,
-                } as any);
-              } catch (err) {}
-            }
-          };
-        }
-      };
-
-      recorder.start(4000);
       setIsRecordingAudio(true);
+      setRecordingSeconds(0);
 
+      if (audioTimerIntervalRef.current) clearInterval(audioTimerIntervalRef.current);
       audioTimerIntervalRef.current = setInterval(() => {
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
-    } catch (err) {
+
+      // Determine best audio mime type supported across Chromium, WebKit/Safari, Firefox
+      let mimeType = '';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+          mimeType = 'audio/aac';
+        }
+      }
+
+      // Record discrete standalone 5-second segments so each chunk has a valid playable file header!
+      const recordSegment = () => {
+        if (!isContinuousAudioRunningRef.current || !stream.active) return;
+
+        try {
+          const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+          continuousRecorderRef.current = recorder;
+          const chunks: Blob[] = [];
+
+          recorder.ondataavailable = (e: BlobEvent) => {
+            if (e.data && e.data.size > 0) {
+              chunks.push(e.data);
+            }
+          };
+
+          recorder.onstop = () => {
+            if (chunks.length > 0) {
+              const audioBlob = new Blob(chunks, { type: mimeType || recorder.mimeType || 'audio/webm' });
+              const reader = new FileReader();
+              reader.readAsDataURL(audioBlob);
+              reader.onloadend = async () => {
+                const base64Data = reader.result as string;
+                if (base64Data && base64Data.length > 100) {
+                  setRecordedAudioUrl(base64Data);
+
+                  const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+                  if (activeSessionId) {
+                    try {
+                      await updateSosLiveLocation(activeSessionId, {
+                        latestAudioBase64: base64Data,
+                        lastAudioSyncAt: Date.now(),
+                        isSilentAudioStreaming: true,
+                        isAudioCut: false,
+                      } as any);
+                    } catch (err) {
+                      console.warn('Error uploading live SOS audio:', err);
+                    }
+                  }
+                }
+              };
+            }
+
+            // Immediately schedule next segment if continuous audio is still active
+            if (isContinuousAudioRunningRef.current) {
+              segmentTimeoutRef.current = setTimeout(() => {
+                recordSegment();
+              }, 250);
+            }
+          };
+
+          recorder.start();
+
+          // 5-second segment interval for snappy, complete audio chunks
+          segmentTimerRef.current = setTimeout(() => {
+            if (recorder.state === 'recording') {
+              try {
+                recorder.stop();
+              } catch (e) {}
+            }
+          }, 5000);
+        } catch (recErr) {
+          console.warn('MediaRecorder error in segment:', recErr);
+        }
+      };
+
+      // Start the first segment immediately
+      recordSegment();
+    } catch (err: any) {
       console.warn('Silent Audio evidence recorder permission notice:', err);
+      alert('හඬ පටිගත කිරීම සඳහා මයික්‍රෆෝන් (Microphone) අවසරය ලබා දෙන්න.');
+      setIsRecordingAudio(false);
+      isContinuousAudioRunningRef.current = false;
     }
   }, [sessionId]);
 
@@ -640,6 +704,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
     if (audioTimerIntervalRef.current) {
       clearInterval(audioTimerIntervalRef.current);
       audioTimerIntervalRef.current = null;
+    }
+    if (segmentTimerRef.current) {
+      clearTimeout(segmentTimerRef.current);
+      segmentTimerRef.current = null;
+    }
+    if (segmentTimeoutRef.current) {
+      clearTimeout(segmentTimeoutRef.current);
+      segmentTimeoutRef.current = null;
     }
     if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
       try {
@@ -651,7 +723,14 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       audioStreamRef.current = null;
     }
     setIsRecordingAudio(false);
-  }, []);
+
+    const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
+    if (activeSessionId) {
+      updateSosLiveLocation(activeSessionId, {
+        isSilentAudioStreaming: false,
+      } as any).catch(() => {});
+    }
+  }, [sessionId]);
 
   const handleToggleAudioRecording = useCallback(() => {
     if (isRecordingAudio) {
@@ -1034,6 +1113,11 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
           isActive: false,
           endedAtMs: Date.now(),
           deactivationReason: isDuress ? 'duress_canceled' : 'resolved',
+          latitude: null,
+          longitude: null,
+          currentLocation: null,
+          latestAudioBase64: null,
+          isSilentAudioStreaming: false,
         });
         await stopSosLiveSession(activeSessionId, isDuress ? 'duress_canceled' : 'resolved');
       } catch (e) {}

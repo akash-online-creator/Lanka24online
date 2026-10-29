@@ -21,7 +21,8 @@ import {
   Volume2,
   VolumeX,
   Play,
-  Pause
+  Pause,
+  ShieldCheck
 } from 'lucide-react';
 import { SosLiveSession, Language, LocationOption } from '../types';
 import { subscribeToSosLiveSession } from '../lib/firebase';
@@ -55,9 +56,31 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
     return null;
   });
 
-  // Audio Playback State
+  // Audio Playback & Live Streaming State
+  const [isLiveListening, setIsLiveListening] = useState<boolean>(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const lastPlayedAudioRef = useRef<string | null>(null);
+
+  // Auto-play incoming live audio stream clips when Live Listening is active
+  useEffect(() => {
+    if (!session?.isAudioCut && session?.latestAudioBase64 && isLiveListening) {
+      if (lastPlayedAudioRef.current !== session.latestAudioBase64) {
+        lastPlayedAudioRef.current = session.latestAudioBase64;
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = session.latestAudioBase64;
+          audioPlayerRef.current.load();
+          const p = audioPlayerRef.current.play();
+          if (p !== undefined) {
+            p.then(() => setIsPlayingAudio(true))
+              .catch((err) => {
+                console.warn('Auto playback notice (gesture needed):', err);
+              });
+          }
+        }
+      }
+    }
+  }, [session?.latestAudioBase64, session?.lastAudioSyncAt, session?.isAudioCut, isLiveListening]);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -251,33 +274,50 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
     );
   }
 
-  // 🛡️ 5-Minute Safety Cooldown & Auto-Expiry Logic
+  // 🛡️ Safe Deactivated Screen (Immediately terminates live tracking and hides map)
   const isSessionEnded = session?.isActive === false || session?.status === 'ended' || session?.status === 'cancelled' || session?.status === 'resolved';
   const endedTimestamp = session?.endedAtMs || session?.lastLocationUpdateMs || session?.updatedAtMs || 0;
-  const elapsedSinceEndMs = isSessionEnded && endedTimestamp > 0 ? Math.max(0, currentTimestamp - endedTimestamp) : 0;
-  const isCooldownExpired = isSessionEnded && (elapsedSinceEndMs > 5 * 60 * 1000);
-  const cooldownRemainingSec = isSessionEnded && !isCooldownExpired
-    ? Math.max(0, Math.floor((5 * 60 * 1000 - elapsedSinceEndMs) / 1000))
-    : 0;
 
-  // ⏰ Permanent Auto-Disconnect Screen when 5-minute cooldown expires
-  if (isCooldownExpired) {
+  if (isSessionEnded) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
-        <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-4 shadow-2xl text-white">
-          <div className="w-16 h-16 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto text-3xl font-black">
-            ⏰
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+        <div className="bg-slate-900 border-2 border-emerald-500 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-4 shadow-2xl text-white">
+          <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-4xl font-black shadow-lg">
+            🛡️
           </div>
           <div>
-            <h3 className="text-lg sm:text-xl font-black text-white">මෙම SOS සැසියේ කාල සීමාව අවසන්</h3>
-            <p className="text-xs text-slate-400 leading-relaxed pt-2">
-              ආරක්ෂිත හේතූන් මත විනාඩි 5ක කාල සීමාව අවසන් වූ බැවින්, මෙම පුද්ගලයාගේ සජීවී ස්ථානය සහ හඬ දත්ත ස්වයංක්‍රීයව පද්ධතියෙන් ඉවත් කර ඇත.
+            <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-black uppercase tracking-wider mb-2">
+              SAFE & DEACTIVATED
+            </span>
+            <h3 className="text-xl sm:text-2xl font-black text-white">
+              පරිශීලකයා දැන් ආරක්ෂිතයි
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed pt-2">
+              මෙම පුද්ගලයා <strong className="text-emerald-400">"දැන් මම ආරක්ෂිතයි (Deactivate SOS)"</strong> ලෙස සටහන් කර ඇති බැවින්, පුද්ගලිකත්ව හා ආරක්ෂක නීති අනුව සජීවී ස්ථාන නිරීක්ෂණය (Location Tracking) සහ හඬ විකාශනය ආරක්ෂිතව සම්පූර්ණයෙන්ම නවත්වා ඇත.
             </p>
           </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-left text-xs space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-slate-400">පුද්ගලයාගේ නම:</span>
+              <span className="font-bold text-white">{session?.userName || 'පරිශීලක'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">සැසි අංකය:</span>
+              <span className="font-mono text-emerald-400 font-bold">{session?.sessionCode || `#SOS-${sessionId.slice(-4)}`}</span>
+            </div>
+            {endedTimestamp > 0 && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">අවසන් කළ වේලාව:</span>
+                <span className="text-slate-300">{new Date(endedTimestamp).toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs cursor-pointer transition-all"
+            className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-black text-xs cursor-pointer transition-all shadow-lg active:scale-95"
           >
             වසන්න (Close)
           </button>
@@ -369,88 +409,139 @@ export const SosLiveViewerModal: React.FC<SosLiveViewerModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Deactivated Notice if OFF with 5-minute cooldown countdown */}
-              {!isLive && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center gap-3 animate-fadeIn">
-                  <Clock className="w-6 h-6 text-amber-500 shrink-0 animate-pulse" />
-                  <div>
-                    <span className="text-xs font-black text-amber-900 dark:text-amber-200 block">
-                      ⚠️ මෙම SOS සැසිය අක්‍රීය කර ඇත (විනාඩි 5ක Cooldown ආරක්ෂාව)
-                    </span>
-                    <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 font-medium leading-relaxed block pt-0.5">
-                      ආරක්ෂිත හේතූන් මත අවසන් ස්ථාන දත්ත තව <strong>{Math.floor(cooldownRemainingSec / 60)}:{String(cooldownRemainingSec % 60).padStart(2, '0')}</strong> කින් ස්වයංක්‍රීයව පද්ධතියෙන් ඉවත් වනු ඇත.
-                    </span>
-                  </div>
-                </div>
-              )}
-
               {/* 🎧 Live Audio Stream Player or Cut Notice */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-black border-2 border-indigo-500/40 text-white space-y-3 shadow-lg">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950/80 to-black border-2 border-indigo-500/40 text-white space-y-3 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="p-2 rounded-xl bg-indigo-950/80 border border-indigo-500/50 text-indigo-400">
                       {session.isAudioCut ? (
                         <VolumeX className="w-5 h-5 text-rose-400" />
+                      ) : isPlayingAudio ? (
+                        <Volume2 className="w-5 h-5 text-emerald-400 animate-pulse" />
                       ) : (
-                        <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+                        <Radio className="w-5 h-5 text-cyan-400" />
                       )}
                     </div>
                     <div>
-                      <h4 className="text-xs sm:text-sm font-black text-white">
-                        {session.isAudioCut ? 'හඬ විකාශනය අත්හිටුවා ඇත' : 'සජීවී පසුබිම් හඬ ඇසීම (Live Audio Stream)'}
-                      </h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs sm:text-sm font-black text-white">
+                          {session.isAudioCut ? 'හඬ විකාශනය අත්හිටුවා ඇත' : 'සජීවී පසුබිම් හඬ (Live Audio Stream)'}
+                        </h4>
+                        {isLiveListening && !session.isAudioCut && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            LIVE LISTENING
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-slate-400">
                         {session.isAudioCut
                           ? 'පරිශීලකයා විසින් ආරක්ෂිතව හඬ විකාශනය Cut කර ඇත.'
                           : session.latestAudioBase64
-                          ? 'නවතම සජීවී හඬ ඛණ්ඩය සූදානම්.'
-                          : 'ශ්‍රව්‍ය සංඥා බලාපොරොත්තුවෙන් පවතී...'}
+                          ? session.lastAudioSyncAt 
+                            ? `නවතම හඬ ඛණ්ඩය (මීට තත්පර ${Math.max(0, Math.floor((Date.now() - session.lastAudioSyncAt) / 1000))} කට පෙර)`
+                            : 'නවතම සජීවී හඬ ඛණ්ඩය සූදානම්.'
+                          : 'ශ්‍රව්‍ය සංඥා බලාපොරොත්තුවෙන් පවතී (අනෙක් පාර්ශවය "හඬ රෙකෝඩ් On" කළ පසු ඇසෙනු ඇත)...'}
                       </p>
                     </div>
                   </div>
 
                   {!session.isAudioCut && session.latestAudioBase64 && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                      ACTIVE
+                      AUDIO READY
                     </span>
                   )}
                 </div>
 
                 {!session.isAudioCut && session.latestAudioBase64 && (
-                  <div>
+                  <div className="space-y-2 pt-1">
                     <audio
                       ref={audioPlayerRef}
                       src={session.latestAudioBase64}
+                      preload="auto"
+                      playsInline
+                      onPlay={() => setIsPlayingAudio(true)}
+                      onPause={() => setIsPlayingAudio(false)}
                       onEnded={() => setIsPlayingAudio(false)}
                       className="hidden"
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (audioPlayerRef.current) {
-                          if (isPlayingAudio) {
-                            audioPlayerRef.current.pause();
+
+                    {/* Equalizer animation when playing */}
+                    {isPlayingAudio && (
+                      <div className="flex items-center justify-center gap-1.5 py-1">
+                        <span className="w-1.5 h-3 bg-emerald-400 rounded-full animate-bounce"></span>
+                        <span className="w-1.5 h-5 bg-emerald-300 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+                        <span className="w-1.5 h-2 bg-emerald-500 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+                        <span className="w-1.5 h-4 bg-teal-400 rounded-full animate-bounce [animation-delay:0.1s]"></span>
+                        <span className="w-1.5 h-3 bg-emerald-400 rounded-full animate-bounce [animation-delay:0.25s]"></span>
+                        <span className="text-[10px] text-emerald-300 font-bold ml-1.5">හඬ ඇසෙමින් පවතී...</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isLiveListening) {
+                            if (audioPlayerRef.current) audioPlayerRef.current.pause();
+                            setIsLiveListening(false);
                             setIsPlayingAudio(false);
                           } else {
-                            audioPlayerRef.current.play().catch(() => {});
-                            setIsPlayingAudio(true);
+                            setIsLiveListening(true);
+                            if (audioPlayerRef.current && session.latestAudioBase64) {
+                              audioPlayerRef.current.src = session.latestAudioBase64;
+                              audioPlayerRef.current.load();
+                              audioPlayerRef.current.play().then(() => {
+                                setIsPlayingAudio(true);
+                                lastPlayedAudioRef.current = session.latestAudioBase64;
+                              }).catch((err) => {
+                                console.warn('Play error on click:', err);
+                              });
+                            }
                           }
-                        }
-                      }}
-                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
-                    >
-                      {isPlayingAudio ? (
-                        <>
-                          <Pause className="w-4 h-4" />
-                          <span>හඬ නැවතීමට (Pause)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4" />
-                          <span>▶️ සජීවී හඬට සවන් දෙන්න (Listen Live)</span>
-                        </>
-                      )}
-                    </button>
+                        }}
+                        className={`w-full py-2.5 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95 ${
+                          isLiveListening
+                            ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        {isLiveListening ? (
+                          <>
+                            <Pause className="w-4 h-4" />
+                            <span>හඬ නැවතීමට (Pause Audio)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4" />
+                            <span>▶️ සජීවී හඬට සවන් දෙන්න (Listen Live)</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (audioPlayerRef.current && session.latestAudioBase64) {
+                            audioPlayerRef.current.currentTime = 0;
+                            audioPlayerRef.current.play().then(() => setIsPlayingAudio(true)).catch(() => {});
+                          }
+                        }}
+                        className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition-all cursor-pointer active:scale-95"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>නැවත අසන්න (Replay Clip)</span>
+                      </button>
+                    </div>
+
+                    {/* Native controls bar for direct browser audio handling */}
+                    <div className="pt-1">
+                      <audio 
+                        src={session.latestAudioBase64} 
+                        controls 
+                        className="w-full h-8 opacity-90 hover:opacity-100 transition-opacity rounded-lg"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
