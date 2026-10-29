@@ -1,4 +1,4 @@
-name: Auto Fix Bugs & Push to Main
+name: Auto Fix Bugs, Rename App to 1+ සහය සේවා & Push to Main
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Apply All Code Fixes
+      - name: Apply All Code Fixes & Rename App to "1+ සහය සේවා"
         run: |
           cat << 'EOF' > apply_fixes.mjs
           import fs from 'fs';
@@ -38,6 +38,107 @@ jobs:
             fs.writeFileSync(full, c, 'utf8');
             console.log('Updated:', p);
           };
+
+          // ==================================================================
+          // A. RENAME APP TO "1+ සහය සේවා" ACROSS CONFIG, HTML & UI COMPONENTS
+          // ==================================================================
+
+          // 1. index.html
+          let indexHtml = readFileSafe('index.html');
+          if (indexHtml) {
+            indexHtml = indexHtml
+              .replace(/<title>[^<]*<\/title>/, '<title>1+ සහය සේවා</title>')
+              .replace(/content="සහය සේවා \(Sahaya Seva\)"/g, 'content="1+ සහය සේවා (Sahaya Seva)"')
+              .replace(/content="සහය සේවා \(Sahaya Seva\) - සහය සේවා/g, 'content="1+ සහය සේවා (Sahaya Seva) - 1+ සහය සේවා');
+            writeFileSafe('index.html', indexHtml);
+          }
+
+          // 2. metadata.json
+          let metadataJson = readFileSafe('metadata.json');
+          if (metadataJson) {
+            try {
+              const meta = JSON.parse(metadataJson);
+              meta.name = '1+ සහය සේවා';
+              meta.description = '1+ සහය සේවා (Sahaya Seva) - 1+ සහය සේවා community support and emergency assistance platform with 3D card layout and live bulletin board.';
+              writeFileSafe('metadata.json', JSON.stringify(meta, null, 2) + '\n');
+            } catch {}
+          }
+
+          // 3. capacitor.config.json
+          let capJson = readFileSafe('capacitor.config.json');
+          if (capJson) {
+            try {
+              const cap = JSON.parse(capJson);
+              cap.appName = '1+ සහය සේවා';
+              writeFileSafe('capacitor.config.json', JSON.stringify(cap, null, 2) + '\n');
+            } catch {}
+          }
+
+          // 4. public/manifest.json
+          let manifestJson = readFileSafe('public/manifest.json');
+          if (manifestJson) {
+            try {
+              const manifest = JSON.parse(manifestJson);
+              manifest.name = '1+ සහය සේවා';
+              manifest.short_name = '1+ සහය සේවා';
+              writeFileSafe('public/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+            } catch {}
+          }
+
+          // 5. android/app/src/main/res/values/strings.xml (if present)
+          let stringsXml = readFileSafe('android/app/src/main/res/values/strings.xml');
+          if (stringsXml) {
+            stringsXml = stringsXml
+              .replace(/<string name="app_name">[^<]*<\/string>/, '<string name="app_name">1+ සහය සේවා</string>')
+              .replace(/<string name="title_activity_main">[^<]*<\/string>/, '<string name="title_activity_main">1+ සහය සේවා</string>');
+            writeFileSafe('android/app/src/main/res/values/strings.xml', stringsXml);
+          }
+
+          // 6. src/data/translations.ts
+          let translationsTs = readFileSafe('src/data/translations.ts');
+          if (translationsTs) {
+            translationsTs = translationsTs
+              .replace(/appName:\s*'සහය සේවා'/g, "appName: '1+ සහය සේවා'")
+              .replace(/appName:\s*'Sahaya Sewa'/g, "appName: '1+ සහය සේවා'")
+              .replace(/loginTitle:\s*'සහය සේවා පද්ධතියට පිවිසෙන්න'/g, "loginTitle: '1+ සහය සේවා පද්ධතියට පිවිසෙන්න'");
+            writeFileSafe('src/data/translations.ts', translationsTs);
+          }
+
+          // 7. src/components/Header.tsx
+          let headerTsx = readFileSafe('src/components/Header.tsx');
+          if (headerTsx) {
+            headerTsx = headerTsx.replace(
+              /\{language === 'en' \? 'Support' : language === 'ta' \? 'உதவி' : 'සහය'\}/g,
+              "{language === 'en' ? '1+ Support' : language === 'ta' ? '1+ உதவி' : '1+ සහය'}"
+            );
+            writeFileSafe('src/components/Header.tsx', headerTsx);
+          }
+
+          // 8. src/components/UnifiedDashboardHeader.tsx
+          let unifiedHeaderTsx = readFileSafe('src/components/UnifiedDashboardHeader.tsx');
+          if (unifiedHeaderTsx) {
+            unifiedHeaderTsx = unifiedHeaderTsx
+              .replace(/title="සහය සේවා - Sahaya Sewa"/g, 'title="1+ සහය සේවා - Sahaya Sewa"')
+              .replace(
+                /\{language === 'en' \? 'Support' : language === 'ta' \? 'உதவி' : 'සහය'\}/g,
+                "{language === 'en' ? '1+ Support' : language === 'ta' ? '1+ உதவி' : '1+ සහය'}"
+              );
+            writeFileSafe('src/components/UnifiedDashboardHeader.tsx', unifiedHeaderTsx);
+          }
+
+          // 9. src/components/AppLogo.tsx
+          let appLogoTsx = readFileSafe('src/components/AppLogo.tsx');
+          if (appLogoTsx) {
+            appLogoTsx = appLogoTsx.replace(
+              /altText\s*=\s*'සහය සේවා - Sahaya Sewa Logo'/g,
+              "altText = '1+ සහය සේවා - Sahaya Sewa Logo'"
+            );
+            writeFileSafe('src/components/AppLogo.tsx', appLogoTsx);
+          }
+
+          // ==================================================================
+          // B. CODE & ARCHITECTURE FIXES (Issues 1 to 4)
+          // ==================================================================
 
           // 1. src/main.tsx (Mount UserModeProvider + Offline-Safe SVG Leaflet Markers)
           writeFileSafe('src/main.tsx', `import { StrictMode } from 'react';
@@ -191,4 +292,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --staged --quiet || (git commit -m "fix: resolve React Error #310, TypeScript errors, UserModeProvider mount, and offline Leaflet markers" && git push origin main)
+          git diff --staged --quiet || (git commit -m "fix: rename app to '1+ සහය සේවා' and resolve React #310 & TypeScript errors" && git push origin main)
