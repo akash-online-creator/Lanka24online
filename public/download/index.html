@@ -2,17 +2,238 @@
 <html lang="si">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t">
-  <title>සහය සේවා ඇප් එක බාගත කිරීම...</title>
-  <script>
-    window.location.replace("https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t");
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>සහය සේවා (Sahaya Sewa) — නිල Android යෙදුම බාගත කරගන්න</title>
+  <link rel="icon" type="image/jpeg" href="/logo.jpg">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans Sinhala', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, #0f172a 50%, #020617 100%);
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 32px 24px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+    .logo-container {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 16px;
+    }
+    .logo-container img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid #f59e0b;
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.4);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+    p.tagline {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+    .specs-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 24px;
+    }
+    .spec-item { font-size: 11px; color: #94a3b8; }
+    .spec-val { font-size: 13px; font-weight: 700; color: #f8fafc; margin-top: 2px; }
+    
+    .status-box {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #34d399;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: #000;
+      font-weight: 800;
+      font-size: 16px;
+      padding: 14px 20px;
+      border-radius: 14px;
+      text-decoration: none;
+      box-shadow: 0 10px 20px rgba(217, 119, 6, 0.35);
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .btn-download:active { transform: scale(0.98); }
+
+    .steps-section {
+      margin-top: 28px;
+      text-align: left;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 20px;
+    }
+    .steps-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+    .step-num {
+      background: #334155;
+      color: #f1f5f9;
+      font-weight: 700;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .footer-link {
+      margin-top: 20px;
+      font-size: 13px;
+    }
+    .footer-link a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+  </style>
 </head>
-<body style="font-family: sans-serif; text-align: center; padding-top: 60px; background-color: #0f172a; color: #f8fafc;">
-  <h2>සහය සේවා (Sahaya Sewa)</h2>
-  <p>ඇප් එක බාගත වෙමින් පවතී (Downloading Android APK...)</p>
-  <p style="margin-top: 20px; font-size: 14px; color: #94a3b8;">
-    බාගත වීම ආරම්භ නොවූයේ නම් <a href="https://drive.google.com/uc?export=download&id=1fjKm578a90HFi1xP5voh5v9OdpuRcq0t" style="color: #38bdf8;">මෙහි ක්ලික් කරන්න</a>.
-  </p>
+<body>
+
+  <div class="card">
+    <div class="logo-container">
+      <img src="/logo.jpg" alt="සහය සේවා">
+    </div>
+
+    <span class="badge">🇱🇰 නිල ANDROID යෙදුම</span>
+    <h1>සහය සේවා</h1>
+    <p class="tagline">සැමට පිහිට — ප්‍රජා සහයෝගීතා සහ හදිසි ආපදා ජාලය</p>
+
+    <div class="specs-grid">
+      <div class="spec-item">සංස්කරණය<div class="spec-val">V 1.1.880</div></div>
+      <div class="spec-item">ප්‍රමාණය<div class="spec-val">44.6 MB</div></div>
+      <div class="spec-item">ආරක්ෂාව<div class="spec-val">100% Verified</div></div>
+    </div>
+
+    <div class="status-box" id="statusBox">
+      <div class="spinner"></div>
+      <span id="statusText">බාගත වීම ස්වයංක්‍රීයව ආරම්භ වේ...</span>
+    </div>
+
+    <a href="/app.apk" class="btn-download" id="downloadBtn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      <span>දැන්ම බාගත කරගන්න (Download APK)</span>
+    </a>
+
+    <div class="steps-section">
+      <div class="steps-title">
+        <span>📲 Install කරගන්නා සරල පියවර 3:</span>
+      </div>
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div>බාගත වීම අවසන් වූ පසු දුරකථනයේ Notification එකෙහි ඇති <b>Open</b> ඔබන්න.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div>"Install unknown apps" ඇසුවහොත් <b>Settings</b> වෙත ගොස් <b>Allow from this source</b> ලබා දෙන්න.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div><b>Install</b> බොත්තම ඔබා යෙදුම විවෘත කර ඔබගේ රු. 100 පිළිගැනීමේ ත්‍යාගය ලබාගන්න!</div>
+      </div>
+    </div>
+
+    <div class="footer-link">
+      <a href="/">🌐 නැතහොත් වෙබ් යෙදුම භාවිතා කරන්න (Web App)</a>
+    </div>
+  </div>
+
+  <script>
+    // තත්පර 1.2 කින් ස්වයංක්‍රීයවම APK බාගත කිරීම ආරම්භ කරයි
+    setTimeout(function() {
+      window.location.href = '/app.apk';
+      document.getElementById('statusText').innerText = "බාගත වෙමින් පවතී... (Downloading)";
+    }, 1200);
+  </script>
+
 </body>
 </html>
