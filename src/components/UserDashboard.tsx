@@ -287,7 +287,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         return found ? found : prev;
       });
       setSelectedPostForConfirm((prev) => {
-        if (!prev) return null;
+
         const found = filtered.find((item) => Boolean(item && item.id === prev.id));
         return found ? found : prev;
       });
@@ -1330,6 +1330,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
+  if (!prev) return null;
+
   if (!prev) return null;
 
   return (
