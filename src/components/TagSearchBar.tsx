@@ -129,7 +129,7 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
   }, [searchQuery, allTags, isAtQuery]);
 
   const synonymPrompt = useMemo(() => {
-    if (isAtQuery) return null;
+
     const qTrim = searchQuery.trim().toLowerCase();
     if (!qTrim || qTrim.length < 2 || dismissedSynonyms.includes(qTrim)) {
       return null;
@@ -209,6 +209,8 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
         return AtSign;
     }
   };
+
+  if (isAtQuery) return null;
 
   return (
     <div className="w-full relative mb-4" ref={dropdownRef}>

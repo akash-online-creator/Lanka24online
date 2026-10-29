@@ -66,7 +66,7 @@ export function isPostHelpersSatisfiedOrFilled(post: HelpPost): boolean {
     post.isCompleted ||
     post.status === 'completed' ||
     post.isResolved ||
-    post.status === 'resolved' ||
+    (post.status as string) === 'resolved' ||
     post.status === 'deleted' ||
     post.isDeleted
   ) {
@@ -74,7 +74,7 @@ export function isPostHelpersSatisfiedOrFilled(post: HelpPost): boolean {
   }
 
   // 2. If status is already confirmed or filled
-  if (post.status === 'confirmed' || post.status === 'filled') {
+  if (post.status === 'confirmed' || (post.status as string) === 'filled') {
     return true;
   }
 

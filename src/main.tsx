@@ -2,80 +2,33 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { UserModeProvider } from './context/UserModeContext';
 import { initSirenSettings } from './utils/sirenAudio';
-
-// 1. Core Styles
 import './index.css';
-
-// 2. Leaflet Map Styles (Offline Safe - Bundled locally without relying on unpkg.com CDN)
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Leaflet Default Marker Icon Fix for Vite Bundler
+const MARKER_SVG_URI = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41"><path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/><circle cx="12.5" cy="12.5" r="5" fill="#ffffff"/></svg>');
+const SHADOW_SVG_URI = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="41" height="41" viewBox="0 0 41 41"><ellipse cx="13" cy="37" rx="10" ry="3.5" fill="rgba(0,0,0,0.28)"/></svg>');
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconRetinaUrl: MARKER_SVG_URI,
+  iconUrl: MARKER_SVG_URI,
+  shadowUrl: SHADOW_SVG_URI,
 });
 
-// Initialize siren audio preloading & event listeners
 initSirenSettings();
 
-// Mount Root React Tree
 const rootElement = document.getElementById('root');
-
 if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
       <ErrorBoundary>
-        <App />
+        <UserModeProvider>
+          <App />
+        </UserModeProvider>
       </ErrorBoundary>
-    </StrictMode>,
+    </StrictMode>
   );
-}
-// Mobile Viewport Height (100vh) adjustment for Android mobile address bar
-if (typeof window !== 'undefined') {
-  const setAppHeight = () => {
-    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
-  };
-  window.addEventListener('resize', setAppHeight);
-  setAppHeight();
-}
-
-// Enhanced PWA Service Worker Registration & Update Detection
-try {
-  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('/sw.js', { scope: '/' })
-        .then((registration) => {
-          console.log('✅ PWA Service Worker registered successfully:', registration.scope);
-
-          // නව Update එකක් ඇති විට පරීක්ෂා කිරීම
-          registration.addEventListener('updatefound', () => {
-            const installingWorker = registration.installing;
-            if (installingWorker) {
-              installingWorker.addEventListener('statechange', () => {
-                if (installingWorker.state === 'installed') {
-                  if (navigator.serviceWorker.controller) {
-                    console.log('🔄 New app version available. Will activate on next load.');
-                  } else {
-                    console.log('⚡ Content is cached for offline use.');
-                  }
-                }
-              });
-            }
-          });
-
-          // පසුබිමෙන් නිතර Update පරීක්ෂා කිරීම
-          registration.update().catch(() => {});
-        })
-        .catch((err) => {
-          console.warn('PWA Service Worker registration skipped/notice:', err);
-        });
-    });
-  }
-} catch (e) {
-  console.warn('Service Worker register notice:', e);
 }

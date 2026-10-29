@@ -77,6 +77,8 @@ export interface HotelRoomDetails {
 }
 
 export interface AccommodationListing {
+  preferredGender?: 'any' | 'male' | 'female' | 'boys' | 'girls' | 'couples' | 'family' | string;
+  commentsCount?: number;
   id: string;
   title: string;
   category: AccommodationCategory;
@@ -102,6 +104,7 @@ export interface AccommodationListing {
 }
 
 export interface AccommodationFilterOptions {
+  preferredGender?: string;
   searchQuery: string;
   category: 'all' | AccommodationCategory;
   distanceFilter: 'all' | 'walk_15' | 'walk_30' | 'tuk_15' | 'tuk_30' | 'custom';

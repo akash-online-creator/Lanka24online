@@ -156,6 +156,7 @@ export interface JobListing {
   isVerified?: boolean;
   isUrgentHiring?: boolean;
   viewsCount?: number;
+  commentsCount?: number;
 }
 
 export type ProximityFilterType = 
@@ -178,4 +179,14 @@ export interface JobFilters {
   benefits: string[];
   jobType?: JobType | 'all';
   country?: string;
+}
+
+export interface JobComment {
+  id: string;
+  jobId: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  text: string;
+  createdAtMs: number;
 }

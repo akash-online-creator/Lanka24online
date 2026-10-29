@@ -282,7 +282,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const filtered = filterNonDeletedPosts(propHelpPosts);
       setLocalHelpPosts(filtered);
       setSelectedPostForDetail((prev) => {
-        if (!prev) return null;
+
         const found = filtered.find((item) => Boolean(item && item.id === prev.id));
         return found ? found : prev;
       });
@@ -1330,6 +1330,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
+  if (!prev) return null;
+
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
       {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}

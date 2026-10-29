@@ -84,8 +84,13 @@ export interface ServiceReview {
   helperNicMasked?: string;
   ratingTier?: RatingTier;
   ratingPointsAdded?: number;
+  userId?: string;
+  userName?: string;
+  userPhotoUrl?: string;
+  rating?: number;
   comment?: string;
   createdAt?: string;
+  createdAtMs?: number;
   isRedAlert?: boolean;
 }
 
@@ -184,7 +189,7 @@ export interface HelpPost {
   isHidden?: boolean;
   hiddenAt?: string;
   hiddenBy?: string;
-  status?: 'active' | 'confirmed' | 'completed' | 'deleted' | 'hidden';
+  status?: 'active' | 'confirmed' | 'completed' | 'resolved' | 'filled' | 'deleted' | 'hidden';
   findForMeType?: 'lost' | 'stolen' | 'find' | 'found';
   itemLostStolenOrSearched?: string;
   incidentLocation?: string;
@@ -271,7 +276,7 @@ export interface HelpPost {
   moderationStatus?: 'clean' | 'flagged' | 'poster_responded' | 'resolved' | 'approved' | 'pending_review';
   // Quick & Normal Service Workflow Fields
   startPin?: string;
-  serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed';
+  serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed' | 'resolved' | 'filled';
   startedAt?: string;
   billSubmittedAt?: string;
   serviceReviews?: ServiceReview[];
@@ -554,16 +559,7 @@ export interface ServiceItem {
   available: boolean;
 }
 
-export interface ServiceReview {
-  id: string;
-  userId: string;
-  userName: string;
-  userPhotoUrl?: string;
-  rating: number; // 1 to 5
-  comment: string;
-  createdAt: string;
-  createdAtMs?: number;
-}
+// Consolidated ServiceReview
 
 export type ServiceDeliveryMethod = 'location' | 'anywhere' | 'online' | 'customer_must_come' | 'other';
 
