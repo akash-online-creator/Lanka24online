@@ -71,6 +71,24 @@ export interface BillItem {
   isTravelFee?: boolean;
 }
 
+export type RatingTier = 'excellent' | 'very_good' | 'good' | 'average' | 'bad' | 'very_bad';
+
+export interface ServiceReview {
+  id: string;
+  postId?: string;
+  postCode?: string;
+  reviewerId?: string;
+  reviewerName?: string;
+  helperId?: string;
+  helperName?: string;
+  helperNicMasked?: string;
+  ratingTier?: RatingTier;
+  ratingPointsAdded?: number;
+  comment?: string;
+  createdAt?: string;
+  isRedAlert?: boolean;
+}
+
 export interface ServiceBill {
   items: BillItem[];
   travelDistanceKm: number;
@@ -82,6 +100,11 @@ export interface ServiceBill {
   invoiceNumber?: string;
   createdAt?: string;
   createdBy?: string;
+  helperName?: string;
+  seekerName?: string;
+  startedAt?: string;
+  endedAt?: string;
+  date?: string;
 }
 
 export interface HelperApplicant {
@@ -246,6 +269,15 @@ export interface HelpPost {
   posterCorrectionNote?: string;
   posterRespondedAt?: string;
   moderationStatus?: 'clean' | 'flagged' | 'poster_responded' | 'resolved' | 'approved' | 'pending_review';
+  // Quick & Normal Service Workflow Fields
+  startPin?: string;
+  serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed';
+  startedAt?: string;
+  billSubmittedAt?: string;
+  serviceReviews?: ServiceReview[];
+  invoiceNumber?: string;
+  isFilled?: boolean;
+  helpersSatisfied?: boolean;
 }
 
 export interface TelegramMediaRecord {

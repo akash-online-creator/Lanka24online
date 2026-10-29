@@ -79,6 +79,7 @@ import {
   sendChatMessageToFirestore,
   addMarketShopToFirestore
 } from '../lib/firebase';
+import { isPostHelpersSatisfiedOrFilled } from '../utils/serviceWorkflowManager';
 import { resolveExactLocation, toLocationOption, calculateDistanceKm } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { subscribeToSystemSettings, getCachedSettings, SystemSettings } from '../utils/systemSettingsManager';
@@ -927,12 +928,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const isHelpersNeededSatisfied = (post: HelpPost): boolean => {
-    if (!post) return false;
-    const neededHelpers = post.helpersNeeded || 0;
-    if (neededHelpers <= 0) return false;
-
-    const acceptedCount = (post.replies || []).filter((r) => r && (r.isAccepted || r.isConfirmed)).length;
-    return acceptedCount >= neededHelpers;
+    return isPostHelpersSatisfiedOrFilled(post);
   };
 
   // Recalculate distance from current active location
@@ -1039,6 +1035,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const isOwner = checkIsPostOwner(user, post);
       const isViewerAdmin = checkIsAdmin(user);
       if (!isOwner && !isViewerAdmin) return false;
+    }
+
+    // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම
+    if (boardCategoryFilter !== 'resolved') {
+      if (isPostHelpersSatisfiedOrFilled(post)) {
+        return false;
+      }
     }
 
     // 1. Distance Radius Filter (<15km local vs all_sl)

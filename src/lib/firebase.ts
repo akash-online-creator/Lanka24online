@@ -571,6 +571,41 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
   }
 }
 
+export async function cleanupQuickServicePostAndMessages(postId: string): Promise<void> {
+  if (!postId) return;
+  try {
+    // 1. Delete all messages from the messages subcollection in Firestore
+    try {
+      const msgsColRef = collection(db, POSTS_COLLECTION, postId, 'messages');
+      const snap = await getDocs(msgsColRef);
+      if (snap && snap.docs && snap.docs.length > 0) {
+        const batch = writeBatch(db);
+        snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+    } catch (msgErr) {
+      console.warn('cleanupQuickServicePostAndMessages msgs cleanup:', msgErr);
+    }
+
+    if (fallbackDb !== db) {
+      try {
+        const fColRef = collection(fallbackDb, POSTS_COLLECTION, postId, 'messages');
+        const fSnap = await getDocs(fColRef);
+        if (fSnap && fSnap.docs && fSnap.docs.length > 0) {
+          const fBatch = writeBatch(fallbackDb);
+          fSnap.docs.forEach((docSnap) => fBatch.delete(docSnap.ref));
+          await fBatch.commit();
+        }
+      } catch (_) {}
+    }
+
+    // 2. Delete the post from Firestore (and register in deleted_records blacklist)
+    await deleteHelpPostFromFirestore(postId);
+  } catch (err) {
+    console.warn('cleanupQuickServicePostAndMessages notice:', err);
+  }
+}
+
 export async function addReplyToFirestore(postId: string, replyData: any): Promise<void> {
   try {
     const colRef = collection(db, POSTS_COLLECTION, postId, 'replies');

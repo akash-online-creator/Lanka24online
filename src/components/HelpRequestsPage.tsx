@@ -27,6 +27,7 @@ import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
 import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
+import { isPostHelpersSatisfiedOrFilled } from '../utils/serviceWorkflowManager';
 import { 
   ArrowLeft, 
   Sparkles, 
@@ -455,6 +456,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       if (isHidden) {
         const isOwner = checkIsPostOwner(user, p);
         if (!isAdminUser && !isOwner) {
+          return false;
+        }
+      }
+      // 01. දැන්වීමට අවශ්‍ය සහයකයින් ගණන තෝරාගත් පසු හෝ සේවාව අවසන් වූ පසු දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් කිරීම
+      if (boardCategoryFilter !== 'resolved') {
+        if (isPostHelpersSatisfiedOrFilled(p)) {
           return false;
         }
       }

@@ -507,6 +507,12 @@ export const QuickServiceDetailModal = ({
 
     notifyPostUpdated(updated); 
 
+    const neededCount = updated.helpersNeeded ? updated.helpersNeeded : 1;
+    const isCompletedHelpers = (updated.selectedHelpers ? updated.selectedHelpers.length : 0) >= neededCount;
+    if (isCompletedHelpers) {
+      setApplySuccessMsg('✅ සහායකයා තෝරාගන්නා ලදී! අවශ්‍ය සහායකයින් ගණන සම්පූර්ණ බැවින් දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් විය.');
+      setTimeout(() => setApplySuccessMsg(null), 4000);
+    }
   }; 
 
   const handleRemoveHelper = async (helperId: string) => { 
@@ -760,6 +766,8 @@ export const QuickServiceDetailModal = ({
           )
 
         ), 
+
+        selectedHelpers.length >= helpersNeeded ? h('div', { className: 'p-2.5 bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs' }, h(CheckCircle, { className: 'w-4 h-4 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'අවශ්‍ය සහායකයින් සම්පූර්ණයි • දැන්වීම ප්‍රධාන පුවරුවෙන් ඉවත් විය')) : null,
 
         selectedHelpers.length !== 0 ? h('div', { className: 'p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-300/80 dark:border-amber-700/60 rounded-2xl space-y-2.5' }, 
 

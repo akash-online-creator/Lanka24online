@@ -58,6 +58,61 @@ export function calculatePlatformFee(paymentText?: string): number {
 
 }
 
+export function isPostHelpersSatisfiedOrFilled(post: HelpPost): boolean {
+  if (!post) return false;
+
+  // 1. If post is marked completed, resolved, or deleted
+  if (
+    post.isCompleted ||
+    post.status === 'completed' ||
+    post.isResolved ||
+    post.status === 'resolved' ||
+    post.status === 'deleted' ||
+    post.isDeleted
+  ) {
+    return true;
+  }
+
+  // 2. If status is already confirmed or filled
+  if (post.status === 'confirmed' || post.status === 'filled') {
+    return true;
+  }
+
+  // 3. If in active advanced stages (accepted, in_progress, bill_submitted, completed)
+  if (
+    post.serviceStage === 'accepted' ||
+    post.serviceStage === 'in_progress' ||
+    post.serviceStage === 'bill_submitted' ||
+    post.serviceStage === 'completed'
+  ) {
+    return true;
+  }
+
+  // 4. Check helpers count vs helpersNeeded
+  const neededHelpers = typeof post.helpersNeeded === 'number' && post.helpersNeeded > 0 ? post.helpersNeeded : 1;
+
+  // Selected helpers in Quick Service workflow
+  const selectedCount = Array.isArray(post.selectedHelpers)
+    ? post.selectedHelpers.filter((h) => h && (h.status === 'accepted' || (h as any).readyConfirmed)).length
+    : 0;
+
+  // Accepted applicants
+  const applicantsCount = Array.isArray(post.applicants)
+    ? post.applicants.filter((a) => a && a.status === 'accepted').length
+    : 0;
+
+  // Accepted replies
+  const repliesCount = Array.isArray(post.replies)
+    ? post.replies.filter((r) => r && (r.isAccepted || r.isConfirmed)).length
+    : 0;
+
+  const acceptedNumber = typeof post.helpersAccepted === 'number' ? post.helpersAccepted : 0;
+
+  const totalAccepted = Math.max(selectedCount, applicantsCount, repliesCount, acceptedNumber);
+
+  return totalAccepted >= neededHelpers;
+}
+
 export function calculateTravelFee(
 
   distanceKm: number,
@@ -318,6 +373,7 @@ export async function selectHelperApplicant(params: {
     confirmedHelperId: applicant.helperId,
 
     isConfirmed: isFullyStaffed,
+    isFilled: isFullyStaffed,
 
     confirmedBy: updatedSelected.map((h) => h.helperName).join(', '),
 
@@ -350,6 +406,7 @@ export async function selectHelperApplicant(params: {
         helpersAccepted: updatedSelected.length,
 
         isConfirmed: isFullyStaffed,
+        isFilled: isFullyStaffed,
 
         confirmedBy: updatedPost.confirmedBy,
 

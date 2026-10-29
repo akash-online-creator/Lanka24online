@@ -22,7 +22,7 @@ import {
   User as UserIcon,
   X
 } from 'lucide-react';
-import { HelpPost, User as UserType, RatingTier, BillItem, ServiceBill } from '../types';
+import { HelpPost, User as UserType, RatingTier, BillItem, ServiceBill, Language } from '../types';
 import { 
   verifyAndStartJobWithPin, 
   submitServiceBill, 
@@ -32,6 +32,8 @@ import {
   generate9DigitInvoiceNumber,
   RATING_TIER_CONFIG
 } from '../utils/serviceWorkflowManager';
+import { cleanupQuickServicePostAndMessages } from '../lib/firebase';
+import { addDeletedPostId } from '../utils/deletedPostsManager';
 
 interface QuickServiceConfirmWorkflowProps {
   post: HelpPost | null;
@@ -40,6 +42,9 @@ interface QuickServiceConfirmWorkflowProps {
   onOpenChat: (post: HelpPost) => void;
   currentUser: UserType;
   onConfirmPost?: (post: HelpPost) => void;
+  lang?: Language;
+  onRefreshPosts?: () => void;
+  onUpdatePost?: (post: HelpPost) => void;
 }
 
 type Stage = 
@@ -77,6 +82,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   // Rating & Review states
   const [selectedTier, setSelectedTier] = useState<RatingTier>('excellent');
   const [reviewComment, setReviewComment] = useState<string>('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
 
   useEffect(() => {
     if (post) {
@@ -209,15 +215,47 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
   };
 
   const handleSubmitReviewAndComplete = async () => {
-    const updated = await confirmServiceCompletionAndReview({
-      post: activePost,
-      ratingTier: selectedTier,
-      reviewComment,
-      reviewerUser: currentUser,
-    });
-    setActivePost(updated);
-    if (onConfirmPost) onConfirmPost(updated);
-    setStage('receipt_view');
+    if (!activePost) return;
+    setIsSubmittingReview(true);
+    try {
+      const updated = await confirmServiceCompletionAndReview({
+        post: activePost,
+        ratingTier: selectedTier,
+        reviewComment,
+        reviewerUser: currentUser,
+      });
+      setActivePost(updated);
+      if (onConfirmPost) onConfirmPost(updated);
+
+      // 02. සාර්ථකව සේවාව අවසන් ලෙස තහවුරු කළ පසු දැන්වීම හා ඊට අදාළ පණිවිඩ ඉවත් කිරීම
+      if (activePost.id) {
+        // 1. Blacklist locally so it vanishes immediately from all views & feeds
+        addDeletedPostId(activePost.id);
+
+        // 2. Clear any localStorage messenger history for this post & its partners
+        try {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && (k.includes(activePost.id) || k.startsWith(`sahaya_messenger_hist_v2_${activePost.id}`))) {
+              localStorage.removeItem(k);
+            }
+          }
+        } catch (_) {}
+
+        // 3. Dispatch global events
+        window.dispatchEvent(new Event('sahaya_post_deleted'));
+        window.dispatchEvent(new CustomEvent('sahaya_chat_cleared', { detail: { postId: activePost.id } }));
+
+        // 4. Firestore Database එකෙන් චැට් පණිවිඩ සහ දැන්වීම ඉවත් කිරීම
+        await cleanupQuickServicePostAndMessages(activePost.id);
+      }
+
+      setStage('receipt_view');
+    } catch (err) {
+      console.error('Failed to complete service and clean up:', err);
+    } finally {
+      setIsSubmittingReview(false);
+    }
   };
 
   return (
@@ -652,9 +690,17 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
 
             <button
               onClick={handleSubmitReviewAndComplete}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs rounded-2xl shadow-md cursor-pointer active:scale-95"
+              disabled={isSubmittingReview}
+              className="w-full py-3 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 text-white font-black text-xs rounded-2xl shadow-md cursor-pointer active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              සම්පූර්ණ කර නිල ඉන්වොයිසිය බලන්න (View Official Invoice)
+              {isSubmittingReview ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>සුරකිමින් හා ඉවත් කරමින් පවතී...</span>
+                </>
+              ) : (
+                <span>සම්පූර්ණ කර නිල ඉන්වොයිසිය බලන්න (View Official Invoice)</span>
+              )}
             </button>
           </div>
         )}
@@ -662,6 +708,14 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
         {/* STAGE 6: OFFICIAL 9-DIGIT DIGITAL SETTLEMENT INVOICE */}
         {stage === 'receipt_view' && (
           <div className="space-y-4 animate-fadeIn">
+            {/* Success notice: post and messages removed */}
+            <div className="p-3.5 bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-400 dark:border-emerald-700 rounded-2xl flex items-center gap-2.5 text-xs font-black text-emerald-900 dark:text-emerald-200 shadow-sm animate-fadeIn">
+              <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>
+                🎉 සේවාව සාර්ථකව අවසන් කර Rating & Feedback ලබාදෙන ලදී! දැන්වීම සහ ඊට අදාළ චැට් පණිවිඩ පද්ධතියෙන් ඉවත් කරන ලදී.
+              </span>
+            </div>
+
             <div className="bg-white dark:bg-[#071911] border-2 border-emerald-500 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 relative overflow-hidden">
               
               {/* Header with App Name & Logo */}
