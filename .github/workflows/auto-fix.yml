@@ -1,0 +1,194 @@
+name: Auto Fix Bugs & Push to Main
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/auto-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Apply All Code Fixes
+        run: |
+          cat << 'EOF' > apply_fixes.mjs
+          import fs from 'fs';
+          import path from 'path';
+
+          const ROOT = process.cwd();
+          const readFileSafe = (p) => fs.existsSync(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), 'utf8') : null;
+          const writeFileSafe = (p, c) => {
+            const full = path.join(ROOT, p);
+            fs.mkdirSync(path.dirname(full), { recursive: true });
+            fs.writeFileSync(full, c, 'utf8');
+            console.log('Updated:', p);
+          };
+
+          // 1. src/main.tsx (Mount UserModeProvider + Offline-Safe SVG Leaflet Markers)
+          writeFileSafe('src/main.tsx', `import { StrictMode } from 'react';
+          import { createRoot } from 'react-dom/client';
+          import App from './App';
+          import { ErrorBoundary } from './components/ErrorBoundary';
+          import { UserModeProvider } from './context/UserModeContext';
+          import { initSirenSettings } from './utils/sirenAudio';
+          import './index.css';
+          import 'leaflet/dist/leaflet.css';
+          import L from 'leaflet';
+
+          const MARKER_SVG_URI = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41"><path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/><circle cx="12.5" cy="12.5" r="5" fill="#ffffff"/></svg>');
+          const SHADOW_SVG_URI = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="41" height="41" viewBox="0 0 41 41"><ellipse cx="13" cy="37" rx="10" ry="3.5" fill="rgba(0,0,0,0.28)"/></svg>');
+
+          delete (L.Icon.Default.prototype as any)._getIconUrl;
+          L.Icon.Default.mergeOptions({
+            iconRetinaUrl: MARKER_SVG_URI,
+            iconUrl: MARKER_SVG_URI,
+            shadowUrl: SHADOW_SVG_URI,
+          });
+
+          initSirenSettings();
+
+          const rootElement = document.getElementById('root');
+          if (rootElement) {
+            createRoot(rootElement).render(
+              <StrictMode>
+                <ErrorBoundary>
+                  <UserModeProvider>
+                    <App />
+                  </UserModeProvider>
+                </ErrorBoundary>
+              </StrictMode>
+            );
+          }
+          `);
+
+          // 2. src/types/index.ts (Merge duplicate ServiceReview & extend status/serviceStage)
+          let typesIdx = readFileSafe('src/types/index.ts');
+          if (typesIdx) {
+            const unified = `export interface ServiceReview {
+            id: string;
+            postId?: string;
+            postCode?: string;
+            reviewerId?: string;
+            reviewerName?: string;
+            helperId?: string;
+            helperName?: string;
+            helperNicMasked?: string;
+            ratingTier?: RatingTier;
+            ratingPointsAdded?: number;
+            userId?: string;
+            userName?: string;
+            userPhotoUrl?: string;
+            rating?: number;
+            comment?: string;
+            createdAt?: string;
+            createdAtMs?: number;
+            isRedAlert?: boolean;
+          }`;
+            let count = 0;
+            typesIdx = typesIdx.replace(/export interface ServiceReview\s*\{[\s\S]*?\}/g, () => (++count === 1 ? unified : '// Consolidated ServiceReview'));
+            typesIdx = typesIdx.replace(/status\?:\s*'active'\s*\|\s*'confirmed'\s*\|\s*'completed'\s*\|\s*'deleted'\s*\|\s*'hidden';/, "status?: 'active' | 'confirmed' | 'completed' | 'resolved' | 'filled' | 'deleted' | 'hidden';");
+            typesIdx = typesIdx.replace(/serviceStage\?:\s*'open'\s*\|\s*'accepted'\s*\|\s*'in_progress'\s*\|\s*'bill_submitted'\s*\|\s*'completed';/, "serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed' | 'resolved' | 'filled';");
+            writeFileSafe('src/types/index.ts', typesIdx);
+          }
+
+          // 3. src/lib/firebase.ts (QuerySnapshot typing)
+          let fb = readFileSafe('src/lib/firebase.ts');
+          if (fb) {
+            if (!fb.includes('QuerySnapshot')) {
+              fb = fb.replace(/onSnapshot,/, 'onSnapshot,\n  QuerySnapshot,\n  DocumentData,');
+            }
+            fb = fb.replace(/onSnapshot\(([^,]+),\s*\((snap|snapshot)\)\s*=>\s*\{/g, 'onSnapshot($1, ($2: QuerySnapshot<DocumentData>) => {');
+            fb = fb.replace(/\b(snap|snapshot)\.docs\b/g, '($1 as QuerySnapshot<DocumentData>).docs');
+            writeFileSafe('src/lib/firebase.ts', fb);
+          }
+
+          // 4. src/utils/geoUtils.ts (Add 'city' to category)
+          let geo = readFileSafe('src/utils/geoUtils.ts');
+          if (geo) {
+            geo = geo.replace(/category:\s*('village'\s*\|\s*'town'\s*\|\s*'road'\s*\|\s*'temple'\s*\|\s*'junction'\s*\|\s*'landmark')/g, "category: $1 | 'city'");
+            geo = geo.replace(/category:\s*('landmark'\s*\|\s*'junction'\s*\|\s*'town'\s*\|\s*'hospital'\s*\|\s*'school'\s*\|\s*'station'\s*\|\s*'road'\s*\|\s*'other')/g, "category: $1 | 'city' | 'village' | 'temple'");
+            writeFileSafe('src/utils/geoUtils.ts', geo);
+          }
+
+          // 5. src/types/job.ts, src/types/accommodation.ts, src/utils/jobStorage.ts
+          let jobTypes = readFileSafe('src/types/job.ts');
+          if (jobTypes) {
+            if (!jobTypes.includes('export interface JobComment')) {
+              jobTypes += `\nexport interface JobComment {\n  id: string;\n  jobId: string;\n  userId: string;\n  userName: string;\n  userPhoto?: string;\n  text: string;\n  createdAtMs: number;\n}\n`;
+            }
+            if (!jobTypes.includes('commentsCount?: number')) {
+              jobTypes = jobTypes.replace(/viewsCount\??:\s*number;/g, 'viewsCount?: number;\n  commentsCount?: number;');
+            }
+            writeFileSafe('src/types/job.ts', jobTypes);
+          }
+
+          let accTypes = readFileSafe('src/types/accommodation.ts');
+          if (accTypes && !accTypes.includes('preferredGender')) {
+            accTypes = accTypes.replace(/export interface AccommodationListing\s*\{/, "export interface AccommodationListing {\n  preferredGender?: 'any' | 'male' | 'female' | 'boys' | 'girls' | 'couples' | 'family' | string;\n  commentsCount?: number;");
+            accTypes = accTypes.replace(/export interface AccommodationFilterOptions\s*\{/, "export interface AccommodationFilterOptions {\n  preferredGender?: string;");
+            writeFileSafe('src/types/accommodation.ts', accTypes);
+          }
+
+          let jobStorage = readFileSafe('src/utils/jobStorage.ts');
+          if (jobStorage && !jobStorage.includes('export type { JobComment }')) {
+            jobStorage = jobStorage.replace(/import\s*\{([^}]*JobComment[^}]*)\}\s*from\s*'..\/types\/job';/, "import {$1} from '../types/job';\nexport type { JobComment };");
+            writeFileSafe('src/utils/jobStorage.ts', jobStorage);
+          }
+
+          // 6. src/utils/serviceWorkflowManager.ts
+          let swm = readFileSafe('src/utils/serviceWorkflowManager.ts');
+          if (swm) {
+            swm = swm.replace(/post\.serviceStage\s*===\s*'resolved'/g, "(post.serviceStage as string) === 'resolved'");
+            swm = swm.replace(/post\.serviceStage\s*===\s*'filled'/g, "(post.serviceStage as string) === 'filled'");
+            swm = swm.replace(/post\.status\s*===\s*'resolved'/g, "(post.status as string) === 'resolved'");
+            swm = swm.replace(/post\.status\s*===\s*'filled'/g, "(post.status as string) === 'filled'");
+            writeFileSafe('src/utils/serviceWorkflowManager.ts', swm);
+          }
+
+          // 7. React Hooks Order (#310) in src/components/
+          const compDir = path.join(ROOT, 'src/components');
+          if (fs.existsSync(compDir)) {
+            const hookRegex = /\b(useState|useEffect|useMemo|useCallback|useRef|useContext)\s*(<[^>]*>)?\s*\(/;
+            const earlyReturnRegex = /^\s*if\s*\([^)]+\)\s*return\s+null;\s*$/m;
+            for (const f of fs.readdirSync(compDir).filter(x => x.endsWith('.tsx'))) {
+              const rel = path.join('src/components', f);
+              const c = readFileSafe(rel);
+              if (!c) continue;
+              const m = earlyReturnRegex.exec(c);
+              if (!m) continue;
+              const after = c.slice(m.index + m[0].length);
+              const hm = hookRegex.exec(after);
+              if (hm && hm.index < 1500) {
+                const without = c.slice(0, m.index) + c.slice(m.index + m[0].length);
+                const retIdx = without.indexOf('\n  return (', m.index);
+                if (retIdx !== -1) {
+                  writeFileSafe(rel, without.slice(0, retIdx) + '\n  ' + m[0].trim() + '\n' + without.slice(retIdx));
+                }
+              }
+            }
+          }
+          EOF
+          node apply_fixes.mjs
+          rm apply_fixes.mjs
+
+      - name: Commit and Push Fixes to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || (git commit -m "fix: resolve React Error #310, TypeScript errors, UserModeProvider mount, and offline Leaflet markers" && git push origin main)
