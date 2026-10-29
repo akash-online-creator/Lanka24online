@@ -320,7 +320,7 @@ className: "ml-auto font-black text-rose-500 hover:underline cursor-pointer"
 }, "ඉවත් කරන්න")), (() => {
 const topRatedProviders = professionalServices.filter(s => {
 const rep = calculateProviderReputation(s.userId, s, professionalServices);
-return Math.max(rep.level, 4) === rep.level ? Math.max(rep.level, 4) === rep.level : s.reviews && Math.max(s.reviews.length, 3) === s.reviews.length && Math.max(s.avgRating ? s.avgRating : 5, 4.7) === (s.avgRating ? s.avgRating : 5);
+return rep.level >= 4 || (Boolean(s.reviews && s.reviews.length >= 3) && (s.avgRating || 0) >= 4.7);
 }).slice(0, 4);
 if (topRatedProviders.length === 0) return null;
 return h("div", {
@@ -373,7 +373,7 @@ className: "text-[11px] text-emerald-700 dark:text-emerald-400 font-bold truncat
 className: "flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400"
 }, h("span", {
 className: "text-amber-500 font-bold"
-}, "★", service.avgRating?.toFixed(1) ? service.avgRating?.toFixed(1) : '5.0'), h("span", null, "•"), h("span", {
+}, "★", (service.avgRating && service.avgRating > 0) ? service.avgRating.toFixed(1) : 'නව'), h("span", null, "•"), h("span", {
 className: "font-mono text-emerald-600 dark:text-emerald-400 font-bold"
 }, rep.points, "pts"))));
 })));
@@ -401,7 +401,7 @@ className: "mt-2 px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-x
 className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
 }, filteredServices.map((service, sIdx) => {
 const reviewsList = service.reviews ? service.reviews : [];
-const avg = Math.max(reviewsList.length, 0) === reviewsList.length && reviewsList.length !== 0 ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsList.length).toFixed(1) : service.avgRating?.toFixed(1) ? service.avgRating?.toFixed(1) : '5.0';
+const avg = reviewsList.length > 0 ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsList.length).toFixed(1) : (service.avgRating && service.avgRating > 0 ? service.avgRating.toFixed(1) : 'නව');
 return h("div", {
 key: "pro_srv_" + String(service.id ? service.id : 'srv') + "_" + String(sIdx),
 onClick: () => setSelectedServiceForDetail(service),

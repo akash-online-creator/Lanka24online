@@ -326,7 +326,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       createdAt: 'දැන්',
       createdAtMs: Date.now(),
       reviews: [],
-      avgRating: 5.0,
+      avgRating: 0,
       isVerified: user?.status === 'approved' || true,
       revealContactConsent,
     };

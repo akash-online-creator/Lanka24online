@@ -197,7 +197,7 @@ export function getProviderCompletedJobsCount(userOrId?: User | string | null): 
   if (uid.includes('920456') || uid.includes('nimal')) return 16; // Silver Pro
   if (uid.includes('890123') || uid.includes('kavindu')) return 8; // Bronze Pro
   if (uid.includes('850789') || uid.includes('anoma')) return 54; // 5-Star Legend
-  return 2;
+  return 0;
 }
 
 /**
@@ -250,13 +250,15 @@ export function calculateProviderReputation(
 
   const totalReviewsCount = aggregatedReviews.length;
   const ratingSum = aggregatedReviews.reduce((sum, r) => sum + (r.rating || 5), 0);
-  const avgRating = totalReviewsCount > 0 ? Number((ratingSum / totalReviewsCount).toFixed(1)) : (service?.avgRating || 5.0);
+  const avgRating = totalReviewsCount > 0 
+    ? Number((ratingSum / totalReviewsCount).toFixed(1)) 
+    : (service?.avgRating && service.avgRating > 0 ? service.avgRating : 0);
   const fiveStarCount = aggregatedReviews.filter(r => r.rating === 5).length;
   const completedJobsCount = getProviderCompletedJobsCount(targetId);
 
   // Points Calculation Formula:
-  // Base points + (Jobs * 25) + (5-Star Reviews * 20) + (Other Reviews * 10)
-  let points = 50 + (completedJobsCount * 25) + (fiveStarCount * 20) + ((totalReviewsCount - fiveStarCount) * 10);
+  // (Jobs * 25) + (5-Star Reviews * 20) + (Other Reviews * 10)
+  let points = (completedJobsCount * 25) + (fiveStarCount * 20) + ((totalReviewsCount - fiveStarCount) * 10);
   if (avgRating >= 4.9 && completedJobsCount >= 50) points += 200;
 
   // Determine Level

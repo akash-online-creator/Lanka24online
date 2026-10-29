@@ -1261,18 +1261,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       ...newService,
       id: `service_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       createdAt: new Date().toISOString(),
-      rating: 5.0,
-      reviewsCount: 1,
-      reviews: [
-        {
-          id: `rev_${Date.now()}`,
-          userId: user.id,
-          userName: user.name,
-          rating: 5,
-          comment: 'විශිෂ්ට සේවාවක්! සහය සේවා පද්ධතිය මඟින් සහතික කරන ලදී.',
-          createdAt: new Date().toISOString(),
-        }
-      ],
+      rating: 0,
+      reviewsCount: 0,
+      reviews: [],
     };
 
     const updated = [service, ...professionalServices];

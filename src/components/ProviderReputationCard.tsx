@@ -48,7 +48,7 @@ export const ProviderReputationCard: React.FC<ProviderReputationCardProps> = ({
         <span>{levelConfig.badgeTitle}</span>
         <div className="flex items-center gap-1 bg-black/30 px-2 py-0.5 rounded-full text-[11px] font-bold">
           <Star className="w-3 h-3 text-amber-300 fill-amber-300" />
-          <span>{reputation.avgRating.toFixed(1)}</span>
+          <span>{reputation.totalReviewsCount > 0 ? reputation.avgRating.toFixed(1) : 'නව'}</span>
         </div>
       </div>
     );
@@ -88,11 +88,11 @@ export const ProviderReputationCard: React.FC<ProviderReputationCardProps> = ({
         <div className="flex flex-col items-end">
           <div className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-400/40 px-3.5 py-1.5 rounded-2xl text-amber-300 font-black text-sm sm:text-base shadow-inner">
             <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-            <span>{reputation.avgRating.toFixed(1)}</span>
+            <span>{reputation.totalReviewsCount > 0 ? reputation.avgRating.toFixed(1) : 'නව (New)'}</span>
             <span className="text-xs font-normal text-amber-200/80">({reputation.totalReviewsCount} Reviews)</span>
           </div>
           <span className="text-[10px] text-slate-400 mt-1 font-semibold">
-            {reputation.fiveStarCount}x ⭐️⭐️⭐️⭐️⭐️ පැසසුම්
+            {reputation.totalReviewsCount > 0 ? `${reputation.fiveStarCount}x ⭐️⭐️⭐️⭐️⭐️ පැසසුම්` : 'තවමත් පැසසුම් නොමැත'}
           </span>
         </div>
       </div>
@@ -183,17 +183,6 @@ export const ProviderReputationCard: React.FC<ProviderReputationCardProps> = ({
           </p>
         </div>
       )}
-
-      {/* Lock-in Reputation Protection Warning / Value Retention */}
-      <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-3.5 my-3 flex items-start gap-3 text-xs leading-relaxed text-emerald-200">
-        <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-black text-emerald-100 block mb-0.5">
-            ප්‍රතිරූපය හා ගනුදෙනුකරුවන් රැකගැනීමේ අගය (Reputation Lock-in):
-          </span>
-          {reputation.lockInValueReasonSi}
-        </div>
-      </div>
 
       {/* Toggle View All 5 Levels Ladder */}
       <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between">
