@@ -29,7 +29,9 @@ import {
   MapPin,
   Compass,
   Navigation,
-  Mic
+  Mic,
+  VolumeX,
+  EyeOff
 } from 'lucide-react';
 import { 
   GroupItem, 
@@ -113,6 +115,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   const [addPhoneSuccess, setAddPhoneSuccess] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [lastSentTime, setLastSentTime] = useState<number>(0);
 
   // Check if current user is an admin
   const currentUserId = currentUser?.userId || currentUser?.id || '';
@@ -125,10 +128,15 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     (group?.createdBy as any)?.id === currentUserId ||
     (group?.createdBy as any)?.userId === currentUserId ||
     (currentUser as any)?.role === 'admin';
-  const canSendMessages = isAdmin || Boolean(group?.permissions?.sendNewMessages);
-  const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings);
-  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers);
+
+  const isMuted = Boolean(currentMemberRecord?.isMuted) && !isAdmin;
+  const canSendMessages = !isMuted && (isAdmin || (group?.permissions?.sendMessages !== false && group?.permissions?.sendNewMessages !== false));
+  const canSendMedia = !isMuted && (isAdmin || group?.permissions?.sendMedia !== false);
+  const canPinMessages = isAdmin || group?.permissions?.pinMessages !== false;
+  const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings) || group?.permissions?.changeChatInfo !== false;
+  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers) || group?.permissions?.addMembers !== false;
   const canInviteViaLink = isAdmin || Boolean(group?.permissions?.inviteViaLinkOrQr);
+  const slowModeSec = group?.permissions?.slowMode || 0;
 
   // Sync group, messages, and join requests when prop or remote Firestore data changes
   useEffect(() => {
@@ -158,17 +166,42 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Quick Emojis
-  const quickEmojis = ['🤝', '👍', '🙏', '❤️', '🌿', '🎉', '🔥', '👏', '💡', '📍', '⏱️', '🛠️', '☕', '😊', '✅', '⭐'];
+  // Quick Emojis based on Telegram reactionsSetting
+  const allQuickEmojis = ['🤝', '👍', '🙏', '❤️', '🌿', '🎉', '🔥', '👏', '💡', '📍', '⏱️', '🛠️', '☕', '😊', '✅', '⭐'];
+  const reactionsSetting = group?.reactionsSetting || 'all';
+  const quickEmojis = reactionsSetting === 'off' 
+    ? [] 
+    : reactionsSetting === 'some' 
+      ? ['👍', '❤️', '🙏', '👏', '🤝', '🎉'] 
+      : allQuickEmojis;
+
+  const checkSlowMode = (): boolean => {
+    if (!isAdmin && slowModeSec > 0) {
+      const elapsed = Math.floor((Date.now() - lastSentTime) / 1000);
+      if (elapsed < slowModeSec) {
+        const remaining = slowModeSec - elapsed;
+        alert(`⏱️ Slow Mode සක්‍රීයයි: කරුණාකර තවත් තත්පර ${remaining} ක් රැඳී සිටින්න (Slow mode cooldown active).`);
+        return false;
+      }
+    }
+    return true;
+  };
 
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputText.trim()) return;
 
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
     if (!canSendMessages) {
       alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
       return;
     }
+
+    if (!checkSlowMode()) return;
 
     const newMessage: GroupMessage = {
       id: `gmsg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -186,14 +219,27 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
     setInputText('');
+    setLastSentTime(Date.now());
   };
 
   // Send Map Location Message
   const handleSendLocation = (loc: GroupMessageLocation) => {
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
     if (!canSendMessages) {
       alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
       return;
     }
+
+    if (!canSendMedia) {
+      alert('කණ්ඩායම් පරිපාලක විසින් Media (ස්ථාන බෙදාගැනීම) අත්හිටුවා ඇත.');
+      return;
+    }
+
+    if (!checkSlowMode()) return;
 
     const newMessage: GroupMessage = {
       id: `gmsg_loc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -211,14 +257,27 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
+    setLastSentTime(Date.now());
   };
 
   // Send Voice Note Audio Message
   const handleSendVoiceAudio = (audioUrl: string, durationSec: number) => {
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
     if (!canSendMessages) {
       alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
       return;
     }
+
+    if (!canSendMedia) {
+      alert('කණ්ඩායම් පරිපාලක විසින් Media (හඬ පණිවිඩ) යැවීම අත්හිටුවා ඇත.');
+      return;
+    }
+
+    if (!checkSlowMode()) return;
 
     const newMessage: GroupMessage = {
       id: `gmsg_voice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -238,11 +297,12 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
     setIsRecordingVoice(false);
+    setLastSentTime(Date.now());
   };
 
   const handleTogglePin = (msgId: string) => {
-    if (!canEditSettings && !isAdmin) {
-      alert('පණිවිඩ Pin කිරීමට පරිපාලක අවසර අවශ්‍යයි.');
+    if (!canPinMessages && !isAdmin) {
+      alert('පණිවිඩ Pin කිරීමට පරිපාලක අවසර ලබාදී නොමැත.');
       return;
     }
     const updated = togglePinGroupMessage(group.id, msgId);
@@ -386,7 +446,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
         aria-modal="true"
       >
         {/* Chat Room Top Header */}
-        <div className="p-3.5 sm:p-4 border-b border-indigo-100 dark:border-zinc-800 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between shrink-0 shadow-md">
+        <div 
+          style={{
+            background: group.appearanceColor 
+              ? `linear-gradient(135deg, ${group.appearanceColor}, #1e1b4b)` 
+              : undefined
+          }}
+          className="p-3.5 sm:p-4 border-b border-indigo-100 dark:border-zinc-800 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between shrink-0 shadow-md"
+        >
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
               <img
@@ -520,12 +587,33 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                 </div>
               </div>
 
-              {messages.length === 0 ? (
-                <div className="text-center py-8 text-zinc-400 text-xs">
-                  තවමත් පණිවිඩ නොමැත. සංවාදය ආරම්භ කිරීමට පහතින් පණිවිඩයක් යවන්න.
+              {/* Chat History Notice if hidden */}
+              {group?.chatHistoryVisible === false && !isAdmin && (
+                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 text-center flex items-center justify-center gap-1.5 border border-zinc-200 dark:border-zinc-700 shadow-2xs">
+                  <EyeOff className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>පෙර පැරණි පණිවිඩ නව සාමාජිකයින්ට නොපෙනෙන පරිදි සඟවා ඇත (Chat History Hidden).</span>
                 </div>
-              ) : (
-                messages.map((msg, mIdx) => {
+              )}
+
+              {/* Filter messages if chat history is hidden for regular members */}
+              {(() => {
+                const displayedMessages = messages.filter((msg) => {
+                  if (isAdmin || group?.chatHistoryVisible !== false) return true;
+                  if (!currentMemberRecord?.joinedAt) return true;
+                  const joinTimestamp = new Date(currentMemberRecord.joinedAt).getTime();
+                  if (isNaN(joinTimestamp)) return true;
+                  return (msg.createdAtMs || 0) >= joinTimestamp;
+                });
+
+                if (displayedMessages.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-zinc-400 text-xs">
+                      තවමත් පණිවිඩ නොමැත. සංවාදය ආරම්භ කිරීමට පහතින් පණිවිඩයක් යවන්න.
+                    </div>
+                  );
+                }
+
+                return displayedMessages.map((msg, mIdx) => {
                   const isMe = msg.senderId === currentUserId;
                   const isMsgAdmin = msg.senderRole === 'admin';
 
@@ -616,31 +704,38 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                       </div>
                     </div>
                   );
-                })
-              )}
+                });
+              })()}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Emoji Bar */}
-            <div className="px-3 py-1.5 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 overflow-x-auto shrink-0 scrollbar-none">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 mr-1">
-                Emojis:
-              </span>
-              {quickEmojis.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => setInputText((prev) => prev + emoji)}
-                  className="w-7 h-7 rounded-lg hover:bg-indigo-50 dark:hover:bg-zinc-800 flex items-center justify-center text-sm transition-transform active:scale-125 cursor-pointer shrink-0"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            {reactionsSetting !== 'off' && quickEmojis.length > 0 && (
+              <div className="px-3 py-1.5 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 overflow-x-auto shrink-0 scrollbar-none">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 mr-1">
+                  Emojis:
+                </span>
+                {quickEmojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setInputText((prev) => prev + emoji)}
+                    className="w-7 h-7 rounded-lg hover:bg-indigo-50 dark:hover:bg-zinc-800 flex items-center justify-center text-sm transition-transform active:scale-125 cursor-pointer shrink-0"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Message Input & Send */}
             <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-              {canSendMessages ? (
+              {isMuted ? (
+                <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-center text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center justify-center gap-2 shadow-xs">
+                  <VolumeX className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>ඔබව මෙම කණ්ඩායම තුළ පරිපාලක විසින් නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.</span>
+                </div>
+              ) : canSendMessages ? (
                 isRecordingVoice ? (
                   <AudioVoiceRecorder
                     senderName={currentUser?.name || 'User'}
@@ -651,31 +746,35 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                 ) : (
                   <form onSubmit={handleSend} className="flex items-center gap-2">
                     {/* Share Location on Map Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsMapPickerOpen(true)}
-                      className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
-                      title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
-                    >
-                      <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      <span className="text-xs font-bold hidden sm:inline">ස්ථානය</span>
-                    </button>
+                    {canSendMedia && (
+                      <button
+                        type="button"
+                        onClick={() => setIsMapPickerOpen(true)}
+                        className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                        title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
+                      >
+                        <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-xs font-bold hidden sm:inline">ස්ථානය</span>
+                      </button>
+                    )}
 
                     {/* Voice Note Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsRecordingVoice(true)}
-                      className="p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
-                      title="හඬ පණිවිඩයක් පටිගත කරන්න (Voice Note)"
-                    >
-                      <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    </button>
+                    {canSendMedia && (
+                      <button
+                        type="button"
+                        onClick={() => setIsRecordingVoice(true)}
+                        className="p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                        title="හඬ පණිවිඩයක් පටිගත කරන්න (Voice Note)"
+                      >
+                        <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      </button>
+                    )}
 
                     <input
                       type="text"
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
-                      placeholder="පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."
+                      placeholder={slowModeSec > 0 && !isAdmin ? `පණිවිඩය ටයිප් කරන්න (Slow Mode: ${slowModeSec}s)...` : "පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."}
                       className="flex-1 px-4 py-2.5 rounded-2xl border-2 border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-medium text-xs sm:text-sm outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100"
                     />
                     <button
