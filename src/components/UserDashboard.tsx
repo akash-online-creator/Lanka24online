@@ -1330,9 +1330,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
-  if (!prev) return null;
-
-  if (!prev) return null;
 
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
