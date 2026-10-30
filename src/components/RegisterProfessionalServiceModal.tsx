@@ -100,7 +100,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       if (geo) {
         const nameToUse = geo.shortDisplaySi || geo.townSi || geo.districtSi || 'තෝරාගත් ස්ථානය';
         setLocationName(nameToUse);
-        const fullAddr = geo.fullAddressSi || geo.displayTitleSi || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const fullAddr = geo.fullAddressSi || (geo as any).displayTitleSi || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
         setResolvedAddressDetails(fullAddr);
         if (markerRef.current) {
           markerRef.current.bindPopup(`<div style="font-family: sans-serif; font-size: 12px; font-weight: bold; color: #065f46;">📍 ${fullAddr}</div>`).openPopup();

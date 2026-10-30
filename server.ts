@@ -784,7 +784,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           try {
             const response = await ai.models.generateContent({
               model: modelName,
-              contents,
+              contents: userPrompt,
               config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',

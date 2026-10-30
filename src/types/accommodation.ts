@@ -47,6 +47,7 @@ export interface HouseRentalDetails {
 
 export interface BoardingAnnexDetails {
   targetAudience: TargetAudience;
+  preferredGender?: string;
   roomSharingType: 'single_room' | 'two_sharing' | 'three_sharing' | 'four_sharing' | 'entire_annex';
   maxOccupantsPerRoom?: number;
   bathroomType: 'attached' | 'shared';

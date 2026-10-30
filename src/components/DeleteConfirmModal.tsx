@@ -3,19 +3,25 @@ import { HelpPost } from '../types';
 import { Trash2, AlertTriangle, X, ShieldAlert } from 'lucide-react';
 
 interface DeleteConfirmModalProps {
-  post: HelpPost | null;
+  post?: HelpPost | null;
+  postId?: string;
   isOpen: boolean;
   onClose: () => void;
-  onConfirmDelete: (postId: string) => void;
+  onConfirm?: (postId: string) => void;
+  onConfirmDelete?: (postId: string) => void;
+  language?: any;
 }
 
 export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   post,
+  postId,
   isOpen,
   onClose,
+  onConfirm,
   onConfirmDelete,
 }) => {
-  if (!isOpen || !post || !post.id) return null;
+  const targetId = post?.id || postId;
+  if (!isOpen || !targetId) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
@@ -77,8 +83,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (post?.id) {
-                onConfirmDelete(post.id);
+              if (targetId) {
+                if (onConfirm) onConfirm(targetId);
+                if (onConfirmDelete) onConfirmDelete(targetId);
               }
               onClose();
             }}

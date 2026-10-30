@@ -29,9 +29,11 @@ interface VolunteerSupportModalProps {
   currentUser?: UserType;
   user?: UserType;
   helpPosts: HelpPost[];
-  lang: Language;
+  lang?: Language;
+  language?: any;
   viewerLocation?: LocationOption;
-  onOpenChat: (post: HelpPost) => void;
+  onOpenChat?: (post: HelpPost) => void;
+  onSelectPost?: (post: any) => void;
   onOfferHelpToPost?: (post: HelpPost) => void;
   onOpenOfferModal?: (post: HelpPost) => void;
   onOpenPostDetail?: (post: HelpPost) => void;

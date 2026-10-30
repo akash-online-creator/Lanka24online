@@ -41,7 +41,7 @@ onRejectPost?: (postId: string) => void;
 onViewProfile?: (userIdOrName: string) => void;
 isDemo?: boolean;
 }
-export const PostCard = ({
+export const PostCard: React.FC<PostCardProps> = ({
 post,
 currentUser,
 viewerLocation,

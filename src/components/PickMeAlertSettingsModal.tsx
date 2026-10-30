@@ -34,6 +34,9 @@ interface PickMeAlertSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   language?: Language;
+  currentUser?: any;
+  onUpdateUser?: (updatedUser: any) => void;
+  theme?: any;
 }
 
 export const PickMeAlertSettingsModal: React.FC<PickMeAlertSettingsModalProps> = ({

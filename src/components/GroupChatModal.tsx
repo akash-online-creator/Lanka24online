@@ -130,13 +130,24 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     (currentUser as any)?.role === 'admin';
 
   const isMuted = Boolean(currentMemberRecord?.isMuted) && !isAdmin;
-  const canSendMessages = !isMuted && (isAdmin || (group?.permissions?.sendMessages !== false && group?.permissions?.sendNewMessages !== false));
+  const canSendMessages = !isMuted && (isAdmin || ((group?.permissions as any)?.sendMessages !== false && group?.permissions?.sendNewMessages !== false));
   const canSendMedia = !isMuted && (isAdmin || group?.permissions?.sendMedia !== false);
   const canPinMessages = isAdmin || group?.permissions?.pinMessages !== false;
   const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings) || group?.permissions?.changeChatInfo !== false;
-  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers) || group?.permissions?.addMembers !== false;
+  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers) || (group?.permissions as any)?.addMembers !== false;
   const canInviteViaLink = isAdmin || Boolean(group?.permissions?.inviteViaLinkOrQr);
-  const slowModeSec = group?.permissions?.slowMode || 0;
+  const rawSlowMode = group?.permissions?.slowMode;
+  const slowModeSec = (() => {
+    if (!rawSlowMode || rawSlowMode === 'off') return 0;
+    if (typeof rawSlowMode === 'number') return rawSlowMode;
+    if (rawSlowMode === '10s') return 10;
+    if (rawSlowMode === '30s') return 30;
+    if (rawSlowMode === '1m') return 60;
+    if (rawSlowMode === '5m') return 300;
+    if (rawSlowMode === '15m') return 900;
+    const parsed = parseInt(String(rawSlowMode), 10);
+    return isNaN(parsed) ? 0 : parsed;
+  })();
 
   // Sync group, messages, and join requests when prop or remote Firestore data changes
   useEffect(() => {

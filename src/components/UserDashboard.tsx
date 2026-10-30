@@ -282,12 +282,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const filtered = filterNonDeletedPosts(propHelpPosts);
       setLocalHelpPosts(filtered);
       setSelectedPostForDetail((prev) => {
-
+        if (!prev) return null;
         const found = filtered.find((item) => Boolean(item && item.id === prev.id));
         return found ? found : prev;
       });
       setSelectedPostForConfirm((prev) => {
-
+        if (!prev) return null;
         const found = filtered.find((item) => Boolean(item && item.id === prev.id));
         return found ? found : prev;
       });
@@ -1277,7 +1277,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const quickServices = [
     {
       id: 'emergency',
-      title: t.emergencyHelp,
+      title: (t as any).emergencyHelp || (t as any).catEmergencyAid || 'හදිසි ආපදා සහය',
       desc: language === 'en' ? 'Get immediate assistance for life-threatening situations.' : language === 'ta' ? 'உயிருக்கு ஆபத்தான சூழ்நிலைகளுக்கு உடனடி உதவி பெறுங்கள்.' : 'ක්ෂණිකව ජීවිතාරක්ෂක හා හදිසි ආපදා සහය ලබාගන්න.',
       icon: ShieldAlert,
       color: 'from-red-600 to-rose-700',
@@ -1285,7 +1285,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
     {
       id: 'quick_service',
-      title: t.quickService,
+      title: (t as any).quickService || (t as any).catQuickServices || 'ඉක්මන් සේවා',
       desc: language === 'en' ? 'Find skilled workers, drivers, and daily laborers instantly.' : language === 'ta' ? 'திறமையான தொழிலாளர்கள், ஓட்டுநர்களை உடனடியாகக் கண்டறியவும்.' : 'කාර්මිකයින්, රියදුරන් සහ දෛනික සේවකයින් ක්ෂණිකව සොයාගන්න.',
       icon: Wrench,
       color: 'from-amber-500 to-orange-600',
@@ -1293,7 +1293,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
     {
       id: 'find_for_me',
-      title: t.findForMe,
+      title: (t as any).findForMe || (t as any).catFindForMe || 'මට සොයා දෙන්න',
       desc: language === 'en' ? 'Lost an item, pet, or vehicle? Let the community help you search.' : language === 'ta' ? 'பொருளையோ செல்லப்பிராணியையோ இழந்தீர்களா? சமூகம் தேட உதவட்டும்.' : 'නැතිවූ භාණ්ඩ, සුරතලුන් හෝ වාහන සොයා ගැනීමට ප්‍රජා සහය ලබාගන්න.',
       icon: Search,
       color: 'from-blue-600 to-indigo-700',
@@ -1301,7 +1301,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
     {
       id: 'from_me_to_you',
-      title: t.fromMeToYou,
+      title: (t as any).fromMeToYou || (t as any).catFromMeToYou || 'මගෙන් ඔබට',
       desc: language === 'en' ? 'Donate unused goods, books, medicine, or exchange items.' : language === 'ta' ? 'பயன்படுத்தப்படாத பொருட்கள், புத்தகங்களை நன்கொடையாக வழங்கவும்.' : 'භාවිතා නොකරන ද්‍රව්‍ය, පොත්පත්, බෙහෙත් පරිත්‍යාග කරන්න හෝ හුවමාරු කරගන්න.',
       icon: HeartHandshake,
       color: 'from-emerald-600 to-teal-700',
@@ -1309,7 +1309,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
     {
       id: 'blood_donation',
-      title: t.bloodDonationService,
+      title: (t as any).bloodDonationService || 'ලේ පරිත්‍යාග සහන',
       desc: language === 'en' ? 'Emergency blood requests and volunteer donor network.' : language === 'ta' ? 'அவசர இரத்தக் கோரிக்கைகள் மற்றும் தன்னார்வ நன்கொடையாளர் நெட்வொர்க்.' : 'හදිසි ලේ අවශ්‍යතා සහ ස්වේච්ඡා ලේ පරිත්‍යාගශීලීන්ගේ එකමුතුව.',
       icon: Droplet,
       color: 'from-rose-600 to-red-800',
@@ -1317,7 +1317,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     },
     {
       id: 'chat',
-      title: t.directChatService,
+      title: (t as any).directChatService || 'සෘජු සංවාදය',
       desc: language === 'en' ? 'Chat directly with a support services officer.' : language === 'ta' ? 'ஆதரவு சேவை அதிகாரியுடன் நேரடியாக அரட்டையடிக்கவும்.' : 'සහය සේවා නිලධාරියෙකු සමඟ සෘජුව සංවාදයේ යෙදෙන්න.',
       icon: MessageCircle,
       color: 'from-purple-500 to-indigo-600',
@@ -1344,8 +1344,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               setShowDemoRegisterPrompt(true);
               return;
             }
-            if (onViewRedAlertDetail) onViewRedAlertDetail(a);
-            else setSelectedAlertForDetail(a);
+            if (onViewRedAlertDetail) onViewRedAlertDetail(a as any);
+            else setSelectedAlertForDetail(a as any);
           }}
           onOpenCreate={() => {
             if (user?.isDemo) {
@@ -1700,8 +1700,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           allTags={allTags}
-          selectedTagFilter={selectedTagFilter}
-          setSelectedTagFilter={setSelectedTagFilter}
+          selectedTagFilter={selectedTagFilter as any}
+          setSelectedTagFilter={setSelectedTagFilter as any}
           getPostDistance={getPostDistance}
           onOfferSupport={(p) => {
             // 🚀 Demo පරිශීලකයින්ට සේවා ඉල්ලුම් කිරීමට හෝ සහය වීමට පෙර ලියාපදිංචි වීම අනිවාර්යයි
@@ -1953,6 +1953,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={Boolean(selectedPostForConfirm)}
         post={selectedPostForConfirm}
         onClose={() => setSelectedPostForConfirm(null)}
+        onOpenChat={(p) => setSelectedPostForChat(p as any)}
         currentUser={user}
         lang={language}
         onUpdatePost={handleSaveUpdatedPost}

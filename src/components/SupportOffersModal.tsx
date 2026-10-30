@@ -21,14 +21,18 @@ import { sendChatMessageToFirestore } from '../lib/firebase';
 interface SupportOffersModalProps {
   isOpen: boolean;
   onClose: () => void;
+  post?: any;
+  targetPost?: HelpPost | null;
+  currentUser?: any;
   userPosts: HelpPost[];
-  lang: Language;
+  lang?: Language;
+  language?: any;
   viewerLocation?: LocationOption;
   onOpenChat?: (post: HelpPost) => void;
   onOpenConfirm?: (post: HelpPost, reply?: PostReply) => void;
   onSelectHelper?: (post: HelpPost, reply: PostReply) => void;
   onCancelOffer?: (post: HelpPost, reply: PostReply) => void;
-  targetPost?: HelpPost | null;
+  onUpdatePost?: (updatedPost: HelpPost) => void;
 }
 
 interface FlattenedOffer {

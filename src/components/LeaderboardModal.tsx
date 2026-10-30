@@ -17,6 +17,7 @@ export interface LeaderboardModalProps {
   allUsers?: any[];
   currentUser?: any;
   currentUsername?: string;
+  language?: any;
 }
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   isOpen,

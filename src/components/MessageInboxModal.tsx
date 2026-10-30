@@ -447,7 +447,12 @@ const buildDirectThread = (contact: DirectChatContact): ConversationThread => {
     status: 'confirmed' as any,
     isConfirmed: true,
     revealContactConsent: false,
-    replies: []
+    replies: [],
+    transport: '',
+    payment: '',
+    distanceKm: 0,
+    repliesCount: 0,
+    helpersCount: 0,
   };
   return {
     id: roomPostId + '_direct_' + pKey,

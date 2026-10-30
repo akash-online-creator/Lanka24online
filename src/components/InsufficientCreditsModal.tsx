@@ -13,7 +13,8 @@ interface InsufficientCreditsModalProps {
   currentBalance?: number;
   categoryNameSi?: string;
   categoryName?: string;
-  user: User;
+  user?: User | null;
+  currentUser?: User | null;
   language?: Language;
 }
 

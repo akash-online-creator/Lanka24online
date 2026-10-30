@@ -79,7 +79,7 @@ import {
 } from '../utils/notificationManager';
 
 export type FontSizeKey = 'small' | 'normal' | 'medium' | 'large' | 'extra_large';
-export type SettingsTabKey = 'profile' | 'security_2fa' | 'font_size' | 'data_saver' | 'siren_settings';
+export type SettingsTabKey = 'profile' | 'security_2fa' | 'font_size' | 'data_saver' | 'siren_settings' | 'notifications' | 'security' | 'pickme_alerts' | string;
 
 export interface FontSizeOption {
   key: FontSizeKey;
@@ -166,6 +166,7 @@ export interface UserSettingsModalProps {
   currentUser?: User | null;
   onUpdateUser?: (updatedUser: User) => void;
   language?: Language;
+  theme?: any;
   initialTab?: SettingsTabKey;
   helpPosts?: HelpPost[];
   redAlerts?: any[];

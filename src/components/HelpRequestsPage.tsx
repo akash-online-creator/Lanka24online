@@ -810,14 +810,6 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
   }
 
-  if (
-      !currentLocation ||
-      typeof currentLocation.lat !== 'number' ||
-      typeof currentLocation.lng !== 'number' ||
-      typeof alert?.latitude !== 'number' ||
-      typeof alert?.longitude !== 'number'
-    ) return null;
-
   return (
     <div className="w-full max-w-3xl mx-auto py-3 sm:py-5 space-y-4 sm:space-y-6 animate-fadeIn pb-16">
       {/* Toast Notification Alert */}

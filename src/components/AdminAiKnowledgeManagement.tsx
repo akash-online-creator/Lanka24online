@@ -50,7 +50,7 @@ export const AdminAiKnowledgeManagement: React.FC<AdminAiKnowledgeManagementProp
   const [formAnswer, setFormAnswer] = useState('');
   const [formKeywords, setFormKeywords] = useState('');
   const [formCategory, setFormCategory] = useState('general');
-  const [formLang, setFormLang] = useState<'si' | 'en' | 'ta'>('si');
+  const [formLang, setFormLang] = useState<'si' | 'en' | 'ta' | string>('si');
 
   const showNotice = (msg: string) => {
     setNotificationMsg(msg);

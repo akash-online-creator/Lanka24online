@@ -40,7 +40,7 @@ const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 const [selectedSubCategoryName, setSelectedSubCategoryName] = useState(null);
 const [searchQuery, setSearchQuery] = useState('');
 const [dismissedSynonyms, setDismissedSynonyms] = useState([]);
-const [selectedLevel, setSelectedLevel] = useState('all');
+const [selectedLevel, setSelectedLevel] = useState<string | number>('all');
 const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 const [selectedServiceForDetail, setSelectedServiceForDetail] = useState(null);
 const [showReputationModal, setShowReputationModal] = useState(false);
@@ -108,7 +108,7 @@ if (!srv) return false;  // Category filter
   // Level filter
   if (selectedLevel !== 'all') {
     const rep = calculateProviderReputation(srv.userId, srv, localServices);
-    if (rep.level !== selectedLevel) return false;
+    if (String(rep.level) !== String(selectedLevel)) return false;
   }
   // Search query filter with synonym expansion
   if (searchQuery.trim()) {
@@ -446,14 +446,14 @@ const rep = calculateProviderReputation(service.userId, service, professionalSer
 return h("div", {
 className: "flex items-center gap-1.5"
 }, h("span", {
-onClick: e => {
+onClick: (e: any) => {
 e.stopPropagation();
 setReputationModalService(service);
 setShowReputationModal(true);
 },
 className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r " + String(rep.levelConfig.bgGradient) + " text-white shadow-xs cursor-pointer hover:scale-105 transition-transform",
 title: rep.levelConfig.nameSi
-}, h("span", null, rep.levelConfig.icon), h("span", null, "Level", rep.level)), h("div", {
+} as any, h("span", null, rep.levelConfig.icon), h("span", null, "Level", rep.level)), h("div", {
 className: "flex items-center gap-1 text-amber-500 font-bold"
 }, h(Star, {
 className: "w-3.5 h-3.5 fill-amber-400 text-amber-400"
@@ -462,10 +462,10 @@ className: "w-3.5 h-3.5 fill-amber-400 text-amber-400"
 className: "flex items-center gap-2"
 }, canDeleteService(service) && h("button", {
 type: "button",
-onClick: e => handleDeleteService(service.id, e),
+onClick: (e: any) => handleDeleteService(service.id, e),
 className: "p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors",
 title: isAdmin ? "පරිපාලක ලෙස ඉවත් කරන්න (Admin Delete)" : "ඉවත් කරන්න (Delete)"
-}, h(Trash2, {
+} as any, h(Trash2, {
 className: "w-3.5 h-3.5"
 })), h("div", {
 className: "flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-1 transition-transform"

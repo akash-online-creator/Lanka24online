@@ -56,6 +56,7 @@ interface SavedPlacesModalProps {
   currentUser?: User | null;
   currentLocation?: LocationOption;
   language?: Language;
+  onSelectSavedLocation?: (loc: any) => void;
 }
 
 const LOCAL_STORAGE_KEY = 'sahaya_saved_places_v1';

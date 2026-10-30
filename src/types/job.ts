@@ -189,4 +189,5 @@ export interface JobComment {
   userPhoto?: string;
   text: string;
   createdAtMs: number;
+  createdAtStr?: string;
 }

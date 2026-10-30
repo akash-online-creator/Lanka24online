@@ -21,15 +21,14 @@ import firebaseConfigJson from '../../firebase-applet-config.json';
 export type PushCategory = any;
 
 export interface FcmPayloadData {
-
   category: any;
-
   title: string;
-
-  body: string;
-
+  body?: string;
+  message?: string;
+  lat?: any;
+  lng?: any;
+  targetModal?: string;
   alertId?: string;
-
   postId?: string;
 
   groupId?: string;

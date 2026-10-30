@@ -1692,11 +1692,11 @@ export interface PlaceSearchResult {
   id: string;
   titleSi: string;
   titleEn: string;
-  category: 'road' | 'temple' | 'junction' | 'town' | 'village' | 'landmark';
-  villageSi: string;
-  villageEn: string;
-  roadSi: string;
-  roadEn: string;
+  category: 'road' | 'temple' | 'junction' | 'town' | 'village' | 'landmark' | 'city';
+  villageSi?: string;
+  villageEn?: string;
+  roadSi?: string;
+  roadEn?: string;
   townSi: string;
   townEn: string;
   districtSi: string;

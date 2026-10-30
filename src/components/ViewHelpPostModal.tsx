@@ -6,24 +6,24 @@ import { maskName } from '../utils/demoDataMasker';
 import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
 const h = React.createElement;
 export interface ViewHelpPostModalProps {
-post: HelpPost;
-isOpen: boolean;
-onClose: () => void;
-lang?: Language;
-language?: Language;
-viewerLocation?: LocationOption;
-currentLocation?: LocationOption;
-currentUser?: User;
-onOpenChat?: (post: HelpPost) => void;
-onOpenConfirm?: (post: HelpPost) => void;
-onOfferSupport?: (post: HelpPost) => void;
-onEditPost?: (post: HelpPost) => void;
-onDeletePost?: (post: HelpPost) => void;
-onBoostPost?: (post: HelpPost) => void;
-onRequireRegistration?: () => void;
-onAdminModerate?: (post: HelpPost) => void;
+  post: HelpPost | null;
+  isOpen: boolean;
+  onClose: () => void;
+  lang?: Language;
+  language?: Language;
+  viewerLocation?: LocationOption;
+  currentLocation?: LocationOption;
+  currentUser?: User | null;
+  onOpenChat?: (post: HelpPost) => void;
+  onOpenConfirm?: (post: HelpPost) => void;
+  onOfferSupport?: (post: HelpPost) => void;
+  onEditPost?: (post: HelpPost) => void;
+  onDeletePost?: (post: HelpPost) => void;
+  onBoostPost?: (post: HelpPost) => void;
+  onRequireRegistration?: () => void;
+  onAdminModerate?: (post: HelpPost) => void;
 }
-export const ViewHelpPostModal = ({
+export const ViewHelpPostModal: React.FC<ViewHelpPostModalProps> = ({
 post,
 isOpen,
 onClose,

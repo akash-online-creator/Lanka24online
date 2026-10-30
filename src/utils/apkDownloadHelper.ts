@@ -19,7 +19,7 @@ export interface AppUpdateInfo {
 export const GITHUB_REPO_OWNER = 'akash-online-creator';
 export const GITHUB_REPO_NAME = 'Lanka24online';
 
-export const CURRENT_APP_VERSION = 'v1.1.862';
+export const CURRENT_APP_VERSION = 'v1.1.893';
 export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
 export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`;
 
