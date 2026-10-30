@@ -5,12 +5,12 @@
   "redirects": [
     {
       "source": "/download(.*)",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/download/v1.1.880/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
       "permanent": false
     },
     {
       "source": "/app.apk",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/download/v1.1.880/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
       "permanent": false
     }
   ],
