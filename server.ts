@@ -1141,11 +1141,9 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   app.use(express.static(publicPath));
 
   // 📲 APK Direct Download & Version Handlers
-  app.get(['/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download'], (req, res) => {
-    const apkFilePath = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="sahayasewa-latest.apk"');
-    res.sendFile(apkFilePath);
+  app.get(['/download', '/download/*', '/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download', '/app.apk'], (req, res) => {
+    // 🚀 Directly redirect to the latest verified APK binary on GitHub Releases
+    res.redirect(302, 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk');
   });
 
   app.get('/api/app/version', (req, res) => {
