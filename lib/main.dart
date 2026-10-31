@@ -362,8 +362,13 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     final port = await _assetServer.start();
     if (mounted && port > 0) {
       await _controller.loadRequest(Uri.parse('http://127.0.0.1:$port/'));
+      Timer(const Duration(seconds: 4), () {
+        if (mounted && _isLoading) {
+          _controller.loadRequest(Uri.parse('https://supporservice.online/'));
+        }
+      });
     } else {
-      await _controller.loadFlutterAsset('assets/web/index.html');
+      await _controller.loadRequest(Uri.parse('https://supporservice.online/'));
     }
   }
 
@@ -377,6 +382,12 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) => setState(() => _isLoading = false),
+          onWebResourceError: (WebResourceError error) {
+            debugPrint("Web resource error: " + error.description);
+            if (error.isForMainFrame == true) {
+              _controller.loadRequest(Uri.parse('https://supporservice.online/'));
+            }
+          },
           onNavigationRequest: (request) async {
             final url = request.url;
             // WhatsApp, Phone, SMS, Google Maps බාහිර ඇප්ස් මඟින් විවෘත කිරීම
