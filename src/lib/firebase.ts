@@ -11,8 +11,6 @@ import {
   limit,
   startAfter,
   onSnapshot,
-  QuerySnapshot,
-  DocumentData,
   addDoc,
   setDoc,
   updateDoc,
@@ -28,15 +26,16 @@ import {
 import { getStorage, ref as storageRef, deleteObject } from 'firebase/storage';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem } from '../types';
+import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem, BlockedCredential } from '../types';
 
-export type { RedAlertItem, RedAlertComment, SosLiveSession };
+export type { RedAlertItem, RedAlertComment, SosLiveSession, BlockedCredential };
 
 // ==============================================================
 // 🔥 FIREBASE INITIALIZATION & CONSTANTS
 // ==============================================================
 
 export const USERS_COLLECTION = 'users';
+export const BLOCKED_CREDENTIALS_COLLECTION = 'blocked_credentials';
 export const POSTS_COLLECTION = 'posts';
 export const RED_ALERTS_COLLECTION = 'red_alerts';
 export const ISSUES_COLLECTION = 'issues';
@@ -157,7 +156,7 @@ export async function getUserFromFirestore(userIdOrInput: string) {
     const docRef = doc(db, USERS_COLLECTION, cleanInput);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return { id: snap.id, ...(snap.data() as any) };
+      return { id: snap.id, ...snap.data() };
     }
     const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
     const allSnap = await getDocs(collection(db, USERS_COLLECTION));
@@ -376,8 +375,8 @@ export function isBuiltInDummyRecord(record: any): boolean {
 export function filterAndPurgeDummySnapDocs(snap: any): any[] {
   const valid: any[] = [];
   if (!snap) return valid;
-  if (!(snap as QuerySnapshot<DocumentData>).docs) return valid;
-  for (const d of (snap as QuerySnapshot<DocumentData>).docs) {
+  if (!snap.docs) return valid;
+  for (const d of snap.docs) {
     const item = { id: d.id, ...d.data() };
     if (isBuiltInDummyRecord(item)) {
       try {
@@ -392,12 +391,92 @@ export function filterAndPurgeDummySnapDocs(snap: any): any[] {
 
 export function subscribeToUsers(callback: (users: any[]) => void): () => void {
   const colRef = collection(db, USERS_COLLECTION);
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
+  return onSnapshot(colRef, (snap) => {
     const users = filterAndPurgeDummySnapDocs(snap);
     callback(users);
   }, (err) => {
     console.warn("subscribeToUsers error:", err);
   });
+}
+
+// ==============================================================
+// 🚫 BLOCKED CREDENTIALS OPERATIONS (NIC & Phone Blacklist)
+// ==============================================================
+
+export function subscribeToBlockedCredentials(callback: (list: BlockedCredential[]) => void): () => void {
+  const colRef = collection(db, BLOCKED_CREDENTIALS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const list: BlockedCredential[] = [];
+    if (snap && snap.docs) {
+      snap.docs.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) });
+      });
+    }
+    callback(list);
+  }, (err) => {
+    console.warn("subscribeToBlockedCredentials error:", err);
+  });
+}
+
+export async function addBlockedCredentialToFirestore(cred: BlockedCredential): Promise<void> {
+  try {
+    const docId = cred.id || `block_${cred.userId || (cred.nicNumber ? cred.nicNumber.replace(/\s+/g, '') : '') || Date.now()}`;
+    const docRef = doc(db, BLOCKED_CREDENTIALS_COLLECTION, docId);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...cred,
+      id: docId,
+      createdAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, BLOCKED_CREDENTIALS_COLLECTION);
+  }
+}
+
+export async function removeBlockedCredentialFromFirestore(credIdOrKey: string): Promise<void> {
+  try {
+    if (!credIdOrKey) return;
+    const cleanKey = credIdOrKey.trim();
+    // 1. Direct doc delete
+    try {
+      await deleteDoc(doc(db, BLOCKED_CREDENTIALS_COLLECTION, cleanKey));
+    } catch (_) {}
+
+    // 2. Query any docs matching userId, nicNumber, or phone
+    const snap = await getDocs(collection(db, BLOCKED_CREDENTIALS_COLLECTION));
+    if (snap && snap.docs) {
+      const deletePromises: Promise<any>[] = [];
+      snap.docs.forEach((d) => {
+        const data = d.data() as any;
+        if (
+          d.id === cleanKey ||
+          data.userId === cleanKey ||
+          (data.nicNumber && data.nicNumber.toUpperCase() === cleanKey.toUpperCase()) ||
+          (data.phone && data.phone.replace(/\D/g, '') === cleanKey.replace(/\D/g, ''))
+        ) {
+          deletePromises.push(deleteDoc(d.ref));
+        }
+      });
+      await Promise.all(deletePromises);
+    }
+  } catch (err) {
+    console.warn('removeBlockedCredentialFromFirestore error:', err);
+  }
+}
+
+export async function getBlockedCredentialsFromFirestore(): Promise<BlockedCredential[]> {
+  try {
+    const snap = await getDocs(collection(db, BLOCKED_CREDENTIALS_COLLECTION));
+    const list: BlockedCredential[] = [];
+    if (snap && snap.docs) {
+      snap.docs.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) });
+      });
+    }
+    return list;
+  } catch (err) {
+    console.warn('getBlockedCredentialsFromFirestore error:', err);
+    return [];
+  }
 }
 
 // ==============================================================
@@ -470,8 +549,8 @@ export async function fetchHelpPostsPaginated(
 
     const snap = await getDocs(q);
     const posts = filterAndPurgeDummySnapDocs(snap);
-    const newLastDoc = (snap as QuerySnapshot<DocumentData>).docs.length === 0 ? null : (snap as QuerySnapshot<DocumentData>).docs[(snap as QuerySnapshot<DocumentData>).docs.length - 1];
-    const hasMore = (snap as QuerySnapshot<DocumentData>).docs.length === pageSize;
+    const newLastDoc = snap.docs.length === 0 ? null : snap.docs[snap.docs.length - 1];
+    const hasMore = snap.docs.length === pageSize;
 
     return {
       posts,
@@ -536,7 +615,7 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       try {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-          const postData: any = snap.data();
+          const postData = snap.data();
           const extractedUrls: string[] = [];
           if (Array.isArray(postData.images)) extractedUrls.push(...postData.images);
           if (Array.isArray(postData.photos)) extractedUrls.push(...postData.photos);
@@ -580,9 +659,9 @@ export async function cleanupQuickServicePostAndMessages(postId: string): Promis
     try {
       const msgsColRef = collection(db, POSTS_COLLECTION, postId, 'messages');
       const snap = await getDocs(msgsColRef);
-      if (snap && (snap as QuerySnapshot<DocumentData>).docs && (snap as QuerySnapshot<DocumentData>).docs.length > 0) {
+      if (snap && snap.docs && snap.docs.length > 0) {
         const batch = writeBatch(db);
-        (snap as QuerySnapshot<DocumentData>).docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
         await batch.commit();
       }
     } catch (msgErr) {
@@ -679,8 +758,8 @@ export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) 
   if (!postId) return () => {};
   const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
   // Listen without an index-requiring orderBy so missing fields or lack of composite index will never fail
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
-    const msgs = (snap as QuerySnapshot<DocumentData>).docs.map(d => ({ id: d.id, ...d.data() }));
+  return onSnapshot(colRef, (snap) => {
+    const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     // Robust in-memory sort by createdAtMs / createdAt / server timestamp
     msgs.sort((a: any, b: any) => {
       const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -729,7 +808,7 @@ export async function deleteChatMessageForEveryone(
       const postRef = doc(db, POSTS_COLLECTION, postId);
       const postSnap = await getDoc(postRef);
       if (postSnap.exists()) {
-        const postData: any = postSnap.data();
+        const postData = postSnap.data();
         if (Array.isArray(postData.replies)) {
           let modified = false;
           const updatedReplies = postData.replies.map((r: any) => {
@@ -817,8 +896,8 @@ export async function toggleSavePostInFirestore(userId: string, postId: string, 
 
 export function subscribeToUserSavedPosts(userId: string, callback: (postIds: string[]) => void): () => void {
   const colRef = collection(db, USERS_COLLECTION, userId, 'saved_posts');
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
-    const ids = (snap as QuerySnapshot<DocumentData>).docs.map(d => d.id);
+  return onSnapshot(colRef, (snap) => {
+    const ids = snap.docs.map(d => d.id);
     callback(ids);
   }, (err) => {
     console.warn('subscribeToUserSavedPosts error:', err);
@@ -839,14 +918,14 @@ export function subscribeToRedAlerts(callback: (alerts: any[]) => void): () => v
     });
     callback(Array.from(map.values()));
   };
-  const unsub1 = onSnapshot(collection(db, RED_ALERTS_COLLECTION), (snap: any) => {
-    primaryAlerts = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub1 = onSnapshot(collection(db, RED_ALERTS_COLLECTION), (snap) => {
+    primaryAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, (err) => {
     console.warn('subscribeToRedAlerts error:', err);
   });
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, RED_ALERTS_COLLECTION), (snap: any) => {
-    fallbackAlerts = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, RED_ALERTS_COLLECTION), (snap) => {
+    fallbackAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, () => {}) : () => {};
   return () => {
@@ -900,12 +979,12 @@ export async function reportRedAlertAsFake(id: string, reportData?: any) {
     const snap = await getDoc(docRef);
     let reporterUserId = '';
     if (snap.exists()) {
-      const data: any = snap.data();
+      const data = snap.data();
       reporterUserId = data.reportedByUserId || '';
     }
     let existingReports: any[] = [];
     if (snap.exists()) {
-      const data: any = snap.data() || {};
+      const data = snap.data() || {};
       reporterUserId = data.reportedByUserId || '';
       if (Array.isArray(data.fakeReports)) {
         existingReports = data.fakeReports;
@@ -980,7 +1059,7 @@ export async function addReporterUpdateToRedAlert(id: string, updateText: string
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const data: any = snap.data() || {};
+      const data = snap.data() || {};
       if (Array.isArray(data.comments)) {
         existingComments = data.comments;
       }
@@ -1015,7 +1094,7 @@ export async function addCommentToRedAlert(id: string, commentData: any) {
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const data: any = snap.data() || {};
+      const data = snap.data() || {};
       if (Array.isArray(data.comments)) {
         existingComments = data.comments;
       }
@@ -1037,8 +1116,8 @@ export async function addCommentToRedAlert(id: string, commentData: any) {
 
 export function subscribeToSirenSettings(callback: (settings: any) => void): () => void {
   const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'siren_settings');
-  return onSnapshot(docRef, (snap: any) => {
-    if (snap && snap.exists && snap.exists()) {
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
       callback(snap.data());
     } else {
       callback(null);
@@ -1097,9 +1176,9 @@ export async function stopSosLiveSession(sessionId: string, reason?: string): Pr
 
 export function subscribeToSosLiveSession(sessionId: string, callback: (session: any) => void): () => void {
   const docRef = doc(db, 'sos_live_sessions', sessionId);
-  return onSnapshot(docRef, (snap: any) => {
-    if (snap && snap.exists && snap.exists()) {
-      callback({ id: snap.id, ...(snap.data() as any) });
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
+      callback({ id: snap.id, ...snap.data() });
     } else {
       callback(null);
     }
@@ -1111,7 +1190,7 @@ export async function getSosLiveSession(sessionId: string): Promise<any | null> 
     const docRef = doc(db, 'sos_live_sessions', sessionId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return { id: snap.id, ...(snap.data() as any) };
+      return { id: snap.id, ...snap.data() };
     }
     return null;
   } catch (err) {
@@ -1138,15 +1217,15 @@ export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void
     callback(sorted);
   };
 
-  const unsub1 = onSnapshot(collection(db, ISSUES_COLLECTION), (snap: any) => {
-    primaryIssues = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub1 = onSnapshot(collection(db, ISSUES_COLLECTION), (snap) => {
+    primaryIssues = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, (err) => {
     console.warn('subscribeToIssuesFromFirestore error:', err);
   });
 
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, ISSUES_COLLECTION), (snap: any) => {
-    fallbackIssues = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, ISSUES_COLLECTION), (snap) => {
+    fallbackIssues = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, () => {}) : () => {};
 
@@ -1211,7 +1290,7 @@ export async function deleteIssueFromFirestore(issueId: string): Promise<void> {
 
 export function subscribeToMarketplaceItems(callback: (items: any[]) => void): () => void {
   const colRef = collection(db, "marketplace");
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
+  return onSnapshot(colRef, (snap) => {
     const items = filterAndPurgeDummySnapDocs(snap);
     callback(items);
   }, () => {});
@@ -1230,7 +1309,7 @@ export async function deleteMarketplaceItemFromFirestore(id: string) {
 
 export function subscribeToMarketShops(callback: (shops: any[]) => void): () => void {
   const colRef = collection(db, "market_shops");
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
+  return onSnapshot(colRef, (snap) => {
     const shops = filterAndPurgeDummySnapDocs(snap);
     callback(shops);
   }, () => {});
@@ -1267,7 +1346,7 @@ export async function deleteMarketplaceShopFromFirestore(id: string) {
 
 export function subscribeToProfessionalServices(callback: (services: any[]) => void): () => void {
   const colRef = collection(db, "professional_services");
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
+  return onSnapshot(colRef, (snap) => {
     const services = filterAndPurgeDummySnapDocs(snap);
     callback(services);
   }, () => {});
@@ -1351,12 +1430,12 @@ export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) =>
     });
     callback(Array.from(map.values()));
   };
-  const unsub1 = onSnapshot(collection(db, "saved_places"), (snap: any) => {
-    primaryPlaces = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub1 = onSnapshot(collection(db, "saved_places"), (snap) => {
+    primaryPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, () => {});
-  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "saved_places"), (snap: any) => {
-    fallbackPlaces = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "saved_places"), (snap) => {
+    fallbackPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     emitMerged();
   }, () => {}) : () => {};
   return () => {
@@ -1441,8 +1520,8 @@ export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]
   return subscribeMergedEmergencyCollection("volunteer_donors", callback);
 }
 export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
-  return onSnapshot(collection(db, "jobs"), (snap: any) => {
-    callback(snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : []);
+  return onSnapshot(collection(db, "jobs") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
   }, () => {});
 }
 export async function saveJobToFirestore(job: any) {
@@ -1455,8 +1534,8 @@ export async function deleteJobFromFirestore(jobId: string) {
   await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
 }
 export function subscribeToAccommodationsFromFirestore(callback: (items: any[]) => void): () => void {
-  return onSnapshot(collection(db, "accommodations"), (snap: any) => {
-    callback(snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : []);
+  return onSnapshot(collection(db, "accommodations") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
   }, () => {});
 }
 export async function saveAccommodationToFirestore(item: any) {
@@ -1604,8 +1683,8 @@ export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap):
 export function subscribeToDeletedRecordsFromFirestore(callback: (records: DeletedRecordsMap | null) => void): () => void {
   try {
     const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
-    return onSnapshot(docRef, (snap: any) => {
-      if (snap && snap.exists && snap.exists()) {
+    return onSnapshot(docRef as any, (snap: any) => {
+      if (snap.exists()) {
         callback(snap.data() as DeletedRecordsMap);
       } else {
         callback(null);
@@ -1626,10 +1705,10 @@ export const PASSWORD_RESETS_COLLECTION = 'password_reset_requests';
 
 export function subscribeToPasswordResetRequests(callback: (requests: any[]) => void): () => void {
   const colRef = collection(db, PASSWORD_RESETS_COLLECTION);
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
-    const list = (snap as QuerySnapshot<DocumentData>).docs.map(d => ({ id: d.id, ...d.data() }));
+  return onSnapshot(colRef as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     callback(list);
-  }, (err) => {
+  }, (err: any) => {
     console.warn('subscribeToPasswordResetRequests error:', err);
   });
 }
@@ -1682,14 +1761,14 @@ export const VERIFIED_AI_KNOWLEDGE_COLLECTION = 'verified_ai_knowledge';
 export function subscribeToPendingAiQueries(callback: (queries: PendingAiQuery[]) => void): () => void {
   try {
     const q = query(collection(db, PENDING_AI_QUERIES_COLLECTION));
-    return onSnapshot(q as any, (snapshot: any) => {
+    return onSnapshot(q, (snapshot) => {
       const items: PendingAiQuery[] = [];
-      snapshot.forEach((docSnap: any) => {
+      snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
       items.sort((a, b) => new Date(b.askedAt || 0).getTime() - new Date(a.askedAt || 0).getTime());
       callback(items);
-    }, (error: any) => {
+    }, (error) => {
       handleFirestoreError(error, OperationType.LIST, PENDING_AI_QUERIES_COLLECTION);
     });
   } catch (err) {
@@ -1723,14 +1802,14 @@ export async function savePendingAiQuery(queryData: Partial<PendingAiQuery>): Pr
 export function subscribeToVerifiedAiKnowledge(callback: (items: VerifiedAiKnowledgeItem[]) => void): () => void {
   try {
     const q = query(collection(db, VERIFIED_AI_KNOWLEDGE_COLLECTION));
-    return onSnapshot(q as any, (snapshot: any) => {
+    return onSnapshot(q, (snapshot) => {
       const items: VerifiedAiKnowledgeItem[] = [];
-      snapshot.forEach((docSnap: any) => {
+      snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
       items.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
       callback(items);
-    }, (error: any) => {
+    }, (error) => {
       handleFirestoreError(error, OperationType.LIST, VERIFIED_AI_KNOWLEDGE_COLLECTION);
     });
   } catch (err) {
@@ -1803,8 +1882,8 @@ export function subscribeToDisasterReliefFromFirestore(callback: (items: any[]) 
 }
 
 export function subscribeToBarterProposalsFromFirestore(callback: (proposals: any[]) => void): () => void {
-  return onSnapshot(collection(db, "barter_proposals"), (snap: any) => {
-    callback(snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : []);
+  return onSnapshot(collection(db, "barter_proposals") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
   }, () => {});
 }
 
@@ -1816,8 +1895,8 @@ export async function saveBarterProposalToFirestore(proposal: any) {
 
 export function subscribeToJobCommentsFromFirestore(jobId: string, callback: (comments: any[]) => void): () => void {
   if (!jobId) return () => {};
-  return onSnapshot(collection(db, "jobs", jobId, "comments"), (snap: any) => {
-    const list = snap.docs ? snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) : [];
+  return onSnapshot(collection(db, "jobs", jobId, "comments") as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     list.sort((a: any, b: any) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
     callback(list);
   }, () => {});
@@ -1871,9 +1950,9 @@ export function subscribeToCreditBalancesFromFirestore(
   callback: (balancesMap: Record<string, number>) => void
 ): () => void {
   const colRef = collection(db, CREDITS_COLLECTION);
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
+  return onSnapshot(colRef as any, (snap: any) => {
     const map: Record<string, number> = {};
-    (snap as QuerySnapshot<DocumentData>).docs.forEach((d) => {
+    snap.docs.forEach((d: any) => {
       const data: any = d.data();
       const bal = typeof data.balance === 'number' ? data.balance : typeof data.credits === 'number' ? data.credits : undefined;
       if (bal !== undefined) {
@@ -1883,7 +1962,7 @@ export function subscribeToCreditBalancesFromFirestore(
       }
     });
     callback(map);
-  }, (err) => {
+  }, (err: any) => {
     console.warn('subscribeToCreditBalancesFromFirestore notice:', err);
   });
 }
@@ -1912,11 +1991,11 @@ export function subscribeToCreditTransactionsFromFirestore(
   callback: (transactions: any[]) => void
 ): () => void {
   const colRef = collection(db, CREDIT_TRANSACTIONS_COLLECTION);
-  return onSnapshot(colRef, (snap: QuerySnapshot<DocumentData>) => {
-    const list = (snap as QuerySnapshot<DocumentData>).docs.map((d) => ({ id: d.id, ...d.data() }));
+  return onSnapshot(colRef as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
     list.sort((a: any, b: any) => (b.timestampMs || 0) - (a.timestampMs || 0));
     callback(list);
-  }, (err) => {
+  }, (err: any) => {
     console.warn('subscribeToCreditTransactionsFromFirestore notice:', err);
   });
 }
@@ -1938,9 +2017,9 @@ export function subscribeToCustomServiceFeesFromFirestore(
   callback: (feesMap: Record<string, any> | null) => void
 ): () => void {
   const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'service_fees');
-  return onSnapshot(docRef, (snap: any) => {
-    if (snap && snap.exists && snap.exists()) {
-      const data = snap.data();
+  return onSnapshot(docRef as any, (snap: any) => {
+    if (snap.exists()) {
+      const data = snap.data() as any;
       callback(data?.fees || null);
     } else {
       callback(null);

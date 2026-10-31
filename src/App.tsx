@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
+import { User, Language, Theme, HelpPost, Issue, RedAlertItem, BlockedCredential } from './types';
 import { initialUsers, initialHelpPosts } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
@@ -17,6 +17,7 @@ import { DevicePinSetupModal } from './components/DevicePinSetupModal';
 import { getStoredDevicePin } from './utils/devicePinManager';
 import {
   subscribeToUsers,
+  subscribeToBlockedCredentials,
   subscribeToHelpPosts,
   subscribeToRedAlerts,
   subscribeToIssuesFromFirestore,
@@ -30,6 +31,7 @@ import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
+import { checkIsCredentialBlocked } from './utils/blockedCredentialsManager';
 
 async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
@@ -142,6 +144,7 @@ export const App: React.FC = () => {
   });
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>([]);
 
   // Current User Session & Navigation View
 
@@ -268,12 +271,17 @@ export const App: React.FC = () => {
       setIssues(dbIssues || []);
     });
 
+    const unsubscribeBlocked = subscribeToBlockedCredentials((creds) => {
+      setBlockedCredentials(creds || []);
+    });
+
     return () => {
       unsubscribeFcm?.();
       unsubscribeUsers?.();
       unsubscribePosts?.();
       unsubscribeAlerts?.();
       unsubscribeIssues?.();
+      unsubscribeBlocked?.();
     };
   }, []);
 
@@ -327,6 +335,35 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
+  // 🛡️ Real-time Active Session Guard: Kick out if blocked by Admin
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'admin' || currentUser.role === 'super_admin') return;
+
+    const currentNic = currentUser.nic || currentUser.nicNumber || '';
+    const currentPhone = currentUser.whatsappPhone || currentUser.phone || '';
+    const currentUid = currentUser.userId || currentUser.id || '';
+
+    const blockCheck = checkIsCredentialBlocked({
+      nic: currentNic,
+      phone: currentPhone,
+      userId: currentUid,
+      email: currentUser.email,
+    }, blockedCredentials, users);
+
+    const liveMatch = users.find((u) => u && (
+      (currentNic && (u.nic === currentNic || u.nicNumber === currentNic)) ||
+      (currentUid && (u.userId === currentUid || u.id === currentUid)) ||
+      (currentPhone && (u.whatsappPhone === currentPhone || u.phone === currentPhone))
+    ));
+
+    if (blockCheck.isBlocked || (liveMatch && (liveMatch.status === 'blocked' || (liveMatch as any).isBlocked))) {
+      alert('🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කරන ලදී. ඔබව පද්ධතියෙන් ඉවත් කෙරේ.');
+      localStorage.removeItem('sahaya_sewa_session_user');
+      setCurrentUser(null);
+      setActiveView('login');
+    }
+  }, [currentUser, users, blockedCredentials]);
+
   // 🛡️ Strict Login Handler (ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදයෙන් පමණක් ඇතුල් වීමට ඉඩ දීම)
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = (userIdOrNic || '').trim();
@@ -337,6 +374,17 @@ export const App: React.FC = () => {
     }
     if (!cleanPass) {
       throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
+    }
+
+    // 0. Quick Block Check on cleanId
+    const preBlockCheck = checkIsCredentialBlocked({
+      nic: cleanId,
+      phone: cleanId,
+      userId: cleanId,
+    }, blockedCredentials, users);
+
+    if (preBlockCheck.isBlocked) {
+      throw new Error('🚫 මෙම ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
     }
 
     const norm = normalizeNIC(cleanId);
@@ -385,6 +433,18 @@ export const App: React.FC = () => {
     // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
     if (!matchedUser) {
       throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
+    }
+
+    // 🛡️ Matched User Block Check: Ensure blocked user or blacklisted NIC/Phone cannot log in!
+    const blockCheck = checkIsCredentialBlocked({
+      nic: matchedUser.nic || matchedUser.nicNumber || cleanId,
+      phone: matchedUser.whatsappPhone || matchedUser.phone || cleanId,
+      userId: matchedUser.userId || matchedUser.id || cleanId,
+      email: matchedUser.email,
+    }, blockedCredentials, users);
+
+    if (blockCheck.isBlocked || matchedUser.status === 'blocked' || (matchedUser as any).isBlocked) {
+      throw new Error('🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
     }
 
     // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
@@ -445,9 +505,26 @@ export const App: React.FC = () => {
     } else {
       setActiveView('dashboard');
     }
-  }, [users]);
+  }, [users, blockedCredentials]);
+
   // Device PIN Login Success Handler
   const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
+    // 🛡️ Blocked Check for Device PIN Login
+    const blockCheck = checkIsCredentialBlocked({
+      nic: authenticatedUser.nic || authenticatedUser.nicNumber,
+      phone: authenticatedUser.whatsappPhone || authenticatedUser.phone,
+      userId: authenticatedUser.userId || authenticatedUser.id,
+      email: authenticatedUser.email,
+    }, blockedCredentials, users);
+
+    if (blockCheck.isBlocked || authenticatedUser.status === 'blocked' || (authenticatedUser as any).isBlocked) {
+      alert('🚫 මෙම ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
+      localStorage.removeItem('sahaya_sewa_session_user');
+      setCurrentUser(null);
+      setActiveView('login');
+      return;
+    }
+
     setCurrentUser(authenticatedUser);
     try {
       localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
@@ -462,7 +539,7 @@ export const App: React.FC = () => {
     } else {
       setActiveView('dashboard');
     }
-  }, []);
+  }, [blockedCredentials, users]);
 
   // Demo User Direct Login (🚀 PIN අංකයක් අවශ්‍ය නැත)
   const handleUserDemoLogin = useCallback(() => {
@@ -649,6 +726,7 @@ export const App: React.FC = () => {
             theme: theme,
             toggleTheme: toggleTheme,
             users: users,
+            blockedCredentials: blockedCredentials,
           })}
 
         {activeView === 'pending' &&
