@@ -1,255 +1,810 @@
 import React, { useState, useEffect } from 'react';
-import { Language, Theme } from '../types';
+
+import { User, Language, Theme, MarketShop } from '../types';
+
 import { translations } from '../data/translations';
-import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
-import { 
-  Moon, 
-  Sun, 
-  Languages, 
-  Heart, 
-  KeyRound, 
-  Contact2,
-  Sparkles
-} from 'lucide-react';
+
+import { Moon, Sun, Languages, KeyRound, Contact2, Sparkles, Loader2, AlertCircle, Eye, EyeOff, Smartphone, Download } from 'lucide-react';
+
 import { AppLogo } from './AppLogo';
+
 import { FontSizeController } from './FontSizeController';
 
-interface LoginFormProps {
-  onLogin: (userId: string, key: string) => void;
-  onNavigateToRegister: () => void;
-  onNavigateToIssues: () => void;
-  language: Language;
-  setLanguage?: (lang: Language) => void;
-  theme?: Theme;
-  toggleTheme?: () => void;
+import { getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
+
+import { DevicePinLoginView } from './DevicePinLoginView';
+
+import { requestNotificationPermission } from '../utils/notificationManager';
+
+import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
+
+import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
+
+import { initialTags } from '../data/initialData';
+
+import { getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
+
+import { addMarketShopToFirestore } from '../lib/firebase';
+
+import { PasswordResetRequestModal } from './PasswordResetRequestModal';
+
+import { subscribeToSystemSettings, getCachedSettings } from '../utils/systemSettingsManager';
+
+export interface LoginFormProps {
+
+onLogin: (userId: string, key: string) => any;
+
+onUserDemoLogin?: () => void;
+
+onNavigateToRegister: () => void;
+
+onNavigateToIssues: () => void;
+
+onNavigateToPermissions?: () => void;
+
+language: Language;
+
+setLanguage?: (lang: Language) => void;
+
+theme?: Theme;
+
+toggleTheme?: () => void;
+
+showDemoUserLogin?: boolean;
+
+users?: User[];
+
+onSuccessfulPinLogin?: (user: User) => void;
+
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({
-  onLogin,
-  onNavigateToRegister,
-  onNavigateToIssues,
-  language,
-  setLanguage,
-  theme = 'light',
-  toggleTheme,
-}) => {
-  const [userId, setUserId] = useState('');
-  const [key, setKey] = useState('');
-  const t = (translations[language] || translations.si) as any;
+export const LoginForm = ({
 
-  // Background Auto-load Location prefetching so it's ready upon login
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            const { latitude, longitude } = pos.coords;
-            const geo = await resolveExactLocation(latitude, longitude);
-            const locOpt = toLocationOption(geo);
-            localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-          } catch (e) {
-            // Ignore prefetch error
-          }
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-      );
-    }
-  }, []);
+onLogin,
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onLogin(userId.trim(), key.trim());
-  };
+onUserDemoLogin,
 
-  const handleNextLanguage = () => {
-    if (!setLanguage) return;
-    const langSeq: Language[] = ['si', 'en', 'ta'];
-    const currentIndex = langSeq.indexOf(language);
-    const nextLang = langSeq[(currentIndex + 1) % langSeq.length];
-    setLanguage(nextLang);
-  };
+onNavigateToRegister,
 
-  const getLanguageDisplayName = (lang: Language) => {
-    switch (lang) {
-      case 'si':
-        return 'සිංහල';
-      case 'ta':
-        return 'தமிழ்';
-      case 'en':
-      default:
-        return 'English';
-    }
-  };
+onNavigateToIssues,
 
-  return (
-    <div className="w-full max-w-[480px] mx-auto px-4 py-2 flex flex-col items-center">
-      {/* Top Bar Controls (Moon Icon + Language Selector Pill) */}
-      <div className="w-full flex items-center justify-start gap-2.5 mb-8">
-        {toggleTheme && (
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="w-10 h-10 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-sm hover:shadow-md flex items-center justify-center text-slate-700 dark:text-emerald-300 transition-all cursor-pointer active:scale-95"
-            title="Toggle theme"
-          >
-            {theme === 'dark' ? (
-              <Sun className="w-5 h-5 text-emerald-400" />
-            ) : (
-              <Moon className="w-5 h-5 text-slate-700" />
-            )}
-          </button>
-        )}
+onNavigateToPermissions,
 
-        {setLanguage && (
-          <button
-            type="button"
-            onClick={handleNextLanguage}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-sm hover:shadow-md text-slate-800 dark:text-slate-200 transition-all text-xs font-semibold cursor-pointer active:scale-95"
-            title="Change language"
-          >
-            <Languages className="w-4 h-4 text-slate-600 dark:text-emerald-400" />
-            <span>{getLanguageDisplayName(language)}</span>
-          </button>
-        )}
+language,
 
-        <FontSizeController language={language} className="ml-auto" />
-      </div>
+setLanguage,
 
-      {/* App Branding Header */}
-      <div className="text-center mb-8 flex flex-col items-center">
-        <div className="mb-4 transform hover:scale-105 transition-transform duration-300">
-          <AppLogo size="xl" showGlow animated />
-        </div>
+theme = 'light',
 
-        <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-1 flex items-center justify-center gap-2">
-          <span className="text-[#007a4b] dark:text-[#00c880]">සහය</span>
-          <span className="text-amber-600 dark:text-amber-400">සේවා</span>
-        </h1>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black mb-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>සැමට පිහිට • SAHAYA SEWA</span>
-        </div>
-        <p className="text-slate-500 dark:text-[#8ba294] text-xs sm:text-sm font-medium max-w-xs leading-relaxed">
-          {t.loginSubtitle || 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'}
-        </p>
-      </div>
+toggleTheme,
 
-      {/* Main Login Card */}
-      <div className="w-full bg-white dark:bg-[#0c1811] rounded-[2.2rem] p-6 sm:p-8 shadow-xl shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222] backdrop-blur-sm">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Field 1: Identity Card / NIC */}
-          <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-              {t.nicLabel || 'හැඳුනුම්පත් අංකය'}
-            </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-4 pointer-events-none text-slate-400 dark:text-[#3d5d48]">
-                <Contact2 className="w-5 h-5" />
-              </div>
-              <input
-                type="text"
-                required
-                placeholder="XXXXXXXXXV"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-2xl py-3.5 pl-12 pr-4 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-sm font-medium"
-              />
-            </div>
-          </div>
+showDemoUserLogin = true,
 
-          {/* Field 2: Security Code / Password */}
-          <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-              {t.securityCodeLabel || 'ආරක්ෂක කේතය'}
-            </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-4 pointer-events-none text-slate-400 dark:text-[#3d5d48]">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-2xl py-3.5 pl-12 pr-4 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-sm font-medium"
-              />
-            </div>
-            <div className="text-right pt-1">
-              <button
-                type="button"
-                onClick={onNavigateToIssues}
-                className="text-[#00a86b] hover:text-[#008d5a] text-xs font-semibold hover:underline cursor-pointer transition-colors"
-              >
-                {t.forgotCode || 'කේතය වෙනස් කිරීම'}
-              </button>
-            </div>
-          </div>
+users = [],
 
-          {/* Primary Submit Button */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              className="w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#008050] text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-600/20 transition-all cursor-pointer text-base active:scale-[0.99] flex items-center justify-center"
-            >
-              <span>{t.loginBtn || 'ඇතුළුවන්න'}</span>
-            </button>
-          </div>
+onSuccessfulPinLogin,
 
-          {/* Divider with "හෝ" (OR) */}
-          <div className="flex items-center my-5">
-            <div className="flex-1 border-t border-slate-200/80 dark:border-[#162e20]" />
-            <span className="px-4 text-slate-400 dark:text-[#52735e] text-xs font-medium">
-              {t.orDivider || 'හෝ'}
-            </span>
-            <div className="flex-1 border-t border-slate-200/80 dark:border-[#162e20]" />
-          </div>
+}: LoginFormProps) => {
 
-          {/* Secondary Register Button */}
-          <button
-            type="button"
-            onClick={onNavigateToRegister}
-            className="w-full bg-white dark:bg-transparent hover:bg-emerald-50/40 dark:hover:bg-[#0d1f14] text-[#00a86b] font-bold py-3.5 px-4 rounded-2xl border-2 border-[#00a86b] transition-all text-base cursor-pointer flex items-center justify-center"
-          >
-            <span>{t.registerBtn || 'රෙජිස්ටර්වීමට'}</span>
-          </button>
-        </form>
+const [userId, setUserId] = useState('');
 
-        {/* Quick Demo Access Bar */}
-        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-[#173222] space-y-2.5">
-          <div className="text-[11px] font-black text-slate-400 dark:text-emerald-400/80 uppercase tracking-wider text-center">
-            ⚡ ක්ෂණික ප්‍රවේශය (1-Click Demo Access)
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => onLogin('981234567V', 'user123')}
-              className="px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 cursor-pointer text-center"
-            >
-              👤 පරිශීලක (User Demo)
-            </button>
-            <button
-              type="button"
-              onClick={() => onLogin('970181547V', '1691@@Devhas')}
-              className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-bold transition-all border border-slate-300 dark:border-zinc-700 cursor-pointer text-center"
-            >
-              🛡️ පරිපාලක (Admin Demo)
-            </button>
-          </div>
-        </div>
-      </div>
+const [key, setKey] = useState('');
 
-      {/* Footer link for Issues/Help */}
-      <div className="mt-8 text-center pb-4">
-        <button
-          type="button"
-          onClick={onNavigateToIssues}
-          className="text-[#00a86b] hover:text-[#008f5b] font-semibold text-xs sm:text-sm hover:underline cursor-pointer transition-colors"
-        >
-          <span>{t.issuesHelpBtn || 'ගැටලු සඳහා'}</span>
-        </button>
-      </div>
-    </div>
-  );
+const [showPassword, setShowPassword] = useState(false);
+
+const [isLoading, setIsLoading] = useState(false);
+
+const [isDownloading, setIsDownloading] = useState(false);
+
+const [error, setError] = useState(null as any);
+
+const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
+
+const [isMarketplaceAddShopModalOpen, setIsMarketplaceAddShopModalOpen] = useState(false);
+
+const [marketplaceShopModalType, setMarketplaceShopModalType] = useState('shop' as any);
+
+const [isResetRequestModalOpen, setIsResetRequestModalOpen] = useState(false);
+
+const [systemSettings, setSystemSettings] = useState(() => getCachedSettings());
+
+useEffect(() => {
+
+const unsub = subscribeToSystemSettings((s) => setSystemSettings(s));
+
+return () => unsub();
+
+}, []);
+
+const handleSaveMarketShop = (newShop: MarketShop) => {
+
+const currentShops = getStoredMarketShops();
+
+const updated = [newShop, ...currentShops.filter((s) => Boolean(s && s.id !== newShop.id))];
+
+saveMarketShopsToStorage(updated);
+
+addMarketShopToFirestore(newShop).catch((err) => {
+
+console.warn('Firestore shop save notice from login:', err);
+
+});
+
+try {
+
+window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+
+} catch {}
+
+setIsMarketplaceAddShopModalOpen(false);
+
+alert(
+
+marketplaceShopModalType === 'business'
+
+? language === 'en'
+
+? '✅ Your business / enterprise has been successfully registered and saved to Sahaya Marketplace!'
+
+: language === 'ta'
+
+? '✅ உங்கள் வணிகம் வெற்றிகரமாக பதிவு செய்யப்பட்டது!'
+
+: '✅ ඔබගේ ව්‍යාපාරය/ආයතනය සාර්ථකව ලියාපදිංචි කර සහය වෙළඳපොළේ (ව්‍යාපාරික ස්ථාන අංශයේ) ගබඩා කරන ලදී!'
+
+: language === 'en'
+
+? '✅ Your shop / store has been successfully registered and saved to Sahaya Marketplace!'
+
+: language === 'ta'
+
+? '✅ உங்கள் கடை வெற்றிகரமாக பதிவு செய்யப்பட்டது!'
+
+: '✅ ඔබගේ වෙළඳසැල/අලෙවිසැල සාර්ථකව ලියාපදිංචි කර සහය වෙළඳපොළේ (අලෙවිසැල් අංශයේ) ගබඩා කරන ලදී!'
+
+);
+
 };
+
+const [storedPinData, setStoredPinData] = useState(() => getStoredDevicePin());
+
+const [authMode, setAuthMode] = useState(() => {
+
+const pinData = getStoredDevicePin();
+
+return pinData ? 'pin' : 'password';
+
+});
+
+useEffect(() => {
+
+const currentPin = getStoredDevicePin();
+
+setStoredPinData(currentPin);
+
+if (!currentPin && authMode === 'pin') {
+
+setAuthMode('password');
+
+}
+
+}, [authMode]);
+
+const handleClearPin = () => {
+
+clearDevicePin();
+
+setStoredPinData(null);
+
+setAuthMode('password');
+
+};
+
+const rawT = (translations as any)[language];
+
+const t = rawT ? rawT : translations.si;
+
+if (storedPinData && authMode === 'pin' && onSuccessfulPinLogin) {
+
+return React.createElement(DevicePinLoginView, {
+
+storedPinData: storedPinData,
+
+users: users,
+
+onSuccessfulPinLogin: onSuccessfulPinLogin,
+
+onSwitchToPasswordLogin: () => setAuthMode('password'),
+
+onClearDevicePin: handleClearPin,
+
+onNavigateToIssues: onNavigateToIssues,
+
+language: language,
+
+setLanguage: setLanguage,
+
+theme: theme,
+
+toggleTheme: toggleTheme,
+
+});
+
+}
+
+const validateIdentifier = (inputVal: string) => {
+
+const clean = inputVal.trim().replace(/\s+/g, '').toUpperCase();
+
+if (clean === 'ADMIN') return true;
+
+if (clean.toLowerCase() === 'demo') return true;
+
+if (clean.toLowerCase() === 'demo_user') return true;
+
+const oldNicRegex = /^[0-9]{9}[VVXX]$/;
+
+const newNicRegex = /^[0-9]{12}$/;
+
+const phoneRegexA = /^\+94[0-9]{9}$/;
+
+const phoneRegexB = /^0?[0-9]{9,10}$/;
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (oldNicRegex.test(clean)) return true;
+
+if (newNicRegex.test(clean)) return true;
+
+if (phoneRegexA.test(clean)) return true;
+
+if (phoneRegexB.test(clean)) return true;
+
+return emailRegex.test(clean);
+
+};
+
+const handleSubmit = async (e: React.FormEvent) => {
+
+e.preventDefault();
+
+setError(null);
+
+const cleanIdentifier = userId.trim().replace(/\s+/g, '');
+
+const isIdValid = cleanIdentifier ? validateIdentifier(cleanIdentifier) : false;
+
+if (!isIdValid) {
+
+setError(
+
+language === 'en'
+
+? 'Please enter a valid Sri Lankan NIC number (e.g. 912345678V or 199123456789)'
+
+: language === 'ta'
+
+? 'செல்லுபடியாகும் NIC எண்ணை உள்ளிடவும் (எ.கா: 912345678V)'
+
+: 'කරුණාකර නිවැරදි NIC අංකයක් ඇතුළත් කරන්න (උදා: 912345678V හෝ 199123456789)'
+
+);
+
+return;
+
+}
+
+if (!key.trim()) {
+
+setError(
+
+language === 'en'
+
+? 'Please enter your password / security code'
+
+: 'කරුණාකර මුරපදය ඇතුළත් කරන්න'
+
+);
+
+return;
+
+}
+
+const lowerId = userId.trim().toLowerCase();
+
+const isDemoInput = lowerId === 'demo_user' ? true : lowerId === 'demo';
+
+if (isDemoInput && !systemSettings.enableDemoLogin) {
+
+setError('පරිපාලක (Admin) විසින් Demo පිවිසුම අක්‍රීය කර ඇත. කරුණාකර ලියාපදිංචි වී පිවිසෙන්න.');
+
+return;
+
+}
+
+setIsLoading(true);
+
+try {
+
+if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+
+requestNotificationPermission().catch(() => {});
+
+}
+
+await onLogin(cleanIdentifier, key.trim());
+
+} catch (err: any) {
+
+console.error('Login Error:', err);
+
+const fallbackMsg =
+
+language === 'en'
+
+? 'Login failed. Please check your credentials.'
+
+: 'ලොග් වීමේදී දෝෂයක් සිදු විය. කරුණාකර නැවත උත්සාහ කරන්න.';
+
+setError(err && err.message ? err.message : fallbackMsg);
+
+} finally {
+
+setIsLoading(false);
+
+}
+
+};
+
+const handleNextLanguage = () => {
+
+if (!setLanguage) return;
+
+const langSeq: Language[] = ['si', 'en', 'ta'];
+
+const currentIndex = langSeq.indexOf(language);
+
+const nextLang = langSeq[(currentIndex + 1) % langSeq.length];
+
+setLanguage(nextLang);
+
+};
+
+const getLanguageDisplayName = (lang: Language) => {
+
+if (lang === 'si') return 'සිංහල';
+
+if (lang === 'ta') return 'தமிழ்';
+
+return 'English';
+
+};
+const h = React.createElement;
+
+return h('div',
+
+{ className: 'w-full max-w-[420px] mx-auto px-3 py-1 flex flex-col items-center' }, h('div',
+
+{ className: 'w-full flex items-center justify-start gap-2 mb-1.5' },
+
+toggleTheme
+
+? h('button',
+
+{
+
+type: 'button',
+
+onClick: toggleTheme,
+
+className:
+
+'w-7 h-7 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-xs hover:shadow-sm flex items-center justify-center text-slate-700 dark:text-emerald-300 transition-all cursor-pointer active:scale-95',
+
+title: 'Toggle theme',
+
+'aria-label': 'Toggle theme',
+
+},
+
+theme === 'dark'
+
+? h(Sun, { className: 'w-3.5 h-3.5 text-emerald-400' })
+
+: h(Moon, { className: 'w-3.5 h-3.5 text-slate-700' }))
+
+: null,
+
+setLanguage
+
+? h('button',
+
+{
+
+type: 'button',
+
+onClick: handleNextLanguage,
+
+className:
+
+'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#1e3d2a] shadow-xs hover:shadow-sm text-slate-800 dark:text-slate-200 transition-all text-xs font-semibold cursor-pointer active:scale-95',
+
+title: 'Change language',
+
+'aria-label': 'Change language',
+
+}, h(Languages, { className: 'w-3 h-3 text-slate-600 dark:text-emerald-400' }), h('span', null, getLanguageDisplayName(language)))
+
+: null, h(FontSizeController, { language: language, className: 'ml-auto' })), h('div',
+
+{ className: 'text-center mb-3 flex flex-col items-center' }, h('div',
+
+{ className: 'mb-2 transform hover:scale-105 transition-transform duration-300' }, h(AppLogo, { size: '2xl', showGlow: true, animated: true })), h('h1',
+
+{ className: 'text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-1 flex items-center justify-center gap-1.5' }, h('span', { className: 'text-[#007a4b] dark:text-[#00c880]' }, 'සහය'), h('span', { className: 'text-amber-600 dark:text-amber-400' }, 'සේවා')), h('div',
+
+{ className: 'inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black mb-1' }, h(Sparkles, { className: 'w-3 h-3 text-amber-500' }), h('span', null, 'සැමට පිහිට • SAHAYA SEWA')), h('p',
+
+{ className: 'text-slate-500 dark:text-[#8ba294] text-xs font-medium max-w-xs leading-tight' },
+
+t.loginSubtitle ? t.loginSubtitle : 'ලේඛනගත සාමාජිකයන් සඳහා ආරක්ෂිත ප්‍රවේශය'
+
+)), h('div',
+
+{ className: 'w-full bg-white dark:bg-[#0c1811] rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-950/5 dark:shadow-black/50 border border-slate-100 dark:border-[#173222]' },
+
+storedPinData
+
+? h('div',
+
+{ className: 'mb-3' }, h('button',
+
+{
+
+type: 'button',
+
+onClick: () => setAuthMode('pin'),
+
+className:
+
+'w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95',
+
+}, h(Smartphone, { className: 'w-3.5 h-3.5' }), h('span',
+
+null,
+
+language === 'en'
+
+? `Switch to PIN Unlock (${storedPinData.userName})`
+
+: `🔢 PIN අංකය මඟින් පිවිසෙන්න (${storedPinData.userName})`
+
+)))
+
+: null,
+
+error
+
+? h('div',
+
+{ className: 'mb-3 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs rounded-xl flex items-start gap-2' }, h(AlertCircle, { className: 'w-4 h-4 shrink-0 mt-0.5 text-red-500 dark:text-red-400' }), h('span', { className: 'font-medium leading-tight' }, error))
+
+: null, h('form',
+
+{ onSubmit: handleSubmit, className: 'space-y-2.5' }, h('div',
+
+{ className: 'space-y-0.5' }, h('label',
+
+{ className: 'block text-xs font-bold text-slate-800 dark:text-slate-200' },
+
+t.nicLabel ? t.nicLabel : 'හැඳුනුම්පත් අංකය'
+
+), h('div',
+
+{ className: 'relative flex items-center' }, h('div',
+
+{ className: 'absolute left-3 pointer-events-none text-slate-400 dark:text-[#3d5d48]' }, h(Contact2, { className: 'w-4 h-4' })), h('input', {
+
+id: 'login-user-id',
+
+name: 'username',
+
+autoComplete: 'username',
+
+autoCapitalize: 'characters',
+
+spellCheck: false,
+
+type: 'text',
+
+required: true,
+
+disabled: isLoading,
+
+placeholder: '912345678V / 199123456789',
+
+value: userId,
+
+onChange: (e: any) => {
+
+setUserId(e.target.value);
+
+if (error) setError(null);
+
+},
+
+style: { fontSize: '16px' },
+
+className:
+
+'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2.5 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-base font-mono font-medium uppercase disabled:opacity-50',
+
+}))), h('div',
+
+{ className: 'space-y-0.5' }, h('div',
+
+{ className: 'flex items-center justify-between' }, h('label',
+
+{ className: 'block text-xs font-bold text-slate-800 dark:text-slate-200' },
+
+t.securityCodeLabel ? t.securityCodeLabel : 'ආරක්ෂක කේතය'
+
+), h('button',
+
+{ type: 'button', onClick: () => setIsResetRequestModalOpen(true), className: 'text-[#00a86b] hover:text-[#008d5a] text-[11px] font-semibold hover:underline cursor-pointer transition-colors', },
+
+t.forgotCode ? t.forgotCode : 'කේතය වෙනස් කිරීම'
+
+)), h('div',
+
+{ className: 'relative flex items-center' }, h('div',
+
+{ className: 'absolute left-3 pointer-events-none text-slate-400 dark:text-[#3d5d48]' }, h(KeyRound, { className: 'w-4 h-4' })), h('input', {
+
+id: 'login-password',
+
+name: 'password',
+
+autoComplete: 'current-password',
+
+spellCheck: false,
+
+type: showPassword ? 'text' : 'password',
+
+required: true,
+
+disabled: isLoading,
+
+placeholder: '••••••••',
+
+value: key,
+
+onChange: (e: any) => {
+
+setKey(e.target.value);
+
+if (error) setError(null);
+
+},
+
+style: { fontSize: '16px' },
+
+className:
+
+'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2.5 pl-9 pr-9 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-base font-medium disabled:opacity-50',
+
+}), h('button',
+
+{
+
+type: 'button',
+
+onMouseDown: (e: any) => e.preventDefault(),
+
+onClick: () => setShowPassword(!showPassword),
+
+className: 'absolute right-3 text-slate-400 dark:text-[#3d5d48] hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer',
+
+title: showPassword ? 'Hide password' : 'Show password',
+
+'aria-label': showPassword ? 'Hide password' : 'Show password',
+
+},
+
+showPassword ? h(EyeOff, { className: 'w-4 h-4' }) : h(Eye, { className: 'w-4 h-4' })))), h('div',
+
+{ className: 'pt-0.5' }, h('button',
+
+{
+
+type: 'submit',
+
+disabled: isLoading,
+
+className: `w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#008050] text-white font-bold py-2 px-4 rounded-xl shadow-sm transition-all text-xs sm:text-sm active:scale-[0.99] flex items-center justify-center gap-2 ${
+
+isLoading ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+
+}`,
+
+},
+
+isLoading
+
+? h(React.Fragment,
+
+null, h(Loader2, { className: 'w-4 h-4 animate-spin' }), h('span', null, 'කරුණාකර රැඳී සිටින්න...'))
+
+: h('span', null, t.loginBtn ? t.loginBtn : 'ඇතුළුවන්න'))), h('div',
+
+{ className: 'flex items-center my-1.5' }, h('div', { className: 'flex-1 border-t border-slate-200/80 dark:border-[#162e20]' }), h('span',
+
+{ className: 'px-2 text-slate-400 dark:text-[#52735e] text-[10px] font-medium' },
+
+t.orDivider ? t.orDivider : 'හෝ'
+
+), h('div', { className: 'flex-1 border-t border-slate-200/80 dark:border-[#162e20]' })), h('button',
+
+{
+  type: 'button',
+  disabled: isLoading,
+  onClick: onNavigateToRegister,
+  className: 'w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all transform active:scale-95 flex items-center justify-center space-x-2 border border-emerald-400/30 mb-2 cursor-pointer'
+}, h('span',
+  null,
+  language === 'en'
+    ? 'Register as a New Member'
+    : language === 'ta'
+    ? 'புதிய உறுப்பினராக பதிவு செய்யவும்'
+    : 'නව සාමාජිකයෙකු ලෙස ලියාපදිංචි වන්න'
+)), h('button',
+{
+  type: 'button',
+  disabled: isLoading,
+  onClick: () => setIsQuickRegistrationHubOpen(true),
+  className: 'w-full py-2.5 px-4 rounded-xl border border-emerald-600/30 bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100/60 text-emerald-800 dark:text-emerald-300 font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-sm'
+},
+  h(Sparkles, { className: 'w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse' }),
+  h('span',
+    null,
+    language === 'en'
+      ? '✨ Register Now (Registration Hub)'
+      : language === 'ta'
+      ? '✨ பதிவு செய்க (பதிவு மையம்)'
+      : '✨ ලියාපදිංචි වන්න (ලියාපදිංචි හබ් එක)'
+  )
+)),
+
+showDemoUserLogin && systemSettings.enableDemoLogin
+
+? h('div',
+
+{ className: 'mt-2.5 pt-2 border-t border-slate-100 dark:border-[#173222]' }, h('button',
+
+{
+
+type: 'button',
+
+disabled: isLoading,
+
+onClick: () => {
+
+if (onUserDemoLogin) {
+
+onUserDemoLogin();
+
+} else {
+
+onLogin('demo_user', 'demo');
+
+}
+
+},
+
+className:
+
+'w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/20 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 text-[11px] sm:text-xs font-black transition-all border border-emerald-300/80 dark:border-emerald-700/80 active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50',
+
+}, h(Sparkles, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span',
+
+null,
+
+language === 'en'
+
+? '👤 Sign In as Visitor (User Demo)'
+
+: language === 'ta'
+? '👤 பார்வையாளராக நுழைக (User Demo)'
+: '👤 නරඹන්නා ලෙස පිවිසෙන්න (User Demo)'
+)))
+: null), h('div',
+
+{ className: 'mt-2 text-center pb-1 flex items-center justify-center gap-3 text-xs' },
+
+onNavigateToPermissions
+
+? h(React.Fragment,
+
+null, h('button',
+
+{
+
+type: 'button',
+
+disabled: isLoading,
+
+onClick: onNavigateToPermissions,
+
+className:
+
+'text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-300 font-semibold hover:underline cursor-pointer transition-colors disabled:opacity-50',
+
+}, h('span', null, '🔒 අවසර සැකසුම් (Permissions)')), h('span', { className: 'text-slate-300 dark:text-slate-700' }, '•'))
+
+: null, h('button',
+
+{
+
+type: 'button',
+
+disabled: isLoading,
+
+onClick: onNavigateToIssues,
+
+className: 'text-[#00a86b] hover:text-[#008f5b] font-semibold hover:underline cursor-pointer transition-colors disabled:opacity-50',
+
+}, h('span', null, t.issuesHelpBtn ? t.issuesHelpBtn : 'ගැටලු සඳහා'))), h(QuickRegistrationHubModal, {
+
+isOpen: isQuickRegistrationHubOpen,
+
+onClose: () => setIsQuickRegistrationHubOpen(false),
+
+language: language,
+
+onSelectUserRegistration: () => {
+
+setIsQuickRegistrationHubOpen(false);
+
+onNavigateToRegister();
+
+},
+
+onSelectBusinessRegistration: () => {
+
+setIsQuickRegistrationHubOpen(false);
+
+setMarketplaceShopModalType('business');
+
+setIsMarketplaceAddShopModalOpen(true);
+
+},
+
+onSelectShopRegistration: () => {
+
+setIsQuickRegistrationHubOpen(false);
+
+setMarketplaceShopModalType('shop');
+
+setIsMarketplaceAddShopModalOpen(true);
+
+},
+
+}), h(MarketplaceAddShopModal, {
+
+isOpen: isMarketplaceAddShopModalOpen,
+
+onClose: () => setIsMarketplaceAddShopModalOpen(false),
+
+currentUser: null,
+
+allTags: initialTags,
+
+defaultType: marketplaceShopModalType,
+
+onSaveShop: handleSaveMarketShop,
+
+}), h(PasswordResetRequestModal, { isOpen: isResetRequestModalOpen, onClose: () => setIsResetRequestModalOpen(false), language: language, }));
+
+};
+
+export default LoginForm;

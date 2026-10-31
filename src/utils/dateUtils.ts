@@ -2,12 +2,19 @@ import { HelpPost } from '../types';
 
 /**
  * Calculates accurate relative elapsed time from the post/message creation time to current viewing time.
- * e.g. "දැන්ම", "මීට තත්පර 15 කට පෙර", "මීට මිනිත්තු 5 කට පෙර", "මීට පැය 2 යි මිනිත්තු 10 කට පෙර", "මීට දින 1 කට පෙර"
+ * e.g. "දැන්ම", "මීට තත්පර 15 කට පෙර", "15 seconds ago", "15 வினாடிகளுக்கு முன்"
  */
-export function getAccurateElapsedTime(createdAt?: string, createdAtMs?: number, nowMs: number = Date.now()): string {
+export function getAccurateElapsedTime(
+  createdAt?: string, 
+  createdAtMs?: number, 
+  nowMs: number = Date.now(),
+  lang: 'si' | 'en' | 'ta' | string = 'si'
+): string {
   const targetMs = parseTimeToMs(createdAt, createdAtMs);
 
   if (!targetMs || isNaN(targetMs)) {
+    if (lang === 'en') return 'Just now';
+    if (lang === 'ta') return 'சற்று முன்';
     return createdAt || 'මීට සුළු මොහොතකට පෙර';
   }
 
@@ -16,6 +23,46 @@ export function getAccurateElapsedTime(createdAt?: string, createdAtMs?: number,
   const totalMinutes = Math.floor(totalSeconds / 60);
   const totalHours = Math.floor(totalMinutes / 60);
   const totalDays = Math.floor(totalHours / 24);
+
+  if (lang === 'en') {
+    if (totalSeconds < 10) return 'Just now';
+    if (totalSeconds < 60) return `${totalSeconds}s ago`;
+    if (totalMinutes < 60) return `${totalMinutes} min${totalMinutes > 1 ? 's' : ''} ago`;
+    if (totalHours < 24) {
+      const remMins = totalMinutes % 60;
+      return remMins === 0 
+        ? `${totalHours} hr${totalHours > 1 ? 's' : ''} ago`
+        : `${totalHours} hr${totalHours > 1 ? 's' : ''} ${remMins}m ago`;
+    }
+    const remHours = totalHours % 24;
+    if (totalDays < 30) {
+      return remHours === 0 
+        ? `${totalDays} day${totalDays > 1 ? 's' : ''} ago`
+        : `${totalDays}d ${remHours}h ago`;
+    }
+    const totalMonths = Math.floor(totalDays / 30);
+    return `${totalMonths} month${totalMonths > 1 ? 's' : ''} ago`;
+  }
+
+  if (lang === 'ta') {
+    if (totalSeconds < 10) return 'சற்று முன்';
+    if (totalSeconds < 60) return `${totalSeconds} வினாடிகளுக்கு முன்`;
+    if (totalMinutes < 60) return `${totalMinutes} நிமிடங்களுக்கு முன்`;
+    if (totalHours < 24) {
+      const remMins = totalMinutes % 60;
+      return remMins === 0 
+        ? `${totalHours} மணிநேரத்திற்கு முன்`
+        : `${totalHours} மணி ${remMins} நிமிடங்களுக்கு முன்`;
+    }
+    const remHours = totalHours % 24;
+    if (totalDays < 30) {
+      return remHours === 0 
+        ? `${totalDays} நாட்களுக்கு முன்`
+        : `${totalDays} நாள் ${remHours} மணிநேரத்திற்கு முன்`;
+    }
+    const totalMonths = Math.floor(totalDays / 30);
+    return `${totalMonths} மாதங்களுக்கு முன்`;
+  }
 
   if (totalSeconds < 10) {
     return 'දැන්ම (මීට තත්පර කිහිපයකට පෙර)';
@@ -148,5 +195,21 @@ export function parseTimeToMs(timestamp?: string | number, createdAtMs?: number)
   }
 
   return now;
+}
+
+/**
+ * Formats a given timestamp (string or epoch number) into humanized relative time
+ */
+export function formatRelativeTime(
+  timestamp?: number | string,
+  lang: 'si' | 'en' | 'ta' | string = 'si'
+): string {
+  if (!timestamp) {
+    return lang === 'en' ? 'Just now' : lang === 'ta' ? 'சற்று முன்' : 'දැන්ම';
+  }
+  if (typeof timestamp === 'number') {
+    return getAccurateElapsedTime(undefined, timestamp, Date.now(), lang);
+  }
+  return getAccurateElapsedTime(timestamp, undefined, Date.now(), lang);
 }
 

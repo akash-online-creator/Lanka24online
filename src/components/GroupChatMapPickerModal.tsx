@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   MapPin,
   Navigation,
@@ -14,30 +15,71 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  LocateFixed
+  LocateFixed,
+  Globe,
+  Compass,
+  RefreshCw
 } from 'lucide-react';
 import { GroupMessageLocation } from '../types';
 import { resolveExactLocation, searchSriLankanPlacesAndRoads, PlaceSearchResult, SRI_LANKA_CURATED_PLACES } from '../utils/geoUtils';
+import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
 
 interface GroupChatMapPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSendLocation: (loc: GroupMessageLocation) => void;
+  onSendLocation?: (loc: GroupMessageLocation) => void;
+  onSelectLocation?: (loc: GroupMessageLocation) => void;
   initialLat?: number;
   initialLng?: number;
 }
+
+// 100% නොමිලේ ක්‍රියාත්මක වන විශ්වාසදායක Map Tile Providers
+const MAP_THEMES = {
+  voyager: {
+    name: 'Street (නවීන)',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+  satellite: {
+    name: 'Satellite (චන්ද්‍රිකා)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    labelUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    subdomains: [],
+    maxZoom: 19,
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+  },
+  dark: {
+    name: 'Dark (රාත්‍රී)',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c', 'd'],
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  },
+  humanitarian: {
+    name: 'Emergency (ආපදා)',
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors, Humanitarian Team',
+  }
+};
 
 export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = ({
   isOpen,
   onClose,
   onSendLocation,
-  initialLat = 6.9553, // Kelaniya / Colombo default
-  initialLng = 79.9153,
+  onSelectLocation,
+  initialLat = 7.0786, // Ja-Ela / Western Province center
+  initialLng = 79.8913,
 }) => {
+  const handleLocationEmit = onSendLocation || onSelectLocation || (() => {});
   const [lat, setLat] = useState<number>(initialLat);
   const [lng, setLng] = useState<number>(initialLng);
-  const [placeName, setPlaceName] = useState<string>('කැලණිය රජමහා විහාරය අසල');
-  const [placeAddress, setPlaceAddress] = useState<string>('කැලණිය, බස්නාහිර පළාත');
+  const [accuracyMeters, setAccuracyMeters] = useState<number | null>(null);
+  const [placeName, setPlaceName] = useState<string>('ජා-ඇල නගර සභාව අසල');
+  const [placeAddress, setPlaceAddress] = useState<string>('ජා-ඇල, බස්නාහිර පළාත');
   const [note, setNote] = useState<string>('');
   
   // Search state
@@ -46,8 +88,8 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
 
-  // Map layer (OSM standard, HOT, satellite)
-  const [mapLayer, setMapLayer] = useState<'osm' | 'hot' | 'satellite'>('osm');
+  // Map Themes
+  const [mapTheme, setMapTheme] = useState<'voyager' | 'satellite' | 'dark' | 'humanitarian'>('voyager');
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -56,8 +98,11 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const baseTileLayerRef = useRef<L.TileLayer | null>(null);
+  const labelTileLayerRef = useRef<L.TileLayer | null>(null);
 
-  // Reverse geocode lat/lng
+  // High Precision Reverse Geocode lat/lng
   const reverseGeocode = useCallback(async (targetLat: number, targetLng: number) => {
     setIsGeocoding(true);
     try {
@@ -76,11 +121,59 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
     }
   }, []);
 
+  // Update Accuracy Circle Helper
+  const updateAccuracyCircle = (targetLat: number, targetLng: number, radiusMeters: number | null) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (accuracyCircleRef.current) {
+      map.removeLayer(accuracyCircleRef.current);
+      accuracyCircleRef.current = null;
+    }
+
+    if (radiusMeters && radiusMeters > 0) {
+      const circle = L.circle([targetLat, targetLng], {
+        radius: Math.min(radiusMeters, 500),
+        color: '#3b82f6',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.15,
+        weight: 1.5,
+        dashArray: '4, 4',
+      }).addTo(map);
+      accuracyCircleRef.current = circle;
+    }
+  };
+
+  // High-Accuracy GPS Lock
+  const handleAcquireHighAccuracyGps = useCallback(async () => {
+    setIsLocating(true);
+    setGpsError(null);
+    try {
+      const fix = await getHighAccuracyLocation(10000);
+      setLat(fix.lat);
+      setLng(fix.lng);
+      setAccuracyMeters(fix.accuracyMeters);
+
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.setView([fix.lat, fix.lng], 17, { animate: true });
+      }
+      if (markerRef.current) {
+        markerRef.current.setLatLng([fix.lat, fix.lng]);
+      }
+      updateAccuracyCircle(fix.lat, fix.lng, fix.accuracyMeters);
+      reverseGeocode(fix.lat, fix.lng);
+    } catch (err) {
+      setGpsError('ස්වයංක්‍රීය GPS ලබාගත නොහැකි විය. සිතියම මත අවශ්‍ය තැන Click කරන්න.');
+    } finally {
+      setIsLocating(false);
+    }
+  }, [reverseGeocode]);
+
   // Initialize and update Leaflet Map
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
 
-    // Fix default leaflet icons
+    // Fix default Leaflet icon paths
     delete (L.Icon.Default.prototype as any)._getIconUrl;
     L.Icon.Default.mergeOptions({
       iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -93,39 +186,46 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
       mapInstanceRef.current = null;
     }
 
+    // Create Map Instance with bounds
     const map = L.map(mapContainerRef.current, {
       center: [lat, lng],
       zoom: 16,
       zoomControl: false,
+      fadeAnimation: true,
+      zoomAnimation: true,
     });
 
-    let tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    let subdomains: string[] | string = 'abc';
+    const activeConfig = MAP_THEMES[mapTheme];
+    const baseLayer = L.tileLayer(activeConfig.url, {
+      maxZoom: activeConfig.maxZoom,
+      subdomains: activeConfig.subdomains as any,
+      attribution: activeConfig.attribution,
+    }).addTo(map);
+    baseTileLayerRef.current = baseLayer;
 
-    if (mapLayer === 'hot') {
-      tileUrl = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
-    } else if (mapLayer === 'satellite') {
-      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      subdomains = [];
+    // Optional Satellite Street Label Overlay
+    if (mapTheme === 'satellite' && (activeConfig as any).labelUrl) {
+      const labelLayer = L.tileLayer((activeConfig as any).labelUrl, {
+        maxZoom: 19,
+        zIndex: 10,
+      }).addTo(map);
+      labelTileLayerRef.current = labelLayer;
     }
 
-    L.tileLayer(tileUrl, {
-      maxZoom: 19,
-      subdomains,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    // Creative Glowing Modern SVG Marker
+    const modernMarkerHtml = `
+      <div style="position: relative; width: 44px; height: 44px; display: flex; items-center; justify-content: center; pointer-events: none;">
+        <div style="position: absolute; width: 34px; height: 34px; border-radius: 50% 50% 50% 0; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); transform: rotate(-45deg); box-shadow: 0 10px 25px rgba(79, 70, 229, 0.6); border: 2.5px solid white;"></div>
+        <div style="position: absolute; top: 11px; left: 15px; width: 14px; height: 14px; background: white; border-radius: 50%; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);"></div>
+        <div style="position: absolute; bottom: 2px; width: 10px; height: 4px; background: rgba(0,0,0,0.3); border-radius: 50%; filter: blur(1.5px);"></div>
+      </div>
+    `;
 
-    // Custom glowing marker
     const customIcon = L.divIcon({
-      className: 'custom-chat-pin',
-      html: `
-        <div style="position: relative; width: 36px; height: 36px; transform: translate(-50%, -100%);">
-          <div style="position: absolute; inset: 0; background: #4f46e5; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 8px 16px rgba(79, 70, 229, 0.4); border: 2.5px solid white;"></div>
-          <div style="position: absolute; top: 7px; left: 7px; width: 12px; height: 12px; background: white; border-radius: 50%;"></div>
-        </div>
-      `,
-      iconSize: [36, 36],
-      iconAnchor: [18, 36],
+      className: 'modern-pulsing-pin',
+      html: modernMarkerHtml,
+      iconSize: [44, 44],
+      iconAnchor: [22, 42],
     });
 
     const marker = L.marker([lat, lng], {
@@ -139,39 +239,63 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
       const newLng = Number(pos.lng.toFixed(6));
       setLat(newLat);
       setLng(newLng);
+      updateAccuracyCircle(newLat, newLng, accuracyMeters);
       reverseGeocode(newLat, newLng);
     });
 
     markerRef.current = marker;
 
-    // Click map to reposition
+    // Click map to reposition marker
     map.on('click', (e: L.LeafletMouseEvent) => {
       const newLat = Number(e.latlng.lat.toFixed(6));
       const newLng = Number(e.latlng.lng.toFixed(6));
       setLat(newLat);
       setLng(newLng);
       marker.setLatLng([newLat, newLng]);
+      updateAccuracyCircle(newLat, newLng, accuracyMeters);
       map.panTo([newLat, newLng], { animate: true });
       reverseGeocode(newLat, newLng);
     });
 
     mapInstanceRef.current = map;
 
-    // Resize invalidate after modal animation
-    const timer = setTimeout(() => {
+    // Invalidating map size to ensure all tiles render properly upon modal open
+    const runInvalidate = () => {
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
+        mapInstanceRef.current.invalidateSize({ animate: false });
       }
-    }, 200);
+    };
+
+    requestAnimationFrame(runInvalidate);
+    const t1 = setTimeout(runInvalidate, 100);
+    const t2 = setTimeout(runInvalidate, 300);
+    const t3 = setTimeout(runInvalidate, 600);
+
+    const resizeObserver = new ResizeObserver(() => {
+      runInvalidate();
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
 
     return () => {
-      clearTimeout(timer);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      resizeObserver.disconnect();
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
     };
-  }, [isOpen, mapLayer]);
+  }, [isOpen, mapTheme]);
+
+  // Initial High Accuracy GPS on first open
+  useEffect(() => {
+    if (isOpen) {
+      handleAcquireHighAccuracyGps();
+    }
+  }, [isOpen, handleAcquireHighAccuracyGps]);
 
   // Handle Search Places
   const handleSearchInput = async (q: string) => {
@@ -209,192 +333,145 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
     if (markerRef.current) {
       markerRef.current.setLatLng([item.lat, item.lng]);
     }
-  };
-
-  // Use Current GPS Location
-  const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsError('ඔබගේ බ්‍රවුසරය GPS සහය නොදක්වයි.');
-      return;
-    }
-
-    setIsLocating(true);
-    setGpsError(null);
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsLocating(false);
-        const myLat = Number(pos.coords.latitude.toFixed(6));
-        const myLng = Number(pos.coords.longitude.toFixed(6));
-        setLat(myLat);
-        setLng(myLng);
-
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.setView([myLat, myLng], 17, { animate: true });
-        }
-        if (markerRef.current) {
-          markerRef.current.setLatLng([myLat, myLng]);
-        }
-        reverseGeocode(myLat, myLng);
-      },
-      (err) => {
-        setIsLocating(false);
-        setGpsError('GPS ස්ථානය ලබා ගැනීමට අවසර නොලැබිණි. කරුණාකර සිතියම මත ස්ථානය තෝරන්න.');
-        console.warn('GPS error:', err.message);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    updateAccuracyCircle(item.lat, item.lng, null);
   };
 
   // Zoom controls
-  const handleZoomIn = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.zoomIn();
-  };
-  const handleZoomOut = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.zoomOut();
-  };
+  const handleZoomIn = () => mapInstanceRef.current?.zoomIn();
+  const handleZoomOut = () => mapInstanceRef.current?.zoomOut();
 
-  // Handle Send
+  // Send Location
   const handleSend = () => {
     if (!placeName.trim()) {
       alert('කරුණාකර ස්ථානයේ නම හෝ විස්තරයක් ඇතුළත් කරන්න.');
       return;
     }
 
-    onSendLocation({
+    const locPayload: GroupMessageLocation = {
       name: placeName.trim(),
       address: placeAddress.trim(),
       lat,
       lng,
       note: note.trim() || undefined,
-    });
+    };
+
+    handleLocationEmit(locPayload);
     onClose();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-3xl border-2 border-indigo-500 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+      {/* Scoped CSS for Leaflet elements */}
+      <style>{`
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          background: #f1f5f9;
+        }
+        .modern-pulsing-pin {
+          filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
+          transition: transform 0.15s ease-out;
+        }
+      `}</style>
+
+      <div className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100 rounded-3xl shadow-2xl border-2 border-indigo-500/40 flex flex-col max-h-[92vh] overflow-hidden">
         
         {/* Header */}
-        <div className="p-4 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white flex items-center justify-between shrink-0">
+        <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-700 via-purple-700 to-indigo-800 text-white flex items-center justify-between shadow-md shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shadow-inner">
-              <MapPin className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
+              <MapPin className="w-5 h-5 text-amber-300 animate-pulse" />
             </div>
             <div>
-              <h3 className="font-black text-sm sm:text-base leading-tight">
-                ස්ථානය තෝරා සංවාදයට එක්කරන්න (Share Location on Map)
-              </h3>
+              <h2 className="text-sm sm:text-base font-black tracking-tight">
+                📍 සිතියම මත ස්ථානය තෝරන්න (Modern GPS Map)
+              </h2>
               <p className="text-[11px] text-indigo-100 font-medium">
-                සිතියම මත ස්ථානය Pin කරන්න හෝ නගරය/ප්‍රදේශය Search කරන්න
+                මීටරයෙන් මීටරය නිවැරදි ඉහළ නිරවද්‍යතා චන්ද්‍රිකා GPS පද්ධතිය
               </p>
             </div>
           </div>
-
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            title="වසන්න"
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer transition-all active:scale-95"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Search & GPS Tool Bar */}
-        <div className="p-3 bg-indigo-50/70 dark:bg-zinc-800/80 border-b border-indigo-100 dark:border-zinc-700 flex flex-col sm:flex-row gap-2 shrink-0 relative">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-indigo-500 absolute left-3 top-3" />
+        {/* Top Controls: Search & Layer Switcher */}
+        <div className="p-3 bg-slate-50 dark:bg-zinc-800/60 border-b border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          {/* Search Box with Autocomplete */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
-              onFocus={() => {
-                if (searchQuery.trim()) setIsDropdownOpen(true);
-              }}
-              placeholder="ශ්‍රී ලංකාවේ නගරයක්, පාරක් හෝ ස්ථානයක් සොයන්න..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl border border-indigo-200 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-xs font-bold outline-none focus:border-indigo-600 shadow-inner"
+              onFocus={() => setIsDropdownOpen(true)}
+              placeholder="නගරය, ගම, හෝ පාර නමින් සොයන්න..."
+              className="w-full bg-white dark:bg-zinc-800 pl-9 pr-8 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 text-xs font-bold text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setIsDropdownOpen(false);
-                }}
-                className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs"
-              >
-                ✕
-              </button>
+            {isSearching && (
+              <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
             )}
 
-            {/* Suggestions Dropdown */}
+            {/* Dropdown Results */}
             {isDropdownOpen && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-900 border-2 border-indigo-500 rounded-2xl shadow-2xl z-30 max-h-56 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800">
-                {searchResults.map((res, i) => (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-xl z-[1000] max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800">
+                {searchResults.map((item, idx) => (
                   <button
-                    key={`${res.id || res.titleEn}_${i}`}
+                    key={idx}
                     type="button"
-                    onClick={() => handleSelectSearchResult(res)}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-indigo-50 dark:hover:bg-zinc-800 flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                    onClick={() => handleSelectSearchResult(item)}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50 dark:hover:bg-zinc-800/80 transition-colors flex items-center gap-2.5 cursor-pointer text-xs"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                      <div className="truncate">
-                        <div className="font-bold text-xs text-slate-800 dark:text-zinc-100 truncate">
-                          {res.titleSi || res.titleEn}
-                        </div>
-                        <div className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">
-                          {res.townSi || res.townEn}, {res.districtSi || ''}
-                        </div>
-                      </div>
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-slate-800 dark:text-zinc-100 block">
+                        {item.titleSi || item.roadSi || item.townSi}
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                        {item.shortDisplaySi || `${item.townSi || ''}, ${item.districtSi || ''}`}
+                      </span>
                     </div>
-                    <span className="text-[9px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded shrink-0">
-                      {res.lat.toFixed(3)}, {res.lng.toFixed(3)}
-                    </span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Use GPS Button */}
-          <button
-            type="button"
-            onClick={handleGetCurrentLocation}
-            disabled={isLocating}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0"
-          >
-            {isLocating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <LocateFixed className="w-4 h-4" />
-            )}
-            <span>{isLocating ? 'GPS සෙවුම...' : 'මගේ Live GPS'}</span>
-          </button>
-
-          {/* Layer switcher */}
-          <div className="flex rounded-xl border border-indigo-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5 shrink-0">
+          {/* Map Layer Switcher: Street / Satellite / Dark */}
+          <div className="flex rounded-xl border border-indigo-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5 shrink-0 text-xs font-bold">
             <button
               type="button"
-              onClick={() => setMapLayer('osm')}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                mapLayer === 'osm' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-600 dark:text-zinc-400'
+              onClick={() => setMapTheme('voyager')}
+              className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                mapTheme === 'voyager' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-600 dark:text-zinc-400'
               }`}
             >
-              Street
+              🗺️ වීදි (Street)
             </button>
             <button
               type="button"
-              onClick={() => setMapLayer('satellite')}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                mapLayer === 'satellite' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-600 dark:text-zinc-400'
+              onClick={() => setMapTheme('satellite')}
+              className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                mapTheme === 'satellite' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-600 dark:text-zinc-400'
               }`}
             >
-              Satellite
+              🛰️ චන්ද්‍රිකා (Satellite)
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapTheme('dark')}
+              className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                mapTheme === 'dark' ? 'bg-indigo-600 text-white shadow-xs' : 'text-zinc-600 dark:text-zinc-400'
+              }`}
+            >
+              🌙 Dark
             </button>
           </div>
         </div>
@@ -407,16 +484,27 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
           </div>
         )}
 
-        {/* Interactive Map Area */}
-        <div className="relative flex-1 min-h-[260px] sm:min-h-[320px] bg-slate-100 dark:bg-zinc-950">
-          <div ref={mapContainerRef} className="w-full h-full" />
+        {/* Interactive Map Area (Strictly Bounded Container with explicit height) */}
+        <div className="relative w-full h-[320px] sm:h-[400px] overflow-hidden bg-slate-100 dark:bg-zinc-950">
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
 
-          {/* Map Floating Tools */}
+          {/* Floating Tool: Snap to High Precision GPS */}
+          <button
+            type="button"
+            disabled={isLocating}
+            onClick={handleAcquireHighAccuracyGps}
+            className="absolute left-3 top-3 z-[400] px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-lg border-2 border-indigo-500 text-indigo-700 dark:text-indigo-300 text-xs font-black flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <LocateFixed className={`w-4 h-4 text-indigo-600 ${isLocating ? 'animate-spin' : ''}`} />
+            <span>{isLocating ? 'GPS ලබාගනිමින්...' : '🎯 මගේ ස්ථානයට යන්න (Snap GPS)'}</span>
+          </button>
+
+          {/* Floating Zoom Buttons */}
           <div className="absolute right-3 top-3 z-[400] flex flex-col gap-1.5">
             <button
               type="button"
               onClick={handleZoomIn}
-              className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-900 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              className="w-9 h-9 rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all cursor-pointer active:scale-95"
               title="Zoom In"
             >
               <ZoomIn className="w-4 h-4" />
@@ -424,23 +512,23 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
             <button
               type="button"
               onClick={handleZoomOut}
-              className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-900 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              className="w-9 h-9 rounded-2xl bg-white/95 dark:bg-zinc-900/95 shadow-md border border-zinc-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all cursor-pointer active:scale-95"
               title="Zoom Out"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Coordinates Badge */}
-          <div className="absolute left-3 bottom-3 z-[400] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs px-2.5 py-1 rounded-xl shadow-md border border-zinc-200 dark:border-zinc-700 font-mono text-[10px] font-bold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5">
+          {/* Floating Coordinates & Accuracy Badge */}
+          <div className="absolute left-3 bottom-3 z-[400] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg border border-zinc-200 dark:border-zinc-700 font-mono text-[10px] font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
             <Crosshair className="w-3.5 h-3.5 text-indigo-600" />
             <span>{lat.toFixed(5)}° N, {lng.toFixed(5)}° E</span>
+            {accuracyMeters && (
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold">
+                ±{accuracyMeters}m
+              </span>
+            )}
             {isGeocoding && <Loader2 className="w-3 h-3 animate-spin text-indigo-500 ml-1" />}
-          </div>
-
-          {/* Pin Instruction Banner */}
-          <div className="absolute top-3 left-3 z-[400] bg-indigo-900/85 backdrop-blur-xs text-white px-3 py-1.5 rounded-xl shadow-lg text-[10px] font-bold flex items-center gap-1.5 pointer-events-none">
-            <span>📍 සිතියම මත Click කර හෝ Pin එක අදින්න (Drag Pin)</span>
           </div>
         </div>
 
@@ -456,8 +544,8 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
                 type="text"
                 value={placeName}
                 onChange={(e) => setPlaceName(e.target.value)}
-                placeholder="උදා: කැලණිය රජමහා විහාරය අසල"
-                className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold outline-none focus:border-indigo-600"
+                placeholder="උදා: කැලණිය රජමහා විහාරය අසල, ජා-ඇල නගරය..."
+                className="w-full px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
@@ -470,8 +558,8 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="උදා: උදෑසන 8:30ට මෙතැනට රැස්වන්න"
-                className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-medium outline-none focus:border-indigo-600"
+                placeholder="උදා: උදෑසන 8:30ට මෙතැනට රැස්වන්න, ගේට්ටුව අසල..."
+                className="w-full px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>
@@ -481,7 +569,7 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-bold text-xs transition-colors cursor-pointer"
+              className="px-4 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-bold text-xs transition-colors cursor-pointer"
             >
               අවලංගු කරන්න
             </button>
@@ -492,7 +580,7 @@ export const GroupChatMapPickerModal: React.FC<GroupChatMapPickerModalProps> = (
               className="flex-1 sm:flex-initial px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 hover:from-indigo-700 hover:to-violet-800 active:scale-95 text-white font-black text-xs sm:text-sm rounded-xl shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <Send className="w-4 h-4" />
-              <span>ස්ථානය සංවාදයට යවන්න (Send Location)</span>
+              <span>ස්ථානය තහවුරු කරන්න (Confirm Location)</span>
             </button>
           </div>
         </div>

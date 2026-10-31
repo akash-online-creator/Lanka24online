@@ -19,7 +19,7 @@ interface MarketplaceAddBuyerRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddRequest: (item: MarketItem) => void;
-  currentUser: User;
+  currentUser?: User | null;
   allTags: TagItem[];
   existingSellerItems?: MarketItem[];
   onAddNewTag?: (tag: TagItem) => void;
@@ -34,8 +34,6 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   existingSellerItems = [],
   onAddNewTag
 }) => {
-  if (!isOpen) return null;
-
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -44,17 +42,17 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
   const [notes, setNotes] = useState('');
   const [revealContactConsent, setRevealContactConsent] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(true);
-  const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(currentUser?.phone || '');
 
   // Live real-time matching of tags as user types
   const queryLower = searchQuery.trim().toLowerCase();
   const matchingTags = allTags.filter((t) =>
-    queryLower && (t.tagName.toLowerCase().includes(queryLower) || queryLower.includes(t.tagName.toLowerCase()))
+    queryLower && ((t?.tagName || '').toLowerCase().includes(queryLower) || queryLower.includes((t?.tagName || '').toLowerCase()))
   );
 
   // Live matching of existing available seller items
   const matchingSellerItems = existingSellerItems.filter((it) =>
-    queryLower && (it.title.toLowerCase().includes(queryLower) || it.tagName.toLowerCase().includes(queryLower))
+    queryLower && ((it?.title || '').toLowerCase().includes(queryLower) || (it?.tagName || '').toLowerCase().includes(queryLower))
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,13 +87,13 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
       hasWarranty: false,
       deliveryOption: 'pickup',
       notes: notes.trim() || undefined,
-      userId: currentUser.userId || currentUser.id,
-      userName: currentUser.name,
-      userPhone: currentUser.phone,
+      userId: currentUser?.userId || currentUser?.id || 'guest',
+      userName: currentUser?.name || 'පරිශීලක',
+      userPhone: currentUser?.phone || '',
       showWhatsapp,
       whatsappNumber: showWhatsapp ? whatsappNumber.trim() : undefined,
       revealContactConsent,
-      locationName: currentUser.nearestTown || 'කඩවත',
+      locationName: currentUser?.nearestTown || 'කඩවත',
       distanceKm: 0.5,
       createdAt: 'මීට සුළු මොහොතකට පෙර',
       createdAtMs: Date.now()
@@ -104,6 +102,8 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
     onAddRequest(newRequest);
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
@@ -168,9 +168,9 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
 
                 {matchingTags.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {matchingTags.map((t) => (
+                    {matchingTags.map((t, tIdx) => (
                       <button
-                        key={t.id}
+                        key={`buyer_tag_${t.id || 't'}_${tIdx}`}
                         type="button"
                         onClick={() => {
                           setSelectedTag(t.tagName);
@@ -200,9 +200,9 @@ export const MarketplaceAddBuyerRequestModal: React.FC<MarketplaceAddBuyerReques
                       වෙළඳපොළේ දැනට ඇති ගැලපෙන භාණ්ඩ ({matchingSellerItems.length}) :
                     </div>
                     <div className="space-y-1">
-                      {matchingSellerItems.slice(0, 2).map((it) => (
+                      {matchingSellerItems.slice(0, 2).map((it, itIdx) => (
                         <div
-                          key={it.id}
+                          key={`seller_item_${it.id || 'it'}_${itIdx}`}
                           className="flex items-center justify-between text-xs bg-white dark:bg-zinc-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700"
                         >
                           <span className="font-bold text-slate-800 dark:text-zinc-200 truncate">

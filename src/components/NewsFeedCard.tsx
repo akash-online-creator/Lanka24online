@@ -33,10 +33,12 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { HelpPost, Language, LocationOption, User } from '../types';
+import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
 import { getAccurateElapsedTime } from '../utils/dateUtils';
 import { inspectAndSanitizeMessage } from '../utils/policyGuard';
 import { getTagIconComponent } from '../utils/tagUtils';
+import { translateText, translateName } from '../utils/postTranslator';
 
 interface NewsFeedCardProps {
   post: HelpPost;
@@ -79,15 +81,13 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  if (!post || !post.id) return null;
+
   const elapsedTimeLabel = getAccurateElapsedTime(post.createdAt, post.createdAtMs, nowMs);
 
   const normalizePhone = (phone?: string) => (phone ? phone.replace(/[^0-9]/g, '') : '');
 
-  const ownerCheck =
-    isOwner ??
-    (currentUser &&
-      ((currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-        (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())));
+  const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
 
   const isAdmin = currentUser?.role === 'admin';
   const isConfirmed = Boolean(post.isConfirmed || post.status === 'confirmed' || post.confirmedBy);
@@ -112,16 +112,25 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
   const postLng = post.lng || 79.8986;
   const postLocationName = post.locationName || 'දැන්වීම පළකළ ස්ථානය';
 
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (lang === 'en') return en;
+    if (lang === 'ta') return ta;
+    return si;
+  };
+
   const motorcycleRoute = calculateMotorcycleRoadDistance(
     postLat,
     postLng,
     viewerLat,
     viewerLng,
     postLocationName,
-    viewerLocationName
+    viewerLocationName,
+    lang
   );
 
-  const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
+  const displayPostCode = (post?.postCode && typeof post.postCode === 'string') 
+    ? (post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`) 
+    : (post?.id ? `#${post.id.slice(-6)}` : '#POST');
   const helpersCount = post.helpersNeeded || post.helpersCount || 1;
   const repliesCount = post.replies?.length || post.repliesCount || 0;
 
@@ -137,6 +146,8 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
   let displaySpecialNotice = post.specialNotice || '';
   let displayConditions = post.conditions || '';
 
+  const defaultConditions = getLangText('පළපුරුදු කාර්මික ශිල්පින් විමසන්න.', 'Experienced technicians/service providers only.', 'அனுபவம் வாய்ந்த தொழில்நுட்ப வல்லுநர்கள் மட்டும்.');
+
   if (!displaySpecialNotice && post.conditions) {
     if (post.conditions.includes('විශේෂ දැනුවත් කිරීම')) {
       const parts = post.conditions.split(/කොන්දේසි[:\s]*/i);
@@ -145,16 +156,18 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
         displayConditions = parts.slice(1).join(' ').trim();
       } else {
         displaySpecialNotice = post.conditions.replace(/විශේෂ දැනුවත් කිරීම්?[:\s]*/gi, '').trim();
-        displayConditions = 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
+        displayConditions = defaultConditions;
       }
     }
   }
 
   if (!displayConditions || displayConditions.trim() === '') {
-    displayConditions = 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
+    displayConditions = defaultConditions;
   }
   if (!displaySpecialNotice || displaySpecialNotice.trim() === '') {
-    displaySpecialNotice = isQuickService ? 'අතිශය හදිසි / අද දවස තුල' : 'අද දවස තුල';
+    displaySpecialNotice = isQuickService 
+      ? getLangText('අතිශය හදිසි / අද දවස තුල', 'Urgent / Today', 'மிக அவசரம் / இன்றைய தினத்திற்குள்') 
+      : getLangText('අද දවස තුල', 'Within today', 'இன்றைய தினத்திற்குள்');
   }
 
   const safeWhatHappened = shouldMask ? inspectAndSanitizeMessage(post.whatHappened, false).sanitizedText : post.whatHappened;
@@ -170,12 +183,6 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
     }
-  };
-
-  const getLangText = (si: string, en: string, ta: string) => {
-    if (lang === 'en') return en;
-    if (lang === 'ta') return ta;
-    return si;
   };
 
   // Avatar initial color generator
@@ -255,7 +262,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
           <div className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                {post.userName || 'පරිශීලකයා'}
+                {translateName(post.userName || 'පරිශීලකයා', lang)}
               </h3>
               <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-md border border-emerald-300/60 dark:border-emerald-700/60 flex items-center gap-0.5 shrink-0">
                 <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
@@ -281,7 +288,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
           {(post.tagName || post.tagCategory) && (
             <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs font-bold rounded-xl shadow-2xs">
               {TagIconComp && <TagIconComp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
-              <span className="truncate max-w-[110px]">{post.tagName || post.tagCategory}</span>
+              <span className="truncate max-w-[110px]">{translateText(post.tagName || post.tagCategory, lang)}</span>
             </span>
           )}
 
@@ -294,7 +301,7 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
                 ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/30'
                 : 'bg-slate-100 hover:bg-amber-50 dark:bg-slate-800/80 dark:hover:bg-amber-950/40 text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 border-slate-200 dark:border-slate-700'
             }`}
-            title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න (Save Post)'}
+            title={isSaved ? getLangText('සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න', 'Remove from saved', 'சேமிப்பிலிருந்து நீக்கு') : getLangText('පසුව බැලීමට සුරකින්න', 'Save Post', 'பதிவை சேமி')}
           >
             {isSaved ? (
               <>
@@ -315,11 +322,34 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
       <div className="space-y-3">
         {/* Category Specific View: Find For Me */}
         {post.category === 'find_for_me' ? (
-          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-300/70 dark:border-amber-800/60 space-y-2">
-            <div className="flex items-center justify-between text-xs font-black text-amber-900 dark:text-amber-200">
-              <span className="flex items-center gap-1">
-                <Search className="w-3.5 h-3.5 text-amber-600" />
-                <span>{getLangText('සොයාදෙන්න ඉල්ලීම', 'Find For Me Request', 'கண்டுபிடி கோரிக்கை')}</span>
+          <div className={`p-3.5 rounded-2xl border space-y-2 ${
+            post.findForMeType === 'found' || post.whatHappened?.includes('හමුවී ඇත')
+              ? 'bg-teal-50/80 dark:bg-teal-950/40 border-teal-300/80 dark:border-teal-800/70'
+              : post.findForMeType === 'lost'
+              ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-300/70 dark:border-rose-800/60'
+              : post.findForMeType === 'stolen'
+              ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300/70 dark:border-amber-800/60'
+              : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300/70 dark:border-emerald-800/60'
+          }`}>
+            <div className="flex items-center justify-between text-xs font-black">
+              <span className={`flex items-center gap-1 ${
+                post.findForMeType === 'found' || post.whatHappened?.includes('හමුවී ඇත')
+                  ? 'text-teal-900 dark:text-teal-200'
+                  : post.findForMeType === 'lost'
+                  ? 'text-rose-900 dark:text-rose-200'
+                  : 'text-amber-900 dark:text-amber-200'
+              }`}>
+                {post.findForMeType === 'found' || post.whatHappened?.includes('හමුවී ඇත') ? (
+                  <>
+                    <span>🎁</span>
+                    <span>{getLangText('හමුවනලද (Found Item)', 'Found Item', 'கண்டெடுக்கப்பட்ட பொருள்')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-3.5 h-3.5" />
+                    <span>{getLangText('සොයාදෙන්න ඉල්ලීම', 'Find For Me Request', 'கண்டுபிடி கோரிக்கை')}</span>
+                  </>
+                )}
               </span>
               {post.hasReward && (
                 <span className="bg-amber-500 text-white px-2 py-0.5 rounded-md font-mono text-[10px]">
@@ -458,10 +488,12 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
         {/* Interaction Summary Counts */}
         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
-              <HeartHandshake className="w-3.5 h-3.5" />
-              <span>{repliesCount} {getLangText('කැමැත්ත දැක්වූවන්', 'Offers', 'விருப்பங்கள்')}</span>
-            </span>
+            {(ownerCheck || isAdmin) && (
+              <span className="flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400">
+                <HeartHandshake className="w-3.5 h-3.5" />
+                <span>{repliesCount} {getLangText('කැමැත්ත දැක්වූවන්', 'Offers', 'விருப்பங்கள்')}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -484,83 +516,93 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
 
         {/* Action Buttons Row */}
         {ownerCheck ? (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <button
               type="button"
               onClick={() => onOpenSupportOffers && onOpenSupportOffers(post)}
-              className="flex-1 min-w-[140px] py-2.5 px-3 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-400/40"
+              className="flex-1 min-w-[140px] py-2 px-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-400/40"
             >
               <HeartHandshake className="w-4 h-4 text-white" />
-              <span>{getLangText('කැමැත්ත දැක්වූවන් බලන්න', 'View Support Offers', 'விருப்பங்களைப் பார்')}</span>
+              <span>{getLangText('කැමැත්ත දැක්වූවන් බලන්න', 'View Offers', 'விருப்பங்களைப் பார்')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => onEditPost && onEditPost(post)}
-              className="py-2.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-              title="තොරතුරු වෙනස් කිරීම"
+              className="py-2 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
+              title={getLangText('දැන්වීම සංස්කරණය', 'Edit Post', 'திருத்து')}
             >
               <Pencil className="w-3.5 h-3.5" />
-              <span>Edit</span>
+              <span>{getLangText('සංස්කරණය', 'Edit', 'திருத்து')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => onViewPost && onViewPost(post)}
-              className="py-2.5 px-3 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-              title="ප්‍රදර්ශනය වන ආකාරය"
+              className="py-2 px-3 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
+              title={getLangText('සම්පූර්ණ විස්තර', 'View Details', 'விவரம்')}
             >
               <Eye className="w-3.5 h-3.5" />
-              <span>View</span>
+              <span>{getLangText('විස්තර', 'View', 'விவரம்')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => onDeletePost && onDeletePost(post)}
-              className="py-2.5 px-3 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
-              title="දැන්වීම මකා දැමීම"
+              className="py-2 px-3 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
+              title={getLangText('දැන්වීම මකන්න', 'Delete Post', 'நீக்கு')}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete</span>
+              <span>{getLangText('මකන්න', 'Delete', 'நீக்கு')}</span>
             </button>
           </div>
         ) : isAdmin ? (
           <div className="space-y-2 pt-1">
-            <div className="flex flex-wrap items-center gap-2">
+            {post.replies && post.replies.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenSupportOffers && onOpenSupportOffers(post)}
+                className="w-full py-2 px-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-400/40"
+              >
+                <HeartHandshake className="w-4 h-4 text-white" />
+                <span>{getLangText('කැමැත්ත දැක්වූවන් බලන්න', 'View Offers', 'விருப்பங்களைப் பார்')} ({post.replies.length})</span>
+              </button>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => onOpenChat && onOpenChat(post)}
-                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
+                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                <span>Chat</span>
+                <span>{getLangText('සංවාදය', 'Chat', 'அரட்டை')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onEditPost && onEditPost(post)}
-                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
+                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
               >
                 <Pencil className="w-3.5 h-3.5" />
-                <span>Edit</span>
+                <span>{getLangText('සංස්කරණය', 'Edit', 'திருத்து')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onViewPost && onViewPost(post)}
-                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
+                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>View</span>
+                <span>{getLangText('විස්තර', 'View', 'விவரம்')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onDeletePost && onDeletePost(post)}
-                className="flex-1 min-w-[80px] py-2 px-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
+                className="flex-1 min-w-[70px] py-2 px-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
+                <span>{getLangText('මකන්න', 'Delete', 'நீக்கு')}</span>
               </button>
             </div>
 
@@ -573,12 +615,12 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             {/* Primary Action Button: Offer Support */}
             <button
               type="button"
               onClick={() => onOfferSupport(post)}
-              className={`w-full py-3 px-4 rounded-2xl font-black text-xs sm:text-sm shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+              className={`flex-1 min-w-[170px] py-3 px-4 rounded-2xl font-black text-xs sm:text-sm shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border ${
                 isQuickService
                   ? 'bg-gradient-to-r from-amber-600 via-orange-500 to-amber-600 hover:from-amber-700 hover:to-orange-600 text-white border-amber-400/50 shadow-amber-600/20'
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] hover:from-emerald-700 hover:to-teal-700 text-white border-emerald-400/50 shadow-emerald-600/20'
@@ -588,28 +630,17 @@ export const NewsFeedCard: React.FC<NewsFeedCardProps> = ({
               <span>{isConfirmed ? getLangText('අමතර සහය හෝ විමසීම්', 'Additional Inquiries', 'கூடுதல் விசாரணைகள்') : getLangText('සහාය වීමට කැමැත්ත දක්වන්න', 'Offer Support', 'உதவ விருப்பம் தெரிவிக்க')}</span>
             </button>
 
-            {/* Secondary Action: Chat with requester */}
-            <div className="flex items-center gap-2">
+            {onViewPost && (
               <button
                 type="button"
-                onClick={() => onOpenChat && onOpenChat(post)}
-                className="flex-1 py-3 px-3 rounded-2xl bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-300 font-extrabold text-xs sm:text-sm shadow-xs border border-teal-300/80 dark:border-teal-800/80 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                title="ඉල්ලුම්කරු සමග සංවාදය"
-              >
-                <MessageCircle className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                <span>{getLangText('කතාබස් (Chat)', 'Chat', 'அரட்டை')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onViewPost && onViewPost(post)}
-                className="py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-slate-700 active:scale-95 transition-all flex items-center justify-center gap-1 cursor-pointer"
-                title="සම්පූර්ණ විස්තර බලන්න"
+                onClick={() => onViewPost(post)}
+                className="py-3 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold text-xs shadow-xs border border-slate-200 dark:border-slate-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                title={getLangText('සම්පූර්ණ විස්තර බලන්න', 'View Details', 'விவரம்')}
               >
                 <Eye className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                 <span className="hidden sm:inline">{getLangText('විස්තර', 'Details', 'விவரம்')}</span>
               </button>
-            </div>
+            )}
           </div>
         )}
       </div>

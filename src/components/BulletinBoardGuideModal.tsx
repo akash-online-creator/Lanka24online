@@ -171,12 +171,12 @@ export const BulletinBoardGuideModal: React.FC<BulletinBoardGuideModalProps> = (
 
         {/* Section Tabs */}
         <div className="flex items-center gap-1.5 p-2 bg-slate-100 dark:bg-zinc-800/80 border-b border-slate-200 dark:border-zinc-800 overflow-x-auto scrollbar-none shrink-0">
-          {sections.map((sec) => {
+          {sections.map((sec, sIdx) => {
             const Icon = sec.icon;
             const isActive = activeTab === sec.id;
             return (
               <button
-                key={sec.id}
+                key={`bulletin_sec_${sec.id}_${sIdx}`}
                 type="button"
                 onClick={() => setActiveTab(sec.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
@@ -201,7 +201,7 @@ export const BulletinBoardGuideModal: React.FC<BulletinBoardGuideModalProps> = (
               <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
                 <h3 className="text-base font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-2 mb-2">
                   <Megaphone className="w-5 h-5 text-emerald-600" />
-                  <span>දැන්වීම් පුවරුව (Live Bulletin Board) යනු කුමක්ද?</span>
+                  <span>සහය පුවරුව (Live Support Board) යනු කුමක්ද?</span>
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
                   ශ්‍රී ලංකාවේ ඔබේ ප්‍රදේශයේ (&lt;15 KM) හෝ මුළු රට පුරාම පළවන සියලුම හදිසි උපකාර, කාර්මික සේවා, පරිත්‍යාග සහ ඉල්ලීම් තත්‍ය කාලීනව (Real-Time) දැකබලා ගැනීමට ඇති ප්‍රධාන සජීවී ප්‍රවාහයයි.
@@ -228,7 +228,7 @@ export const BulletinBoardGuideModal: React.FC<BulletinBoardGuideModalProps> = (
                     <span>සැබෑ උදාහරණයක් (Live Scenario):</span>
                   </div>
                   <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed italic">
-                    "කෝවින්න ප්‍රදේශයේ කෙනෙකුගේ වාහනයක් කාර්මික දෝෂයකට ලක්ව ඇති බව දැන්වීම් පුවරුවේ දිස්වේ. ඔබ අසල සිටින කාර්මිකයෙක් නම්, 'සහය වන්න' ක්ලික් කර දුරකථන අංකය හෝ පණිවිඩයක් යවා ඔහුට උදව් කළ හැක."
+                    "කෝවින්න ප්‍රදේශයේ කෙනෙකුගේ වාහනයක් කාර්මික දෝෂයකට ලක්ව ඇති බව සහය පුවරුවේ දිස්වේ. ඔබ අසල සිටින කාර්මිකයෙක් නම්, 'සහය වන්න' ක්ලික් කර දුරකථන අංකය හෝ පණිවිඩයක් යවා ඔහුට උදව් කළ හැක."
                   </p>
                 </div>
               </div>

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSavePassword: (newPassword: string) => void;
+  onSavePassword: (newPassword: string, tempPassword?: string) => Promise<boolean | void> | void;
   userName?: string;
   nicNumber?: string;
+  currentTempPassword?: string;
 }
 
 export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
@@ -15,20 +16,33 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   onSavePassword,
   userName,
   nicNumber,
+  currentTempPassword = '',
 }) => {
+  const [tempPassword, setTempPassword] = useState(currentTempPassword);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showTempPassword, setShowTempPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync initial temp password when modal opens
+  React.useEffect(() => {
+    if (isOpen && currentTempPassword) {
+      setTempPassword(currentTempPassword);
+    }
+  }, [isOpen, currentTempPassword]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMessage('');
 
+    const cleanTemp = tempPassword.trim();
     const cleanNew = newPassword.trim();
     const cleanConfirm = confirmPassword.trim();
 
@@ -47,13 +61,21 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       return;
     }
 
-    setIsSuccess(true);
-    setTimeout(() => {
-      onSavePassword(cleanNew);
-      setIsSuccess(false);
-      setNewPassword('');
-      setConfirmPassword('');
-    }, 600);
+    try {
+      setIsSubmitting(true);
+      await onSavePassword(cleanNew, cleanTemp);
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        setIsSubmitting(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMessage(err?.message || 'මුරපදය යාවත්කාලීන කිරීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    }
   };
 
   return (
@@ -115,6 +137,33 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         {/* Form Inputs */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
+          {/* Field 0: Current / Temporary Password (දැනට ඇති තාවකාලික මුරපදය) */}
+          <div className="space-y-1.5">
+            <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
+              දැනට ඇති තාවකාලික මුරපදය (Temporary Password)
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showTempPassword ? 'text' : 'password'}
+                placeholder="දැනට ලැබී ඇති තාවකාලික මුරපදය"
+                value={tempPassword}
+                onChange={(e) => {
+                  setTempPassword(e.target.value);
+                  if (errorMessage) setErrorMessage('');
+                }}
+                className="w-full bg-slate-50 dark:bg-[#07120c] border-2 border-slate-200 dark:border-[#162e20] focus:border-[#007a4b] dark:focus:border-emerald-500 rounded-2xl py-3 pl-4 pr-11 text-slate-900 dark:text-white placeholder:text-slate-400 text-sm font-medium focus:outline-none transition-all shadow-inner"
+              />
+              <button
+                type="button"
+                onClick={() => setShowTempPassword(!showTempPassword)}
+                className="absolute right-3 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 p-1 cursor-pointer"
+                title={showTempPassword ? 'Hide password' : 'Show password'}
+              >
+                {showTempPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
           {/* Field 1: New Password (නව මුරපදය) */}
           <div className="space-y-1.5">
             <label className="block text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-200">
@@ -175,10 +224,22 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           <div className="pt-3">
             <button
               type="submit"
-              className="w-full bg-[#00a86b] hover:bg-[#00925c] active:bg-[#007a4b] text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-600/25 border-b-4 border-[#006e43] transition-all cursor-pointer text-base active:translate-y-0.5 active:border-b-0 flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className={`w-full ${
+                isSubmitting ? 'bg-emerald-600/70 cursor-not-allowed' : 'bg-[#00a86b] hover:bg-[#00925c] active:bg-[#007a4b] cursor-pointer'
+              } text-white font-black py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-600/25 border-b-4 border-[#006e43] transition-all text-base active:translate-y-0.5 active:border-b-0 flex items-center justify-center gap-2`}
             >
-              <CheckCircle2 className="w-5 h-5" />
-              <span>Confirm</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>සුරකිමින් පවතී...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Confirm</span>
+                </>
+              )}
             </button>
           </div>
 

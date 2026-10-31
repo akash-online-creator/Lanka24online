@@ -6,7 +6,7 @@ import {
   Search, 
   Gift, 
   Store, 
-  Users, 
+  Users,
   Wrench 
 } from 'lucide-react';
 
@@ -39,8 +39,6 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
         return language === 'en' ? 'Marketplace' : language === 'ta' ? 'சந்தை' : 'වෙළඳපොල';
       case 'group_work':
         return language === 'en' ? 'Group Work' : language === 'ta' ? 'குழு வேலை' : 'කණ්ඩායම් වැඩ';
-      case 'services':
-        return language === 'en' ? 'Services' : language === 'ta' ? 'சேவைகள்' : 'සේවා';
       default:
         return '';
     }
@@ -57,7 +55,6 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
     { key: 'from_me_to_you', icon: Gift },
     { key: 'marketplace', icon: Store },
     { key: 'group_work', icon: Users },
-    { key: 'services', icon: Wrench },
   ];
 
   const sectionDividerText = language === 'en' ? 'Various Services' : language === 'ta' ? 'பல்வேறு சேவைகள்' : 'විවිධ සේවා';
@@ -66,14 +63,14 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
     <div className="w-full space-y-5">
       {/* Top 4 Categories Grid (2 Columns) */}
       <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
-        {topCategories.map((cat) => {
+        {topCategories.map((cat, cIdx) => {
           const Icon = cat.icon;
           const title = getCategoryTitle(cat.key);
           const isSelected = selectedCategory === cat.key;
 
           return (
             <button
-              key={cat.key}
+              key={`top_cat_${cat.key}_${cIdx}`}
               type="button"
               onClick={() => onSelectCategory(cat.key, title)}
               className={`p-4 sm:p-5 rounded-[1.4rem] flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
@@ -110,14 +107,14 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
 
       {/* Bottom 4 Categories Grid (2 Columns) */}
       <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
-        {bottomCategories.map((cat) => {
+        {bottomCategories.map((cat, cIdx) => {
           const Icon = cat.icon;
           const title = getCategoryTitle(cat.key);
           const isSelected = selectedCategory === cat.key;
 
           return (
             <button
-              key={cat.key}
+              key={`bot_cat_${cat.key}_${cIdx}`}
               type="button"
               onClick={() => onSelectCategory(cat.key, title)}
               className={`p-4 sm:p-5 rounded-[1.4rem] flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Language, ProfessionalService, ServiceReview } from '../types';
 import { getVillageOrTownDisplay } from '../utils/geoUtils';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { 
   X, 
   MapPin, 
@@ -9,16 +10,19 @@ import {
   Clock, 
   Star, 
   MessageSquare, 
-  MessageCircle,
+  MessageCircle, 
   CheckCircle2, 
   Share2, 
   ShieldCheck, 
-  Send,
-  Sparkles,
-  Check,
-  Lock
+  Send, 
+  Sparkles, 
+  Check, 
+  Lock,
+  Trash2
 } from 'lucide-react';
 import { ProfessionalServiceChatModal } from './ProfessionalServiceChatModal';
+import { calculateProviderReputation } from '../utils/reputationSystem';
+import { ProviderReputationCard } from './ProviderReputationCard';
 
 interface ProfessionalServiceDetailModalProps {
   isOpen: boolean;
@@ -27,6 +31,7 @@ interface ProfessionalServiceDetailModalProps {
   currentUser: User;
   language: Language;
   onAddReview: (serviceId: string, review: ServiceReview) => void;
+  onDeleteService?: (serviceId: string) => void;
 }
 
 export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailModalProps> = ({
@@ -36,21 +41,24 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
   currentUser,
   language,
   onAddReview,
+  onDeleteService,
 }) => {
-  if (!isOpen || !service) return null;
-
   const [rating, setRating] = useState<number>(5);
   const [commentText, setCommentText] = useState('');
   const [commentSuccess, setCommentSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  if (!isOpen || !service) return null;
+
   const isOwner = Boolean(
     currentUser && (
-      (currentUser.userId && service.userId && (currentUser.userId === service.userId || currentUser.id === service.userId)) ||
+      (currentUser.userId && service.userId && (currentUser.userId === service.userId || (currentUser.id && currentUser.id === service.userId))) ||
+      (currentUser.id && service.userId && currentUser.id === service.userId) ||
       (currentUser.phone && service.providerPhone && currentUser.phone.replace(/\D/g, '') === service.providerPhone.replace(/\D/g, ''))
     )
   );
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = checkIsAdmin(currentUser);
+  const canDelete = isOwner || isAdmin;
   const hasContactPermission = isOwner || isAdmin || service.revealContactConsent !== false;
 
   const getDeliveryMethodLabel = (method: string) => {
@@ -75,9 +83,9 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
 
     const newReview: ServiceReview = {
       id: `rev_${Date.now()}`,
-      userId: currentUser.userId || currentUser.id || 'guest',
-      userName: currentUser.name || 'පරිශීලක',
-      userPhotoUrl: currentUser.photoUrl || '',
+      userId: currentUser?.userId || currentUser?.id || 'guest',
+      userName: currentUser?.name || 'පරිශීලක',
+      userPhotoUrl: currentUser?.photoUrl || '',
       rating,
       comment: commentText.trim(),
       createdAt: 'දැන්',
@@ -101,7 +109,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
   const reviewsList = service.reviews || [];
   const averageRating = reviewsList.length > 0
     ? (reviewsList.reduce((acc, r) => acc + r.rating, 0) / reviewsList.length).toFixed(1)
-    : service.avgRating?.toFixed(1) || '5.0';
+    : (service.avgRating && service.avgRating > 0 ? service.avgRating.toFixed(1) : 'නව (New)');
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
@@ -115,13 +123,29 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
             <span>•</span>
             <span>{service.subCategoryName}</span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#162e20] hover:bg-slate-200 dark:hover:bg-[#1f422e] text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {canDelete && onDeleteService && (
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteService(service.id);
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-red-500/20"
+                title={isAdmin ? "පරිපාලක ලෙස මෙම සේවාව ඉවත් කරන්න (Admin Delete)" : "සේවාව ඉවත් කරන්න (Delete)"}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isAdmin ? 'ඉවත් කරන්න (Admin)' : 'ඉවත් කරන්න'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#162e20] hover:bg-slate-200 dark:hover:bg-[#1f422e] text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Content Body */}
@@ -133,7 +157,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
               {service.providerPhotoUrl && service.providerPhotoUrl.trim() !== '' ? (
                 <img
                   src={service.providerPhotoUrl}
-                  alt={service.providerName}
+                  alt={service.providerName || 'Provider'}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
@@ -141,7 +165,7 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-3xl">
-                  {service.providerName.charAt(0)}
+                  {(service.providerName || 'P').charAt(0)}
                 </div>
               )}
             </div>
@@ -295,6 +319,14 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
             </div>
           </div>
 
+          {/* Reputation & Leveling Card */}
+          <div className="my-2">
+            <ProviderReputationCard
+              reputation={calculateProviderReputation(service.userId, service)}
+              showAllLevelsLadder={false}
+            />
+          </div>
+
           {/* 4. Comments & Reviews Section (Requirement 04) */}
           <div className="pt-4 border-t border-slate-200 dark:border-[#173222] space-y-4">
             <div className="flex items-center justify-between">
@@ -371,15 +403,15 @@ export const ProfessionalServiceDetailModal: React.FC<ProfessionalServiceDetailM
                   මෙම සේවාව සඳහා තවම අදහස් පළ කර නොමැත. පළමු අදහස ඔබ එක් කරන්න!
                 </p>
               ) : (
-                reviewsList.map((rev) => (
+                reviewsList.map((rev, rIdx) => (
                   <div
-                    key={rev.id}
+                    key={`ps_rev_${rev.id || 'r'}_${rIdx}`}
                     className="p-3.5 rounded-2xl bg-white dark:bg-[#112318] border border-slate-200/80 dark:border-[#173222] shadow-sm space-y-1.5"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center justify-center">
-                          {rev.userName.charAt(0)}
+                          {(rev.userName || 'U').charAt(0)}
                         </div>
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {rev.userName}

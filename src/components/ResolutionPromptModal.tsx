@@ -35,6 +35,8 @@ export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  if (!post || !post.id) return null;
+
   const helperName = post.completedHelperName || post.completedBy || post.confirmedHelperName || 'සහායකයා';
   const helperPhone = post.completedHelperPhone || post.confirmedHelperPhone || '';
   const bill = post.serviceBill;

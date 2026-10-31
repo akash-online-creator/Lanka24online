@@ -1,1228 +1,619 @@
-import React from 'react';
-import { 
-  MessageSquare, 
-  MessageCircle,
-  ExternalLink,
-  MapPin,
-  Pencil,
-  Eye,
-  Trash2,
-  Clock,
-  Lock,
-  CheckCircle,
-  HeartHandshake,
-  UserCheck,
-  Sparkles,
-  ChevronRight,
-  Phone,
-  ShieldCheck,
-  ShieldAlert,
-  Search,
-  Gift,
-  Calendar,
-  DollarSign,
-  Truck,
-  ArrowLeftRight,
-  PackageOpen,
-  RefreshCw,
-  Bookmark,
-  BookmarkCheck,
-  Zap
-} from 'lucide-react';
-import { HelpPost, Language, LocationOption, User } from '../types';
-import { Card3D } from './Card3D';
-import { calculateMotorcycleRoadDistance, getVillageOrTownDisplay } from '../utils/geoUtils';
-import { getAccurateElapsedTime } from '../utils/dateUtils';
-import { inspectAndSanitizeMessage } from '../utils/policyGuard';
-import { getTagIconComponent } from '../utils/tagUtils';
-
-interface PostCardProps {
-  post: HelpPost;
-  lang: Language;
-  onOfferSupport: (post: HelpPost) => void;
-  viewerLocation?: LocationOption;
-  currentUser?: User;
-  isOwner?: boolean;
-  isSaved?: boolean;
-  onToggleSave?: (post: HelpPost) => void;
-  onEditPost?: (post: HelpPost) => void;
-  onViewPost?: (post: HelpPost) => void;
-  onDeletePost?: (post: HelpPost) => void;
-  onOpenChat?: (post: HelpPost) => void;
-  onOpenSupportOffers?: (post: HelpPost) => void;
+import React, { useState, useEffect } from 'react';
+import { Heart, ThumbsDown, MessageSquare, Trash2, Eye, Clock, Pencil, Phone, MessageCircle, HelpCircle, Zap, Bookmark, UserCheck, MapPin, Send, Lock, User as UserIcon, ChevronDown, ChevronUp, Car, Banknote, FileText, ExternalLink, Copy, Check, BarChart3, Calendar, Maximize2, X } from 'lucide-react';
+import { HelpPost, User, Language, LocationOption, PostComment } from '../types';
+import { checkIsPostOwner, checkIsAdmin } from '../utils/postOwnerHelper';
+import { addDeletedPostId } from '../utils/deletedPostsManager';
+import { deleteHelpPostFromFirestore, updateHelpPostInFirestore } from '../lib/firebase';
+import { maskPhone } from '../utils/demoDataMasker';
+import { AudioVoicePlayer } from './AudioVoiceNote';
+import { getFontFamilyById, injectPostFonts } from '../utils/postFontManager';
+import { getPostValidityInfo } from '../utils/creditManager';
+const h = React.createElement;
+export interface PostCardProps {
+post: any;
+currentUser?: User;
+viewerLocation?: LocationOption;
+lang?: Language;
+language?: Language;
+isOwner?: boolean;
+isSaved?: boolean;
+onToggleSave?: (post: HelpPost) => void;
+onOfferSupport?: (post: HelpPost) => void;
+onEditPost?: (post: any) => void;
+onDeletePost?: (postIdOrPost: any) => void;
+onToggleHidePost?: (post: any) => void;
+onViewPost?: (post: HelpPost) => void;
+onViewDetails?: (postId: string) => void;
+onOpenChat?: (post: HelpPost) => void;
+onOpenConfirm?: (post: HelpPost) => void;
+onOpenSupportOffers?: (post: HelpPost) => void;
+onBoostPost?: (post: HelpPost) => void;
+onRequireRegistration?: () => void;
+onAdminModerate?: (post: HelpPost) => void;
+onPosterRespondIssue?: (post: HelpPost) => void;
+onPinPost?: (postId: string) => void;
+onLike?: (postId: string) => void;
+onUnlike?: (postId: string) => void;
+onComment?: (postId: string) => void;
+onShare?: (postId: string) => void;
+onApprovePost?: (postId: string) => void;
+onRejectPost?: (postId: string) => void;
+onViewProfile?: (userIdOrName: string) => void;
+isDemo?: boolean;
 }
-
-export const PostCard: React.FC<PostCardProps> = ({ 
-  post, 
-  lang, 
-  onOfferSupport, 
-  viewerLocation, 
-  currentUser,
-  isOwner,
-  isSaved = false,
-  onToggleSave,
-  onEditPost,
-  onViewPost,
-  onDeletePost,
-  onOpenChat,
-  onOpenSupportOffers,
+export const PostCard = ({
+post,
+currentUser,
+viewerLocation,
+lang,
+language = 'si',
+isOwner,
+isSaved: propIsSaved = false,
+onToggleSave,
+onOfferSupport,
+onEditPost,
+onDeletePost,
+onViewPost,
+onViewDetails,
+onOpenChat,
+onOpenConfirm,
+onOpenSupportOffers,
+onRequireRegistration,
+onLike,
+onUnlike,
+onViewProfile,
+isDemo: propIsDemo
 }) => {
-  const [nowMs, setNowMs] = React.useState(() => Date.now());
-
-  React.useEffect(() => {
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-    }, 10000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const elapsedTimeLabel = getAccurateElapsedTime(post.createdAt, post.createdAtMs, nowMs);
-
-  const normalizePhone = (phone?: string) => phone ? phone.replace(/[^0-9]/g, '') : '';
-
-  const ownerCheck = isOwner ?? (
-    currentUser && (
-      (currentUser.userId && post.userId && (currentUser.userId === post.userId || currentUser.id === post.userId)) ||
-      (currentUser.phone && post.userPhone && normalizePhone(currentUser.phone) === normalizePhone(post.userPhone)) ||
-      (currentUser.name && post.userName && currentUser.name.trim().toLowerCase() === post.userName.trim().toLowerCase())
-    )
-  );
-
-  const isConfirmedHelper = Boolean(
-    currentUser && (
-      (currentUser.userId && post.confirmedHelperId && currentUser.userId === post.confirmedHelperId) ||
-      (currentUser.phone && post.confirmedHelperPhone && normalizePhone(currentUser.phone) === normalizePhone(post.confirmedHelperPhone)) ||
-      (post.authorizedUserIds && currentUser.userId && post.authorizedUserIds.includes(currentUser.userId)) ||
-      (post.replies?.some(r => (r.isConfirmed || r.isAccepted) && (
-        (currentUser.userId && r.responderId && currentUser.userId === r.responderId) ||
-        (currentUser.phone && r.responderPhone && normalizePhone(currentUser.phone) === normalizePhone(r.responderPhone)) ||
-        (currentUser.name && r.responderName && currentUser.name.trim().toLowerCase() === r.responderName.trim().toLowerCase())
-      )))
-    )
-  );
-
-  const isAdmin = currentUser?.role === 'admin';
-  const isConfirmed = Boolean(post.isConfirmed || post.status === 'confirmed' || post.confirmedBy);
-  const shouldMask = !isConfirmed && !ownerCheck && !isAdmin;
-
-  // Contact Permission for Anti-Fraud Safeguard (Only show phone/address with poster's consent, or if owner/confirmed helper/admin)
-  const hasContactPermission = Boolean(
-    ownerCheck || 
-    isAdmin || 
-    isConfirmedHelper || 
-    post.revealContactConsent === true
-  );
-  const viewerLat = viewerLocation?.lat || 7.1710;
-  const viewerLng = viewerLocation?.lng || 79.8986;
-  const viewerLocationName = viewerLocation?.nameSi || 'ඔබ සිටින ස්ථානය (නරඹන්නා)';
-  
-  const postLat = post.lat || 7.1710;
-  const postLng = post.lng || 79.8986;
-  const postLocationName = post.locationName || 'දැන්වීම පළකළ ස්ථානය';
-
-  const motorcycleRoute = calculateMotorcycleRoadDistance(
-    postLat,
-    postLng,
-    viewerLat,
-    viewerLng,
-    postLocationName,
-    viewerLocationName
-  );
-
-  const displayPostCode = post.postCode.startsWith('#') ? post.postCode : `#${post.postCode}`;
-  const helpersCount = post.helpersNeeded || post.helpersCount || 1;
-
-  // Extract confirmed helper info if present
-  const confirmedHelperName = post.confirmedHelperName || post.confirmedBy || (post.replies?.find(r => r.isConfirmed || r.isAccepted)?.responderName);
-  const confirmedHelperPhone = post.confirmedHelperPhone || (post.replies?.find(r => r.isConfirmed || r.isAccepted)?.responderPhone);
-
-  // Extract conditions & special notice cleanly
-  let displaySpecialNotice = post.specialNotice || '';
-  let displayConditions = post.conditions || '';
-
-  if (!displaySpecialNotice && post.conditions) {
-    if (post.conditions.includes('විශේෂ දැනුවත් කිරීම')) {
-      const parts = post.conditions.split(/කොන්දේසි[:\s]*/i);
-      if (parts.length > 1) {
-        displaySpecialNotice = parts[0].replace(/විශේෂ දැනුවත් කිරීම්?[:\s]*/gi, '').trim();
-        displayConditions = parts.slice(1).join(' ').trim();
-      } else {
-        displaySpecialNotice = post.conditions.replace(/විශේෂ දැනුවත් කිරීම්?[:\s]*/gi, '').trim();
-        displayConditions = 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
-      }
-    }
-  }
-
-  if (!displayConditions || displayConditions.trim() === '') {
-    displayConditions = 'පළපුරුදු කාර්මික ශිල්පින් විමසන්න.';
-  }
-  if (!displaySpecialNotice || displaySpecialNotice.trim() === '') {
-    displaySpecialNotice = 'අද දවස තුල';
-  }
-
-  const safeWhatHappened = shouldMask ? inspectAndSanitizeMessage(post.whatHappened, false).sanitizedText : post.whatHappened;
-  const safeWhatIsNeeded = shouldMask ? inspectAndSanitizeMessage(post.whatIsNeeded, false).sanitizedText : post.whatIsNeeded;
-  const safeConditions = shouldMask ? inspectAndSanitizeMessage(displayConditions, false).sanitizedText : displayConditions;
-  const safeSpecialNotice = shouldMask ? inspectAndSanitizeMessage(displaySpecialNotice, false).sanitizedText : displaySpecialNotice;
-
-  // Quick Service Check
-  const isQuickService =
-    post.category === 'quick_services' ||
-    post.category === 'quick' ||
-    post.tagCategory === 'ඉක්මන් සේවා' ||
-    Boolean(post.tagName?.toLowerCase().includes('quick')) ||
-    Boolean(post.tagName?.includes('හදිසි')) ||
-    Boolean(post.customFieldValues?.f_urgency?.toString().includes('Immediate')) ||
-    Boolean(post.customFieldValues?.f_urgency?.toString().includes('හදිසි'));
-
-  return (
-    <Card3D className={`bg-white dark:bg-[#07130c] border-2 ${
-      isQuickService
-        ? 'border-amber-400 dark:border-amber-500/80 shadow-[0_12px_30px_rgba(245,158,11,0.18)] ring-1 ring-amber-400/40'
-        : isConfirmed 
-        ? 'border-emerald-500/80 shadow-[0_12px_30px_rgba(0,122,75,0.18)]' 
-        : 'border-emerald-500/30 hover:border-emerald-500/70 shadow-[0_12px_30px_rgba(0,122,75,0.08),0_2px_8px_rgba(0,0,0,0.04)]'
-    } rounded-3xl p-5 sm:p-6 transition-all duration-300 relative group overflow-hidden text-slate-900 dark:text-slate-100`}>
-      
-      {/* Top Banner Accent */}
-      <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-        isQuickService
-          ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600'
-          : isConfirmed 
-          ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600' 
-          : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400'
-      }`}></div>
-
-      <div className="space-y-3.5 pt-1 text-slate-900 dark:text-slate-100 font-sans">
-        
-        {/* Quick Service Urgent Priority Banner */}
-        {isQuickService && (
-          <div className="flex items-center justify-between gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-black shadow-sm">
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-yellow-200 fill-yellow-200 animate-bounce" />
-              <span className="tracking-wide">
-                ⚡ ඉක්මන් සේවා (Quick Service Priority)
-              </span>
-            </div>
-            <span className="text-[10px] uppercase font-mono tracking-wider bg-black/20 px-2 py-0.5 rounded-md">
-              TOP PRIORITY
-            </span>
-          </div>
-        )}
-
-        {/* Prominent Elapsed Time Banner at the Top */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 dark:from-amber-500/20 dark:to-emerald-500/20 border border-amber-500/30 dark:border-amber-400/30 px-3 py-1.5 rounded-2xl shadow-2xs">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200">
-            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="text-slate-700 dark:text-slate-300 font-bold">ගතවූ කාලය:</span>
-            <span className="font-extrabold text-amber-800 dark:text-amber-300">{elapsedTimeLabel}</span>
-          </div>
-          <span className="text-[10px] sm:text-xs font-mono font-extrabold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300/80 dark:border-emerald-700/60 shrink-0">
-            ⏱️ සජීවී
-          </span>
-        </div>
-
-        {/* PROMINENT CONFIRMED STATUS BANNER (If Confirmed) */}
-        {isConfirmed && (
-          <div className="p-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-2xl shadow-md border border-emerald-400/50 space-y-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-emerald-200 animate-pulse shrink-0" />
-                <span className="text-xs sm:text-sm font-black tracking-tight">
-                  ✅ සහය සනාථ කර ඇත (Support Confirmed)
-                </span>
-              </div>
-              <span className="text-[10px] bg-white/20 text-white font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
-                CONFIRMED
-              </span>
-            </div>
-            {confirmedHelperName && (
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-0.5 text-xs text-emerald-100 font-medium">
-                <span className="text-emerald-200 font-bold">තෝරාගත් සහායකයා:</span>
-                <span className="font-black text-white">{confirmedHelperName}</span>
-                {confirmedHelperPhone && (
-                  <span className="font-mono text-emerald-200">({confirmedHelperPhone})</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 1. Help ID & Tag Icon (Right next to ID) & Tag Badge */}
-        {(() => {
-          const TagIconComp = getTagIconComponent(post.tagName, post.tagCategory, post.category);
-          return (
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-base sm:text-lg font-black tracking-wide text-emerald-800 dark:text-emerald-300">
-                  {displayPostCode}
-                </span>
-                {TagIconComp && (
-                  <span 
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 shadow-2xs font-bold text-xs" 
-                    title={post.tagName ? `${post.tagName} (${post.tagCategory || ''})` : 'Tag Icon'}
-                  >
-                    <TagIconComp className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    {post.tagName && (
-                      <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-200">
-                        {post.tagName}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Save (Bookmark) Button */}
-                {onToggleSave && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleSave(post);
-                    }}
-                    className={`p-1.5 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold border ${
-                      isSaved
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-emerald-50 hover:bg-amber-50 dark:bg-emerald-950/60 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 border-emerald-200 dark:border-emerald-800'
-                    }`}
-                    title={isSaved ? 'සුරැකි ලැයිස්තුවෙන් ඉවත් කරන්න' : 'පසුව බැලීමට සුරකින්න (Save Post)'}
-                  >
-                    {isSaved ? (
-                      <BookmarkCheck className="w-3.5 h-3.5 text-white fill-white" />
-                    ) : (
-                      <Bookmark className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                    )}
-                    <span className="text-[11px] hidden sm:inline">{isSaved ? 'Saved' : 'Save'}</span>
-                  </button>
-                )}
-
-                {isConfirmed && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black text-xs rounded-xl border border-emerald-300 dark:border-emerald-700">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>සනාථයි</span>
-                  </span>
-                )}
-
-                {(post.tagName || post.tagCategory) && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs rounded-xl shadow-xs">
-                    <span>🏷️</span>
-                    <span>{post.tagName}</span>
-                    {post.tagCategory && (
-                      <span className="text-[10px] bg-emerald-900/50 px-1.5 py-0.2 rounded-md font-medium">
-                        {post.tagCategory}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* 2 & 3. Distance & Time by Motorcycle */}
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 font-bold text-sm sm:text-base text-slate-900 dark:text-emerald-200 bg-emerald-50 dark:bg-[#0d281a] px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800/80 shadow-xs">
-            <span className="text-base">🏍️</span>
-            <span className="font-extrabold">{motorcycleRoute.formattedRoadDistance}</span>
-            <span className="text-slate-400 dark:text-slate-500">~</span>
-            <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-              {motorcycleRoute.formattedTime.replace(/^~/, '').trim()}
-            </span>
-          </div>
-
-          {isConfirmed || ownerCheck ? (
-            <a
-              href={motorcycleRoute.mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title="Google Maps Motorcycle Directions"
-              className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-[#123321] dark:hover:bg-[#1a472e] text-emerald-800 dark:text-emerald-300 text-xs transition-all border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 cursor-pointer"
-            >
-              <MapPin className="w-3 h-3 text-rose-500" />
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          ) : (
-            <span
-              onClick={(e) => e.stopPropagation()}
-              title="🔒 සහය CONFIRM කළ පසු Google Maps මාර්ගය හා ලිපිනය විවෘත වේ"
-              className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs border border-amber-300 dark:border-amber-700/60 flex items-center gap-1 cursor-not-allowed"
-            >
-              <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-            </span>
-          )}
-        </div>
-
-        {/* 4 & 5. Publisher Name & Posted Time */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-b border-emerald-100 dark:border-[#132a1d] pb-2.5">
-          <div className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-1.5">
-            <span>{post.userName}</span>
-            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-              <span>ගිණුම් හිමියා</span>
-            </span>
-          </div>
-          <div className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 font-extrabold text-right flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>{elapsedTimeLabel}</span>
-          </div>
-        </div>
-
-        {/* Dedicated Find For Me Card Rendering (User's Exact Specification) */}
-        {post.category === 'find_for_me' ? (() => {
-          const effectiveType = post.findForMeType || (
-            post.whatHappened?.includes('නැතිවූ') || post.whatIsNeeded?.includes('නැතිවූ') || post.tagName?.toLowerCase().includes('lost')
-              ? 'lost'
-              : post.whatHappened?.includes('සොරාගත්') || post.whatIsNeeded?.includes('සොරාගත්') || post.tagName?.toLowerCase().includes('stolen')
-              ? 'stolen'
-              : 'find'
-          );
-
-          const effectiveItemName = post.itemLostStolenOrSearched ||
-            post.whatHappened?.replace(/^(නැතිවූ|සොරාගත්|සොයන|අවශ්‍ය)\s*(දෙයක්|භාණ්ඩයක්)?:\s*/i, '')?.split('.')[0] ||
-            post.whatIsNeeded?.replace(/^නැතිවූ\s*|^සොරාගත්\s*|^සොයන\s*|සොයාදෙන්න\.?$/g, '')?.trim() ||
-            post.tagName ||
-            'අදාළ භාණ්ඩය / සේවාව';
-
-          const effectiveContactPhone = post.contactPhone || post.userPhone || '0771234567';
-          const effectiveContactWhatsapp = post.contactWhatsapp || post.userPhone || '0771234567';
-          const effectiveContactAddress = post.contactAddress || post.locationName || 'ගෙදර ලිපිනය';
-          const effectiveLocationName = post.locationName || 'ස්ථානය තහවුරු කර ඇත';
-          const effectiveIncidentLocation = post.incidentLocation || post.locationName || '';
-          const effectiveIncidentDate = post.incidentDate || (post.createdAt?.includes('මීට') ? 'අද' : post.createdAt) || '';
-          const effectiveIncidentTime = post.incidentTime || '';
-          const effectiveDelivery = post.deliveryOption || post.transport || 'ගෙනවිත් දෙන්න ඒ සදහා මම ඔබට වෙනම ගෙවන්නම්';
-          const effectiveOtherDetails = post.otherDetails || (post.conditions && !post.conditions.startsWith('ගණුදෙනුව') && !post.conditions.startsWith('සම්බන්ධ') ? post.conditions : '');
-          const showReward = (post.hasReward || Boolean(post.rewardDetails)) && Boolean(post.rewardDetails && post.rewardDetails.trim() !== '');
-
-          return (
-            <div className="p-4 bg-gradient-to-br from-white via-emerald-50/50 to-teal-50/30 dark:from-[#06180f] dark:via-[#081e13] dark:to-[#06180f] border-2 border-emerald-400/80 dark:border-emerald-600/80 rounded-2xl shadow-sm space-y-3.5 text-slate-900 dark:text-slate-100">
-              
-              {/* SubType Header Pill */}
-              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-emerald-200/80 dark:border-emerald-900/60">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-xl shadow-xs border ${
-                  effectiveType === 'lost'
-                    ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800'
-                    : effectiveType === 'stolen'
-                    ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-800'
-                    : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
-                }`}>
-                  <Search className="w-3.5 h-3.5" />
-                  <span>
-                    {effectiveType === 'lost'
-                      ? '🔴 නැතිවූ දෙයක් (Lost Item)'
-                      : effectiveType === 'stolen'
-                      ? '⚠️ සොරාගත් දෙයක් (Stolen Item)'
-                      : '🔍 සොයාදෙන්න (Search / Procurement)'}
-                  </span>
-                </span>
-
-                {showReward && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/90 px-2.5 py-1 rounded-xl border border-amber-300 dark:border-amber-600">
-                    <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    <span>තෑග්ගක් සහිතයි</span>
-                  </span>
-                )}
-              </div>
-
-              {/* 1. LOST OR STOLEN ITEM SPECIFIC PRESENTATION */}
-              {(effectiveType === 'lost' || effectiveType === 'stolen') && (
-                <div className="space-y-3">
-                  {/* Main Advertisement Narrative Text */}
-                  <div className="p-3 bg-white/90 dark:bg-[#082014] rounded-xl border border-emerald-300/70 dark:border-emerald-800/70 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-2 shadow-xs">
-                    <p>
-                      {effectiveIncidentDate ? `${effectiveIncidentDate} දින, ` : ''}
-                      {effectiveIncidentTime ? `${effectiveIncidentTime} පමණ, ` : ''}
-                      {effectiveIncidentLocation ? `${getVillageOrTownDisplay(effectiveIncidentLocation)} දී, ` : ''}
-                      <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                        {effectiveItemName}
-                      </strong>{' '}
-                      {effectiveType === 'lost' ? 'නැතිවී ඇත,' : 'සොරාගෙන ඇත,'} සොයාගත් කෙනෙක් වේනම්{' '}
-                      <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
-                        {hasContactPermission ? effectiveContactPhone : '07* *** **** (🔒 ආරක්ෂිතයි)'}
-                        {hasContactPermission && effectiveContactWhatsapp && effectiveContactWhatsapp !== effectiveContactPhone ? ` හෝ ${effectiveContactWhatsapp}` : ''}
-                      </span>{' '}
-                      හරහා මා සම්බන්ධකරගන්න.
-                    </p>
-                    <p className="text-slate-800 dark:text-slate-200">
-                      නැතිනම්{' '}
-                      <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                        {hasContactPermission ? getVillageOrTownDisplay(effectiveContactAddress) : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)'}
-                      </span>{' '}
-                      ට එවන්න. නිවැරදි ස්ථානය:{' '}
-                      <span className="font-extrabold text-slate-900 dark:text-white">
-                        {hasContactPermission ? getVillageOrTownDisplay(effectiveLocationName) : `${getVillageOrTownDisplay(effectiveLocationName).split(',')[0]} (🔒 තහවුරු වූ පසු දිස්වේ)`}
-                      </span>
-                    </p>
-                  </div>
-
-                  {/* Other details (if provided) */}
-                  {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
-                    <div className="p-2.5 bg-emerald-50/70 dark:bg-[#071d12] rounded-xl border border-emerald-200 dark:border-emerald-900/60 text-xs text-slate-800 dark:text-slate-200">
-                      <strong className="text-emerald-900 dark:text-emerald-300 font-black block mb-0.5">
-                        වැඩි විස්තර:
-                      </strong>
-                      <p className="font-semibold">{effectiveOtherDetails}</p>
-                    </div>
-                  )}
-
-                  {/* Identifying info on item (Phone, NIC, Reg/Serial No, or Name) */}
-                  {post.identifyingInfo && post.identifyingInfo.trim() !== '' && (
-                    <div className="p-3 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400/70 dark:border-amber-700/70 text-xs text-amber-950 dark:text-amber-100 shadow-xs space-y-1.5">
-                      <div className="flex items-center gap-1.5 font-black text-amber-900 dark:text-amber-300">
-                        <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                        <span>නැති වූ දේ ඇති දුරකථන අංකය / හැඳුනුම්පත් අංකය / සලකුණු / නම:</span>
-                      </div>
-                      <p className="font-extrabold text-sm pl-5 text-slate-900 dark:text-white bg-white/70 dark:bg-black/30 py-1.5 px-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                        {shouldMask ? inspectAndSanitizeMessage(post.identifyingInfo, false).sanitizedText : post.identifyingInfo}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Reward (Only shown if hasReward is ticked) */}
-                  {showReward && (
-                    <div className="p-2.5 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/80 rounded-xl text-amber-900 dark:text-amber-200 font-extrabold text-xs flex items-center gap-2">
-                      <Gift className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span>
-                        <strong>සොයාදෙන්නාහට මගෙන්:</strong> {post.rewardDetails}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. FIND / PROCUREMENT ITEM SPECIFIC PRESENTATION */}
-              {effectiveType === 'find' && (
-                <div className="space-y-3">
-                  {/* Main Advertisement Narrative Text */}
-                  <div className="p-3 bg-white/90 dark:bg-[#082014] rounded-xl border border-emerald-300/70 dark:border-emerald-800/70 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed shadow-xs space-y-1.5">
-                    <p>
-                      {post.targetPrice ? `${post.targetPrice} පමණ, ` : ''}
-                      <strong className="text-emerald-700 dark:text-emerald-300 font-black">
-                        {effectiveItemName}
-                      </strong>{' '}
-                      {post.quantityNeeded ? `${post.quantityNeeded} ` : ''}අවශ්‍යයි,
-                    </p>
-                    {post.hasDeadline && post.deadlineDate && (
-                      <p className="text-rose-600 dark:text-rose-400 font-extrabold">
-                        {post.deadlineDate} {post.deadlineTime ? `(${post.deadlineTime}) ` : ''}පෙර සොයාදෙන්න.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Contact & Location Info Section */}
-                  <div className="p-3 bg-emerald-50/70 dark:bg-[#071d12] rounded-xl border border-emerald-200 dark:border-emerald-900/60 text-xs space-y-1.5 text-slate-800 dark:text-slate-200">
-                    <strong className="text-emerald-900 dark:text-emerald-300 font-black block pb-1 border-b border-emerald-200/80 dark:border-emerald-900/40">
-                      ස්ථානය හා සම්බන්ධකරගතහැකි තොරතුරු:
-                    </strong>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 font-semibold">
-                      <div>
-                        <span className="text-slate-500 dark:text-slate-400">දුරකථන අංකය: </span>
-                        <strong className="text-slate-900 dark:text-white">
-                          {hasContactPermission ? effectiveContactPhone : '07* *** **** (🔒 ආරක්ෂිතයි)'}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 dark:text-slate-400">වට්සැප් අංකය: </span>
-                        <strong className="text-slate-900 dark:text-white">
-                          {hasContactPermission ? effectiveContactWhatsapp : '07* *** **** (🔒 ආරක්ෂිතයි)'}
-                        </strong>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <span className="text-slate-500 dark:text-slate-400">ගෙදර ලිපිනය: </span>
-                        <strong className="text-slate-900 dark:text-white">
-                          {hasContactPermission ? getVillageOrTownDisplay(effectiveContactAddress) : '🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි (දැන්වීම්කරුගේ අවසරය අවශ්‍යයි)'}
-                        </strong>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <span className="text-slate-500 dark:text-slate-400">නිවැරදි ස්ථානය: </span>
-                        <strong className="text-slate-900 dark:text-white">
-                          {hasContactPermission ? getVillageOrTownDisplay(effectiveLocationName) : `${getVillageOrTownDisplay(effectiveLocationName).split(',')[0]} (🔒 තහවුරු වූ පසු දිස්වේ)`}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Other details (if provided) */}
-                  {effectiveOtherDetails && effectiveOtherDetails.trim() !== '' && (
-                    <div className="p-2.5 bg-emerald-50/70 dark:bg-[#071d12] rounded-xl border border-emerald-200 dark:border-emerald-900/60 text-xs text-slate-800 dark:text-slate-200">
-                      <strong className="text-emerald-900 dark:text-emerald-300 font-black block mb-0.5">
-                        වැඩි විස්තර:
-                      </strong>
-                      <p className="font-semibold">{effectiveOtherDetails}</p>
-                    </div>
-                  )}
-
-                  {/* Delivery / Transaction Method */}
-                  <div className="p-2.5 bg-white dark:bg-[#082014] rounded-xl border border-emerald-300/80 dark:border-emerald-800 text-xs space-y-1">
-                    <strong className="text-emerald-900 dark:text-emerald-300 font-black flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>ගණුදෙනුව සිදුවියයුතු ආකාරය:</span>
-                    </strong>
-                    <p className="font-bold text-slate-900 dark:text-white pl-5">
-                      {effectiveDelivery}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Direct Instant Contact Actions for Viewers */}
-              <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800/60 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {hasContactPermission && effectiveContactPhone ? (
-                  <a
-                    href={`tel:${effectiveContactPhone.replace(/\D/g, '')}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>ඇමතුමක් ගන්න</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onOpenChat) onOpenChat(post);
-                      else onOfferSupport(post);
-                    }}
-                    className="py-2 px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer border border-slate-300 dark:border-slate-700"
-                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: ඇමතුම් ලබාගැනීමට Chat මඟින් දැන්වීම්කරුගෙන් විමසන්න"
-                  >
-                    <Lock className="w-3 h-3 text-amber-500" />
-                    <span>🔒 අංකය විමසන්න (Chat)</span>
-                  </button>
-                )}
-
-                {hasContactPermission && effectiveContactWhatsapp ? (
-                  <a
-                    href={`https://wa.me/${effectiveContactWhatsapp.replace(/^0/, '94').replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>WhatsApp</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onOpenChat) onOpenChat(post);
-                      else onOfferSupport(post);
-                    }}
-                    className="py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>අපගේ Chat</span>
-                  </button>
-                )}
-
-                {hasContactPermission ? (
-                  <a
-                    href={motorcycleRoute.mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2 px-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-transform active:scale-95 cursor-pointer col-span-2 sm:col-span-1"
-                  >
-                    <MapPin className="w-3.5 h-3.5 text-rose-300" />
-                    <span>Map මාර්ගය</span>
-                  </a>
-                ) : (
-                  <div
-                    className="py-2 px-2.5 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1 text-center"
-                  >
-                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                    <span>🔒 ලිපිනය ආරක්ෂිතයි</span>
-                  </div>
-                )}
-              </div>
-
-            </div>
-          );
-        })() : post.category === 'from_me_to_you' ? (() => {
-          const effectivePurpose = post.fromMeToYouType || (
-            post.whatHappened?.includes('පරිත්‍යාග') || post.specialNotice?.includes('පරිත්‍යාග')
-              ? 'donation'
-              : post.whatHappened?.includes('ඉවත්') || post.specialNotice?.includes('ඉවත්')
-              ? 'giveaway'
-              : 'exchange'
-          );
-
-          const itemTitle = post.donationItem || post.whatHappened?.replace(/^පරිත්‍යාගයකි:\s*|^ඉවත් කිරීමට නියමිතයි:\s*/i, '')?.split('(')[0]?.trim() || post.tagName || 'භාණ්ඩය';
-          const qty = post.donationQuantity || '1ක්';
-          const rec = post.donationRecipient || 'අවශ්‍ය ඕනෑම අයෙක්';
-          const dateVal = post.donationDate || (effectivePurpose === 'giveaway' ? 'අද' : 'අදම');
-          const delivery = post.donationDeliveryMethod || post.transport || 'ඇවිත් රැගෙන යන්න';
-          const locName = post.locationName || 'ස්ථානය තහවුරු කර ඇත';
-          const whatsapp = post.contactWhatsapp || post.userPhone || '';
-          const details = post.otherDetails || (post.conditions && !post.conditions.startsWith('ස්ථානය') ? post.conditions : '');
-
-          const haveItem = post.exchangeHaveItem || post.whatHappened?.split('⇄')[0]?.replace(/^හුවමාරුවට:\s*/i, '')?.trim() || 'භාණ්ඩය';
-          const haveQty = post.exchangeHaveQuantity || '1ක්';
-          const wantItem = post.exchangeWantItem || post.whatHappened?.split('⇄')[1]?.trim() || 'අවශ්‍ය භාණ්ඩය';
-          const wantQty = post.exchangeWantQuantity || '1ක්';
-
-          const whatsappFormatted = whatsapp ? whatsapp.replace(/^0/, '94').replace(/\D/g, '') : '';
-
-          return (
-            <div className="p-4 bg-gradient-to-br from-purple-50/70 via-white to-emerald-50/50 dark:from-[#130d22] dark:via-[#091a11] dark:to-[#07150e] border-2 border-purple-400/80 dark:border-purple-600/80 rounded-2xl shadow-sm space-y-3.5 text-slate-900 dark:text-slate-100">
-              
-              {/* Header Status Badge */}
-              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-purple-200/80 dark:border-purple-900/60">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-black px-3 py-1 rounded-xl shadow-xs border ${
-                  effectivePurpose === 'donation'
-                    ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-800'
-                    : effectivePurpose === 'giveaway'
-                    ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800'
-                    : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
-                }`}>
-                  {effectivePurpose === 'donation' ? (
-                    <>
-                      <Gift className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                      <span>පරිත්‍යාගයකි (Donation)</span>
-                    </>
-                  ) : effectivePurpose === 'giveaway' ? (
-                    <>
-                      <PackageOpen className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      <span>ඉවත් කිරීමට නියමිතයි (Giveaway)</span>
-                    </>
-                  ) : (
-                    <>
-                      <ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>හුවමාරු කිරීමට (Exchange)</span>
-                    </>
-                  )}
-                </span>
-
-                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg bg-white/90 dark:bg-black/40 border border-purple-200 dark:border-purple-900 text-purple-800 dark:text-purple-300 font-mono">
-                  🎁 මගෙන් ඔබට
-                </span>
-              </div>
-
-              {/* Exact Display Format for Donation, Giveaway, or Exchange */}
-              <div className="p-3.5 bg-white/95 dark:bg-[#07180f] rounded-xl border border-purple-200 dark:border-purple-900/70 text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 leading-relaxed space-y-2.5 shadow-xs">
-                {effectivePurpose === 'donation' ? (
-                  <p>
-                    <strong className="text-purple-700 dark:text-purple-300 font-black">{itemTitle}</strong>{' '}
-                    <span>{qty} ක් පරිත්‍යාග කිරීමට නියමිතයි. </span>
-                    <span className="text-slate-800 dark:text-slate-200">{rec} හෝ වටිනා පුද්ගලයෙක් වේනම් </span>
-                    <span className="font-extrabold text-purple-800 dark:text-purple-300">{dateVal} සිට </span>
-                    <span className="font-extrabold text-emerald-700 dark:text-emerald-400">{delivery}.</span>
-                  </p>
-                ) : effectivePurpose === 'giveaway' ? (
-                  <p>
-                    <strong className="text-amber-700 dark:text-amber-300 font-black">{itemTitle}</strong>{' '}
-                    <span>{qty} ක් ඉවත් කිරීමට නියමිතයි. </span>
-                    <span className="text-slate-800 dark:text-slate-200">{rec} හෝ වටිනා පුද්ගලයෙක් වේනම් </span>
-                    <span className="font-extrabold text-amber-800 dark:text-amber-300">{dateVal} සිට </span>
-                    <span className="font-extrabold text-emerald-700 dark:text-emerald-400">{delivery}.</span>
-                  </p>
-                ) : (
-                  <p className="flex items-center gap-1.5 flex-wrap">
-                    <ArrowLeftRight className="w-4 h-4 text-emerald-600 inline shrink-0" />
-                    <span><strong className="text-emerald-700 dark:text-emerald-300 font-black">{haveItem}</strong> ({haveQty}) ක් </span>
-                    <span><strong className="text-purple-700 dark:text-purple-300 font-black">{wantItem}</strong> ({wantQty}) කට හුවමාරු කිරීමට අවශ්‍යයි.</span>
-                  </p>
-                )}
-
-                {/* Detailed metadata */}
-                <div className="pt-2 border-t border-purple-100 dark:border-purple-950/80 space-y-1.5 text-xs text-slate-800 dark:text-slate-200">
-                  <p className="flex items-start gap-1.5">
-                    <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">ස්ථානය :-</span>
-                    <span className="font-semibold">
-                      {post.saveLocationConsent === false 
-                        ? 'පෞද්ගලිකව දැනුම්දෙනු ලැබේ' 
-                        : hasContactPermission 
-                        ? getVillageOrTownDisplay(locName) 
-                        : `${getVillageOrTownDisplay(locName).split(',')[0]} (🔒 නිශ්චිත ලිපිනය ආරක්ෂිතයි)`}
-                    </span>
-                  </p>
-
-                  {hasContactPermission && whatsapp ? (
-                    <p className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">මා සම්බන්ධ කරගැනීමට:</span>
-                      <a
-                        href={`https://wa.me/${whatsappFormatted}?text=${encodeURIComponent(
-                          `හලෝ, ඔබ සහය සේවා (Sahaya Sewa) හරහා පළකල #${post.postCode} ${
-                            effectivePurpose === 'donation' ? 'පරිත්‍යාගය' : effectivePurpose === 'giveaway' ? 'ඉවත් කිරීමේ දැන්වීම' : 'භාණ්ඩ හුවමාරුව'
-                          } සම්බන්ධවයි:`
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 font-mono font-black text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-all cursor-pointer shadow-xs active:scale-95"
-                        title="කෙලින්ම WhatsApp විවෘත කරන්න"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                        <span>{whatsapp}</span>
-                        <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold ml-0.5 underline">
-                          (Open WhatsApp ↗)
-                        </span>
-                      </a>
-                    </p>
-                  ) : (
-                    <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                      <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">සම්බන්ධ වීමට:</span>
-                      <span className="font-medium">🔒 දුරකථන අංක ආරක්ෂිතයි — පහත 'අපගේ Chat' බොත්තම මඟින් පණිවිඩයක් එවන්න</span>
-                    </p>
-                  )}
-
-                  {details && details.trim() !== '' && (
-                    <p className="flex items-start gap-1.5">
-                      <span className="font-extrabold text-purple-900 dark:text-purple-300 shrink-0">වැඩි විස්තර:</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">{details}</span>
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Direct Quick Action Buttons for Viewer */}
-              <div className="pt-2 border-t border-purple-200 dark:border-purple-900/60 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {/* 1. අපගේ Chat බොත්තම (In-App Chat) */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onOpenChat) onOpenChat(post);
-                    else onOfferSupport(post);
-                  }}
-                  className="py-2.5 px-2 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer border border-teal-400/40"
-                  title="සහය සේවා සංවාද පද්ධතිය (In-App Chat)"
-                >
-                  <MessageCircle className="w-4 h-4 text-emerald-200 shrink-0" />
-                  <span>අපගේ Chat</span>
-                </button>
-
-                {/* 2. WhatsApp බොත්තම */}
-                {hasContactPermission && whatsapp ? (
-                  <a
-                    href={`https://wa.me/${whatsappFormatted}?text=${encodeURIComponent(
-                      `හලෝ, ඔබ සහය සේවා (Sahaya Sewa) හරහා පළකල #${post.postCode} ${
-                        effectivePurpose === 'donation' ? 'පරිත්‍යාගය' : effectivePurpose === 'giveaway' ? 'ඉවත් කිරීමේ දැන්වීම' : 'භාණ්ඩ හුවමාරුව'
-                      } සම්බන්ධවයි:`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer border border-emerald-400/40"
-                    title="කෙලින්ම WhatsApp විවෘත කරන්න"
-                  >
-                    <MessageSquare className="w-4 h-4 text-white shrink-0" />
-                    <span>WhatsApp</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onOpenChat) onOpenChat(post);
-                      else onOfferSupport(post);
-                    }}
-                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-700 cursor-pointer"
-                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: අවසරය ඉල්ලීමට Chat කරන්න"
-                  >
-                    <Lock className="w-3.5 h-3.5 text-amber-500" />
-                    <span>WhatsApp (🔒)</span>
-                  </button>
-                )}
-
-                {/* 3. ඇමතුමක් ලබාගැනීම */}
-                {hasContactPermission && post.userPhone ? (
-                  <a
-                    href={`tel:${post.userPhone.replace(/\D/g, '')}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2.5 px-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer border border-purple-400/40"
-                  >
-                    <Phone className="w-4 h-4 text-white shrink-0" />
-                    <span>ඇමතුමක්</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onOpenChat) onOpenChat(post);
-                      else onOfferSupport(post);
-                    }}
-                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-700 cursor-pointer"
-                    title="වංචනික ක්‍රියා වැළැක්වීමේ ආරක්ෂාව: ඇමතුම් ලබාගැනීමට Chat මඟින් අවසර ඉල්ලන්න"
-                  >
-                    <Lock className="w-3.5 h-3.5 text-amber-500" />
-                    <span>ඇමතුම් (🔒)</span>
-                  </button>
-                )}
-
-                {/* 4. Map මාර්ගය */}
-                {hasContactPermission && post.saveLocationConsent !== false ? (
-                  <a
-                    href={motorcycleRoute.mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="py-2.5 px-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer border border-slate-700"
-                  >
-                    <MapPin className="w-4 h-4 text-rose-300 shrink-0" />
-                    <span>Map මාර්ගය</span>
-                  </a>
-                ) : (
-                  <div
-                    className="py-2.5 px-2 bg-slate-100 dark:bg-[#0d2218] text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-800 text-center"
-                  >
-                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                    <span>🔒 ලිපිනය ආරක්ෂිතයි</span>
-                  </div>
-                )}
-              </div>
-
-            </div>
-          );
-        })() : (
-          /* STANDARD QUICK SERVICES / GENERAL SERVICES VIEW */
-          <>
-            {/* 6. සිදුවී ඇති දේ (What Happened) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                සිදුවී ඇති දේ:
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {safeWhatHappened}
-              </p>
-            </div>
-
-            {/* 7. වියයුතු දේ (What is Needed) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                වියයුතු දේ:
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {safeWhatIsNeeded}
-              </p>
-            </div>
-
-            {/* 8. කොන්දේසි (Conditions) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                කොන්දේසි:
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-800 dark:text-slate-200 leading-snug">
-                {safeConditions}
-              </p>
-            </div>
-
-            {/* 9. විශේෂ දැනුවත් කිරීම (Special Notice) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                විශේෂ දැනුවත් කිරීම:
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-800 dark:text-slate-200 leading-snug">
-                {safeSpecialNotice}
-              </p>
-            </div>
-
-            {/* 10. ගමනාගමනය (Transport) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                ගමනාගමනය:
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {post.transport || 'ඔබ පැමිණිය යුතුයි'}
-              </p>
-            </div>
-
-            {/* 11. ගෙවීම් (Payment/Fee) */}
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100">
-                ගෙවීම් :
-              </div>
-              <p className="text-sm sm:text-[15px] font-medium text-slate-900 dark:text-slate-100 leading-snug">
-                {post.payment || 'ඔබගේ ගාස්තුවට මම එකඟ වෙමි (I agree to your fee),'}
-              </p>
-            </div>
-
-            {/* 12. සහයකයන් ගණන */}
-            <div className="text-sm sm:text-[15px] pt-0.5">
-              <span className="font-extrabold text-slate-900 dark:text-slate-100">අවශ්‍ය සහායකයින් ගණන: </span>
-              <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                {helpersCount}
-              </span>
-              <span className="font-extrabold text-slate-900 dark:text-slate-100"> කි.</span>
-            </div>
-          </>
-        )}
-
-        {/* Dedicated Confirmed Helper Details Card for Post Owner */}
-        {ownerCheck && isConfirmed && (
-          <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-[#071d12] dark:to-[#092216] border-2 border-emerald-500/70 dark:border-emerald-600/70 rounded-2xl shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>සනාථ කළ සහායකයාගේ තොරතුරු:</span>
-              </span>
-              <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
-                තහවුරු කර ඇත
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-black text-slate-900 dark:text-white">
-                  {confirmedHelperName || 'තහවුරු කළ සහායක'}
-                </p>
-                {confirmedHelperPhone ? (
-                  <p className="text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1 mt-0.5">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{confirmedHelperPhone}</span>
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-500">දුරකථන අංකය සටහන් කර නොමැත</p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                {confirmedHelperPhone && (
-                  <a
-                    href={`tel:${confirmedHelperPhone.replace(/\D/g, '')}`}
-                    className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer"
-                    title="සෘජු ඇමතුමක් ලබාගන්න"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                  </a>
-                )}
-                {confirmedHelperPhone && (
-                  <a
-                    href={`https://wa.me/${confirmedHelperPhone.replace(/\D/g, '').replace(/^0/, '94')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer"
-                    title="WhatsApp පණිවිඩයක්"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onOpenChat && onOpenChat(post)}
-                  className="p-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer"
-                  title="චැට් කරන්න"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Owner Interested Responders ("කැමැත්ත දැක්වූවන්") Indicator */}
-        {ownerCheck && !isConfirmed && (
-          <div className="space-y-2 pt-1">
-            {post.replies && post.replies.length > 0 ? (
-              <div 
-                onClick={() => {
-                  if (onOpenSupportOffers) {
-                    onOpenSupportOffers(post);
-                  } else if (onOpenChat) {
-                    onOpenChat(post);
-                  }
-                }}
-                className="w-full p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-emerald-500/15 dark:from-amber-500/25 dark:via-orange-500/25 dark:to-emerald-500/25 border-2 border-orange-500/60 dark:border-orange-400/60 rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer group active:scale-[0.99] relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white flex items-center justify-center shadow">
-                        <HeartHandshake className="w-4 h-4" />
-                      </div>
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full animate-ping" />
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border border-white" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-black text-slate-900 dark:text-white">
-                          කැමැත්ත දැක්වූවන්:
-                        </span>
-                        <span className="bg-orange-600 text-white text-[11px] font-black px-2 py-0.2 rounded-full font-mono shadow-xs">
-                          {post.replies?.length || 0} දෙනෙක්
-                        </span>
-                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-md border border-emerald-300 dark:border-emerald-700">
-                          ✨ නව
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium truncate max-w-[260px] sm:max-w-xs mt-0.5">
-                        <span className="text-orange-600 dark:text-orange-400 font-bold">පුද්ගලයා: </span>
-                        {(post.replies || []).map((r) => r?.responderName || 'සහායක').slice(0, 3).join(', ')}
-                        {(post.replies?.length || 0) > 3 ? ` තවත් ${(post.replies?.length || 0) - 3} ක්...` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="px-2.5 py-1.5 rounded-xl bg-orange-600 group-hover:bg-orange-500 text-white font-black text-[11px] flex items-center gap-1 shadow-xs transition-colors shrink-0"
-                  >
-                    <span>බලන්න</span>
-                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div 
-                onClick={() => onOpenSupportOffers && onOpenSupportOffers(post)}
-                className="w-full p-2.5 bg-slate-50 dark:bg-[#0b1b12] border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-100 dark:hover:bg-[#0f2419] transition-all"
-              >
-                <span className="flex items-center gap-1.5 font-bold">
-                  <HeartHandshake className="w-4 h-4 text-slate-400" />
-                  <span>කැමැත්ත දැක්වූවන් (0)</span>
-                </span>
-                <span className="text-[11px] font-medium">තවම කිසිවෙකු කැමැත්ත දක්වා නැත</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Action Buttons: Owner vs Admin vs Non-Owner */}
-        {ownerCheck ? (
-          <div className="pt-2 flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenSupportOffers) {
-                  onOpenSupportOffers(post);
-                } else if (onOpenChat) {
-                  onOpenChat(post);
-                }
-              }}
-              className="flex-1 min-w-[75px] py-2.5 px-2 rounded-2xl bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-orange-400/40"
-              title="කැමැත්ත දැක්වූ පුද්ගලයින්ගේ ලැයිස්තුව"
-            >
-              <HeartHandshake className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-center">{isConfirmed ? 'සහායකයා' : `කැමැත්ත (${post.replies?.length || 0})`}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onOpenChat && onOpenChat(post)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
-              title="සංවාද ඉතිහාසය (Chat History)"
-            >
-              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>Chat</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onEditPost && onEditPost(post)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-              title="තොරතුරු වෙනස් කිරීම"
-            >
-              <Pencil className="w-3.5 h-3.5 shrink-0" />
-              <span>Edit</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onViewPost && onViewPost(post)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-              title="ප්‍රදර්ශනය වන ආකාරය"
-            >
-              <Eye className="w-3.5 h-3.5 shrink-0" />
-              <span>View</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDeletePost && onDeletePost(post)}
-              className="flex-1 min-w-[65px] py-2.5 px-2 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[11px] shadow-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
-              title="දැන්වීම මකා දැමීම"
-            >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Delete</span>
-            </button>
-          </div>
-        ) : isAdmin ? (
-          <div className="pt-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onOpenChat && onOpenChat(post)}
-                className="flex-1 min-w-[70px] py-2 px-2 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-teal-400/40"
-                title="සංවාද ඉතිහාසය (Chat History)"
-              >
-                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                <span>Chat</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onEditPost && onEditPost(post)}
-                className="flex-1 min-w-[70px] py-2 px-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-emerald-400/40"
-                title="තොරතුරු වෙනස් කිරීම (Admin Edit)"
-              >
-                <Pencil className="w-3.5 h-3.5 shrink-0" />
-                <span>Edit</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onViewPost && onViewPost(post)}
-                className="flex-1 min-w-[70px] py-2 px-2 rounded-2xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-sky-400/40"
-                title="ප්‍රදර්ශනය වන ආකාරය"
-              >
-                <Eye className="w-3.5 h-3.5 shrink-0" />
-                <span>View</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onDeletePost && onDeletePost(post)}
-                className="flex-1 min-w-[90px] py-2 px-2 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-[11px] shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer border border-rose-400/40"
-                title="පරිපාලක විසින් දැන්වීම ඉවත් කරන්න"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-white shrink-0" />
-                <span>Delete</span>
-              </button>
-            </div>
-
-            <button
-              onClick={() => onOfferSupport(post)}
-              className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span>සහාය වීමට පිළිතුරු යවන්න / පරීක්ෂා කරන්න</span>
-            </button>
-          </div>
-        ) : (
-          <div className="pt-3 flex flex-wrap items-center gap-3">
-            {isConfirmed && (
-              <div className="relative flex items-center gap-2.5 shrink-0">
-                {/* Inbox-style dark green bubble */}
-                <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-tr from-[#006e43] via-[#008753] to-emerald-400 text-white shadow-[0_6px_20px_rgba(0,122,75,0.4)] border-2 border-white dark:border-emerald-300 shrink-0 animate-bounce" title="සහය සනාථ කර ඇත">
-                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 text-white drop-shadow-sm" />
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-300 text-emerald-950 font-black text-[10px] rounded-full flex items-center justify-center border-2 border-white shadow">✓</span>
-                </div>
-                {/* Confirmation message bubble */}
-                <div className="px-3.5 py-2 bg-[#005a37] dark:bg-emerald-950 text-white text-xs sm:text-sm font-extrabold rounded-2xl shadow-md border border-emerald-400/60 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                  <span>සහය සනාථ කර ඇත</span>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => onOfferSupport(post)}
-              className="flex-1 min-w-[200px] py-3 sm:py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base shadow-lg shadow-emerald-950/20 hover:shadow-emerald-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400/40"
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="font-extrabold">{isConfirmed ? 'අමතර සහය හෝ විමසීම්' : 'සහාය වීමට පිළිතුරු යවන්න'}</span>
-            </button>
-          </div>
-        )}
-
-      </div>
-
-    </Card3D>
-  );
+const activeLang: Language = lang ? lang : language ? language : 'si';
+useEffect(() => {
+injectPostFonts();
+}, []);
+const [isDeletingLocal, setIsDeletingLocal] = useState(false);
+const [imageError, setImageError] = useState(false);
+const [copiedPhone, setCopiedPhone] = useState(false);
+const [copiedLink, setCopiedLink] = useState(false);
+const [isExpandedFullModal, setIsExpandedFullModal] = useState(false);
+const [localPoll, setLocalPoll] = useState(() => post?.pollData ? post.pollData : null);
+const [showCommentsDrawer, setShowCommentsDrawer] = useState(false);
+const [newCommentText, setNewCommentText] = useState('');
+const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+const [localComments, setLocalComments] = useState(() => Array.isArray(post?.commentsList) ? post.commentsList : []);
+const myUserId = currentUser?.id ? currentUser.id : currentUser?.userId ? currentUser.userId : 'anonymous_guest';
+const [likesCount, setLikesCount] = useState(post?.likeCount ? post.likeCount : 0);
+const [isLiked, setIsLiked] = useState(() => {
+if (post?.likedBy && Array.isArray(post.likedBy)) {
+return post.likedBy.includes(myUserId);
+}
+return false;
+});
+const [unlikesCount, setUnlikesCount] = useState(post?.unlikesCount ? post.unlikesCount : post?.unlikeCount ? post.unlikeCount : 0);
+const [isUnliked, setIsUnliked] = useState(() => {
+if (post?.unlikedBy && Array.isArray(post.unlikedBy)) {
+return post.unlikedBy.includes(myUserId);
+}
+return false;
+});
+const [isSaved, setIsSaved] = useState(propIsSaved ? true : Boolean(post?.savedBy?.includes(myUserId)));
+const [savesCount, setSavesCount] = useState(post?.savesCount ? post.savesCount : post?.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
+useEffect(() => {
+if (!post) return;
+if (Array.isArray(post.commentsList)) {
+setLocalComments(post.commentsList);
+}
+if (post.pollData) {
+setLocalPoll(post.pollData);
+}
+setLikesCount(post.likeCount ? post.likeCount : 0);
+setUnlikesCount(post.unlikesCount ? post.unlikesCount : post.unlikeCount ? post.unlikeCount : 0);
+setIsSaved(propIsSaved ? true : Boolean(post.savedBy?.includes(myUserId)));
+setSavesCount(post.savesCount ? post.savesCount : post.saveCount ? post.saveCount : propIsSaved ? 1 : 0);
+}, [post?.id, post?.commentsList, post?.pollData, post?.likeCount, post?.unlikesCount, post?.unlikeCount, post?.savesCount, post?.saveCount, propIsSaved, myUserId]);
+if (!post) return null;
+if (isDeletingLocal) return null;
+const isDemo = Boolean(propIsDemo ?? currentUser?.isDemo);
+const isAdmin = !isDemo && checkIsAdmin(currentUser);
+const ownerCheck = isOwner ?? checkIsPostOwner(currentUser, post);
+const canModify = ownerCheck ? true : isAdmin;
+const isHiddenByReports = Boolean(post.isHidden ? true : post.reportsCount && post.reportsCount >= 5);
+if (!isAdmin && isHiddenByReports) {
+return null;
+}
+const isPrivatePost = Boolean(post.visibilityMode === 'private' ? true : post.isPrivate);
+if (isPrivatePost && !ownerCheck && !isAdmin) {
+return null;
+}
+const isScheduledPost = Boolean(post.visibilityMode === 'schedule');
+const isFutureScheduled = Boolean(isScheduledPost && post.scheduledPublishAt && Date.parse(post.scheduledPublishAt) > Date.now());
+if (isFutureScheduled && !ownerCheck && !isAdmin) {
+return null;
+}
+const getLangText = (si: string, en: string, ta: string) => {
+if (activeLang === 'en') return en;
+if (activeLang === 'ta') return ta;
+return si;
+};
+const getCityOnly = (locStr?: string): string => {
+const fallbackCity = viewerLocation?.nameSi ? viewerLocation.nameSi.split('(')[0].trim() : getLangText('නගරය', 'City', 'நகரம்');
+if (!locStr) return fallbackCity;
+if (/^\d+.\d+/.test(locStr.trim())) {
+return fallbackCity;
+}
+const cleaned = locStr.split('(')[0].split(',')[0].trim();
+return cleaned ? cleaned : locStr;
+};
+const isAnonymousPost = Boolean(post.isAnonymous ? true : post.showAuthorName === false ? true : post.userName?.startsWith('Anonymous #') ? true : post.userName?.includes('නිර්නාමික'));
+const authorName = isAnonymousPost ? 'නිර්නාමික පරිශීලක (Anonymous)' : post.userName ? post.userName : post.authorName ? post.authorName : getLangText('සහය ඉල්ලුම්කරු', 'Help Seeker', 'உதவி கோருபவர்');
+const authorPhoto = isAnonymousPost ? '' : post.userPhotoUrl ? post.userPhotoUrl : post.photoUrl ? post.photoUrl : '';
+const postCode = post.postCode ? post.postCode : post.id ? '#POST-' + post.id.replace(/[^0-9]/g, '').slice(-4) : '#SRV-0000';
+const rawCitySource = post.locationName ? post.locationName : post.city ? post.city : post.town;
+const nearestCity = getCityOnly(rawCitySource);
+const rawDistance = typeof post.distanceKm === 'number' ? post.distanceKm : typeof post.actualDistanceKm === 'number' ? post.actualDistanceKm : null;
+const isDistanceHiddenFromUsers = post.showDistance === false;
+const phoneNumber = post.userPhone ? post.userPhone : post.contactPhone ? post.contactPhone : post.contactWhatsapp ? post.contactWhatsapp : '';
+const displayPhone = maskPhone(phoneNumber, isDemo);
+const formatPostDate = (dateVal?: any): string => {
+if (post.autoSavedDate && post.autoSavedTime) {
+return post.autoSavedDate + ' • ' + post.autoSavedTime;
+}
+if (!dateVal) return getLangText('මෑතකදී', 'Recently', 'சமீபத்தில்');
+if (typeof dateVal === 'string') {
+if (dateVal.includes('මීට') ? true : dateVal.includes('පෙර') ? true : dateVal.includes('ago')) {
+return dateVal;
+}
+const parsed = Date.parse(dateVal);
+if (!isNaN(parsed)) {
+try {
+const d = new Date(parsed);
+return d.toLocaleDateString(activeLang === 'en' ? 'en-US' : 'si-LK') + ' ' + d.toLocaleTimeString([], {
+hour: '2-digit',
+minute: '2-digit'
+});
+} catch (err) {
+return dateVal;
+}
+}
+return dateVal;
+}
+if (typeof dateVal === 'number') {
+try {
+const d = new Date(dateVal);
+return d.toLocaleDateString(activeLang === 'en' ? 'en-US' : 'si-LK') + ' ' + d.toLocaleTimeString([], {
+hour: '2-digit',
+minute: '2-digit'
+});
+} catch (err) {
+return getLangText('මෑතකදී', 'Recently', 'சமீபத்தில்');
+}
+}
+return getLangText('මෑතකදී', 'Recently', 'சமீபத்தில்');
+};
+const handleCopyPhone = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (isDemo) {
+if (onRequireRegistration) onRequireRegistration();
+return;
+}
+if (!phoneNumber) return;
+try {
+navigator.clipboard.writeText(phoneNumber);
+setCopiedPhone(true);
+setTimeout(() => setCopiedPhone(false), 2000);
+} catch (err) {}
+};
+const handleCopyExternalLink = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (!post.externalLink) return;
+try {
+navigator.clipboard.writeText(post.externalLink);
+setCopiedLink(true);
+setTimeout(() => setCopiedLink(false), 2000);
+} catch (err) {}
+};
+const handleOpenExternalLink = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (!post.externalLink) return;
+let targetUrl = String(post.externalLink).trim();
+if (!/^https?:\/\//i.test(targetUrl)) {
+targetUrl = 'https://' + targetUrl;
+}
+window.open(targetUrl, '_blank', 'noopener,noreferrer');
+};
+const handlePollVote = async (optionId: string, e: React.MouseEvent) => {
+e.stopPropagation();
+if (!localPoll ? !localPoll : !Array.isArray(localPoll.options)) return;
+const updatedOptions = localPoll.options.map((opt: any) => {
+const votedList = Array.isArray(opt.votedBy) ? opt.votedBy : [];
+const alreadyVoted = votedList.includes(myUserId);
+if (opt.id === optionId) {
+if (alreadyVoted) return opt;
+return {
+...opt,
+votes: (opt.votes ? opt.votes : 0) + 1,
+votedBy: [...votedList, myUserId]
+};
+} else if (alreadyVoted) {
+return {
+...opt,
+votes: Math.max(0, (opt.votes ? opt.votes : 1) - 1),
+votedBy: votedList.filter((id: string) => id !== myUserId)
+};
+}
+return opt;
+});
+const totalVotes = updatedOptions.reduce((sum: number, o: any) => sum + (o.votes ? o.votes : 0), 0);
+const nextPoll = {
+...localPoll,
+options: updatedOptions,
+totalVotes: totalVotes
+};
+setLocalPoll(nextPoll);
+try {
+if (post.id) {
+await updateHelpPostInFirestore(post.id, ({ pollData: nextPoll } as any));
+}
+} catch (err) {}
+};
+const handleLikeClick = async (e: React.MouseEvent) => {
+e.stopPropagation();
+if (onLike) onLike(post.id);
+const nextLiked = !isLiked;
+const nextCount = nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1);
+setIsLiked(nextLiked);
+setLikesCount(nextCount);
+if (nextLiked && isUnliked) {
+setIsUnliked(false);
+setUnlikesCount((prev: number) => Math.max(0, prev - 1));
+}
+try {
+if (post.id) {
+await updateHelpPostInFirestore(post.id, {
+likeCount: nextCount,
+likedBy: nextLiked ? [myUserId] : []
+});
+}
+} catch (err) {}
+};
+const handleUnlikeClick = async (e: React.MouseEvent) => {
+e.stopPropagation();
+if (onUnlike) onUnlike(post.id);
+const nextUnliked = !isUnliked;
+const nextCount = nextUnliked ? unlikesCount + 1 : Math.max(0, unlikesCount - 1);
+setIsUnliked(nextUnliked);
+setUnlikesCount(nextCount);
+if (nextUnliked && isLiked) {
+setIsLiked(false);
+setLikesCount((prev: number) => Math.max(0, prev - 1));
+}
+try {
+if (post.id) {
+await updateHelpPostInFirestore(post.id, {
+unlikesCount: nextCount,
+unlikeCount: nextCount,
+unlikedBy: nextUnliked ? [myUserId] : []
+});
+}
+} catch (err) {}
+};
+const handleSaveClick = async (e: React.MouseEvent) => {
+e.stopPropagation();
+if (onToggleSave) onToggleSave(post);
+const nextSaved = !isSaved;
+const nextCount = nextSaved ? savesCount + 1 : Math.max(0, savesCount - 1);
+setIsSaved(nextSaved);
+setSavesCount(nextCount);
+try {
+if (post.id) {
+await updateHelpPostInFirestore(post.id, {
+savesCount: nextCount,
+saveCount: nextCount
+});
+}
+} catch (err) {}
+};
+const handleAddComment = async (e: React.FormEvent) => {
+e.preventDefault();
+if (!newCommentText.trim()) return;
+setIsSubmittingComment(true);
+const newComment: PostComment = {
+id: 'cmt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+userId: currentUser?.id ? currentUser.id : currentUser?.userId ? currentUser.userId : 'guest_user',
+userName: currentUser?.name ? currentUser.name : 'සහය සාමාජික',
+userPhotoUrl: currentUser?.photoUrl ? currentUser.photoUrl : '',
+comment: newCommentText.trim(),
+createdAt: new Date().toISOString()
+};
+const updatedComments = [...localComments, newComment];
+setLocalComments(updatedComments);
+setNewCommentText('');
+setIsSubmittingComment(false);
+try {
+if (post.id) {
+await updateHelpPostInFirestore(post.id, {
+commentsCount: updatedComments.length,
+commentsList: updatedComments
+});
+}
+} catch (err) {
+console.warn('Comment sync error:', err);
+}
+};
+const handleDelete = async (e?: React.MouseEvent) => {
+if (e) e.stopPropagation();
+if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
+return;
+}
+const targetId = post.id;
+setIsDeletingLocal(true);
+if (targetId) {
+addDeletedPostId(targetId);
+try {
+await updateHelpPostInFirestore(targetId, {
+isDeleted: true,
+status: 'deleted',
+deletedAt: new Date().toISOString()
+}).catch(() => {});
+await deleteHelpPostFromFirestore(targetId).catch(() => {});
+} catch (err) {}
+}
+if (onDeletePost) {
+onDeletePost(targetId ? targetId : post);
+}
+};
+const handleEditClick = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (onEditPost) {
+onEditPost(post);
+}
+};
+const handleViewClick = (e: React.MouseEvent) => {
+e.stopPropagation();
+setIsExpandedFullModal(true);
+};
+const handleChatClick = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (isDemo) {
+if (onRequireRegistration) onRequireRegistration();
+return;
+}
+if (onOpenChat) {
+onOpenChat(post);
+} else if (onOfferSupport) {
+onOfferSupport(post);
+} else if (onViewDetails) {
+onViewDetails(post.id);
+}
+};
+const handleSupportClick = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (isDemo) {
+if (onRequireRegistration) onRequireRegistration();
+return;
+}
+if (ownerCheck && onOpenSupportOffers) {
+onOpenSupportOffers(post);
+} else if (onOfferSupport) {
+onOfferSupport(post);
+} else if (onOpenConfirm) {
+onOpenConfirm(post);
+} else if (onViewPost) {
+onViewPost(post);
+}
+};
+const handleProfileClick = (e: React.MouseEvent) => {
+e.stopPropagation();
+if (isAnonymousPost && !isAdmin) {
+alert('මෙම දැන්වීමේ පළකරන්නාගේ නම සඟවා (Anonymous) ඇත.');
+return;
+}
+if (onViewProfile) {
+const targetUser = post.actualAuthorId ? post.actualAuthorId : post.userId ? post.userId : authorName;
+onViewProfile(targetUser);
+}
+};
+const renderPollBox = () => {
+if ((!localPoll ? !localPoll : !Array.isArray(localPoll.options)) ? !localPoll ? !localPoll : !Array.isArray(localPoll.options) : !(localPoll.options.length >= 2)) {
+return null;
+}
+const total = localPoll.totalVotes ? localPoll.totalVotes : 0;
+return h('div', {
+onClick: (e: any) => e.stopPropagation(),
+className: 'p-3 rounded-2xl bg-emerald-50/90 dark:bg-[#071f13] border border-emerald-300 dark:border-emerald-800 space-y-2'
+}, h('div', { className: 'flex items-center justify-between text-xs font-black text-emerald-950 dark:text-emerald-200' }, h('span', { className: 'flex items-center gap-1.5' }, h(BarChart3, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, localPoll.question ? localPoll.question : 'මත විමසුම (Poll)')), h('span', { className: 'text-[10px] font-mono text-emerald-700 dark:text-emerald-400' }, total + ' votes')), h('div', { className: 'space-y-1.5' }, localPoll.options.map((opt: any) => {
+const votes = opt.votes ? opt.votes : 0;
+const pct = total >= 1 ? Math.round(votes * 100 / total) : 0;
+const isMyVote = Array.isArray(opt.votedBy) && opt.votedBy.includes(myUserId);
+return h('button', {
+key: opt.id,
+type: 'button',
+onClick: (e: any) => handlePollVote(opt.id, e),
+className: 'w-full relative overflow-hidden rounded-xl border text-left p-2 transition-all cursor-pointer ' + (isMyVote ? 'border-emerald-600 bg-emerald-100/80 dark:bg-emerald-900/60' : 'border-emerald-200 dark:border-emerald-800 bg-white dark:bg-[#06160d] hover:border-emerald-400')
+}, h('div', {
+className: 'absolute inset-y-0 left-0 bg-emerald-500/20 transition-all',
+style: { width: pct + '%' }
+}), h('div', { className: 'relative flex items-center justify-between text-xs font-bold' }, h('span', { className: 'text-slate-900 dark:text-white truncate pr-2' }, (isMyVote ? '✓ ' : '') + opt.text), h('span', { className: 'font-mono text-[11px] text-emerald-700 dark:text-emerald-300 shrink-0' }, pct + '% (' + votes + ')')));
+})));
+};
+const renderExternalLinkBar = () => {
+if (!post.externalLink) return null;
+return h('div', {
+onClick: (e: any) => e.stopPropagation(),
+className: 'mt-2 p-2.5 rounded-xl bg-sky-50/90 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 flex items-center justify-between gap-2 flex-wrap'
+}, h('span', { className: 'text-xs font-bold text-sky-900 dark:text-sky-200 truncate max-w-[200px] sm:max-w-xs' }, '🔗 ' + post.externalLink), h('div', { className: 'flex items-center gap-1.5 shrink-0' }, h('button', {
+type: 'button',
+onClick: handleOpenExternalLink,
+className: 'px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer'
+}, h(ExternalLink, { className: 'w-3 h-3' }), h('span', null, 'Open')), h('button', {
+type: 'button',
+onClick: handleCopyExternalLink,
+className: 'px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-zinc-200 border border-slate-300 dark:border-slate-700 text-[11px] font-black flex items-center gap-1 cursor-pointer'
+}, h(copiedLink ? Check : Copy, { className: 'w-3 h-3 text-emerald-600' }), h('span', null, copiedLink ? 'Copied!' : 'Copy'))));
+};
+const renderCommentsSection = () => {
+if (!showCommentsDrawer) return null;
+const areCommentsHidden = post.showComments === false && !ownerCheck && !isAdmin;
+return h('div', {
+className: 'mt-3.5 pt-3.5 border-t border-slate-200/80 dark:border-emerald-950/80 space-y-3 animate-fadeIn',
+onClick: (e: any) => e.stopPropagation()
+}, h('div', { className: 'flex items-center justify-between' }, h('div', { className: 'flex items-center gap-2' }, h(MessageSquare, { className: 'w-4 h-4 text-emerald-600' }), h('h5', { className: 'text-xs font-black text-slate-800 dark:text-zinc-200' }, 'අදහස් සහ විමසීම් (Comments - ' + localComments.length + ')')), h('button', {
+type: 'button',
+onClick: () => setShowCommentsDrawer(false),
+className: 'text-[11px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 cursor-pointer'
+}, 'වසන්න ✕')), areCommentsHidden ? h('div', { className: 'p-3 rounded-2xl bg-slate-100 dark:bg-[#06160d] border border-slate-200 dark:border-emerald-950 text-center text-xs font-bold text-slate-500 dark:text-zinc-400' }, '🔒 මෙම දැන්වීමේ අදහස් (Comments) අන් අයට පෙන්වීම දැන්වීම්කරු විසින් අක්‍රීය කර ඇත.') : h(React.Fragment, null, h('div', { className: 'space-y-2 max-h-56 overflow-y-auto pr-1' }, localComments.length === 0 ? h('div', { className: 'py-4 text-center text-xs text-slate-400 dark:text-zinc-500 font-medium' }, 'තවමත් අදහස් පළවී නොමැත. මුලින්ම අදහසක් දක්වන්න!') : localComments.map((cmt: any) => h('div', {
+key: cmt.id,
+className: 'p-2.5 rounded-2xl bg-slate-50 dark:bg-[#06180e] border border-slate-200/80 dark:border-emerald-950/60 flex items-start gap-2.5'
+}, h('div', { className: 'w-7 h-7 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-[10px] flex items-center justify-center shrink-0' }, cmt.userPhotoUrl ? h('img', {
+src: cmt.userPhotoUrl,
+alt: cmt.userName,
+className: 'w-full h-full rounded-full object-cover'
+}) : cmt.userName.charAt(0).toUpperCase()), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center justify-between gap-1 mb-0.5' }, h('span', { className: 'text-[11px] font-black text-slate-900 dark:text-zinc-100 truncate' }, cmt.userName), h('span', { className: 'text-[9px] text-slate-400 font-medium' }, formatPostDate(cmt.createdAt))), h('p', { className: 'text-xs text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed' }, cmt.comment))))), h('form', {
+onSubmit: handleAddComment,
+className: 'flex items-center gap-2 pt-1'
+}, h('input', {
+type: 'text',
+required: true,
+value: newCommentText,
+onChange: (e: any) => setNewCommentText(e.target.value),
+placeholder: 'ඔබගේ අදහස / විමසීම මෙහි සටහන් කරන්න...',
+className: 'flex-1 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-[#06160d] border border-slate-200 dark:border-emerald-950 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500'
+}), h('button', {
+type: 'submit',
+disabled: !newCommentText.trim() ? true : isSubmittingComment,
+className: 'p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white cursor-pointer active:scale-95 transition-all',
+title: 'Comment කරන්න'
+}, h(Send, { className: 'w-4 h-4' })))));
+};
+const renderInteractiveActionBar = () => {
+return h('div', {
+onClick: (e: any) => e.stopPropagation(),
+className: 'mt-3 pt-2.5 border-t border-slate-100 dark:border-emerald-950/60 flex items-center justify-between gap-2 text-xs font-bold flex-wrap'
+}, h('div', { className: 'flex items-center gap-1 sm:gap-1.5 flex-wrap' }, h('button', {
+type: 'button',
+onClick: handleLikeClick,
+className: 'px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ' + (isLiked ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 font-black border border-rose-300 dark:border-rose-800' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]')
+}, h(Heart, { className: 'w-4 h-4 ' + (isLiked ? 'fill-current text-rose-500' : '') }), h('span', null, likesCount)), h('button', {
+type: 'button',
+onClick: handleUnlikeClick,
+className: 'px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ' + (isUnliked ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-zinc-200 font-black border border-slate-300 dark:border-slate-700' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]')
+}, h(ThumbsDown, { className: 'w-4 h-4 ' + (isUnliked ? 'fill-current text-slate-700 dark:text-slate-300' : '') }), h('span', null, unlikesCount)), h('button', {
+type: 'button',
+onClick: (e: any) => {
+e.stopPropagation();
+setShowCommentsDrawer(prev => !prev);
+},
+className: 'px-2.5 py-1.5 rounded-xl text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95'
+}, h(MessageSquare, { className: 'w-4 h-4 text-emerald-600' }), h('span', null, localComments.length)), h('button', {
+type: 'button',
+onClick: handleSaveClick,
+className: 'px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ' + (isSaved ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-black border border-amber-300 dark:border-amber-800' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#0b2417]')
+}, h(Bookmark, { className: 'w-4 h-4 ' + (isSaved ? 'fill-current text-amber-500' : '') }), h('span', null, savesCount))), h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, displayPhone ? h('button', {
+type: 'button',
+onClick: handleCopyPhone,
+className: 'px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-[11px] font-black flex items-center gap-1 cursor-pointer active:scale-95',
+title: 'දුරකථන අංකය පිටපත් කරන්න'
+}, h(Phone, { className: 'w-3.5 h-3.5 text-emerald-600' }), h('span', null, displayPhone), copiedPhone ? h('span', { className: 'text-[10px] text-emerald-600' }, '✓') : null) : null, h('button', {
+type: 'button',
+onClick: handleChatClick,
+className: 'px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/60 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-bold shadow-xs',
+title: 'Inbox / Chat පණිවිඩයක් එවන්න'
+}, h(MessageCircle, { className: 'w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400' }), h('span', null, 'Inbox')), Boolean(onOfferSupport ? true : onOpenSupportOffers ? true : onOpenConfirm) ? h('button', {
+type: 'button',
+onClick: handleSupportClick,
+className: 'px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 text-xs font-black shadow-sm',
+title: ownerCheck ? 'සහායකයින් බලන්න' : 'සහාය වන්න (Offer Support)'
+}, h(ownerCheck ? UserCheck : HelpCircle, { className: 'w-3.5 h-3.5' }), h('span', null, ownerCheck ? getLangText('සහායකයින්', 'Helpers', 'உதவியாளர்கள்') : getLangText('සහාය වන්න', 'Help', 'உதவுக'))) : null, canModify && onEditPost ? h('button', {
+type: 'button',
+onClick: handleEditClick,
+className: 'p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded-xl cursor-pointer active:scale-95',
+title: 'සංස්කරණය කරන්න (Edit)'
+}, h(Pencil, { className: 'w-3.5 h-3.5' })) : null, canModify ? h('button', {
+type: 'button',
+onClick: handleDelete,
+className: 'p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl cursor-pointer active:scale-95',
+title: 'ඉවත් කරන්න (Delete)'
+}, h(Trash2, { className: 'w-3.5 h-3.5' })) : null));
+};
+const renderCardHeader = () => {
+  const tagDisplay = post.tagName ? post.tagName : post.tagCategory ? post.tagCategory : post.category === 'quick_services' ? 'ඉක්මන් සේවා' : 'සාමාන්‍ය සේවා';
+  return h('div', { className: 'flex items-start justify-between gap-2.5 pb-2.5' }, h('div', {
+    onClick: handleProfileClick,
+    className: 'flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group'
+  }, h('div', { className: 'relative shrink-0' }, isAnonymousPost ? h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-slate-300 dark:border-slate-700' }, h(UserIcon, { className: 'w-5 h-5 text-slate-300' })) : authorPhoto ? h('img', {
+    src: authorPhoto,
+    alt: authorName,
+    className: 'w-10 h-10 rounded-2xl object-cover border-2 border-emerald-500 shadow-md ring-2 ring-emerald-400/20'
+  }) : h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-white dark:border-slate-800' }, authorName.charAt(0).toUpperCase()), ownerCheck && !isAnonymousPost ? h('span', { className: 'absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 border border-white dark:border-slate-800 shadow-xs' }, h(UserCheck, { className: 'w-3 h-3' })) : null), h('div', { className: 'min-w-0 flex-1' }, h('div', { className: 'flex items-center gap-1.5 flex-wrap' }, h('h4', { className: 'font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug truncate group-hover:text-emerald-600 transition-colors' }, authorName), isAnonymousPost ? h('span', { className: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-700' }, 'නම සඟවා ඇත') : null, ownerCheck ? h('span', { className: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700' }, 'ඔබගේ') : null, isPrivatePost ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300' }, '🔒 Private') : null, isScheduledPost ? h('span', { className: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-sky-300' }, '📅 ' + (post.scheduledDate ? post.scheduledDate + ' ' + (post.scheduledTime ? post.scheduledTime : '') : 'Scheduled')) : null, h('span', { className: 'font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md' }, postCode), h('span', { className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80' }, h(Zap, { className: 'w-2.5 h-2.5 text-emerald-600' }), h('span', null, '#' + tagDisplay.replace(/^#/, '')) /* TAG_END */ )), h('div', { className: 'flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap' }, h('span', { className: 'flex items-center gap-1' }, h(Clock, { className: 'w-3 h-3 text-slate-400' }), h('span', null, formatPostDate(post.createdAt ? post.createdAt : post.createdAtIso))), h('span', null, '•'), h('span', { className: 'flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-medium' }, h(MapPin, { className: 'w-3 h-3' }), h('span', { className: 'truncate max-w-[140px]' }, nearestCity)), rawDistance !== null && !isDistanceHiddenFromUsers ? h('span', { className: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px]' }, rawDistance.toFixed(1) + ' km') : null, rawDistance !== null && isDistanceHiddenFromUsers && isAdmin ? h('span', { className: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md font-mono font-bold text-[9px] border border-amber-300' }, '🔒 දුර (Admin): ' + rawDistance.toFixed(1) + ' km') : null))), isAdmin && (isAnonymousPost ? true : isDistanceHiddenFromUsers) ? h('div', { className: 'p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-[10px] text-amber-900 dark:text-amber-200 shrink-0' }, h('div', { className: 'font-black flex items-center gap-1' }, h(Lock, { className: 'w-3 h-3 text-amber-600' }), h('span', null, 'Admin Audit:')), h('div', { className: 'truncate max-w-[140px] font-bold' }, 'නම: ' + (post.actualAuthorName ? post.actualAuthorName : post.userName ? post.userName : 'Unknown')), rawDistance !== null ? h('div', { className: 'font-mono text-[9px] text-amber-800 dark:text-amber-300' }, 'දුර: ' + rawDistance.toFixed(1) + ' km') : null) : null);
+};
+const renderValidityDurationForPoster = () => {
+if (!ownerCheck) return null;
+const validityInfo = getPostValidityInfo(post);
+return h('div', { className: 'mt-3 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 dark:border-amber-500/40 flex items-center justify-between gap-2 text-xs font-bold text-amber-950 dark:text-amber-100 shadow-2xs' }, h('div', { className: 'flex items-center gap-2 min-w-0' }, h(Clock, { className: 'w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0' }), h('span', { className: 'text-slate-600 dark:text-slate-400 shrink-0' }, 'වලංගු කාලසීමාව:'), h('span', { className: 'font-extrabold text-amber-950 dark:text-amber-100 bg-amber-400/25 px-2 py-0.5 rounded-lg border border-amber-500/30 truncate' }, validityInfo.durationSi)), h('div', { className: 'shrink-0 flex items-center gap-1.5' }, h('span', { className: 'text-[11px] px-2.5 py-0.5 rounded-xl font-black ' + (validityInfo.isExpired ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30') }, validityInfo.remainingText)));
+};
+const renderExpandedFullModal = () => {
+if (!isExpandedFullModal) return null;
+const rawHeadline = post.headline ? post.headline : post.title ? post.title : '';
+const fullDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
+const neededText = post.whatIsNeeded && post.whatIsNeeded !== rawHeadline && post.whatIsNeeded !== fullDesc ? post.whatIsNeeded : '';
+const condText = post.conditions ? post.conditions : '';
+const noticeText = post.specialNotice ? post.specialNotice : '';
+const transportText = post.transport ? post.transport : post.deliveryOption ? post.deliveryOption : '';
+const paymentText = post.payment ? post.payment : post.rewardDetails ? post.rewardDetails : '';
+const imgUrl = post.imageUrl ? post.imageUrl : post.photoUrl ? post.photoUrl : post.image;
+const fontStyle = getFontFamilyById(post.selectedFont);
+return h('div', {
+className: 'fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fadeIn',
+onClick: () => setIsExpandedFullModal(false)
+}, h('div', {
+className: 'w-full max-w-3xl bg-white dark:bg-[#07190f] border-2 border-emerald-500 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col',
+onClick: (e: any) => e.stopPropagation()
+}, h('div', { className: 'bg-gradient-to-r from-emerald-800 via-teal-900 to-[#04160d] px-5 py-3.5 text-white flex items-center justify-between shrink-0' }, h('div', { className: 'flex items-center gap-2' }, h(Eye, { className: 'w-5 h-5 text-emerald-300' }), h('h3', { className: 'text-sm sm:text-base font-black' }, 'දැන්වීමේ සම්පූර්ණ විස්තරය (' + postCode + ')')), h('button', {
+type: 'button',
+onClick: () => setIsExpandedFullModal(false),
+className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-rose-600 text-white flex items-center justify-center font-bold cursor-pointer'
+}, h(X, { className: 'w-4 h-4' }))), h('div', { className: 'p-5 overflow-y-auto flex-1 space-y-4' }, renderCardHeader(), post.audioUrl ? h('div', { className: 'mb-2' }, h(AudioVoicePlayer, {
+audioUrl: post.audioUrl,
+durationSec: post.audioDurationSec
+})) : null, rawHeadline ? h('div', { className: 'w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/80 dark:via-[#0b291a] dark:to-emerald-900/80 border-2 border-emerald-500 shadow-xs' }, h('h2', {
+className: 'text-base sm:text-xl font-black text-slate-950 dark:text-white leading-snug',
+style: { fontFamily: fontStyle }
+}, rawHeadline)) : null, imgUrl ? h('div', { className: 'w-full rounded-2xl overflow-hidden bg-black border-2 border-emerald-500/60 shadow-lg' }, h('img', {
+src: imgUrl,
+alt: rawHeadline,
+className: 'w-full max-h-[65vh] object-contain mx-auto'
+})) : null, fullDesc ? h('div', { className: 'p-4 rounded-2xl bg-emerald-50/50 dark:bg-[#06180f] border border-emerald-200 dark:border-emerald-800 space-y-1' }, h('span', { className: 'text-[11px] font-black text-emerald-700 dark:text-emerald-400 block' }, 'සම්පූර්ණ විස්තරය:'), h('p', {
+className: 'text-sm sm:text-base text-slate-900 dark:text-zinc-100 font-bold whitespace-pre-wrap leading-relaxed',
+style: { fontFamily: fontStyle }
+}, fullDesc)) : null, neededText ? h('div', { className: 'p-3.5 rounded-2xl bg-slate-50 dark:bg-[#06180f] border border-slate-200 dark:border-emerald-900 space-y-1' }, h('span', { className: 'text-xs font-black text-emerald-700 dark:text-emerald-400 block' }, 'වියයුතු දේ / අවශ්‍යතාවය:'), h('p', { className: 'text-xs sm:text-sm text-slate-800 dark:text-zinc-200 font-bold whitespace-pre-wrap leading-relaxed' }, neededText)) : null, (condText ? true : Boolean(noticeText) ? true : Boolean(transportText) ? true : Boolean(paymentText)) ? h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs' }, condText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'කොන්දේසි:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, condText)) : null, noticeText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'විශේෂ දැනුවත් කිරීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, noticeText)) : null, transportText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ප්‍රවාහනය / ලබාදීම:'), h('span', { className: 'font-bold text-slate-900 dark:text-white' }, transportText)) : null, paymentText ? h('div', { className: 'p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800' }, h('span', { className: 'font-black text-slate-500 block mb-0.5' }, 'ගෙවීම් / ප්‍රතිලාභ:'), h('span', { className: 'font-bold text-emerald-700 dark:text-emerald-400' }, paymentText)) : null) : null, renderPollBox(), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection())));
+};
+const rawHeadline = post.headline ? post.headline : post.title ? post.title : '';
+const rawDesc = post.content ? post.content : post.whatHappened ? post.whatHappened : '';
+const imgUrl = post.imageUrl ? post.imageUrl : post.photoUrl ? post.photoUrl : post.image;
+const fontStyle = getFontFamilyById(post.selectedFont);
+const lineCount = rawDesc ? rawDesc.split(String.fromCharCode(10)).length : 0;
+const isLongText = Boolean(Math.max(rawDesc.length, 165) === rawDesc.length && rawDesc.length !== 165 ? true : Math.max(lineCount, 4) === lineCount);
+const hasValidImage = Boolean(imgUrl && !imageError);
+const shouldCap16x9 = Boolean(isLongText ? true : hasValidImage);
+const shortDesc = isLongText ? rawDesc.slice(0, 165) + '...' : rawDesc;
+return h(React.Fragment, null, h('div', {
+onClick: () => setIsExpandedFullModal(true),
+className: 'relative rounded-3xl bg-white dark:bg-[#07170e] border border-slate-200/90 dark:border-emerald-950/80 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden p-4 sm:p-5 flex flex-col justify-between cursor-pointer'
+}, renderCardHeader(), post.audioUrl ? h('div', {
+onClick: (e: any) => e.stopPropagation(),
+className: 'mb-2.5'
+}, h(AudioVoicePlayer, {
+audioUrl: post.audioUrl,
+durationSec: post.audioDurationSec
+})) : null, h('div', {
+className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between ' : 'w-full h-auto ') + 'rounded-2xl bg-gradient-to-br from-[#f2fcf7] via-white to-[#e8f7f0] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-400/80 dark:border-emerald-800/90 p-3 sm:p-3.5 flex flex-col overflow-hidden shadow-inner group relative'
+}, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
+className: 'text-xs sm:text-base font-black text-slate-950 dark:text-white leading-snug line-clamp-2',
+style: { fontFamily: fontStyle }
+}, rawHeadline)) : null, (hasValidImage ? true : Boolean(shortDesc && (!hasValidImage ? true : shortDesc !== rawHeadline)) ? true : Boolean(localPoll)) ? h('div', { className: (shouldCap16x9 ? 'flex-1 min-h-0 ' : '') + 'overflow-hidden flex gap-3 items-center' }, hasValidImage ? h('div', { className: (shortDesc && shortDesc !== rawHeadline ? 'w-1/2 ' : 'w-full ') + 'h-full max-h-[180px] rounded-xl overflow-hidden bg-slate-900 border border-emerald-300 dark:border-emerald-800 relative shrink-0' }, h('img', {
+src: imgUrl,
+alt: rawHeadline,
+className: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300',
+onError: () => setImageError(true)
+})) : null, h('div', { className: 'flex-1 min-w-0 flex flex-col justify-between overflow-hidden space-y-2' }, shortDesc && (!hasValidImage ? true : shortDesc !== rawHeadline) ? h('div', { className: 'p-2.5 sm:p-3 rounded-xl bg-white/95 dark:bg-[#071d12]/95 border border-emerald-200/90 dark:border-emerald-900/80 shadow-2xs overflow-hidden' }, h('p', {
+className: (isLongText ? 'line-clamp-4 ' : '') + 'text-xs sm:text-sm text-slate-950 dark:text-zinc-100 leading-relaxed font-bold whitespace-pre-line',
+style: { fontFamily: fontStyle }
+}, shortDesc)) : null, renderPollBox())) : null), renderExternalLinkBar(), renderValidityDurationForPoster(), renderInteractiveActionBar(), renderCommentsSection()), renderExpandedFullModal());
 };

@@ -76,12 +76,190 @@
         "savedAt": { "type": "string" }
       },
       "required": ["userId", "postId"]
+    },
+    "system_settings": {
+      "title": "System Settings",
+      "description": "Global application and emergency siren configurations",
+      "type": "object",
+      "properties": {
+        "audioUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "presetType": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedAtMs": { "type": "number" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["fileName"]
+    },
+    "red_alerts": {
+      "title": "Red Alerts (රතු එළිය)",
+      "description": "Critical emergency disaster alerts with 2km proximity siren and island-wide notifications",
+      "type": "object",
+      "properties": {
+        "alertCode": { "type": "string" },
+        "disasterType": { "type": "string" },
+        "customDisasterTitle": { "type": "string" },
+        "disasterTitleSi": { "type": "string" },
+        "description": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "locationName": { "type": "string" },
+        "incidentDate": { "type": "string" },
+        "incidentTime": { "type": "string" },
+        "reportedByName": { "type": "string" },
+        "reportedByPhone": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["disasterType", "latitude", "longitude", "locationName", "incidentDate", "incidentTime"]
+    },
+    "aid_recipient_centers": {
+      "title": "Transparent Aid Recipient Centers (ආධාර ලබන ස්ථාන)",
+      "description": "Verified centers with unique 6-digit codes and anti-fraud consent",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "centerName": { "type": "string" },
+        "centerType": { "type": "string" },
+        "leadPersonName": { "type": "string" },
+        "leadPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "district": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "centerName", "leadPersonName", "leadPhone"]
+    },
+    "aid_deliveries": {
+      "title": "Aid Deliveries (ලබාදුන් ආධාර සටහන්)",
+      "description": "Logged donations with photo receipts and recipient verification",
+      "type": "object",
+      "properties": {
+        "centerCode": { "type": "string" },
+        "donorName": { "type": "string" },
+        "donorPhone": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "string" },
+        "deliveryDate": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["centerCode", "donorName", "donorPhone", "category", "quantity"]
+    },
+    "aid_broadcasts": {
+      "title": "Aid Community Broadcasts (ප්‍රජා ආධාර නිවේදන)",
+      "description": "Urgent requirements and surplus aid broadcast notices",
+      "type": "object",
+      "properties": {
+        "centerCode": { "type": "string" },
+        "postType": { "type": "string" },
+        "scope": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhone": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["postType", "scope", "category", "title", "authorName", "authorPhone"]
+    },
+    "barter_items": {
+      "title": "Barter Exchange Items (භාණ්ඩ හුවමාරු දැන්වීම්)",
+      "description": "Surplus items offered in exchange for desired items",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "offeringTitle": { "type": "string" },
+        "offeringCategory": { "type": "string" },
+        "offeringDescription": { "type": "string" },
+        "wantedItem": { "type": "string" },
+        "wantedCategory": { "type": "string" },
+        "estimatedValue": { "type": "number" },
+        "condition": { "type": "string" },
+        "district": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "userName", "offeringTitle", "wantedItem"]
+    },
+    "barter_proposals": {
+      "title": "Barter Proposals (හුවමාරු යෝජනා)",
+      "description": "Swap proposals sent between users",
+      "type": "object",
+      "properties": {
+        "barterItemId": { "type": "string" },
+        "proposerId": { "type": "string" },
+        "proposerName": { "type": "string" },
+        "proposerPhone": { "type": "string" },
+        "offeredItemTitle": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["barterItemId", "proposerId", "proposerName"]
+    },
+    "qr_transactions": {
+      "title": "QR Payments & Transfers (QR ගෙවීම් වාර්තා)",
+      "description": "Direct peer-to-peer and merchant QR code payments",
+      "type": "object",
+      "properties": {
+        "payerId": { "type": "string" },
+        "payerName": { "type": "string" },
+        "payeeId": { "type": "string" },
+        "payeeName": { "type": "string" },
+        "amount": { "type": "number" },
+        "purpose": { "type": "string" },
+        "paymentCode": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["payerId", "payeeId", "amount"]
+    },
+    "online_users": {
+      "title": "Live Online Users (සජීවී පරිශීලකයින්)",
+      "description": "Real-time presence tracking heartbeat",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "district": { "type": "string" },
+        "lastPing": { "type": "number" },
+        "currentView": { "type": "string" },
+        "device": { "type": "string" }
+      },
+      "required": ["userId", "lastPing"]
+    },
+    "sos_live_sessions": {
+      "title": "SOS Live GPS Tracking Sessions (හදිසි සජීවී ස්ථාන විකාශන)",
+      "description": "Live GPS location tracking sessions with instant WhatsApp share and dynamic deactivation switch",
+      "type": "object",
+      "properties": {
+        "sessionCode": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "accuracyMeters": { "type": "number" },
+        "speedKmh": { "type": "number" },
+        "locationName": { "type": "string" },
+        "emergencyNote": { "type": "string" },
+        "batteryPercent": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "startedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "userName", "latitude", "longitude", "isActive"]
     }
   },
   "firestore": {
     "/help_posts/{postId}": {
       "schema": "help_posts",
       "description": "Community help requests, notices, and replies"
+    },
+    "/red_alerts/{alertId}": {
+      "schema": "red_alerts",
+      "description": "Emergency disaster alerts broadcast"
     },
     "/marketplace_items/{itemId}": {
       "schema": "marketplace_items",
@@ -98,6 +276,42 @@
     "/saved_posts/{saveId}": {
       "schema": "saved_posts",
       "description": "User bookmarked posts"
+    },
+    "/system_settings/{settingId}": {
+      "schema": "system_settings",
+      "description": "Global system configurations including siren audio settings"
+    },
+    "/aid_recipient_centers/{centerId}": {
+      "schema": "aid_recipient_centers",
+      "description": "Verified aid recipient locations"
+    },
+    "/aid_deliveries/{deliveryId}": {
+      "schema": "aid_deliveries",
+      "description": "Aid donation records"
+    },
+    "/aid_broadcasts/{broadcastId}": {
+      "schema": "aid_broadcasts",
+      "description": "Aid requirement and surplus notifications"
+    },
+    "/barter_items/{itemId}": {
+      "schema": "barter_items",
+      "description": "Barter exchange listings"
+    },
+    "/barter_proposals/{proposalId}": {
+      "schema": "barter_proposals",
+      "description": "Barter swap proposals"
+    },
+    "/qr_transactions/{txId}": {
+      "schema": "qr_transactions",
+      "description": "QR wallet payment records"
+    },
+    "/online_users/{sessionId}": {
+      "schema": "online_users",
+      "description": "Live active user heartbeat records"
+    },
+    "/sos_live_sessions/{sessionId}": {
+      "schema": "sos_live_sessions",
+      "description": "Real-time SOS live GPS tracking session broadcasts"
     }
   }
 }

@@ -9,7 +9,9 @@ import {
   Sparkles,
   ShieldAlert,
   Clock,
-  Briefcase
+  Briefcase,
+  ArrowRightLeft,
+  Globe
 } from 'lucide-react';
 import { ProfessionalService, ChatMessage, User as UserType, Language } from '../types';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
@@ -20,6 +22,12 @@ import {
   recordPolicyViolation, 
   isUserPolicyBlocked 
 } from '../utils/policyGuard';
+import { 
+  translateChatMessage, 
+  getChatTranslations, 
+  detectLanguageOfText,
+  getLanguageDisplayInfo 
+} from '../utils/chatTranslator';
 import { PolicyViolationModal } from './PolicyViolationModal';
 
 interface ProfessionalServiceChatModalProps {
@@ -41,6 +49,21 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Dual-party language states
+  const [userLang, setUserLang] = useState<Language>(language || 'si');
+  const [otherPartyLang, setOtherPartyLang] = useState<Language>(() => {
+    if (language === 'en') return 'si';
+    return 'en';
+  });
+  const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (language) {
+      setUserLang(language);
+      setOtherPartyLang(language === 'en' ? 'si' : 'en');
+    }
+  }, [language]);
 
   // Policy Guard Modal State
   const userKey = currentUser?.userId || currentUser?.phone || currentUser?.nicNumber || currentUser?.name || 'user';
@@ -110,9 +133,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
     // Inspect message for policy violations
     const checkResult = inspectAndSanitizeMessage(textToSend);
     if (checkResult.hasViolation) {
-      const newStrikes = recordPolicyViolation(userKey);
-      setPolicyStrikes(newStrikes);
-      setIsBlocked(isUserPolicyBlocked(userKey));
+      const result = recordPolicyViolation(userKey);
+      setPolicyStrikes(result.newStrikes);
+      setIsBlocked(result.isBlocked || isUserPolicyBlocked(userKey));
       setDetectedViolationTypes(checkResult.detectedTypes);
       setShowPolicyModal(true);
       return;
@@ -124,6 +147,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
     const now = new Date();
     const formattedClockTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const generatedTranslations = getChatTranslations(checkResult.sanitizedText, userLang);
+    const detected = detectLanguageOfText(checkResult.sanitizedText);
+
     const newChatMessage: ChatMessage = {
       id: `chat_${Date.now()}_${Math.random()}`,
       senderName,
@@ -132,6 +158,14 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
       timestamp: formattedClockTime,
       createdAtMs: Date.now(),
       senderPhone: currentUser?.phone || '',
+      senderLang: userLang,
+      detectedLang: detected,
+      originalText: checkResult.sanitizedText,
+      translations: {
+        si: generatedTranslations.si,
+        en: generatedTranslations.en,
+        ta: generatedTranslations.ta,
+      },
     };
 
     // Optimistically update UI
@@ -160,6 +194,16 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
     return false;
   };
 
+  const toggleShowOriginal = (msgId: string) => {
+    setToggledOriginals((prev) => ({
+      ...prev,
+      [msgId]: !prev[msgId],
+    }));
+  };
+
+  const userLangInfo = getLanguageDisplayInfo(userLang);
+  const otherLangInfo = getLanguageDisplayInfo(otherPartyLang);
+
   const quickPrompts = [
     'ආයුබෝවන්, මට මෙම සේවාව ලබාගැනීමට අවශ්‍යයි.',
     'ඔබට ඉදිරි දිනවලදී පැමිණීමට වේලාවක් තිබේද?',
@@ -169,17 +213,17 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
-      <div className="bg-white dark:bg-[#0c1a12] border border-slate-200 dark:border-[#1a3826] rounded-3xl w-full max-w-lg h-[620px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+      <div className="bg-white dark:bg-[#0c1a12] border border-slate-200 dark:border-[#1a3826] rounded-3xl w-full max-w-lg h-[640px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
         
         {/* Header */}
-        <div className="px-4 py-3.5 border-b border-slate-200 dark:border-[#173222] bg-slate-50/90 dark:bg-[#0f2418]/90 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-[#173222] bg-slate-50/90 dark:bg-[#0f2418]/90 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative">
               <div className="w-10 h-10 rounded-2xl overflow-hidden bg-emerald-100 dark:bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-800 dark:text-emerald-300 font-bold text-sm">
                 {service.providerPhotoUrl ? (
-                  <img src={service.providerPhotoUrl} alt={service.providerName} className="w-full h-full object-cover" />
+                  <img src={service.providerPhotoUrl} alt={service.providerName || 'Provider'} className="w-full h-full object-cover" />
                 ) : (
-                  service.providerName.charAt(0)
+                  (service.providerName || 'P').charAt(0)
                 )}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0c1a12]" />
@@ -220,10 +264,50 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
           </div>
         </div>
 
+        {/* DUAL-LANGUAGE REAL-TIME TRANSLATION BAR */}
+        <div className="bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-xl shadow-inner text-xs">
+              <span className="text-[9px] text-emerald-300 font-bold uppercase">ඔබේ භාෂාව:</span>
+              <select
+                value={userLang}
+                onChange={(e) => setUserLang(e.target.value as Language)}
+                className="bg-emerald-900/90 text-white font-black text-xs rounded-lg px-1.5 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer"
+              >
+                <option value="si">සිංහල 🇱🇰</option>
+                <option value="en">English 🇬🇧</option>
+                <option value="ta">தமிழ் 🇱🇰</option>
+              </select>
+            </div>
+
+            <div className="p-1 rounded-full bg-emerald-500/20 text-emerald-300">
+              <ArrowRightLeft className="w-3 h-3 animate-pulse" />
+            </div>
+
+            <div className="flex items-center gap-1 bg-teal-950/80 border border-teal-500/50 px-2 py-0.5 rounded-xl shadow-inner text-xs">
+              <span className="text-[9px] text-teal-300 font-bold uppercase">අනෙක් පාර්ශ්වය:</span>
+              <select
+                value={otherPartyLang}
+                onChange={(e) => setOtherPartyLang(e.target.value as Language)}
+                className="bg-teal-900/90 text-white font-black text-xs rounded-lg px-1.5 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer"
+              >
+                <option value="en">English 🇬🇧</option>
+                <option value="si">සිංහල 🇱🇰</option>
+                <option value="ta">தமிழ் 🇱🇰</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 text-[9px] bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-lg font-bold">
+            <Sparkles className="w-3 h-3 text-amber-300" />
+            <span>Auto-Translate Active</span>
+          </div>
+        </div>
+
         {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 dark:bg-[#07130b]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-[#07130b]">
           {/* Welcome Info Box */}
-          <div className="p-3 rounded-2xl bg-emerald-50/80 dark:bg-[#0f281b] border border-emerald-200/60 dark:border-[#1c4029] text-center space-y-1">
+          <div className="p-2.5 rounded-2xl bg-emerald-50/80 dark:bg-[#0f281b] border border-emerald-200/60 dark:border-[#1c4029] text-center space-y-0.5">
             <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
               <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
               <span>{service.serviceTitle}</span>
@@ -240,11 +324,51 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
               <p className="text-[11px]">පහතින් පණිවිඩයක් යවා සංවාදය ආරම්භ කරන්න.</p>
             </div>
           ) : (
-            messages.map((msg) => {
+            messages.map((msg, mIdx) => {
               const isMine = isCurrentSender(msg);
+              const showOriginal = Boolean(toggledOriginals[msg.id]);
+              const rawSanitized = inspectAndSanitizeMessage(msg.text).sanitizedText;
+              
+              let primaryText = rawSanitized;
+              let secondaryTranslationText = '';
+              let isAutoTranslated = false;
+
+              if (msg.translations && msg.translations[userLang]) {
+                if (isMine) {
+                  primaryText = showOriginal ? (msg.translations[otherPartyLang] || rawSanitized) : rawSanitized;
+                  secondaryTranslationText = msg.translations[otherPartyLang] || '';
+                  if (secondaryTranslationText && secondaryTranslationText.trim().toLowerCase() !== rawSanitized.trim().toLowerCase()) {
+                    isAutoTranslated = true;
+                  }
+                } else {
+                  const translatedForUser = msg.translations[userLang] || rawSanitized;
+                  primaryText = showOriginal ? rawSanitized : translatedForUser;
+                  secondaryTranslationText = rawSanitized;
+                  if (translatedForUser.trim().toLowerCase() !== rawSanitized.trim().toLowerCase()) {
+                    isAutoTranslated = true;
+                  }
+                }
+              } else {
+                const transResult = translateChatMessage(rawSanitized, userLang);
+                if (isMine) {
+                  const otherTrans = translateChatMessage(rawSanitized, otherPartyLang);
+                  primaryText = rawSanitized;
+                  secondaryTranslationText = otherTrans.translatedText;
+                  if (otherTrans.translatedText && otherTrans.translatedText !== rawSanitized) {
+                    isAutoTranslated = true;
+                  }
+                } else {
+                  primaryText = showOriginal ? rawSanitized : (transResult.translatedText || rawSanitized);
+                  secondaryTranslationText = rawSanitized;
+                  if (transResult.translatedText && transResult.translatedText !== rawSanitized) {
+                    isAutoTranslated = true;
+                  }
+                }
+              }
+
               return (
                 <div
-                  key={msg.id}
+                  key={`ps_msg_${msg.id || 'm'}_${mIdx}`}
                   className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} space-y-1`}
                 >
                   <div className="flex items-center gap-1 px-1 text-[10px] text-slate-400 font-semibold">
@@ -254,13 +378,39 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
                   </div>
 
                   <div
-                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed break-words shadow-sm ${
+                    className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed break-words shadow-sm ${
                       isMine
                         ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white rounded-br-none'
                         : 'bg-white dark:bg-[#12281b] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#1a3826] rounded-bl-none'
                     }`}
                   >
-                    {msg.text}
+                    <p className="whitespace-pre-wrap">{primaryText}</p>
+
+                    {isAutoTranslated && (
+                      <div className={`mt-1.5 pt-1 border-t text-[10px] flex items-center justify-between gap-1.5 ${
+                        isMine ? 'border-white/20 text-emerald-100' : 'border-slate-200 dark:border-emerald-900/40 text-slate-500 dark:text-slate-400'
+                      }`}>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <Globe className="w-3 h-3 text-amber-300 shrink-0" />
+                          <span className="truncate">
+                            {isMine 
+                              ? `Auto-translated: "${secondaryTranslationText}"` 
+                              : showOriginal 
+                                ? `Showing original` 
+                                : `Auto-translated into ${userLangInfo.nativeName}`}
+                          </span>
+                        </div>
+                        {!isMine && (
+                          <button
+                            type="button"
+                            onClick={() => toggleShowOriginal(msg.id)}
+                            className="font-bold underline cursor-pointer ml-1 shrink-0"
+                          >
+                            {showOriginal ? 'පරිවර්තනය' : 'මුල් පණිවිඩය'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -288,13 +438,22 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
           onSubmit={(e) => handleSendMessage(e)}
           className="p-3 border-t border-slate-200 dark:border-[#173222] bg-white dark:bg-[#0c1a12] flex items-center gap-2 flex-shrink-0"
         >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="පණිවිඩය මෙහි සටහන් කරන්න..."
-            className="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-[#112318] border border-slate-300 dark:border-[#1e3e2b] rounded-2xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder={
+                userLang === 'en'
+                  ? "Type your message in English / Singlish / Sinhala..."
+                  : "පණිවිඩය ලියන්න (Auto translate වේ)..."
+              }
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-[#112318] border border-slate-300 dark:border-[#1e3e2b] rounded-2xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-8"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold pointer-events-none hidden sm:block">
+              {userLangInfo.flag}
+            </div>
+          </div>
           <button
             type="submit"
             disabled={!inputText.trim() || isSending}
@@ -308,7 +467,7 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
         <PolicyViolationModal
           isOpen={showPolicyModal}
           onClose={() => setShowPolicyModal(false)}
-          strikesCount={policyStrikes}
+          strikes={policyStrikes}
           isBlocked={isBlocked}
           detectedTypes={detectedViolationTypes}
         />

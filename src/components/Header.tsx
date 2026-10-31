@@ -4,6 +4,7 @@ import { translations } from '../data/translations';
 import { Sun, Moon, Shield, UserCheck, HelpCircle, LogOut } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface HeaderProps {
   language: Language;
@@ -35,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Brand Logo & Name */}
       <div 
         onClick={() => {
-          if (currentUser?.role === 'admin') {
+          if (checkIsAdmin(currentUser)) {
             onNavigate(activeRoleView === 'admin' ? 'admin' : 'dashboard');
           } else if (currentUser && currentUser.status === 'approved') {
             onNavigate('dashboard');
@@ -48,11 +49,15 @@ export const Header: React.FC<HeaderProps> = ({
         <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
         <div>
           <h1 className="text-lg sm:text-xl font-black tracking-wide text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-            <span className="text-[#007a4b] dark:text-[#00a86b]">සහය</span>
-            <span className="text-amber-600 dark:text-amber-400">සේවා</span>
+            <span className="text-[#007a4b] dark:text-[#00a86b]">
+              {language === 'en' ? 'Support' : language === 'ta' ? 'ஆதரவு' : 'සහය'}
+            </span>
+            <span className="text-amber-600 dark:text-amber-400">
+              {language === 'en' ? 'Services' : language === 'ta' ? 'சேவைகள்' : 'සේවා'}
+            </span>
           </h1>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wider">
-            සැමට පිහිට • SAHAYA SEWA
+            {language === 'en' ? 'Support For All' : language === 'ta' ? 'அனைவருக்கும் உதவி' : 'සැමට පිහිට'}
           </p>
         </div>
       </div>
@@ -61,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2">
         <button
           onClick={() => onNavigate('issues_help')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#007a4b]/10 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 hover:bg-[#007a4b]/20 transition-all shadow-sm cursor-pointer"
           title={t.issuesHelpBtn}
         >
           <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
@@ -69,8 +74,9 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Quick Admin View Switcher - Only visible to Admin users */}
-        {currentUser?.role === 'admin' && (
+        {checkIsAdmin(currentUser) && (
           <button
+            type="button"
             onClick={() => {
               const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
               setActiveRoleView(nextRole);
@@ -80,15 +86,19 @@ export const Header: React.FC<HeaderProps> = ({
                 onNavigate('dashboard');
               }
             }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-xs hover:scale-105 active:scale-95 ${
               activeRoleView === 'admin'
-                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-                : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200 dark:hover:bg-[#173827]'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-[0_0_15px_rgba(245,158,11,0.3)]'
+                : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/60 hover:bg-amber-100'
             }`}
-            title="Switch to Admin Panel"
+            title={language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක පැනලය'}
           >
-            <Shield className="w-4 h-4 text-amber-500" />
-            <span>{activeRoleView === 'admin' ? 'Admin Mode ON' : 'Switch Admin'}</span>
+            <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span className="font-extrabold text-xs">
+              {activeRoleView === 'admin' 
+                ? (language === 'en' ? 'Admin Mode' : language === 'ta' ? 'நிர்வாக முறை' : 'පරිපාලක ප්‍රකාරය') 
+                : (language === 'en' ? 'User Mode' : language === 'ta' ? 'பயனர் முறை' : 'පරිශීලක ප්‍රකාරය')}
+            </span>
           </button>
         )}
       </div>
@@ -148,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
         {currentUser && (
           <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[90px] sm:max-w-[120px] hidden md:inline">
-              {currentUser.name}
+              {currentUser?.name}
             </span>
             <button
               onClick={onLogout}

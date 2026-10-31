@@ -1,711 +1,811 @@
-import React, { useState, useEffect } from 'react';
-import { User, Issue, Language, Theme, ViewMode, Role, BlockedCredential, HelpPost, RegistrationConfig, CategoryItem, TagItem } from './types';
-import { initialUsers, initialIssues, initialHelpPosts, initialRegistrationConfig, initialCategories } from './data/initialData';
-import { getStoredTags, saveTagsToStorage } from './utils/tagUtils';
-import { translations } from './data/translations';
-import { Header } from './components/Header';
+import React, { useState, useEffect, useCallback } from 'react';
+import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
+import { initialUsers, initialHelpPosts } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
-import { PendingApprovalView } from './components/PendingApprovalView';
-import { WrongLoginModal } from './components/WrongLoginModal';
-import { IssuesHelpPage } from './components/IssuesHelpPage';
-import { AdminPanel } from './components/AdminPanel';
+import { GpsActivationGate } from './components/GpsActivationGate';
 import { UserDashboard } from './components/UserDashboard';
+import { SosLiveViewerModal } from './components/SosLiveViewerModal';
+import { AdminPanel } from './components/AdminPanel';
+import { PendingApprovalView } from './components/PendingApprovalView';
+import { IssuesHelpPage } from './components/IssuesHelpPage';
+import { OmniAssistantChatBox } from './components/OmniAssistantChatBox';
+import { RedAlertLiveManager } from './components/RedAlertLiveManager';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
-import { applyAppFontSize, getStoredFontSize } from './components/UserSettingsModal';
-import { subscribeToHelpPosts, updateHelpPostInFirestore, deleteHelpPostFromFirestore, seedDemoHelpPostsToFirestore } from './lib/firebase';
+import { DevicePinSetupModal } from './components/DevicePinSetupModal';
+import { getStoredDevicePin } from './utils/devicePinManager';
+import {
+  subscribeToUsers,
+  subscribeToHelpPosts,
+  subscribeToRedAlerts,
+  subscribeToIssuesFromFirestore,
+  saveUserToFirestore,
+  getUserFromFirestore,
+  deleteHelpPostFromFirestore,
+  updateUserInFirestore
+} from './lib/firebase';
+import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
+import { checkIsAdmin } from './utils/postOwnerHelper';
+import { getCachedSettings } from './utils/systemSettingsManager';
+import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
+import { initFcmNotificationService } from './utils/fcmNotificationService';
 
-export default function App() {
-  // Persistence state setup
-  const [language, setLanguage] = useState<Language>(() => {
-    const saved = localStorage.getItem('sahaya_lang');
-    return (saved as Language) || 'si';
+async function hashUserPassword(rawPass: string): Promise<string> {
+  const clean = (rawPass ? rawPass : '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('sha256_v1$')) return clean;
+  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return 'sha256_v1$' + hex;
+    } catch (e) {}
+  }
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) {
+    h = (h * 33) ^ payload.charCodeAt(i);
+  }
+  return 'sha256_v1$fb_' + String(h >>> 0);
+}
+
+function sanitizeUserForSessionStorage(u: User | null): any {
+  if (!u) return null;
+  const copy: any = Object.assign({}, u);
+  delete copy.password;
+  delete copy.key;
+  delete copy.tempPassword;
+  delete copy.temporaryPassword;
+  return copy;
+}
+
+function getSafeUsersForView(allUsers: User[], viewer: User | null, isAdminView: boolean): User[] {
+  const isViewerAdmin = Boolean(isAdminView ? true : checkIsAdmin(viewer));
+  if (isViewerAdmin) return allUsers;
+  const viewerId = viewer?.id ? viewer.id : viewer?.userId ? viewer.userId : '';
+  return (allUsers ? allUsers : []).map((u) => {
+    if (!u) return u;
+    const isSelf = Boolean(viewerId && (u.id === viewerId ? true : u.userId === viewerId));
+    const safeCopy: any = Object.assign({}, u);
+    delete safeCopy.password;
+    delete safeCopy.key;
+    delete safeCopy.tempPassword;
+    delete safeCopy.temporaryPassword;
+    if (!isSelf) {
+      delete safeCopy.nicFrontPhotoUrl;
+      delete safeCopy.nicBackPhotoUrl;
+      delete safeCopy.idCardPhotoUrl;
+    }
+    return safeCopy as User;
   });
+}
 
+export const App: React.FC = () => {
+  // 1. Theme & Language State Setup (Light mode is default if no saved theme exists)
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('sahaya_theme');
-    return (saved as Theme) || 'light';
+    try {
+      const savedTheme = localStorage.getItem('sahaya_sewa_theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        return savedTheme;
+      }
+    } catch (e) {
+      console.warn('LocalStorage theme access notice:', e);
+    }
+    return 'light'; // Default Theme
   });
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('sahaya_current_user');
-    if (saved) {
+  const [language, setLanguage] = useState<Language>('si');
+  const [isPinSetupRequired, setIsPinSetupRequired] = useState<boolean>(false);
+
+  // 🛰️ URL-based SOS Live Tracker direct link interception
+  const [sosViewerSessionId, setSosViewerSessionId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
       try {
-        return JSON.parse(saved);
+        const params = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#\/?/, ''));
+        return params.get('sos_session') || hashParams.get('sos_session') || params.get('sos');
       } catch (e) {
-        return initialUsers[1] || initialUsers[0];
+        return null;
       }
     }
-    return initialUsers[1] || initialUsers[0];
+    return null;
   });
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const savedMode = localStorage.getItem('sahaya_view_mode') as ViewMode | null;
-    const savedUser = localStorage.getItem('sahaya_current_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed?.role === 'admin') return savedMode || 'admin';
-        if (parsed?.status === 'approved') return savedMode || 'dashboard';
-        if (parsed?.status === 'pending') return 'pending';
-      } catch {
-        return 'dashboard';
-      }
-    }
-    return savedMode || 'dashboard';
-  });
-
-  const [activeRoleView, setActiveRoleView] = useState<Role>(() => {
-    const savedUser = localStorage.getItem('sahaya_current_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        return parsed?.role === 'admin' ? 'admin' : 'user';
-      } catch {
-        return 'user';
-      }
-    }
-    return 'user';
-  });
-
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('sahaya_users');
-    return saved ? JSON.parse(saved) : initialUsers;
-  });
-
-  const [issues, setIssues] = useState<Issue[]>(() => {
-    const saved = localStorage.getItem('sahaya_issues');
-    return saved ? JSON.parse(saved) : initialIssues;
-  });
-
-  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
-    const saved = localStorage.getItem('sahaya_help_posts');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
-        return initialHelpPosts;
-      }
-    }
-    return initialHelpPosts;
-  });
-
-  const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>(() => {
-    const saved = localStorage.getItem('sahaya_blocked_credentials');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [registrationConfig, setRegistrationConfig] = useState<RegistrationConfig>(() => {
-    const saved = localStorage.getItem('sahaya_registration_config');
-    return saved ? JSON.parse(saved) : initialRegistrationConfig;
-  });
-
-  const [categories, setCategories] = useState<CategoryItem[]>(() => {
-    const saved = localStorage.getItem('sahaya_categories');
-    if (saved) {
-      try {
-        let parsed: CategoryItem[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          parsed = parsed.filter((c) => c && typeof c === 'object' && Boolean(c.id));
-          return parsed;
-        }
-      } catch {
-        return initialCategories;
-      }
-    }
-    return initialCategories;
-  });
-
-  const [tags, setTags] = useState<TagItem[]>(() => getStoredTags());
-
-  const [showWrongLoginModal, setShowWrongLoginModal] = useState(false);
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [serverTime, setServerTime] = useState('');
-
-  // Sync real-time Firestore help posts
+  // Persist Theme to LocalStorage & Synchronize HTML class
   useEffect(() => {
-    const unsubscribe = subscribeToHelpPosts((remotePosts) => {
-      setHelpPosts(remotePosts || []);
-    });
-    return () => unsubscribe();
-  }, []);
+    try {
+      localStorage.setItem('sahaya_sewa_theme', theme);
+    } catch (e) {
+      console.warn('Failed to save theme to LocalStorage:', e);
+    }
 
-  // Persist storage updates
-  useEffect(() => {
-    localStorage.setItem('sahaya_lang', language);
-  }, [language]);
-
-  useEffect(() => {
-    localStorage.setItem('sahaya_view_mode', viewMode);
-  }, [viewMode]);
-
-  useEffect(() => {
-    localStorage.setItem('sahaya_theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    } else {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
+    if (typeof document !== 'undefined') {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.add('light');
+      }
     }
   }, [theme]);
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_users', JSON.stringify(users));
-  }, [users]);
+  // Application Data State (Initial load filtered against permanent deletion blacklist)
+  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
+    try {
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
+    return filterNonDeletedPosts(initialHelpPosts);
+  });
+  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_issues', JSON.stringify(issues));
-  }, [issues]);
+  // Current User Session & Navigation View
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_help_posts', JSON.stringify(helpPosts));
-  }, [helpPosts]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_blocked_credentials', JSON.stringify(blockedCredentials));
-  }, [blockedCredentials]);
+  const [activeView, setActiveView] = useState<'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues'>(() => {
+    try {
+      // 1. Quick PIN Check: If user set a Quick PIN on this device, open directly at Quick PIN screen!
+      const storedPin = getStoredDevicePin();
+      if (storedPin) {
+        return 'login';
+      }
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_registration_config', JSON.stringify(registrationConfig));
-  }, [registrationConfig]);
+      // 2. Check if permissions setup has been completed on initial launch
+      const isPermDone = localStorage.getItem('sahaya_permissions_setup_completed');
+      if (!isPermDone) {
+        return 'permissions';
+      }
+    } catch {}
+    return 'login';
+  });
 
-  useEffect(() => {
-    localStorage.setItem('sahaya_categories', JSON.stringify(categories));
-  }, [categories]);
-
-  useEffect(() => {
-    saveTagsToStorage(tags);
-  }, [tags]);
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('sahaya_current_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('sahaya_current_user');
-    }
-  }, [currentUser]);
-
-  // Live Server clock
-  useEffect(() => {
-    applyAppFontSize(getStoredFontSize());
-    const updateTime = () => {
-      const now = new Date();
-      setServerTime(now.toTimeString().split(' ')[0] + ' UTC');
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+  // Global Navigation Handler
+  const handleNavigate = useCallback((view: 'permissions' | 'login' | 'register' | 'dashboard' | 'admin' | 'pending' | 'issues') => {
+    setActiveView(view);
   }, []);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  // Permanent Deletion Core Handler (Workflow Steps 1 to 4)
+  const handleDeletePost = useCallback(async (target: string | HelpPost) => {
+    const postId = typeof target === 'string' ? target : target.id;
+    if (!postId) return;
+    const postObj = typeof target === 'object' ? target : helpPosts.find((p) => p && p.id === postId);
 
-  // Helper check if credential is blocked
-  const isCredentialBlocked = (checkStr: string): boolean => {
-    if (!checkStr) return false;
-    const cleanStr = checkStr.trim().toLowerCase();
-    return blockedCredentials.some(
-      (bc) =>
-        (bc.phone && bc.phone.trim().toLowerCase() === cleanStr) ||
-        (bc.nicNumber && bc.nicNumber.trim().toLowerCase() === cleanStr) ||
-        (bc.email && bc.email.trim().toLowerCase() === cleanStr) ||
-        (bc.ipAddress && bc.ipAddress.trim().toLowerCase() === cleanStr) ||
-        (bc.userId && bc.userId.trim().toLowerCase() === cleanStr)
-    );
-  };
-
-  // Auth Handler
-  const handleLogin = (userIdInput: string, keyInput: string) => {
-    const cleanInput = userIdInput.trim().toLowerCase();
-
-    // Admin Master Check
-    if (
-      (userIdInput.toUpperCase() === '970181547V' && keyInput === '1691@@Devhas') ||
-      (userIdInput === 'admin' && keyInput === 'admin123')
-    ) {
-      const adminUser = users.find((u) => u.userId === '970181547V' || u.role === 'admin') || initialUsers[0];
-      setCurrentUser(adminUser);
-      setActiveRoleView('admin');
-      setViewMode('admin');
-      return;
+    // 1 & 2. Auto JSON File Download (Admin device එකට පමණක් Save වීම)
+    if (postObj && checkIsAdmin(currentUser)) {
+      downloadPostBackupJson(postObj, currentUser);
     }
 
-    // Check if input matches any Blocked credentials list
-    if (isCredentialBlocked(cleanInput)) {
-      alert('⛔ අවධානයයි: ඔබගේ ගිණුම, දුරකථන අංකය, ජා.හැ. අංකය, Gmail හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. පද්ධතියට ඇතුළු විය නොහැක.');
-      return;
-    }
-
-    const foundUser = users.find(
-      (u) =>
-        (u.userId.toLowerCase() === cleanInput ||
-          u.nicNumber?.toLowerCase() === cleanInput ||
-          u.email.toLowerCase() === cleanInput ||
-          u.phone.toLowerCase() === cleanInput) &&
-        (u.key === keyInput ||
-          (u.securityCode && u.securityCode === keyInput) ||
-          (u.tempCode && u.tempCode === keyInput))
-    );
-
-    if (!foundUser) {
-      // Piyawara 1.2: Invalid Login trigger
-      setShowWrongLoginModal(true);
-      return;
-    }
-
-    // Check if user account status is explicitly blocked
-    if (foundUser.status === 'blocked') {
-      alert(`⛔ අවධානයයි: පරිපාලක (Admin) විසින් ඔබගේ ගිණුම අවහිර (Block) කර ඇත.\nහේතුව: ${foundUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
-      return;
-    }
-
-    // Valid User logic
-    setCurrentUser(foundUser);
-
-    if (foundUser.role === 'admin') {
-      setActiveRoleView('admin');
-      setViewMode('admin');
-    } else if (foundUser.status === 'pending') {
-      // Piyawara 1.1: Pending status redirect
-      setViewMode('pending');
-    } else if (foundUser.status === 'approved') {
-      setViewMode('dashboard');
-      // Show password change modal if user hasn't changed default/temp password yet
-      if (foundUser.role !== 'admin' && !foundUser.isPasswordChanged) {
-        setShowChangePasswordModal(true);
-      }
-    } else if (foundUser.status === 'rejected') {
-      setShowWrongLoginModal(true);
-    }
-  };
-
-  const handleRegister = (newUser: Omit<User, 'id' | 'registeredAt'>) => {
-    // Check if any of user's details (Phone, NIC, Email, IP) are blocked
-    const isBlocked =
-      isCredentialBlocked(newUser.phone) ||
-      isCredentialBlocked(newUser.nicNumber) ||
-      isCredentialBlocked(newUser.email) ||
-      isCredentialBlocked(newUser.ipAddress || '') ||
-      users.some(
-        (u) =>
-          u.status === 'blocked' &&
-          (u.phone === newUser.phone ||
-            u.nicNumber === newUser.nicNumber ||
-            u.email === newUser.email)
-      );
-
-    if (isBlocked) {
-      alert('⛔ අවධානයයි: ඔබගේ දුරකථන අංකය, ජා.හැ. අංකය, Gmail ලිපිනය හෝ IP ලිපිනය පරිපාලක (Admin) විසින් අවහිර (Block) කර ඇත. මෙම පද්ධතියට නැවත ලියාපදිංචි විය නොහැක.');
-      return;
-    }
-
-    const createdUser: User = {
-      ...newUser,
-      id: `usr_${Date.now()}`,
-      ipAddress: newUser.ipAddress || `192.168.1.${Math.floor(100 + Math.random() * 150)}`,
-      registeredAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    };
-
-    setUsers((prev) => [createdUser, ...prev]);
-    setCurrentUser(null);
-    setViewMode('login'); // Redirect to login page upon registration completion
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setActiveRoleView('user');
-    setViewMode('login');
-  };
-
-  // Admin User Actions
-  const handleApproveUser = (targetUserId: string) => {
-    setUsers((prev) =>
-      (prev || []).map((u) => (u.id === targetUserId ? { ...u, status: 'approved' } : u))
-    );
-    if (currentUser && currentUser.id === targetUserId) {
-      setCurrentUser((prev) => (prev ? { ...prev, status: 'approved' } : null));
-    }
-  };
-
-  const handleRejectUser = (targetUserId: string, reason?: string) => {
-    setUsers((prev) =>
-      (prev || []).map((u) =>
-        u.id === targetUserId
-          ? { ...u, status: 'rejected', rejectionReason: reason }
-          : u
-      )
-    );
-  };
-
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    if (currentUser && currentUser.id === updatedUser.id) {
-      setCurrentUser(updatedUser);
-    }
-  };
-
-  const handleSaveNewPassword = (newPassword: string) => {
-    if (!currentUser) return;
-    const updatedUser: User = {
-      ...currentUser,
-      key: newPassword,
-      securityCode: newPassword,
-      isPasswordChanged: true,
-    };
-    setCurrentUser(updatedUser);
-    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    setShowChangePasswordModal(false);
-  };
-
-  const handleBlockUser = (targetUserId: string, reason: string) => {
-    const userToBlock = users.find((u) => u.id === targetUserId);
-    if (!userToBlock) return;
-
-    const blockedAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
-
-    // Update user status
-    setUsers((prev) =>
-      (prev || []).map((u) =>
-        u.id === targetUserId
-          ? {
-              ...u,
-              status: 'blocked',
-              blockedReason: reason,
-              blockedAt,
-            }
-          : u
-      )
-    );
-
-    // Append credential entries to blocked list so Phone, NIC, Email, IP are all blocked
-    const newBlockedCred: BlockedCredential = {
-      id: `block_${Date.now()}`,
-      userId: userToBlock.userId,
-      userName: userToBlock.name,
-      phone: userToBlock.phone,
-      nicNumber: userToBlock.nicNumber,
-      email: userToBlock.email,
-      ipAddress: userToBlock.ipAddress || '192.168.1.102',
-      blockedAt,
-      reason,
-    };
-
-    setBlockedCredentials((prev) => [newBlockedCred, ...(prev || [])]);
-  };
-
-  const handleUnblockCredential = (credentialId: string) => {
-    const cred = (blockedCredentials || []).find((c) => c.id === credentialId);
-    setBlockedCredentials((prev) => (prev || []).filter((c) => c.id !== credentialId));
-
-    if (cred && cred.userId) {
-      setUsers((prev) =>
-        (prev || []).map((u) => (u.userId === cred.userId ? { ...u, status: 'approved' } : u))
-      );
-    }
-  };
-
-  const handleDeletePost = async (postId: string) => {
-    const postToDelete = (helpPosts || []).find((p) => p.id === postId);
-    const deletedPayload: Partial<HelpPost> = {
-      isDeleted: true,
-      deletedAt: new Date().toISOString(),
-      deletedBy: currentUser ? `Admin (${currentUser.name})` : 'Admin',
-      status: 'deleted',
-    };
-
-    setHelpPosts((prev) =>
-      (prev || []).map((p) => (p.id === postId ? { ...p, ...deletedPayload } : p))
-    );
-
+    // 3. LocalStorage Blacklist & Purge local memory
+    addDeletedPostId(postId);
     try {
-      await updateHelpPostInFirestore(postId, deletedPayload);
-    } catch (err) {
-      console.warn('Post deletion sync notice:', err);
-    }
-  };
+      localStorage.removeItem('sahaya_help_posts');
+    } catch {}
 
-  const handlePermanentDeletePost = async (postId: string) => {
-    setHelpPosts((prev) => (prev || []).filter((p) => p.id !== postId));
+    // 4. Real-time UI State Refresh
+    setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
+
+    // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {
-      console.warn('Post permanent deletion sync notice:', err);
+      console.warn('Backend delete sync note:', err);
     }
-  };
+  }, [helpPosts, currentUser]);
 
-  const handleRestorePost = async (postId: string) => {
-    const restorePayload: Partial<HelpPost> = {
-      isDeleted: false,
-      deletedAt: undefined,
-      deletedBy: undefined,
-      status: 'active',
-    };
-
-    setHelpPosts((prev) =>
-      (prev || []).map((p) => (p.id === postId ? { ...p, isDeleted: false, deletedAt: undefined, deletedBy: undefined, status: 'active' } : p))
-    );
-
-    try {
-      await updateHelpPostInFirestore(postId, restorePayload);
-    } catch (err) {
-      console.warn('Post restore sync notice:', err);
+  // Persist User Session to LocalStorage (Sanitized: strips password/key/temporaryPassword)
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(currentUser)));
+    } else {
+      localStorage.removeItem('sahaya_sewa_session_user');
     }
-  };
+  }, [currentUser]);
 
-  const handleUpdatePost = async (updatedPost: HelpPost) => {
-    setHelpPosts((prev) => (prev || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)));
-    try {
-      await updateHelpPostInFirestore(updatedPost.id, updatedPost);
-    } catch (err) {
-      console.warn('Post update sync notice:', err);
+  useEffect(() => {
+    if (!currentUser && (activeView === 'dashboard' ? true : activeView === 'admin' ? true : activeView === 'pending')) {
+      setActiveView('login');
     }
-  };
+  }, [currentUser, activeView]);
 
-  // Issue creation action (Piyawara 1.3)
-  const handleSubmitIssue = (
-    newIssueData: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>
-  ) => {
-    const createdIssue: Issue = {
-      ...newIssueData,
-      id: `iss_${Date.now()}`,
-      issueCode: `#ISSUE-${Math.floor(1000 + Math.random() * 9000)}`,
-      status: 'pending',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    };
-
-    setIssues((prev) => [createdIssue, ...(prev || [])]);
-  };
-
-  const handleReplyIssue = (issueId: string, reply: string, resolve: boolean) => {
-    setIssues((prev) =>
-      (prev || []).map((iss) =>
-        iss.id === issueId
-          ? {
-              ...iss,
-              adminReply: reply,
-              status: resolve ? 'resolved' : 'in_progress',
-              updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-            }
-          : iss
-      )
-    );
-  };
-
-  const handleSeedDemoData = async () => {
-    setUsers(initialUsers);
-    setIssues(initialIssues);
-    setBlockedCredentials([]);
-    try {
-      await seedDemoHelpPostsToFirestore();
-    } catch (e) {
-      console.warn('Demo seed notice:', e);
-    }
-    alert('දර්ශන පරීක්ෂණ දත්ත (Demo Seed Data) සාර්ථකව ප්‍රතිස්ථාපනය කෙරිණි!');
-  };
-
-  const handleNavigate = (targetView: ViewMode) => {
-    if (targetView === 'admin' && currentUser?.role !== 'admin') {
-      if (currentUser && currentUser.status === 'approved') {
-        setViewMode('dashboard');
-      } else {
-        setViewMode('login');
+  useEffect(() => {
+    const handlePreloadError = () => {
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+          window.location.reload();
+        });
       }
+    };
+    window.addEventListener('vite:preloadError', handlePreloadError);
+    return () => window.removeEventListener('vite:preloadError', handlePreloadError);
+  }, []);
+
+  // Global Event Listener for Post Deletions triggered across components
+  useEffect(() => {
+    const handleGlobalPostDeleted = () => {
+      setHelpPosts((prev) => filterNonDeletedPosts(prev));
+    };
+    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    return () => {
+      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    };
+  }, []);
+
+  // Real-time Firestore Sync Listeners (Mounts once)
+  useEffect(() => {
+    // Initialize FCM & Background Push Worker
+    const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
+
+    const unsubscribeUsers = subscribeToUsers((dbUsers) => {
+      if (dbUsers && dbUsers.length > 0) {
+        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+      }
+    });
+
+    const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
+      // Purge stale local memory cache
+      try {
+        localStorage.removeItem('sahaya_help_posts');
+      } catch {}
+
+      if (dbPosts) {
+        // Firestore is the authoritative source of truth: honor all deletions permanently
+        const sanitized = filterNonDeletedPosts(dbPosts);
+        setHelpPosts(sanitized);
+      }
+    });
+
+    const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
+      setRedAlerts(alerts || []);
+    });
+
+    const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
+      setIssues(dbIssues || []);
+    });
+
+    return () => {
+      unsubscribeFcm?.();
+      unsubscribeUsers?.();
+      unsubscribePosts?.();
+      unsubscribeAlerts?.();
+      unsubscribeIssues?.();
+    };
+  }, []);
+
+  // Synchronize currentUser with real-time user state changes and manage auto-redirects
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const freshUser = users.find(
+      (u) =>
+        u.id === currentUser.id ||
+        (u.userId && u.userId === currentUser.userId) ||
+        (u.nic && normalizeNIC(u.nic) === normalizeNIC(currentUser.nic || ''))
+    );
+
+    if (freshUser) {
+      const isRoleDifferent = freshUser.role !== currentUser.role;
+      const isStatusDifferent = freshUser.status !== currentUser.status;
+      const isCreditsDifferent = freshUser.credits !== currentUser.credits;
+
+      if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
+        setCurrentUser(freshUser);
+
+        if (freshUser.status === 'blocked') {
+          handleLogout();
+          alert('ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.');
+          return;
+        }
+
+        if (isStatusDifferent && activeView === 'pending' && freshUser.status === 'approved') {
+          setActiveView(freshUser.role === 'admin' || freshUser.role === 'super_admin' ? 'admin' : 'dashboard');
+        }
+      }
+    }
+  }, [users, currentUser, activeView]);
+
+  // 🛡️ Ensure Device Quick PIN is mandatory upon login / session restore (EXCEPT for Demo users)
+  useEffect(() => {
+    if (currentUser) {
+      // 🚀 Demo Account එක සඳහා PIN අංකය අවශ්‍ය නැත
+      if (currentUser.id === 'demo_user' || currentUser.userId === 'demo_user' || currentUser.isDemo || currentUser.nic === '000000000V') {
+        setIsPinSetupRequired(false);
+        return;
+      }
+
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = currentUser.id || currentUser.userId || currentUser.nicNumber || currentUser.nic;
+      const currentNic = currentUser.nic || currentUser.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && (!currentNic || storedPin.nicNumber !== currentNic))) {
+        setIsPinSetupRequired(true);
+      }
+    }
+  }, [currentUser]);
+
+  // 🛡️ Strict Login Handler (ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදයෙන් පමණක් ඇතුල් වීමට ඉඩ දීම)
+  const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
+    const cleanId = (userIdOrNic || '').trim();
+    const cleanPass = (passKey || '').trim();
+
+    if (!cleanId) {
+      throw new Error('කරුණාකර ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න.');
+    }
+    if (!cleanPass) {
+      throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
+    }
+
+    const norm = normalizeNIC(cleanId);
+
+    // 1. පරිශීලක ලැයිස්තුවෙන් (users) අදාළ NIC හෝ User ID හිමි ගිණුම සෙවීම
+    let matchedUser = users.find((u) => {
+      if (!u) return false;
+      const uNic = normalizeNIC(u.nic || u.nicNumber || '');
+      const uUserId = normalizeNIC(u.userId || '');
+      const uId = (u.id || '').trim();
+      const uPhone = (u.whatsappPhone || u.phone || '').trim();
+      const uEmail = (u.email || '').trim().toLowerCase();
+
+      return (
+        (norm !== '' && (uNic === norm || uUserId === norm)) ||
+        (cleanId !== '' && uId === cleanId) ||
+        (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin')) ||
+        (cleanId.length >= 9 && (uPhone === cleanId || uEmail === cleanId.toLowerCase()))
+      );
+    });
+
+    // 2. Local memory එකෙහි නැතිනම් Firestore වෙතින් Document ID අනුව සෙවීම
+    if (!matchedUser) {
+      try {
+        const remoteUser = await getUserFromFirestore(cleanId);
+        if (remoteUser) {
+          matchedUser = remoteUser;
+        }
+      } catch (_) {}
+    }
+
+    // 3. initialUsers (පද්ධතියේ මූලික පරිශීලකයින්) අතර සෙවීම
+    if (!matchedUser) {
+      matchedUser = initialUsers.find((u) => {
+        if (!u) return false;
+        const uNic = normalizeNIC(u.nicNumber || u.nic || '');
+        const uUserId = normalizeNIC(u.userId || '');
+        return (
+          (norm !== '' && (uNic === norm || uUserId === norm)) ||
+          u.id === cleanId ||
+          (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin'))
+        );
+      });
+    }
+
+    // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
+    if (!matchedUser) {
+      throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
+    }
+
+    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
+    // කිසිදු Backdoor මුරපදයක්, විශ්ව මුරපදයක් හෝ මුරපදය නොමැතිව පිවිසීමක් සිදු නොවේ!
+    // මෙම නිශ්චිත ගිණුමට අදාළ ස්ථිර මුරපදය (password / key) හෝ පරිපාලක ලබා දුන් තාවකාලික මුරපදය (temporaryPassword / tempPassword) පමණක් පිළිගැනේ.
+    const userPass = String(matchedUser.password ? matchedUser.password : (matchedUser as any).key ? (matchedUser as any).key : '').trim();
+    const userTempPass = String(matchedUser.temporaryPassword ? matchedUser.temporaryPassword : (matchedUser as any).tempPassword ? (matchedUser as any).tempPassword : '').trim();
+    const hashedInputPass = await hashUserPassword(cleanPass);
+
+    const isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass ? true : userPass === cleanPass));
+    const isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass ? true : userTempPass === cleanPass));
+
+    if (!isPermanentMatch && !isTemporaryMatch) {
+      throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
+    }
+
+    // 6. මුරපදය නිවැරදි නම් පමණක් Login වීම සම්පූර්ණ කිරීම
+    let authenticatedUser: User = { ...matchedUser };
+
+    // පැරණි Plain-text මුරපදයක් නම් ස්වයංක්‍රීයව SHA-256 Hash එකට උසස් කර Firestore හි සුරැකීම
+    if (isPermanentMatch && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
+      authenticatedUser.password = hashedInputPass;
+      (authenticatedUser as any).key = hashedInputPass;
+      updateUserInFirestore(matchedUser.id, {
+        password: hashedInputPass,
+        key: hashedInputPass,
+      }).catch(() => {});
+    }
+
+    // තාවකාලික මුරපදයකින් පිවිසියේ නම් මුරපදය වෙනස් කිරීමේ Modal එක විවෘත කිරීමට සටහන් කිරීම
+    if (isTemporaryMatch && !isPermanentMatch) {
+      authenticatedUser.isTemporaryPassword = true;
+      (authenticatedUser as any).tempPassword = cleanPass;
+    }
+
+    setCurrentUser(authenticatedUser);
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(authenticatedUser)));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    // 4-digit device PIN එක පරීක්ෂා කිරීම (Demo පරිශීලකයින් හැර)
+    const isDemoUser = authenticatedUser.id === 'demo_user' || authenticatedUser.userId === 'demo_user' || authenticatedUser.isDemo || authenticatedUser.nic === '000000000V';
+    if (!isDemoUser) {
+      const storedPin = getStoredDevicePin();
+      const currentMatchedId = authenticatedUser.id || authenticatedUser.userId || authenticatedUser.nicNumber;
+      if (!storedPin || (storedPin.userId !== currentMatchedId && storedPin.nicNumber !== authenticatedUser.nicNumber)) {
+        setIsPinSetupRequired(true);
+        return;
+      }
+    }
+
+    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setActiveView('pending');
+    } else {
+      setActiveView('dashboard');
+    }
+  }, [users]);
+  // Device PIN Login Success Handler
+  const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
+    setCurrentUser(authenticatedUser);
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else if (authenticatedUser.status === 'pending') {
+      setActiveView('pending');
+    } else {
+      setActiveView('dashboard');
+    }
+  }, []);
+
+  // Demo User Direct Login (🚀 PIN අංකයක් අවශ්‍ය නැත)
+  const handleUserDemoLogin = useCallback(() => {
+    const settings = getCachedSettings();
+    if (settings && settings.enableDemoLogin === false) {
+      alert('පරිපාලක (Admin) විසින් Demo පිවිසුම අක්‍රීය කර ඇත. කරුණාකර ලියාපදිංචි වී පිවිසෙන්න.');
       return;
     }
-    setViewMode(targetView);
-  };
+    const baseDemo = users.find((u) => u.id === 'demo_user') || {
+      id: 'demo_user',
+      userId: 'demo_user',
+      name: 'නරඹන්නා (Demo User)',
+      nic: '000000000V',
+      whatsappPhone: '0770000000',
+      role: 'member',
+      status: 'approved',
+      city: 'කොළඹ',
+      createdAt: new Date().toISOString(),
+      credits: 100,
+    };
 
-  const t = translations[language];
+    const demoUser: User = {
+      ...baseDemo,
+      isDemo: true, // 🚀 Demo පරිශීලකයෙකු ලෙස සලකුණු කිරීම
+    };
+
+    setCurrentUser(demoUser);
+    setIsPinSetupRequired(false); // 🚀 Demo Account එක සඳහා PIN අංකය කිසිසේත්ම අවශ්‍ය නොවේ
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(demoUser));
+    } catch (e) {
+      console.warn(e);
+    }
+    setActiveView('dashboard');
+  }, [users]);
+
+  // Registration Handler
+  const handleRegister = useCallback(async (newUser: any) => {
+    const resolvedId = newUser && newUser.id ? String(newUser.id) : `usr_${Date.now()}`;
+    const rawPass = String(newUser?.password ? newUser.password : newUser?.key ? newUser.key : '').trim();
+    const hashedPass = rawPass ? await hashUserPassword(rawPass) : '';
+    const resolvedCreatedAt = newUser && newUser.createdAt ? String(newUser.createdAt) : new Date().toISOString();
+    const created: User = Object.assign({}, newUser, {
+      id: resolvedId,
+      createdAt: resolvedCreatedAt,
+      status: 'pending',
+      credits: 100,
+      creditBalance: 100,
+      password: hashedPass,
+      key: hashedPass,
+    });
+
+    setUsers((prev) => deduplicateUsers([created, ...prev]));
+    setCurrentUser(created);
+    setActiveView('pending');
+
+    try {
+      await saveUserToFirestore(created);
+    } catch (e) {
+      console.warn('Firestore register notice:', e);
+    }
+  }, []);
+
+  // Logout Handler
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    setActiveView('login');
+    localStorage.removeItem('sahaya_sewa_session_user');
+  }, []);
+
+  // 🔑 Permanent Password Update Handler (නව මුරපදය SHA-256 Hash මඟින් ස්ථිරව සුරැකීම)
+  const handleSaveNewPassword = useCallback(async (newPassword: string) => {
+    if (!currentUser) return;
+    const cleanNewPass = newPassword.trim();
+    if (!cleanNewPass) return;
+    const hashedNewPass = await hashUserPassword(cleanNewPass);
+
+    const updatedUser: User = {
+      ...currentUser,
+      password: hashedNewPass,
+      key: hashedNewPass as any,
+      isTemporaryPassword: false,
+      isPasswordChanged: true,
+      tempPassword: '',
+      temporaryPassword: '',
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Update in Firestore
+    try {
+      await updateUserInFirestore(currentUser.id, {
+        password: hashedNewPass,
+        key: hashedNewPass,
+        isTemporaryPassword: false,
+        isPasswordChanged: true,
+        tempPassword: '',
+        temporaryPassword: '',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Firestore password update error:', e);
+    }
+
+    // 2. Synchronize local state and session
+    setCurrentUser(updatedUser);
+    setUsers((prev) => (prev ? prev : []).map((u) => (u && u.id === currentUser.id ? updatedUser : u)));
+    try {
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(updatedUser)));
+    } catch (e) {
+      console.warn('LocalStorage session update error:', e);
+    }
+  }, [currentUser]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const handleCreateIssue = useCallback((newIssue: Omit<Issue, 'id' | 'issueCode' | 'createdAt' | 'status'>) => {
+    const created: Issue = {
+      ...newIssue,
+      id: `issue_${Date.now()}`,
+      issueCode: `ISS-${Math.floor(1000 + Math.random() * 9000)}`,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    setIssues((prev) => [created, ...(prev || [])]);
+  }, []);
+
+  const handleBackFromIssues = useCallback(() => {
+    if (!currentUser) {
+      setActiveView('login');
+    } else if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
+      setActiveView('admin');
+    } else {
+      setActiveView('dashboard');
+    }
+  }, [currentUser]);
 
   return (
-    <div
-      className={`min-h-screen w-full font-sans flex flex-col justify-between p-4 sm:p-8 relative overflow-x-hidden transition-colors ${
-        theme === 'dark'
-          ? 'bg-[#05120a] text-slate-100'
-          : 'bg-[#f2f7f4] text-slate-900'
-      }`}
-    >
-      {/* Background Glow Orbs */}
-      <div className="absolute top-[-120px] left-[-120px] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-120px] right-[-120px] w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
-
-      {/* Navigation Header (For non-dashboard views like Register, Pending, Admin, Issues) */}
-      {viewMode !== 'login' && viewMode !== 'dashboard' && (
-        <Header
-          language={language}
-          setLanguage={setLanguage}
-          theme={theme}
-          toggleTheme={toggleTheme}
+    <ErrorBoundary>
+      <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#060d09] text-white' : 'bg-slate-50 text-slate-900'} font-sans antialiased transition-colors duration-200`}>
+        {/* Real-time Disaster Watcher & Live Proximity Audio Monitor */}
+        <RedAlertLiveManager
           currentUser={currentUser}
-          activeRoleView={activeRoleView}
-          setActiveRoleView={setActiveRoleView}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
+          redAlerts={redAlerts}
+          language={language}
         />
-      )}
 
-      {/* Main Container Views */}
-      <main className="flex-1 flex flex-col justify-center items-center z-10 my-2 w-full">
-        {viewMode === 'login' && (
+        {/* View Router */}
+        {activeView === 'permissions' && (
+          <GpsActivationGate
+            onProceedToLogin={() => setActiveView('login')}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            toggleTheme={toggleTheme}
+          />
+        )}
+
+        {activeView === 'login' && (
           <LoginForm
             onLogin={handleLogin}
-            onNavigateToRegister={() => setViewMode('register')}
-            onNavigateToIssues={() => setViewMode('issues_help')}
+            onSuccessfulPinLogin={handlePinLoginSuccess}
+            onUserDemoLogin={handleUserDemoLogin}
+            onNavigateToRegister={() => setActiveView('register')}
+            onNavigateToIssues={() => setActiveView('issues')}
+            onNavigateToPermissions={() => setActiveView('permissions')}
             language={language}
             setLanguage={setLanguage}
             theme={theme}
             toggleTheme={toggleTheme}
+            users={users}
           />
         )}
 
-        {viewMode === 'register' && (
-          <RegisterForm
-            onRegister={handleRegister}
-            onNavigateToLogin={() => setViewMode('login')}
-            registrationConfig={registrationConfig}
-            language={language}
-          />
-        )}
+        {activeView === 'register' &&
+          React.createElement(RegisterForm, {
+            onRegister: handleRegister,
+            onNavigateToLogin: () => setActiveView('login'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            language: language,
+            setLanguage: setLanguage,
+            theme: theme,
+            toggleTheme: toggleTheme,
+            users: users,
+          })}
 
-        {viewMode === 'pending' && currentUser && (
-          <PendingApprovalView
-            user={currentUser}
-            language={language}
-            onRefreshStatus={() => {
-              const latestUser = users.find((u) => u.id === currentUser.id);
-              if (latestUser) {
-                setCurrentUser(latestUser);
-                if (latestUser.status === 'approved') {
-                  setViewMode('dashboard');
-                } else if (latestUser.status === 'blocked') {
-                  alert(`ඔබගේ ගිණුම අවහිර කර ඇත.\nහේතුව: ${latestUser.blockedReason || 'නීති රීති උල්ලංඝනය කිරීම'}`);
-                  handleLogout();
-                } else {
-                  alert('ඔබගේ ගිණුම තවමත් පරිපාලක (Admin) අනුමැතිය සඳහා පොරොත්තුවෙන් පවතී.');
+        {activeView === 'pending' &&
+          currentUser &&
+          React.createElement(PendingApprovalView, {
+            user: currentUser,
+            language: language,
+            onRefreshStatus: async () => {
+              const targetId = currentUser.id ? currentUser.id : currentUser.userId;
+              if (targetId) {
+                const remote = await getUserFromFirestore(String(targetId));
+                if (remote) {
+                  setCurrentUser(remote);
+                  if (remote.status === 'approved') {
+                    setActiveView('dashboard');
+                    return;
+                  }
                 }
               }
-            }}
-            onNavigateToIssues={() => setViewMode('issues_help')}
-            onBackToLogin={handleLogout}
-          />
-        )}
+              if (currentUser.status === 'approved') setActiveView('dashboard');
+            },
+            onReRegister: () => setActiveView('register'),
+            onNavigateToIssues: () => setActiveView('issues'),
+            onBackToLogin: handleLogout,
+          })}
 
-        {viewMode === 'issues_help' && (
-          <IssuesHelpPage
-            issues={issues}
-            onSubmitIssue={handleSubmitIssue}
-            onBackToLogin={() => {
-              if (currentUser && currentUser.status === 'approved') {
-                setViewMode('dashboard');
-              } else {
-                setViewMode('login');
-              }
-            }}
-            language={language}
-          />
-        )}
-
-        {viewMode === 'admin' && currentUser?.role === 'admin' && (
+        {activeView === 'admin' && currentUser && (
           <AdminPanel
+            currentUser={currentUser}
             users={users}
-            issues={issues}
+            setUsers={setUsers}
             helpPosts={helpPosts}
-            blockedCredentials={blockedCredentials}
-            registrationConfig={registrationConfig}
-            onUpdateRegistrationConfig={setRegistrationConfig}
-            categories={categories}
-            onUpdateCategories={setCategories}
-            tags={tags}
-            onUpdateTags={setTags}
-            onApproveUser={handleApproveUser}
-            onRejectUser={handleRejectUser}
-            onUpdateUser={handleUpdateUser}
-            onBlockUser={handleBlockUser}
-            onUnblockCredential={handleUnblockCredential}
+            setHelpPosts={setHelpPosts}
             onDeletePost={handleDeletePost}
-            onPermanentDeletePost={handlePermanentDeletePost}
-            onRestorePost={handleRestorePost}
-            onUpdatePost={handleUpdatePost}
-            onRestoreAllPosts={(restored) => {
-              setHelpPosts((prev) => {
-                const map = new Map((prev || []).map((p) => [p.id, p]));
-                (restored || []).forEach((p) => map.set(p.id, p));
-                return Array.from(map.values());
-              });
-            }}
-            onReplyIssue={handleReplyIssue}
-            onSeedDemoData={handleSeedDemoData}
-            language={language}
-          />
-        )}
-
-        {viewMode === 'dashboard' && currentUser && (
-          <UserDashboard
-            user={currentUser}
-            onNavigateToIssues={() => setViewMode('issues_help')}
+            issues={issues}
+            setIssues={setIssues}
+            redAlerts={redAlerts}
+            setRedAlerts={setRedAlerts}
             language={language}
             setLanguage={setLanguage}
-            theme={theme}
-            toggleTheme={toggleTheme}
-            categories={categories}
-            helpPosts={helpPosts}
-            onDeletePost={handleDeletePost}
-            onPermanentDeletePost={handlePermanentDeletePost}
-            onUpdatePost={handleUpdatePost}
-            onUpdateUser={handleUpdateUser}
             onLogout={handleLogout}
-            activeRoleView={activeRoleView}
-            setActiveRoleView={setActiveRoleView}
+            onSwitchToUserMode={() => setActiveView('dashboard')}
             onNavigate={handleNavigate}
           />
         )}
-      </main>
 
-      {/* Wrong Login Modal */}
-      <WrongLoginModal
-        isOpen={showWrongLoginModal}
-        onRetry={() => setShowWrongLoginModal(false)}
-        language={language}
-      />
+        {activeView === 'dashboard' && currentUser && (
+          <UserDashboard
+            user={currentUser}
+            currentUser={currentUser}
+            setCurrentUser={setCurrentUser}
+            onUpdateUser={(updated) => setCurrentUser(updated)}
+            users={getSafeUsersForView(users, currentUser, false)}
+            setUsers={setUsers}
+            helpPosts={helpPosts}
+            setHelpPosts={setHelpPosts}
+            onDeletePost={handleDeletePost}
+            issues={issues}
+            setIssues={setIssues}
+            redAlerts={redAlerts}
+            setRedAlerts={setRedAlerts}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            setTheme={setTheme}
+            toggleTheme={toggleTheme}
+            onLogout={handleLogout}
+            onNavigateToIssues={() => setActiveView('issues')}
+            onNavigate={handleNavigate}
+            onOpenAdminPanel={() => setActiveView('admin')}
+            onPermanentDeletePost={(postId) => {
+              setHelpPosts((prev) => prev.filter((p) => p && p.id !== postId));
+            }}
+            onUpdatePost={(updated) => {
+              setHelpPosts((prev) => prev.map((p) => p && p.id === updated.id ? updated : p));
+            }}
+          />
+        )}
 
-      {/* Change Password Card Modal */}
-      <ChangePasswordModal
-        isOpen={showChangePasswordModal}
-        onClose={() => setShowChangePasswordModal(false)}
-        onSavePassword={handleSaveNewPassword}
-        userName={currentUser?.name}
-        nicNumber={currentUser?.nicNumber}
-      />
+        {activeView === 'issues' && (
+          <IssuesHelpPage
+            issues={issues}
+            users={users}
+            currentUser={currentUser}
+            onSubmitIssue={handleCreateIssue}
+            onBackToLogin={handleBackFromIssues}
+            language={language}
+          />
+        )}
 
-      {/* Footer Status Bar */}
-      <footer className="z-10 flex flex-wrap justify-between items-center gap-4 mt-auto pt-6 border-t border-white/10 text-slate-500">
-        <div className="text-[10px] uppercase tracking-[0.2em] font-mono">
-          {t.securityLayer}
-        </div>
+        {/* Global Floating AI Assistant for Auth and non-dashboard pages */}
+        {activeView !== 'dashboard' && (
+          <OmniAssistantChatBox
+            currentLanguage={language}
+            onLanguageChange={setLanguage}
+            mode={currentUser ? 'full' : 'auth'}
+            onSwitchToRegister={() => setActiveView('register')}
+            onSwitchToLogin={() => setActiveView('login')}
+            onOpenIssuesHelp={() => setActiveView('issues')}
+            onDemoLogin={handleUserDemoLogin}
+          />
+        )}
 
-        <div className="flex items-center gap-6">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              {t.adminStatus}
-            </span>
-            <span className="text-xs text-green-400 font-mono font-semibold flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span>● {t.online}</span>
-            </span>
-          </div>
+        {/* 🔒 තාවකාලික මුරපදයෙන් ලොග් වූ පසු අනිවාර්යයෙන්ම නව මුරපදයක් සකස් කර ගන්නා තෙක් පෙන්වන Modal එක */}
+        {currentUser && Boolean(currentUser.isTemporaryPassword) && (
+          <ChangePasswordModal
+            isOpen={true}
+            onClose={() => {
+              handleLogout();
+            }}
+            onSavePassword={handleSaveNewPassword}
+            userName={currentUser.name}
+            nicNumber={currentUser.nic || currentUser.nicNumber}
+            currentTempPassword={currentUser.tempPassword || currentUser.temporaryPassword}
+          />
+        )}
+      </div>
 
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold text-slate-400">
-              {t.serverTime}
-            </span>
-            <span className="text-xs text-slate-300 font-mono">{serverTime}</span>
-          </div>
-        </div>
-      </footer>
-    </div>
+      {/* 🔢 Mandatory Device PIN Setup Modal (Demo පරිශීලකයින් හැර සාමාන්‍ය පරිශීලකයින්ට පමණක් Login වීමේදී පෙන්වයි) */}
+      {isPinSetupRequired && currentUser && !currentUser.isDemo && currentUser.id !== 'demo_user' && (
+        <DevicePinSetupModal
+          isOpen={isPinSetupRequired}
+          onClose={() => {}} // Mandatory setup on first login
+          currentUser={currentUser}
+          language={language}
+          onPinConfigured={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            setIsPinSetupRequired(false);
+            setActiveView(
+              updatedUser.role === 'admin' || updatedUser.role === 'super_admin'
+                ? 'admin'
+                : updatedUser.status === 'pending'
+                ? 'pending'
+                : 'dashboard'
+            );
+          }}
+        />
+      )}
+      {/* 🚨 Global SOS Live Session Viewer Modal (Direct URL Access without Login) */}
+      {sosViewerSessionId && (
+        <SosLiveViewerModal
+          isOpen={Boolean(sosViewerSessionId)}
+          sessionId={sosViewerSessionId}
+          language={language}
+          onClose={() => {
+            setSosViewerSessionId(null);
+            try {
+              const cleanUrl = window.location.origin + window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            } catch {}
+          }}
+        />
+      )}
+    </ErrorBoundary>
   );
-}
+};
+
+export default App;
+
 

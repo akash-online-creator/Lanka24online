@@ -119,12 +119,13 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
           )}
 
           <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
-            {filteredTags.map((tag) => {
-              const isSelected = selectedTag?.id === tag.id;
+            {filteredTags.map((tag, tIdx) => {
+              if (!tag) return null;
+              const isSelected = Boolean(selectedTag?.id && tag.id && selectedTag.id === tag.id);
               const TagIconComp = getTagIconComponent(tag.tagName, tag.category);
               return (
                 <button
-                  key={tag.id}
+                  key={`tag_sel_${tag.id || 't'}_${tIdx}`}
                   type="button"
                   onClick={() => onSelectTag(tag)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -223,9 +224,9 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
                 <span>දැනටමත් පවතින සමාන Tag ඇත! (එකක් තෝරාගත හැක)</span>
               </span>
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {similarTags.map((st) => (
+                {similarTags.map((st, sIdx) => (
                   <button
-                    key={st.id}
+                    key={`sim_tag_${st.id || 'st'}_${sIdx}`}
                     type="button"
                     onClick={() => {
                       onSelectTag(st);

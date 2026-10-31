@@ -28,7 +28,10 @@ import {
   ShieldAlert,
   MapPin,
   Compass,
-  Navigation
+  Navigation,
+  Mic,
+  VolumeX,
+  EyeOff
 } from 'lucide-react';
 import { 
   GroupItem, 
@@ -38,11 +41,14 @@ import {
   Language, 
   User,
   GroupJoinRequest,
-  GroupMessageLocation
+  GroupMessageLocation,
+  TelegramMediaRecord
 } from '../types';
 import { GroupChatMapPickerModal } from './GroupChatMapPickerModal';
 import { GroupChatMapViewerModal } from './GroupChatMapViewerModal';
 import { ChatLocationCard } from './ChatLocationCard';
+import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
+import { TelegramGroupEditModal } from './TelegramGroupEditModal';
 import { 
   getStoredGroupMessages, 
   saveGroupMessageToStorage, 
@@ -78,10 +84,12 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   const [group, setGroup] = useState<GroupItem>(initialGroup);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isTelegramEditOpen, setIsTelegramEditOpen] = useState(false);
 
   // Map Location Sharing States
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
@@ -89,12 +97,15 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
   // Group Join Requests (for Admins)
   const [groupJoinRequests, setGroupJoinRequests] = useState<GroupJoinRequest[]>(() =>
-    getStoredGroupJoinRequests().filter((r) => r.groupId === initialGroup.id && r.status === 'pending')
+    initialGroup && initialGroup.id
+      ? getStoredGroupJoinRequests().filter((r) => r && r.groupId === initialGroup.id && r.status === 'pending')
+      : []
   );
 
   const refreshJoinRequests = () => {
+    if (!group || !group.id) return;
     setGroupJoinRequests(
-      getStoredGroupJoinRequests().filter((r) => r.groupId === group.id && r.status === 'pending')
+      getStoredGroupJoinRequests().filter((r) => r && r.groupId === group.id && r.status === 'pending')
     );
   };
 
@@ -104,29 +115,49 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   const [addPhoneSuccess, setAddPhoneSuccess] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [lastSentTime, setLastSentTime] = useState<number>(0);
 
   // Check if current user is an admin
   const currentUserId = currentUser?.userId || currentUser?.id || '';
-  const currentMemberRecord = group.members.find(
-    (m) => m.userId === currentUserId || (currentUser?.phone && m.phone === currentUser?.phone)
+  const currentMemberRecord = group?.members?.find(
+    (m) => m && (m.userId === currentUserId || (currentUser?.phone && m.phone === currentUser?.phone))
   );
 
-  const isAdmin = currentMemberRecord?.role === 'admin' || group.creatorId === currentUserId;
-  const canSendMessages = isAdmin || group.permissions.sendNewMessages;
-  const canEditSettings = isAdmin || group.permissions.editGroupSettings;
-  const canAddMembers = isAdmin || group.permissions.addOtherMembers;
-  const canInviteViaLink = isAdmin || group.permissions.inviteViaLinkOrQr;
+  const isAdmin = currentMemberRecord?.role === 'admin' || 
+    group?.creatorId === currentUserId ||
+    (group?.createdBy as any)?.id === currentUserId ||
+    (group?.createdBy as any)?.userId === currentUserId ||
+    (currentUser as any)?.role === 'admin';
 
-  // Sync group when prop changes
+  const isMuted = Boolean(currentMemberRecord?.isMuted) && !isAdmin;
+  const canSendMessages = !isMuted && (isAdmin || (group?.permissions?.sendMessages !== false && group?.permissions?.sendNewMessages !== false));
+  const canSendMedia = !isMuted && (isAdmin || group?.permissions?.sendMedia !== false);
+  const canPinMessages = isAdmin || group?.permissions?.pinMessages !== false;
+  const canEditSettings = isAdmin || Boolean(group?.permissions?.editGroupSettings) || group?.permissions?.changeChatInfo !== false;
+  const canAddMembers = isAdmin || Boolean(group?.permissions?.addOtherMembers) || group?.permissions?.addMembers !== false;
+  const canInviteViaLink = isAdmin || Boolean(group?.permissions?.inviteViaLinkOrQr);
+  const slowModeSec = group?.permissions?.slowMode || 0;
+
+  // Sync group, messages, and join requests when prop or remote Firestore data changes
   useEffect(() => {
     setGroup(initialGroup);
-  }, [initialGroup]);
+    if (isOpen && initialGroup?.id) {
+      const remoteMsgs = Array.isArray((initialGroup as any).groupMessages)
+        ? (initialGroup as any).groupMessages
+        : getStoredGroupMessages(initialGroup.id);
+      setMessages(remoteMsgs);
+      setGroupJoinRequests(
+        getStoredGroupJoinRequests().filter((r) => r && r.groupId === initialGroup.id && r.status === 'pending')
+      );
+    }
+  }, [initialGroup, isOpen]);
 
-  // Load group messages
+  // Load group messages on open or group id change
   useEffect(() => {
     if (isOpen && group?.id) {
       const msgs = getStoredGroupMessages(group.id);
       setMessages(msgs);
+      refreshJoinRequests();
     }
   }, [isOpen, group?.id]);
 
@@ -135,17 +166,42 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Quick Emojis
-  const quickEmojis = ['🤝', '👍', '🙏', '❤️', '🌿', '🎉', '🔥', '👏', '💡', '📍', '⏱️', '🛠️', '☕', '😊', '✅', '⭐'];
+  // Quick Emojis based on Telegram reactionsSetting
+  const allQuickEmojis = ['🤝', '👍', '🙏', '❤️', '🌿', '🎉', '🔥', '👏', '💡', '📍', '⏱️', '🛠️', '☕', '😊', '✅', '⭐'];
+  const reactionsSetting = group?.reactionsSetting || 'all';
+  const quickEmojis = reactionsSetting === 'off' 
+    ? [] 
+    : reactionsSetting === 'some' 
+      ? ['👍', '❤️', '🙏', '👏', '🤝', '🎉'] 
+      : allQuickEmojis;
+
+  const checkSlowMode = (): boolean => {
+    if (!isAdmin && slowModeSec > 0) {
+      const elapsed = Math.floor((Date.now() - lastSentTime) / 1000);
+      if (elapsed < slowModeSec) {
+        const remaining = slowModeSec - elapsed;
+        alert(`⏱️ Slow Mode සක්‍රීයයි: කරුණාකර තවත් තත්පර ${remaining} ක් රැඳී සිටින්න (Slow mode cooldown active).`);
+        return false;
+      }
+    }
+    return true;
+  };
 
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputText.trim()) return;
 
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
     if (!canSendMessages) {
       alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
       return;
     }
+
+    if (!checkSlowMode()) return;
 
     const newMessage: GroupMessage = {
       id: `gmsg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -163,14 +219,27 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
     setInputText('');
+    setLastSentTime(Date.now());
   };
 
   // Send Map Location Message
   const handleSendLocation = (loc: GroupMessageLocation) => {
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
     if (!canSendMessages) {
       alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
       return;
     }
+
+    if (!canSendMedia) {
+      alert('කණ්ඩායම් පරිපාලක විසින් Media (ස්ථාන බෙදාගැනීම) අත්හිටුවා ඇත.');
+      return;
+    }
+
+    if (!checkSlowMode()) return;
 
     const newMessage: GroupMessage = {
       id: `gmsg_loc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -188,11 +257,52 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
     const updated = saveGroupMessageToStorage(group.id, newMessage);
     setMessages(updated);
+    setLastSentTime(Date.now());
+  };
+
+  // Send Voice Note Audio Message
+  const handleSendVoiceAudio = (audioUrl: string, durationSec: number) => {
+    if (isMuted) {
+      alert('🔇 ඔබව මෙම කණ්ඩායම තුළ නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.');
+      return;
+    }
+
+    if (!canSendMessages) {
+      alert('කණ්ඩායම් පරිපාලක විසින් සාමාජිකයින්ට පණිවිඩ යැවීම අත්හිටුවා ඇත.');
+      return;
+    }
+
+    if (!canSendMedia) {
+      alert('කණ්ඩායම් පරිපාලක විසින් Media (හඬ පණිවිඩ) යැවීම අත්හිටුවා ඇත.');
+      return;
+    }
+
+    if (!checkSlowMode()) return;
+
+    const newMessage: GroupMessage = {
+      id: `gmsg_voice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      groupId: group.id,
+      senderId: currentUserId,
+      senderName: currentUser?.name || 'පරිශීලක',
+      senderPhone: currentUser?.phone || '',
+      senderPhotoUrl: currentUser?.photoUrl || '',
+      senderRole: isAdmin ? 'admin' : 'member',
+      text: '🎙️ [හඬ පණිවිඩය / Voice Note]',
+      audioUrl,
+      audioDurationSec: durationSec,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAtMs: Date.now()
+    };
+
+    const updated = saveGroupMessageToStorage(group.id, newMessage);
+    setMessages(updated);
+    setIsRecordingVoice(false);
+    setLastSentTime(Date.now());
   };
 
   const handleTogglePin = (msgId: string) => {
-    if (!canEditSettings && !isAdmin) {
-      alert('පණිවිඩ Pin කිරීමට පරිපාලක අවසර අවශ්‍යයි.');
+    if (!canPinMessages && !isAdmin) {
+      alert('පණිවිඩ Pin කිරීමට පරිපාලක අවසර ලබාදී නොමැත.');
       return;
     }
     const updated = togglePinGroupMessage(group.id, msgId);
@@ -336,7 +446,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
         aria-modal="true"
       >
         {/* Chat Room Top Header */}
-        <div className="p-3.5 sm:p-4 border-b border-indigo-100 dark:border-zinc-800 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between shrink-0 shadow-md">
+        <div 
+          style={{
+            background: group.appearanceColor 
+              ? `linear-gradient(135deg, ${group.appearanceColor}, #1e1b4b)` 
+              : undefined
+          }}
+          className="p-3.5 sm:p-4 border-b border-indigo-100 dark:border-zinc-800 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between shrink-0 shadow-md"
+        >
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
               <img
@@ -379,6 +496,18 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsTelegramEditOpen(true)}
+                className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                title="කණ්ඩායම් සැකසුම් (Telegram Admin Settings)"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">සැකසුම්</span>
+              </button>
+            )}
+
             {canInviteViaLink && (
               <button
                 type="button"
@@ -413,14 +542,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
         </div>
 
         {/* Pinned Messages Banner */}
-        {pinnedMessages.length > 0 && (
+        {pinnedMessages.length > 0 && pinnedMessages[pinnedMessages.length - 1] && (
           <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/60 px-4 py-2 flex items-center justify-between text-xs text-amber-950 dark:text-amber-200 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <Pin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span className="font-black shrink-0">Pinned Message:</span>
-              <span className="truncate italic">{pinnedMessages[pinnedMessages.length - 1].text}</span>
+              <span className="truncate italic">{pinnedMessages[pinnedMessages.length - 1]?.text}</span>
             </div>
-            {canEditSettings && (
+            {canEditSettings && pinnedMessages[pinnedMessages.length - 1]?.id && (
               <button
                 type="button"
                 onClick={() => handleTogglePin(pinnedMessages[pinnedMessages.length - 1].id)}
@@ -448,23 +577,49 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
                   {group.description}
                 </p>
+                {group.welcomeMessageEnabled && group.welcomeMessageText && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium italic">
+                    💬 "{group.welcomeMessageText}"
+                  </div>
+                )}
                 <div className="mt-2 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                   🛡️ Admin: {group.creatorName} {isAdmin && group.creatorPhone ? `(${group.creatorPhone})` : ''}
                 </div>
               </div>
 
-              {messages.length === 0 ? (
-                <div className="text-center py-8 text-zinc-400 text-xs">
-                  තවමත් පණිවිඩ නොමැත. සංවාදය ආරම්භ කිරීමට පහතින් පණිවිඩයක් යවන්න.
+              {/* Chat History Notice if hidden */}
+              {group?.chatHistoryVisible === false && !isAdmin && (
+                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 text-center flex items-center justify-center gap-1.5 border border-zinc-200 dark:border-zinc-700 shadow-2xs">
+                  <EyeOff className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>පෙර පැරණි පණිවිඩ නව සාමාජිකයින්ට නොපෙනෙන පරිදි සඟවා ඇත (Chat History Hidden).</span>
                 </div>
-              ) : (
-                messages.map((msg) => {
+              )}
+
+              {/* Filter messages if chat history is hidden for regular members */}
+              {(() => {
+                const displayedMessages = messages.filter((msg) => {
+                  if (isAdmin || group?.chatHistoryVisible !== false) return true;
+                  if (!currentMemberRecord?.joinedAt) return true;
+                  const joinTimestamp = new Date(currentMemberRecord.joinedAt).getTime();
+                  if (isNaN(joinTimestamp)) return true;
+                  return (msg.createdAtMs || 0) >= joinTimestamp;
+                });
+
+                if (displayedMessages.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-zinc-400 text-xs">
+                      තවමත් පණිවිඩ නොමැත. සංවාදය ආරම්භ කිරීමට පහතින් පණිවිඩයක් යවන්න.
+                    </div>
+                  );
+                }
+
+                return displayedMessages.map((msg, mIdx) => {
                   const isMe = msg.senderId === currentUserId;
                   const isMsgAdmin = msg.senderRole === 'admin';
 
                   return (
                     <div
-                      key={msg.id}
+                      key={`chat_msg_${msg.id || 'm'}_${mIdx}`}
                       className={`flex gap-2 max-w-[85%] sm:max-w-[75%] ${isMe ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                     >
                       {/* Avatar */}
@@ -472,7 +627,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                         {msg.senderPhotoUrl ? (
                           <img 
                             src={msg.senderPhotoUrl} 
-                            alt={msg.senderName} 
+                            alt={msg.senderName || 'Sender'} 
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
@@ -480,7 +635,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                           />
                         ) : (
                           <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {msg.senderName.charAt(0)}
+                            {(msg.senderName || 'U').charAt(0)}
                           </span>
                         )}
                       </div>
@@ -511,8 +666,19 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                           />
                         )}
 
+                        {/* Audio Voice Note Player */}
+                        {msg.audioUrl && (
+                          <div className="space-y-1">
+                            <AudioVoicePlayer
+                              audioUrl={msg.audioUrl}
+                              durationSec={msg.audioDurationSec || 5}
+                              isMe={isMe}
+                            />
+                          </div>
+                        )}
+
                         {/* Message Bubble */}
-                        {(!msg.location || (msg.text && msg.text !== `📍 ස්ථානය: ${msg.location.name}` && msg.text !== `📍 ${msg.location.name} - ${msg.location.note}`)) && (
+                        {!msg.audioUrl && (!msg.location || (msg.text && msg.text !== `📍 ස්ථානය: ${msg.location.name}` && msg.text !== `📍 ${msg.location.name} - ${msg.location.note}`)) && (
                           <div
                             className={`p-3 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-xs relative group ${
                               isMe
@@ -538,59 +704,89 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                       </div>
                     </div>
                   );
-                })
-              )}
+                });
+              })()}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Emoji Bar */}
-            <div className="px-3 py-1.5 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 overflow-x-auto shrink-0 scrollbar-none">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 mr-1">
-                Emojis:
-              </span>
-              {quickEmojis.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => setInputText((prev) => prev + emoji)}
-                  className="w-7 h-7 rounded-lg hover:bg-indigo-50 dark:hover:bg-zinc-800 flex items-center justify-center text-sm transition-transform active:scale-125 cursor-pointer shrink-0"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            {reactionsSetting !== 'off' && quickEmojis.length > 0 && (
+              <div className="px-3 py-1.5 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 overflow-x-auto shrink-0 scrollbar-none">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 mr-1">
+                  Emojis:
+                </span>
+                {quickEmojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setInputText((prev) => prev + emoji)}
+                    className="w-7 h-7 rounded-lg hover:bg-indigo-50 dark:hover:bg-zinc-800 flex items-center justify-center text-sm transition-transform active:scale-125 cursor-pointer shrink-0"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Message Input & Send */}
             <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
-              {canSendMessages ? (
-                <form onSubmit={handleSend} className="flex items-center gap-2">
-                  {/* Share Location on Map Button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsMapPickerOpen(true)}
-                    className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
-                    title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
-                  >
-                    <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-xs font-bold hidden sm:inline">ස්ථානය (Map)</span>
-                  </button>
-
-                  <input
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."
-                    className="flex-1 px-4 py-2.5 rounded-2xl border-2 border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-medium text-xs sm:text-sm outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100"
+              {isMuted ? (
+                <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-center text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center justify-center gap-2 shadow-xs">
+                  <VolumeX className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>ඔබව මෙම කණ්ඩායම තුළ පරිපාලක විසින් නිහඬ කර ඇත (Muted). ඔබට පණිවිඩ යැවිය නොහැක.</span>
+                </div>
+              ) : canSendMessages ? (
+                isRecordingVoice ? (
+                  <AudioVoiceRecorder
+                    senderName={currentUser?.name || 'User'}
+                    sourceContext="Group Chat"
+                    onSendAudio={handleSendVoiceAudio}
+                    onCancel={() => setIsRecordingVoice(false)}
                   />
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim()}
-                    className="p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                    title="යවන්න"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
+                ) : (
+                  <form onSubmit={handleSend} className="flex items-center gap-2">
+                    {/* Share Location on Map Button */}
+                    {canSendMedia && (
+                      <button
+                        type="button"
+                        onClick={() => setIsMapPickerOpen(true)}
+                        className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                        title="සිතියමෙන් ස්ථානය බෙදාගන්න (Share Location on Map)"
+                      >
+                        <MapPin className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-xs font-bold hidden sm:inline">ස්ථානය</span>
+                      </button>
+                    )}
+
+                    {/* Voice Note Button */}
+                    {canSendMedia && (
+                      <button
+                        type="button"
+                        onClick={() => setIsRecordingVoice(true)}
+                        className="p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 shadow-xs"
+                        title="හඬ පණිවිඩයක් පටිගත කරන්න (Voice Note)"
+                      >
+                        <Mic className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      </button>
+                    )}
+
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder={slowModeSec > 0 && !isAdmin ? `පණිවිඩය ටයිප් කරන්න (Slow Mode: ${slowModeSec}s)...` : "පණිවිඩය ටයිප් කරන්න (Sinhala, English, Tamil supported)..."}
+                      className="flex-1 px-4 py-2.5 rounded-2xl border-2 border-zinc-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-medium text-xs sm:text-sm outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim()}
+                      className="p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      title="යවන්න"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                )
               ) : (
                 <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-center text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-amber-600" />
@@ -649,6 +845,21 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   <p className="text-[11px] text-zinc-500 leading-relaxed pt-1">{group.description}</p>
                 </div>
 
+                {/* Telegram Admin Settings Button */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGroupInfo(false);
+                      setIsTelegramEditOpen(true);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-emerald-600 hover:from-sky-700 hover:to-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer transition-transform active:scale-95"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>කණ්ඩායම් පාලන සැකසුම් (Telegram Admin Settings)</span>
+                  </button>
+                )}
+
                 {/* Pending Join Requests (for Admin) */}
                 {isAdmin && groupJoinRequests.length > 0 && (
                   <div className="space-y-2 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-900">
@@ -660,9 +871,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                     </div>
 
                     <div className="space-y-2 pt-1">
-                      {groupJoinRequests.map((req) => (
+                      {groupJoinRequests.map((req, rIdx) => (
                         <div
-                          key={req.id}
+                          key={`join_req_${req.id || 'r'}_${rIdx}`}
                           className="bg-white dark:bg-zinc-900 p-2 rounded-xl border border-amber-200 dark:border-zinc-700 space-y-1.5"
                         >
                           <div className="flex items-center justify-between">
@@ -750,13 +961,13 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                   </div>
 
                   <div className="space-y-2">
-                    {group.members.map((m) => {
+                    {group.members.map((m, mIdx) => {
                       const isMemAdmin = m.role === 'admin';
                       const isCreator = m.userId === group.creatorId;
 
                       return (
                         <div
-                          key={m.userId || m.phone}
+                          key={`group_mem_${m.userId || m.phone || 'm'}_${mIdx}`}
                           className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs"
                         >
                           <div className="flex items-center gap-2 min-w-0">
@@ -764,7 +975,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                               {m.photoUrl ? (
                                 <img 
                                   src={m.photoUrl} 
-                                  alt={m.name} 
+                                  alt={m.name || 'Member'} 
                                   loading="lazy"
                                   decoding="async"
                                   referrerPolicy="no-referrer"
@@ -772,7 +983,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
                                 />
                               ) : (
                                 <span className="font-bold text-indigo-700 dark:text-indigo-300">
-                                  {m.name.charAt(0)}
+                                  {(m.name || 'U').charAt(0)}
                                 </span>
                               )}
                             </div>
@@ -905,6 +1116,24 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           onClose={() => setViewingLocation(null)}
           location={viewingLocation}
         />
+
+        {/* Telegram Group Edit Modal */}
+        {isTelegramEditOpen && (
+          <TelegramGroupEditModal
+            isOpen={isTelegramEditOpen}
+            onClose={() => setIsTelegramEditOpen(false)}
+            group={group}
+            currentUser={currentUser}
+            onGroupUpdated={(updated) => {
+              setGroup(updated);
+              if (onUpdateGroup) onUpdateGroup(updated);
+            }}
+            onGroupDeleted={() => {
+              setIsTelegramEditOpen(false);
+              onClose();
+            }}
+          />
+        )}
       </div>
     </div>
   );

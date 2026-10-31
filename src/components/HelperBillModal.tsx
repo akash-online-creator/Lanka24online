@@ -16,12 +16,14 @@ import {
 } from 'lucide-react';
 import { HelpPost, ServiceBill, BillItem } from '../types';
 import { SlideToConfirmButton } from './SlideToConfirmButton';
+import { translateName } from '../utils/postTranslator';
 
 interface HelperBillModalProps {
   post: HelpPost;
   isOpen: boolean;
   onClose: () => void;
   onSubmitBillAndComplete: (post: HelpPost, bill: ServiceBill) => Promise<void>;
+  lang?: string;
 }
 
 export const HelperBillModal: React.FC<HelperBillModalProps> = ({
@@ -29,18 +31,19 @@ export const HelperBillModal: React.FC<HelperBillModalProps> = ({
   isOpen,
   onClose,
   onSubmitBillAndComplete,
+  lang = 'si',
 }) => {
+  const [travelOption, setTravelOption] = useState<'came' | 'brought' | 'sent' | 'none'>('came');
+  const [actionsSummary, setActionsSummary] = useState('');
+  const [customItems, setCustomItems] = useState<BillItem[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (!isOpen || !post) return null;
 
   // Calculate transport distance (minimum 1 KM for calculation)
   const distance = Math.max(1, Math.round((post?.distanceKm || 1) * 10) / 10);
   const ratePerKm = 50;
   const initialTravelFee = distance * ratePerKm;
-
-  const [travelOption, setTravelOption] = useState<'came' | 'brought' | 'sent' | 'none'>('came');
-  const [actionsSummary, setActionsSummary] = useState('');
-  const [customItems, setCustomItems] = useState<BillItem[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Generate travel item title based on option
   const getTravelItemTitle = (opt: 'came' | 'brought' | 'sent') => {
@@ -170,7 +173,7 @@ export const HelperBillModal: React.FC<HelperBillModalProps> = ({
           <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3.5 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="font-bold">සහය ලබාගත් පුද්ගලයා:</span>
-              <span className="font-black text-slate-800 dark:text-slate-200">{post.userName}</span>
+              <span className="font-black text-slate-800 dark:text-slate-200">{translateName(post.userName, lang)}</span>
             </div>
             <p className="font-medium text-slate-700 dark:text-slate-300 line-clamp-2">
               "{post.whatIsNeeded || post.whatHappened}"
@@ -285,7 +288,7 @@ export const HelperBillModal: React.FC<HelperBillModalProps> = ({
 
             <div className="space-y-2.5">
               {allBillItems.map((item, index) => (
-                <div key={item.id} className="space-y-1.5">
+                <div key={`bill_item_${item.id || 'b'}_${index}`} className="space-y-1.5">
                   <div 
                     className={`p-3 rounded-2xl border flex items-center justify-between gap-2.5 transition-all ${
                       item.isTravelFee 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
-import { User, Language, ProfessionalService, ServiceDeliveryMethod, LocationOption } from '../types';
+import { User, Language, ProfessionalService, ServiceDeliveryMethod } from '../types';
 import { professionalServiceCategories } from '../data/professionalServicesData';
 import { 
   X, 
@@ -18,23 +18,27 @@ import {
   Navigation,
   Search,
   Maximize2,
-  Check,
-  Globe,
-  Loader2
+  Minimize2,
+  Loader2,
+  Compass
 } from 'lucide-react';
 import { 
   resolveExactLocation, 
   searchSriLankanPlacesAndRoads, 
-  PlaceSearchResult,
-  formatOrderedLocation
+  PlaceSearchResult
 } from '../utils/geoUtils';
-import { MapLocationTracker } from './MapLocationTracker';
-import { initialLocations } from '../data/initialData';
+const customMarkerIcon = L.divIcon({
+  className: 'custom-leaflet-marker',
+  html: `<div style="width: 36px; height: 36px; background: linear-gradient(135deg, #10b981, #047857); border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; cursor: grab;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg></div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+  popupAnchor: [0, -36],
+});
 
 interface RegisterProfessionalServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User;
+  user?: User | null;
   language: Language;
   currentLocationName?: string;
   onRegisterService: (newService: ProfessionalService) => void;
@@ -48,8 +52,6 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   currentLocationName = 'කඩවත',
   onRegisterService,
 }) => {
-  if (!isOpen) return null;
-
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(professionalServiceCategories[0].category_id);
   const [selectedSubCategoryName, setSelectedSubCategoryName] = useState<string>(
     professionalServiceCategories[0].sub_categories[0].name
@@ -69,11 +71,11 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   const [experienceDuration, setExperienceDuration] = useState('');
   const [altPhone, setAltPhone] = useState('');
   const [revealContactConsent, setRevealContactConsent] = useState(true);
-  const [locationName, setLocationName] = useState(currentLocationName || user.nearestTown || 'කඩවත');
-  
+  const [locationName, setLocationName] = useState(currentLocationName || user?.nearestTown || 'කඩවත');
+  const [resolvedAddressDetails, setResolvedAddressDetails] = useState<string>('');
   // Coordinates for map
-  const [mapLat, setMapLat] = useState<number>(user.registrationLat || 7.1712);
-  const [mapLng, setMapLng] = useState<number>(user.registrationLng || 79.8978);
+  const [mapLat, setMapLat] = useState<number>(user?.registrationLat || 7.1712);
+  const [mapLng, setMapLng] = useState<number>(user?.registrationLng || 79.8978);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isFullMapOpen, setIsFullMapOpen] = useState(false);
   const [mapSearchQuery, setMapSearchQuery] = useState('');
@@ -86,6 +88,7 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
   // Leaflet map container references
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
   const currentCategory = professionalServiceCategories.find((c) => c.category_id === selectedCategoryId) || professionalServiceCategories[0];
 
@@ -94,8 +97,14 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     setIsGeocoding(true);
     try {
       const geo = await resolveExactLocation(lat, lng);
-      if (geo && geo.shortDisplaySi) {
-        setLocationName(geo.shortDisplaySi);
+      if (geo) {
+        const nameToUse = geo.shortDisplaySi || geo.townSi || geo.districtSi || 'තෝරාගත් ස්ථානය';
+        setLocationName(nameToUse);
+        const fullAddr = geo.fullAddressSi || geo.displayTitleSi || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        setResolvedAddressDetails(fullAddr);
+        if (markerRef.current) {
+          markerRef.current.bindPopup(`<div style="font-family: sans-serif; font-size: 12px; font-weight: bold; color: #065f46;">📍 ${fullAddr}</div>`).openPopup();
+        }
       }
     } catch (err) {
       console.warn('Geocoding notice:', err);
@@ -104,58 +113,67 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     }
   }, []);
 
-  // Initialize and synchronize inline map when 'location' delivery method is chosen
+  // Initialize Leaflet Map with Draggable Marker and Click Listener
   useEffect(() => {
-    if (deliveryMethod !== 'location' || !mapContainerRef.current) return;
+    if (!isOpen || deliveryMethod !== 'location' || !mapContainerRef.current) return;
 
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapContainerRef.current, {
+        center: [mapLat, mapLng],
+        zoom: 15,
+        zoomControl: true,
+        attributionControl: false,
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
+      }).addTo(map);
+      // Create Draggable Marker
+      const marker = L.marker([mapLat, mapLng], {
+        draggable: true,
+        icon: customMarkerIcon,
+      }).addTo(map);
+      markerRef.current = marker;
+
+      // Handle Marker Drag End
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        setMapLat(pos.lat);
+        setMapLng(pos.lng);
+        handleLookupLocation(pos.lat, pos.lng);
+      });
+
+      // Handle Map Click to Move Pin
+      map.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        marker.setLatLng([lat, lng]);
+        map.panTo([lat, lng], { animate: true });
+        setMapLat(lat);
+        setMapLng(lng);
+        handleLookupLocation(lat, lng);
+      });
+
+      mapInstanceRef.current = map;
+      handleLookupLocation(mapLat, mapLng);
     }
 
-    const map = L.map(mapContainerRef.current, {
-      center: [mapLat, mapLng],
-      zoom: 15,
-      zoomControl: true,
-      attributionControl: false,
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-    }).addTo(map);
-
-    // Update coordinates and address when map dragging stops
-    map.on('moveend', () => {
-      const center = map.getCenter();
-      setMapLat(center.lat);
-      setMapLng(center.lng);
-      handleLookupLocation(center.lat, center.lng);
-    });
-
-    // Also support clicking on map to set pin
-    map.on('click', (e) => {
-      map.panTo(e.latlng, { animate: true });
-      setMapLat(e.latlng.lat);
-      setMapLng(e.latlng.lng);
-      handleLookupLocation(e.latlng.lat, e.latlng.lng);
-    });
-
-    mapInstanceRef.current = map;
-
-    // Trigger invalidateSize after slight delay for proper container rendering in modals
     const timer = setTimeout(() => {
-      map.invalidateSize();
-    }, 250);
-
-    return () => {
-      clearTimeout(timer);
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+        mapInstanceRef.current.invalidateSize();
       }
-    };
-  }, [deliveryMethod, handleLookupLocation]);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, deliveryMethod, isFullMapOpen, handleLookupLocation]);
+
+  // Clean up map when modal closes
+  useEffect(() => {
+    if (!isOpen && mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    }
+  }, [isOpen]);
 
   // Handle map search
   const handleSearchPlace = async (query: string) => {
@@ -185,9 +203,13 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     setMapSearchResults([]);
     setIsSearchingMap(false);
 
+    if (markerRef.current) {
+      markerRef.current.setLatLng([res.lat, res.lng]);
+    }
     if (mapInstanceRef.current) {
       mapInstanceRef.current.setView([res.lat, res.lng], 16, { animate: true });
     }
+    handleLookupLocation(res.lat, res.lng);
   };
 
   // GPS Locate current position
@@ -200,6 +222,9 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
           const lng = pos.coords.longitude;
           setMapLat(lat);
           setMapLng(lng);
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
+          }
           if (mapInstanceRef.current) {
             mapInstanceRef.current.setView([lat, lng], 17, { animate: true });
           }
@@ -278,15 +303,15 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
     const newService: ProfessionalService = {
       id: `ps_${Date.now()}`,
-      userId: user.userId || user.id || '',
-      providerName: user.name || 'සේවා වෘත්තිකයා',
-      providerPhotoUrl: user.photoUrl || '',
-      providerPhone: user.phone || '',
-      providerWhatsapp: user.whatsappNumber || user.phone || '',
+      userId: user?.userId || user?.id || '',
+      providerName: user?.name || 'සේවා වෘත්තිකයා',
+      providerPhotoUrl: user?.photoUrl || '',
+      providerPhone: user?.phone || '',
+      providerWhatsapp: user?.whatsappNumber || user?.phone || '',
       altPhone: altPhone.trim(),
       serviceTitle: serviceTitle.trim(),
       deliveryMethod,
-      deliveryMethodDetails: deliveryMethodDetails.trim(),
+      deliveryMethodDetails: resolvedAddressDetails ? `${deliveryMethodDetails.trim()} | ස්ථානය: ${resolvedAddressDetails}` : deliveryMethodDetails.trim(),
       locationName: locationName.trim(),
       lat: mapLat,
       lng: mapLng,
@@ -301,8 +326,8 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
       createdAt: 'දැන්',
       createdAtMs: Date.now(),
       reviews: [],
-      avgRating: 5.0,
-      isVerified: user.status === 'approved' || true,
+      avgRating: 0,
+      isVerified: user?.status === 'approved' || true,
       revealContactConsent,
     };
 
@@ -314,8 +339,10 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
     }, 1800);
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 flex items-center justify-center animate-fadeIn">
       <div className="bg-white dark:bg-[#0c1a12] border border-slate-200 dark:border-[#1a3826] rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
         
         {/* Modal Header */}
@@ -348,6 +375,21 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
 
         {/* Modal Content / Form */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
+          {/* Free Tier Model Welcome Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-800 via-[#005e37] to-teal-800 border border-emerald-400/40 text-white shadow-md flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-black text-xl shrink-0 shadow-xs">
+              🎁
+            </div>
+            <div className="text-xs">
+              <span className="font-extrabold text-amber-300 block">
+                පළමු ලියාපදිංචිය රු. 100 නොමිලේ (Free Tier Model)!
+              </span>
+              <span className="text-emerald-100">
+                කිසිදු මූලික වියදමක් නැත. සේවාව ලියාපදිංචි කර, හොඳ Reviews සහ තරු ලබාගනිමින් ඔබගේ Reputation Level එක වර්ධනය කරගන්න.
+              </span>
+            </div>
+          </div>
+
           {isSubmittedSuccess ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center animate-bounce">
@@ -385,8 +427,8 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                       onChange={(e) => handleCategoryChange(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-[#112318] border border-slate-300 dark:border-[#1e3e2b] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     >
-                      {professionalServiceCategories.map((cat) => (
-                        <option key={cat.category_id} value={cat.category_id}>
+                      {professionalServiceCategories.map((cat, cIdx) => (
+                        <option key={`reg_cat_${cat.category_id}_${cIdx}`} value={cat.category_id}>
                           {cat.category_icon} {cat.category_name}
                         </option>
                       ))}
@@ -414,11 +456,11 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     {currentCategory.category_name} යටතේ උප කාණ්ඩය:
                   </span>
                   <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 bg-slate-50 dark:bg-[#0e2116] border border-slate-200 dark:border-[#173222] rounded-2xl">
-                    {currentCategory.sub_categories.map((sub) => {
+                    {currentCategory.sub_categories.map((sub, sIdx) => {
                       const isSelected = selectedSubCategoryName === sub.name;
                       return (
                         <button
-                          key={sub.name}
+                          key={`reg_sub_${sub.name}_${sIdx}`}
                           type="button"
                           onClick={() => handleSubCategorySelect(sub.name, sub.icon)}
                           className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
@@ -465,9 +507,9 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     { id: 'online', label: 'Online හරහා (Remote / Online)' },
                     { id: 'customer_must_come', label: 'ඔබ පැමිණිය යුතුයි (Client Visit)' },
                     { id: 'other', label: 'වෙනත් ආකාරයකින් (Other)' },
-                  ].map((method) => (
+                  ].map((method, mIdx) => (
                     <label
-                      key={method.id}
+                      key={`deliv_method_${method.id}_${mIdx}`}
                       className={`flex items-center gap-2 p-2.5 rounded-2xl border cursor-pointer transition-all ${
                         deliveryMethod === method.id
                           ? 'bg-emerald-50 dark:bg-[#122e1e] border-emerald-500 text-emerald-800 dark:text-emerald-300 font-bold shadow-sm'
@@ -494,16 +536,16 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-emerald-500 animate-bounce" />
                         <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
-                          සිතියම මත ඔබගේ සේවා ස්ථානය තෝරන්න (Manual Map Pin):
+                          සිතියම මත ඔබගේ සේවා ස්ථානය තෝරන්න (Pin Anywhere):
                         </span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setIsFullMapOpen(true)}
+                        onClick={() => setIsFullMapOpen(!isFullMapOpen)}
                         className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
                       >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span>විශාල සිතියම</span>
+                        {isFullMapOpen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        <span>{isFullMapOpen ? 'කුඩා සිතියම' : 'විශාල සිතියම'}</span>
                       </button>
                     </div>
 
@@ -554,33 +596,28 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
                     </div>
 
                     {/* Interactive Leaflet Map Box */}
-                    <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-slate-300 dark:border-[#1e3e2b] shadow-inner">
+                    <div className={`relative w-full rounded-2xl overflow-hidden border border-slate-300 dark:border-[#1e3e2b] shadow-inner transition-all duration-300 ${
+                      isFullMapOpen ? 'h-96 sm:h-[450px]' : 'h-60 sm:h-64'
+                    }`}>
                       <div ref={mapContainerRef} className="w-full h-full z-0" />
+                    </div>
 
-                      {/* Center Pin Marker */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full pointer-events-none z-[1000] flex flex-col items-center">
-                        <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-[#0c1a12]">
-                          <MapPin className="w-5 h-5 fill-white text-emerald-600" />
-                        </div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-900/60 blur-[1px] -mt-1" />
+                    {/* Resolved Location Info Box */}
+                    <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-[#11291b] border border-emerald-300 dark:border-[#1e452d] flex items-start gap-2.5 shadow-xs">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                        <Compass className="w-4 h-4" />
                       </div>
-
-                      {/* Live Coordinates / Geocoding Status Overlay */}
-                      <div className="absolute bottom-2 left-2 right-2 bg-slate-950/85 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-[11px] font-mono flex items-center justify-between z-[1000] shadow-md border border-white/10">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                          <span className="truncate font-sans font-bold text-emerald-200">
-                            {isGeocoding ? 'ස්ථානය පරික්ෂා කරමින්...' : locationName}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 hidden sm:inline flex-shrink-0">
-                          {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
+                      <div className="text-xs min-w-0 flex-1">
+                        <span className="font-extrabold text-slate-900 dark:text-white block">
+                          තෝරාගත් නිශ්චිත ස්ථානය / ලිපිනය:
                         </span>
+                        <p className="text-emerald-800 dark:text-emerald-300 font-semibold mt-0.5 leading-snug break-words">
+                          {isGeocoding ? 'ස්ථානය පරික්ෂා කරමින්...' : (resolvedAddressDetails || locationName)}
+                        </p>
                       </div>
                     </div>
-                    
                     <p className="text-[11px] text-slate-500 dark:text-[#789d87]">
-                      * සිතියම Drag කර හෝ ක්ලික් කර නිශ්චිත සේවා ස්ථානය Pin කරන්න.
+                      * සිතියම මත ඕනෑම තැනක් ක්ලික් කර හෝ Pin එක ඇදගෙන ගොස් (Drag & Drop) නිශ්චිත ස්ථානය සටහන් කරන්න.
                     </p>
                   </div>
                 )}
@@ -755,31 +792,8 @@ export const RegisterProfessionalServiceModal: React.FC<RegisterProfessionalServ
             </form>
           )}
         </div>
-
-        {/* Fullscreen Map Location Tracker Modal if invoked */}
-        {isFullMapOpen && (
-          <MapLocationTracker
-            isOpen={isFullMapOpen}
-            onClose={() => setIsFullMapOpen(false)}
-            currentLocation={{
-              id: 'custom_pro_loc',
-              nameSi: locationName,
-              nameEn: locationName,
-              nameTa: locationName,
-              lat: mapLat,
-              lng: mapLng,
-            }}
-            availableLocations={initialLocations}
-            onSaveLocation={(loc: LocationOption) => {
-              setMapLat(loc.lat || 7.1712);
-              setMapLng(loc.lng || 79.8978);
-              setLocationName(loc.nameSi || locationName);
-              setIsFullMapOpen(false);
-            }}
-            lang={language}
-          />
-        )}
       </div>
     </div>
   );
 };
+

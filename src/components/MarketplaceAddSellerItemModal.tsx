@@ -32,7 +32,7 @@ interface MarketplaceAddSellerItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddItem: (item: MarketItem) => void;
-  currentUser: User;
+  currentUser?: User | null;
   allTags: TagItem[];
   onAddNewTag?: (tag: TagItem) => void;
 }
@@ -45,8 +45,6 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
   allTags,
   onAddNewTag
 }) => {
-  if (!isOpen) return null;
-
   // Form State
   const [title, setTitle] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -86,11 +84,12 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
   // Contact Privacy & WhatsApp
   const [revealContactConsent, setRevealContactConsent] = useState(false);
   const [showWhatsapp, setShowWhatsapp] = useState(true);
-  const [whatsappNumber, setWhatsappNumber] = useState(currentUser.phone || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(currentUser?.phone || '');
 
   // Tag matching logic as user types title
+  const cleanTitle = (title || '').trim().toLowerCase();
   const matchingTags = allTags.filter((t) =>
-    title.trim() && (t.tagName.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(t.tagName.toLowerCase()))
+    cleanTitle && ((t?.tagName || '').toLowerCase().includes(cleanTitle) || cleanTitle.includes((t?.tagName || '').toLowerCase()))
   );
 
   const toggleSaleType = (type: MarketItemSaleType) => {
@@ -156,13 +155,13 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
       deliveryOption,
       pickupLocation: deliveryOption === 'pickup' ? pickupLocation || undefined : undefined,
       notes: notes.trim() || undefined,
-      userId: currentUser.userId || currentUser.id,
-      userName: currentUser.name,
-      userPhone: currentUser.phone,
+      userId: currentUser?.userId || currentUser?.id || 'guest',
+      userName: currentUser?.name || 'පරිශීලක',
+      userPhone: currentUser?.phone || '',
       showWhatsapp,
       whatsappNumber: showWhatsapp ? whatsappNumber.trim() : undefined,
       revealContactConsent,
-      locationName: pickupLocation?.name || currentUser.nearestTown || 'කඩවත',
+      locationName: pickupLocation?.name || currentUser?.nearestTown || 'කඩවත',
       distanceKm: 0.8,
       lat: pickupLocation?.lat || 6.9984,
       lng: pickupLocation?.lng || 79.9542,
@@ -173,6 +172,8 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
     onAddItem(newItem);
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <>
@@ -251,9 +252,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                         <Sparkles className="w-3 h-3" /> ගැලපෙන Tags (Matching Tags):
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {matchingTags.map((t) => (
+                        {matchingTags.map((t, tIdx) => (
                           <button
-                            key={t.id}
+                            key={`match_tag_${t.id || 't'}_${tIdx}`}
                             type="button"
                             onClick={() => setSelectedTag(t.tagName)}
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -270,9 +271,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                   )}
 
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700/60">
-                    {allTags.slice(0, 15).map((t) => (
+                    {allTags.slice(0, 15).map((t, tIdx) => (
                       <button
-                        key={t.id}
+                        key={`all_tag_${t.id || 't'}_${tIdx}`}
                         type="button"
                         onClick={() => setSelectedTag(t.tagName)}
                         className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
@@ -376,21 +377,31 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
               <label className="block text-xs font-bold text-slate-800 dark:text-zinc-200 mb-2">
                 * ඔබ මෙය විකුණන්නේ : (එකක් හෝ කිහිපයක් තෝරන්න)
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { id: 'wholesale' as MarketItemSaleType, label: 'තොග (Wholesale)' },
-                  { id: 'retail' as MarketItemSaleType, label: 'සිල්ලර (Retail)' },
-                  { id: 'exchange' as MarketItemSaleType, label: 'හුවමාරු (Barter)' }
-                ].map((st) => {
+                  { id: 'wholesale' as MarketItemSaleType, label: '🏭 තොග (Wholesale)' },
+                  { id: 'retail' as MarketItemSaleType, label: '🛍️ සිල්ලර (Retail)' },
+                  { id: 'free_giveaway' as MarketItemSaleType, label: '🎁 නොමිලේ (Free)' },
+                  { id: 'exchange' as MarketItemSaleType, label: '🔄 හුවමාරු (Barter)' }
+                ].map((st, sIdx) => {
                   const isChecked = saleTypes.includes(st.id);
                   return (
                     <button
-                      key={st.id}
+                      key={`sale_type_${st.id}_${sIdx}`}
                       type="button"
-                      onClick={() => toggleSaleType(st.id)}
+                      onClick={() => {
+                        toggleSaleType(st.id);
+                        if (st.id === 'free_giveaway' && !isChecked) {
+                          setPrice(0);
+                        }
+                      }}
                       className={`p-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          ? st.id === 'free_giveaway'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : st.id === 'wholesale'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-700 hover:bg-slate-100'
                       }`}
                     >
@@ -551,9 +562,9 @@ export const MarketplaceAddSellerItemModal: React.FC<MarketplaceAddSellerItemMod
                   { id: 'seller_deliver' as MarketDeliveryOption, label: 'මම ගෙනවිත් දෙන්නම්' },
                   { id: 'free_shipping' as MarketDeliveryOption, label: 'මම නොමිලේ එවන්නම් (Free Delivery)' },
                   { id: 'paid_shipping' as MarketDeliveryOption, label: 'මම එවන්නම් ඩිලිවරි ගාස්තු අයවේ' }
-                ].map((opt) => (
+                ].map((opt, oIdx) => (
                   <button
-                    key={opt.id}
+                    key={`deliv_opt_${opt.id}_${oIdx}`}
                     type="button"
                     onClick={() => setDeliveryOption(opt.id)}
                     className={`p-2.5 rounded-xl text-xs font-bold text-left border flex items-center gap-2 transition-all cursor-pointer ${

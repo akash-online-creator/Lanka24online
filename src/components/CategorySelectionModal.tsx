@@ -1,6 +1,7 @@
 import React from 'react';
 import { Language, Theme, CategoryItem } from '../types';
 import { initialCategories } from '../data/initialData';
+import { getCategoryFee } from '../utils/creditManager';
 import { 
   Zap, 
   Pencil, 
@@ -121,7 +122,12 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
   const backText = language === 'en' ? 'Back' : language === 'ta' ? 'திரும்பி' : 'ආපසු';
 
-  const displayCategoryList = Array.isArray(categories) && categories.length > 0 ? categories.filter(Boolean) : initialCategories;
+  const removedCategoryIds = ['emergency', 'vehicle', 'services', 'group_work'];
+  const displayCategoryList = (
+    Array.isArray(categories) && categories.length > 0
+      ? categories.filter((c) => c && Boolean(c.id) && !removedCategoryIds.includes(c.id))
+      : initialCategories
+  ).filter((c) => c && Boolean(c.id) && !removedCategoryIds.includes(c.id));
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-gradient-to-b from-[#f4faf5] via-[#f8fdf9] to-[#ffffff] dark:from-[#06110a] dark:via-[#08140e] dark:to-[#040b07] text-slate-900 dark:text-slate-100 animate-fadeIn min-h-screen p-4 sm:p-6 flex flex-col justify-start items-center">
@@ -204,7 +210,7 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
             return (
               <div
-                key={cat.id}
+                key={`cat_sel_${cat.id}_${idx}`}
                 onClick={() => onSelectCategory(cat.id, title, cat)}
                 className={`w-full rounded-[1.5rem] p-4 sm:p-4.5 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group active:scale-[0.99] ${
                   isFindForMe
@@ -226,6 +232,9 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
                       <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
                         {title}
                       </h3>
+                      <span className="text-[10px] bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono font-bold">
+                        🪙 රු. {getCategoryFee(cat.id).toFixed(2)}
+                      </span>
                       {isFindForMe && (
                         <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-xs">
                           නව විශේෂාංගය (NEW)

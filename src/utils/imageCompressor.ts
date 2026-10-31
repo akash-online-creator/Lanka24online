@@ -54,11 +54,15 @@ export async function compressImageFile(
           canvas.width = width;
           canvas.height = height;
 
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { alpha: false });
           if (!ctx) {
             resolve(dataUrl); // fallback
             return;
           }
+
+          // Use high quality image smoothing to prevent blurry downscaling
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
 
           // Fill white background in case of transparent PNGs
           ctx.fillStyle = '#FFFFFF';
@@ -71,8 +75,8 @@ export async function compressImageFile(
 
           // If still larger than maxSizeBytes, step down quality slightly
           let attempts = 0;
-          while (compressedDataUrl.length * 0.75 > maxSizeBytes && currentQuality > 0.35 && attempts < 4) {
-            currentQuality -= 0.12;
+          while (compressedDataUrl.length * 0.75 > maxSizeBytes && currentQuality > 0.5 && attempts < 3) {
+            currentQuality -= 0.1;
             compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
             attempts++;
           }
@@ -124,8 +128,11 @@ export async function compressImageBase64(
         canvas.width = width;
         canvas.height = height;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) return resolve(base64Str);
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, width, height);

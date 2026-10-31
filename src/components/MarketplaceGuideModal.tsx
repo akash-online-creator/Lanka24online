@@ -143,12 +143,12 @@ export const MarketplaceGuideModal: React.FC<MarketplaceGuideModalProps> = ({
                 icon: Building2,
                 activeColor: 'bg-amber-600 text-white shadow-amber-600/30'
               }
-            ].map((tab) => {
+            ].map((tab, tIdx) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
-                  key={tab.id}
+                  key={`guide_tab_${tab.id}_${tIdx}`}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
                   className={`p-2.5 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer border ${

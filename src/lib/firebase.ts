@@ -1,65 +1,91 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { 
-  getFirestore, 
+import {
   initializeFirestore,
-  memoryLocalCache,
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  query, 
-  orderBy, 
-  limit,
+  getFirestore,
+  doc as rawDoc,
+  collection as rawCollection,
+  query,
   where,
+  orderBy,
+  limit,
   startAfter,
-  serverTimestamp,
-  doc, 
-  getDoc,
-  updateDoc,
-  deleteDoc, 
-  getDocs,
-  getDocFromServer,
+  onSnapshot,
+  addDoc,
   setDoc,
-  QueryDocumentSnapshot,
-  DocumentData
+  updateDoc,
+  deleteDoc,
+  deleteField,
+  getDoc,
+  getDocs,
+  arrayUnion,
+  arrayRemove,
+  serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
-import { HelpPost, PostReply, ChatMessage, MarketItem, MarketShop, ServiceReview, User } from '../types';
-import { initialHelpPosts } from '../data/initialData';
+import { getStorage, ref as storageRef, deleteObject } from 'firebase/storage';
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+import firebaseConfigJson from '../../firebase-applet-config.json';
+import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem } from '../types';
 
+export type { RedAlertItem, RedAlertComment, SosLiveSession };
+
+// ==============================================================
+// 🔥 FIREBASE INITIALIZATION & CONSTANTS
+// ==============================================================
+
+export const USERS_COLLECTION = 'users';
+export const POSTS_COLLECTION = 'posts';
+export const RED_ALERTS_COLLECTION = 'red_alerts';
+export const ISSUES_COLLECTION = 'issues';
+export const SYSTEM_SETTINGS_COLLECTION = 'system_metadata';
+export const DELETED_RECORDS_DOC = 'deleted_records';
+
+const env: any = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env : {};
+
+const firebaseConfig = {
+  apiKey: env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
+  appId: env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
+};
+
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+export const db = firebaseConfigJson.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
+  : getFirestore(app);
+export const fallbackDb = getFirestore(app);
 export const auth = getAuth(app);
 
-// Authenticate anonymously for secure access
-signInAnonymously(auth).catch((err) => {
-  console.warn('Firebase anonymous auth notice:', err?.message || err);
-});
-
-const databaseId = firebaseConfig.firestoreDatabaseId;
-
-let firestoreInstance;
-try {
-  firestoreInstance = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
-    localCache: memoryLocalCache(),
-  }, databaseId);
-} catch {
-  firestoreInstance = getFirestore(app, databaseId);
+// Direct Top-Level Firestore Collection & Document Access (No private subcollection trap)
+export function collection(database: any, path: string, ...pathSegments: string[]): any {
+  return rawCollection(database, path, ...pathSegments);
 }
 
-export const db = firestoreInstance;
+export function doc(database: any, path: string, ...pathSegments: string[]): any {
+  return rawDoc(database, path, ...pathSegments);
+}
+export const storage = getStorage(app);
 
-// Graceful background connection check
-if (typeof window !== 'undefined') {
-  setTimeout(async () => {
-    try {
-      const testDoc = doc(db, 'test', 'connection');
-      await getDocFromServer(testDoc).catch(() => {});
-    } catch {
-      // Operates in offline/cache mode gracefully
+// Test Firestore backend connection
+async function testConnection() {
+  try {
+    if (auth && !auth.currentUser) {
+      await signInAnonymously(auth).catch(() => {});
     }
-  }, 1500);
+    const { getDocFromServer } = await import('firebase/firestore');
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firestore offline mode active. Local cache will be used.');
+    }
+  }
+}
+if (typeof window !== 'undefined') {
+  testConnection();
 }
 
 export enum OperationType {
@@ -69,647 +95,1873 @@ export enum OperationType {
   LIST = 'list',
   GET = 'get',
   WRITE = 'write',
+  READ = 'read',
 }
 
 export interface FirestoreErrorInfo {
   error: string;
-  operationType: OperationType;
+  operationType: OperationType | string;
   path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
-    },
-    operationType,
-    path
-  };
-  console.warn('Firestore Handled Info:', JSON.stringify(errInfo));
-  return errInfo;
+export function handleFirestoreError(error: any, operation: OperationType | string, path: string | null): never {
+  console.warn(`Firestore Warning [${operation}] on ${path}:`, error);
+  throw new Error(error instanceof Error ? error.message : String(error));
 }
 
-// Map Firestore doc to HelpPost
-function mapDocToHelpPost(docSnap: DocumentData | QueryDocumentSnapshot<DocumentData>): HelpPost {
-  const data = docSnap.data ? docSnap.data() : docSnap;
-  const id = docSnap.id || data.id || `post_${Date.now()}`;
-  return {
-    id,
-    postCode: data.postCode || `#HELP-${id.substring(0, 4)}`,
-    userName: data.userName || 'පරිශීලක',
-    userPhone: data.userPhone || '',
-    whatHappened: data.whatHappened || '',
-    whatIsNeeded: data.whatIsNeeded || '',
-    conditions: data.conditions || '',
-    transport: data.transport || 'නැත',
-    payment: data.payment || 'නොමිලේ',
-    helpersNeeded: data.helpersNeeded || 1,
-    helpersAccepted: data.helpersAccepted || 0,
-    feeAgreed: data.feeAgreed || false,
-    locationName: data.locationName || 'කඩවත',
-    distanceKm: data.distanceKm || 2,
-    lat: data.lat || 6.9271,
-    lng: data.lng || 79.8612,
-    createdAt: data.createdAt || 'දැන්',
-    createdAtMs: data.createdAtMs || (data.createdAtServer?.seconds ? data.createdAtServer.seconds * 1000 : undefined),
-    repliesCount: data.repliesCount || (data.replies ? data.replies.length : 0),
-    helpersCount: data.helpersCount || 1,
-    replies: (data.replies as PostReply[]) || [],
-    verifiedOtp: data.verifiedOtp ?? true,
-    category: data.category || 'quick_services',
-    specialNotice: data.specialNotice || '',
-    tagName: data.tagName || '',
-    tagCategory: data.tagCategory || '',
-    tagId: data.tagId || '',
-    userId: data.userId || '',
-    isConfirmed: data.isConfirmed ?? false,
-    confirmedBy: data.confirmedBy || '',
-    confirmedAt: data.confirmedAt || '',
-    confirmedHelperName: data.confirmedHelperName || '',
-    confirmedHelperPhone: data.confirmedHelperPhone || '',
-    isCompleted: data.isCompleted ?? false,
-    completedAt: data.completedAt || '',
-    completedBy: data.completedBy || '',
-    completedHelperName: data.completedHelperName || '',
-    completedHelperPhone: data.completedHelperPhone || '',
-    requesterResolved: data.requesterResolved ?? false,
-    requesterResolvedAt: data.requesterResolvedAt || '',
-    serviceBill: data.serviceBill || undefined,
-    isDeleted: data.isDeleted ?? false,
-    deletedAt: data.deletedAt || '',
-    deletedBy: data.deletedBy || '',
-    status: data.status || (data.isDeleted ? 'deleted' : data.isCompleted ? 'completed' : data.isConfirmed ? 'confirmed' : 'active'),
-    findForMeType: data.findForMeType,
-    itemLostStolenOrSearched: data.itemLostStolenOrSearched,
-    incidentLocation: data.incidentLocation,
-    incidentDate: data.incidentDate,
-    incidentTime: data.incidentTime,
-    contactPhone: data.contactPhone,
-    contactWhatsapp: data.contactWhatsapp,
-    contactAddress: data.contactAddress,
-    hasReward: data.hasReward,
-    rewardDetails: data.rewardDetails,
-    identifyingInfo: data.identifyingInfo,
-    targetPrice: data.targetPrice,
-    quantityNeeded: data.quantityNeeded,
-    hasDeadline: data.hasDeadline,
-    deadlineDate: data.deadlineDate,
-    deadlineTime: data.deadlineTime,
-    deliveryOption: data.deliveryOption,
-    otherDeliveryDetails: data.otherDeliveryDetails,
-    otherDetails: data.otherDetails,
-    fromMeToYouType: data.fromMeToYouType,
-    donationItem: data.donationItem,
-    donationRecipient: data.donationRecipient,
-    donationDeliveryMethod: data.donationDeliveryMethod,
-    donationDateType: data.donationDateType,
-    donationDate: data.donationDate,
-    donationQuantity: data.donationQuantity,
-    saveLocationConsent: data.saveLocationConsent,
-    revealContactConsent: data.revealContactConsent,
-    confirmedHelperId: data.confirmedHelperId,
-    authorizedUserIds: data.authorizedUserIds,
-    exchangeHaveItem: data.exchangeHaveItem,
-    exchangeHaveQuantity: data.exchangeHaveQuantity,
-    exchangeWantItem: data.exchangeWantItem,
-    exchangeWantQuantity: data.exchangeWantQuantity,
-    exchangeMethod: data.exchangeMethod,
-  };
-}
-
-const HELP_POSTS_COLLECTION = 'help_posts';
-
-// Standard Real-time Subscription with limit for high-speed performance
-export function subscribeToHelpPosts(
-  onNext: (posts: HelpPost[]) => void,
-  onError?: (err: Error) => void,
-  fetchLimit: number = 60
-) {
-  const postsRef = collection(db, HELP_POSTS_COLLECTION);
-  const q = query(postsRef, orderBy('createdAtMs', 'desc'), limit(fetchLimit));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      if (snapshot.empty) {
-        onNext(initialHelpPosts);
-        seedDemoHelpPostsToFirestore().catch(() => {});
-        return;
-      }
-      const posts = snapshot.docs.map(mapDocToHelpPost);
-      onNext(posts && posts.length > 0 ? posts : initialHelpPosts);
-    },
-    (error) => {
-      console.warn('Firestore subscription notice:', error?.message || error);
-      handleFirestoreError(error, OperationType.LIST, HELP_POSTS_COLLECTION);
-      if (onError) onError(error);
-      onNext(initialHelpPosts);
+export function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  // Preserve Firestore FieldValue and serverTimestamp
+  if (obj._methodName || (obj.constructor && obj.constructor.name === 'FieldValue')) return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  const sanitized: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      sanitized[key] = sanitizeForFirestore(val);
     }
-  );
+  }
+  return sanitized;
 }
 
-// Paginated fetching for Infinite Scroll (loads 20 more posts on demand)
-export async function fetchMoreHelpPostsFromFirestore(
-  lastCreatedAtMs: number,
-  limitCount: number = 20
-): Promise<{ posts: HelpPost[]; hasMore: boolean }> {
+/**
+ * Delete media files from Firebase Storage by URL
+ */
+export async function deleteStorageFilesByUrls(urls: string[]): Promise<void> {
+  if (!Array.isArray(urls) || urls.length === 0) return;
+
+  const deletePromises = urls.map(async (url) => {
+    if (!url || typeof url !== 'string' || !url.includes('firebasestorage.googleapis.com')) return;
+    try {
+      const fileStorageRef = storageRef(storage, url);
+      await deleteObject(fileStorageRef);
+    } catch (err: any) {
+      console.warn(`[Storage] Deletion skipped/failed for ${url}:`, err?.message || err);
+    }
+  });
+
+  await Promise.all(deletePromises);
+}
+
+// ==============================================================
+// 👤 USERS CRUD & SYNC
+// ==============================================================
+
+export async function getUserFromFirestore(userIdOrInput: string) {
   try {
-    const postsRef = collection(db, HELP_POSTS_COLLECTION);
-    const q = query(
-      postsRef,
-      orderBy('createdAtMs', 'desc'),
-      startAfter(lastCreatedAtMs),
-      limit(limitCount)
+    if (!userIdOrInput) return null;
+    const cleanInput = String(userIdOrInput).trim();
+    const docRef = doc(db, USERS_COLLECTION, cleanInput);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
+    const allSnap = await getDocs(collection(db, USERS_COLLECTION));
+    for (const d of allSnap.docs) {
+      const data: any = d.data();
+      const dNic = String(data.nic ? data.nic : data.nicNumber ? data.nicNumber : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dUserId = String(data.userId ? data.userId : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dPhone = String(data.whatsappPhone ? data.whatsappPhone : data.phone ? data.phone : '').trim();
+      if (dNic === upperInput) return { id: d.id, ...data };
+      if (dUserId === upperInput) return { id: d.id, ...data };
+      if (cleanInput.length >= 9 && dPhone === cleanInput) return { id: d.id, ...data };
+    }
+    return null;
+  } catch (err) {
+    console.warn('getUserFromFirestore error:', err);
+    return null;
+  }
+}
+
+const ADMIN_TELEGRAM_BOT_TOKEN = '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
+const ADMIN_TELEGRAM_CHAT_ID = '1349273525';
+const notifiedTelegramRegKeys = new Set();
+
+export async function notifyAdminViaTelegramOnRegistration(params: {
+  registrationType: string;
+  identifierOrName: string;
+  dateTime?: string;
+  dedupeKey?: string;
+}) {
+  try {
+    const key = params.dedupeKey ? String(params.dedupeKey) : params.registrationType + '_' + params.identifierOrName;
+    if (notifiedTelegramRegKeys.has(key)) return;
+    notifiedTelegramRegKeys.add(key);
+
+    const now = new Date();
+    const formattedDateTime = params.dateTime
+      ? params.dateTime
+      : now.toLocaleDateString('si-LK') + ' ' + now.toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const textMessage =
+      '🔔 නව ලියාපදිංචි වීමක් (සහය සේවා)\n\n' +
+      '1. ලියාපදිංචි වූ ආකාරය: ' + params.registrationType + '\n' +
+      '2. හැඳුනුම්පත් අංකය / ව්‍යාපාර හෝ වෙළෙඳසැල් නම: ' + params.identifierOrName + '\n' +
+      '3. දිනය සහ වේලාව: ' + formattedDateTime;
+
+    const tgUrl = 'https://api.telegram.org/bot' + ADMIN_TELEGRAM_BOT_TOKEN + '/sendMessage';
+    await fetch(tgUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: ADMIN_TELEGRAM_CHAT_ID,
+        text: textMessage
+      })
+    });
+  } catch (err) {
+    console.warn('Telegram admin notification note:', err);
+  }
+}
+
+export async function saveUserToFirestore(user: any) {
+  try {
+    const docId = user && user.id ? String(user.id) : user && user.userId ? String(user.userId) : 'usr_' + Date.now();
+    const payload: any = { ...user, id: docId };
+    if (
+      payload.idCardPhotoUrl &&
+      payload.nicFrontPhotoUrl &&
+      payload.idCardPhotoUrl === payload.nicFrontPhotoUrl &&
+      String(payload.idCardPhotoUrl).length >= 80000
+    ) {
+      payload.idCardPhotoUrl = '';
+    }
+    const docRef = doc(db, USERS_COLLECTION, docId);
+    await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+    if (user && (user.status === 'pending' ? true : !user.isApproved)) {
+      const nicVal = String(user.nicNumber ? user.nicNumber : (user.nic ? user.nic : (user.userId ? user.userId : docId))).trim();
+      const nameVal = user.name ? ' (' + String(user.name).trim() + ')' : '';
+      notifyAdminViaTelegramOnRegistration({
+        registrationType: 'පුද්ගලික',
+        identifierOrName: nicVal + nameVal,
+        dedupeKey: 'usr_' + nicVal
+      });
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, USERS_COLLECTION);
+  }
+}
+
+export async function updateUserInFirestore(userId: string, updateData: any): Promise<void> {
+  try {
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(docRef, sanitizeForFirestore({ ...updateData, updatedAtServer: serverTimestamp() }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${USERS_COLLECTION}/${userId}`);
+  }
+}
+
+export async function syncUserProfileToFirestore(userOrId: any, maybeUser?: any): Promise<void> {
+  try {
+    const user = typeof userOrId === 'string' ? { ...(maybeUser || {}), id: userOrId } : userOrId;
+    const userId = user?.id || user?.userId || (typeof userOrId === 'string' ? userOrId : '');
+    if (!userId) return;
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(docRef, sanitizeForFirestore({ ...user, updatedAtServer: serverTimestamp() }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, USERS_COLLECTION);
+  }
+}
+
+export async function syncUserPasswordInFirestore(userIdOrUser: any, newPasswordHash: string): Promise<void> {
+  try {
+    const userId = typeof userIdOrUser === 'string' ? userIdOrUser : (userIdOrUser?.id || userIdOrUser?.userId || '');
+    if (!userId) return;
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(docRef, sanitizeForFirestore({ password: newPasswordHash, updatedAtServer: serverTimestamp() }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${USERS_COLLECTION}/${userIdOrUser}`);
+  }
+}
+
+export async function syncUserWhatsappInFirestore(userId: string, whatsapp: string): Promise<void> {
+  try {
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(docRef, sanitizeForFirestore({ whatsappPhone: whatsapp, updatedAtServer: serverTimestamp() }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${USERS_COLLECTION}/${userId}`);
+  }
+}
+
+export async function deleteUserAccount(userOrId: any, _permanent = true): Promise<void> {
+  try {
+    const userId = typeof userOrId === 'string'
+      ? userOrId.trim()
+      : String(userOrId?.id || userOrId?.userId || userOrId?.nicNumber || userOrId?.nic || '').trim();
+    if (!userId) return;
+
+    await deleteDoc(doc(db, USERS_COLLECTION, userId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, USERS_COLLECTION, userId)).catch(() => {});
+    }
+
+    // Record in deleted_records so deleted user does not resurrect from local caches
+    const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    await setDoc(
+      deletedRecordsRef,
+      {
+        deletedUserIds: arrayUnion(userId),
+        updatedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch(() => {});
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, USERS_COLLECTION);
+  }
+}
+
+export async function getAllMatchingUsersFromFirestore(userIdOrInput: string): Promise<any[]> {
+  try {
+    if (!userIdOrInput) return [];
+    const cleanInput = String(userIdOrInput).trim();
+    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
+    const digitsInput = cleanInput.replace(/[^0-9]/g, '');
+    const allSnap = await getDocs(collection(db, USERS_COLLECTION));
+    const matches: any[] = [];
+    for (const d of allSnap.docs) {
+      const data: any = d.data();
+      const dId = String(d.id || '').trim().toUpperCase();
+      const dNic = String(data.nic ? data.nic : data.nicNumber ? data.nicNumber : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dUserId = String(data.userId ? data.userId : '').trim().toUpperCase().replace(/\s+/g, '');
+      const dPhone = String(data.whatsappPhone ? data.whatsappPhone : data.phone ? data.phone : '').trim();
+      const dDigits = (dNic || dUserId || dId).replace(/[^0-9]/g, '');
+      if (
+        dId === upperInput ||
+        dNic === upperInput ||
+        dUserId === upperInput ||
+        (cleanInput.length >= 9 && dPhone === cleanInput) ||
+        (digitsInput.length >= 9 && dDigits === digitsInput)
+      ) {
+        matches.push({ id: d.id, ...data });
+      }
+    }
+    return matches;
+  } catch (err) {
+    console.warn('getAllMatchingUsersFromFirestore error:', err);
+    return [];
+  }
+}
+
+const BUILT_IN_DUMMY_ID_LIST = [
+  "usr_citizen_1",
+  "post_6843", "post_4912", "post_find_1", "post_find_2", "post_from_1", "post_from_2", "post_from_3", "post_1", "post_2", "post_3",
+  "grp_kelaniya_care", "grp_dalada_sewa", "grp_gam_mithuro", "grp_sample_1", "grp_sample_2", "grp_sample_3",
+  "mkt_seller_1", "mkt_seller_2", "mkt_seller_3", "mkt_seller_4", "mkt_seller_5", "mkt_seller_6", "mkt_seller_7", "mkt_seller_8",
+  "mkt_seller_free_1", "mkt_seller_free_2", "mkt_buyer_1", "mkt_buyer_2",
+  "item_1", "item_2", "item_3", "item_4", "item_5", "item_6", "mkt_1", "mkt_2", "mkt_3", "mkt_4", "mkt_5", "mkt_6",
+  "mkt_shop_1", "mkt_shop_2", "mkt_shop_3", "mkt_shop_4", "mkt_biz_1", "mkt_biz_2", "mkt_biz_3", "mkt_biz_4",
+  "shop_1", "shop_2", "shop_3", "shop_4",
+  "ps_1", "ps_2", "ps_3", "ps_4", "pro_1", "pro_2", "pro_3", "pro_4",
+  "bld_1", "bld_2", "bld_3", "bld_4", "bld_5", "rel_1", "rel_2", "rel_3", "rel_4", "rel_5",
+  "donor_1", "donor_2", "donor_3", "donor_4", "donor_5",
+  "center_1", "center_2", "center_3", "deliv_1", "deliv_2", "deliv_3", "deliv_4",
+  "swap_001", "swap_002", "swap_003", "swap_004", "swap_005"
+];
+
+export function isBuiltInDummyRecord(record: any): boolean {
+  if (!record) return false;
+  const id = String(record.id ? record.id : "").trim();
+  if (BUILT_IN_DUMMY_ID_LIST.includes(id)) return true;
+  const regCode = String(record.registrationCode ? record.registrationCode : "").trim();
+  if (regCode === "712845") return true;
+  if (regCode === "593812") return true;
+  if (regCode === "384910") return true;
+  return false;
+}
+
+export function filterAndPurgeDummySnapDocs(snap: any): any[] {
+  const valid: any[] = [];
+  if (!snap) return valid;
+  if (!snap.docs) return valid;
+  for (const d of snap.docs) {
+    const item = { id: d.id, ...d.data() };
+    if (isBuiltInDummyRecord(item)) {
+      try {
+        deleteDoc(d.ref).catch(() => {});
+      } catch (e) {}
+    } else {
+      valid.push(item);
+    }
+  }
+  return valid;
+}
+
+export function subscribeToUsers(callback: (users: any[]) => void): () => void {
+  const colRef = collection(db, USERS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const users = filterAndPurgeDummySnapDocs(snap);
+    callback(users);
+  }, (err) => {
+    console.warn("subscribeToUsers error:", err);
+  });
+}
+
+// ==============================================================
+// 🆘 HELP POSTS OPERATIONS
+// ==============================================================
+
+export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => void {
+  let primaryPosts: any[] = [];
+  let legacyPosts: any[] = [];
+  let fallbackPosts: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
+      if (p && p.id) map.set(String(p.id), p);
+    });
+    const sorted = Array.from(map.values()).sort((a: any, b: any) => {
+      const tA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const tB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return tB - tA;
+    });
+    callback(sorted);
+  };
+  const unsub1 = onSnapshot(collection(db, POSTS_COLLECTION), (snap) => {
+    primaryPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, (err) => {
+    console.warn("subscribeToHelpPosts primary notice:", err);
+  });
+  const unsub2 = onSnapshot(collection(db, 'helpPosts'), (snap) => {
+    legacyPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {});
+  const unsub3 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, POSTS_COLLECTION), (snap) => {
+    fallbackPosts = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+    unsub3();
+  };
+}
+
+export interface PaginatedPostsResult {
+  posts: any[];
+  lastDoc: any;
+  hasMore: boolean;
+}
+
+export async function fetchHelpPostsPaginated(
+  lastDoc: any = null,
+  pageSize: number = 4
+) {
+  try {
+    const colRef = collection(db, POSTS_COLLECTION);
+    let q = query(
+      colRef,
+      orderBy("createdAt", "desc"),
+      limit(pageSize)
     );
 
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      return { posts: [], hasMore: false };
+    if (lastDoc) {
+      q = query(
+        colRef,
+        orderBy("createdAt", "desc"),
+        startAfter(lastDoc),
+        limit(pageSize)
+      );
     }
 
-    const posts = snapshot.docs.map(mapDocToHelpPost);
+    const snap = await getDocs(q);
+    const posts = filterAndPurgeDummySnapDocs(snap);
+    const newLastDoc = snap.docs.length === 0 ? null : snap.docs[snap.docs.length - 1];
+    const hasMore = snap.docs.length === pageSize;
+
     return {
       posts,
-      hasMore: snapshot.docs.length >= limitCount,
+      lastDoc: newLastDoc,
+      hasMore,
     };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, HELP_POSTS_COLLECTION);
-    return { posts: [], hasMore: false };
+  } catch (err) {
+    console.warn("fetchHelpPostsPaginated error:", err);
+    return { posts: [], lastDoc: null, hasMore: false };
   }
 }
 
-export async function seedDemoHelpPostsToFirestore() {
-  const postsRef = collection(db, HELP_POSTS_COLLECTION);
-  for (const post of initialHelpPosts) {
-    try {
-      await addDoc(postsRef, {
-        ...post,
-        createdAtMs: Date.now() - Math.floor(Math.random() * 10000000),
-        createdAtServer: serverTimestamp(),
-      });
-    } catch (e) {
-      console.warn('Error seeding demo post:', e);
-    }
-  }
-}
-
-export async function addHelpPostToFirestore(
-  newPostData: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'>
-) {
+export async function addHelpPostToFirestore(postData: any) {
+  const postId = postData.id ? String(postData.id) : 'post_' + Date.now();
+  const uid = auth && auth.currentUser && auth.currentUser.uid ? auth.currentUser.uid : (postData.userId ? postData.userId : (postData.authorId ? postData.authorId : 'usr_guest'));
+  const enriched = sanitizeForFirestore({
+    ...postData,
+    id: postId,
+    authorId: postData.authorId ? postData.authorId : uid,
+    userId: postData.userId ? postData.userId : uid,
+    createdAtServer: serverTimestamp()
+  });
   try {
-    const postsRef = collection(db, HELP_POSTS_COLLECTION);
-    const postCode = `#HELP-${Math.floor(1000 + Math.random() * 9000)}`;
-    const docRef = await addDoc(postsRef, {
-      ...newPostData,
-      postCode,
-      createdAt: 'මීට සුළු මොහොතකට පෙර',
-      repliesCount: 0,
-      helpersCount: 1,
-      replies: [],
-      createdAtMs: Date.now(),
-      createdAtServer: serverTimestamp(),
-    });
-    return docRef.id;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, HELP_POSTS_COLLECTION);
-    throw error;
-  }
-}
-
-export async function addReplyToFirestore(
-  postId: string,
-  reply: PostReply,
-  existingReplies: PostReply[]
-) {
-  try {
-    const postRef = doc(db, HELP_POSTS_COLLECTION, postId);
-    const updatedReplies = [reply, ...existingReplies];
-    await updateDoc(postRef, {
-      replies: updatedReplies,
-      repliesCount: updatedReplies.length,
-      helpersCount: updatedReplies.length + 1,
-    });
-
-    // Write to chat_messages subcollection
-    try {
-      const chatRef = collection(db, HELP_POSTS_COLLECTION, postId, 'chat_messages');
-      await addDoc(chatRef, {
-        senderName: reply.responderName || 'පරිශීලක',
-        senderRole: 'helper',
-        text: reply.message || '',
-        timestamp: reply.createdAt || 'දැන්',
-        senderPhone: reply.responderPhone || '',
-        createdAtMs: Date.now(),
-        createdAtServer: serverTimestamp(),
-      });
-    } catch (chatErr) {
-      console.warn('Chat mirror notice:', chatErr);
+    await setDoc(doc(db, POSTS_COLLECTION, postId), enriched, { merge: true });
+    setDoc(doc(db, 'helpPosts', postId), enriched, { merge: true }).catch(() => {});
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true }).catch(() => {});
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${HELP_POSTS_COLLECTION}/${postId}`);
+    return postId;
+  } catch (err) {
+    try {
+      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), enriched, { merge: true });
+    } catch (_) {}
+    return postId;
   }
 }
 
-// Real-time Chat Subscription for a specific Help Post (capped at 50 recent messages)
-export function subscribeToChatMessages(
-  postId: string,
-  onNext: (messages: ChatMessage[]) => void
-) {
-  const chatRef = collection(db, HELP_POSTS_COLLECTION, postId, 'chat_messages');
-  const q = query(chatRef, orderBy('createdAtMs', 'asc'), limit(50));
+export async function updateHelpPostInFirestore(postId: string, updateData: any) {
+  const sanitized = sanitizeForFirestore(updateData);
+  try {
+    await setDoc(doc(db, POSTS_COLLECTION, postId), sanitized, { merge: true });
+    setDoc(doc(db, 'helpPosts', postId), sanitized, { merge: true }).catch(() => {});
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true }).catch(() => {});
+    }
+  } catch (err) {
+    try {
+      await setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), sanitized, { merge: true });
+    } catch (_) {}
+  }
+}
 
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const msgs: ChatMessage[] = snapshot.docs.map((docSnap) => {
-        const data = docSnap.data();
-        let ms = data.createdAtMs;
-        if (!ms && data.createdAtServer && typeof data.createdAtServer.toMillis === 'function') {
-          ms = data.createdAtServer.toMillis();
+export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: string[]): Promise<void> {
+  if (!postId) return;
+  try {
+    const docRef = doc(db, POSTS_COLLECTION, postId);
+
+    // 1. Storage media cleanup if any
+    if (imageUrls && imageUrls.length > 0) {
+      await deleteStorageFilesByUrls(imageUrls);
+    } else {
+      try {
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const postData = snap.data();
+          const extractedUrls: string[] = [];
+          if (Array.isArray(postData.images)) extractedUrls.push(...postData.images);
+          if (Array.isArray(postData.photos)) extractedUrls.push(...postData.photos);
+          if (typeof postData.imageUrl === 'string') extractedUrls.push(postData.imageUrl);
+          if (typeof postData.photoUrl === 'string') extractedUrls.push(postData.photoUrl);
+          if (extractedUrls.length > 0) {
+            await deleteStorageFilesByUrls(extractedUrls);
+          }
         }
-        return {
-          id: docSnap.id,
-          senderName: data.senderName || 'පරිශීලක',
-          senderRole: data.senderRole || 'helper',
-          text: data.text || '',
-          timestamp: data.timestamp || 'දැන්',
-          createdAtMs: ms || 0,
-          senderPhone: data.senderPhone || '',
-        };
-      });
-
-      msgs.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
-      onNext(msgs);
-    },
-    (error) => {
-      handleFirestoreError(error, OperationType.LIST, `${HELP_POSTS_COLLECTION}/${postId}/chat_messages`);
+      } catch (e) {}
     }
-  );
+
+    // 2. Primary & legacy document deletion across databases
+    await deleteDoc(docRef);
+    deleteDoc(doc(db, 'helpPosts', postId)).catch(() => {});
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, POSTS_COLLECTION, postId)).catch(() => {});
+      deleteDoc(doc(fallbackDb, 'helpPosts', postId)).catch(() => {});
+    }
+
+    // 3. Update deleted records map
+    const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    await setDoc(
+      deletedRecordsRef,
+      {
+        deletedPostIds: arrayUnion(postId),
+        updatedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn(`deleteHelpPostFromFirestore notice:`, err);
+  }
 }
 
-// Send real message to Firestore
-export async function sendChatMessageToFirestore(
-  postId: string,
-  chatMsg: Omit<ChatMessage, 'id'>
-) {
+export async function cleanupQuickServicePostAndMessages(postId: string): Promise<void> {
+  if (!postId) return;
   try {
-    const chatRef = collection(db, HELP_POSTS_COLLECTION, postId, 'chat_messages');
-    await addDoc(chatRef, {
-      ...chatMsg,
-      createdAtMs: Date.now(),
-      createdAtServer: serverTimestamp(),
-    });
-
+    // 1. Delete all messages from the messages subcollection in Firestore
     try {
-      const postRef = doc(db, HELP_POSTS_COLLECTION, postId);
+      const msgsColRef = collection(db, POSTS_COLLECTION, postId, 'messages');
+      const snap = await getDocs(msgsColRef);
+      if (snap && snap.docs && snap.docs.length > 0) {
+        const batch = writeBatch(db);
+        snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+    } catch (msgErr) {
+      console.warn('cleanupQuickServicePostAndMessages msgs cleanup:', msgErr);
+    }
+
+    if (fallbackDb !== db) {
+      try {
+        const fColRef = collection(fallbackDb, POSTS_COLLECTION, postId, 'messages');
+        const fSnap = await getDocs(fColRef);
+        if (fSnap && fSnap.docs && fSnap.docs.length > 0) {
+          const fBatch = writeBatch(fallbackDb);
+          fSnap.docs.forEach((docSnap) => fBatch.delete(docSnap.ref));
+          await fBatch.commit();
+        }
+      } catch (_) {}
+    }
+
+    // 2. Delete the post from Firestore (and register in deleted_records blacklist)
+    await deleteHelpPostFromFirestore(postId);
+  } catch (err) {
+    console.warn('cleanupQuickServicePostAndMessages notice:', err);
+  }
+}
+
+export async function addReplyToFirestore(postId: string, replyData: any): Promise<void> {
+  try {
+    const colRef = collection(db, POSTS_COLLECTION, postId, 'replies');
+    await addDoc(colRef, sanitizeForFirestore({ ...replyData, createdAtServer: serverTimestamp() }));
+  } catch (err) {
+    console.warn('addReplyToFirestore error:', err);
+  }
+}
+
+export async function sendChatMessageToFirestore(postId: string, messageData: any): Promise<void> {
+  try {
+    if (!postId) return;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const fullMsg = {
+      ...messageData,
+      createdAt: messageData.createdAt || nowIso,
+      createdAtMs: messageData.createdAtMs || nowMs,
+      createdAtServer: serverTimestamp(),
+    };
+    const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
+    await addDoc(colRef, sanitizeForFirestore(fullMsg));
+
+    // 🚀 CRITICAL: Update the parent post document so that post.replies and activity timestamps are updated!
+    // This allows MessageInboxModal, MessageInboxBubble, and Realtime Listeners to instantly notify the post owner!
+    try {
+      const postDocRef = doc(db, POSTS_COLLECTION, postId);
+      const replyEntry = {
+        id: `rep_${nowMs}_${Math.random().toString(36).substring(2, 7)}`,
+        responderName: messageData.senderName || 'පරිශීලක',
+        responderPhone: messageData.senderPhone || '',
+        message: messageData.text || '',
+        createdAt: nowIso,
+        createdAtMs: nowMs,
+      };
+
+      const isDirect = String(postId).startsWith('direct_user_chat_');
+      const directMeta = isDirect ? {
+        id: postId,
+        postCode: 'USER-CHAT',
+        isDirectChat: true,
+        userId: messageData.recipientId || 'usr_direct',
+        userName: messageData.recipientName || 'පරිශීලක',
+        userPhone: messageData.recipientPhone || '',
+        whatHappened: '@' + (messageData.senderName || 'පරිශීලක') + ' සමඟ සෘජු චැට් සංවාදය',
+        whatIsNeeded: 'Direct Chat',
+        locationName: 'Online Chat',
+        status: 'confirmed',
+        isConfirmed: true,
+      } : {};
+      await setDoc(postDocRef, sanitizeForFirestore(Object.assign({}, directMeta, {
+        lastMessage: (messageData.text ? messageData.text : ''),
+        lastMessageSenderName: (messageData.senderName ? messageData.senderName : ''),
+        lastMessageSenderPhone: (messageData.senderPhone ? messageData.senderPhone : ''),
+        lastMessageTime: nowIso,
+        lastMessageTimeMs: nowMs,
+        replies: arrayUnion(replyEntry),
+        updatedAtServer: serverTimestamp(),
+      })), { merge: true });
+    } catch (parentErr) {
+      console.warn('sendChatMessageToFirestore parent post update notice:', parentErr);
+    }
+  } catch (err) {
+    console.warn('sendChatMessageToFirestore error:', err);
+  }
+}
+
+export function subscribeToChatMessages(postId: string, callback: (msgs: any[]) => void): () => void {
+  if (!postId) return () => {};
+  const colRef = collection(db, POSTS_COLLECTION, postId, 'messages');
+  // Listen without an index-requiring orderBy so missing fields or lack of composite index will never fail
+  return onSnapshot(colRef, (snap) => {
+    const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Robust in-memory sort by createdAtMs / createdAt / server timestamp
+    msgs.sort((a: any, b: any) => {
+      const timeA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const timeB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return timeA - timeB;
+    });
+    callback(msgs);
+  }, (err) => {
+    console.warn('subscribeToChatMessages error:', err);
+  });
+}
+
+export async function deleteChatMessageForEveryone(
+  postId: string,
+  messageId: string,
+  deletedByName: string,
+  deletedByUid?: string
+): Promise<void> {
+  try {
+    if (!postId || !messageId) return;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // 1. Update in messages subcollection if doc exists
+    if (!messageId.startsWith('local_') && !messageId.startsWith('rep_') && !messageId.startsWith('init_')) {
+      const msgDocRef = doc(db, POSTS_COLLECTION, postId, 'messages', messageId);
+      await updateDoc(msgDocRef, sanitizeForFirestore({
+        isDeletedForEveryone: true,
+        text: '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)',
+        originalText: '',
+        audioUrl: null,
+        imageUrl: null,
+        videoUrl: null,
+        deletedAt: nowIso,
+        deletedAtMs: nowMs,
+        deletedBy: deletedByName || 'User',
+        deletedByUid: deletedByUid || '',
+        updatedAtServer: serverTimestamp(),
+      })).catch((err) => {
+        console.warn('deleteChatMessageForEveryone updateDoc err:', err);
+      });
+    }
+
+    // 2. Also update parent post replies if the message is in post.replies
+    try {
+      const postRef = doc(db, POSTS_COLLECTION, postId);
       const postSnap = await getDoc(postRef);
       if (postSnap.exists()) {
-        const data = postSnap.data();
-        const existingReplies: PostReply[] = (data.replies as PostReply[]) || [];
-        
-        const newReply: PostReply = {
-          id: `reply_chat_${Date.now()}`,
-          responderName: chatMsg.senderName || 'පරිශීලක',
-          responderPhone: chatMsg.senderPhone || '',
-          message: chatMsg.text || '',
-          createdAt: 'මීට සුළු මොහොතකට පෙර',
-          whatsappSent: false,
+        const postData = postSnap.data();
+        if (Array.isArray(postData.replies)) {
+          let modified = false;
+          const updatedReplies = postData.replies.map((r: any) => {
+            if (r.id === messageId || (r.createdAtMs && Math.abs(r.createdAtMs - nowMs) < 300000 && r.responderName === deletedByName)) {
+              modified = true;
+              return {
+                ...r,
+                isDeletedForEveryone: true,
+                message: '🚫 මෙම පණිවිඩය මකා දමන ලදී (This message was deleted)',
+                deletedAt: nowIso,
+                deletedAtMs: nowMs,
+                deletedBy: deletedByName,
+              };
+            }
+            return r;
+          });
+          if (modified) {
+            await updateDoc(postRef, {
+              replies: updatedReplies,
+              updatedAtServer: serverTimestamp(),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('deleteChatMessageForEveryone parent post reply update notice:', e);
+    }
+  } catch (err) {
+    console.warn('deleteChatMessageForEveryone error:', err);
+  }
+}
+
+export async function togglePinChatMessage(
+  postId: string,
+  messageId: string,
+  isPinned: boolean,
+  pinnedByName?: string
+): Promise<void> {
+  try {
+    if (!postId || !messageId) return;
+    const nowMs = Date.now();
+    if (!messageId.startsWith('local_') && !messageId.startsWith('rep_') && !messageId.startsWith('init_')) {
+      const msgDocRef = doc(db, POSTS_COLLECTION, postId, 'messages', messageId);
+      await updateDoc(msgDocRef, sanitizeForFirestore({
+        isPinned: isPinned,
+        pinnedAtMs: isPinned ? nowMs : null,
+        pinnedBy: isPinned ? (pinnedByName || '') : null,
+        updatedAtServer: serverTimestamp(),
+      })).catch((err) => {
+        console.warn('togglePinChatMessage updateDoc err:', err);
+      });
+    }
+  } catch (err) {
+    console.warn('togglePinChatMessage error:', err);
+  }
+}
+
+export async function restorePostsBackupData(posts: any[]): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    for (const p of posts) {
+      if (p && p.id) {
+        const docRef = doc(db, POSTS_COLLECTION, p.id);
+        batch.set(docRef, sanitizeForFirestore(p), { merge: true });
+      }
+    }
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, POSTS_COLLECTION);
+  }
+}
+
+export async function toggleSavePostInFirestore(userId: string, postId: string, saved: boolean): Promise<void> {
+  try {
+    const docRef = doc(db, USERS_COLLECTION, userId, 'saved_posts', postId);
+    if (saved) {
+      await setDoc(docRef, { savedAt: serverTimestamp() });
+    } else {
+      await deleteDoc(docRef);
+    }
+  } catch (err) {
+    console.warn('toggleSavePostInFirestore error:', err);
+  }
+}
+
+export function subscribeToUserSavedPosts(userId: string, callback: (postIds: string[]) => void): () => void {
+  const colRef = collection(db, USERS_COLLECTION, userId, 'saved_posts');
+  return onSnapshot(colRef, (snap) => {
+    const ids = snap.docs.map(d => d.id);
+    callback(ids);
+  }, (err) => {
+    console.warn('subscribeToUserSavedPosts error:', err);
+  });
+}
+
+// ==============================================================
+// 🚨 RED ALERT (DISASTER) OPERATIONS
+// ==============================================================
+
+export function subscribeToRedAlerts(callback: (alerts: any[]) => void): () => void {
+  let primaryAlerts: any[] = [];
+  let fallbackAlerts: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackAlerts, ...primaryAlerts].forEach((a) => {
+      if (a && a.id) map.set(String(a.id), a);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, RED_ALERTS_COLLECTION), (snap) => {
+    primaryAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, (err) => {
+    console.warn('subscribeToRedAlerts error:', err);
+  });
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, RED_ALERTS_COLLECTION), (snap) => {
+    fallbackAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
+}
+
+export async function createRedAlertInFirestore(alertData: any) {
+  const id = alertData.id ? String(alertData.id) : 'red_alert_' + Date.now();
+  const payload = sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() });
+  await setDoc(doc(db, RED_ALERTS_COLLECTION, id), payload, { merge: true });
+  setDoc(doc(db, 'redAlerts', id), payload, { merge: true }).catch(() => {});
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, RED_ALERTS_COLLECTION, id), payload, { merge: true }).catch(() => {});
+  }
+  return id;
+}
+
+export async function updateRedAlertStatus(id: string, status: string, reasonOrNote?: string): Promise<void> {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  await setDoc(docRef, sanitizeForFirestore({
+    status,
+    adminActionNote: reasonOrNote || '',
+    statusChangeReason: reasonOrNote || '',
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+}
+
+export async function deleteRedAlertInFirestore(id: string) {
+  await deleteDoc(doc(db, RED_ALERTS_COLLECTION, id));
+}
+
+export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  await setDoc(docRef, sanitizeForFirestore({
+    status: 'resolved',
+    resolvedReason: reason || 'ආපදා තත්ත්වය විසඳන ලදී',
+    adminActionNote: reason || '',
+    resolvedAt: nowIso,
+    resolvedAtDisplay: nowDisplay,
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+}
+
+export async function reportRedAlertAsFake(id: string, reportData?: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  try {
+    const snap = await getDoc(docRef);
+    let reporterUserId = '';
+    if (snap.exists()) {
+      const data = snap.data();
+      reporterUserId = data.reportedByUserId || '';
+    }
+    let existingReports: any[] = [];
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      reporterUserId = data.reportedByUserId || '';
+      if (Array.isArray(data.fakeReports)) {
+        existingReports = data.fakeReports;
+      }
+    }
+
+    const newEntry = reportData && typeof reportData === 'object'
+      ? reportData
+      : {
+          id: `fake_${Date.now()}`,
+          userId: typeof reportData === 'string' ? reportData : `usr_${Date.now()}`,
+          reportedAt: new Date().toISOString(),
+          reason: 'අසත්‍යයක් ලෙස වාර්තා කරන ලදී',
         };
 
-        const updatedReplies = [newReply, ...existingReplies.filter((r) => r.message !== chatMsg.text)];
-        await updateDoc(postRef, {
-          replies: updatedReplies,
-          repliesCount: updatedReplies.length,
-          lastActivityAt: new Date().toISOString(),
-          lastMessageText: chatMsg.text || '',
-          lastMessageSender: chatMsg.senderName || '',
-          lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        });
-      }
-    } catch (replySyncErr) {
-      console.warn('Reply sync notice:', replySyncErr);
+    const alreadyReported = Boolean(
+      newEntry.userId &&
+      existingReports.some((r: any) => r && (r.userId === newEntry.userId || r.reportedByUserId === newEntry.userId))
+    );
+
+    const updatedFakeReports = alreadyReported ? existingReports : [...existingReports, newEntry];
+    const fakeCount = updatedFakeReports.length;
+    const isNowFlaggedFake = Math.max(fakeCount, 4) === fakeCount;
+
+    await setDoc(docRef, sanitizeForFirestore({
+      fakeReports: updatedFakeReports,
+      fakeReportsCount: fakeCount,
+      isFlaggedFake: isNowFlaggedFake,
+      ...(isNowFlaggedFake ? {
+        fakeHighlightedAt: new Date().toISOString(),
+        statusChangeMessage: '⚠️ මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමකි',
+      } : {}),
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+
+    if (isNowFlaggedFake && reporterUserId) {
+      const userRef = doc(db, USERS_COLLECTION, reporterUserId);
+      await setDoc(userRef, sanitizeForFirestore({
+        status: 'blocked',
+        isBlocked: true,
+        trustScore: 20,
+        trustPoints: 20,
+        blockedReason: 'පරිශීලකයන් 4 දෙනෙකු විසින් අසත්‍ය (Fake) රතු එළිය දැන්වීමක් ලෙස තහවුරු කිරීම හේතුවෙන් ගිණුම අත්හිටුවන ලදී.',
+        blockedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
+      }), { merge: true });
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${HELP_POSTS_COLLECTION}/${postId}/chat_messages`);
+  } catch (err) {
+    console.warn('reportRedAlertAsFake error:', err);
   }
 }
+export async function cancelRedAlertByReporter(id: string, reason?: string, _actor?: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowDisplay = `${new Date().toLocaleDateString('si-LK')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  await setDoc(docRef, sanitizeForFirestore({
+    status: 'cancelled',
+    isDeleted: true,
+    cancelledReason: reason || 'වාර්තාකරු විසින් දැන්වීම ඉවත් කරන ලදී',
+    cancelledAt: nowIso,
+    deletedAt: nowIso,
+    deletedAtDisplay: nowDisplay,
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+}
 
-// Update existing Help Post in Firestore
-export async function updateHelpPostInFirestore(
-  postId: string,
-  updatedData: Partial<HelpPost>
-) {
+export async function addReporterUpdateToRedAlert(id: string, updateText: string, metadata?: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  const nowIso = new Date().toISOString();
+  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let existingComments: any[] = [];
   try {
-    const postRef = doc(db, HELP_POSTS_COLLECTION, postId);
-    await updateDoc(postRef, updatedData);
-  } catch (error) {
-    console.warn('Firestore update doc notice:', error);
-    handleFirestoreError(error, OperationType.UPDATE, `${HELP_POSTS_COLLECTION}/${postId}`);
-  }
-}
-
-// Permanently delete a Help Post
-export async function deleteHelpPostFromFirestore(postId: string) {
-  try {
-    const postRef = doc(db, HELP_POSTS_COLLECTION, postId);
-    await deleteDoc(postRef);
-  } catch (error) {
-    console.warn('Firestore delete doc notice:', error);
-    handleFirestoreError(error, OperationType.DELETE, `${HELP_POSTS_COLLECTION}/${postId}`);
-  }
-}
-
-// ---------------- Marketplace Realtime Cloud Sync ----------------
-const MARKET_ITEMS_COLLECTION = 'marketplace_items';
-const MARKET_SHOPS_COLLECTION = 'marketplace_shops';
-
-export function subscribeToMarketplaceItems(
-  onNext: (items: MarketItem[]) => void,
-  onError?: (err: Error) => void
-) {
-  const ref = collection(db, MARKET_ITEMS_COLLECTION);
-  const q = query(ref, orderBy('createdAtMs', 'desc'), limit(50));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      if (snapshot.empty) {
-        onNext([]);
-        return;
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      if (Array.isArray(data.comments)) {
+        existingComments = data.comments;
       }
-      const items: MarketItem[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<MarketItem, 'id'>)
-      }));
-      onNext(items);
-    },
-    (err) => {
-      console.warn('Market items sync notice:', err);
-      if (onError) onError(err);
     }
-  );
+  } catch (_) {}
+
+  const reporterComment = {
+    id: `comm_${Date.now()}`,
+    userId: metadata?.reporterId || '',
+    userName: `${metadata?.reporterName || 'වාර්තාකරු'} (වාර්තාකරු)`,
+    comment: updateText,
+    text: updateText,
+    createdAt: nowIso,
+    createdAtMs: Date.now(),
+    createdAtDisplay: nowTime,
+    isReporterUpdate: true,
+  };
+  const updatedComments = [...existingComments, reporterComment];
+
+  await setDoc(docRef, sanitizeForFirestore({
+    latestUpdate: updateText,
+    reporterUpdateMetadata: metadata || null,
+    comments: updatedComments,
+    commentsCount: updatedComments.length,
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
 }
 
-export async function addMarketplaceItemToFirestore(item: Omit<MarketItem, 'id'>): Promise<string> {
+export async function addCommentToRedAlert(id: string, commentData: any) {
+  const docRef = doc(db, RED_ALERTS_COLLECTION, id);
+  let existingComments: any[] = [];
   try {
-    const ref = collection(db, MARKET_ITEMS_COLLECTION);
-    const docRef = await addDoc(ref, {
-      ...item,
-      createdAtMs: Date.now(),
-      createdAtServer: serverTimestamp(),
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      if (Array.isArray(data.comments)) {
+        existingComments = data.comments;
+      }
+    }
+  } catch (_) {}
+
+  const updatedComments = [...existingComments, commentData];
+  await setDoc(docRef, sanitizeForFirestore({
+    comments: updatedComments,
+    commentsCount: updatedComments.length,
+    updatedAtServer: serverTimestamp(),
+  }), { merge: true });
+
+  try {
+    const colRef = collection(db, RED_ALERTS_COLLECTION, id, 'comments');
+    await addDoc(colRef, sanitizeForFirestore({ ...commentData, createdAtServer: serverTimestamp() }));
+  } catch (_) {}
+}
+
+export function subscribeToSirenSettings(callback: (settings: any) => void): () => void {
+  const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'siren_settings');
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
+      callback(snap.data());
+    } else {
+      callback(null);
+    }
+  }, () => {});
+}
+
+export async function saveSirenSettingsToFirestore(settings: any): Promise<void> {
+  const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'siren_settings');
+  await setDoc(docRef, sanitizeForFirestore({ ...settings, updatedAtServer: serverTimestamp() }), { merge: true });
+}
+
+// ==============================================================
+// 🆘 SOS LIVE SESSIONS
+// ==============================================================
+
+export async function createOrUpdateSosLiveSession(session: any): Promise<string> {
+  const id = session.id || `sos_${Date.now()}`;
+  const docRef = doc(db, 'sos_live_sessions', id);
+  const cleanData = sanitizeForFirestore(session);
+  await setDoc(docRef, { 
+    ...cleanData, 
+    id, 
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
+  return id;
+}
+
+export async function updateSosLiveLocation(sessionId: string, locationData: any): Promise<void> {
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
+  const cleanData = sanitizeForFirestore(locationData);
+  await setDoc(docRef, { 
+    ...cleanData, 
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
+}
+
+export async function stopSosLiveSession(sessionId: string, reason?: string): Promise<void> {
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
+  await setDoc(docRef, { 
+    status: 'ended', 
+    isActive: false, 
+    deactivationReason: reason || 'Resolved',
+    latitude: null,
+    longitude: null,
+    currentLocation: null,
+    latestAudioBase64: null,
+    isSilentAudioStreaming: false,
+    endedAtMs: Date.now(),
+    updatedAtServer: serverTimestamp(),
+    updatedAtMs: Date.now() 
+  }, { merge: true });
+}
+
+export function subscribeToSosLiveSession(sessionId: string, callback: (session: any) => void): () => void {
+  const docRef = doc(db, 'sos_live_sessions', sessionId);
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
+      callback({ id: snap.id, ...snap.data() });
+    } else {
+      callback(null);
+    }
+  }, () => {});
+}
+
+export async function getSosLiveSession(sessionId: string): Promise<any | null> {
+  try {
+    const docRef = doc(db, 'sos_live_sessions', sessionId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+// ==============================================================
+// 📋 ISSUES MANAGEMENT (ගැටලු සහ පැමිණිලි කළමනාකරණය)
+// ==============================================================
+
+export function subscribeToIssuesFromFirestore(callback: (issues: any[]) => void): () => void {
+  let primaryIssues: any[] = [];
+  let fallbackIssues: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackIssues, ...primaryIssues].forEach((iss) => {
+      if (iss && iss.id) map.set(String(iss.id), iss);
     });
-    return docRef.id;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, MARKET_ITEMS_COLLECTION);
-    throw error;
+    const sorted = Array.from(map.values()).sort((a: any, b: any) => {
+      const tA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const tB = b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return tB - tA;
+    });
+    callback(sorted);
+  };
+
+  const unsub1 = onSnapshot(collection(db, ISSUES_COLLECTION), (snap) => {
+    primaryIssues = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, (err) => {
+    console.warn('subscribeToIssuesFromFirestore error:', err);
+  });
+
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, ISSUES_COLLECTION), (snap) => {
+    fallbackIssues = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {}) : () => {};
+
+  return () => {
+    unsub1();
+    unsub2();
+  };
+}
+
+export async function saveIssueToFirestore(issueData: any): Promise<string> {
+  const id = issueData?.id ? String(issueData.id) : `issue_${Date.now()}`;
+  const payload = sanitizeForFirestore({
+    ...issueData,
+    id,
+    createdAt: issueData?.createdAt || new Date().toISOString(),
+    createdAtMs: issueData?.createdAtMs || Date.now(),
+    updatedAtServer: serverTimestamp(),
+  });
+  try {
+    await setDoc(doc(db, ISSUES_COLLECTION, id), payload, { merge: true });
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, ISSUES_COLLECTION, id), payload, { merge: true }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('saveIssueToFirestore notice:', err);
+  }
+  return id;
+}
+
+export async function updateIssueInFirestore(issueId: string, updateData: any): Promise<void> {
+  if (!issueId) return;
+  const payload = sanitizeForFirestore({
+    ...updateData,
+    updatedAt: new Date().toISOString(),
+    updatedAtServer: serverTimestamp(),
+  });
+  try {
+    await setDoc(doc(db, ISSUES_COLLECTION, issueId), payload, { merge: true });
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, ISSUES_COLLECTION, issueId), payload, { merge: true }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('updateIssueInFirestore notice:', err);
   }
 }
 
-export async function updateMarketplaceItemInFirestore(id: string, data: Partial<MarketItem>) {
+export async function deleteIssueFromFirestore(issueId: string): Promise<void> {
+  if (!issueId) return;
   try {
-    const itemRef = doc(db, MARKET_ITEMS_COLLECTION, id);
-    await updateDoc(itemRef, data);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${MARKET_ITEMS_COLLECTION}/${id}`);
+    await deleteDoc(doc(db, ISSUES_COLLECTION, issueId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, ISSUES_COLLECTION, issueId)).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('deleteIssueFromFirestore notice:', err);
   }
+}
+
+// ==============================================================
+// 🛒 MARKETPLACE OPERATIONS
+// ==============================================================
+
+export function subscribeToMarketplaceItems(callback: (items: any[]) => void): () => void {
+  const colRef = collection(db, "marketplace");
+  return onSnapshot(colRef, (snap) => {
+    const items = filterAndPurgeDummySnapDocs(snap);
+    callback(items);
+  }, () => {});
+}
+
+export async function addMarketplaceItemToFirestore(item: any) {
+  const id = item.id ? item.id : "item_" + Date.now();
+  const docRef = doc(db, "marketplace", id);
+  await setDoc(docRef, sanitizeForFirestore({ ...item, id }), { merge: true });
+  return id;
 }
 
 export async function deleteMarketplaceItemFromFirestore(id: string) {
+  await deleteDoc(doc(db, "marketplace", id));
+}
+
+export function subscribeToMarketShops(callback: (shops: any[]) => void): () => void {
+  const colRef = collection(db, "market_shops");
+  return onSnapshot(colRef, (snap) => {
+    const shops = filterAndPurgeDummySnapDocs(snap);
+    callback(shops);
+  }, () => {});
+}
+
+export async function addMarketShopToFirestore(shop: any) {
+  const id = shop.id ? shop.id : "shop_" + Date.now();
+  const docRef = doc(db, "market_shops", id);
+  await setDoc(docRef, sanitizeForFirestore({ ...shop, id }), { merge: true });
   try {
-    const itemRef = doc(db, MARKET_ITEMS_COLLECTION, id);
-    await deleteDoc(itemRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `${MARKET_ITEMS_COLLECTION}/${id}`);
+    const isBusiness = (shop && (shop.type === "business" ? true : shop.mode === "business"));
+    const regType = isBusiness ? "ව්‍යාපාර" : "වෙළෙඳසැල්";
+    const shopTitle = String(shop && (shop.name ? shop.name : (shop.shopName ? shop.shopName : id))).trim();
+    notifyAdminViaTelegramOnRegistration({
+      registrationType: regType,
+      identifierOrName: shopTitle,
+      dedupeKey: "shop_" + id
+    });
+  } catch (err) {}
+  return id;
+}
+
+export async function deleteMarketShopFromFirestore(id: string) {
+  await deleteDoc(doc(db, "market_shops", id));
+}
+
+export async function deleteMarketplaceShopFromFirestore(id: string) {
+  await deleteMarketShopFromFirestore(id);
+}
+
+// ==============================================================
+// 💼 PROFESSIONAL SERVICES & GROUPS
+// ==============================================================
+
+export function subscribeToProfessionalServices(callback: (services: any[]) => void): () => void {
+  const colRef = collection(db, "professional_services");
+  return onSnapshot(colRef, (snap) => {
+    const services = filterAndPurgeDummySnapDocs(snap);
+    callback(services);
+  }, () => {});
+}
+
+export async function addProfessionalServiceToFirestore(service: any) {
+  const id = service.id ? service.id : "pro_" + Date.now();
+  const docRef = doc(db, "professional_services", id);
+  await setDoc(docRef, sanitizeForFirestore({ ...service, id }), { merge: true });
+  return id;
+}
+
+export async function deleteProfessionalServiceFromFirestore(serviceId: string) {
+  try {
+    const docRef = doc(db, "professional_services", serviceId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.warn("deleteProfessionalServiceFromFirestore error:", err);
   }
 }
 
-// ---------------- Saved Posts Cloud Sync ----------------
-const SAVED_POSTS_COLLECTION = 'saved_posts';
-
-export function subscribeToUserSavedPosts(
-  userId: string,
-  onNext: (postIds: string[]) => void
-) {
-  if (!userId) {
-    onNext([]);
-    return () => {};
-  }
-  const ref = collection(db, SAVED_POSTS_COLLECTION);
-  const q = query(ref, where('userId', '==', userId));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const postIds = snapshot.docs.map((d) => d.data().postId as string).filter(Boolean);
-      onNext(postIds);
-    },
-    (err) => {
-      console.warn('Saved posts sync notice:', err);
-    }
-  );
+export function subscribeToGroups(callback: (groups: any[]) => void): () => void {
+  let primaryGroups: any[] = [];
+  let fallbackGroups: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackGroups, ...primaryGroups].forEach((g) => {
+      if (g && g.id) map.set(String(g.id), g);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, "groups"), (snap) => {
+    primaryGroups = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {});
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "groups"), (snap) => {
+    fallbackGroups = filterAndPurgeDummySnapDocs(snap);
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
 }
 
-export async function toggleSavePostInFirestore(userId: string, postId: string, isSaved: boolean) {
-  if (!userId || !postId) return;
-  const docId = `${userId}_${postId}`;
-  const saveRef = doc(db, SAVED_POSTS_COLLECTION, docId);
+export async function addGroupToFirestore(group: any) {
+  const id = group.id ? String(group.id) : "group_" + Date.now();
+  const payload = sanitizeForFirestore({ ...group, id, updatedAtMs: Date.now() });
+  await setDoc(doc(db, "groups", id), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "groups", id), payload, { merge: true }).catch(() => {});
+  }
+  return id;
+}
+export async function updateGroupInFirestore(groupId: string, groupData: any) {
+  if (!groupId) return;
+  const payload = sanitizeForFirestore({ ...groupData, id: groupId, updatedAtMs: Date.now() });
+  await setDoc(doc(db, "groups", groupId), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "groups", groupId), payload, { merge: true }).catch(() => {});
+  }
+}
+
+export async function deleteGroupFromFirestore(groupId: string) {
   try {
-    if (isSaved) {
-      await setDoc(saveRef, {
-        userId,
-        postId,
-        savedAt: new Date().toISOString(),
-        createdAtMs: Date.now(),
-      });
-    } else {
-      await deleteDoc(saveRef);
+    await deleteDoc(doc(db, "groups", groupId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, "groups", groupId)).catch(() => {});
     }
   } catch (err) {
-    console.warn('Toggle save post notice:', err);
+    console.warn("deleteGroupFromFirestore error:", err);
   }
 }
-
-// ---------------- User Profiles Cloud Sync ----------------
-const USERS_COLLECTION = 'users';
-
-export async function syncUserProfileToFirestore(user: User) {
-  if (!user || (!user.id && !user.userId)) return;
-  const docId = user.userId || user.id;
+export function subscribeToSavedPlacesFromFirestore(callback: (places: any[]) => void): () => void {
+  let primaryPlaces: any[] = [];
+  let fallbackPlaces: any[] = [];
+  const emitMerged = () => {
+    const map = new Map();
+    [...fallbackPlaces, ...primaryPlaces].forEach((p) => {
+      if (p && p.id) map.set(String(p.id), p);
+    });
+    callback(Array.from(map.values()));
+  };
+  const unsub1 = onSnapshot(collection(db, "saved_places"), (snap) => {
+    primaryPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {});
+  const unsub2 = fallbackDb !== db ? onSnapshot(collection(fallbackDb, "saved_places"), (snap) => {
+    fallbackPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    emitMerged();
+  }, () => {}) : () => {};
+  return () => {
+    unsub1();
+    unsub2();
+  };
+}
+export async function savePlaceToFirestore(place: any) {
+  const id = place.id ? String(place.id) : "plc_" + Date.now();
+  const payload = sanitizeForFirestore({ ...place, id, updatedAtServer: serverTimestamp() });
+  await setDoc(doc(db, "saved_places", id), payload, { merge: true });
+  if (fallbackDb !== db) {
+    setDoc(doc(fallbackDb, "saved_places", id), payload, { merge: true }).catch(() => {});
+  }
+  return id;
+}
+export async function deletePlaceFromFirestore(placeId: string) {
+  if (!placeId) return;
   try {
-    const userRef = doc(db, USERS_COLLECTION, docId);
-    await setDoc(userRef, {
-      ...user,
-      updatedAtMs: Date.now(),
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Sync user profile notice:', err);
-  }
-}
-
-// ---------------- User Reviews Cloud Sync ----------------
-const REVIEWS_COLLECTION = 'reviews';
-
-export function subscribeToUserReviews(
-  targetUserId: string,
-  onNext: (reviews: ServiceReview[]) => void
-) {
-  const ref = collection(db, REVIEWS_COLLECTION);
-  const q = query(ref, where('targetUserId', '==', targetUserId), limit(30));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const reviews = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<ServiceReview, 'id'>)
-      }));
-      onNext(reviews);
-    },
-    (err) => {
-      console.warn('User reviews sync notice:', err);
+    await deleteDoc(doc(db, "saved_places", placeId));
+    if (fallbackDb !== db) {
+      deleteDoc(doc(fallbackDb, "saved_places", placeId)).catch(() => {});
     }
-  );
+  } catch (err) {
+    console.warn("deletePlaceFromFirestore error:", err);
+  }
+}
+function subscribeMergedEmergencyCollection(colName: string, callback: (items: any[]) => void): () => void {
+  let primaryDocs: any[] = [];
+  let fallbackDocs: any[] = [];
+
+  const emit = () => {
+    const map = new Map<string, any>();
+    for (const d of fallbackDocs) {
+      if (d && d.id) map.set(String(d.id), d);
+    }
+    for (const d of primaryDocs) {
+      if (d && d.id) map.set(String(d.id), d);
+    }
+    callback(Array.from(map.values()));
+  };
+
+  const unsub1 = onSnapshot(collection(db, colName), (snap) => {
+    primaryDocs = filterAndPurgeDummySnapDocs(snap);
+    emit();
+  }, () => {});
+
+  if (fallbackDb && fallbackDb !== db) {
+    const unsub2 = onSnapshot(collection(fallbackDb, colName), (snap) => {
+      fallbackDocs = filterAndPurgeDummySnapDocs(snap);
+      emit();
+    }, () => {});
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }
+
+  return unsub1;
 }
 
-export async function addReviewToFirestore(review: Omit<ServiceReview, 'id'> & { targetUserId: string }) {
+async function dualSaveDoc(colName: string, id: string, data: any) {
+  const sanitized = sanitizeForFirestore({ ...data, id });
+  await setDoc(doc(db, colName, id), sanitized, { merge: true }).catch(() => {});
+  if (fallbackDb && fallbackDb !== db) {
+    await setDoc(doc(fallbackDb, colName, id), sanitized, { merge: true }).catch(() => {});
+  }
+}
+
+async function dualDeleteDoc(colName: string, id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, colName, id)).catch(() => {});
+  if (fallbackDb && fallbackDb !== db) {
+    await deleteDoc(doc(fallbackDb, colName, id)).catch(() => {});
+  }
+}
+
+export function subscribeToBloodRequestsFromFirestore(callback: (reqs: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("blood_requests", callback);
+}
+export function subscribeToVolunteerDonorsFromFirestore(callback: (donors: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("volunteer_donors", callback);
+}
+export function subscribeToJobsFromFirestore(callback: (jobs: any[]) => void): () => void {
+  return onSnapshot(collection(db, "jobs") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+  }, () => {});
+}
+export async function saveJobToFirestore(job: any) {
+  const id = job.id ? String(job.id) : "job_" + Date.now();
+  await setDoc(doc(db, "jobs", id), sanitizeForFirestore({ ...job, id }), { merge: true });
+  return id;
+}
+export async function deleteJobFromFirestore(jobId: string) {
+  if (!jobId) return;
+  await deleteDoc(doc(db, "jobs", jobId)).catch(() => {});
+}
+export function subscribeToAccommodationsFromFirestore(callback: (items: any[]) => void): () => void {
+  return onSnapshot(collection(db, "accommodations") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+  }, () => {});
+}
+export async function saveAccommodationToFirestore(item: any) {
+  const id = item.id ? String(item.id) : "acc_" + Date.now();
+  await setDoc(doc(db, "accommodations", id), sanitizeForFirestore({ ...item, id }), { merge: true });
+  return id;
+}
+export async function deleteAccommodationFromFirestore(id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, "accommodations", id)).catch(() => {});
+}
+export function subscribeToBarterItemsFromFirestore(callback: (items: any[]) => void): () => void {
+  return onSnapshot(collection(db, "barter_items"), (snap) => {
+    callback(filterAndPurgeDummySnapDocs(snap));
+  }, () => {});
+}
+export async function saveBarterItemToFirestore(item: any) {
+  const id = item.id ? String(item.id) : "barter_" + Date.now();
+  await setDoc(doc(db, "barter_items", id), sanitizeForFirestore({ ...item, id }), { merge: true });
+  return id;
+}
+export async function deleteBarterItemFromFirestore(id: string) {
+  if (!id) return;
+  await deleteDoc(doc(db, "barter_items", id)).catch(() => {});
+}
+
+// ==============================================================
+// 🩸 BLOOD & DISASTER RELIEF
+// ==============================================================
+
+export async function saveBloodRequestToFirestore(req: any) {
+  const id = req.id ? req.id : "blood_" + Date.now();
+  await dualSaveDoc("blood_requests", id, req);
+  return id;
+}
+
+export async function deleteBloodRequestFromFirestore(id: string) {
+  await dualDeleteDoc("blood_requests", id);
+}
+
+export async function saveVolunteerDonorToFirestore(donor: any) {
+  const id = donor.id ? donor.id : "donor_" + Date.now();
+  await dualSaveDoc("volunteer_donors", id, donor);
+  return id;
+}
+
+export async function deleteVolunteerDonorFromFirestore(id: string) {
+  await dualDeleteDoc("volunteer_donors", id);
+}
+
+export async function saveDisasterReliefToFirestore(relief: any) {
+  const id = relief.id ? relief.id : "relief_" + Date.now();
+  await dualSaveDoc("disaster_relief", id, relief);
+  return id;
+}
+
+export async function deleteDisasterReliefFromFirestore(id: string) {
+  await dualDeleteDoc("disaster_relief", id);
+}
+
+// ==============================================================
+// 🏛️ TRANSPARENT AID LEDGER
+// ==============================================================
+
+export function subscribeToAidCentersFromFirestore(callback: (centers: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("aid_centers", callback);
+}
+
+export async function saveAidCenterToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_center_" + Date.now();
+  await dualSaveDoc("aid_centers", id, item);
+  return id;
+}
+
+export async function updateAidCenterInFirestore(id: string, updateData: any) {
+  await dualSaveDoc("aid_centers", id, { ...updateData, updatedAtServer: serverTimestamp() });
+}
+
+export async function deleteAidCenterFromFirestore(id: string) {
+  await dualDeleteDoc("aid_centers", id);
+}
+
+export function subscribeToAidDeliveriesFromFirestore(callback: (deliveries: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("aid_deliveries", callback);
+}
+
+export async function saveAidDeliveryToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_delivery_" + Date.now();
+  await dualSaveDoc("aid_deliveries", id, item);
+  return id;
+}
+
+export async function updateAidDeliveryInFirestore(id: string, updateData: any) {
+  await dualSaveDoc("aid_deliveries", id, { ...updateData, updatedAtServer: serverTimestamp() });
+}
+
+export async function deleteAidDeliveryFromFirestore(id: string) {
+  await dualDeleteDoc("aid_deliveries", id);
+}
+
+export function subscribeToAidBroadcastsFromFirestore(callback: (broadcasts: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("aid_broadcasts", callback);
+}
+
+export async function saveAidBroadcastToFirestore(item: any) {
+  const id = item.id ? item.id : "aid_broadcast_" + Date.now();
+  await dualSaveDoc("aid_broadcasts", id, item);
+  return id;
+}
+
+export async function deleteAidBroadcastFromFirestore(id: string) {
+  await dualDeleteDoc("aid_broadcasts", id);
+}
+
+// ==============================================================
+// ==============================================================
+export interface DeletedRecordsMap {
+  deletedPostIds?: string[];
+  deletedUserIds?: string[];
+  deletedBloodIds?: string[];
+  deletedDisasterIds?: string[];
+  deletedDonorIds?: string[];
+  deletedRedAlertIds?: string[];
+  deletedMarketplaceIds?: string[];
+  deletedMarketShopIds?: string[];
+  deletedProServiceIds?: string[];
+  deletedGroupIds?: string[];
+  deletedJobIds?: string[];
+  deletedAccommodationIds?: string[];
+  deletedBarterItemIds?: string[];
+}
+
+export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap): Promise<void> {
   try {
-    const ref = collection(db, REVIEWS_COLLECTION);
-    await addDoc(ref, {
-      ...review,
-      createdAtMs: Date.now(),
-      createdAt: review.createdAt || new Date().toISOString(),
-      createdAtServer: serverTimestamp(),
+    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...records,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('saveDeletedRecordsToFirestore warning:', err);
+  }
+}
+
+export function subscribeToDeletedRecordsFromFirestore(callback: (records: DeletedRecordsMap | null) => void): () => void {
+  try {
+    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
+    return onSnapshot(docRef as any, (snap: any) => {
+      if (snap.exists()) {
+        callback(snap.data() as DeletedRecordsMap);
+      } else {
+        callback(null);
+      }
+    }, (err: any) => {
+      console.warn('subscribeToDeletedRecordsFromFirestore warning:', err);
     });
   } catch (err) {
-    console.warn('Add review notice:', err);
+    console.warn('subscribeToDeletedRecordsFromFirestore setup warning:', err);
+    return () => {};
   }
 }
 
-// Full Backup of all Help Posts along with complete chat histories
-export async function fetchAllPostsBackupData(posts: HelpPost[] = []) {
-  const safePosts = posts || [];
-  const backupPosts = await Promise.all(
-    safePosts.map(async (post) => {
-      let chatMessages: ChatMessage[] = [];
-      try {
-        const chatRef = collection(db, HELP_POSTS_COLLECTION, post.id, 'chat_messages');
-        const chatSnap = await getDocs(chatRef);
-        if (!chatSnap.empty) {
-          chatMessages = chatSnap.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              senderName: data.senderName || 'පරිශීලක',
-              senderRole: data.senderRole || 'helper',
-              text: data.text || '',
-              timestamp: data.timestamp || 'දැන්',
-              createdAtMs: data.createdAtMs || 0,
-              senderPhone: data.senderPhone || '',
-            };
-          });
-        }
-      } catch (err) {
-        console.warn(`Could not fetch chat history for post ${post.id}:`, err);
-      }
+// ==============================================================
+// 🔑 PASSWORD RESET REQUESTS OPERATIONS
+// ==============================================================
+export const PASSWORD_RESETS_COLLECTION = 'password_reset_requests';
 
-      if (chatMessages.length === 0 && post.replies && post.replies.length > 0) {
-        chatMessages = post.replies.map((reply) => ({
-          id: reply.id || `reply_${Date.now()}_${Math.random()}`,
-          senderName: reply.responderName || 'පරිශීලක',
-          senderRole: 'helper',
-          text: reply.message || '',
-          timestamp: reply.createdAt || 'දැන්',
-          senderPhone: reply.responderPhone || '',
-          createdAtMs: Date.now(),
-        }));
-      }
-
-      return {
-        postData: post,
-        chatMessages,
-      };
-    })
-  );
-
-  return {
-    version: '1.0',
-    system: 'Sahaya Seva (සහය සේවා)',
-    backupType: 'Full Help Posts & Complete Details Backup',
-    backupDate: new Date().toISOString(),
-    totalPostsCount: backupPosts.length,
-    posts: backupPosts,
-  };
+export function subscribeToPasswordResetRequests(callback: (requests: any[]) => void): () => void {
+  const colRef = collection(db, PASSWORD_RESETS_COLLECTION);
+  return onSnapshot(colRef as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err: any) => {
+    console.warn('subscribeToPasswordResetRequests error:', err);
+  });
 }
 
-// Restore Posts from Backup
-export async function restorePostsBackupData(backupData: any): Promise<{
-  restoredPostsCount: number;
-  restoredMessagesCount: number;
-  restoredPostsList: HelpPost[];
-}> {
-  let restoredPostsCount = 0;
-  let restoredMessagesCount = 0;
-  const restoredPostsList: HelpPost[] = [];
+export async function submitPasswordResetRequest(requestData: any): Promise<string> {
+  const id = requestData.id || `reset_${Date.now()}`;
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...requestData,
+      id,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      createdAtServer: serverTimestamp()
+    }));
+    return id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, PASSWORD_RESETS_COLLECTION);
+    return id;
+  }
+}
 
-  const rawPostsList = backupData.posts || backupData.helpPosts || (Array.isArray(backupData) ? backupData : []);
+export async function updatePasswordResetRequestInFirestore(id: string, updateData: any): Promise<void> {
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...updateData,
+      updatedAtServer: serverTimestamp()
+    }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
+  }
+}
 
-  for (const item of rawPostsList) {
-    const post: HelpPost = item.postData || item;
-    const chatMessages: ChatMessage[] = item.chatMessages || [];
+export async function deletePasswordResetRequestFromFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, PASSWORD_RESETS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${PASSWORD_RESETS_COLLECTION}/${id}`);
+  }
+}
 
-    if (!post || !post.id) continue;
+// ==============================================================
+// 🤖 8. AI KNOWLEDGE BASE & ACTIVE LEARNING REPOSITORY
+// ==============================================================
+export const PENDING_AI_QUERIES_COLLECTION = 'pending_ai_queries';
+export const VERIFIED_AI_KNOWLEDGE_COLLECTION = 'verified_ai_knowledge';
 
-    try {
-      const postRef = doc(db, HELP_POSTS_COLLECTION, post.id);
-      await setDoc(postRef, {
-        ...post,
-        createdAtMs: post.createdAtMs || Date.now(),
-      }, { merge: true });
+export function subscribeToPendingAiQueries(callback: (queries: PendingAiQuery[]) => void): () => void {
+  try {
+    const q = query(collection(db, PENDING_AI_QUERIES_COLLECTION));
+    return onSnapshot(q, (snapshot) => {
+      const items: PendingAiQuery[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      items.sort((a, b) => new Date(b.askedAt || 0).getTime() - new Date(a.askedAt || 0).getTime());
+      callback(items);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, PENDING_AI_QUERIES_COLLECTION);
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, PENDING_AI_QUERIES_COLLECTION);
+    return () => {};
+  }
+}
 
-      restoredPostsCount++;
-      restoredPostsList.push(post);
+export async function savePendingAiQuery(queryData: Partial<PendingAiQuery>): Promise<string> {
+  const id = queryData.id || `ai_q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    const docRef = doc(db, PENDING_AI_QUERIES_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      id,
+      question: queryData.question || '',
+      answer: queryData.answer || '',
+      detectedLang: queryData.detectedLang || 'si',
+      askedAt: new Date().toISOString(),
+      status: 'pending',
+      locationContext: queryData.locationContext || '',
+      userPhone: queryData.userPhone || '',
+      createdAtServer: serverTimestamp()
+    }));
+    return id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, PENDING_AI_QUERIES_COLLECTION);
+    return id;
+  }
+}
 
-      if (Array.isArray(chatMessages) && chatMessages.length > 0) {
-        for (const msg of chatMessages) {
-          if (!msg) continue;
-          const msgId = msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-          const msgRef = doc(db, HELP_POSTS_COLLECTION, post.id, 'chat_messages', msgId);
-          await setDoc(msgRef, {
-            ...msg,
-            id: msgId,
-            createdAtMs: msg.createdAtMs || Date.now(),
-          }, { merge: true });
-          restoredMessagesCount++;
-        }
-      }
-    } catch (err) {
-      console.warn(`Error restoring post ${post.id}:`, err);
+export function subscribeToVerifiedAiKnowledge(callback: (items: VerifiedAiKnowledgeItem[]) => void): () => void {
+  try {
+    const q = query(collection(db, VERIFIED_AI_KNOWLEDGE_COLLECTION));
+    return onSnapshot(q, (snapshot) => {
+      const items: VerifiedAiKnowledgeItem[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      items.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+      callback(items);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, VERIFIED_AI_KNOWLEDGE_COLLECTION);
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, VERIFIED_AI_KNOWLEDGE_COLLECTION);
+    return () => {};
+  }
+}
+
+export async function approveAiQuery(
+  pendingId: string,
+  knowledgeItem: Omit<VerifiedAiKnowledgeItem, 'id' | 'updatedAt'>
+): Promise<string> {
+  const id = `k_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    const verifiedRef = doc(db, VERIFIED_AI_KNOWLEDGE_COLLECTION, id);
+    await setDoc(verifiedRef, sanitizeForFirestore({
+      ...knowledgeItem,
+      id,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp()
+    }));
+
+    const pendingRef = doc(db, PENDING_AI_QUERIES_COLLECTION, pendingId);
+    await deleteDoc(pendingRef);
+
+    return id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, VERIFIED_AI_KNOWLEDGE_COLLECTION);
+    return id;
+  }
+}
+
+export async function rejectPendingAiQuery(pendingId: string): Promise<void> {
+  try {
+    const pendingRef = doc(db, PENDING_AI_QUERIES_COLLECTION, pendingId);
+    await deleteDoc(pendingRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${PENDING_AI_QUERIES_COLLECTION}/${pendingId}`);
+  }
+}
+
+export async function saveVerifiedAiKnowledgeItem(item: Partial<VerifiedAiKnowledgeItem>): Promise<string> {
+  const id = item.id || `k_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    const docRef = doc(db, VERIFIED_AI_KNOWLEDGE_COLLECTION, id);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...item,
+      id,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp()
+    }), { merge: true });
+    return id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
+    return id;
+  }
+}
+
+export async function deleteVerifiedAiKnowledgeItem(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, VERIFIED_AI_KNOWLEDGE_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${VERIFIED_AI_KNOWLEDGE_COLLECTION}/${id}`);
+  }
+}
+
+export function subscribeToDisasterReliefFromFirestore(callback: (items: any[]) => void): () => void {
+  return subscribeMergedEmergencyCollection("disaster_relief", callback);
+}
+
+export function subscribeToBarterProposalsFromFirestore(callback: (proposals: any[]) => void): () => void {
+  return onSnapshot(collection(db, "barter_proposals") as any, (snap: any) => {
+    callback(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+  }, () => {});
+}
+
+export async function saveBarterProposalToFirestore(proposal: any) {
+  const id = proposal.id ? String(proposal.id) : "prop_" + Date.now();
+  await setDoc(doc(db, "barter_proposals", id), sanitizeForFirestore({ ...proposal, id }), { merge: true });
+  return id;
+}
+
+export function subscribeToJobCommentsFromFirestore(jobId: string, callback: (comments: any[]) => void): () => void {
+  if (!jobId) return () => {};
+  return onSnapshot(collection(db, "jobs", jobId, "comments") as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    list.sort((a: any, b: any) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+    callback(list);
+  }, () => {});
+}
+
+export async function saveJobCommentToFirestore(jobId: string, comment: any) {
+  if (!jobId) return;
+  const id = comment.id ? String(comment.id) : "cmt_" + Date.now();
+  await setDoc(doc(db, "jobs", jobId, "comments", id), sanitizeForFirestore({ ...comment, id, jobId }), { merge: true });
+  return id;
+}
+
+// ==============================================================
+// 💰 CREDITS, TRANSACTIONS, SERVICE FEES & S-POINTS CLOUD SYNC
+// ==============================================================
+
+export const CREDITS_COLLECTION = 'credits';
+export const CREDIT_TRANSACTIONS_COLLECTION = 'creditTransactions';
+export const S_POINTS_COLLECTION = 's_points';
+
+export async function saveCreditBalanceToFirestore(
+  userIdOrNumericId: string,
+  balance: number,
+  extraMeta?: Record<string, any>
+): Promise<void> {
+  if (!userIdOrNumericId) return;
+  const cleanId = String(userIdOrNumericId).trim();
+  if (!cleanId) return;
+
+  const payload = sanitizeForFirestore({
+    ...(extraMeta || {}),
+    userId: cleanId,
+    balance: Number(balance),
+    credits: Number(balance),
+    updatedAt: new Date().toISOString(),
+    updatedAtMs: Date.now(),
+    updatedAtServer: serverTimestamp(),
+  });
+
+  try {
+    await setDoc(doc(db, CREDITS_COLLECTION, cleanId), payload, { merge: true });
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, CREDITS_COLLECTION, cleanId), payload, { merge: true }).catch(() => {});
     }
+  } catch (err) {
+    console.warn('saveCreditBalanceToFirestore notice:', err);
   }
+}
 
-  return {
-    restoredPostsCount,
-    restoredMessagesCount,
-    restoredPostsList,
-  };
+export function subscribeToCreditBalancesFromFirestore(
+  callback: (balancesMap: Record<string, number>) => void
+): () => void {
+  const colRef = collection(db, CREDITS_COLLECTION);
+  return onSnapshot(colRef as any, (snap: any) => {
+    const map: Record<string, number> = {};
+    snap.docs.forEach((d: any) => {
+      const data: any = d.data();
+      const bal = typeof data.balance === 'number' ? data.balance : typeof data.credits === 'number' ? data.credits : undefined;
+      if (bal !== undefined) {
+        map[d.id] = bal;
+        if (data.userId) map[String(data.userId)] = bal;
+        if (data.numericId) map[String(data.numericId)] = bal;
+      }
+    });
+    callback(map);
+  }, (err: any) => {
+    console.warn('subscribeToCreditBalancesFromFirestore notice:', err);
+  });
+}
+
+export async function saveCreditTransactionToFirestore(tx: any): Promise<string> {
+  const id = tx?.id ? String(tx.id) : `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const payload = sanitizeForFirestore({
+    ...tx,
+    id,
+    timestampMs: tx?.timestampMs || Date.now(),
+    updatedAtServer: serverTimestamp(),
+  });
+
+  try {
+    await setDoc(doc(db, CREDIT_TRANSACTIONS_COLLECTION, id), payload, { merge: true });
+    if (fallbackDb !== db) {
+      setDoc(doc(fallbackDb, CREDIT_TRANSACTIONS_COLLECTION, id), payload, { merge: true }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('saveCreditTransactionToFirestore notice:', err);
+  }
+  return id;
+}
+
+export function subscribeToCreditTransactionsFromFirestore(
+  callback: (transactions: any[]) => void
+): () => void {
+  const colRef = collection(db, CREDIT_TRANSACTIONS_COLLECTION);
+  return onSnapshot(colRef as any, (snap: any) => {
+    const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    list.sort((a: any, b: any) => (b.timestampMs || 0) - (a.timestampMs || 0));
+    callback(list);
+  }, (err: any) => {
+    console.warn('subscribeToCreditTransactionsFromFirestore notice:', err);
+  });
+}
+
+export async function saveCustomServiceFeesToFirestore(feesMap: Record<string, any>): Promise<void> {
+  try {
+    const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'service_fees');
+    await setDoc(docRef, sanitizeForFirestore({
+      fees: feesMap,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('saveCustomServiceFeesToFirestore notice:', err);
+  }
+}
+
+export function subscribeToCustomServiceFeesFromFirestore(
+  callback: (feesMap: Record<string, any> | null) => void
+): () => void {
+  const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, 'service_fees');
+  return onSnapshot(docRef as any, (snap: any) => {
+    if (snap.exists()) {
+      const data = snap.data() as any;
+      callback(data?.fees || null);
+    } else {
+      callback(null);
+    }
+  }, () => {});
+}
+
+export async function saveUserSPointsToFirestore(userId: string, sPointsData: any): Promise<void> {
+  if (!userId) return;
+  const cleanId = String(userId).trim();
+  try {
+    await setDoc(doc(db, S_POINTS_COLLECTION, cleanId), sanitizeForFirestore({
+      userId: cleanId,
+      sPoints: sPointsData,
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+
+    await setDoc(doc(db, USERS_COLLECTION, cleanId), sanitizeForFirestore({
+      sPoints: sPointsData,
+      updatedAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('saveUserSPointsToFirestore notice:', err);
+  }
 }

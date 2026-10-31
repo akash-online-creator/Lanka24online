@@ -15,7 +15,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onClose,
   onConfirmDelete,
 }) => {
-  if (!isOpen || !post) return null;
+  if (!isOpen || !post || !post.id) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
@@ -54,7 +54,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               <span>ඔබට මෙම දැන්වීම මකා දැමීමට අවශ්‍යද?</span>
             </div>
             <p className="text-xs text-rose-900 dark:text-rose-200 font-bold leading-relaxed">
-              මෙහිදී දැන්වීම සාමාන්‍ය පුවරුවෙන් (Feed) ඉවත් වන අතර, **පරිපාලක (Admin) වෙත දින 3ක් යන තෙක් "Delete කරන ලදී"** ලෙස සටහන්ව පවතිනු ඇත.
+              මකා දැමීමට පෙර අදාළ දැන්වීමේ සියලුම Data (ID, Title, Details, Photos, Owner details) අඩංගු Backup JSON ගොනුවක් ඔබගේ උපකරණයට ස්වයංක්‍රීයව Save වන අතර, පද්ධතියෙන් සදහටම ඉවත් වේ.
             </p>
           </div>
 
@@ -77,7 +77,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              onConfirmDelete(post.id);
+              if (post?.id) {
+                onConfirmDelete(post.id);
+              }
               onClose();
             }}
             className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-lg flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"

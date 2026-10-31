@@ -30,7 +30,6 @@ import {
   ChevronRight, 
   CheckCircle2, 
   Sliders, 
-  MapPinCheck,
   Bookmark,
   History,
   Trash2,
@@ -56,10 +55,16 @@ import {
 interface MapLocationTrackerProps {
   isOpen: boolean;
   onClose: () => void;
-  currentLocation: LocationOption;
-  availableLocations: LocationOption[];
-  onSaveLocation: (loc: LocationOption) => void;
-  lang: Language;
+  currentLocation?: LocationOption;
+  initialLocation?: LocationOption;
+  initialLat?: number;
+  initialLng?: number;
+  availableLocations?: LocationOption[];
+  onSaveLocation?: (loc: LocationOption) => void;
+  onSelectLocation?: (loc: LocationOption) => void;
+  onLocationSelected?: (lat: number, lng: number, locName?: string) => void;
+  lang?: Language;
+  language?: Language;
   theme?: Theme;
   initialMode?: 'manual_search' | 'auto_gps';
 }
@@ -84,19 +89,30 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
   isOpen,
   onClose,
   currentLocation,
-  availableLocations,
+  initialLocation,
+  initialLat,
+  initialLng,
+  availableLocations = [],
   onSaveLocation,
+  onSelectLocation,
+  onLocationSelected,
   lang,
+  language,
   theme = 'light',
   initialMode = 'manual_search',
 }) => {
+  const activeLang = lang || language || 'si';
+  const effectiveLocation = currentLocation || initialLocation;
+  const initialCenterLat = initialLat || effectiveLocation?.lat || 7.1712;
+  const initialCenterLng = initialLng || effectiveLocation?.lng || 79.8978;
+
   // Pin Coordinates (Exact center of map)
-  const [pinLat, setPinLat] = useState<number>(currentLocation.lat || 7.1712);
-  const [pinLng, setPinLng] = useState<number>(currentLocation.lng || 79.8978);
+  const [pinLat, setPinLat] = useState<number>(initialCenterLat);
+  const [pinLng, setPinLng] = useState<number>(initialCenterLng);
   
   // Real-time live coordinates while actively dragging
-  const [livePinLat, setLivePinLat] = useState<number>(currentLocation.lat || 7.1712);
-  const [livePinLng, setLivePinLng] = useState<number>(currentLocation.lng || 79.8978);
+  const [livePinLat, setLivePinLat] = useState<number>(initialCenterLat);
+  const [livePinLng, setLivePinLng] = useState<number>(initialCenterLng);
   const [isDraggingMap, setIsDraggingMap] = useState<boolean>(false);
 
   // Active Alternative Mode Tab (Defaults to map_pan for direct drag-nudge experience)
@@ -121,8 +137,8 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     tracking: false,
     locked: false,
     error: null,
-    lat: currentLocation.lat || 7.1712,
-    lng: currentLocation.lng || 79.8978,
+    lat: initialCenterLat,
+    lng: initialCenterLng,
     accuracy: null,
     altitude: null,
     speed: null,
@@ -234,8 +250,8 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       mapInstanceRef.current = null;
     }
 
-    const startLat = pinLat || currentLocation.lat || 7.1712;
-    const startLng = pinLng || currentLocation.lng || 79.8978;
+    const startLat = pinLat || effectiveLocation?.lat || 7.1712;
+    const startLng = pinLng || effectiveLocation?.lng || 79.8978;
 
     const map = L.map(mapContainerRef.current, {
       center: [startLat, startLng],
@@ -394,12 +410,12 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     if (isOpen) {
       stopLiveGpsTracking();
       // Initialize with current location coordinates
-      if (currentLocation.lat && currentLocation.lng) {
-        setPinLat(currentLocation.lat);
-        setPinLng(currentLocation.lng);
-        setLivePinLat(currentLocation.lat);
-        setLivePinLng(currentLocation.lng);
-        lookupAddress(currentLocation.lat, currentLocation.lng);
+      if (effectiveLocation?.lat && effectiveLocation?.lng) {
+        setPinLat(effectiveLocation.lat);
+        setPinLng(effectiveLocation.lng);
+        setLivePinLat(effectiveLocation.lat);
+        setLivePinLng(effectiveLocation.lng);
+        lookupAddress(effectiveLocation.lat, effectiveLocation.lng);
       }
     } else {
       if (watchIdRef.current !== null) {
@@ -413,7 +429,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
         watchIdRef.current = null;
       }
     };
-  }, [isOpen, stopLiveGpsTracking, lookupAddress, currentLocation.lat, currentLocation.lng]);
+  }, [isOpen, stopLiveGpsTracking, lookupAddress, effectiveLocation?.lat, effectiveLocation?.lng]);
 
   // Search input handler with debounce
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -499,10 +515,11 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
     nameEn: string,
     nameTa: string,
     lat: number,
-    lng: number
+    lng: number,
+    isAutoGps: boolean = false
   ) => {
     const finalLoc: LocationOption = {
-      id: `loc_manual_${Date.now()}`,
+      id: isAutoGps ? `loc_gps_${Date.now()}` : `loc_manual_${Date.now()}`,
       nameSi,
       nameEn,
       nameTa,
@@ -512,8 +529,13 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
 
     // Save to localStorage
     localStorage.setItem('sahaya_current_location', JSON.stringify(finalLoc));
-    localStorage.setItem('sahaya_manual_location_locked', 'true');
-    localStorage.setItem('sahaya_location_mode', 'manual');
+    localStorage.setItem('sahaya_manual_location_locked', isAutoGps ? 'false' : 'true');
+    localStorage.setItem('sahaya_location_mode', isAutoGps ? 'auto' : 'manual');
+    window.dispatchEvent(
+      new CustomEvent('sahaya_location_mode_changed', { 
+        detail: { mode: isAutoGps ? 'auto' : 'manual' } 
+      })
+    );
 
     // Add to saved locations history
     setSavedLocationsList((prev) => {
@@ -523,12 +545,22 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       return updated;
     });
 
-    onSaveLocation(finalLoc);
+    if (typeof onSaveLocation === 'function') {
+      onSaveLocation(finalLoc);
+    }
+    if (typeof onSelectLocation === 'function') {
+      onSelectLocation(finalLoc);
+    }
+    if (typeof onLocationSelected === 'function') {
+      onLocationSelected(finalLoc.lat, finalLoc.lng, finalLoc.nameSi);
+    }
     onClose();
   };
 
   // 1-Click Instant Save Location in exact [Village, Road, Town] order
   const handleSaveLocation = () => {
+    const isGpsMode = activeTab === 'gps' || (!isAutoGpsStopped && gps.locked);
+    
     const formattedRoad = customRoadSi
       ? customRoadSi.includes('පාර') || customRoadSi.includes('මාවත') || customRoadSi.includes('වීදිය')
         ? customRoadSi
@@ -545,7 +577,34 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
       resolvedGeo?.townEn || 'Katunayake'
     );
 
-    saveLocationDirectly(shortSi, shortEn, shortEn, pinLat, pinLng);
+    saveLocationDirectly(shortSi, shortEn, shortEn, pinLat, pinLng, isGpsMode);
+  };
+
+  // Explicit 1-Click Apply Live Auto GPS from GPS Tab
+  const handleApplyLiveGps = async () => {
+    const targetLat = gps.lat || pinLat;
+    const targetLng = gps.lng || pinLng;
+
+    setIsGeocoding(true);
+    try {
+      const geo = await resolveExactLocation(targetLat, targetLng);
+      saveLocationDirectly(
+        geo.shortDisplaySi,
+        geo.shortDisplayEn,
+        geo.shortDisplayEn,
+        targetLat,
+        targetLng,
+        true
+      );
+    } catch {
+      const formattedRoad = customRoadSi || 'ගංගාරාම පාර';
+      const finalVillage = customVillageSi || 'කෝවින්න';
+      const finalTown = customTownSi || 'කටුනායක';
+      const shortSi = formatOrderedLocation(finalVillage, formattedRoad, finalTown);
+      saveLocationDirectly(shortSi, shortSi, shortSi, targetLat, targetLng, true);
+    } finally {
+      setIsGeocoding(false);
+    }
   };
 
   // Delete saved location from history
@@ -622,7 +681,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider flex items-center gap-1">
-                  <MapPinCheck className="w-3.5 h-3.5" />
+                  <MapPin className="w-3.5 h-3.5" />
                   <span>තෝරාගත් ස්ථානය (Selected Location)</span>
                 </span>
                 {isGeocoding && (
@@ -1116,11 +1175,11 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                     සොයන ස්ථානය හමුනොවී නම් "✍️ අතින් ලිවීම" ටැබ් එකෙන් ගම, පාර සහ නගරය සෘජුවම ඇතුළත් කළ හැක.
                   </div>
                 ) : (
-                  searchResults.map((res) => {
+                  searchResults.map((res, rIdx) => {
                     const isSelected = customRoadSi === res.roadSi && customVillageSi === res.villageSi;
                     return (
                       <div
-                        key={res.id}
+                        key={`loc_search_${res.id || 'r'}_${rIdx}`}
                         className={`w-full p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
                           isSelected
                             ? 'bg-teal-600 text-white border-teal-700 shadow-md'
@@ -1352,9 +1411,9 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                     තවමත් සුරකින ලද ස්ථාන නොමැත.
                   </div>
                 ) : (
-                  savedLocationsList.map((loc) => (
+                  savedLocationsList.map((loc, lIdx) => (
                     <div
-                      key={loc.id}
+                      key={`saved_loc_${loc.id || 'loc'}_${lIdx}`}
                       onClick={() => {
                         stopLiveGpsTracking();
                         if (loc.lat && loc.lng) {
@@ -1383,7 +1442,7 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSaveLocation(loc);
+                            onSaveLocation?.(loc);
                             onClose();
                           }}
                           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-sm cursor-pointer"
@@ -1454,6 +1513,18 @@ export const MapLocationTracker: React.FC<MapLocationTrackerProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Instant Apply Auto GPS Button */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleApplyLiveGps}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 via-emerald-600 to-teal-700 hover:from-red-500 hover:to-teal-600 text-white text-xs sm:text-sm font-black shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 border border-emerald-300/40 animate-pulse"
+                >
+                  <Crosshair className="w-4 h-4" />
+                  <span>⚡ Auto GPS සක්‍රීය කර සජීවී ස්ථානය යොදන්න (Use Live Auto GPS)</span>
+                </button>
+              </div>
             </div>
           )}
 

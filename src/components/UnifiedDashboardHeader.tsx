@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, 
   Language, 
@@ -8,26 +8,33 @@ import {
 } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
-import { MapLocationTracker } from './MapLocationTracker';
+import { GpsPermissionModal } from './GpsPermissionModal';
 import { resolveExactLocation, toLocationOption } from '../utils/geoUtils';
+import { getStoredNotifications } from '../utils/notificationManager';
 import { 
   ShieldCheck, 
   MapPin, 
   Crosshair, 
   Radio, 
-  HeartHandshake, 
   Sparkles, 
-  HelpCircle, 
   LogOut, 
   Sun, 
   Moon, 
   Shield, 
-  Search, 
   Loader2, 
-  Lock, 
   Check,
-  ChevronDown
+  Coins,
+  Bell,
+  MessageSquare,
+  QrCode,
+  Volume2,
+  Zap,
+  Settings,
+  ArrowLeft
 } from 'lucide-react';
+import { getUserCreditBalance, extractNumericId } from '../utils/creditManager';
+import { getUserSPoints } from '../utils/sPointManager';
+import { checkIsAdmin } from '../utils/postOwnerHelper';
 
 interface UnifiedDashboardHeaderProps {
   user: User;
@@ -40,38 +47,133 @@ interface UnifiedDashboardHeaderProps {
   toggleTheme: () => void;
   onNavigateToIssues?: () => void;
   onOpenSettings?: () => void;
+  onOpenWallet?: () => void;
+  onOpenNotifications?: () => void;
+  onOpenPickMeAlertSettings?: () => void;
+  onOpenInbox?: () => void;
+  inboxCount?: number;
+  onOpenAssistant?: () => void;
   onLogout?: () => void;
   activeRoleView?: Role;
   setActiveRoleView?: (role: Role) => void;
   onNavigate?: (view: any) => void;
   isAutoLoadingLocation?: boolean;
   autoLoadedNotice?: string | null;
+  onOpenRedAlert?: () => void;
+  activeRedAlertsCount?: number;
+  onOpenBarterExchange?: () => void;
+  onOpenQrPay?: (tab?: 'my_qr' | 'scan_pay') => void;
+  onOpenShortcutHub?: () => void;
+  onOpenInstallApp?: () => void;
+  onOpenSavedPlaces?: () => void;
+  onOpenQuickRegisterHub?: () => void;
+  onOpenAppQr?: () => void;
+  onOpenLeaderboard?: () => void;
 }
 
 export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   user,
   currentLocation,
-  availableLocations,
+  availableLocations: _availableLocations,
   onSelectLocation,
   language,
   setLanguage,
   theme,
   toggleTheme,
-  onNavigateToIssues,
   onOpenSettings,
+  onOpenWallet,
+  onOpenNotifications,
+  onOpenPickMeAlertSettings,
+  onOpenInbox,
+  inboxCount,
   onLogout,
   activeRoleView,
   setActiveRoleView,
   onNavigate,
   isAutoLoadingLocation = false,
   autoLoadedNotice = null,
+  onOpenRedAlert,
+  activeRedAlertsCount = 0,
+  onOpenQrPay,
+  onOpenShortcutHub,
+  onOpenInstallApp,
+  onOpenSavedPlaces,
+  onOpenQuickRegisterHub,
+  onOpenAppQr,
+  onOpenLeaderboard,
 }) => {
   const t = translations[language];
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (language === 'en') return en;
+    if (language === 'ta') return ta;
+    return si;
+  };
+
   const [isAutoTracking, setIsAutoTracking] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+  const [isGpsPermissionModalOpen, setIsGpsPermissionModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
-  const isManualLocked = localStorage.getItem('sahaya_manual_location_locked') === 'true';
+  useEffect(() => {
+    const updateUnread = () => {
+      const notifs = getStoredNotifications();
+      setUnreadNotifCount(notifs.filter(n => !n.isRead).length);
+    };
+
+    updateUnread();
+    window.addEventListener('sahaya_notifications_updated', updateUnread);
+    window.addEventListener('sahaya_new_notification', updateUnread);
+    return () => {
+      window.removeEventListener('sahaya_notifications_updated', updateUnread);
+      window.removeEventListener('sahaya_new_notification', updateUnread);
+    };
+  }, []);
+
+  const [creditBalance, setCreditBalance] = useState<number>(() => user ? (Number(getUserCreditBalance(user)) || 0) : 0);
+  const [sPointValue, setSPointValue] = useState<number>(() => {
+    if (!user) return 0;
+    const sp = getUserSPoints(user);
+    return typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0);
+  });
+
+  useEffect(() => {
+    if (user) {
+      setCreditBalance(Number(getUserCreditBalance(user)) || 0);
+      const sp = getUserSPoints(user);
+      setSPointValue(typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0));
+    }
+  }, [user, user?.credits, user?.sPoints]);
+
+  useEffect(() => {
+    const onCreditsUpdated = (e: any) => {
+      if (e.detail?.newBalance !== undefined) {
+        setCreditBalance(Number(e.detail.newBalance) || 0);
+      } else if (user) {
+        setCreditBalance(Number(getUserCreditBalance(user)) || 0);
+      }
+    };
+    const onSPointsUpdated = (e: any) => {
+      if (e.detail?.newPoints !== undefined) {
+        setSPointValue(Number(e.detail.newPoints) || 0);
+      } else if (user) {
+        const sp = getUserSPoints(user);
+        setSPointValue(typeof sp === 'number' ? sp : (sp?.totalPoints ?? 0));
+      }
+    };
+
+    window.addEventListener('sahaya_credits_updated', onCreditsUpdated);
+    window.addEventListener('sahaya_spoints_updated', onSPointsUpdated);
+    return () => {
+      window.removeEventListener('sahaya_credits_updated', onCreditsUpdated);
+      window.removeEventListener('sahaya_spoints_updated', onSPointsUpdated);
+    };
+  }, [user]);
+  const numericId = extractNumericId(user?.nicNumber || user?.userId);
+  const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
+
+  // Check Admin privileges based on current logged in user
+  const isAdminUser = checkIsAdmin(user);
 
   const getLocationName = (loc: LocationOption) => {
     if (language === 'si') return loc.nameSi;
@@ -79,115 +181,142 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
     return loc.nameEn;
   };
 
-  const handleOpenManualPicker = () => {
-    setIsAutoTracking(false);
-    setIsMapModalOpen(true);
-  };
-
-  const handleSaveLocationFromMap = (loc: LocationOption) => {
+  const handleLocationSuccess = (loc: LocationOption) => {
     onSelectLocation(loc);
-    setToastMsg(`📍 ස්ථානය සුරැකිණි: ${loc.nameSi}`);
+    setToastMsg(`⚡ Auto GPS ස්ථානය සාර්ථකව තහවුරු විය: ${loc.nameSi}`);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
   const handleDirectAutoGps = () => {
     if (!navigator.geolocation) {
-      setIsMapModalOpen(true);
+      setToastMsg('⚠️ ඔබගේ උපාංගයේ GPS සහාය නොදක්වයි.');
+      setTimeout(() => setToastMsg(null), 4000);
       return;
     }
 
     setIsAutoTracking(true);
+    localStorage.setItem('sahaya_location_mode', 'auto');
+    localStorage.removeItem('sahaya_manual_location_locked');
+    window.dispatchEvent(new CustomEvent('sahaya_location_mode_changed', { detail: { mode: 'auto' } }));
+
+    setToastMsg('⚡ සජීවී Auto GPS සංඥාව ලබාගනිමින් පවතී...');
+
+    const processCoords = async (latitude: number, longitude: number, accuracy: number) => {
+      try {
+        const geo = await resolveExactLocation(latitude, longitude);
+        const locOpt = toLocationOption(geo);
+        
+        localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
+        localStorage.setItem('sahaya_location_mode', 'auto');
+        localStorage.removeItem('sahaya_manual_location_locked');
+        
+        onSelectLocation(locOpt);
+        setToastMsg(`⚡ Auto GPS සක්‍රීයයි - සජීවී ස්ථානය: ${geo.shortDisplaySi} (±${Math.round(accuracy)}m)`);
+      } catch {
+        const fallback: LocationOption = {
+          id: `loc_gps_${Date.now()}`,
+          nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
+          nameEn: `Kovinna, Gangarama Road, Katunayake`,
+          nameTa: `Kovinna, Gangarama Road, Katunayake`,
+          lat: latitude,
+          lng: longitude,
+        };
+        localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
+        localStorage.setItem('sahaya_location_mode', 'auto');
+        onSelectLocation(fallback);
+        setToastMsg(`⚡ Auto GPS ස්ථානය: ${fallback.nameSi}`);
+      } finally {
+        setIsAutoTracking(false);
+        setTimeout(() => setToastMsg(null), 4000);
+      }
+    };
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        try {
-          const geo = await resolveExactLocation(latitude, longitude);
-          const locOpt = toLocationOption(geo);
-          
-          localStorage.setItem('sahaya_current_location', JSON.stringify(locOpt));
-          localStorage.setItem('sahaya_manual_location_locked', 'false');
-          localStorage.setItem('sahaya_location_mode', 'auto');
-          
-          onSelectLocation(locOpt);
-          setToastMsg(`⚡ Auto GPS සක්‍රීයයි: ${geo.shortDisplaySi}`);
-        } catch {
-          const fallback: LocationOption = {
-            id: `loc_gps_${Date.now()}`,
-            nameSi: `කෝවින්න, ගංගාරාම පාර, කටුනායක`,
-            nameEn: `Kovinna, Gangarama Road, Katunayake`,
-            nameTa: `Kovinna, Gangarama Road, Katunayake`,
-            lat: latitude,
-            lng: longitude,
-          };
-          localStorage.setItem('sahaya_current_location', JSON.stringify(fallback));
-          localStorage.setItem('sahaya_manual_location_locked', 'false');
-          onSelectLocation(fallback);
-          setToastMsg(`⚡ Auto GPS ස්ථානය: ${fallback.nameSi}`);
-        } finally {
-          setIsAutoTracking(false);
-          setTimeout(() => setToastMsg(null), 4000);
-        }
+        processCoords(latitude, longitude, accuracy);
       },
       () => {
-        setIsAutoTracking(false);
-        setIsMapModalOpen(true);
+        navigator.geolocation.getCurrentPosition(
+          (fallbackPos) => {
+            const { latitude, longitude, accuracy } = fallbackPos.coords;
+            processCoords(latitude, longitude, accuracy);
+          },
+          (finalErr) => {
+            setIsAutoTracking(false);
+            setIsGpsPermissionModalOpen(true);
+            if (finalErr.code === finalErr.PERMISSION_DENIED) {
+              setToastMsg('⚠️ GPS අවසරය ලබාදී නැත. Settings වලින් Location Allow කරන්න.');
+            } else {
+              setToastMsg('⚠️ GPS ස්ථානය ලබාගැනීම ප්‍රමාදයි. නැවත උත්සාහ කරන්න.');
+            }
+            setTimeout(() => setToastMsg(null), 5000);
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
       },
       {
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: 12000,
         maximumAge: 0,
       }
     );
   };
 
   return (
-    <div className="relative z-20 mb-4 sm:mb-6">
-      {/* 
-        Unified Single Card containing:
-        1. සහය සේවා Logo & Brand
-        2. User Profile (Name, Photo, Verified Badge, ID)
-        3. Location & Address Bar (Live Address, Map Picker, Auto GPS)
-        4. Notification Action Buttons (කැමැත්ත දැක්වූවන්, සහය වන්න)
-        5. App Controls (Language, Theme, Help, Admin Switch, Logout)
-      */}
-      <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-3xl p-3.5 sm:p-4 shadow-xl backdrop-blur-xl transition-all duration-300 space-y-3">
-        
-        {/* TOP ROW: Brand Logo (Left) + Utility & Action Buttons (Center) + User Profile (Right) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+    <div className="relative z-20 mb-3 sm:mb-4 space-y-2">
+      {/* LAYER 1: Header Bar */}
+      <div className="bg-white dark:bg-[#07150d] border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-md transition-all duration-300">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3">
           
-          {/* 1. App Logo & Brand (LEFT) */}
-          <div 
-            onClick={() => {
-              if (onNavigate) onNavigate('dashboard');
-            }}
-            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0"
-            title="සහය සේවා - මුල් පිටුව"
-          >
-            <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
-            <div>
-              <div className="flex items-center gap-1 leading-none">
-                <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">සහය</span>
-                <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">සේවා</span>
+          {/* Top Bar Left: App Brand & Language */}
+          <div className="flex items-center justify-between lg:justify-start gap-2 sm:gap-2.5 flex-wrap shrink-0">
+            <div 
+              onClick={() => onNavigate?.('dashboard')}
+              className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
+              title="සහය සේවා - මුල් පිටුව"
+            >
+              <AppLogo size="md" animated showGlow className="group-hover:scale-105 transition-transform" />
+              <div>
+                <div className="flex items-center gap-1 leading-none">
+                  <span className="font-black text-base sm:text-lg text-[#007a4b] dark:text-[#00c880]">
+                    {language === 'en' ? 'Support' : language === 'ta' ? 'ஆதரவு' : 'සහය'}
+                  </span>
+                  <span className="font-black text-base sm:text-lg text-amber-600 dark:text-amber-400">
+                    {language === 'en' ? 'Services' : language === 'ta' ? 'சேவைகள்' : 'සේවා'}
+                  </span>
+                </div>
+                <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-[#6a9179] tracking-wider uppercase block">
+                  {language === 'en' ? 'SUPPORT SERVICES' : language === 'ta' ? 'ஆதரவு சேவைகள்' : 'SAHAYA SEWA'}
+                </span>
               </div>
-              <span className="text-[10px] font-bold text-slate-500 dark:text-[#6a9179] tracking-wider uppercase">
-                SAHAYA SEWA
-              </span>
             </div>
-          </div>
 
-          {/* 2. Controls & Actions (CENTER / MIDDLE) - Clear, slightly larger, comfortable touch buttons */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
+            {/* Settings Quick Button */}
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold active:scale-95"
+                title={getLangText('පැතිකඩ සහ සැකසුම් (Settings)', 'Settings & Profile', 'அமைப்புகள்')}
+              >
+                <Settings className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-black text-xs">
+                  {getLangText('සැකසුම්', 'Settings', 'அமைப்புகள்')}
+                </span>
+              </button>
+            )}
+
             {/* Language Selector */}
-            <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-1 rounded-2xl border border-slate-200 dark:border-[#1c402b] shadow-2xs">
+            <div className="flex items-center bg-slate-100 dark:bg-[#11271b] p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-[#1c402b] shrink-0">
               {(['si', 'en', 'ta'] as Language[]).map((langKey) => (
                 <button
                   key={langKey}
                   type="button"
                   onClick={() => setLanguage(langKey)}
-                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
                     language === langKey
-                      ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white shadow-sm'
+                      ? 'bg-gradient-to-r from-emerald-600 to-[#007a4b] text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
@@ -195,223 +324,392 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                 </button>
               ))}
             </div>
+          </div>
 
-            {/* Dark / Light Theme Toggle */}
+          {/* Center Utilities Group */}
+          <div className="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 flex-wrap min-w-0 bg-slate-50/80 dark:bg-[#0b1f14]/80 p-1 sm:p-1.5 rounded-2xl border border-slate-200/60 dark:border-[#143021]">
+            {onOpenRedAlert && (
+              <button
+                type="button"
+                onClick={onOpenRedAlert}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer border border-red-300/80 shrink-0"
+                title="රතු එළිය (Red Alert)"
+              >
+                <span className="text-xs animate-pulse">🚨</span>
+                <span className="font-black tracking-wide">රතු එළිය</span>
+                {activeRedAlertsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-white text-red-700 text-[10px] font-black font-mono shadow-xs">
+                    {activeRedAlertsCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+
+            {onOpenNotifications && (
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="relative p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                title="සජීවී දැනුම්දීම්"
+              >
+                <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-4.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black font-mono flex items-center justify-center shadow-xs animate-pulse">
+                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {onOpenInbox &&
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: onOpenInbox,
+                  className:
+                    'relative px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0084ff] via-emerald-600 to-teal-600 hover:from-[#0073e6] hover:to-emerald-700 text-white border border-emerald-400/50 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-sm font-black text-xs',
+                  title: getLangText('පෙර පණිවිඩ සහ Username මඟින් නව Chat', 'Messages & New Chat by Username', 'செய்திகள் & புதிய அரட்டை'),
+                },
+                React.createElement(MessageSquare, { className: 'w-4 h-4 text-white shrink-0' }),
+                React.createElement(
+                  'span',
+                  { className: 'font-black text-xs' },
+                  getLangText('Chat', 'Chat', 'Chat')
+                ),
+                inboxCount && Math.max(inboxCount, 1) === inboxCount
+                  ? React.createElement(
+                      'span',
+                      {
+                        className:
+                          'min-w-[17px] h-4.5 px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black font-mono flex items-center justify-center shadow-xs',
+                      },
+                      Math.max(inboxCount, 10) === inboxCount ? '9+' : String(inboxCount)
+                    )
+                  : null
+              )}
+
+            {onOpenPickMeAlertSettings && (
+              <button
+                type="button"
+                onClick={onOpenPickMeAlertSettings}
+                className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60 flex items-center gap-1 text-emerald-700 dark:text-emerald-300 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+                title={getLangText('24/7 ශ්‍රව්‍ය පාලනය', '24/7 Audio Alert Settings', '24/7 ஒலி அமைப்புகள்')}
+              >
+                <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </button>
+            )}
+
+            {(onOpenSavedPlaces || onOpenQuickRegisterHub) && (
+              <button
+                type="button"
+                onClick={onOpenSavedPlaces ? onOpenSavedPlaces : onOpenQuickRegisterHub}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer border border-emerald-300/60 shrink-0"
+                title={getLangText('ස්ථානය සුරකින්න', 'Save Place', 'இடத்தை சேமி')}
+              >
+                <MapPin className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                <span className="font-black text-xs">
+                  {getLangText('ස්ථානය සුරකින්න', 'Save Place', 'இடத்தை சேமி')}
+                </span>
+              </button>
+            )}
+
+            {onOpenAppQr && (
+              <button
+                type="button"
+                onClick={onOpenAppQr}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs font-bold text-xs"
+                title="Web QR Code"
+              >
+                <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline font-extrabold text-xs">QR Code</span>
+              </button>
+            )}
+
+            {onOpenShortcutHub && (
+              <button
+                type="button"
+                onClick={onOpenShortcutHub}
+                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/80 text-amber-900 dark:text-amber-300 flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs text-xs font-bold"
+                title="Quick Hub"
+              >
+                <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span className="hidden md:inline font-black text-xs">Quick Hub</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={toggleTheme}
-              className="px-3 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-2 text-amber-500 hover:scale-105 active:scale-95 transition-all shadow-2xs cursor-pointer shrink-0"
-              title="තේමාව මාරු කරන්න (Light / Dark Mode)"
+              className="p-2 rounded-xl bg-white hover:bg-slate-100 dark:bg-[#11271b] dark:hover:bg-[#183d2b] border border-slate-200 dark:border-[#1c402b] flex items-center gap-1 text-amber-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 shadow-2xs"
+              title="Theme Toggle"
             >
               {theme === 'dark' ? (
-                <>
-                  <Sun className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  <span className="hidden md:inline text-xs font-bold text-slate-200">Light</span>
-                </>
+                <Sun className="w-4 h-4 text-amber-400 fill-amber-400" />
               ) : (
-                <>
-                  <Moon className="w-4 h-4 text-slate-700" />
-                  <span className="hidden md:inline text-xs font-bold text-slate-700">Dark</span>
-                </>
+                <Moon className="w-4 h-4 text-slate-700" />
               )}
             </button>
 
-            {/* App Help ("ඇප් සහය") */}
-            {onNavigateToIssues && (
-              <button
-                type="button"
-                onClick={onNavigateToIssues}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-black bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-[#007a4b] dark:text-[#00c880] border border-[#007a4b]/30 transition-all cursor-pointer shadow-xs active:scale-95"
-                title={language === 'si' ? 'ඇප් සහය සහ ගැටලු' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-              >
-                <HelpCircle className="w-4 h-4 text-[#007a4b] dark:text-[#00c880]" />
-                <span className="font-bold">
-                  {language === 'si' ? 'ඇප් සහය' : language === 'ta' ? 'செயலி உதவி' : 'App Help'}
-                </span>
-              </button>
-            )}
-
-            {/* Admin Switcher (If Admin user) */}
-            {user.role === 'admin' && setActiveRoleView && onNavigate && (
+            {/* Admin Switcher / Return to Admin Panel Button */}
+            {isAdminUser && onNavigate && (
               <button
                 type="button"
                 onClick={() => {
-                  const nextRole = activeRoleView === 'admin' ? 'user' : 'admin';
-                  setActiveRoleView(nextRole);
-                  onNavigate(nextRole === 'admin' ? 'admin' : 'dashboard');
+                  if (setActiveRoleView) {
+                    setActiveRoleView('admin');
+                  }
+                  onNavigate('admin');
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-black border transition-all cursor-pointer shadow-2xs ${
-                  activeRoleView === 'admin'
-                    ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/50 shadow-xs'
-                    : 'bg-slate-100 dark:bg-[#122e20] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200'
-                }`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 font-black text-xs transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95 shrink-0"
+                title="Admin Panel වෙත ආපසු යන්න"
               >
-                <Shield className="w-4 h-4 text-amber-500" />
-                <span className="hidden sm:inline">{activeRoleView === 'admin' ? 'Admin Mode' : 'Admin'}</span>
+                <ArrowLeft className="w-4 h-4 text-slate-950 stroke-[3]" />
+                <Shield className="w-4 h-4 text-slate-950 fill-amber-950/20" />
+                <span className="font-black text-xs">Admin Panel</span>
               </button>
             )}
+          </div>
 
-            {/* Logout Button */}
+          {/* Right Account & Exit Zone */}
+          <div className="flex items-center justify-between lg:justify-end gap-2 sm:gap-2.5 shrink-0 pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-[#142e20]">
+            <div 
+              onClick={onOpenSettings}
+              className={`flex items-center gap-2 p-1 rounded-xl transition-all ${
+                onOpenSettings ? 'cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15' : ''
+              }`}
+              title={onOpenSettings ? getLangText('පැතිකඩ සැකසුම්', 'Profile Settings', 'சுயவிவர அமைப்புகள்') : undefined}
+            >
+              <div className="text-right min-w-0">
+                <div className="flex items-center justify-end gap-1">
+                  <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[165px] sm:max-w-[230px]">
+                    {isAdminUser ? `🛡️ ${user?.name || 'පරිපාලක'}` : (user?.name || 'පරිශීලක')}
+                  </h2>
+                  {isAdminUser ? (
+                    <span className="flex text-[8px] font-black bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0 shadow-2xs">
+                      ADMIN
+                    </span>
+                  ) : (
+                    <span className="hidden sm:flex text-[8px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1 py-0.2 rounded-md uppercase tracking-wider items-center gap-0.5 shrink-0">
+                      <ShieldCheck className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>VERIFIED</span>
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
+                  ID: {numericId || user?.userId || user?.id || 'Visitor'}
+                </p>
+              </div>
+
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-xs flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm">
+                  {(user?.facePhotoUrl || user?.photoUrl) && (user?.facePhotoUrl || user?.photoUrl)?.trim() !== '' ? (
+                    <img 
+                      src={user?.facePhotoUrl || user?.photoUrl} 
+                      alt={user?.name || 'User'} 
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    (user?.name || 'U').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
+              </div>
+            </div>
+
             {onLogout && (
               <button
                 type="button"
-                onClick={onLogout}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
-                title="පද්ධතියෙන් ඉවත් වන්න (Logout)"
+                onClick={() => setIsLogoutConfirmOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 hover:scale-105 shrink-0 whitespace-nowrap"
+                title={getLangText('පද්ධතියෙන් ඉවත් වන්න', 'Log out', 'வெளியேறு')}
               >
-                <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                <span className="hidden sm:inline">ඉවත් වන්න</span>
+                <LogOut className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span className="inline font-black">{getLangText('ඉවත් වන්න', 'Exit', 'வெளியேறு')}</span>
               </button>
             )}
           </div>
-
-          {/* 3. User Profile Photo & Info (RIGHT) */}
-          <div 
-            onClick={onOpenSettings}
-            className={`flex items-center gap-3 shrink-0 ${onOpenSettings ? 'cursor-pointer hover:opacity-90 transition-opacity p-1.5 -m-1.5 rounded-2xl hover:bg-emerald-500/10' : ''}`}
-            title={onOpenSettings ? 'පැතිකඩ සැකසුම් (Profile Settings)' : undefined}
-          >
-            <div className="text-right hidden sm:block min-w-0">
-              <div className="flex items-center justify-end gap-1.5">
-                <h2 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[150px]">
-                  {user.name}
-                </h2>
-                <span className="text-[9px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-md uppercase tracking-wider flex items-center gap-0.5 shrink-0">
-                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>VERIFIED</span>
-                </span>
-              </div>
-              <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                ID: {user.userId}
-              </p>
-            </div>
-
-            <div className="relative shrink-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl overflow-hidden border-2 border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/60 shadow-md flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 text-base">
-                {user.photoUrl && user.photoUrl.trim() !== '' ? (
-                  <img 
-                    src={user.photoUrl} 
-                    alt={user.name} 
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover" 
-                  />
-                ) : (
-                  user.name.charAt(0).toUpperCase()
-                )}
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#07150d]" />
-            </div>
-          </div>
         </div>
-
-        {/* BOTTOM ROW: Integrated Location & Address Strip */}
-        <div className="pt-2 border-t border-slate-100 dark:border-[#132c1e] flex flex-wrap items-center justify-between gap-2.5">
-          
-          {/* Active Address & Status Display */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
-              isManualLocked 
-                ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400' 
-                : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-            }`}>
-              <MapPin className="w-4 h-4 animate-bounce" />
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                  <Radio className="w-2.5 h-2.5 text-emerald-500 animate-pulse" />
-                  <span>{t.currentLocationLabel}:</span>
-                </span>
-
-                {isManualLocked ? (
-                  <span className="bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-[9px] px-1.5 py-0.2 rounded-md font-bold flex items-center gap-0.5">
-                    <Lock className="w-2 h-2" />
-                    <span>Manual</span>
-                  </span>
-                ) : (
-                  <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-1.5 py-0.2 rounded-md font-mono font-bold flex items-center gap-0.5">
-                    <ShieldCheck className="w-2 h-2" />
-                    <span>⚡ Auto GPS</span>
-                  </span>
-                )}
-
-                {isAutoLoadingLocation && (
-                  <span className="bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[9px] px-1.5 py-0.2 rounded-md font-bold flex items-center gap-1 animate-pulse">
-                    <Loader2 className="w-2 h-2 animate-spin" />
-                    <span>Loading...</span>
-                  </span>
-                )}
-              </div>
-
-              {/* Exact Location String */}
-              <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 truncate mt-0.5">
-                {getLocationName(currentLocation)}
-              </p>
-            </div>
-          </div>
-
-          {/* Location Action Buttons (Select Location & Auto GPS) */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Select Location (Manual Picker) */}
-            <button
-              type="button"
-              onClick={handleOpenManualPicker}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs shadow-xs transition-all active:scale-95 cursor-pointer border border-emerald-400/30"
-              title="සිතියමෙන් ස්ථානය තෝරන්න"
-            >
-              <Search className="w-3.5 h-3.5 text-emerald-200" />
-              <span>ස්ථානය තෝරන්න</span>
-            </button>
-
-            {/* Auto GPS Trigger */}
-            <button
-              type="button"
-              onClick={handleDirectAutoGps}
-              disabled={isAutoTracking}
-              className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer shadow-xs disabled:opacity-60 ${
-                !isManualLocked
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                  : 'bg-slate-100 dark:bg-[#12281b] hover:bg-slate-200 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1b3a27]'
-              }`}
-              title="සජීවී GPS මගින් ස්ථානය සොයාගන්න"
-            >
-              {isAutoTracking ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
-                  <span>GPS...</span>
-                </>
-              ) : (
-                <>
-                  <Crosshair className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Auto GPS</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Toast Notice */}
-        {(toastMsg || autoLoadedNotice) && (
-          <div className="py-1.5 px-3 bg-emerald-50 dark:bg-[#0f281b] border border-emerald-500/40 text-emerald-800 dark:text-emerald-200 text-[11px] font-bold rounded-xl flex items-center gap-1.5 animate-fadeIn shadow-xs">
-            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="truncate">{toastMsg || autoLoadedNotice}</span>
-          </div>
-        )}
       </div>
 
-      {/* Map Location Tracker Modal */}
-      <MapLocationTracker
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        currentLocation={currentLocation}
-        availableLocations={availableLocations}
-        onSaveLocation={handleSaveLocationFromMap}
-        lang={language}
-        theme={theme}
+      {/* LAYER 2: Location & Wallet Bar */}
+      <div className="bg-white/95 dark:bg-[#07150d]/95 border border-slate-200/90 dark:border-[#153423] rounded-2xl p-2.5 sm:p-3 shadow-sm backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+        <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0 bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+            <MapPin className="w-4 h-4 animate-bounce" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                <Radio className="w-2.5 h-2.5 text-emerald-500 animate-pulse" />
+                <span>{t.currentLocationLabel}:</span>
+              </span>
+
+              <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-0.5">
+                <ShieldCheck className="w-2.5 h-2.5" />
+                <span>⚡ Auto GPS</span>
+              </span>
+
+              {isAutoLoadingLocation && (
+                <span className="bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[9px] px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1 animate-pulse">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  <span>Loading...</span>
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 truncate mt-0.5">
+              {getLocationName(currentLocation)}
+            </p>
+          </div>
+        </div>
+
+        {/* Right Controls: Auto GPS Trigger, QR Pay, & Wallet Balance */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap pt-1 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-[#132a1d]">
+          <button
+            type="button"
+            onClick={handleDirectAutoGps}
+            disabled={isAutoTracking}
+            className="px-3 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-60 bg-gradient-to-r from-emerald-600 via-[#007a4b] to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white border-emerald-400/30"
+            title={getLangText('ස්ථානය නැවුම් කරන්න', 'Refresh Location', 'இடத்தைப் புதுப்பி')}
+          >
+            {isAutoTracking ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                <span>GPS...</span>
+              </>
+            ) : (
+              <>
+                <Crosshair className="w-3.5 h-3.5 text-emerald-200" />
+                <span>⚡ Auto GPS</span>
+              </>
+            )}
+          </button>
+
+          {!isVisitor && onOpenQrPay && (
+            <button
+              type="button"
+              onClick={() => onOpenQrPay('scan_pay')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/70 text-amber-900 dark:text-amber-200 text-xs font-black shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="QR Pay"
+            >
+              <QrCode className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">QR Pay</span>
+            </button>
+          )}
+
+          {!isVisitor && (
+            <button
+              type="button"
+              onClick={onOpenWallet}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border border-amber-400/60 dark:border-amber-500/50 shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 group"
+              title={getLangText('ක්‍රෙඩිට් ගිණුම සහ ශේෂය', 'Credit Wallet & Balance', 'கிரெடிட் கணக்கு & மீதி')}
+            >
+              <div className="w-5 h-5 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center font-black text-[10px] shadow-2xs group-hover:rotate-12 transition-transform shrink-0">
+                <Coins className="w-3 h-3 text-amber-950" />
+              </div>
+              <div className="text-left">
+                <div className="text-[8px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 leading-none">
+                  {getLangText('ශේෂය', 'Balance', 'மீதி')}
+                </div>
+                <div className="text-xs font-black font-mono text-emerald-800 dark:text-emerald-300 leading-tight">
+                  {getLangText('රු.', 'Rs.', 'ரூ.')} {(Number(creditBalance) || 0).toFixed(2)}
+                </div>
+              </div>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenLeaderboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-400/60 dark:border-emerald-500/50 shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 group"
+            title="S Point Leaderboard"
+          >
+            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shadow-2xs group-hover:rotate-12 transition-transform shrink-0">
+              S
+            </div>
+            <div className="text-left">
+              <div className="text-[8px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 leading-none">
+                S Point
+              </div>
+              <div className="text-xs font-black font-mono text-emerald-950 dark:text-emerald-100 leading-tight">
+                {(Number(typeof sPointValue === 'object' && sPointValue !== null ? (sPointValue as any).totalPoints : sPointValue) || 0).toFixed(1)}
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Dynamic Toast Notice */}
+      {(toastMsg || autoLoadedNotice) && (
+        <div className="py-1.5 px-3 bg-emerald-50 dark:bg-[#0f281b] border border-emerald-500/40 text-emerald-800 dark:text-emerald-200 text-[11px] font-bold rounded-xl flex items-center gap-1.5 animate-fadeIn shadow-xs">
+          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span className="truncate">{toastMsg || autoLoadedNotice}</span>
+        </div>
+      )}
+
+      {/* Modals */}
+      <GpsPermissionModal
+        isOpen={isGpsPermissionModalOpen}
+        onClose={() => setIsGpsPermissionModalOpen(false)}
+        onLocationSuccess={handleLocationSuccess}
+        language={language}
       />
+
+      {isLogoutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#07160e] border border-slate-200 dark:border-[#163625] rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4 animate-scaleUp">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 shadow-md">
+                <LogOut className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  {getLangText('පද්ධතියෙන් ඉවත් වීම', 'Log Out of Account', 'கணக்கிலிருந்து வெளியேறு')}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  {getLangText('ඔබට ඉවත් වීමට අවශ්‍ය බව තහවුරු කරන්න', 'Please confirm you want to log out', 'வெளியேற விரும்புகிறீர்களா?')}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              {getLangText(
+                'ඔබ සහය සේවා පද්ධතියෙන් ඉවත් වීමට සූදානම් වේ. නැවත පිවිසීමට ඔබගේ ජාතික හැඳුනුම්පත් අංකය සහ මුරපදය අවශ්‍ය වේ.',
+                'You are about to log out of Sahaya Sewa. You will need your NIC and password to log in again.',
+                'நீங்கள் சகாய சேவா கணக்கிலிருந்து வெளியேற உள்ளீர்கள்.'
+              )}
+            </p>
+
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsLogoutConfirmOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs transition-all cursor-pointer"
+              >
+                {getLangText('අවලංගු කරන්න', 'Cancel', 'ரத்துசெய்')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogoutConfirmOpen(false);
+                  onLogout?.();
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{getLangText('ඔව්, ඉවත් වන්න', 'Yes, Log Out', 'ஆம், வெளியேறு')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default UnifiedDashboardHeader;
+

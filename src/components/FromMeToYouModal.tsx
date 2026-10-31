@@ -29,7 +29,6 @@ import {
 import { HelpPost, Language, LocationOption, User, TagItem } from '../types';
 import { TagSelector } from './TagSelector';
 import { getStoredTags } from '../utils/tagUtils';
-import { MapLocationTracker } from './MapLocationTracker';
 import { getPostRateLimitStatus, recordPostSubmission } from '../utils/rateLimiter';
 
 export type FromMeToYouType = 'donation' | 'giveaway' | 'exchange';
@@ -91,7 +90,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
   // Location save consent & details
   const [saveLocationConsent, setSaveLocationConsent] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<LocationOption>(currentLocation);
-  const [isMapTrackerOpen, setIsMapTrackerOpen] = useState(false);
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsDetectedMsg, setGpsDetectedMsg] = useState('');
 
@@ -332,7 +330,7 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
     const whatIsNeededFormatted = narrative;
 
     const postPayload: Omit<HelpPost, 'id' | 'postCode' | 'createdAt' | 'repliesCount' | 'helpersCount' | 'replies'> = {
-      userName: currentUser.name || 'පරිශීලකයා',
+      userName: currentUser?.name || 'පරිශීලකයා',
       userPhone: fullPhone,
       whatHappened: whatHappenedFormatted,
       whatIsNeeded: whatIsNeededFormatted,
@@ -850,15 +848,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                     <RefreshCw className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-spin' : ''}`} />
                     <span>Auto GPS Refresh</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsMapTrackerOpen(true)}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Navigation className="w-3.5 h-3.5 text-amber-300" />
-                    <span>සිතියම (Map)</span>
-                  </button>
                 </div>
 
                 {gpsDetectedMsg && (
@@ -955,8 +944,8 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#04140d] border border-slate-300 dark:border-[#1a3826] text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-xs"
                 >
                   <option value="">-- ප්‍රධාන මාතෘකාවක් තෝරන්න --</option>
-                  {donationCategories.map((cat) => (
-                    <option key={cat.id} value={cat.id} className="dark:bg-[#04140d]">
+                  {donationCategories.map((cat, cIdx) => (
+                    <option key={`don_cat_opt_${cat.id}_${cIdx}`} value={cat.id} className="dark:bg-[#04140d]">
                       {cat.name}
                     </option>
                   ))}
@@ -969,12 +958,12 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
                   තෝරාගත් Tags:
                 </label>
                 <div className="flex flex-wrap gap-2 pt-0.5">
-                  {donationCategories.map((cat) => {
+                  {donationCategories.map((cat, cIdx) => {
                     const isSelected = selectedTag?.tagName === cat.name || selectedDonationCatId === cat.id;
                     const IconComp = cat.icon;
                     return (
                       <button
-                        key={cat.id}
+                        key={`don_cat_${cat.id}_${cIdx}`}
                         type="button"
                         onClick={() => {
                           if (isSelected) {
@@ -1094,27 +1083,6 @@ export const FromMeToYouModal: React.FC<FromMeToYouModalProps> = ({
           </div>
         </form>
       </div>
-
-      {/* Map location picker modal */}
-      {isMapTrackerOpen && (
-        <MapLocationTracker
-          isOpen={isMapTrackerOpen}
-          onClose={() => setIsMapTrackerOpen(false)}
-          initialLat={selectedLocation.lat}
-          initialLng={selectedLocation.lng}
-          onLocationSelected={(lat, lng, locName) => {
-            setSelectedLocation({
-              id: `custom_${Date.now()}`,
-              nameSi: locName || 'සිතියමෙන් තෝරාගත් ස්ථානය',
-              nameEn: locName || 'Selected Location',
-              nameTa: locName || 'தேர்ந்தெடுக்கப்பட்ட இடம்',
-              lat,
-              lng,
-            });
-            setIsMapTrackerOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 };

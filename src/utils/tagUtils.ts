@@ -156,8 +156,8 @@ export function addTagToStorage(tagName: string, category: string): { tag: TagIt
   // Check if identical or near-identical name & category exists
   const existing = currentTags.find(
     (t) =>
-      t.tagName.toLowerCase() === trimmedName.toLowerCase() &&
-      t.category.toLowerCase() === trimmedCategory.toLowerCase()
+      (t?.tagName || '').toLowerCase() === trimmedName.toLowerCase() &&
+      (t?.category || '').toLowerCase() === trimmedCategory.toLowerCase()
   );
 
   if (existing) {
@@ -179,15 +179,15 @@ export function addTagToStorage(tagName: string, category: string): { tag: TagIt
 
 export function deleteTagFromStorage(tagId: string): TagItem[] {
   const currentTags = getStoredTags();
-  const updated = currentTags.filter((t) => t.id !== tagId);
+  const updated = (currentTags || []).filter((t) => t && t.id !== tagId);
   saveTagsToStorage(updated);
   return updated;
 }
 
 export function updateTagInStorage(tagId: string, newName: string, newCategory: string): TagItem[] {
   const currentTags = getStoredTags();
-  const updated = currentTags.map((t) => {
-    if (t.id === tagId) {
+  const updated = (currentTags || []).map((t) => {
+    if (t && t.id === tagId) {
       return {
         ...t,
         tagName: newName.trim(),
@@ -206,14 +206,16 @@ export function purgeUnusedTagsFromStorage(posts: { tagName?: string; tagId?: st
   const usedTagNames = new Set<string>();
   const usedTagIds = new Set<string>();
 
-  posts.forEach((p) => {
+  (posts || []).forEach((p) => {
+    if (!p) return;
     if (p.tagName) usedTagNames.add(p.tagName.trim().toLowerCase());
     if (p.tagId) usedTagIds.add(p.tagId);
   });
 
-  const activeUsedTags = currentTags.filter((t) => {
-    const nameMatch = usedTagNames.has(t.tagName.trim().toLowerCase());
-    const idMatch = usedTagIds.has(t.id);
+  const activeUsedTags = (currentTags || []).filter((t) => {
+    if (!t) return false;
+    const nameMatch = t.tagName ? usedTagNames.has(t.tagName.trim().toLowerCase()) : false;
+    const idMatch = t.id ? usedTagIds.has(t.id) : false;
     return nameMatch || idMatch;
   });
 

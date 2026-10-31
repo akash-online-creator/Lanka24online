@@ -1,7 +1,33 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { TagItem } from '../types';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { TagItem, HelpPost, Language, MarketShop, ProfessionalService, User } from '../types';
 import { searchTags, getTagIconComponent } from '../utils/tagUtils';
-import { Search, Tag, X, Sparkles, Filter } from 'lucide-react';
+import { translateText } from '../utils/postTranslator';
+import { 
+  Search, 
+  Tag, 
+  X, 
+  Sparkles, 
+  Filter, 
+  AtSign, 
+  Briefcase,
+  Home, 
+  Store, 
+  Building2, 
+  User as UserIcon, 
+  FileText,
+  ExternalLink,
+  ChevronRight
+} from 'lucide-react';
+import {
+  findSynonymSuggestionPrompt,
+  getExpandedSearchKeywords,
+} from '../data/searchDictionary';
+import { SmartSearchSynonymPrompt } from './SmartSearchSynonymPrompt';
+import { 
+  searchUniversalEntitiesByAtQuery, 
+  UniversalEntityMatch,
+  parseAtQuery
+} from '../utils/entitySerialNumberHelper';
 
 interface TagSearchBarProps {
   allTags: TagItem[];
@@ -11,6 +37,14 @@ interface TagSearchBarProps {
   onSearchQueryChange: (query: string) => void;
   totalPostsCount: number;
   filteredPostsCount: number;
+  posts?: HelpPost[] | any[];
+  shops?: MarketShop[];
+  professionals?: ProfessionalService[];
+  users?: User[];
+  onSelectEntityMatch?: (match: UniversalEntityMatch) => void;
+  language?: Language;
+  onOpenAccommodation?: () => void;
+  onOpenJobs?: () => void;
 }
 
 export const TagSearchBar: React.FC<TagSearchBarProps> = ({
@@ -21,14 +55,101 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
   onSearchQueryChange,
   totalPostsCount,
   filteredPostsCount,
+  posts = [],
+  shops = [],
+  professionals = [],
+  users = [],
+  onSelectEntityMatch,
+  language = 'si',
+  onOpenAccommodation,
+  onOpenJobs,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dismissedSynonyms, setDismissedSynonyms] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Live search matching tags on every character typed (English or Sinhala)
-  const matchingTags = searchTags(searchQuery, Array.isArray(allTags) ? allTags : []);
+  const getLangText = (si: string, en: string, ta: string) => {
+    if (language === 'en') return en;
+    if (language === 'ta') return ta;
+    return si;
+  };
 
-  // Close dropdown if user clicks outside
+  // Safe handler to open Accommodation view
+  const handleOpenAccommodation = () => {
+    if (onOpenAccommodation) {
+      onOpenAccommodation();
+    }
+    window.dispatchEvent(new CustomEvent('sahaya_open_accommodation_view'));
+  };
+
+  // Safe handler to open Jobs view
+  const handleOpenJobs = () => {
+    if (onOpenJobs) {
+      onOpenJobs();
+    }
+    window.dispatchEvent(new CustomEvent('sahaya_open_jobs_view'));
+  };
+
+  const isAtQuery = useMemo(() => {
+    return searchQuery.trim().startsWith('@') || /^\d{2,6}$/.test(searchQuery.trim());
+  }, [searchQuery]);
+
+  const universalMatches = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return searchUniversalEntitiesByAtQuery(searchQuery, {
+      posts,
+      shops,
+      professionals,
+      users,
+    });
+  }, [searchQuery, posts, shops, professionals, users]);
+
+  const matchingTags = useMemo(() => {
+    if (!searchQuery.trim() || isAtQuery) return [];
+    const direct = searchTags(searchQuery, Array.isArray(allTags) ? allTags : []);
+    if (direct.length > 0) return direct;
+
+    const expandedKeywords = getExpandedSearchKeywords(searchQuery);
+    if (expandedKeywords.length <= 1) return [];
+
+    const matchedSet = new Set<string>();
+    const synMatches: TagItem[] = [];
+
+    for (const kw of expandedKeywords) {
+      if (kw === searchQuery.toLowerCase().trim()) continue;
+      const found = searchTags(kw, Array.isArray(allTags) ? allTags : []);
+      for (const t of found) {
+        if (t && t.id && !matchedSet.has(t.id)) {
+          matchedSet.add(t.id);
+          synMatches.push(t);
+        }
+      }
+    }
+    return synMatches;
+  }, [searchQuery, allTags, isAtQuery]);
+
+  const synonymPrompt = useMemo(() => {
+    if (isAtQuery) return null;
+    const qTrim = searchQuery.trim().toLowerCase();
+    if (!qTrim || qTrim.length < 2 || dismissedSynonyms.includes(qTrim)) {
+      return null;
+    }
+
+    if (posts && posts.length > 0) {
+      return findSynonymSuggestionPrompt(
+        searchQuery,
+        posts,
+        (p) => `${p.tagName || ''} ${p.tagCategory || ''} ${p.whatHappened || ''} ${p.whatIsNeeded || ''} ${p.title || ''}`
+      );
+    }
+
+    return findSynonymSuggestionPrompt(
+      searchQuery,
+      allTags,
+      (t) => `${t.tagName} ${t.category}`
+    );
+  }, [searchQuery, posts, allTags, dismissedSynonyms, isAtQuery]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -44,7 +165,6 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     onSearchQueryChange(val);
     setIsDropdownOpen(true);
 
-    // If query matches an exact tag, auto apply filter
     if (!val.trim()) {
       onSelectTagFilter(null);
     }
@@ -62,126 +182,240 @@ export const TagSearchBar: React.FC<TagSearchBarProps> = ({
     setIsDropdownOpen(false);
   };
 
+  const handleAcceptSuggestion = (suggestedTerm: string) => {
+    onSearchQueryChange(suggestedTerm);
+    setIsDropdownOpen(false);
+  };
+
+  const handleDismissSuggestion = () => {
+    if (searchQuery.trim()) {
+      setDismissedSynonyms((prev) => [...prev, searchQuery.trim().toLowerCase()]);
+    }
+  };
+
+  const getEntityIcon = (type: string) => {
+    switch (type) {
+      case 'post':
+        return FileText;
+      case 'business':
+        return Building2;
+      case 'shop':
+        return Store;
+      case 'professional':
+        return Briefcase;
+      case 'user':
+        return UserIcon;
+      default:
+        return AtSign;
+    }
+  };
+
   return (
     <div className="w-full relative mb-4" ref={dropdownRef}>
-      
-      {/* Container Box */}
-      <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 dark:from-[#051c12] dark:via-[#03140c] dark:to-[#051c12] border-2 border-emerald-400/60 dark:border-emerald-600/60 p-3 sm:p-4 rounded-3xl shadow-[0_10px_30px_rgba(0,122,75,0.2)] text-white space-y-2.5">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-300">
-              <Search className="w-4 h-4" />
-            </span>
-            <div>
-              <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
-                <span>දැන්වීම් සෙවුම (Search Ads by Tag / Keyword)</span>
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              </h4>
-              <p className="text-[11px] text-emerald-200 font-medium">
-                ඉංග්‍රීසියෙන් හෝ සිංහලෙන් Tag Name / Category ලබාදී පහසුවෙන් දැන්වීම් සොයාගන්න.
-              </p>
-            </div>
-          </div>
+      {/* Input & Search Bar Area */}
+      <div className="relative">
+        <div className="relative flex items-center">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleInputChange}
+            onFocus={() => setIsDropdownOpen(true)}
+            placeholder={getLangText(
+              '🔍 අංකයෙන් (@555, #HELP-3728) හෝ වචන වලින් සොයන්න (e.g. @555, සහල්, haal, beheth)...',
+              '🔍 Search by Serial (@555, #HELP-3728) or keywords (e.g. @555, rice, medicine)...',
+              '🔍 எண் (@555) அல்லது சொற்கள் மூலம் தேடுங்கள்...'
+            )}
+            className="w-full bg-white text-slate-900 dark:bg-[#071d13] dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border-2 border-emerald-400/80 dark:border-emerald-600 rounded-2xl py-3 pl-11 pr-11 text-xs sm:text-sm font-bold shadow-md focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-emerald-500/20"
+          />
 
-          <div className="text-[11px] font-mono bg-emerald-950/80 px-3 py-1 rounded-xl border border-emerald-500/40 text-emerald-300 font-bold self-start sm:self-auto">
-            ලැබී ඇති දැන්වීම්: {filteredPostsCount} / {totalPostsCount}
-          </div>
+          <Search className="w-5 h-5 text-emerald-600 dark:text-emerald-400 absolute left-3.5 pointer-events-none" />
+
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="absolute right-3.5 p-1.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
+              title={getLangText('සෙවුම ඉවත් කරන්න', 'Clear search', 'தேடலை அழிக்கவும்')}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Input & Search Bar Area */}
-        <div className="relative">
-          <div className="relative flex items-center">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={handleInputChange}
-              onFocus={() => setIsDropdownOpen(true)}
-              placeholder="🔍 Tag / Category / විස්තර සොයන්න (e.g. Food, කෑම, Vehicle Repair)..."
-              className="w-full bg-white text-slate-900 dark:bg-[#071d13] dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl py-2.5 pl-10 pr-10 text-xs sm:text-sm font-bold shadow-inner focus:outline-none focus:border-amber-400"
-            />
+        {/* LIVE DROPDOWN: Matching @ Entities or Tags */}
+        {isDropdownOpen && searchQuery.trim().length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white dark:bg-[#071a12] border-2 border-emerald-500 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto animate-fadeIn">
+            
+            {/* 1. UNIVERSAL @ SERIAL MATCHES */}
+            {universalMatches.length > 0 && (
+              <div className="border-b border-emerald-200 dark:border-emerald-800">
+                <div className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-[11px] font-black flex items-center justify-between shadow-xs">
+                  <span className="flex items-center gap-1.5">
+                    <AtSign className="w-4 h-4" />
+                    <span>{getLangText('අංක ගැලපීම් (@ Serial Matches)', '@ Serial Matches', '@ எண் பொருத்தங்கள்')} ({universalMatches.length}):</span>
+                  </span>
+                  <span className="text-[10px] bg-slate-950 text-amber-300 font-bold px-2 py-0.5 rounded-full">
+                    {searchQuery.startsWith('@') ? searchQuery : `@${searchQuery}`}
+                  </span>
+                </div>
 
-            <Search className="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute left-3 pointer-events-none" />
-
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="absolute right-3 p-1 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
-                title="සෙවුම ඉවත් කරන්න"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* LIVE DROPDOWN FOR MATCHING TAGS (Requirement 05) */}
-          {isDropdownOpen && searchQuery.trim().length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white dark:bg-[#071a12] border-2 border-emerald-500 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto animate-fadeIn">
-              
-              <div className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-200 dark:border-emerald-800/60 text-[11px] font-extrabold text-emerald-900 dark:text-emerald-300 flex items-center justify-between">
-                <span className="flex items-center gap-1">
-                  <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ගැලපෙන Tags ({matchingTags.length}):</span>
-                </span>
-                <span className="text-[10px] text-slate-500">ක්ලික් කර තෝරන්න</span>
-              </div>
-
-              {matchingTags.length > 0 ? (
                 <div className="divide-y divide-emerald-100 dark:divide-emerald-900/40">
-                  {matchingTags.map((tag) => {
-                    const TagIconComp = getTagIconComponent(tag.tagName, tag.category);
+                  {universalMatches.slice(0, 8).map((match, mIdx) => {
+                    const IconComp = getEntityIcon(match.entityType);
                     return (
                       <button
-                        key={tag.id}
+                        key={`univ_match_${match.entityType}_${match.serialNumber}_${mIdx}`}
                         type="button"
-                        onClick={() => handleSelectTag(tag)}
-                        className="w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60 text-slate-900 dark:text-slate-100 flex items-center justify-between transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (onSelectEntityMatch) {
+                            onSelectEntityMatch(match);
+                          } else {
+                            onSearchQueryChange(match.atTag);
+                          }
+                          setIsDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-emerald-50 dark:hover:bg-[#0e3524] transition-colors flex items-center justify-between gap-3 group cursor-pointer"
                       >
-                        <div className="flex items-center gap-2">
-                          <TagIconComp className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          <span className="text-emerald-900 dark:text-emerald-200 font-extrabold">
-                            {tag.tagName}
-                          </span>
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5 group-hover:bg-amber-400 group-hover:text-slate-950 transition-colors">
+                            <IconComp className="w-4 h-4" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-black text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700">
+                                {match.atTag}
+                              </span>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                {match.entityTypeNameSi}
+                              </span>
+                            </div>
+
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate mt-0.5">
+                              {match.title}
+                            </p>
+
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              {match.subtitle}
+                            </p>
+                          </div>
                         </div>
-                        <span className="text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800/80">
-                          {tag.category}
-                        </span>
+
+                        <div className="shrink-0 flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-black group-hover:translate-x-1 transition-transform">
+                          <span className="hidden sm:inline">{getLangText('විවෘත කරන්න', 'Open', 'திற')}</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </div>
                       </button>
                     );
                   })}
                 </div>
-              ) : (
-                <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  "<strong>{searchQuery}</strong>" ලෙස වෙනම Tag එකක් හමුනොවිණි. ඔබ ටයිප් කළ වචන විස්තර අතර සෙවීමට ඇතුළත් වේ.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
 
-        {/* Selected Tag Active Filter Badge */}
-        {selectedTagFilter && (
-          <div className="flex items-center gap-2 pt-1 animate-fadeIn">
-            <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
-              <Filter className="w-3 h-3 text-amber-400" />
-              <span>සක්‍රීය Tag එක:</span>
-            </span>
-            <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md">
-              <span>🏷️ {selectedTagFilter.tagName} ({selectedTagFilter.category})</span>
-              <button
-                type="button"
-                onClick={handleClear}
-                className="ml-1 text-slate-900 hover:text-rose-800 font-bold"
-                title="ඉවත් කරන්න"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </span>
+            {/* 2. MATCHING TAGS */}
+            {!isAtQuery && (
+              <>
+                <div className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-200 dark:border-emerald-800/60 text-[11px] font-extrabold text-emerald-900 dark:text-emerald-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{getLangText('ගැලපෙන Tags', 'Matching Tags', 'பொருந்தும் குறிச்சொற்கள்')} ({matchingTags.length}):</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">{getLangText('ක්ලික් කර තෝරන්න', 'Click to select', 'தேர்வு செய்ய கிளிக் செய்க')}</span>
+                </div>
+
+                {matchingTags.length > 0 ? (
+                  <div className="divide-y divide-emerald-100 dark:divide-emerald-900/40">
+                    {matchingTags.map((tag, tIdx) => {
+                      const TagIconComp = getTagIconComponent(tag.tagName, tag.category);
+                      return (
+                        <button
+                          key={`search_tag_${tag.id || 't'}_${tIdx}`}
+                          type="button"
+                          onClick={() => handleSelectTag(tag)}
+                          className="w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60 text-slate-900 dark:text-slate-100 flex items-center justify-between transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <TagIconComp className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span className="text-emerald-900 dark:text-emerald-200 font-extrabold">
+                              {translateText(tag.tagName, language)}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800/80">
+                            {translateText(tag.category, language)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : universalMatches.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    {getLangText(
+                      `"${searchQuery}" සඳහා සෘජු Tag එකක් හෝ @ අංකයක් හමුනොවිණි. දැන්වීම් විස්තර අතර සෙවීම ක්‍රියාත්මකයි.`,
+                      `No direct tag or @ serial found for "${searchQuery}". Searching within content.`,
+                      `"${searchQuery}" க்கான குறிச்சொல் அல்லது @ எண் இல்லை. பதிவுகளின் விவரங்களில் தேடப்படுகிறது.`
+                    )}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         )}
-
       </div>
+
+      {/* Quick Hashtags Navigation Bar (#නවාතැන & #රැකියා - Clean without "ක්ෂණික සේවා:" text) */}
+      <div className="flex items-center gap-2 pt-2 pb-0.5 overflow-x-auto scrollbar-none">
+        {/* #නවාතැන Hashtag Button */}
+        <button
+          type="button"
+          onClick={handleOpenAccommodation}
+          className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer border border-emerald-400/50 shrink-0 hover:scale-105"
+          title={getLangText('නවාතැන් සොයන්න හෝ පළ කරන්න', 'Accommodation Search & Post', 'தங்குமிடம்')}
+        >
+          <Home className="w-3.5 h-3.5 text-emerald-200" />
+          <span>#නවාතැන</span>
+        </button>
+
+        {/* #රැකියා Hashtag Button */}
+        <button
+          type="button"
+          onClick={handleOpenJobs}
+          className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer border border-amber-300 shrink-0 hover:scale-105 animate-pulse"
+          title={getLangText('රැකියා සොයන්න හෝ පළ කරන්න', 'Jobs & Careers Search & Post', 'வேலைவாய்ப்பு')}
+        >
+          <Briefcase className="w-3.5 h-3.5 text-slate-950" />
+          <span>#රැකියා</span>
+        </button>
+      </div>
+
+      {/* Selected Tag Active Filter Badge */}
+      {selectedTagFilter && (
+        <div className="flex items-center gap-2 pt-2 animate-fadeIn">
+          <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{getLangText('සක්‍රීය Tag එක:', 'Active Tag:', 'செயலில் உள்ள குறிச்சொல்:')}</span>
+          </span>
+          <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md">
+            <span>🏷️ {translateText(selectedTagFilter.tagName, language)} ({translateText(selectedTagFilter.category, language)})</span>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="ml-1 text-slate-900 hover:text-rose-800 font-bold cursor-pointer"
+              title={getLangText('ඉවත් කරන්න', 'Remove', 'நீக்கு')}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        </div>
+      )}
+
+      {/* SMART SYNONYM PROMPT */}
+      {synonymPrompt && (
+        <SmartSearchSynonymPrompt
+          prompt={synonymPrompt}
+          onAcceptSuggestion={handleAcceptSuggestion}
+          onDismiss={handleDismissSuggestion}
+        />
+      )}
     </div>
   );
 };

@@ -54,7 +54,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [confirmingCancelOffer, setConfirmingCancelOffer] = useState<{ post: HelpPost; reply: PostReply } | null>(null);
 
   useEffect(() => {
-    if (targetPost) {
+    if (targetPost && targetPost.id) {
       setSelectedPostIdFilter(targetPost.id);
     } else {
       setSelectedPostIdFilter('all');
@@ -69,10 +69,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const allOffers: FlattenedOffer[] = [];
 
   (userPosts || []).forEach((post) => {
-    if (!post || post.status === 'deleted' || post.isDeleted) return;
+    if (!post || !post.id || post.status === 'deleted' || post.isDeleted) return;
 
     if (post.replies && (post.replies?.length || 0) > 0) {
       (post.replies || []).forEach((rep) => {
+        if (!rep) return;
         const isSelected = Boolean(
           rep.isConfirmed ||
           rep.isAccepted ||
@@ -104,7 +105,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
 
   const filteredOffers = selectedPostIdFilter === 'all'
     ? allOffers
-    : allOffers.filter((off) => off.post.id === selectedPostIdFilter);
+    : allOffers.filter((off) => off.post && off.post.id === selectedPostIdFilter);
 
   // Distinct posts with offers for filter pills (if user has multiple posts)
   const postsWithOffers = Array.from(new Set((allOffers || []).map((o) => o?.post?.id).filter(Boolean)))
@@ -275,11 +276,11 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
             >
               සියල්ල ({allOffers.length})
             </button>
-            {(postsWithOffers || []).map((p) => {
+            {(postsWithOffers || []).map((p, pIdx) => {
               const count = (allOffers || []).filter((o) => o?.post?.id === p.id).length;
               return (
                 <button
-                  key={p.id}
+                  key={`post_filter_${p.id || 'p'}_${pIdx}`}
                   onClick={() => setSelectedPostIdFilter(p.id)}
                   className={`px-3 py-1 rounded-full text-xs font-black font-mono transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
                     selectedPostIdFilter === p.id
@@ -318,7 +319,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
               const pLng = off.post.lng || 79.8986;
               const pName = off.post.locationName || 'දැන්වීම පළකළ ස්ථානය';
 
-              const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName);
+              const route = calculateMotorcycleRoadDistance(pLat, pLng, vLat, vLng, pName, vName, lang);
               const helperName = off.reply.responderName || 'නොදන්නා සහායක';
               const problemDesc = off.post.whatHappened || off.post.whatIsNeeded || 'ගැටලුවේ විස්තරය සටහන් කර නොමැත';
 
@@ -339,7 +340,7 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
                           ? 'bg-gradient-to-tr from-emerald-600 to-teal-600'
                           : 'bg-gradient-to-tr from-amber-500 to-orange-600'
                       }`}>
-                        {helperName.charAt(0).toUpperCase()}
+                        {(helperName || 'U').charAt(0).toUpperCase()}
                       </div>
 
                       <div className="min-w-0">
