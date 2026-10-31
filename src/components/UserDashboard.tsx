@@ -39,7 +39,21 @@ import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
-import { filterNonDeletedPosts, addDeletedPostId, isPostPermanentlyDeleted, addDeletedProServiceId, downloadPostBackupJson } from '../utils/deletedPostsManager';
+import { 
+  filterNonDeletedPosts, 
+  addDeletedPostId, 
+  isPostPermanentlyDeleted, 
+  addDeletedProServiceId, 
+  addDeletedBloodId,
+  addDeletedDisasterId,
+  addDeletedMarketplaceId,
+  addDeletedJobId,
+  addDeletedAccommodationId,
+  addDeletedBarterItemId,
+  addDeletedRedAlertId,
+  purgeItemFromLocalStorage,
+  downloadPostBackupJson 
+} from '../utils/deletedPostsManager';
 import { deleteProfessionalServiceFromFirestore, subscribeToProfessionalServices, addProfessionalServiceToFirestore } from '../lib/firebase';
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
@@ -351,7 +365,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     });
 
     const unsubPosts = subscribeToHelpPosts((cloudPosts: any) => {
-      if (Array.isArray(cloudPosts) && cloudPosts.length !== 0) {
+      if (Array.isArray(cloudPosts)) {
         const filtered = filterNonDeletedPosts(cloudPosts);
         setLocalHelpPosts(filtered);
         if (typeof setHelpPosts === 'function') {
@@ -796,8 +810,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       downloadPostBackupJson(postToDelete, user);
     }
 
-    // 3. LocalStorage Blacklist & Purge local memory
+    // 3. LocalStorage Blacklist & Purge local memory across all collections
     addDeletedPostId(postId);
+    addDeletedBloodId(postId);
+    addDeletedDisasterId(postId);
+    addDeletedMarketplaceId(postId);
+    addDeletedJobId(postId);
+    addDeletedAccommodationId(postId);
+    addDeletedBarterItemId(postId);
+    addDeletedRedAlertId(postId);
+    purgeItemFromLocalStorage(postId);
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}
@@ -812,7 +834,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       propOnPermanentDeletePost(postId);
     }
 
-    // 5. Delete from Firestore permanently
+    // 5. Broadcast real-time deletion events
+    try {
+      window.dispatchEvent(new Event('sahaya_post_deleted'));
+      window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+      window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+      window.dispatchEvent(new Event('sahaya_sync_all_services'));
+    } catch {}
+
+    // 6. Delete from Firestore permanently across all collections
     try {
       await deleteHelpPostFromFirestore(postId);
     } catch (err) {

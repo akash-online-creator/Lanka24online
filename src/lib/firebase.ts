@@ -58,8 +58,33 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = firebaseConfigJson.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
   : getFirestore(app);
-export const fallbackDb = getFirestore(app);
+export const fallbackDb = db;
 export const auth = getAuth(app);
+
+// In-Memory tracker for deleted items to prevent immediate flash / resurrection
+export const inMemoryDeletedPostIds = new Set<string>();
+
+export function isPostIdDeletedInCloudOrLocal(id: string): boolean {
+  if (!id) return false;
+  const clean = String(id).trim();
+  const rawClean = clean.replace(/^post_/, '');
+  if (inMemoryDeletedPostIds.has(clean) || inMemoryDeletedPostIds.has(rawClean) || inMemoryDeletedPostIds.has('post_' + rawClean)) {
+    return true;
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const pRaw = localStorage.getItem('sahaya_deleted_post_ids');
+      if (pRaw && (pRaw.includes(clean) || pRaw.includes(rawClean))) return true;
+      const bRaw = localStorage.getItem('sahaya_deleted_blood_ids');
+      if (bRaw && bRaw.includes(clean)) return true;
+      const dRaw = localStorage.getItem('sahaya_deleted_disaster_ids');
+      if (dRaw && dRaw.includes(clean)) return true;
+      const mRaw = localStorage.getItem('sahaya_deleted_marketplace_ids');
+      if (mRaw && mRaw.includes(clean)) return true;
+    } catch {}
+  }
+  return false;
+}
 
 // Direct Top-Level Firestore Collection & Document Access (No private subcollection trap)
 export function collection(database: any, path: string, ...pathSegments: string[]): any {
@@ -378,7 +403,12 @@ export function filterAndPurgeDummySnapDocs(snap: any): any[] {
   if (!snap.docs) return valid;
   for (const d of snap.docs) {
     const item = { id: d.id, ...d.data() };
-    if (isBuiltInDummyRecord(item)) {
+    const isDeletedItem = Boolean(
+      item.isDeleted ||
+      item.status === 'deleted' ||
+      isPostIdDeletedInCloudOrLocal(d.id)
+    );
+    if (isBuiltInDummyRecord(item) || isDeletedItem) {
       try {
         deleteDoc(d.ref).catch(() => {});
       } catch (e) {}
@@ -490,7 +520,11 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
   const emitMerged = () => {
     const map = new Map();
     [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
-      if (p && p.id) map.set(String(p.id), p);
+      if (p && p.id) {
+        const id = String(p.id).trim();
+        if (p.isDeleted || p.status === 'deleted' || isPostIdDeletedInCloudOrLocal(id)) return;
+        map.set(id, p);
+      }
     });
     const sorted = Array.from(map.values()).sort((a: any, b: any) => {
       const tA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -537,7 +571,6 @@ export async function fetchHelpPostsPaginated(
       orderBy("createdAt", "desc"),
       limit(pageSize)
     );
-
     if (lastDoc) {
       q = query(
         colRef,
@@ -546,12 +579,10 @@ export async function fetchHelpPostsPaginated(
         limit(pageSize)
       );
     }
-
     const snap = await getDocs(q);
     const posts = filterAndPurgeDummySnapDocs(snap);
     const newLastDoc = snap.docs.length === 0 ? null : snap.docs[snap.docs.length - 1];
     const hasMore = snap.docs.length === pageSize;
-
     return {
       posts,
       lastDoc: newLastDoc,
@@ -605,8 +636,14 @@ export async function updateHelpPostInFirestore(postId: string, updateData: any)
 
 export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: string[]): Promise<void> {
   if (!postId) return;
+  const cleanId = String(postId).trim();
+  const rawId = cleanId.replace(/^post_/, '');
+  inMemoryDeletedPostIds.add(cleanId);
+  inMemoryDeletedPostIds.add(rawId);
+  inMemoryDeletedPostIds.add('post_' + rawId);
+
   try {
-    const docRef = doc(db, POSTS_COLLECTION, postId);
+    const docRef = doc(db, POSTS_COLLECTION, cleanId);
 
     // 1. Storage media cleanup if any
     if (imageUrls && imageUrls.length > 0) {
@@ -615,12 +652,12 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       try {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-          const postData = snap.data();
+          const postData = snap.data() as any;
           const extractedUrls: string[] = [];
-          if (Array.isArray(postData.images)) extractedUrls.push(...postData.images);
-          if (Array.isArray(postData.photos)) extractedUrls.push(...postData.photos);
-          if (typeof postData.imageUrl === 'string') extractedUrls.push(postData.imageUrl);
-          if (typeof postData.photoUrl === 'string') extractedUrls.push(postData.photoUrl);
+          if (Array.isArray(postData?.images)) extractedUrls.push(...postData.images);
+          if (Array.isArray(postData?.photos)) extractedUrls.push(...postData.photos);
+          if (typeof postData?.imageUrl === 'string') extractedUrls.push(postData.imageUrl);
+          if (typeof postData?.photoUrl === 'string') extractedUrls.push(postData.photoUrl);
           if (extractedUrls.length > 0) {
             await deleteStorageFilesByUrls(extractedUrls);
           }
@@ -628,20 +665,44 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       } catch (e) {}
     }
 
-    // 2. Primary & legacy document deletion across databases
-    await deleteDoc(docRef);
-    deleteDoc(doc(db, 'helpPosts', postId)).catch(() => {});
-    if (fallbackDb !== db) {
-      deleteDoc(doc(fallbackDb, POSTS_COLLECTION, postId)).catch(() => {});
-      deleteDoc(doc(fallbackDb, 'helpPosts', postId)).catch(() => {});
+    // 2. Primary & legacy document deletion across all related collections in parallel
+    const deletePromises = [
+      deleteDoc(doc(db, POSTS_COLLECTION, cleanId)),
+      deleteDoc(doc(db, 'helpPosts', cleanId)),
+      deleteDoc(doc(db, 'blood_requests', cleanId)),
+      deleteDoc(doc(db, 'disaster_relief', cleanId)),
+      deleteDoc(doc(db, 'marketplace', cleanId)),
+      deleteDoc(doc(db, 'jobs', cleanId)),
+      deleteDoc(doc(db, 'accommodations', cleanId)),
+      deleteDoc(doc(db, 'barter_items', cleanId)),
+      deleteDoc(doc(db, 'red_alerts', cleanId)),
+      deleteDoc(doc(db, 'redAlerts', cleanId)),
+      deleteDoc(doc(db, 'groups', cleanId)),
+    ];
+    if (rawId !== cleanId) {
+      deletePromises.push(
+        deleteDoc(doc(db, POSTS_COLLECTION, rawId)),
+        deleteDoc(doc(db, 'helpPosts', rawId)),
+        deleteDoc(doc(db, 'blood_requests', rawId)),
+        deleteDoc(doc(db, 'disaster_relief', rawId)),
+        deleteDoc(doc(db, 'marketplace', rawId))
+      );
     }
+    await Promise.allSettled(deletePromises);
 
-    // 3. Update deleted records map
+    // 3. Update deleted records map in system settings
     const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
     await setDoc(
       deletedRecordsRef,
       {
-        deletedPostIds: arrayUnion(postId),
+        deletedPostIds: arrayUnion(cleanId, rawId, 'post_' + rawId),
+        deletedBloodIds: arrayUnion(cleanId, rawId),
+        deletedDisasterIds: arrayUnion(cleanId, rawId),
+        deletedMarketplaceIds: arrayUnion(cleanId, rawId),
+        deletedJobIds: arrayUnion(cleanId, rawId),
+        deletedAccommodationIds: arrayUnion(cleanId, rawId),
+        deletedBarterItemIds: arrayUnion(cleanId, rawId),
+        deletedRedAlertIds: arrayUnion(cleanId, rawId),
         updatedAt: new Date().toISOString(),
         updatedAtServer: serverTimestamp(),
       },
@@ -1685,7 +1746,26 @@ export function subscribeToDeletedRecordsFromFirestore(callback: (records: Delet
     const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
     return onSnapshot(docRef as any, (snap: any) => {
       if (snap.exists()) {
-        callback(snap.data() as DeletedRecordsMap);
+        const data = snap.data() as DeletedRecordsMap;
+        if (Array.isArray(data.deletedPostIds)) {
+          data.deletedPostIds.forEach((id) => {
+            if (id) {
+              const clean = String(id).trim();
+              inMemoryDeletedPostIds.add(clean);
+              inMemoryDeletedPostIds.add(clean.replace(/^post_/, ''));
+            }
+          });
+        }
+        if (Array.isArray(data.deletedBloodIds)) {
+          data.deletedBloodIds.forEach((id) => id && inMemoryDeletedPostIds.add(String(id).trim()));
+        }
+        if (Array.isArray(data.deletedDisasterIds)) {
+          data.deletedDisasterIds.forEach((id) => id && inMemoryDeletedPostIds.add(String(id).trim()));
+        }
+        if (Array.isArray(data.deletedMarketplaceIds)) {
+          data.deletedMarketplaceIds.forEach((id) => id && inMemoryDeletedPostIds.add(String(id).trim()));
+        }
+        callback(data);
       } else {
         callback(null);
       }

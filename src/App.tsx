@@ -29,7 +29,19 @@ import {
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
-import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson } from './utils/deletedPostsManager';
+import { 
+  addDeletedPostId, 
+  addDeletedBloodId,
+  addDeletedDisasterId,
+  addDeletedMarketplaceId,
+  addDeletedJobId,
+  addDeletedAccommodationId,
+  addDeletedBarterItemId,
+  addDeletedRedAlertId,
+  purgeItemFromLocalStorage,
+  filterNonDeletedPosts, 
+  downloadPostBackupJson 
+} from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 import { checkIsCredentialBlocked } from './utils/blockedCredentialsManager';
 
@@ -183,15 +195,28 @@ export const App: React.FC = () => {
       downloadPostBackupJson(postObj, currentUser);
     }
 
-    // 3. LocalStorage Blacklist & Purge local memory
+    // 3. LocalStorage Blacklist & Purge local memory across collections
     addDeletedPostId(postId);
+    addDeletedBloodId(postId);
+    addDeletedDisasterId(postId);
+    addDeletedMarketplaceId(postId);
+    addDeletedJobId(postId);
+    addDeletedAccommodationId(postId);
+    addDeletedBarterItemId(postId);
+    addDeletedRedAlertId(postId);
+    purgeItemFromLocalStorage(postId);
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}
 
     // 4. Real-time UI State Refresh
     setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
-    window.dispatchEvent(new Event('sahaya_post_deleted'));
+    try {
+      window.dispatchEvent(new Event('sahaya_post_deleted'));
+      window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+      window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+      window.dispatchEvent(new Event('sahaya_sync_all_services'));
+    } catch {}
 
     // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
     try {

@@ -339,25 +339,26 @@ console.warn('Comment sync error:', err);
 };
 const handleDelete = async (e?: React.MouseEvent) => {
 if (e) e.stopPropagation();
-if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
-return;
-}
 const targetId = post.id;
+if (!targetId) return;
+
+if (onDeletePost) {
+  onDeletePost(targetId ? targetId : post);
+  return;
+}
+
+if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
+  return;
+}
+
 setIsDeletingLocal(true);
-if (targetId) {
 addDeletedPostId(targetId);
 try {
-await updateHelpPostInFirestore(targetId, {
-isDeleted: true,
-status: 'deleted',
-deletedAt: new Date().toISOString()
-}).catch(() => {});
-await deleteHelpPostFromFirestore(targetId).catch(() => {});
+  await deleteHelpPostFromFirestore(targetId).catch(() => {});
 } catch (err) {}
-}
-if (onDeletePost) {
-onDeletePost(targetId ? targetId : post);
-}
+try {
+  window.dispatchEvent(new Event('sahaya_post_deleted'));
+} catch {}
 };
 const handleEditClick = (e: React.MouseEvent) => {
 e.stopPropagation();

@@ -63,20 +63,33 @@ const DUMMY_BARTER_IDS = new Set(['swap_001', 'swap_002', 'swap_003', 'swap_004'
 // ==========================================
 // Storage Helper Functions
 // ==========================================
+const inMemoryFallbackSets = new Map<string, Set<string>>();
+
 function getStoredIds(key: string): string[] {
+  const memSet = inMemoryFallbackSets.get(key) || new Set<string>();
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((id) => memSet.add(String(id)));
+        }
+      }
+    }
+  } catch {}
+  return Array.from(memSet);
 }
 
 function saveIds(key: string, ids: string[]): void {
   try {
-    localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
+    const memSet = inMemoryFallbackSets.get(key) || new Set<string>();
+    ids.forEach((id) => memSet.add(String(id)));
+    inMemoryFallbackSets.set(key, memSet);
+
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(Array.from(memSet)));
+    }
     // LocalStorage වෙනස් වූ වහාම Firestore Cloud එකට Sync කෙරේ
     syncAllDeletionsToCloud();
   } catch (err) {
@@ -389,6 +402,51 @@ export function filterNonDeletedUsers(users: User[]): User[] {
 }
 
 // ==========================================
+// Cache Purge Helper
+// ==========================================
+export function purgeItemFromLocalStorage(targetId: string): void {
+  if (!targetId || typeof window === 'undefined') return;
+  const idStr = String(targetId).trim();
+  const rawId = idStr.replace(/^post_/, '');
+
+  const storageKeys = [
+    'sahaya_help_posts',
+    'sahaya_blood_requests',
+    'sahaya_disaster_relief',
+    'sahaya_marketplace_items',
+    'sahaya_market_shops',
+    'sahaya_jobs',
+    'sahaya_accommodations',
+    'sahaya_barter_items',
+    'sahaya_groups',
+    'sahaya_professional_services',
+    'sahaya_red_alerts'
+  ];
+
+  storageKeys.forEach((key) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((item: any) => {
+            if (!item) return false;
+            const itemId = String(item.id || item._id || '').trim();
+            const itemCode = String(item.postCode || '').trim();
+            if (itemId === idStr || itemId === rawId || itemId === 'post_' + rawId) return false;
+            if (itemCode && (itemCode === idStr || itemCode === rawId)) return false;
+            return true;
+          });
+          if (filtered.length !== parsed.length) {
+            localStorage.setItem(key, JSON.stringify(filtered));
+          }
+        }
+      }
+    } catch {}
+  });
+}
+
+// ==========================================
 // 2. Help Posts
 // ==========================================
 export function getStoredDeletedPostIds(): string[] {
@@ -397,10 +455,26 @@ export function getStoredDeletedPostIds(): string[] {
 
 export function addDeletedPostId(postId: string): void {
   if (!postId) return;
+  const pId = String(postId).trim();
+  const cleanId = pId.replace(/^post_/, '');
   const current = getStoredDeletedPostIds();
-  if (!current.includes(postId)) {
-    saveIds(DELETED_POST_IDS_KEY, [...current, postId]);
-  }
+  const toAdd = [pId, cleanId, 'post_' + cleanId];
+  const updated = Array.from(new Set([...current, ...toAdd]));
+  saveIds(DELETED_POST_IDS_KEY, updated);
+
+  // If this ID belongs to emergency blood, disaster, or marketplace, also add to respective sets
+  if (pId.startsWith('bld_') || pId.startsWith('blood_')) addDeletedBloodId(pId);
+  if (pId.startsWith('rel_') || pId.startsWith('relief_')) addDeletedDisasterId(pId);
+  if (pId.startsWith('mkt_')) addDeletedMarketplaceId(pId);
+  if (pId.startsWith('job_')) addDeletedJobId(pId);
+  if (pId.startsWith('acc_')) addDeletedAccommodationId(pId);
+  if (pId.startsWith('barter_') || pId.startsWith('swap_')) addDeletedBarterItemId(pId);
+  if (pId.startsWith('red_alert_') || pId.startsWith('alert_')) addDeletedRedAlertId(pId);
+  if (pId.startsWith('grp_') || pId.startsWith('group_')) addDeletedGroupId(pId);
+  if (pId.startsWith('ps_')) addDeletedProServiceId(pId);
+
+  // Purge immediately from local storage cache lists
+  purgeItemFromLocalStorage(pId);
 }
 
 export function removeDeletedPostId(postId: string): void {
@@ -410,7 +484,29 @@ export function removeDeletedPostId(postId: string): void {
 
 export function isPostPermanentlyDeleted(postId: string): boolean {
   if (!postId) return false;
-  return getStoredDeletedPostIds().includes(postId);
+  const pId = String(postId).trim();
+  const cleanId = pId.replace(/^post_/, '');
+  const deletedPosts = getStoredDeletedPostIds();
+  const deletedBlood = getStoredDeletedBloodIds();
+  const deletedDisaster = getStoredDeletedDisasterIds();
+  const deletedMarket = getStoredDeletedMarketplaceIds();
+  const deletedJobs = getStoredDeletedJobIds();
+  const deletedAcc = getStoredDeletedAccommodationIds();
+  const deletedBarter = getStoredDeletedBarterItemIds();
+  const deletedAlerts = getStoredDeletedRedAlertIds();
+
+  return (
+    deletedPosts.includes(pId) ||
+    deletedPosts.includes(cleanId) ||
+    deletedPosts.includes('post_' + cleanId) ||
+    deletedBlood.includes(pId) ||
+    deletedDisaster.includes(pId) ||
+    deletedMarket.includes(pId) ||
+    deletedJobs.includes(pId) ||
+    deletedAcc.includes(pId) ||
+    deletedBarter.includes(pId) ||
+    deletedAlerts.includes(pId)
+  );
 }
 
 /**
@@ -495,13 +591,36 @@ export function downloadPostBackupJson(post: HelpPost, user?: User | null): bool
 
 export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boolean; status?: string }>(posts: T[]): T[] {
   if (!Array.isArray(posts)) return [];
-  const deletedIds = new Set(getStoredDeletedPostIds());
+  const deletedPosts = getStoredDeletedPostIds();
+  const deletedBlood = getStoredDeletedBloodIds();
+  const deletedDisaster = getStoredDeletedDisasterIds();
+  const deletedMarket = getStoredDeletedMarketplaceIds();
+  const deletedJobs = getStoredDeletedJobIds();
+  const deletedAcc = getStoredDeletedAccommodationIds();
+  const deletedBarter = getStoredDeletedBarterItemIds();
+  const deletedAlerts = getStoredDeletedRedAlertIds();
+
+  const allDeletedIds = new Set([
+    ...deletedPosts,
+    ...deletedBlood,
+    ...deletedDisaster,
+    ...deletedMarket,
+    ...deletedJobs,
+    ...deletedAcc,
+    ...deletedBarter,
+    ...deletedAlerts,
+  ]);
+
   return posts.filter((p) => {
     if (!p || !p.id) return false;
-    if (deletedIds.has(p.id) || p.isDeleted || p.status === 'deleted') return false;
-    if (DUMMY_POST_IDS.has(p.id)) return false;
+    const id = String(p.id).trim();
+    const cleanId = id.replace(/^post_/, '');
+    if (allDeletedIds.has(id) || allDeletedIds.has(cleanId) || allDeletedIds.has('post_' + cleanId)) return false;
+    if (p.isDeleted || p.status === 'deleted') return false;
+    if (DUMMY_POST_IDS.has(id) || DUMMY_POST_IDS.has(cleanId)) return false;
     const pAny = p as any;
     if (pAny.postCode && DUMMY_POST_CODES.has(String(pAny.postCode))) return false;
+    if (pAny.postCode && allDeletedIds.has(String(pAny.postCode))) return false;
     if (pAny.isDummy || pAny.isSample || pAny.isDemoPost) return false;
     return true;
   });

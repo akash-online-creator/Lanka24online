@@ -22,6 +22,7 @@ import {
   removeBlockedCredentialFromFirestore
 } from '../lib/firebase';
 import { addBlockedCredential, removeBlockedCredential } from '../utils/blockedCredentialsManager';
+import { addDeletedPostId, addDeletedBloodId, addDeletedDisasterId, addDeletedMarketplaceId, purgeItemFromLocalStorage } from '../utils/deletedPostsManager';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
@@ -203,10 +204,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     try {
+      addDeletedPostId(postId);
+      addDeletedBloodId(postId);
+      addDeletedDisasterId(postId);
+      addDeletedMarketplaceId(postId);
+      purgeItemFromLocalStorage(postId);
+      if (onDeletePost) {
+        onDeletePost(postId);
+      }
       await deleteHelpPostFromFirestore(postId);
       if (setHelpPosts) {
         setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
       }
+      try {
+        window.dispatchEvent(new Event('sahaya_post_deleted'));
+        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
+        window.dispatchEvent(new Event('sahaya_marketplace_updated'));
+        window.dispatchEvent(new Event('sahaya_sync_all_services'));
+      } catch {}
       showNotification('🗑️ දැන්වීම සදහටම මකා දමන ලදී (Cloud Permanently Deleted).');
     } catch (err) {
       console.error('Failed to delete post:', err);

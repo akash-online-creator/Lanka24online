@@ -26,7 +26,7 @@ import { getStoredBloodRequests, getStoredDisasterReliefItems } from '../data/bl
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
 import { getDisasterConfig } from '../data/redAlertData';
 import { calculateDistanceKm } from '../utils/geoUtils';
-import { isPostPermanentlyDeleted } from '../utils/deletedPostsManager';
+import { isPostPermanentlyDeleted, getStoredDeletedPostIds, getStoredDeletedBloodIds, getStoredDeletedDisasterIds } from '../utils/deletedPostsManager';
 import { isPostHelpersSatisfiedOrFilled } from '../utils/serviceWorkflowManager';
 import { 
   ArrowLeft, 
@@ -469,9 +469,21 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
     });
 
     const existingCodes = new Set(sourceList.map((p) => String(p.postCode ? p.postCode : p.id)));
+    const deletedPostIdsSet = new Set(getStoredDeletedPostIds());
+    const deletedBloodIdsSet = new Set(getStoredDeletedBloodIds());
+    const deletedDisasterIdsSet = new Set(getStoredDeletedDisasterIds());
+
     const storedBloodPosts: HelpPost[] = (!boardCategoryFilter ? true : boardCategoryFilter === 'emergency' ? true : boardCategoryFilter === 'blood_disaster')
       ? (getStoredBloodRequests() ? getStoredBloodRequests() : [])
-          .filter((b: any) => Boolean(b && b.id && !existingCodes.has(String(b.postCode ? b.postCode : b.id))))
+          .filter((b: any) => {
+            if (!b || !b.id) return false;
+            const bId = String(b.id).trim();
+            const bCode = String(b.postCode || '').trim();
+            if (deletedPostIdsSet.has(bId) || deletedBloodIdsSet.has(bId) || isPostPermanentlyDeleted(bId)) return false;
+            if (bCode && (deletedPostIdsSet.has(bCode) || isPostPermanentlyDeleted(bCode))) return false;
+            if (existingCodes.has(bCode || bId) || existingCodes.has(bId)) return false;
+            return true;
+          })
           .map((b: any) => {
             const bTitle = `🩸 ${b.bloodGroup} රුධිරය හදිසියේ අවශ්‍යයි: ${b.hospitalName} (${b.district})`;
             const bDetails = `රෝගී නම: ${b.patientName} • ලේ වර්ගය: ${b.bloodGroup} • අවශ්‍ය ඒකක: ${b.unitsNeeded} • රෝහල: ${b.hospitalName} • දිස්ත්‍රික්කය: ${b.district} • අවශ්‍ය දිනය: ${b.neededDate ? b.neededDate : 'කඩිනමින්'} • සම්බන්ධීකාරක: ${b.contactName ? b.contactName : 'සම්බන්ධීකාරක'} (${b.contactPhone})${b.additionalNotes ? ` • සටහන්: ${b.additionalNotes}` : ''}`;
@@ -511,7 +523,15 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
 
     const storedDisasterPosts: HelpPost[] = (!boardCategoryFilter ? true : boardCategoryFilter === 'emergency' ? true : boardCategoryFilter === 'blood_disaster' ? true : boardCategoryFilter === 'aid_ledger')
       ? (getStoredDisasterReliefItems() ? getStoredDisasterReliefItems() : [])
-          .filter((d: any) => Boolean(d && d.id && !existingCodes.has(String(d.id))))
+          .filter((d: any) => {
+            if (!d || !d.id) return false;
+            const dId = String(d.id).trim();
+            const dCode = `#EMG-${dId.slice(-4)}`;
+            if (deletedPostIdsSet.has(dId) || deletedDisasterIdsSet.has(dId) || isPostPermanentlyDeleted(dId)) return false;
+            if (deletedPostIdsSet.has(dCode) || isPostPermanentlyDeleted(dCode)) return false;
+            if (existingCodes.has(dId) || existingCodes.has(dCode)) return false;
+            return true;
+          })
           .map((d: any) => {
             const dTitle = `📦 ${d.title || 'හදිසි ආපදා සහනාධාර අවශ්‍යතාවය'}: ${d.locationName || d.district}`;
             const dDetails = `ස්ථානය: ${d.locationName || d.district} • දිස්ත්‍රික්කය: ${d.district} • අවශ්‍ය ප්‍රමාණය: ${d.targetQuantity || 'අවශ්‍ය පරිදි'} • විස්තර: ${d.description || ''} • සම්බන්ධීකාරක: ${d.contactPerson || 'සම්බන්ධීකාරක'} (${d.contactPhone || ''})`;
