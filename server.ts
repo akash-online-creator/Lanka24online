@@ -1140,10 +1140,24 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
-  // 📲 APK Direct Download & Version Handlers
-  app.get(['/download', '/download/*', '/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download', '/app.apk'], (req, res) => {
-    // 🚀 Directly redirect to the latest verified APK binary on GitHub Releases
-    res.redirect(302, 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk');
+  // 📲 APK Direct Download & Version Handlers (100% Branded direct stream under your own domain)
+  app.get(['/download', '/download/*', '/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download', '/app.apk'], async (req, res) => {
+    const upstreamUrl = 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk';
+    try {
+      const upstreamRes = await fetch(upstreamUrl);
+      if (upstreamRes.ok && upstreamRes.body) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', 'attachment; filename="SahayaSewa-v1.1.902.apk"');
+        const cl = upstreamRes.headers.get('content-length');
+        if (cl) res.setHeader('Content-Length', cl);
+        const { Readable } = await import('stream');
+        Readable.fromWeb(upstreamRes.body as any).pipe(res);
+        return;
+      }
+    } catch (e) {
+      console.warn('Direct APK stream fallback notice:', e);
+    }
+    res.redirect(302, upstreamUrl);
   });
 
   app.get('/api/app/version', (req, res) => {
