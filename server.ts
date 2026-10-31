@@ -5,6 +5,7 @@ import multer from 'multer';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { initializeApp as initAdminApp, getApps as getAdminApps, cert as adminCert } from 'firebase-admin/app';
@@ -1141,12 +1142,35 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   app.use(express.static(publicPath));
 
   // 📲 APK Direct Download & Version Handlers
-  app.get(['/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download'], (req, res) => {
-    const apkFilePath = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="sahayasewa-latest.apk"');
-    res.sendFile(apkFilePath);
-  });
+  app.get(
+    [
+      '/apk/Support Service.apk',
+      '/apk/Support%20Service.apk',
+      '/apk/Support-Service.apk',
+      '/download/Support Service.apk',
+      '/download/Support%20Service.apk',
+      '/download/Support-Service.apk',
+      '/apk/sahayasewa-latest.apk',
+      '/download/app',
+      '/api/app/download',
+      '/app.apk',
+    ],
+    (req, res) => {
+      const supportServiceApk = path.join(publicPath, 'apk', 'Support Service.apk');
+      const legacyApk = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
+
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="Support Service.apk"');
+
+      if (fs.existsSync(supportServiceApk)) {
+        return res.sendFile(supportServiceApk);
+      } else if (fs.existsSync(legacyApk) && fs.statSync(legacyApk).size > 1000) {
+        return res.sendFile(legacyApk);
+      } else {
+        return res.redirect('https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support%20Service.apk');
+      }
+    }
+  );
 
   app.get('/api/app/version', (req, res) => {
     const versionFile = path.join(publicPath, 'apk', 'version.json');

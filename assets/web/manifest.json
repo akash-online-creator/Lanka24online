@@ -1,8 +1,8 @@
 {
   "id": "com.sahayasewa.app",
-  "name": "සහය සේවා - Support Service",
-  "short_name": "සහය සේවා",
-  "description": "සහය සේවා (Sahaya Seva) - ශ්‍රී ලාංකීය ප්‍රජා සහයෝගිතා, හදිසි ආපදා දැනුම්දීම් (Red Alert) සහ වෘත්තීය සේවා ජාලය.",
+  "name": "1+ සහය සේවා",
+  "short_name": "1+ සහය සේවා",
+  "description": "1+ සහය සේවා (Support Service) - ශ්‍රී ලාංකීය ප්‍රජා සහයෝගිතා, හදිසි ආපදා දැනුම්දීම් (Red Alert) සහ වෘත්තීය සේවා ජාලය.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

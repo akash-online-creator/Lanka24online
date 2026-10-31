@@ -19,8 +19,8 @@ export interface AppUpdateInfo {
 export const GITHUB_REPO_OWNER = 'akash-online-creator';
 export const GITHUB_REPO_NAME = 'Lanka24online';
 
-export const CURRENT_APP_VERSION = 'v1.1.893';
-export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
+export const CURRENT_APP_VERSION = 'v1.1.894';
+export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/Support%20Service.apk`;
 export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`;
 
 export function compareVersions(vA: string, vB: string): number {
@@ -43,14 +43,18 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
     });
     if (res.ok) {
       const data = await res.json();
-      const apkAsset = Array.isArray(data.assets)
-        ? data.assets.find((a: any) => a.name && a.name.endsWith('.apk'))
-        : null;
+      const assets = Array.isArray(data.assets) ? data.assets : [];
+      // Prioritize Support Service.apk, then any APK
+      const apkAsset =
+        assets.find((a: any) => a.name && a.name.toLowerCase().includes('support') && a.name.endsWith('.apk')) ||
+        assets.find((a: any) => a.name && a.name.endsWith('.apk')) ||
+        null;
+
       if (apkAsset && apkAsset.browser_download_url) {
         return {
           apkDownloadUrl: apkAsset.browser_download_url,
           tagName: data.tag_name || CURRENT_APP_VERSION,
-          name: data.name || 'Sahaya Sewa Android App',
+          name: data.name || '1+ සහය සේවා (Support Service)',
           publishedAt: data.published_at,
           body: data.body || '',
         };
@@ -63,7 +67,7 @@ export async function fetchLatestApkDownloadUrl(): Promise<LatestReleaseInfo> {
   return {
     apkDownloadUrl: FALLBACK_APK_DIRECT_URL,
     tagName: CURRENT_APP_VERSION,
-    name: 'Sahaya Sewa Android App',
+    name: '1+ සහය සේවා (Support Service)',
   };
 }
 
@@ -101,7 +105,7 @@ export async function triggerDirectApkDownload(explicitUrl?: string): Promise<vo
   if (typeof window !== 'undefined' && targetUrl) {
     const link = document.createElement('a');
     link.href = targetUrl;
-    link.setAttribute('download', 'sahaya-sewa-latest.apk');
+    link.setAttribute('download', 'Support Service.apk');
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
