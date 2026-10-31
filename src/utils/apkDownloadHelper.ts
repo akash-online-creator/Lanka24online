@@ -20,7 +20,7 @@ export const GITHUB_REPO_OWNER = 'akash-online-creator';
 export const GITHUB_REPO_NAME = 'Lanka24online';
 
 export const CURRENT_APP_VERSION = 'v1.1.902';
-export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/app-release.apk`;
+export const FALLBACK_APK_DIRECT_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest/download/Support-Service.apk`;
 export const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`;
 
 export function compareVersions(vA: string, vB: string): number {

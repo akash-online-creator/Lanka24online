@@ -5,22 +5,22 @@
   "redirects": [
     {
       "source": "/download",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk",
       "permanent": false
     },
     {
       "source": "/download/(.*)",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk",
       "permanent": false
     },
     {
       "source": "/app.apk",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk",
       "permanent": false
     },
     {
       "source": "/apk/(.*)",
-      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk",
+      "destination": "https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk",
       "permanent": false
     }
   ],

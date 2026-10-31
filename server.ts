@@ -1142,12 +1142,12 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
 
   // 📲 APK Direct Download & Version Handlers (100% Branded direct stream under your own domain)
   app.get(['/download', '/download/*', '/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download', '/app.apk'], async (req, res) => {
-    const upstreamUrl = 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk';
+    const upstreamUrl = 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk';
     try {
       const upstreamRes = await fetch(upstreamUrl);
       if (upstreamRes.ok && upstreamRes.body) {
         res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-        res.setHeader('Content-Disposition', 'attachment; filename="SahayaSewa-v1.1.902.apk"');
+        res.setHeader('Content-Disposition', 'attachment; filename="Support-Service.apk"');
         const cl = upstreamRes.headers.get('content-length');
         if (cl) res.setHeader('Content-Length', cl);
         const { Readable } = await import('stream');
