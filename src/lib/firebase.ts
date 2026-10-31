@@ -26,15 +26,16 @@ import {
 import { getStorage, ref as storageRef, deleteObject } from 'firebase/storage';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem } from '../types';
+import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem, BlockedCredential } from '../types';
 
-export type { RedAlertItem, RedAlertComment, SosLiveSession };
+export type { RedAlertItem, RedAlertComment, SosLiveSession, BlockedCredential };
 
 // ==============================================================
 // 🔥 FIREBASE INITIALIZATION & CONSTANTS
 // ==============================================================
 
 export const USERS_COLLECTION = 'users';
+export const BLOCKED_CREDENTIALS_COLLECTION = 'blocked_credentials';
 export const POSTS_COLLECTION = 'posts';
 export const RED_ALERTS_COLLECTION = 'red_alerts';
 export const ISSUES_COLLECTION = 'issues';
@@ -396,6 +397,86 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
   }, (err) => {
     console.warn("subscribeToUsers error:", err);
   });
+}
+
+// ==============================================================
+// 🚫 BLOCKED CREDENTIALS OPERATIONS (NIC & Phone Blacklist)
+// ==============================================================
+
+export function subscribeToBlockedCredentials(callback: (list: BlockedCredential[]) => void): () => void {
+  const colRef = collection(db, BLOCKED_CREDENTIALS_COLLECTION);
+  return onSnapshot(colRef, (snap) => {
+    const list: BlockedCredential[] = [];
+    if (snap && snap.docs) {
+      snap.docs.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) });
+      });
+    }
+    callback(list);
+  }, (err) => {
+    console.warn("subscribeToBlockedCredentials error:", err);
+  });
+}
+
+export async function addBlockedCredentialToFirestore(cred: BlockedCredential): Promise<void> {
+  try {
+    const docId = cred.id || `block_${cred.userId || (cred.nicNumber ? cred.nicNumber.replace(/\s+/g, '') : '') || Date.now()}`;
+    const docRef = doc(db, BLOCKED_CREDENTIALS_COLLECTION, docId);
+    await setDoc(docRef, sanitizeForFirestore({
+      ...cred,
+      id: docId,
+      createdAtServer: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, BLOCKED_CREDENTIALS_COLLECTION);
+  }
+}
+
+export async function removeBlockedCredentialFromFirestore(credIdOrKey: string): Promise<void> {
+  try {
+    if (!credIdOrKey) return;
+    const cleanKey = credIdOrKey.trim();
+    // 1. Direct doc delete
+    try {
+      await deleteDoc(doc(db, BLOCKED_CREDENTIALS_COLLECTION, cleanKey));
+    } catch (_) {}
+
+    // 2. Query any docs matching userId, nicNumber, or phone
+    const snap = await getDocs(collection(db, BLOCKED_CREDENTIALS_COLLECTION));
+    if (snap && snap.docs) {
+      const deletePromises: Promise<any>[] = [];
+      snap.docs.forEach((d) => {
+        const data = d.data() as any;
+        if (
+          d.id === cleanKey ||
+          data.userId === cleanKey ||
+          (data.nicNumber && data.nicNumber.toUpperCase() === cleanKey.toUpperCase()) ||
+          (data.phone && data.phone.replace(/\D/g, '') === cleanKey.replace(/\D/g, ''))
+        ) {
+          deletePromises.push(deleteDoc(d.ref));
+        }
+      });
+      await Promise.all(deletePromises);
+    }
+  } catch (err) {
+    console.warn('removeBlockedCredentialFromFirestore error:', err);
+  }
+}
+
+export async function getBlockedCredentialsFromFirestore(): Promise<BlockedCredential[]> {
+  try {
+    const snap = await getDocs(collection(db, BLOCKED_CREDENTIALS_COLLECTION));
+    const list: BlockedCredential[] = [];
+    if (snap && snap.docs) {
+      snap.docs.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) });
+      });
+    }
+    return list;
+  } catch (err) {
+    console.warn('getBlockedCredentialsFromFirestore error:', err);
+    return [];
+  }
 }
 
 // ==============================================================

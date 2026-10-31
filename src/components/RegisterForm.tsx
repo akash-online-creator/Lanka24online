@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Language, Theme } from '../types';
+import { User, Language, Theme, BlockedCredential } from '../types';
 import { translations } from '../data/translations';
 import {
   SRI_LANKA_DISTRICTS,
@@ -7,6 +7,7 @@ import {
 } from '../data/sriLankaGeoData';
 import { compressImageFile } from '../utils/imageCompressor';
 import { notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
+import { checkIsCredentialBlocked, isPhoneMatched } from '../utils/blockedCredentialsManager';
 import {
   User as UserIcon,
   CreditCard,
@@ -98,6 +99,7 @@ interface RegisterFormProps {
   theme?: Theme;
   toggleTheme?: () => void;
   users?: User[];
+  blockedCredentials?: BlockedCredential[];
 }
 
 async function hashUserPassword(rawPass: string): Promise<string> {
@@ -130,6 +132,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   theme = 'light',
   toggleTheme,
   users = [],
+  blockedCredentials = [],
 }) => {
   const t = (translations[language] || translations.si) as any;
 
@@ -160,6 +163,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [showPasswordHelpModal, setShowPasswordHelpModal] = useState(false);
   const [nicConflict, setNicConflict] = useState<User | null>(null);
   const [isPreviousRejected, setIsPreviousRejected] = useState<User | null>(null);
+  const [isNicBlocked, setIsNicBlocked] = useState<boolean>(false);
+  const [isPhoneBlocked, setIsPhoneBlocked] = useState<boolean>(false);
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(null);
 
   // Available Police Divisions for selected District
   const availableDivisions = (SRI_LANKA_POLICE_DIVISIONS as any)[selectedDistrict] || [];
@@ -276,33 +282,60 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     e.stopPropagation();
   };
 
-  // Realtime Live Duplicate NIC Security Checker
+  // Realtime Live Duplicate & Blocked NIC / Phone Security Checker
   useEffect(() => {
-    if (!nicInfo || !nicInfo.valid) {
+    // 1. Check NIC
+    if (nicInfo && nicInfo.valid) {
+      const clean = nicInfo.cleanNic;
+      const nicBlockCheck = checkIsCredentialBlocked({ nic: clean }, blockedCredentials, users);
+      if (nicBlockCheck.isBlocked) {
+        setIsNicBlocked(true);
+        setBlockedNotice(nicBlockCheck.reason || 'මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත.');
+        setNicConflict(null);
+        setIsPreviousRejected(null);
+      } else {
+        setIsNicBlocked(false);
+        if (users && users.length > 0) {
+          const match = users.find((u) => isNicConflict(u, clean));
+          if (match) {
+            if (match.status === 'blocked' || (match as any).isBlocked) {
+              setIsNicBlocked(true);
+              setBlockedNotice('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) පරිපාලක විසින් අවහිර (Blocked) කර ඇත.');
+              setNicConflict(null);
+              setIsPreviousRejected(null);
+            } else if (match.status === 'rejected') {
+              setIsPreviousRejected(match);
+              setNicConflict(null);
+            } else {
+              setNicConflict(match);
+              setIsPreviousRejected(null);
+            }
+          } else {
+            setNicConflict(null);
+            setIsPreviousRejected(null);
+          }
+        }
+      }
+    } else {
+      setIsNicBlocked(false);
       setNicConflict(null);
       setIsPreviousRejected(null);
-      return;
     }
 
-    const clean = nicInfo.cleanNic;
-
-    if (users && users.length > 0) {
-      const match = users.find((u) => isNicConflict(u, clean));
-      if (match) {
-        if (match.status === 'rejected') {
-          setIsPreviousRejected(match);
-          setNicConflict(null);
-        } else {
-          setNicConflict(match);
-          setIsPreviousRejected(null);
-        }
-        return;
+    // 2. Check Phone Number
+    const cleanPh = whatsappPhone.trim();
+    if (cleanPh.length >= 9) {
+      const phoneBlockCheck = checkIsCredentialBlocked({ phone: cleanPh }, blockedCredentials, users);
+      if (phoneBlockCheck.isBlocked) {
+        setIsPhoneBlocked(true);
+        setBlockedNotice(phoneBlockCheck.reason || 'මෙම දුරකථන අංකය පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත.');
+      } else {
+        setIsPhoneBlocked(false);
       }
+    } else {
+      setIsPhoneBlocked(false);
     }
-
-    setNicConflict(null);
-    setIsPreviousRejected(null);
-  }, [nicNumber, users]);
+  }, [nicNumber, nicInfo, whatsappPhone, users, blockedCredentials]);
 
   // Form Submission Handler (දෝෂ නිවැරදි කරන ලද)
   const handleSubmit = async (e: React.FormEvent) => {
@@ -322,9 +355,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
-    // Validation 3: NIC Format & Duplicate Check
+    // Validation 3: NIC Format & Duplicate / Block Check
     if (!nicInfo || !nicInfo.valid) {
       setErrorMessage('කරුණාකර නිවැරදි ජාතික හැඳුනුම්පත් අංකය ඇතුළත් කරන්න (උදාහරණ: 970181547V හෝ 199701815470).');
+      return;
+    }
+
+    const nicBlockCheck = checkIsCredentialBlocked({ nic: nicInfo.cleanNic }, blockedCredentials, users);
+    if (nicBlockCheck.isBlocked || isNicBlocked) {
+      setErrorMessage('🚫 මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නව ගිණුමක් සෑදීමට අවසර නැත.');
+      window.scrollTo({ top: 150, behavior: 'smooth' });
       return;
     }
 
@@ -339,11 +379,28 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
-    // Validation 4: Phone Number
+    // Validation 4: Phone Number Block & Duplicate Check
     const cleanPhone = whatsappPhone.trim();
     const isValidPhone = /^(07[0-9]{8})$/.test(cleanPhone) || /^(0[0-9]{9})$/.test(cleanPhone);
     if (!isValidPhone) {
       setErrorMessage('කරුණාකර නිවැරදි දුරකථන / WhatsApp අංකය ඇතුළත් කරන්න (උදා: 0771234567).');
+      return;
+    }
+
+    const phoneBlockCheck = checkIsCredentialBlocked({ phone: cleanPhone }, blockedCredentials, users);
+    if (phoneBlockCheck.isBlocked || isPhoneBlocked) {
+      setErrorMessage('🚫 මෙම දුරකථන අංකය පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. මෙම දුරකථන අංකයෙන් නව ගිණුමක් සෑදීමට අවසර නැත.');
+      window.scrollTo({ top: 150, behavior: 'smooth' });
+      return;
+    }
+
+    const hasPhoneDuplicate = Array.isArray(users)
+      ? users.some((u) => Boolean(u && u.status !== 'rejected' && isPhoneMatched(u.whatsappPhone || u.phone, cleanPhone)))
+      : false;
+
+    if (hasPhoneDuplicate) {
+      setErrorMessage('මෙම දුරකථන අංකයෙන් (WhatsApp Number) දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත. එක් දුරකථන අංකයකින් සෑදිය හැක්කේ එක් ගිණුමක් පමණි.');
+      window.scrollTo({ top: 150, behavior: 'smooth' });
       return;
     }
 
@@ -622,6 +679,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition uppercase"
               />
             </div>
+            {isNicBlocked && (
+              <div className="mt-1.5 p-2 bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>🚫 මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) පරිපාලක (Admin) විසින් අවහිර (Blocked) කර ඇත.</span>
+              </div>
+            )}
+            {nicConflict && (
+              <div className="mt-1.5 p-2 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 rounded-xl flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>⚠️ මෙම හැඳුනුම්පතෙන් දැනටමත් ගිණුමක් ලියාපදිංචි කර ඇත.</span>
+              </div>
+            )}
+            {isPreviousRejected && (
+              <div className="mt-1.5 p-2 bg-blue-50 dark:bg-blue-950/60 border border-blue-300 dark:border-blue-800 rounded-xl flex items-center gap-2 text-blue-800 dark:text-blue-300 text-xs font-medium">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-600" />
+                <span>කලින් ප්‍රතික්ෂේප වූ ගිණුමකි. නැවත නිවැරදි තොරතුරු ඇතුළත් කර ඉදිරිපත් කරන්න.</span>
+              </div>
+            )}
           </div>
 
           {/* Phone Number Input */}
@@ -649,6 +724,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
               />
             </div>
+            {isPhoneBlocked && (
+              <div className="mt-1.5 p-2 bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>🚫 මෙම දුරකථන අංකය පරිපාලක (Admin) විසින් අවහිර (Blocked) කර ඇත.</span>
+              </div>
+            )}
           </div>
 
           {/* District & Police Division Selectors */}

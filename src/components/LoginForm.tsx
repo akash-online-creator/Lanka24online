@@ -15,7 +15,7 @@ import { getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { DevicePinLoginView } from './DevicePinLoginView';
 
 import { requestNotificationPermission } from '../utils/notificationManager';
-
+import { checkIsCredentialBlocked } from '../utils/blockedCredentialsManager';
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 
 import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
@@ -320,6 +320,28 @@ setError('පරිපාලක (Admin) විසින් Demo පිවිස�
 
 return;
 
+}
+
+// 🛡️ Blocked Account Protection Check (NIC, Phone, User ID)
+const blockCheck = checkIsCredentialBlocked(
+  {
+    nic: cleanIdentifier,
+    phone: cleanIdentifier,
+    userId: cleanIdentifier,
+  },
+  undefined,
+  users
+);
+
+if (blockCheck.isBlocked) {
+  setError(
+    language === 'en'
+      ? '🚫 This account (NIC or Phone) has been blocked by Administrator. You cannot log in.'
+      : language === 'ta'
+      ? '🚫 இந்த கணக்கு (NIC அல்லது தொலைபேசி) நிர்வாகியால் தடுக்கப்பட்டுள்ளது.'
+      : '🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.'
+  );
+  return;
 }
 
 setIsLoading(true);

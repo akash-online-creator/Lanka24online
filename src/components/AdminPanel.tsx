@@ -4,7 +4,8 @@ import {
   Issue, 
   Language, 
   HelpPost, 
-  RedAlertItem 
+  RedAlertItem,
+  BlockedCredential
 } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
@@ -16,8 +17,11 @@ import {
   deleteHelpPostFromFirestore,
   updateHelpPostInFirestore,
   syncUserProfileToFirestore,
-  updateUserInFirestore
+  updateUserInFirestore,
+  addBlockedCredentialToFirestore,
+  removeBlockedCredentialFromFirestore
 } from '../lib/firebase';
+import { addBlockedCredential, removeBlockedCredential } from '../utils/blockedCredentialsManager';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
@@ -309,21 +313,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleBlockUser = async (userToBlock: User) => {
-    const targetNic = (userToBlock.nic || '').trim().toUpperCase();
+    const targetNic = (userToBlock.nic || userToBlock.nicNumber || userToBlock.userId || '').trim().toUpperCase();
+    const userPhone = (userToBlock.whatsappPhone || userToBlock.phone || '').trim();
+    const userName = userToBlock.name || 'පරිශීලකයා';
+
     const enteredNic = window.prompt(
-      `⚠️ අනතුරු ඇඟවීමයි!\n\n${userToBlock.name} (${userToBlock.userId || userToBlock.nic}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:`
+      `⚠️ අනතුරු ඇඟවීමයි!\n\n${userName} (${targetNic || 'NIC නොමැත'}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:\n\n* අවහිර කිරීමෙන් පසු මෙම හැඳුනුම්පතෙන් හෝ දුරකථන අංකයෙන් (${userPhone || 'නැත'}) නැවත ලොග් වීම හෝ නව ගිණුම් සෑදීම ස්ථිරවම අත්හිටුවනු ලැබේ.`
     );
 
     if (enteredNic === null) return;
 
-    if (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic) {
+    if (targetNic && (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic)) {
       alert('❌ ඇතුළත් කළ හැඳුනුම්පත් අංකය (NIC) නොගැලපේ! පරිශීලකයා අවහිර කිරීම (Block) අවලංගු විය.');
       return;
     }
 
     try {
-      const updatedUser: User = { ...userToBlock, status: 'blocked' };
+      const nowIso = new Date().toISOString();
+      const updatedUser: User = {
+        ...userToBlock,
+        status: 'blocked',
+        isBlocked: true,
+        blockedAt: nowIso,
+        blockedReason: 'පරිපාලක (Admin) විසින් පද්ධතියෙන් ස්ථිරවම අවහිර කරන ලදී.',
+      } as any;
+
       await syncUserProfileToFirestore(updatedUser);
+
+      // 🛡️ Blacklist NIC & Phone in blocked_credentials (Firestore + Local)
+      const credId = `block_${userToBlock.id || userToBlock.userId || (targetNic ? targetNic.replace(/\s+/g, '') : '') || Date.now()}`;
+      const blockedCred: BlockedCredential = {
+        id: credId,
+        userId: userToBlock.userId || userToBlock.id,
+        userName: userToBlock.name,
+        nicNumber: targetNic,
+        phone: userPhone,
+        email: userToBlock.email || '',
+        blockedAt: nowIso,
+        reason: 'පරිපාලක (Admin) විසින් පද්ධතියෙන් ස්ථිරවම අවහිර කරන ලදී.',
+      };
+
+      await addBlockedCredentialToFirestore(blockedCred);
+      addBlockedCredential(blockedCred);
 
       if (setUsers) {
         setUsers((prev) =>
@@ -332,7 +363,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )
         );
       }
-      showNotification(`🚫 ${userToBlock.name} සාර්ථකව අවහිර (Blocked) කරන ලදී.`);
+      showNotification(`🚫 ${userName} (${targetNic}) සාර්ථකව අවහිර (Blocked) කරන ලදී. හැඳුනුම්පත (${targetNic}) සහ දුරකථනය (${userPhone}) කළු ලැයිස්තුවට එක් විය.`);
     } catch (err) {
       console.error('Block failed:', err);
       alert('අවහිර කිරීම අසාර්ථක විය.');
@@ -344,8 +375,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!confirmUnblock) return;
 
     try {
-      const updatedUser: User = { ...userToUnblock, status: 'approved' };
+      const targetNic = (userToUnblock.nic || userToUnblock.nicNumber || userToUnblock.userId || '').trim().toUpperCase();
+      const userPhone = (userToUnblock.whatsappPhone || userToUnblock.phone || '').trim();
+      const userId = userToUnblock.id || userToUnblock.userId || '';
+
+      const updatedUser: User = {
+        ...userToUnblock,
+        status: 'approved',
+        isBlocked: false,
+        blockedAt: '',
+        blockedReason: '',
+      } as any;
+
       await syncUserProfileToFirestore(updatedUser);
+
+      // 🔓 Remove from blocked_credentials (Firestore + Local)
+      if (userId) {
+        await removeBlockedCredentialFromFirestore(userId);
+        removeBlockedCredential(userId);
+      }
+      if (targetNic) {
+        await removeBlockedCredentialFromFirestore(targetNic);
+        removeBlockedCredential(targetNic);
+      }
+      if (userPhone) {
+        await removeBlockedCredentialFromFirestore(userPhone);
+        removeBlockedCredential(userPhone);
+      }
 
       if (setUsers) {
         setUsers((prev) =>
@@ -686,7 +742,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             )}
 
                             {/* Block / Unblock buttons */}
-                            {!isPending && !isBlocked && (
+                            {!isBlocked && (
                               <button
                                 type="button"
                                 onClick={() => handleBlockUser(u)}

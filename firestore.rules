@@ -309,6 +309,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /blocked_credentials/{docId} {
+      allow read, write: if true;
+    }
+
     match /auditLogs/{logId} {
       allow read, create: if true;
       allow update, delete: if false;
