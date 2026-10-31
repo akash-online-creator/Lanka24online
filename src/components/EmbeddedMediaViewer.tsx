@@ -18,6 +18,7 @@ import { TelegramMediaRecord } from '../types';
 
 interface EmbeddedMediaViewerProps {
   url?: string;
+  mediaUrl?: string;
   videoUrl?: string;
   className?: string;
   compact?: boolean;

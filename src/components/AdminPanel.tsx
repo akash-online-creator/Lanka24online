@@ -4,8 +4,7 @@ import {
   Issue, 
   Language, 
   HelpPost, 
-  RedAlertItem,
-  BlockedCredential
+  RedAlertItem 
 } from '../types';
 import { translations } from '../data/translations';
 import { AppLogo } from './AppLogo';
@@ -17,12 +16,9 @@ import {
   deleteHelpPostFromFirestore,
   updateHelpPostInFirestore,
   syncUserProfileToFirestore,
-  updateUserInFirestore,
-  addBlockedCredentialToFirestore,
-  removeBlockedCredentialFromFirestore
+  updateUserInFirestore
 } from '../lib/firebase';
-import { addBlockedCredential, removeBlockedCredential } from '../utils/blockedCredentialsManager';
-import { addDeletedPostId, addDeletedBloodId, addDeletedDisasterId, addDeletedMarketplaceId, purgeItemFromLocalStorage } from '../utils/deletedPostsManager';
+import { addDeletedUserId, isUserPermanentlyDeleted } from '../utils/deletedPostsManager';
 import { AdminCreditManagement } from './AdminCreditManagement';
 import { AdminEmergencyDirectoryManagement } from './AdminEmergencyDirectoryManagement';
 import { AdminIssuesManagement } from './AdminIssuesManagement';
@@ -204,24 +200,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     try {
-      addDeletedPostId(postId);
-      addDeletedBloodId(postId);
-      addDeletedDisasterId(postId);
-      addDeletedMarketplaceId(postId);
-      purgeItemFromLocalStorage(postId);
-      if (onDeletePost) {
-        onDeletePost(postId);
-      }
       await deleteHelpPostFromFirestore(postId);
       if (setHelpPosts) {
         setHelpPosts((prev) => prev.filter((p) => p.id !== postId));
       }
-      try {
-        window.dispatchEvent(new Event('sahaya_post_deleted'));
-        window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
-        window.dispatchEvent(new Event('sahaya_marketplace_updated'));
-        window.dispatchEvent(new Event('sahaya_sync_all_services'));
-      } catch {}
       showNotification('🗑️ දැන්වීම සදහටම මකා දමන ලදී (Cloud Permanently Deleted).');
     } catch (err) {
       console.error('Failed to delete post:', err);
@@ -321,55 +303,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handlePermanentDeleteUser = async (userToDelete: User) => {
+    const userName = userToDelete.name || 'පරිශීලකයා';
+    const userNic = (userToDelete.nicNumber || userToDelete.nic || userToDelete.userId || userToDelete.id || '').trim();
+    const confirmMsg = `⚠️ අවධානයට:\n\nඔබට ${userName} (${userNic}) පරිශීලකයා සහ ඔහුගේ සියලු දත්ත Cloud පද්ධතියෙන් සදහටම මකා දැමීමට (Permanent Delete) අවශ්‍ය බව තහවුරු කරන්න:\n\nමෙම ක්‍රියාවෙන් පසු මෙම පරිශීලකයා නැවත පද්ධතිය තුළ නොපෙනේ.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const targetId = userToDelete.id;
+    const targetNic = (userToDelete.nicNumber || userToDelete.nic || userToDelete.userId || '').trim().toUpperCase();
+    const targetDigits = targetNic.replace(/[^0-9]/g, '');
+
+    // 1. Immediately remove from local state
+    if (setUsers) {
+      setUsers((prev) =>
+        prev.filter((u) => {
+          if (u.id === targetId) return false;
+          const uNic = (u.nicNumber || u.nic || u.userId || '').trim().toUpperCase();
+          if (targetNic && (uNic === targetNic || u.userId === targetNic || u.id === targetNic)) return false;
+          const uDigits = uNic.replace(/[^0-9]/g, '');
+          if (targetDigits.length >= 9 && uDigits.length >= 9 && targetDigits === uDigits) return false;
+          return true;
+        })
+      );
+    }
+
+    // 2. Add to deleted blacklist locally
+    if (targetId) addDeletedUserId(targetId);
+    if (targetNic) addDeletedUserId(targetNic);
+    if (targetDigits.length >= 9) addDeletedUserId(targetDigits);
+
+    // 3. Mark and delete in Cloud
+    try {
+      await deleteUserAccount(userToDelete);
+      showNotification(`🗑️ ${userName} පරිශීලකයා පද්ධතියෙන් සදහටම ඉවත් කරන ලදී.`);
+    } catch (err) {
+      console.warn('Permanent user deletion error:', err);
+      showNotification(`🗑️ ${userName} පරිශීලකයා ඉවත් කරන ලදී.`);
+    }
+  };
+
   const handleTableRejectClick = (u: User) => {
-    if (window.confirm(`ඔබට ${u.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කර ඉවත් කිරීමට අවශ්‍ය බව විශ්වාසද?`)) {
-      handleRejectUser(u);
+    if (window.confirm(`ඔබට ${u.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කර සදහටම ඉවත් කිරීමට අවශ්‍ය බව විශ්වාසද?`)) {
+      handlePermanentDeleteUser(u);
     }
   };
 
   const handleBlockUser = async (userToBlock: User) => {
-    const targetNic = (userToBlock.nic || userToBlock.nicNumber || userToBlock.userId || '').trim().toUpperCase();
-    const userPhone = (userToBlock.whatsappPhone || userToBlock.phone || '').trim();
-    const userName = userToBlock.name || 'පරිශීලකයා';
-
+    const targetNic = (userToBlock.nic || '').trim().toUpperCase();
     const enteredNic = window.prompt(
-      `⚠️ අනතුරු ඇඟවීමයි!\n\n${userName} (${targetNic || 'NIC නොමැත'}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:\n\n* අවහිර කිරීමෙන් පසු මෙම හැඳුනුම්පතෙන් හෝ දුරකථන අංකයෙන් (${userPhone || 'නැත'}) නැවත ලොග් වීම හෝ නව ගිණුම් සෑදීම ස්ථිරවම අත්හිටුවනු ලැබේ.`
+      `⚠️ අනතුරු ඇඟවීමයි!\n\n${userToBlock.name} (${userToBlock.userId || userToBlock.nic}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:`
     );
 
     if (enteredNic === null) return;
 
-    if (targetNic && (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic)) {
+    if (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic) {
       alert('❌ ඇතුළත් කළ හැඳුනුම්පත් අංකය (NIC) නොගැලපේ! පරිශීලකයා අවහිර කිරීම (Block) අවලංගු විය.');
       return;
     }
 
     try {
-      const nowIso = new Date().toISOString();
-      const updatedUser: User = {
-        ...userToBlock,
-        status: 'blocked',
-        isBlocked: true,
-        blockedAt: nowIso,
-        blockedReason: 'පරිපාලක (Admin) විසින් පද්ධතියෙන් ස්ථිරවම අවහිර කරන ලදී.',
-      } as any;
-
+      const updatedUser: User = { ...userToBlock, status: 'blocked' };
       await syncUserProfileToFirestore(updatedUser);
-
-      // 🛡️ Blacklist NIC & Phone in blocked_credentials (Firestore + Local)
-      const credId = `block_${userToBlock.id || userToBlock.userId || (targetNic ? targetNic.replace(/\s+/g, '') : '') || Date.now()}`;
-      const blockedCred: BlockedCredential = {
-        id: credId,
-        userId: userToBlock.userId || userToBlock.id,
-        userName: userToBlock.name,
-        nicNumber: targetNic,
-        phone: userPhone,
-        email: userToBlock.email || '',
-        blockedAt: nowIso,
-        reason: 'පරිපාලක (Admin) විසින් පද්ධතියෙන් ස්ථිරවම අවහිර කරන ලදී.',
-      };
-
-      await addBlockedCredentialToFirestore(blockedCred);
-      addBlockedCredential(blockedCred);
 
       if (setUsers) {
         setUsers((prev) =>
@@ -378,7 +372,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )
         );
       }
-      showNotification(`🚫 ${userName} (${targetNic}) සාර්ථකව අවහිර (Blocked) කරන ලදී. හැඳුනුම්පත (${targetNic}) සහ දුරකථනය (${userPhone}) කළු ලැයිස්තුවට එක් විය.`);
+      showNotification(`🚫 ${userToBlock.name} සාර්ථකව අවහිර (Blocked) කරන ලදී.`);
     } catch (err) {
       console.error('Block failed:', err);
       alert('අවහිර කිරීම අසාර්ථක විය.');
@@ -390,33 +384,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!confirmUnblock) return;
 
     try {
-      const targetNic = (userToUnblock.nic || userToUnblock.nicNumber || userToUnblock.userId || '').trim().toUpperCase();
-      const userPhone = (userToUnblock.whatsappPhone || userToUnblock.phone || '').trim();
-      const userId = userToUnblock.id || userToUnblock.userId || '';
-
-      const updatedUser: User = {
-        ...userToUnblock,
-        status: 'approved',
-        isBlocked: false,
-        blockedAt: '',
-        blockedReason: '',
-      } as any;
-
+      const updatedUser: User = { ...userToUnblock, status: 'approved' };
       await syncUserProfileToFirestore(updatedUser);
-
-      // 🔓 Remove from blocked_credentials (Firestore + Local)
-      if (userId) {
-        await removeBlockedCredentialFromFirestore(userId);
-        removeBlockedCredential(userId);
-      }
-      if (targetNic) {
-        await removeBlockedCredentialFromFirestore(targetNic);
-        removeBlockedCredential(targetNic);
-      }
-      if (userPhone) {
-        await removeBlockedCredentialFromFirestore(userPhone);
-        removeBlockedCredential(userPhone);
-      }
 
       if (setUsers) {
         setUsers((prev) =>
@@ -459,8 +428,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const pendingUsersCount = users.filter((u) => u.status === 'pending').length;
-  const rejectedUsersCount = users.filter((u) => u.status === 'rejected').length;
+  const pendingUsersCount = users.filter((u) => u.status === 'pending' && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
+  const rejectedUsersCount = users.filter((u) => u.status === 'rejected' && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
   const pendingIssuesCount = issues.filter((i) => i.status === 'pending').length;
   const activeAlertsCount = redAlerts.filter((a) => a.status === 'active').length;
 
@@ -633,6 +602,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-[#12281b]">
                 {users
                   .filter((u) => {
+                    if ((u as any).isDeleted || (u.status as string) === 'deleted' || isUserPermanentlyDeleted(u)) {
+                      return false;
+                    }
                     if (userFilter === 'all') return true;
                     return u.status === userFilter;
                   })
@@ -757,7 +729,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             )}
 
                             {/* Block / Unblock buttons */}
-                            {!isBlocked && (
+                            {!isPending && !isBlocked && (
                               <button
                                 type="button"
                                 onClick={() => handleBlockUser(u)}
@@ -778,6 +750,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 Unblock
                               </button>
                             )}
+
+                            {/* Permanent Delete Button */}
+                            <button
+                              type="button"
+                              onClick={() => handlePermanentDeleteUser(u)}
+                              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 transition-all cursor-pointer"
+                              title="පරිශීලකයා සදහටම මකා දමන්න (Permanent Delete)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1138,7 +1120,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             setInspectingUser(null);
             setEditingUser(u);
           }}
-          onDelete={handleRejectUser}
+          onDelete={handlePermanentDeleteUser}
           onUpdateUser={handleSaveEditedUser}
           language={language}
         />

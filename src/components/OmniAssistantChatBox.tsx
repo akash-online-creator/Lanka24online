@@ -25,7 +25,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { Language } from '../types';
+import { Language, LocationOption } from '../types';
 import { 
   ChatMessageItem, 
   askAssistant, 

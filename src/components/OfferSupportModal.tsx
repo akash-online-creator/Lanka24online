@@ -19,11 +19,8 @@ import { updateHelpPostInFirestore, sendChatMessageToFirestore } from '../lib/fi
 const h = React.createElement;
 
 export interface OfferSupportModalProps {
-
-  post: HelpPost;
-
+  post?: HelpPost | null;
   isOpen: boolean;
-
   onClose: () => void;
 
   onSendReply?: (postId: string, responderName: string, responderPhone: string, message: string) => void;
@@ -42,7 +39,7 @@ export interface OfferSupportModalProps {
 
 }
 
-export const OfferSupportModal = ({
+export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
 
   post,
 

@@ -41,7 +41,7 @@ onRejectPost?: (postId: string) => void;
 onViewProfile?: (userIdOrName: string) => void;
 isDemo?: boolean;
 }
-export const PostCard = ({
+export const PostCard: React.FC<PostCardProps> = ({
 post,
 currentUser,
 viewerLocation,
@@ -339,26 +339,25 @@ console.warn('Comment sync error:', err);
 };
 const handleDelete = async (e?: React.MouseEvent) => {
 if (e) e.stopPropagation();
-const targetId = post.id;
-if (!targetId) return;
-
-if (onDeletePost) {
-  onDeletePost(targetId ? targetId : post);
-  return;
-}
-
 if (!window.confirm(getLangText('මෙම දැන්වීම ඉවත් කිරීමට ඔබට සහතිකද?', 'Are you sure you want to delete this post?', 'இந்த இடுகையை நீக்க உறுதியாக உள்ளீர்களா?'))) {
-  return;
+return;
 }
-
+const targetId = post.id;
 setIsDeletingLocal(true);
+if (targetId) {
 addDeletedPostId(targetId);
 try {
-  await deleteHelpPostFromFirestore(targetId).catch(() => {});
+await updateHelpPostInFirestore(targetId, {
+isDeleted: true,
+status: 'deleted',
+deletedAt: new Date().toISOString()
+}).catch(() => {});
+await deleteHelpPostFromFirestore(targetId).catch(() => {});
 } catch (err) {}
-try {
-  window.dispatchEvent(new Event('sahaya_post_deleted'));
-} catch {}
+}
+if (onDeletePost) {
+onDeletePost(targetId ? targetId : post);
+}
 };
 const handleEditClick = (e: React.MouseEvent) => {
 e.stopPropagation();

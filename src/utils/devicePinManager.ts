@@ -96,8 +96,8 @@ export async function saveDevicePin(
   const deviceSessionToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   const pinRecord: StoredDevicePinData = {
-    userId: user.id || user.userId || user.nicNumber || '',
-    nicNumber: user.nicNumber || user.userId || '',
+    userId: user.id || user.userId || user.nicNumber,
+    nicNumber: user.nicNumber || user.userId,
     userName: user?.name || 'පරිශීලක',
     userPhoto: user.photoUrl || user.facePhotoUrl,
     userPhone: user.phone || user.whatsappNumber,

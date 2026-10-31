@@ -8,16 +8,9 @@
     overflow-x: hidden;
   }
 
-    body {
+  body {
     font-family: 'Noto Sans Sinhala', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Prevent mobile browser auto-zoom and keyboard dismissal on focus */
-  @media screen and (max-width: 768px) {
-    input, textarea, select {
-      font-size: 16px !important;
-    }
   }
 }
 

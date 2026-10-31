@@ -6,7 +6,6 @@ import { AppLogo } from './AppLogo';
 import { FontSizeController } from './FontSizeController';
 import { StoredDevicePinData, verifyDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { getUserFromFirestore } from '../lib/user';
-import { checkIsCredentialBlocked } from '../utils/blockedCredentialsManager';
 export interface DevicePinLoginViewProps {
   storedPinData: StoredDevicePinData;
   users: User[];
@@ -88,21 +87,6 @@ export const DevicePinLoginView = ({
     try {
       const result = await verifyDevicePin(pinToVerify, users, getUserFromFirestore);
       if (result.success && result.matchedUser) {
-        // 🛡️ Blocked Check for Device PIN Login
-        const blockCheck = checkIsCredentialBlocked({
-          nic: result.matchedUser.nic || result.matchedUser.nicNumber,
-          phone: result.matchedUser.whatsappPhone || result.matchedUser.phone,
-          userId: result.matchedUser.userId || result.matchedUser.id,
-        }, undefined, users);
-
-        if (blockCheck.isBlocked || result.matchedUser.status === 'blocked' || (result.matchedUser as any).isBlocked) {
-          alert('🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
-          clearDevicePin();
-          onClearDevicePin();
-          onSwitchToPasswordLogin();
-          return;
-        }
-
         onSuccessfulPinLogin(result.matchedUser);
       } else {
         setIsShake(true);

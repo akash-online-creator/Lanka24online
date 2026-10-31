@@ -55,6 +55,8 @@ interface BarterExchangeModalProps {
   currentUser?: User;
   currentLocation?: LocationOption;
   language?: Language;
+  helpPosts?: any[];
+  onOpenItemChat?: (post: any) => void;
   onOpenQrPayForBarter?: (recipient: { userId: string; name: string; phone?: string; fixedAmount?: number }) => void;
 }
 

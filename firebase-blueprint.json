@@ -53,21 +53,6 @@
       },
       "required": ["name", "phone"]
     },
-    "blocked_credentials": {
-      "title": "Blocked Credentials",
-      "description": "Blacklisted NIC numbers, phone numbers, and user records blocked by administrators",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "nicNumber": { "type": "string" },
-        "phone": { "type": "string" },
-        "email": { "type": "string" },
-        "reason": { "type": "string" },
-        "blockedAt": { "type": "string" }
-      },
-      "required": ["blockedAt"]
-    },
     "reviews": {
       "title": "User Reviews & Ratings",
       "description": "Community ratings and reviews for services and helpers",
@@ -323,10 +308,6 @@
     "/online_users/{sessionId}": {
       "schema": "online_users",
       "description": "Live active user heartbeat records"
-    },
-    "/blocked_credentials/{docId}": {
-      "schema": "blocked_credentials",
-      "description": "Blacklisted credentials for banned/blocked users"
     },
     "/sos_live_sessions/{sessionId}": {
       "schema": "sos_live_sessions",

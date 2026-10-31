@@ -1,20 +1,22 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { viteSingleFile } from 'vite-plugin-singlefile';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import {defineConfig} from 'vite';
 
-// සටහන: සිංහල භාෂාවේ යංශය (්‍ය), රකාරාංශය (්‍ර) සහ බැඳි අකුරු ආරක්ෂා කරගැනීම සඳහා
-// පැරණි cleanUnicodePlugin සම්පූර්ණයෙන්ම ඉවත් කර ඇත.
-
-export default defineConfig({
-  base: './',
-  plugins: [react(), tailwindcss(), viteSingleFile()],
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-  },
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+  };
 });

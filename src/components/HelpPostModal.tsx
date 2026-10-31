@@ -21,6 +21,7 @@ const DEFAULT_LOCATION: LocationOption = {
 id: 'loc_colombo',
 nameSi: 'කොළඹ',
 nameEn: 'Colombo',
+nameTa: 'கொழும்பு',
 lat: 6.9271,
 lng: 79.8612
 };
@@ -74,7 +75,7 @@ const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 const d = R * c;
 return Math.max(0.1, Math.round(d * 10) / 10);
 }
-async function compressImageFileToDataUrl(file: File, maxWidth = 1280, maxHeight = 720, quality = 0.75): any {
+async function compressImageFileToDataUrl(file: File, maxWidth = 1280, maxHeight = 720, quality = 0.75): Promise<string> {
 return new Promise((resolve, reject) => {
 const reader = new FileReader();
 reader.onload = event => {
@@ -117,7 +118,7 @@ reader.onerror = err => reject(err);
 reader.readAsDataURL(file);
 });
 }
-export const HelpPostModal = ({
+export const HelpPostModal: React.FC<HelpPostModalProps> = ({
 isOpen,
 onClose,
 onSubmitPost,

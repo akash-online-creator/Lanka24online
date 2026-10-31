@@ -15,7 +15,7 @@ import { getStoredDevicePin, clearDevicePin } from '../utils/devicePinManager';
 import { DevicePinLoginView } from './DevicePinLoginView';
 
 import { requestNotificationPermission } from '../utils/notificationManager';
-import { checkIsCredentialBlocked } from '../utils/blockedCredentialsManager';
+
 import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
 
 import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
@@ -322,28 +322,6 @@ return;
 
 }
 
-// 🛡️ Blocked Account Protection Check (NIC, Phone, User ID)
-const blockCheck = checkIsCredentialBlocked(
-  {
-    nic: cleanIdentifier,
-    phone: cleanIdentifier,
-    userId: cleanIdentifier,
-  },
-  undefined,
-  users
-);
-
-if (blockCheck.isBlocked) {
-  setError(
-    language === 'en'
-      ? '🚫 This account (NIC or Phone) has been blocked by Administrator. You cannot log in.'
-      : language === 'ta'
-      ? '🚫 இந்த கணக்கு (NIC அல்லது தொலைபேசி) நிர்வாகியால் தடுக்கப்பட்டுள்ளது.'
-      : '🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.'
-  );
-  return;
-}
-
 setIsLoading(true);
 
 try {
@@ -527,16 +505,6 @@ t.nicLabel ? t.nicLabel : 'හැඳුනුම්පත් අංකය'
 
 { className: 'absolute left-3 pointer-events-none text-slate-400 dark:text-[#3d5d48]' }, h(Contact2, { className: 'w-4 h-4' })), h('input', {
 
-id: 'login-user-id',
-
-name: 'username',
-
-autoComplete: 'username',
-
-autoCapitalize: 'characters',
-
-spellCheck: false,
-
 type: 'text',
 
 required: true,
@@ -555,11 +523,9 @@ if (error) setError(null);
 
 },
 
-style: { fontSize: '16px' },
-
 className:
 
-'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2.5 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-base font-mono font-medium uppercase disabled:opacity-50',
+'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-3 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-mono font-medium uppercase disabled:opacity-50',
 
 }))), h('div',
 
@@ -583,14 +549,6 @@ t.forgotCode ? t.forgotCode : 'කේතය වෙනස් කිරීම'
 
 { className: 'absolute left-3 pointer-events-none text-slate-400 dark:text-[#3d5d48]' }, h(KeyRound, { className: 'w-4 h-4' })), h('input', {
 
-id: 'login-password',
-
-name: 'password',
-
-autoComplete: 'current-password',
-
-spellCheck: false,
-
 type: showPassword ? 'text' : 'password',
 
 required: true,
@@ -609,11 +567,9 @@ if (error) setError(null);
 
 },
 
-style: { fontSize: '16px' },
-
 className:
 
-'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2.5 pl-9 pr-9 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-base font-medium disabled:opacity-50',
+'w-full bg-white dark:bg-[#07120c] border border-slate-200/90 dark:border-[#162e20] rounded-xl py-2 pl-9 pr-9 text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-[#3d5a47] focus:outline-none focus:ring-2 focus:ring-[#00a86b]/30 focus:border-[#00a86b] transition-all text-xs sm:text-sm font-medium disabled:opacity-50',
 
 }), h('button',
 
@@ -621,11 +577,9 @@ className:
 
 type: 'button',
 
-onMouseDown: (e: any) => e.preventDefault(),
-
 onClick: () => setShowPassword(!showPassword),
 
-className: 'absolute right-3 text-slate-400 dark:text-[#3d5d48] hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer',
+className: 'absolute right-3 text-slate-400 dark:text-[#3d5d48] hover:text-slate-600 dark:hover:text-slate-200 transition-colors',
 
 title: showPassword ? 'Hide password' : 'Show password',
 

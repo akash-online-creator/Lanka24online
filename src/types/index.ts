@@ -25,6 +25,8 @@ export interface PostReply {
   isAccepted?: boolean;
   isConfirmed?: boolean;
   responderId?: string;
+  responderNic?: string;
+  distanceKm?: number;
 }
 
 export interface MultilingualText {
@@ -87,7 +89,7 @@ export interface ServiceReview {
   userId?: string;
   userName?: string;
   userPhotoUrl?: string;
-  rating?: number; // 1 to 5
+  rating?: number;
   comment?: string;
   createdAt?: string;
   createdAtMs?: number;
@@ -189,7 +191,7 @@ export interface HelpPost {
   isHidden?: boolean;
   hiddenAt?: string;
   hiddenBy?: string;
-  status?: 'active' | 'confirmed' | 'completed' | 'deleted' | 'hidden';
+  status?: 'active' | 'confirmed' | 'completed' | 'resolved' | 'filled' | 'deleted' | 'hidden';
   findForMeType?: 'lost' | 'stolen' | 'find' | 'found';
   itemLostStolenOrSearched?: string;
   incidentLocation?: string;
@@ -276,13 +278,34 @@ export interface HelpPost {
   moderationStatus?: 'clean' | 'flagged' | 'poster_responded' | 'resolved' | 'approved' | 'pending_review';
   // Quick & Normal Service Workflow Fields
   startPin?: string;
-  serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed';
+  serviceStage?: 'open' | 'accepted' | 'in_progress' | 'bill_submitted' | 'completed' | 'resolved' | 'filled';
   startedAt?: string;
   billSubmittedAt?: string;
   serviceReviews?: ServiceReview[];
   invoiceNumber?: string;
   isFilled?: boolean;
   helpersSatisfied?: boolean;
+  actualAuthorId?: string;
+  actualAuthorNic?: string;
+  postType?: string;
+  headline?: string;
+  authorId?: string;
+  latitude?: number;
+  longitude?: number;
+  roleType?: string;
+  isUrgent?: boolean;
+  urgencyLevel?: string;
+  content?: string;
+  city?: string;
+  resolvedAt?: string;
+  description?: string;
+  urgency?: string;
+  phone?: string;
+  whatsapp?: string;
+  customTransportFee?: number | string;
+  userEmail?: string;
+  platformFee?: number;
+  travelFeePerKm?: number;
 }
 
 export interface TelegramMediaRecord {
@@ -455,6 +478,11 @@ export interface User {
   trustPoints?: number; // 0 to 1000, default 100
   customBadges?: TrustBadgeType[];
   trustScoreLogs?: TrustScoreLogItem[];
+  username?: string;
+  lastUsernameChangedAt?: string;
+  accountDepositId?: string;
+  privacySettings?: Record<string, any>;
+  sPoints?: any;
 }
 
 export interface PendingProfileUpdate {
@@ -559,6 +587,8 @@ export interface ServiceItem {
   available: boolean;
 }
 
+// Consolidated ServiceReview
+
 export type ServiceDeliveryMethod = 'location' | 'anywhere' | 'online' | 'customer_must_come' | 'other';
 
 export interface ProfessionalServiceSubCategory {
@@ -601,6 +631,8 @@ export interface ProfessionalService {
   createdAtMs: number;
   reviews: ServiceReview[];
   avgRating?: number;
+  rating?: number;
+  reviewsCount?: number;
   isVerified?: boolean;
   revealContactConsent?: boolean;
 }
@@ -678,18 +710,19 @@ export type GroupPrivacy = 'public' | 'private';
 export interface GroupJoinRequest {
   id: string;
   groupId: string;
-  groupName: string;
-  groupUsername: string;
+  groupName?: string;
+  groupUsername?: string;
   groupPhotoUrl?: string;
   groupSubCategory?: GroupWorkSubCategory;
   userId: string;
   userName: string;
   userPhone: string;
   userPhotoUrl?: string;
+  userPhoto?: string;
   userAvatar?: string;
   userUsername?: string;
   requestedAt: string;
-  requestedAtMs: number;
+  requestedAtMs?: number;
   status: 'pending' | 'accepted' | 'rejected';
   reviewedBy?: string;
   reviewedAt?: string;
@@ -736,8 +769,10 @@ export interface GroupItem {
   createdAtMs: number;
   permissions: GroupPermissions;
   members: GroupMember[];
+  membersCount?: number;
   joinRequests?: GroupJoinRequest[];
   pendingRequests?: any[];
+  isVerified?: boolean;
   inviteCode: string; // for link or QR code join
   inviteLink?: string;
   category?: string;
@@ -924,7 +959,7 @@ export interface DisasterReliefItem {
   urgency: 'high' | 'medium' | 'low';
   contactPerson: string;
   contactPhone: string;
-  status: 'needed' | 'collecting' | 'delivered';
+  status: 'needed' | 'collecting' | 'delivered' | 'urgent';
   targetQuantity?: string;
   collectedQuantity?: string;
   createdAt: string;
@@ -1137,7 +1172,7 @@ export interface RedAlertItem {
   reportedByPhone: string;
 
   // Status & Severity
-  status: 'active' | 'resolved' | 'cancelled' | 'false_alarm';
+  status: 'active' | 'resolved' | 'cancelled' | 'false_alarm' | 'fake';
   severity: 'critical' | 'high' | 'moderate';
 
   // Voice & Audio SOS Recording
@@ -1148,6 +1183,16 @@ export interface RedAlertItem {
   voiceSentLocation?: string;
   voiceCoordinates?: { lat: number; lng: number };
   isVoiceAlert?: boolean;
+
+  // Additional fields
+  title?: string;
+  lat?: number;
+  lng?: number;
+  fakeReportsCount?: number;
+  cancelledReason?: string;
+  resolvedReason?: string;
+  contactName?: string;
+  contactPhone?: string;
 
   // Interactive Elements
   comments: RedAlertComment[];
@@ -1185,6 +1230,7 @@ export type AidCategory =
 export type AidCenterType = 
   | 'camp'              // ආපදා සහන කඳවුර (Relief Camp)
   | 'temple_church'     // පන්සල / පල්ලිය / ආගමික ස්ථානය
+  | 'temple'
   | 'school'            // පාසල් ගොඩනැගිල්ල
   | 'community_center'  // ප්‍රජා ශාලාව / සමිති ශාලාව
   | 'hospital'          // රෝහල / සෞඛ්‍ය මධ්‍යස්ථානය
@@ -1237,6 +1283,7 @@ export interface AidDeliveryRecord {
   
   // Delivered Aid Details
   aidCategory: AidCategory;
+  category?: string;
   categoryTitleSi: string;
   itemDescription: string;       // ලබාදුන් ආධාර පිළිබඳ විස්තරය
   quantity: string;              // ප්‍රමාණය (e.g. "සහල් කිලෝ 500, පරිප්පු 100kg, වතුර බෝතල් 200")
@@ -1475,6 +1522,7 @@ export interface BulletinPost {
   createdAt: string;
   verified?: boolean;
   resolved?: boolean;
+  distanceKm?: number;
 }
 
 export interface PendingAiQuery {
@@ -1510,6 +1558,10 @@ export interface EmergencyContactItem {
   badge?: string;
   description?: string;
 }
+
+export type PostComment = any;
+export type UserRegistration = any;
+
 
 
 

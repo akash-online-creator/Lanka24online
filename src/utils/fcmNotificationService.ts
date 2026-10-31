@@ -21,15 +21,14 @@ import firebaseConfigJson from '../../firebase-applet-config.json';
 export type PushCategory = any;
 
 export interface FcmPayloadData {
-
   category: any;
-
   title: string;
-
-  body: string;
-
+  body?: string;
+  message?: string;
+  lat?: any;
+  lng?: any;
+  targetModal?: string;
   alertId?: string;
-
   postId?: string;
 
   groupId?: string;
@@ -440,6 +439,8 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
       title: '🚨 සහය සේවා (රතු එළිය): ' + title,
       message: message + ' (ඔබට දුර: කි.මී. ' + distanceKm.toFixed(1) + ')',
       locationName,
+      timestamp: new Date().toISOString(),
+      isRead: false,
       badgeText: 'රතු එළිය 15KM',
       targetModal: 'red_alert',
       targetPostId: payload.alertId

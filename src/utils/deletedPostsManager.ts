@@ -63,33 +63,20 @@ const DUMMY_BARTER_IDS = new Set(['swap_001', 'swap_002', 'swap_003', 'swap_004'
 // ==========================================
 // Storage Helper Functions
 // ==========================================
-const inMemoryFallbackSets = new Map<string, Set<string>>();
-
 function getStoredIds(key: string): string[] {
-  const memSet = inMemoryFallbackSets.get(key) || new Set<string>();
   try {
-    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((id) => memSet.add(String(id)));
-        }
-      }
-    }
-  } catch {}
-  return Array.from(memSet);
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function saveIds(key: string, ids: string[]): void {
   try {
-    const memSet = inMemoryFallbackSets.get(key) || new Set<string>();
-    ids.forEach((id) => memSet.add(String(id)));
-    inMemoryFallbackSets.set(key, memSet);
-
-    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(Array.from(memSet)));
-    }
+    localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
     // LocalStorage වෙනස් වූ වහාම Firestore Cloud එකට Sync කෙරේ
     syncAllDeletionsToCloud();
   } catch (err) {
@@ -377,12 +364,23 @@ export function isUserPermanentlyDeleted(userOrId: any): boolean {
   if (!userOrId) return false;
   const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
   if (typeof userOrId === 'string') {
-    return deletedSet.has(userOrId.trim().toLowerCase());
+    const clean = userOrId.trim().toLowerCase();
+    const digits = clean.replace(/[^0-9]/g, '');
+    return deletedSet.has(clean) || (digits.length >= 9 && deletedSet.has(digits));
+  }
+  if ((userOrId as any).isDeleted === true || (userOrId.status as string) === 'deleted') {
+    return true;
   }
   const id = userOrId.id ? String(userOrId.id).trim().toLowerCase() : '';
   const userId = userOrId.userId ? String(userOrId.userId).trim().toLowerCase() : '';
-  const nic = userOrId.nicNumber ? String(userOrId.nicNumber).trim().toLowerCase() : '';
-  return Boolean((id && deletedSet.has(id)) || (userId && deletedSet.has(userId)) || (nic && deletedSet.has(nic)));
+  const nic = String(userOrId.nicNumber || userOrId.nic || '').trim().toLowerCase();
+  const digits = (nic || userId || id).replace(/[^0-9]/g, '');
+  return Boolean(
+    (id && deletedSet.has(id)) ||
+    (userId && deletedSet.has(userId)) ||
+    (nic && deletedSet.has(nic)) ||
+    (digits.length >= 9 && deletedSet.has(digits))
+  );
 }
 
 export function filterNonDeletedUsers(users: User[]): User[] {
@@ -390,59 +388,16 @@ export function filterNonDeletedUsers(users: User[]): User[] {
   const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
   return users.filter((u) => {
     if (!u) return false;
-    if ((u.status as string) === 'deleted' || (u as any).isDeleted) return false;
+    if ((u.status as string) === 'deleted' || (u as any).isDeleted === true) return false;
     const id = u.id ? String(u.id).trim().toLowerCase() : '';
     const userId = u.userId ? String(u.userId).trim().toLowerCase() : '';
-    const nic = u.nicNumber ? String(u.nicNumber).trim().toLowerCase() : '';
+    const nic = String(u.nicNumber || u.nic || '').trim().toLowerCase();
+    const digits = (nic || userId || id).replace(/[^0-9]/g, '');
     if (id && deletedSet.has(id)) return false;
     if (userId && deletedSet.has(userId)) return false;
     if (nic && deletedSet.has(nic)) return false;
+    if (digits.length >= 9 && deletedSet.has(digits)) return false;
     return true;
-  });
-}
-
-// ==========================================
-// Cache Purge Helper
-// ==========================================
-export function purgeItemFromLocalStorage(targetId: string): void {
-  if (!targetId || typeof window === 'undefined') return;
-  const idStr = String(targetId).trim();
-  const rawId = idStr.replace(/^post_/, '');
-
-  const storageKeys = [
-    'sahaya_help_posts',
-    'sahaya_blood_requests',
-    'sahaya_disaster_relief',
-    'sahaya_marketplace_items',
-    'sahaya_market_shops',
-    'sahaya_jobs',
-    'sahaya_accommodations',
-    'sahaya_barter_items',
-    'sahaya_groups',
-    'sahaya_professional_services',
-    'sahaya_red_alerts'
-  ];
-
-  storageKeys.forEach((key) => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter((item: any) => {
-            if (!item) return false;
-            const itemId = String(item.id || item._id || '').trim();
-            const itemCode = String(item.postCode || '').trim();
-            if (itemId === idStr || itemId === rawId || itemId === 'post_' + rawId) return false;
-            if (itemCode && (itemCode === idStr || itemCode === rawId)) return false;
-            return true;
-          });
-          if (filtered.length !== parsed.length) {
-            localStorage.setItem(key, JSON.stringify(filtered));
-          }
-        }
-      }
-    } catch {}
   });
 }
 
@@ -455,26 +410,10 @@ export function getStoredDeletedPostIds(): string[] {
 
 export function addDeletedPostId(postId: string): void {
   if (!postId) return;
-  const pId = String(postId).trim();
-  const cleanId = pId.replace(/^post_/, '');
   const current = getStoredDeletedPostIds();
-  const toAdd = [pId, cleanId, 'post_' + cleanId];
-  const updated = Array.from(new Set([...current, ...toAdd]));
-  saveIds(DELETED_POST_IDS_KEY, updated);
-
-  // If this ID belongs to emergency blood, disaster, or marketplace, also add to respective sets
-  if (pId.startsWith('bld_') || pId.startsWith('blood_')) addDeletedBloodId(pId);
-  if (pId.startsWith('rel_') || pId.startsWith('relief_')) addDeletedDisasterId(pId);
-  if (pId.startsWith('mkt_')) addDeletedMarketplaceId(pId);
-  if (pId.startsWith('job_')) addDeletedJobId(pId);
-  if (pId.startsWith('acc_')) addDeletedAccommodationId(pId);
-  if (pId.startsWith('barter_') || pId.startsWith('swap_')) addDeletedBarterItemId(pId);
-  if (pId.startsWith('red_alert_') || pId.startsWith('alert_')) addDeletedRedAlertId(pId);
-  if (pId.startsWith('grp_') || pId.startsWith('group_')) addDeletedGroupId(pId);
-  if (pId.startsWith('ps_')) addDeletedProServiceId(pId);
-
-  // Purge immediately from local storage cache lists
-  purgeItemFromLocalStorage(pId);
+  if (!current.includes(postId)) {
+    saveIds(DELETED_POST_IDS_KEY, [...current, postId]);
+  }
 }
 
 export function removeDeletedPostId(postId: string): void {
@@ -484,29 +423,7 @@ export function removeDeletedPostId(postId: string): void {
 
 export function isPostPermanentlyDeleted(postId: string): boolean {
   if (!postId) return false;
-  const pId = String(postId).trim();
-  const cleanId = pId.replace(/^post_/, '');
-  const deletedPosts = getStoredDeletedPostIds();
-  const deletedBlood = getStoredDeletedBloodIds();
-  const deletedDisaster = getStoredDeletedDisasterIds();
-  const deletedMarket = getStoredDeletedMarketplaceIds();
-  const deletedJobs = getStoredDeletedJobIds();
-  const deletedAcc = getStoredDeletedAccommodationIds();
-  const deletedBarter = getStoredDeletedBarterItemIds();
-  const deletedAlerts = getStoredDeletedRedAlertIds();
-
-  return (
-    deletedPosts.includes(pId) ||
-    deletedPosts.includes(cleanId) ||
-    deletedPosts.includes('post_' + cleanId) ||
-    deletedBlood.includes(pId) ||
-    deletedDisaster.includes(pId) ||
-    deletedMarket.includes(pId) ||
-    deletedJobs.includes(pId) ||
-    deletedAcc.includes(pId) ||
-    deletedBarter.includes(pId) ||
-    deletedAlerts.includes(pId)
-  );
+  return getStoredDeletedPostIds().includes(postId);
 }
 
 /**
@@ -591,36 +508,13 @@ export function downloadPostBackupJson(post: HelpPost, user?: User | null): bool
 
 export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boolean; status?: string }>(posts: T[]): T[] {
   if (!Array.isArray(posts)) return [];
-  const deletedPosts = getStoredDeletedPostIds();
-  const deletedBlood = getStoredDeletedBloodIds();
-  const deletedDisaster = getStoredDeletedDisasterIds();
-  const deletedMarket = getStoredDeletedMarketplaceIds();
-  const deletedJobs = getStoredDeletedJobIds();
-  const deletedAcc = getStoredDeletedAccommodationIds();
-  const deletedBarter = getStoredDeletedBarterItemIds();
-  const deletedAlerts = getStoredDeletedRedAlertIds();
-
-  const allDeletedIds = new Set([
-    ...deletedPosts,
-    ...deletedBlood,
-    ...deletedDisaster,
-    ...deletedMarket,
-    ...deletedJobs,
-    ...deletedAcc,
-    ...deletedBarter,
-    ...deletedAlerts,
-  ]);
-
+  const deletedIds = new Set(getStoredDeletedPostIds());
   return posts.filter((p) => {
     if (!p || !p.id) return false;
-    const id = String(p.id).trim();
-    const cleanId = id.replace(/^post_/, '');
-    if (allDeletedIds.has(id) || allDeletedIds.has(cleanId) || allDeletedIds.has('post_' + cleanId)) return false;
-    if (p.isDeleted || p.status === 'deleted') return false;
-    if (DUMMY_POST_IDS.has(id) || DUMMY_POST_IDS.has(cleanId)) return false;
+    if (deletedIds.has(p.id) || p.isDeleted || p.status === 'deleted') return false;
+    if (DUMMY_POST_IDS.has(p.id)) return false;
     const pAny = p as any;
     if (pAny.postCode && DUMMY_POST_CODES.has(String(pAny.postCode))) return false;
-    if (pAny.postCode && allDeletedIds.has(String(pAny.postCode))) return false;
     if (pAny.isDummy || pAny.isSample || pAny.isDemoPost) return false;
     return true;
   });

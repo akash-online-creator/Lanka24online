@@ -1,4 +1,5 @@
 import { JobListing, JobFilters, ProximityFilterType, JobComment } from '../types/job';
+export type { JobComment };
 import { calculateDistanceKm } from './geoUtils';
 import {
   subscribeToJobsFromFirestore,

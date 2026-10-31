@@ -46,37 +46,25 @@ export interface User {
 }
 
 export interface MarketItem {
-
   id: string;
-
   title: string;
-
-  price: number;
-
+  price?: number;
   unit?: string;
-
   quantity?: number | string;
-
-  sellerName: string;
-
+  sellerName?: string;
   sellerPhone?: string;
-
-  location: string;
-
+  location?: string;
   distanceKm?: number;
-
   hasDelivery?: boolean;
-
   warranty?: string;
-
   expiryDate?: string;
-
   notes?: string;
-
   categoryTag?: string;
-
   imageUrl?: string;
-
+  userName?: string;
+  userPhone?: string;
+  locationName?: string;
+  [key: string]: any;
 }
 
 export interface MarketplaceItemDetailModalProps {

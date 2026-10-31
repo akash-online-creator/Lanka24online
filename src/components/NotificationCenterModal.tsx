@@ -42,7 +42,10 @@ interface NotificationCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
   language: Language;
-  onSelectNotification: (notif: AppNotification) => void;
+  currentUser?: any;
+  onSelectNotification?: (notif: AppNotification) => void;
+  onNotificationClick?: (notif: AppNotification) => void;
+  onClearAll?: () => void;
 }
 
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({

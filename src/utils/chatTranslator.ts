@@ -27,8 +27,8 @@ if (globalSaved === 'si' ? true : globalSaved === 'en' ? true : globalSaved === 
 return globalSaved as Language;
 }
 } catch (e) {}
-if (fallbackLang && (fallbackLang === 'si' || fallbackLang === 'en' || fallbackLang === 'ta')) {
-  return fallbackLang as Language;
+if (fallbackLang === 'si' ? true : fallbackLang === 'en' ? true : fallbackLang === 'ta') {
+return fallbackLang;
 }
 return 'si';
 }

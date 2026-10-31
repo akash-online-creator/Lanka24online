@@ -47,6 +47,7 @@ export interface HouseRentalDetails {
 
 export interface BoardingAnnexDetails {
   targetAudience: TargetAudience;
+  preferredGender?: string;
   roomSharingType: 'single_room' | 'two_sharing' | 'three_sharing' | 'four_sharing' | 'entire_annex';
   maxOccupantsPerRoom?: number;
   bathroomType: 'attached' | 'shared';
@@ -60,7 +61,6 @@ export interface BoardingAnnexDetails {
   rentPerPersonOrRoom: 'per_person' | 'per_room';
   monthlyRent: number;
   keyMoneyAdvance: number;
-  preferredGender?: string;
 }
 
 export interface HotelRoomDetails {
@@ -78,6 +78,8 @@ export interface HotelRoomDetails {
 }
 
 export interface AccommodationListing {
+  preferredGender?: 'any' | 'male' | 'female' | 'boys' | 'girls' | 'couples' | 'family' | string;
+  commentsCount?: number;
   id: string;
   title: string;
   category: AccommodationCategory;
@@ -103,6 +105,7 @@ export interface AccommodationListing {
 }
 
 export interface AccommodationFilterOptions {
+  preferredGender?: string;
   searchQuery: string;
   category: 'all' | AccommodationCategory;
   distanceFilter: 'all' | 'walk_15' | 'walk_30' | 'tuk_15' | 'tuk_30' | 'custom';

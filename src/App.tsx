@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Language, Theme, HelpPost, Issue, RedAlertItem, BlockedCredential } from './types';
+import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
 import { initialUsers, initialHelpPosts } from './data/initialData';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
@@ -17,7 +17,6 @@ import { DevicePinSetupModal } from './components/DevicePinSetupModal';
 import { getStoredDevicePin } from './utils/devicePinManager';
 import {
   subscribeToUsers,
-  subscribeToBlockedCredentials,
   subscribeToHelpPosts,
   subscribeToRedAlerts,
   subscribeToIssuesFromFirestore,
@@ -29,21 +28,8 @@ import {
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
-import { 
-  addDeletedPostId, 
-  addDeletedBloodId,
-  addDeletedDisasterId,
-  addDeletedMarketplaceId,
-  addDeletedJobId,
-  addDeletedAccommodationId,
-  addDeletedBarterItemId,
-  addDeletedRedAlertId,
-  purgeItemFromLocalStorage,
-  filterNonDeletedPosts, 
-  downloadPostBackupJson 
-} from './utils/deletedPostsManager';
+import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
-import { checkIsCredentialBlocked } from './utils/blockedCredentialsManager';
 
 async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
@@ -156,7 +142,6 @@ export const App: React.FC = () => {
   });
   const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [blockedCredentials, setBlockedCredentials] = useState<BlockedCredential[]>([]);
 
   // Current User Session & Navigation View
 
@@ -195,28 +180,15 @@ export const App: React.FC = () => {
       downloadPostBackupJson(postObj, currentUser);
     }
 
-    // 3. LocalStorage Blacklist & Purge local memory across collections
+    // 3. LocalStorage Blacklist & Purge local memory
     addDeletedPostId(postId);
-    addDeletedBloodId(postId);
-    addDeletedDisasterId(postId);
-    addDeletedMarketplaceId(postId);
-    addDeletedJobId(postId);
-    addDeletedAccommodationId(postId);
-    addDeletedBarterItemId(postId);
-    addDeletedRedAlertId(postId);
-    purgeItemFromLocalStorage(postId);
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}
 
     // 4. Real-time UI State Refresh
     setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
-    try {
-      window.dispatchEvent(new Event('sahaya_post_deleted'));
-      window.dispatchEvent(new CustomEvent('sahaya_blood_disaster_updated'));
-      window.dispatchEvent(new Event('sahaya_marketplace_updated'));
-      window.dispatchEvent(new Event('sahaya_sync_all_services'));
-    } catch {}
+    window.dispatchEvent(new Event('sahaya_post_deleted'));
 
     // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
     try {
@@ -253,14 +225,23 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('vite:preloadError', handlePreloadError);
   }, []);
 
-  // Global Event Listener for Post Deletions triggered across components
+  // Global Event Listener for Entity Deletions (Posts, Users) triggered across components
   useEffect(() => {
     const handleGlobalPostDeleted = () => {
       setHelpPosts((prev) => filterNonDeletedPosts(prev));
     };
+    const handleGlobalEntityDeleted = (e: any) => {
+      if (e?.detail?.entityType === 'user') {
+        setUsers((prev) => filterNonDeletedUsers(prev));
+      } else {
+        setHelpPosts((prev) => filterNonDeletedPosts(prev));
+      }
+    };
     window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+    window.addEventListener('sahaya_entity_deleted', handleGlobalEntityDeleted);
     return () => {
       window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
+      window.removeEventListener('sahaya_entity_deleted', handleGlobalEntityDeleted);
     };
   }, []);
 
@@ -270,8 +251,10 @@ export const App: React.FC = () => {
     const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
-      if (dbUsers && dbUsers.length > 0) {
-        setUsers(deduplicateUsers([...dbUsers, ...initialUsers]));
+      if (dbUsers) {
+        const nonDeleted = filterNonDeletedUsers(dbUsers);
+        const nonDeletedInitials = initialUsers.filter((u) => !isUserPermanentlyDeleted(u));
+        setUsers(deduplicateUsers([...nonDeleted, ...nonDeletedInitials]));
       }
     });
 
@@ -296,17 +279,12 @@ export const App: React.FC = () => {
       setIssues(dbIssues || []);
     });
 
-    const unsubscribeBlocked = subscribeToBlockedCredentials((creds) => {
-      setBlockedCredentials(creds || []);
-    });
-
     return () => {
       unsubscribeFcm?.();
       unsubscribeUsers?.();
       unsubscribePosts?.();
       unsubscribeAlerts?.();
       unsubscribeIssues?.();
-      unsubscribeBlocked?.();
     };
   }, []);
 
@@ -360,35 +338,6 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // 🛡️ Real-time Active Session Guard: Kick out if blocked by Admin
-  useEffect(() => {
-    if (!currentUser || currentUser.role === 'admin' || currentUser.role === 'super_admin') return;
-
-    const currentNic = currentUser.nic || currentUser.nicNumber || '';
-    const currentPhone = currentUser.whatsappPhone || currentUser.phone || '';
-    const currentUid = currentUser.userId || currentUser.id || '';
-
-    const blockCheck = checkIsCredentialBlocked({
-      nic: currentNic,
-      phone: currentPhone,
-      userId: currentUid,
-      email: currentUser.email,
-    }, blockedCredentials, users);
-
-    const liveMatch = users.find((u) => u && (
-      (currentNic && (u.nic === currentNic || u.nicNumber === currentNic)) ||
-      (currentUid && (u.userId === currentUid || u.id === currentUid)) ||
-      (currentPhone && (u.whatsappPhone === currentPhone || u.phone === currentPhone))
-    ));
-
-    if (blockCheck.isBlocked || (liveMatch && (liveMatch.status === 'blocked' || (liveMatch as any).isBlocked))) {
-      alert('🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කරන ලදී. ඔබව පද්ධතියෙන් ඉවත් කෙරේ.');
-      localStorage.removeItem('sahaya_sewa_session_user');
-      setCurrentUser(null);
-      setActiveView('login');
-    }
-  }, [currentUser, users, blockedCredentials]);
-
   // 🛡️ Strict Login Handler (ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදයෙන් පමණක් ඇතුල් වීමට ඉඩ දීම)
   const handleLogin = useCallback(async (userIdOrNic: string, passKey: string) => {
     const cleanId = (userIdOrNic || '').trim();
@@ -399,17 +348,6 @@ export const App: React.FC = () => {
     }
     if (!cleanPass) {
       throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
-    }
-
-    // 0. Quick Block Check on cleanId
-    const preBlockCheck = checkIsCredentialBlocked({
-      nic: cleanId,
-      phone: cleanId,
-      userId: cleanId,
-    }, blockedCredentials, users);
-
-    if (preBlockCheck.isBlocked) {
-      throw new Error('🚫 මෙම ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
     }
 
     const norm = normalizeNIC(cleanId);
@@ -458,18 +396,6 @@ export const App: React.FC = () => {
     // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
     if (!matchedUser) {
       throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
-    }
-
-    // 🛡️ Matched User Block Check: Ensure blocked user or blacklisted NIC/Phone cannot log in!
-    const blockCheck = checkIsCredentialBlocked({
-      nic: matchedUser.nic || matchedUser.nicNumber || cleanId,
-      phone: matchedUser.whatsappPhone || matchedUser.phone || cleanId,
-      userId: matchedUser.userId || matchedUser.id || cleanId,
-      email: matchedUser.email,
-    }, blockedCredentials, users);
-
-    if (blockCheck.isBlocked || matchedUser.status === 'blocked' || (matchedUser as any).isBlocked) {
-      throw new Error('🚫 ඔබගේ ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
     }
 
     // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
@@ -530,26 +456,9 @@ export const App: React.FC = () => {
     } else {
       setActiveView('dashboard');
     }
-  }, [users, blockedCredentials]);
-
+  }, [users]);
   // Device PIN Login Success Handler
   const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
-    // 🛡️ Blocked Check for Device PIN Login
-    const blockCheck = checkIsCredentialBlocked({
-      nic: authenticatedUser.nic || authenticatedUser.nicNumber,
-      phone: authenticatedUser.whatsappPhone || authenticatedUser.phone,
-      userId: authenticatedUser.userId || authenticatedUser.id,
-      email: authenticatedUser.email,
-    }, blockedCredentials, users);
-
-    if (blockCheck.isBlocked || authenticatedUser.status === 'blocked' || (authenticatedUser as any).isBlocked) {
-      alert('🚫 මෙම ගිණුම (ජාතික හැඳුනුම්පත හෝ දුරකථන අංකය) පරිපාලක (Admin) විසින් පද්ධතියෙන් අවහිර (Blocked) කර ඇත. ඔබට නැවත පිවිසීමට අවසර නැත.');
-      localStorage.removeItem('sahaya_sewa_session_user');
-      setCurrentUser(null);
-      setActiveView('login');
-      return;
-    }
-
     setCurrentUser(authenticatedUser);
     try {
       localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
@@ -564,7 +473,7 @@ export const App: React.FC = () => {
     } else {
       setActiveView('dashboard');
     }
-  }, [blockedCredentials, users]);
+  }, []);
 
   // Demo User Direct Login (🚀 PIN අංකයක් අවශ්‍ය නැත)
   const handleUserDemoLogin = useCallback(() => {
@@ -751,7 +660,6 @@ export const App: React.FC = () => {
             theme: theme,
             toggleTheme: toggleTheme,
             users: users,
-            blockedCredentials: blockedCredentials,
           })}
 
         {activeView === 'pending' &&

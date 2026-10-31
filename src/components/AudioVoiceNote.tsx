@@ -407,6 +407,8 @@ interface AudioVoicePlayerProps {
   audioUrl: string;
   durationSec?: number;
   isMe?: boolean;
+  lang?: any;
+  language?: any;
 }
 
 export const AudioVoicePlayer: React.FC<AudioVoicePlayerProps> = ({

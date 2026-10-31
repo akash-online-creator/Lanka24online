@@ -326,8 +326,9 @@ export const GroupWorkView: React.FC<GroupWorkViewProps> = ({
 
   const adminGroups = (groups || []).filter(
     (g) =>
-      g?.createdBy?.id === currentUserId ||
-      g?.createdBy?.userId === currentUserId ||
+      g?.createdBy === currentUserId ||
+      (g?.createdBy as any)?.id === currentUserId ||
+      (g?.createdBy as any)?.userId === currentUserId ||
       g?.creatorId === currentUserId ||
       isUserAdmin
   );

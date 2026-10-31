@@ -13,11 +13,10 @@ export interface SPointRule {
 }
 
 export interface UserSPoints {
-
   totalPoints: number;
-
   serviceCounts: Record<ServiceCode, number>;
-
+  newBalance?: number;
+  newPoints?: number;
 }
 
 export interface User {

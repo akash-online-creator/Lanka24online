@@ -784,7 +784,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           try {
             const response = await ai.models.generateContent({
               model: modelName,
-              contents,
+              contents: userPrompt,
               config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',
@@ -958,6 +958,50 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     } catch (error: any) {
       console.error('Admin Reset Password Error:', error);
       return res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
+
+  app.post('/api/admin/delete-user', async (req: any, res: any) => {
+    try {
+      const { userId, nicNumber, id } = req.body || {};
+      const cleanNic = String(nicNumber || userId || id || '').trim().toUpperCase();
+      const numeric = cleanNic.replace(/[^0-9]/g, '');
+
+      // 1. Remove from in-memory server map
+      if (cleanNic) serverUsersMap.delete(cleanNic);
+      if (numeric) serverUsersMap.delete(numeric);
+      if (id) serverUsersMap.delete(id);
+
+      // 2. Remove from Firestore via Admin SDK
+      if (adminDb) {
+        try {
+          const idsToDelete = [id, cleanNic, numeric].filter(Boolean);
+          for (const uId of idsToDelete) {
+            await adminDb.collection('users').doc(uId).delete().catch(() => {});
+          }
+          const snap = await adminDb.collection('users').get();
+          for (const docSnap of snap.docs) {
+            const data = docSnap.data();
+            const dNic = String(data.nicNumber || data.nic || '').trim().toUpperCase();
+            const dUser = String(data.userId || '').trim().toUpperCase();
+            if (
+              idsToDelete.includes(docSnap.id) ||
+              (cleanNic && (dNic === cleanNic || dUser === cleanNic)) ||
+              (numeric && (dNic === numeric || dUser === numeric))
+            ) {
+              await docSnap.ref.delete().catch(() => {});
+            }
+          }
+        } catch (dbErr: any) {
+          console.warn('[Admin Delete] adminDb error:', dbErr.message);
+        }
+      }
+
+      console.log(`[Admin] Successfully deleted user record for: ${cleanNic || id}`);
+      return res.json({ success: true, message: 'User deleted successfully' });
+    } catch (error: any) {
+      console.error('Admin Delete User Error:', error);
+      return res.status(500).json({ error: 'Failed to delete user' });
     }
   });
 
@@ -1140,24 +1184,12 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
-  // 📲 APK Direct Download & Version Handlers (100% Branded direct stream under your own domain)
-  app.get(['/download', '/download/*', '/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download', '/app.apk'], async (req, res) => {
-    const upstreamUrl = 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/Support-Service.apk';
-    try {
-      const upstreamRes = await fetch(upstreamUrl);
-      if (upstreamRes.ok && upstreamRes.body) {
-        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-        res.setHeader('Content-Disposition', 'attachment; filename="Support-Service.apk"');
-        const cl = upstreamRes.headers.get('content-length');
-        if (cl) res.setHeader('Content-Length', cl);
-        const { Readable } = await import('stream');
-        Readable.fromWeb(upstreamRes.body as any).pipe(res);
-        return;
-      }
-    } catch (e) {
-      console.warn('Direct APK stream fallback notice:', e);
-    }
-    res.redirect(302, upstreamUrl);
+  // 📲 APK Direct Download & Version Handlers
+  app.get(['/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download'], (req, res) => {
+    const apkFilePath = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="sahayasewa-latest.apk"');
+    res.sendFile(apkFilePath);
   });
 
   app.get('/api/app/version', (req, res) => {

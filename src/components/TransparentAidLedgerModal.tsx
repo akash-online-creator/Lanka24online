@@ -945,7 +945,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
           if (!map.has(id)) {
             map.set(id, {
               id,
-              type: 'general',
+              type: 'other',
               title: p.tagName || p.whatHappened || 'හදිසි ආපදා සහන ඉල්ලීම',
               description: p.whatIsNeeded || p.whatHappened || '',
               locationName: p.locationName || p.district || 'ප්‍රදේශය',
@@ -956,7 +956,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
               contactPhone: p.contactNumber || p.phone || '',
               createdAt: p.createdAt || 'දැන්',
               createdAtMs: p.createdAtMs || Date.now(),
-              status: 'urgent',
+              status: 'urgent' as any,
               userId: p.userId,
             });
           }
@@ -1976,7 +1976,7 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 uppercase">
-                              {camp.centerType === 'camp' ? '⛺ සහන කඳවුර' : camp.centerType === 'temple' ? '🛕 විහාරස්ථානය' : camp.centerType === 'school' ? '🏫 පාසල' : camp.centerType === 'community_center' ? '🏢 ප්‍රජා ශාලාව' : '🏛️ මධ්‍යස්ථානය'}
+                              {camp.centerType === 'camp' ? '⛺ සහන කඳවුර' : (camp.centerType as any) === 'temple' || camp.centerType === 'temple_church' ? '🛕 විහාරස්ථානය' : camp.centerType === 'school' ? '🏫 පාසල' : camp.centerType === 'community_center' ? '🏢 ප්‍රජා ශාලාව' : '🏛️ මධ්‍යස්ථානය'}
                             </span>
                             <h4 className="text-sm font-black text-slate-900 dark:text-white mt-1">
                               {camp.centerName}
@@ -3366,12 +3366,13 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ආධාර කාණ්ඩය:</label>
                 <select
-                  value={editingDelivery.category}
+                  value={editingDelivery.aidCategory || editingDelivery.category}
                   onChange={(e) => {
                     const catObj = AID_CATEGORIES.find(c => c.id === e.target.value);
                     setEditingDelivery({
                       ...editingDelivery,
-                      category: e.target.value as AidCategory,
+                      aidCategory: e.target.value as AidCategory,
+                      category: e.target.value,
                       categoryTitleSi: catObj?.titleSi || editingDelivery.categoryTitleSi,
                     });
                   }}

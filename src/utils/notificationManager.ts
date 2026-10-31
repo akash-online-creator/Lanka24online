@@ -25,6 +25,7 @@ export interface AppNotification {
   lng?: number;
   badgeText?: string;
   targetPostId?: string;
+  relatedPostId?: string;
   targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert' | 'admin';
   meta?: {
     hazardName?: string;
@@ -295,7 +296,7 @@ export const getStoredNotifications = (): AppNotification[] => {
 };
 
 // Save a new notification and broadcast to app
-export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' | 'timestamp' | 'isRead'> & { id?: string }) => {
+export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' | 'timestamp' | 'isRead'> & { id?: string; timestamp?: string; isRead?: boolean }) => {
   const current = getStoredNotifications();
   const newNotif: AppNotification = {
     id: notifData.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -307,8 +308,8 @@ export const broadcastAppNotification = (notifData: Omit<AppNotification, 'id' |
     targetPostId: notifData.targetPostId,
     targetModal: notifData.targetModal,
     meta: notifData.meta,
-    timestamp: new Date().toISOString(),
-    isRead: false,
+    timestamp: notifData.timestamp || new Date().toISOString(),
+    isRead: notifData.isRead ?? false,
   };
 
   const updated = [newNotif, ...current.filter(n => n.id !== newNotif.id)].slice(0, 50);

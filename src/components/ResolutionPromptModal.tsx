@@ -17,12 +17,15 @@ import { HelpPost, Language } from '../types';
 import { SlideToConfirmButton } from './SlideToConfirmButton';
 
 interface ResolutionPromptModalProps {
-  post: HelpPost;
-  lang: Language;
-  onPostpone: () => void;
-  onRejectCompletion: (post: HelpPost) => Promise<void>;
-  onOpenChat: (post: HelpPost) => void;
-  onConfirmResolved: (post: HelpPost) => Promise<void>;
+  isOpen?: boolean;
+  onClose?: () => void;
+  post: HelpPost | null;
+  lang?: Language;
+  language?: Language;
+  onPostpone?: (pid?: any) => void;
+  onRejectCompletion?: (post: HelpPost) => Promise<void>;
+  onOpenChat?: (post: HelpPost) => void;
+  onConfirmResolved?: (post: HelpPost) => Promise<void> | void;
 }
 
 export const ResolutionPromptModal: React.FC<ResolutionPromptModalProps> = ({

@@ -159,18 +159,6 @@ export interface JobListing {
   commentsCount?: number;
 }
 
-export interface JobComment {
-  id: string;
-  jobId?: string;
-  userId?: string;
-  userName?: string;
-  userPhone?: string;
-  comment?: string;
-  text?: string;
-  createdAt?: string;
-  createdAtMs?: number;
-}
-
 export type ProximityFilterType = 
   | 'all'
   | 'walk_15'   // < 1.2 km
@@ -191,4 +179,15 @@ export interface JobFilters {
   benefits: string[];
   jobType?: JobType | 'all';
   country?: string;
+}
+
+export interface JobComment {
+  id: string;
+  jobId: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  text: string;
+  createdAtMs: number;
+  createdAtStr?: string;
 }

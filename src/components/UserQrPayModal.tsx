@@ -47,6 +47,9 @@ interface UserQrPayModalProps {
   currentUser?: User | null;
   allUsers?: User[];
   language?: Language;
+  onUpdateUser?: (updatedUser: any) => void;
+  theme?: any;
+  usersList?: any[];
   initialTab?: 'my_qr' | 'scan_pay';
   prefilledRecipient?: {
     userId: string;

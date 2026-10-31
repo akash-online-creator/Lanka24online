@@ -714,15 +714,33 @@ _පරිපාලක මණ්ඩලය - සහය සේවා_`;
         {/* Modal Footer Action Buttons */}
         <div className="p-4 sm:p-5 bg-slate-100 dark:bg-[#07170e] border-t border-slate-200 dark:border-[#143321] flex flex-wrap items-center justify-between gap-3 shrink-0">
           
-          {/* Reject / Delete Button */}
-          <button
-            type="button"
-            onClick={() => setShowRejectPrompt(true)}
-            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
-          >
-            <UserX className="w-4 h-4" />
-            <span>ප්‍රතික්ෂේප කරන්න (Reject Account)</span>
-          </button>
+          {/* Action Buttons Left */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowRejectPrompt(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+            >
+              <UserX className="w-4 h-4" />
+              <span>ප්‍රතික්ෂේප කරන්න (Reject)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const userNic = currentUser.nicNumber || currentUser.nic || currentUser.userId || '';
+                if (window.confirm(`⚠️ අවධානයට:\n\nඔබට ${currentUser.name} (${userNic}) පරිශීලකයා පද්ධතියෙන් සදහටම මකා දැමීමට (Permanent Delete) අවශ්‍ය බව තහවුරු කරන්න:`)) {
+                  onDelete(currentUser);
+                  onClose();
+                }
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+              title="පරිශීලකයා සහ සියලු දත්ත සදහටම මකා දමන්න"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>සදහටම මකන්න (Delete User)</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2 flex-wrap ml-auto">
             {/* Unblock Button if Blocked */}
