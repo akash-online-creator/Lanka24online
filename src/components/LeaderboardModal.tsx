@@ -3,6 +3,24 @@ import React, { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronUp, Award, X } from 'lucide-react';
 
 import { getLeaderboardUsers, getUserSPoints, S_POINT_RULES } from '../utils/sPointManager';
+/**
+ * Masks half of the username for privacy while retaining identification.
+ * E.g. '@62879' -> '@628**', '@Admin' -> '@Adm**', '@DemoUser38528' -> '@DemoUse******'
+ */
+export function maskHalfUsername(rawUsername: string): string {
+  if (!rawUsername) return '';
+  const clean = rawUsername.replace(/^@+/, '').trim();
+  if (clean.length === 0) return '';
+  if (clean.length === 1) return `@${clean}*`;
+  if (clean.length === 2) return `@${clean[0]}*`;
+
+  const visibleLen = Math.ceil(clean.length / 2);
+  const visible = clean.slice(0, visibleLen);
+  const hiddenCount = clean.length - visibleLen;
+  const asterisks = '*'.repeat(Math.max(2, Math.min(hiddenCount, 6)));
+  return `@${visible}${asterisks}`;
+}
+
 export interface LeaderboardUser {
   rank: number;
   username: string;
@@ -42,7 +60,9 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     return resolvedUsers.filter((user) => {
       const query = searchQuery.toLowerCase().trim();
       const formattedRank = formatRank(user.rank);
-      const matchesUsername = user.username.toLowerCase().includes(query);
+      const rawUser = user.username.toLowerCase();
+      const maskedUser = maskHalfUsername(user.username).toLowerCase();
+      const matchesUsername = rawUser.includes(query) || maskedUser.includes(query);
       const matchesRank = formattedRank.includes(query) || user.rank.toString() === query;
       return matchesUsername || matchesRank;
     });
@@ -218,7 +238,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
                       <td className="py-3 px-4 font-medium text-slate-800">
 
-                        @{user.username}
+                        {maskHalfUsername(user.username)}
 
                         {isCurrent && (
 
