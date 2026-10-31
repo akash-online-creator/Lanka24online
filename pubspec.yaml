@@ -25,6 +25,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/web/
+    - assets/web/assets/
     - assets/web/index.html
     - assets/web/logo.jpg
     - assets/web/manifest.json
