@@ -185,8 +185,8 @@
     <p class="tagline">සැමට පිහිට — ප්‍රජා සහයෝගීතා සහ හදිසි ආපදා ජාලය</p>
 
     <div class="specs-grid">
-      <div class="spec-item">සංස්කරණය<div class="spec-val">V 1.1.880</div></div>
-      <div class="spec-item">ප්‍රමාණය<div class="spec-val">44.6 MB</div></div>
+      <div class="spec-item">සංස්කරණය<div class="spec-val">V 1.1.912</div></div>
+      <div class="spec-item">ප්‍රමාණය<div class="spec-val">42.0 MB</div></div>
       <div class="spec-item">ආරක්ෂාව<div class="spec-val">100% Verified</div></div>
     </div>
 
@@ -195,7 +195,7 @@
       <span id="statusText">බාගත වීම ස්වයංක්‍රීයව ආරම්භ වේ...</span>
     </div>
 
-    <a href="/app.apk" class="btn-download" id="downloadBtn">
+    <a href="/app.apk" download="Support-Service.apk" class="btn-download" id="downloadBtn">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
         <polyline points="7 10 12 15 17 10"></polyline>
@@ -203,6 +203,13 @@
       </svg>
       <span>දැන්ම බාගත කරගන්න (Download APK)</span>
     </a>
+
+    <!-- Alternative Direct Mirror Link if browser blocks local download -->
+    <div style="margin-top: 10px; text-align: center;">
+      <a href="https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; font-size: 13px; text-decoration: underline;">
+        🔗 ගැටලුවක් වුවහොත් Direct GitHub Mirror එකෙන් Download කරගන්න
+      </a>
+    </div>
 
     <div class="steps-section">
       <div class="steps-title">
@@ -228,11 +235,20 @@
   </div>
 
   <script>
-    // තත්පර 1.2 කින් ස්වයංක්‍රීයවම APK බාගත කිරීම ආරම්භ කරයි
+    // තත්පර 1 කින් ස්වයංක්‍රීයවම APK බාගත කිරීම ආරම්භ කරයි
     setTimeout(function() {
-      window.location.href = '/app.apk';
-      document.getElementById('statusText').innerText = "බාගත වෙමින් පවතී... (Downloading)";
-    }, 1200);
+      try {
+        const link = document.createElement('a');
+        link.href = '/app.apk';
+        link.setAttribute('download', 'Support-Service.apk');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        document.getElementById('statusText').innerText = "බාගත වෙමින් පවතී... (Downloading)";
+      } catch (e) {
+        window.location.href = '/app.apk';
+      }
+    }, 1000);
   </script>
 
 </body>

@@ -5,6 +5,7 @@ import multer from 'multer';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { initializeApp as initAdminApp, getApps as getAdminApps, cert as adminCert } from 'firebase-admin/app';
@@ -1461,12 +1462,48 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
-  // 📲 APK Direct Download & Version Handlers
-  app.get(['/apk/sahayasewa-latest.apk', '/download/app', '/api/app/download'], (req, res) => {
-    const apkFilePath = path.join(publicPath, 'apk', 'sahayasewa-latest.apk');
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="sahayasewa-latest.apk"');
-    res.sendFile(apkFilePath);
+  // 📲 APK Direct Download & Landing Page Handlers
+  app.get(['/download', '/download/'], (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.sendFile(path.join(publicPath, 'download', 'index.html'));
+  });
+
+  const apkCandidateRoutes = [
+    '/app.apk',
+    '/Support-Service.apk',
+    '/sahayasewa-latest.apk',
+    '/apk/sahayasewa-latest.apk',
+    '/apk/app-release.apk',
+    '/apk/Support-Service.apk',
+    '/download/app',
+    '/download/apk',
+    '/api/app/download',
+  ];
+
+  app.get(apkCandidateRoutes, (req, res) => {
+    const candidateFiles = [
+      path.join(publicPath, 'Support-Service.apk'),
+      path.join(publicPath, 'app.apk'),
+      path.join(publicPath, 'apk', 'sahayasewa-latest.apk'),
+    ];
+
+    for (const filePath of candidateFiles) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const stats = fs.statSync(filePath);
+          if (stats.size > 1000000) { // Valid non-empty APK (> 1MB)
+            res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+            res.setHeader('Content-Disposition', 'attachment; filename="Support-Service.apk"');
+            res.setHeader('Content-Length', stats.size);
+            return res.sendFile(filePath);
+          }
+        } catch {}
+      }
+    }
+
+    // Fallback: If local file not found or corrupted, 302 redirect directly to GitHub Releases APK
+    console.log('Local APK not found or 0-bytes, redirecting to latest GitHub release APK...');
+    return res.redirect(302, 'https://github.com/akash-online-creator/Lanka24online/releases/latest/download/app-release.apk');
   });
 
   app.get('/api/app/version', (req, res) => {
