@@ -607,7 +607,15 @@ className: 'mb-2.5'
 audioUrl: post.audioUrl,
 durationSec: post.audioDurationSec
 })) : null, h('div', {
-className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between ' : 'w-full h-auto ') + 'rounded-2xl bg-gradient-to-br from-[#f2fcf7] via-white to-[#e8f7f0] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-400/80 dark:border-emerald-800/90 p-3 sm:p-3.5 flex flex-col overflow-hidden shadow-inner group relative'
+className: (shouldCap16x9 ? 'w-full aspect-video max-h-[250px] justify-between ' : 'w-full h-auto ') + 'rounded-2xl ' + (
+  (post?.category === 'red_alert' || post?.category === 'emergency' || (post?.title && post.title.includes('රතු එළිය')) || (post?.tag && post.tag.includes('රතු එළිය')) || (post?.disasterType))
+    ? 'bg-gradient-to-br from-[#450a0a] via-[#991b1b] to-[#f43f5e] text-white border-2 border-red-500/80 '
+    : (post?.category === 'quick_services' || post?.category === 'quick_service' || (post?.title && post.title.includes('ඉක්මන්')) || (post?.tag && post.tag.includes('ඉක්මන්')) || (post?.serviceType === 'quick'))
+    ? 'bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#10b981] text-white border-2 border-emerald-500/80 '
+    : (post?.category === 'find_for_me' || post?.category === 'looking_for' || (post?.title && post.title.includes('සොයාදෙන්න')) || (post?.tag && post.tag.includes('සොයාදෙන්න')))
+    ? 'bg-gradient-to-br from-[#fbbf24] via-[#f97316] to-[#ea580c] text-slate-950 border-2 border-amber-300 '
+    : 'bg-gradient-to-br from-[#f2fcf7] via-white to-[#e8f7f0] dark:from-[#05180f] dark:via-[#072014] dark:to-[#04140b] border-2 border-emerald-400/80 dark:border-emerald-800/90 '
+) + 'p-3 sm:p-3.5 flex flex-col overflow-hidden shadow-inner group relative'
 }, rawHeadline ? h('div', { className: 'w-full px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-200/90 via-white to-emerald-100/90 dark:from-emerald-800/85 dark:via-[#0b291a] dark:to-emerald-900/85 border-2 border-emerald-500/70 shadow-2xs shrink-0 ' + (Boolean(shortDesc ? true : hasValidImage ? true : localPoll) ? 'mb-2 ' : '') + 'flex items-center justify-between gap-2' }, h('h3', {
 className: 'text-xs sm:text-base font-black text-slate-950 dark:text-white leading-snug line-clamp-2',
 style: { fontFamily: fontStyle }

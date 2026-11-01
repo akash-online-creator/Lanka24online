@@ -712,7 +712,7 @@ export const QuickServiceConfirmWorkflow: React.FC<QuickServiceConfirmWorkflowPr
             <div className="p-3.5 bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-400 dark:border-emerald-700 rounded-2xl flex items-center gap-2.5 text-xs font-black text-emerald-900 dark:text-emerald-200 shadow-sm animate-fadeIn">
               <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>
-                🎉 සේවාව සාර්ථකව අවසන් කර Rating & Feedback ලබාදෙන ලදී! දැන්වීම සහ ඊට අදාළ චැට් පණිවිඩ පද්ධතියෙන් ඉවත් කරන ලදී.
+                🎉 සහය සේවා හා සම්බන්ධ වු ඔබට ස්තුතියි
               </span>
             </div>
 
