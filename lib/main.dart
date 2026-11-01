@@ -319,8 +319,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       if (!await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.startService(
           serviceId: 256,
-          notificationTitle: 'සහාය සේවා - 24/7 ආපදා සේවාව ක්‍රියාත්මකයි 🛡️',
-          notificationText: 'ආපදා හා අනතුරු ඇඟවීම් නිරීක්ෂණය කරමින් පසුබිමෙන් ක්‍රියාත්මක වේ.',
+          notificationTitle: 'සහය සේවය ක්‍රියාත්මකයයි',
+          notificationText: '',
           callback: startSosCallback,
         );
       }
@@ -342,7 +342,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'sahaya_emergency_red_alert',
         channelName: 'රතු එළිය හදිසි ආපදා සයිරන් (Red Alert)',
-        channelDescription: 'හදිසි ආපදා සහ ජීවිතාරක්ෂක පණිවුඩ සයිරන් නාදය සමඟින් පැය 24 පුරා අධීක්ෂණය කරයි.',
+        channelDescription: '24/7 සහය සේවා ආරක්ෂණ පද්ධතිය පූර්ණ වශයෙන් සක්‍රියව පවතී',
         channelImportance: NotificationChannelImportance.MAX,
         priority: NotificationPriority.MAX,
         enableVibration: true,
