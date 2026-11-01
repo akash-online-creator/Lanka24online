@@ -190,9 +190,18 @@ jobs:
               "        multiDexEnabled true",
               "    \x7d",
               "",
+              "    signingConfigs \x7b",
+              "        release \x7b",
+              "            storeFile file(\"release-keystore.jks\")",
+              "            storePassword \"SahayaSewaRelease2026\"",
+              "            keyAlias \"sahayasewa\"",
+              "            keyPassword \"SahayaSewaRelease2026\"",
+              "        \x7d",
+              "    \x7d",
+              "",
               "    buildTypes \x7b",
               "        release \x7b",
-              "            signingConfig signingConfigs.debug",
+              "            signingConfig signingConfigs.release",
               "            minifyEnabled false",
               "            shrinkResources false",
               "        \x7d",
@@ -230,6 +239,9 @@ jobs:
                       pass
               Image.new('RGBA', (size, size), (0, 122, 75, 255)).save(p, 'PNG')
           "
+          if [ ! -f "android/app/release-keystore.jks" ]; then
+            keytool -genkey -v -keystore android/app/release-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sahayasewa -dname "CN=Sahaya Sewa, OU=Support Service, O=Lanka24, L=Colombo, ST=Western, C=LK" -storepass "SahayaSewaRelease2026" -keypass "SahayaSewaRelease2026"
+          fi
           FLUTTER_BIN=$(which flutter)
           FLUTTER_DIR=$(dirname $(dirname "$FLUTTER_BIN"))
           echo "flutter.sdk=$FLUTTER_DIR" > android/local.properties

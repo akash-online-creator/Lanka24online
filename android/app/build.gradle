@@ -42,9 +42,18 @@ android {
         multiDexEnabled true
     }
 
+    signingConfigs {
+        release {
+            storeFile file("release-keystore.jks")
+            storePassword "SahayaSewaRelease2026"
+            keyAlias "sahayasewa"
+            keyPassword "SahayaSewaRelease2026"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
         }
