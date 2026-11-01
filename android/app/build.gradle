@@ -45,9 +45,9 @@ android {
     signingConfigs {
         release {
             storeFile file("release-keystore.jks")
-            storePassword "SahayaSewaRelease2026"
-            keyAlias "sahayasewa"
-            keyPassword "SahayaSewaRelease2026"
+            storePassword "SupportServiceRelease2026"
+            keyAlias "supportservice"
+            keyPassword "SupportServiceRelease2026"
         }
     }
 
