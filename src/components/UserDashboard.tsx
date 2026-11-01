@@ -6,34 +6,11 @@ import { getStoredProfessionalServices, saveProfessionalServicesToStorage } from
 import { UnifiedDashboardHeader } from './UnifiedDashboardHeader';
 import { GlowingNeedHelpBtn } from './GlowingNeedHelpBtn';
 import { PostCard } from './PostCard';
-import { HelpPostModal } from './HelpPostModal';
-import { OfferSupportModal } from './OfferSupportModal';
-import { LeaderboardModal } from './LeaderboardModal';
-import { QuickServiceModal } from './QuickServiceModal';
-import { FindForMeModal } from './FindForMeModal';
-import { FromMeToYouModal } from './FromMeToYouModal';
-import { QuickServiceDetailModal } from './QuickServiceDetailModal';
-import { QuickServiceChatModal } from './QuickServiceChatModal';
-import { QuickServiceConfirmWorkflow } from './QuickServiceConfirmWorkflow';
-import { AiVoiceHelpModal } from './AiVoiceHelpModal';
-import { CategorySelectionModal } from './CategorySelectionModal';
 import { CategoryGrid } from './CategoryGrid';
 import { TagSearchBar } from './TagSearchBar';
 import { getExpandedSearchKeywords } from '../data/searchDictionary';
-import { EditHelpPostModal } from './EditHelpPostModal';
-import { ViewHelpPostModal } from './ViewHelpPostModal';
-import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { MessageInboxBubble } from './MessageInboxBubble';
-import { MessageInboxModal } from './MessageInboxModal';
-import { SupportOffersModal } from './SupportOffersModal';
-import { VolunteerSupportModal } from './VolunteerSupportModal';
-import { ResolutionPromptModal } from './ResolutionPromptModal';
 import { HelpRequestsPage } from './HelpRequestsPage';
-import { UserSettingsModal } from './UserSettingsModal';
-import { BloodAndDisasterModal } from './BloodAndDisasterModal';
-import { TransparentAidLedgerModal } from './TransparentAidLedgerModal';
-import { EmergencyDirectoryModal } from './EmergencyDirectoryModal';
-import { DemoRegistrationPromptModal } from './DemoRegistrationPromptModal';
 import { ProximityAlertBanner } from './ProximityAlertBanner';
 import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
@@ -44,25 +21,50 @@ import { deleteProfessionalServiceFromFirestore, subscribeToProfessionalServices
 import { isAuthorBlocked } from '../utils/blockedCredentialsManager';
 import { deduplicateUsers } from '../utils/userUtils';
 import { checkIsPostOwner } from '../utils/postOwnerHelper';
-import { InsufficientCreditsModal } from './InsufficientCreditsModal';
-import { UserWalletModal } from './UserWalletModal';
-import { BarterExchangeModal } from './BarterExchangeModal';
-import { UserQrPayModal } from './UserQrPayModal';
-import { AdminModerationModal } from './AdminModerationModal';
-import { PosterIssueResponseModal } from './PosterIssueResponseModal';
-import { NotificationCenterModal } from './NotificationCenterModal';
-import { PickMeAlertSettingsModal } from './PickMeAlertSettingsModal';
-import { MarketplaceLowestPricesModal } from './MarketplaceLowestPricesModal';
-import { SosLiveTrackerModal } from './SosLiveTrackerModal';
-import { SahayaSewaFeaturesPostModal } from './SahayaSewaFeaturesPostModal';
-import { QuickRegistrationHubModal } from './QuickRegistrationHubModal';
-import { SavedPlacesModal } from './SavedPlacesModal';
-import { AppQrShareModal } from './AppQrShareModal';
-import { RegisterProfessionalServiceModal } from './RegisterProfessionalServiceModal';
-import { MarketplaceAddShopModal } from './MarketplaceAddShopModal';
-import { RedAlertCreateModal } from './RedAlertCreateModal';
-import { RedAlertDetailModal } from './RedAlertDetailModal';
 import { RedAlertFloatingTrigger } from './RedAlertFloatingTrigger';
+
+// ⚡ LAZY LOADED MODALS (Code-splitting to speed up data loading & initial render)
+const HelpPostModal = React.lazy(() => import('./HelpPostModal').then(m => ({ default: m.HelpPostModal || (m as any).default })));
+const OfferSupportModal = React.lazy(() => import('./OfferSupportModal').then(m => ({ default: m.OfferSupportModal || (m as any).default })));
+const LeaderboardModal = React.lazy(() => import('./LeaderboardModal').then(m => ({ default: m.LeaderboardModal || (m as any).default })));
+const QuickServiceModal = React.lazy(() => import('./QuickServiceModal').then(m => ({ default: m.QuickServiceModal || (m as any).default })));
+const FindForMeModal = React.lazy(() => import('./FindForMeModal').then(m => ({ default: m.FindForMeModal || (m as any).default })));
+const FromMeToYouModal = React.lazy(() => import('./FromMeToYouModal').then(m => ({ default: m.FromMeToYouModal || (m as any).default })));
+const QuickServiceDetailModal = React.lazy(() => import('./QuickServiceDetailModal').then(m => ({ default: m.QuickServiceDetailModal || (m as any).default })));
+const QuickServiceChatModal = React.lazy(() => import('./QuickServiceChatModal').then(m => ({ default: m.QuickServiceChatModal || (m as any).default })));
+const QuickServiceConfirmWorkflow = React.lazy(() => import('./QuickServiceConfirmWorkflow').then(m => ({ default: m.QuickServiceConfirmWorkflow || (m as any).default })));
+const AiVoiceHelpModal = React.lazy(() => import('./AiVoiceHelpModal').then(m => ({ default: m.AiVoiceHelpModal || (m as any).default })));
+const CategorySelectionModal = React.lazy(() => import('./CategorySelectionModal').then(m => ({ default: m.CategorySelectionModal || (m as any).default })));
+const EditHelpPostModal = React.lazy(() => import('./EditHelpPostModal').then(m => ({ default: m.EditHelpPostModal || (m as any).default })));
+const ViewHelpPostModal = React.lazy(() => import('./ViewHelpPostModal').then(m => ({ default: m.ViewHelpPostModal || (m as any).default })));
+const DeleteConfirmModal = React.lazy(() => import('./DeleteConfirmModal').then(m => ({ default: m.DeleteConfirmModal || (m as any).default })));
+const MessageInboxModal = React.lazy(() => import('./MessageInboxModal').then(m => ({ default: m.MessageInboxModal || (m as any).default })));
+const SupportOffersModal = React.lazy(() => import('./SupportOffersModal').then(m => ({ default: m.SupportOffersModal || (m as any).default })));
+const VolunteerSupportModal = React.lazy(() => import('./VolunteerSupportModal').then(m => ({ default: m.VolunteerSupportModal || (m as any).default })));
+const ResolutionPromptModal = React.lazy(() => import('./ResolutionPromptModal').then(m => ({ default: m.ResolutionPromptModal || (m as any).default })));
+const UserSettingsModal = React.lazy(() => import('./UserSettingsModal').then(m => ({ default: m.UserSettingsModal || (m as any).default })));
+const BloodAndDisasterModal = React.lazy(() => import('./BloodAndDisasterModal').then(m => ({ default: m.BloodAndDisasterModal || (m as any).default })));
+const TransparentAidLedgerModal = React.lazy(() => import('./TransparentAidLedgerModal').then(m => ({ default: m.TransparentAidLedgerModal || (m as any).default })));
+const EmergencyDirectoryModal = React.lazy(() => import('./EmergencyDirectoryModal').then(m => ({ default: m.EmergencyDirectoryModal || (m as any).default })));
+const DemoRegistrationPromptModal = React.lazy(() => import('./DemoRegistrationPromptModal').then(m => ({ default: m.DemoRegistrationPromptModal || (m as any).default })));
+const InsufficientCreditsModal = React.lazy(() => import('./InsufficientCreditsModal').then(m => ({ default: m.InsufficientCreditsModal || (m as any).default })));
+const UserWalletModal = React.lazy(() => import('./UserWalletModal').then(m => ({ default: m.UserWalletModal || (m as any).default })));
+const BarterExchangeModal = React.lazy(() => import('./BarterExchangeModal').then(m => ({ default: m.BarterExchangeModal || (m as any).default })));
+const UserQrPayModal = React.lazy(() => import('./UserQrPayModal').then(m => ({ default: m.UserQrPayModal || (m as any).default })));
+const AdminModerationModal = React.lazy(() => import('./AdminModerationModal').then(m => ({ default: m.AdminModerationModal || (m as any).default })));
+const PosterIssueResponseModal = React.lazy(() => import('./PosterIssueResponseModal').then(m => ({ default: m.PosterIssueResponseModal || (m as any).default })));
+const NotificationCenterModal = React.lazy(() => import('./NotificationCenterModal').then(m => ({ default: m.NotificationCenterModal || (m as any).default })));
+const PickMeAlertSettingsModal = React.lazy(() => import('./PickMeAlertSettingsModal').then(m => ({ default: m.PickMeAlertSettingsModal || (m as any).default })));
+const MarketplaceLowestPricesModal = React.lazy(() => import('./MarketplaceLowestPricesModal').then(m => ({ default: m.MarketplaceLowestPricesModal || (m as any).default })));
+const SosLiveTrackerModal = React.lazy(() => import('./SosLiveTrackerModal').then(m => ({ default: m.SosLiveTrackerModal || (m as any).default })));
+const SahayaSewaFeaturesPostModal = React.lazy(() => import('./SahayaSewaFeaturesPostModal').then(m => ({ default: m.SahayaSewaFeaturesPostModal || (m as any).default })));
+const QuickRegistrationHubModal = React.lazy(() => import('./QuickRegistrationHubModal').then(m => ({ default: m.QuickRegistrationHubModal || (m as any).default })));
+const SavedPlacesModal = React.lazy(() => import('./SavedPlacesModal').then(m => ({ default: m.SavedPlacesModal || (m as any).default })));
+const AppQrShareModal = React.lazy(() => import('./AppQrShareModal').then(m => ({ default: m.AppQrShareModal || (m as any).default })));
+const RegisterProfessionalServiceModal = React.lazy(() => import('./RegisterProfessionalServiceModal').then(m => ({ default: m.RegisterProfessionalServiceModal || (m as any).default })));
+const MarketplaceAddShopModal = React.lazy(() => import('./MarketplaceAddShopModal').then(m => ({ default: m.MarketplaceAddShopModal || (m as any).default })));
+const RedAlertCreateModal = React.lazy(() => import('./RedAlertCreateModal').then(m => ({ default: m.RedAlertCreateModal || (m as any).default })));
+const RedAlertDetailModal = React.lazy(() => import('./RedAlertDetailModal').then(m => ({ default: m.RedAlertDetailModal || (m as any).default })));
 import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } from '../data/marketplaceData';
 import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { MarketShop } from '../types';
@@ -654,6 +656,46 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Selected tag filter
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
+
+  // 📢 පරිශීලකයා ඇප් එකට log in වනවාත් සමගම දැන්වීම් පෙන්වන කොටසේ මුලට auto scroll වීම
+  const scrollToNoticesFeed = useCallback((smooth: boolean = true) => {
+    const feed = document.getElementById('help-notices-feed') || document.getElementById('notices-board-section');
+    if (feed) {
+      feed.scrollIntoView({
+        behavior: smooth ? 'smooth' : 'auto',
+        block: 'start',
+      });
+      try {
+        sessionStorage.removeItem('sahaya_auto_scroll_to_feed');
+      } catch (_) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    // 1. පරිශීලකයා Dashboard එකට පැමිණි වහාම දැන්වීම් පෙන්වන කොටසට ස්වයංක්‍රීයව scroll කිරීම
+    const t0 = setTimeout(() => scrollToNoticesFeed(true), 120);
+    const t1 = setTimeout(() => scrollToNoticesFeed(true), 380);
+    const t2 = setTimeout(() => scrollToNoticesFeed(true), 800);
+    const t3 = setTimeout(() => scrollToNoticesFeed(true), 1400);
+
+    // 2. Event triggered directly upon login completion
+    const onLoginScrollTrigger = () => {
+      setTimeout(() => scrollToNoticesFeed(true), 80);
+      setTimeout(() => scrollToNoticesFeed(true), 350);
+    };
+
+    window.addEventListener('sahaya_auto_scroll_to_feed', onLoginScrollTrigger);
+    window.addEventListener('sahaya_user_logged_in', onLoginScrollTrigger);
+
+    return () => {
+      clearTimeout(t0);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      window.removeEventListener('sahaya_auto_scroll_to_feed', onLoginScrollTrigger);
+      window.removeEventListener('sahaya_user_logged_in', onLoginScrollTrigger);
+    };
+  }, [user?.id, user?.userId, scrollToNoticesFeed]);
 
   // Core Post Creation Handler (addHelpPostToFirestore)
   const handleCreatePost = async (newPost: Omit<HelpPost, 'id' | 'createdAt' | 'createdAtIso'>) => {
@@ -1892,8 +1934,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         categories={categories}
       />
 
-      {/* 1. Quick Services Request Form Modal (Node 2) */}
-      <QuickServiceModal
+      {/* ⚡ Lazy Loaded Modals Suspense Boundary */}
+      <React.Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs"><div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>
+        {/* 1. Quick Services Request Form Modal (Node 2) */}
+        <QuickServiceModal
         isOpen={isQuickServiceModalOpen}
         onClose={() => {
           setIsQuickServiceModalOpen(false);
@@ -2444,6 +2488,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           setSelectedAlertForDetail(null);
         }}
       />
+      </React.Suspense>
 
     </div>
   );

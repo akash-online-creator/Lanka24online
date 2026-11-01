@@ -1656,13 +1656,20 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
               )}
 
               {/* Pagination Info Badge */}
-              <div className="flex items-center justify-between px-2 py-1 text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                <span>
-                  {getLangText('දැන්වීම් ලැයිස්තුව', 'Posts Feed', 'இடுகைகள் பட்டியல்')}
+              <div id="notices-board-section" className="flex items-center justify-between px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-semibold scroll-mt-6">
+                <span className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                  <Megaphone className="w-4 h-4 text-emerald-600" />
+                  {getLangText('දැන්වීම් ලැයිස්තුව (Notices Feed)', 'Posts & Notices Feed', 'இடுகைகள் பட்டியல்')}
                 </span>
-                <span className="bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                  {Math.min(visibleCount, newsFeedSortedPosts.length)} / {newsFeedSortedPosts.length} {getLangText('පෙන්වයි', 'shown', 'காட்டப்படுகிறது')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                    <Zap className="w-3 h-3 text-emerald-600" />
+                    {getLangText('Lazy Loading සක්‍රීයයි', 'Lazy Loading Active', 'Lazy Loading செயலில்')}
+                  </span>
+                  <span className="bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
+                    {Math.min(visibleCount, newsFeedSortedPosts.length)} / {newsFeedSortedPosts.length} {getLangText('පෙන්වයි', 'shown', 'காட்டப்படுகிறது')}
+                  </span>
+                </div>
               </div>
 
               {newsFeedSortedPosts.slice(0, visibleCount).map((post, idx, arr) => {

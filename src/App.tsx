@@ -455,6 +455,12 @@ export const App: React.FC = () => {
       setActiveView('pending');
     } else {
       setActiveView('dashboard');
+      try {
+        sessionStorage.setItem('sahaya_auto_scroll_to_feed', 'true');
+      } catch (_) {}
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('sahaya_auto_scroll_to_feed'));
+      }, 50);
     }
   }, [users]);
   // Device PIN Login Success Handler
@@ -472,6 +478,12 @@ export const App: React.FC = () => {
       setActiveView('pending');
     } else {
       setActiveView('dashboard');
+      try {
+        sessionStorage.setItem('sahaya_auto_scroll_to_feed', 'true');
+      } catch (_) {}
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('sahaya_auto_scroll_to_feed'));
+      }, 50);
     }
   }, []);
 
@@ -508,6 +520,12 @@ export const App: React.FC = () => {
       console.warn(e);
     }
     setActiveView('dashboard');
+    try {
+      sessionStorage.setItem('sahaya_auto_scroll_to_feed', 'true');
+    } catch (_) {}
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('sahaya_auto_scroll_to_feed'));
+    }, 50);
   }, [users]);
 
   // Registration Handler
