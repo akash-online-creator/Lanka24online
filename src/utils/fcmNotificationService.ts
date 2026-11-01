@@ -367,6 +367,15 @@ export async function registerFcmToken(currentUserId?: string) {
           }, { merge: true });
         } catch (e) {}
       }
+
+      // 📢 Auto-subscribe token to district and island-wide topic
+      try {
+        const storedDistrict = (typeof localStorage !== 'undefined' ? localStorage.getItem('sahaya_user_district') : '') || 'colombo';
+        const cleanDist = storedDistrict.toLowerCase().replace(/\s+/g, '_');
+        subscribeDeviceToTopic(token, `alert_${cleanDist}`);
+        subscribeDeviceToTopic(token, 'alert_all_island');
+      } catch {}
+
       return token;
     }
   } catch (error) {
@@ -817,16 +826,71 @@ export async function broadcastPushNotification(payload: FcmPayloadData) {
   try {
 
     fetch('/api/push/broadcast', {
-
       method: 'POST',
-
       headers: { 'Content-Type': 'application/json' },
-
       body: JSON.stringify(enrichedPayload),
-
     }).catch(() => {});
-
   } catch {}
-
 }
+
+/**
+ * 📢 Subscribe Device to FCM Topic (e.g., /topics/alert_colombo, /topics/alert_all_island)
+ * Enables single-API-call broadcast to 1M+ users in <1s with 0 database reads.
+ */
+export async function subscribeDeviceToTopic(token: string, topicName: string): Promise<boolean> {
+  if (!token || !topicName) return false;
+  const cleanTopic = topicName.replace(/^\/topics\//, '').trim().toLowerCase();
+  try {
+    const res = await fetch('/api/fcm/subscribe-topic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, topic: cleanTopic }),
+    });
+    if (res.ok) {
+      console.log(`✅ Subscribed device to FCM Topic: /topics/${cleanTopic}`);
+      return true;
+    }
+  } catch (err) {
+    console.warn('FCM topic subscription note:', err);
+  }
+  return false;
+}
+
+/**
+ * 🔕 Unsubscribe Device from FCM Topic
+ */
+export async function unsubscribeDeviceFromTopic(token: string, topicName: string): Promise<boolean> {
+  if (!token || !topicName) return false;
+  const cleanTopic = topicName.replace(/^\/topics\//, '').trim().toLowerCase();
+  try {
+    const res = await fetch('/api/fcm/unsubscribe-topic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, topic: cleanTopic }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 🔄 Sync User's District FCM Topic Subscription
+ */
+export async function syncUserDistrictTopic(newDistrict: string, oldDistrict?: string): Promise<void> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('sahaya_fcm_token') : null;
+  if (!token) return;
+
+  const cleanNew = (newDistrict || 'colombo').trim().toLowerCase().replace(/\s+/g, '_');
+  if (oldDistrict) {
+    const cleanOld = oldDistrict.trim().toLowerCase().replace(/\s+/g, '_');
+    if (cleanOld !== cleanNew) {
+      await unsubscribeDeviceFromTopic(token, `alert_${cleanOld}`);
+    }
+  }
+
+  await subscribeDeviceToTopic(token, `alert_${cleanNew}`);
+  await subscribeDeviceToTopic(token, 'alert_all_island');
+}
+
 

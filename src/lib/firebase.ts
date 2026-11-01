@@ -154,22 +154,109 @@ export async function getUserFromFirestore(userIdOrInput: string) {
   try {
     if (!userIdOrInput) return null;
     const cleanInput = String(userIdOrInput).trim();
-    const docRef = doc(db, USERS_COLLECTION, cleanInput);
-    const snap = await getDoc(docRef);
+    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
+
+    // 1. Direct document lookup by Document ID (O(1) single-document query)
+    const directDocRef = doc(db, USERS_COLLECTION, cleanInput);
+    const snap = await getDoc(directDocRef);
     if (snap.exists()) {
       return { id: snap.id, ...(snap.data() as any) };
     }
-    const upperInput = cleanInput.toUpperCase().replace(/\s+/g, '');
-    const allSnap = await getDocs(collection(db, USERS_COLLECTION));
-    for (const d of allSnap.docs) {
-      const data: any = d.data();
-      const dNic = String(data.nic ? data.nic : data.nicNumber ? data.nicNumber : '').trim().toUpperCase().replace(/\s+/g, '');
-      const dUserId = String(data.userId ? data.userId : '').trim().toUpperCase().replace(/\s+/g, '');
-      const dPhone = String(data.whatsappPhone ? data.whatsappPhone : data.phone ? data.phone : '').trim();
-      if (dNic === upperInput) return { id: d.id, ...data };
-      if (dUserId === upperInput) return { id: d.id, ...data };
-      if (cleanInput.length >= 9 && dPhone === cleanInput) return { id: d.id, ...data };
+
+    // 2. Direct document lookup by uppercase NIC ID
+    if (upperInput !== cleanInput) {
+      const nicDocRef = doc(db, USERS_COLLECTION, upperInput);
+      const nicSnap = await getDoc(nicDocRef);
+      if (nicSnap.exists()) {
+        return { id: nicSnap.id, ...(nicSnap.data() as any) };
+      }
     }
+
+    // 3. Targeted Single Document Query with limit(1) by NIC
+    try {
+      const qNic = query(
+        collection(db, USERS_COLLECTION),
+        where('nic', '==', upperInput),
+        limit(1)
+      );
+      const snapNic = await getDocs(qNic);
+      if (!snapNic.empty) {
+        const d = snapNic.docs[0];
+        return { id: d.id, ...(d.data() as any) };
+      }
+    } catch {}
+
+    try {
+      const qNicNum = query(
+        collection(db, USERS_COLLECTION),
+        where('nicNumber', '==', upperInput),
+        limit(1)
+      );
+      const snapNicNum = await getDocs(qNicNum);
+      if (!snapNicNum.empty) {
+        const d = snapNicNum.docs[0];
+        return { id: d.id, ...(d.data() as any) };
+      }
+    } catch {}
+
+    // 4. Targeted Single Document Query with limit(1) by Phone / WhatsApp
+    if (cleanInput.length >= 9) {
+      try {
+        const qPhone = query(
+          collection(db, USERS_COLLECTION),
+          where('phone', '==', cleanInput),
+          limit(1)
+        );
+        const snapPhone = await getDocs(qPhone);
+        if (!snapPhone.empty) {
+          const d = snapPhone.docs[0];
+          return { id: d.id, ...(d.data() as any) };
+        }
+      } catch {}
+
+      try {
+        const qWa = query(
+          collection(db, USERS_COLLECTION),
+          where('whatsappPhone', '==', cleanInput),
+          limit(1)
+        );
+        const snapWa = await getDocs(qWa);
+        if (!snapWa.empty) {
+          const d = snapWa.docs[0];
+          return { id: d.id, ...(d.data() as any) };
+        }
+      } catch {}
+    }
+
+    // 5. Targeted Single Document Query with limit(1) by userId
+    try {
+      const qUserId = query(
+        collection(db, USERS_COLLECTION),
+        where('userId', '==', upperInput),
+        limit(1)
+      );
+      const snapUserId = await getDocs(qUserId);
+      if (!snapUserId.empty) {
+        const d = snapUserId.docs[0];
+        return { id: d.id, ...(d.data() as any) };
+      }
+    } catch {}
+
+    // 6. Fast Backend Server Endpoint Fallback (/api/auth/lookup-user)
+    try {
+      const res = await fetch('/api/auth/lookup-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanInput }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          return data.user;
+        }
+      }
+    } catch {}
+
     return null;
   } catch (err) {
     console.warn('getUserFromFirestore error:', err);
@@ -576,7 +663,7 @@ export interface PaginatedPostsResult {
 
 export async function fetchHelpPostsPaginated(
   lastDoc: any = null,
-  pageSize: number = 4
+  pageSize: number = 5
 ) {
   try {
     const colRef = collection(db, POSTS_COLLECTION);
@@ -621,6 +708,30 @@ export async function addHelpPostToFirestore(postData: any) {
     userId: postData.userId ? postData.userId : uid,
     createdAtServer: serverTimestamp()
   });
+
+  // ☁️ Cloudflare R2 / Object Storage: Firestore තුළ තැන්පත් කළ යුත්තේ CDN URL පමණි
+  if (enriched.imageUrl && typeof enriched.imageUrl === 'string' && enriched.imageUrl.startsWith('data:image/')) {
+    try {
+      const uploadRes = await fetch('/api/storage/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileBase64: enriched.imageUrl,
+          mediaType: 'image',
+          fileName: `post_${postId}.jpg`,
+        }),
+      });
+      if (uploadRes.ok) {
+        const upData = await uploadRes.json();
+        if (upData.url || upData.directUrl || upData.proxyUrl) {
+          enriched.imageUrl = upData.url || upData.directUrl || upData.proxyUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('R2 upload notice before Firestore save:', e);
+    }
+  }
+
   try {
     await setDoc(doc(db, POSTS_COLLECTION, postId), enriched, { merge: true });
     setDoc(doc(db, 'helpPosts', postId), enriched, { merge: true }).catch(() => {});

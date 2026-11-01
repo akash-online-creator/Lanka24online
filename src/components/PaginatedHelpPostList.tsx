@@ -38,12 +38,15 @@ export const PaginatedHelpPostList: React.FC<PaginatedHelpPostListProps> = ({
   // Infinite Scroll Trigger Target
   const observerTarget = useRef<HTMLDivElement | null>(null);
 
-  // 1. ආරම්භයේදී අලුත්ම දැන්වීම් 4 ලබා ගැනීම (Newest First)
+  const BATCH_SIZE = 5;
+  const MAX_LIMIT = 10;
+
+  // 1. ආරම්භයේදී අලුත්ම දැන්වීම් 5 ලබා ගැනීම (Newest First, Page Size = 5)
   const loadInitialPosts = async () => {
     setIsLoadingInitial(true);
     setError(null);
     try {
-      const result = await fetchHelpPostsPaginated(null, 4);
+      const result = await fetchHelpPostsPaginated(null, BATCH_SIZE);
       setPosts(result.posts as HelpPost[]);
       setLastDoc(result.lastDoc);
       setHasMore(result.hasMore);
@@ -65,32 +68,40 @@ export const PaginatedHelpPostList: React.FC<PaginatedHelpPostListProps> = ({
       setPosts(prev => {
         const exists = prev.some(p => p.id === newlyCreatedPost.id);
         if (exists) return prev;
-        return [newlyCreatedPost, ...prev];
+        const updated = [newlyCreatedPost, ...prev];
+        return updated.slice(0, MAX_LIMIT); // Maintain limit of 10
       });
     }
   }, [newlyCreatedPost]);
 
-  // 3. පහළට scroll කරන විට ඊළඟ දැන්වීම් 4 ලබා ගැනීම
+  // 3. 5ක් බලනවිට තව 5ක් load කිරීම (Limit 10 දක්වා)
   const loadMorePosts = useCallback(async () => {
     if (isLoadingMore || !hasMore || !lastDoc) return;
+    if (posts.length >= MAX_LIMIT) {
+      setHasMore(false);
+      return;
+    }
 
     setIsLoadingMore(true);
     try {
-      const result = await fetchHelpPostsPaginated(lastDoc, 4);
+      const remainingSlots = MAX_LIMIT - posts.length;
+      const countToFetch = Math.min(BATCH_SIZE, remainingSlots);
+      const result = await fetchHelpPostsPaginated(lastDoc, countToFetch);
+      
       setPosts(prev => {
-        // අනුපිටපත් (duplicates) වැළැක්වීම
         const existingIds = new Set(prev.map(p => p.id));
         const newUniquePosts = (result.posts as HelpPost[]).filter(p => !existingIds.has(p.id));
-        return [...prev, ...newUniquePosts];
+        const combined = [...prev, ...newUniquePosts];
+        return combined.slice(0, MAX_LIMIT);
       });
       setLastDoc(result.lastDoc);
-      setHasMore(result.hasMore);
+      setHasMore(result.hasMore && (posts.length + result.posts.length < MAX_LIMIT));
     } catch (err) {
       console.error('Error loading more posts:', err);
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, lastDoc]);
+  }, [isLoadingMore, hasMore, lastDoc, posts.length]);
 
   // 4. IntersectionObserver මගින් Scroll පහළට පැමිණි විට ස්වයංක්‍රීයව Load කිරීම
   useEffect(() => {

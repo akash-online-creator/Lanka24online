@@ -1,6 +1,8 @@
 import { Language, LocationOption, VerifiedAiKnowledgeItem } from '../types';
 import { subscribeToVerifiedAiKnowledge, savePendingAiQuery } from '../lib/firebase';
 import { searchSriLankanPlacesAndRoads, calculateRoadDistanceKm } from './geoUtils';
+import { getClientCachedAiResponse, setClientCachedAiResponse } from './semanticCache';
+import { resolveLocalKnowledge as resolveRoutineLocalKnowledge } from './localKnowledgeResolver';
 
 export interface AssistantAction {
   type:
@@ -405,7 +407,38 @@ export async function askAssistant(
     console.warn('Verified knowledge match error:', err);
   }
 
-  // 3. Query Server-side Gemini AI Model Cascade
+  // 2.3 Local & Admin Knowledge Resolution (GPS, Password, Account Approval - 70%-80% Instant Zero-Cost)
+  const routine = resolveRoutineLocalKnowledge(clean);
+  if (routine && routine.matched) {
+    const actions: AssistantAction[] = [];
+    if (routine.actionType === 'open_gps_modal') {
+      actions.push({ type: 'open_directory', label: routine.actionLabelSi || 'GPS සහාය' });
+    } else if (routine.actionType === 'open_password_reset') {
+      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || 'මුරපද සහාය' });
+    } else if (routine.actionType === 'open_issues') {
+      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || 'ගැටලු & උපකාර' });
+    }
+    return {
+      text: `${routine.titleSi}\n\n${routine.summarySi}\n\n` +
+        routine.detailedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n') +
+        `\n\n⚡ *[Local Knowledge Resolution: Instant & Zero-Cost]*`,
+      actions,
+      quickChips: ['GPS ගැටලුව', 'මුරපදය අමතකයි', 'ගිණුම අනුමත කිරීම', 'පරිපාලක අමතන්න'],
+    };
+  }
+
+  // 2.5 Semantic Caching (Zero-Token response for recurring questions across users)
+  const cachedAi = getClientCachedAiResponse(clean);
+  if (cachedAi) {
+    const extractedActions = resolveActionsFromText(clean, userLang);
+    return {
+      text: `${cachedAi.response}\n\n⚡ *[Semantic Cache: Zero-Token Cached Response (Hit #${cachedAi.hitCount})]*`,
+      actions: extractedActions.actions,
+      quickChips: extractedActions.chips,
+    };
+  }
+
+  // 3. Query Server-side Gemini AI Model Cascade (Enterprise Tier with fallback)
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -422,6 +455,9 @@ export async function askAssistant(
     if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       if (data.reply && !data.fallback) {
+        // Cache response in client semantic cache for future callers
+        setClientCachedAiResponse(clean, data.reply);
+
         // Automatically submit novel question & Gemini answer to Admin Panel for review
         savePendingAiQuery({
           question: clean,

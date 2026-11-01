@@ -29,6 +29,8 @@ export const LiveBulletin: React.FC<LiveBulletinProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [flippedCardId, setFlippedCardId] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState<number>(5);
+  const MAX_BULLETIN_LIMIT = 10;
 
   const categories = [
     { id: 'all', label: 'සියල්ල (All)' },
@@ -43,6 +45,8 @@ export const LiveBulletin: React.FC<LiveBulletinProps> = ({
   const filteredPosts = selectedCategory === 'all' 
     ? posts 
     : posts.filter(p => p.category === selectedCategory);
+
+  const displayedPosts = filteredPosts.slice(0, Math.min(visibleCount, MAX_BULLETIN_LIMIT));
 
   const handleCopyPhone = (phone: string) => {
     navigator.clipboard.writeText(phone);
@@ -98,7 +102,7 @@ export const LiveBulletin: React.FC<LiveBulletinProps> = ({
 
       {/* 3D Bulletin Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredPosts.map((post) => {
+        {displayedPosts.map((post) => {
           const isFlipped = flippedCardId === post.id;
           
           return (
@@ -234,6 +238,24 @@ export const LiveBulletin: React.FC<LiveBulletinProps> = ({
             </div>
           );
         })}
+      </div>
+
+      {/* 🚀 Pagination Controls: 5 පෙන්වයි, තව 5ක් load කරන්න (Limit 10) */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+        <div className="flex items-center gap-2 text-xs text-slate-400 font-sinhala">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>දැන්වීම් <strong>{displayedPosts.length}</strong> / <strong>{Math.min(filteredPosts.length, MAX_BULLETIN_LIMIT)}</strong> ක් පෙන්වයි (උපරිම Limit: {MAX_BULLETIN_LIMIT})</span>
+        </div>
+
+        {displayedPosts.length < Math.min(filteredPosts.length, MAX_BULLETIN_LIMIT) && (
+          <button
+            onClick={() => setVisibleCount((prev) => Math.min(prev + 5, MAX_BULLETIN_LIMIT))}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold font-sinhala flex items-center justify-center gap-2 shadow-lg shadow-blue-950/40 transition-transform active:scale-95"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            <span>තවත් දැන්වීම් 5ක් පූරණය කරන්න (Load Next 5)</span>
+          </button>
+        )}
       </div>
 
     </div>
