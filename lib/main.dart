@@ -253,7 +253,7 @@ class SahayaSewaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'සහය සේවා',
+      title: '1+ සහය සේවා',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007A4B)),

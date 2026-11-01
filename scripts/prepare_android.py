@@ -48,7 +48,7 @@ if os.path.exists(manifest_path):
     if "com.pravera.flutter_foreground_task.service.ForegroundService" not in content:
         content = content.replace("</application>", service_declaration + "\n    </application>")
 
-    content = re.sub(r'android:label="[^"]*"', 'android:label=".සහය සේවා"', content)
+    content = re.sub(r'android:label="[^"]*"', 'android:label="1+ සහය සේවා"', content)
 
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -60,7 +60,7 @@ os.makedirs(strings_dir, exist_ok=True)
 with open(os.path.join(strings_dir, "strings.xml"), "w", encoding="utf-8") as f:
     f.write("""<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">.සහය සේවා</string>
+    <string name="app_name">1+ සහය සේවා</string>
 </resources>
 """)
 
@@ -80,7 +80,7 @@ if os.path.exists(gradle_path):
 # 3. Ensure pubspec.yaml has all dependencies & asset configuration
 pubspec_path = "pubspec.yaml"
 pubspec_content = """name: sahayasewa_mobile
-description: "සහය සේවා (Sahaya Seva) - 24/7 Mobile Disaster & Community Relief Network"
+description: "1+ සහය සේවා (Sahaya Seva) - 24/7 Mobile Disaster & Community Relief Network"
 publish_to: 'none'
 version: 1.0.0+1
 
