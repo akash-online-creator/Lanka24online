@@ -1483,18 +1483,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         onOpenAppQr={() => setIsAppQrModalOpen(true)}
       />
 
-      {/* 1.1 Live Proximity Urgent Alert Radar Banner */}
-      <ProximityAlertBanner
-        posts={helpPosts}
-        userLocation={currentLocation}
-        onViewPost={(post) => {
-          if (user?.isDemo) {
-            setShowDemoRegisterPrompt(true);
-            return;
-          }
-          setSelectedPostForDetail(post);
-        }}
-      />
+
 
       {/* Confirmed Helper Notice Banner */}
       {postsWhereIWasSelected.length > 0 && (

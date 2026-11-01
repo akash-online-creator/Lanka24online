@@ -11,6 +11,7 @@ import {
   RedAlertItem
 } from '../types';
 import { TagSearchBar } from './TagSearchBar';
+import { ProximityAlertBanner } from './ProximityAlertBanner';
 import { PostCard } from './PostCard';
 import { CategoryGrid } from './CategoryGrid';
 import { ProfessionalServicesView } from './ProfessionalServicesView';
@@ -1276,6 +1277,22 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
           }}
         />
       ) : null}
+
+      {/* 📢 Live Proximity Alert / Service Notice Banner (Placed directly below #නවාතැන & #රැකියා buttons) */}
+      {!boardCategoryFilter && (
+        <ProximityAlertBanner
+          posts={helpPosts}
+          userLocation={currentLocation}
+          onViewPost={(post) => {
+            if (user?.isDemo) {
+              if (onRequireRegistration) onRequireRegistration();
+              return;
+            }
+            onViewPost(post);
+          }}
+          className="my-3 rounded-2xl shadow-md border-2"
+        />
+      )}
 
       {/* Accommodation View (if active) */}
       {boardCategoryFilter === 'accommodation' ? (
