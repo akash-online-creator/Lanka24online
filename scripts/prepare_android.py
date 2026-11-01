@@ -106,6 +106,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/web/
+    - assets/web/assets/
     - assets/web/index.html
     - assets/web/logo.jpg
     - assets/web/manifest.json
@@ -116,13 +117,20 @@ with open(pubspec_path, "w", encoding="utf-8") as f:
 print("Ensured pubspec.yaml with assets/web/ bindings.")
 
 # 4. Copy build output from dist/ if available
-if os.path.exists("dist/index.html"):
+if os.path.exists("dist"):
+    import shutil
     os.makedirs("assets/web", exist_ok=True)
-    with open("dist/index.html", "r", encoding="utf-8") as src_f:
-        built_html = src_f.read()
-    with open("assets/web/index.html", "w", encoding="utf-8") as dst_f:
-        dst_f.write(built_html)
-    print("Synced dist/index.html into assets/web/index.html")
+    if os.path.exists("dist/assets"):
+        os.makedirs("assets/web/assets", exist_ok=True)
+        for item in os.listdir("dist/assets"):
+            s = os.path.join("dist/assets", item)
+            d = os.path.join("assets/web/assets", item)
+            if os.path.isfile(s):
+                shutil.copy2(s, d)
+        print("Synced dist/assets into assets/web/assets")
+    if os.path.exists("dist/index.html"):
+        shutil.copy2("dist/index.html", "assets/web/index.html")
+        print("Synced dist/index.html into assets/web/index.html")
 
 # 5. Mirror assets/web into android/app/src/main/assets/web if directory exists
 android_assets_dir = "android/app/src/main/assets/web"

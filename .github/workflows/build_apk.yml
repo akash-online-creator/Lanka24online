@@ -59,8 +59,9 @@ jobs:
         run: |
           npm install --legacy-peer-deps --no-audit
           npm run build
-          mkdir -p assets/web
+          mkdir -p assets/web/assets
           cp -r dist/* assets/web/ 2>/dev/null || true
+          cp -r dist/assets/* assets/web/assets/ 2>/dev/null || true
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
