@@ -1,11 +1,9 @@
 {
   "name": "1+ සහය සේවා",
-  "description": "1+ සහය සේවා (Sahaya Seva) - 1+ සහය සේවා community support and emergency assistance platform with 3D card layout and live bulletin board.",
+  "description": "1+ සහය සේවා (Sahaya Seva) - community support and emergency assistance platform with 3D card layout and live bulletin board.",
   "requestFramePermissions": [
     "geolocation",
     "microphone"
   ],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

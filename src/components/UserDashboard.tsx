@@ -281,15 +281,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (propHelpPosts) {
       const filtered = filterNonDeletedPosts(propHelpPosts);
       setLocalHelpPosts(filtered);
-      setSelectedPostForDetail((prev) => {
-
-        const found = filtered.find((item) => Boolean(item && item.id === prev.id));
-        return found ? found : prev;
+      setSelectedPostForDetail((currentSelected) => {
+        if (!currentSelected) return null;
+        const found = filtered.find((item) => Boolean(item && item.id === currentSelected.id));
+        return found ? found : currentSelected;
       });
-      setSelectedPostForConfirm((prev) => {
-        if (!prev) return null;
-        const found = filtered.find((item) => Boolean(item && item.id === prev.id));
-        return found ? found : prev;
+      setSelectedPostForConfirm((currentSelected) => {
+        if (!currentSelected) return null;
+        const found = filtered.find((item) => Boolean(item && item.id === currentSelected.id));
+        return found ? found : currentSelected;
       });
     }
   }, [propHelpPosts]);
@@ -1330,8 +1330,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (language === 'ta') return ta;
     return si;
   };
-
-  if (!prev) return null;
 
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
