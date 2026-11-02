@@ -172,6 +172,20 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
   const numericId = extractNumericId(user?.nicNumber || user?.userId);
   const isVisitor = Boolean(!user || user?.isDemo || user?.userId === 'user_demo' || user?.id === 'demo_user' || (user?.role as string) === 'guest');
 
+  // Show only the first 4 digits of the user's ID number on the main page
+  const displayId = useMemo(() => {
+    if (isVisitor) return 'Visitor';
+    const digitsOnly = (numericId || user?.userId || user?.id || '').replace(/[^0-9]/g, '');
+    if (digitsOnly.length >= 4) {
+      return digitsOnly.slice(0, 4);
+    }
+    if (digitsOnly.length > 0) {
+      return digitsOnly;
+    }
+    const fallback = String(user?.userId || user?.id || 'Visitor');
+    return fallback.length > 4 ? fallback.slice(0, 4) : fallback;
+  }, [isVisitor, numericId, user]);
+
   // Check Admin privileges based on current logged in user
   const isAdminUser = checkIsAdmin(user);
 
@@ -498,7 +512,7 @@ export const UnifiedDashboardHeader: React.FC<UnifiedDashboardHeaderProps> = ({
                   )}
                 </div>
                 <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-[#789d87]">
-                  ID: {numericId || user?.userId || user?.id || 'Visitor'}
+                  ID: {displayId}
                 </p>
               </div>
 

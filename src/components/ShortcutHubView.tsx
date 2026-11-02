@@ -475,7 +475,7 @@ export const ShortcutHubView: React.FC<ShortcutHubViewProps> = ({
                     )}
                   </div>
                   <p className="text-xs text-emerald-200 font-mono font-bold">
-                    ID: {userNumericId} • {user.phone || 'දුරකථනය නැත'}
+                    ID: {userNumericId ? String(userNumericId).replace(/[^0-9]/g, '').slice(0, 4) || userNumericId : 'Visitor'} • {user.phone || 'දුරකථනය නැත'}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="bg-amber-400 text-amber-950 text-[11px] font-black px-2.5 py-0.5 rounded-full shadow-2xs">
