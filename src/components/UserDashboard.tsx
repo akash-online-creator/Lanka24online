@@ -73,7 +73,7 @@ import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } fr
 import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
-import { broadcastAppNotification, AppNotification } from '../utils/notificationManager';
+import { broadcastAppNotification, AppNotification, removeNotificationsForPost } from '../utils/notificationManager';
 import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
 import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
 import { 
@@ -466,9 +466,27 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         setRingingSupportAlert(null);
       }
     };
+    const handlePostDeletedCleanup = () => {
+      try {
+        const raw = localStorage.getItem('sahaya_deleted_post_ids');
+        if (raw) {
+          const ids = JSON.parse(raw);
+          if (Array.isArray(ids) && ringingSupportAlert && ids.includes(ringingSupportAlert.postId)) {
+            setRingingSupportAlert(null);
+            stopContinuousSupportBell();
+          }
+        }
+      } catch {}
+    };
     window.addEventListener('sahaya_support_bell_state', handleBellState);
-    return () => window.removeEventListener('sahaya_support_bell_state', handleBellState);
-  }, []);
+    window.addEventListener('sahaya_post_deleted', handlePostDeletedCleanup);
+    window.addEventListener('sahaya_stop_alert_for_post', handlePostDeletedCleanup);
+    return () => {
+      window.removeEventListener('sahaya_support_bell_state', handleBellState);
+      window.removeEventListener('sahaya_post_deleted', handlePostDeletedCleanup);
+      window.removeEventListener('sahaya_stop_alert_for_post', handlePostDeletedCleanup);
+    };
+  }, [ringingSupportAlert]);
   const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
   const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
   const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
@@ -534,6 +552,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const navigateToNotificationTarget = useCallback((targetModal?: string, targetPostId?: string) => {
     setIsNotificationModalOpen(false);
     if (!targetModal && !targetPostId) return;
+    if (targetPostId && isPostPermanentlyDeleted(targetPostId)) {
+      removeNotificationsForPost(targetPostId);
+      return;
+    }
 
     if (targetModal === 'blood' || targetModal === 'emergency_blood') {
       setIsBloodAndDisasterModalOpen(true);
@@ -875,8 +897,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       downloadPostBackupJson(postToDelete, user);
     }
 
-    // 3. LocalStorage Blacklist & Purge local memory
+    // 3. LocalStorage Blacklist & Purge local memory & helper notifications
     addDeletedPostId(postId);
+    try {
+      removeNotificationsForPost(postId, postToDelete?.postCode);
+    } catch {}
+    if (ringingSupportAlert && ringingSupportAlert.postId === postId) {
+      setRingingSupportAlert(null);
+      stopContinuousSupportBell();
+    }
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}

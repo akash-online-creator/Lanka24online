@@ -1,3 +1,4 @@
+import { removeNotificationsForPost } from "../utils/notificationManager";
 import React, { useState, useEffect } from 'react';
 import { Heart, ThumbsDown, MessageSquare, Trash2, Eye, Clock, Pencil, Phone, MessageCircle, HelpCircle, Zap, Bookmark, UserCheck, MapPin, Send, Lock, User as UserIcon, ChevronDown, ChevronUp, Car, Banknote, FileText, ExternalLink, Copy, Check, BarChart3, Calendar, Maximize2, X } from 'lucide-react';
 import { HelpPost, User, Language, LocationOption, PostComment } from '../types';
@@ -346,6 +347,9 @@ const targetId = post.id;
 setIsDeletingLocal(true);
 if (targetId) {
 addDeletedPostId(targetId);
+try {
+  removeNotificationsForPost(targetId, post.postCode);
+} catch {}
 try {
   window.dispatchEvent(new Event('sahaya_post_deleted'));
 } catch {}

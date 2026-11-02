@@ -1,3 +1,4 @@
+import { removeNotificationsForPost } from "../utils/notificationManager";
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
@@ -808,10 +809,33 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       } catch (e) {}
     }
 
-    // 3. Subcollection messages cleanup
+    // 0. Remove notifications for this post immediately
+    try {
+      removeNotificationsForPost(postId);
+    } catch (e) {}
+
+    // 3. Subcollection messages & replies cleanup
     try {
       const msgsColRef = collection(db, POSTS_COLLECTION, postId, "messages");
       const snap = await getDocs(msgsColRef);
+      if (snap && (snap as QuerySnapshot<DocumentData>).docs && (snap as QuerySnapshot<DocumentData>).docs.length > 0) {
+        const batch = writeBatch(db);
+        (snap as QuerySnapshot<DocumentData>).docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+    } catch (e) {}
+    try {
+      const repliesColRef = collection(db, POSTS_COLLECTION, postId, "replies");
+      const snap = await getDocs(repliesColRef);
+      if (snap && (snap as QuerySnapshot<DocumentData>).docs && (snap as QuerySnapshot<DocumentData>).docs.length > 0) {
+        const batch = writeBatch(db);
+        (snap as QuerySnapshot<DocumentData>).docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+    } catch (e) {}
+    try {
+      const q = query(collection(db, "push_broadcast_queue"), where("postId", "==", postId));
+      const snap = await getDocs(q);
       if (snap && (snap as QuerySnapshot<DocumentData>).docs && (snap as QuerySnapshot<DocumentData>).docs.length > 0) {
         const batch = writeBatch(db);
         (snap as QuerySnapshot<DocumentData>).docs.forEach((docSnap) => batch.delete(docSnap.ref));

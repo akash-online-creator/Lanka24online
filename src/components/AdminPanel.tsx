@@ -1,3 +1,5 @@
+import { addDeletedPostId } from "../utils/deletedPostsManager";
+import { removeNotificationsForPost } from "../utils/notificationManager";
 import React, { useState, useMemo } from 'react';
 import { 
   User, 
@@ -200,6 +202,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     try {
+      addDeletedPostId(postId);
+      removeNotificationsForPost(postId, postToDelete?.postCode);
+      try {
+        window.dispatchEvent(new Event("sahaya_post_deleted"));
+      } catch {}
       await deleteHelpPostFromFirestore(postId);
       if (setHelpPosts) {
         setHelpPosts((prev) => prev.filter((p) => p.id !== postId));

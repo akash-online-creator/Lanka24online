@@ -84,9 +84,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
     window.addEventListener('sahaya_notifications_updated', handleUpdate);
     window.addEventListener('sahaya_new_notification', handleUpdate);
+    window.addEventListener('sahaya_post_deleted', handleUpdate);
+    window.addEventListener('sahaya_post_notifications_cleared', handleUpdate);
     return () => {
       window.removeEventListener('sahaya_notifications_updated', handleUpdate);
       window.removeEventListener('sahaya_new_notification', handleUpdate);
+      window.removeEventListener('sahaya_post_deleted', handleUpdate);
+      window.removeEventListener('sahaya_post_notifications_cleared', handleUpdate);
     };
   }, [isOpen]);
 

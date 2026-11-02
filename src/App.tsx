@@ -1,3 +1,4 @@
+import { removeNotificationsForPost } from "./utils/notificationManager";
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
 import { initialUsers, initialHelpPosts } from './data/initialData';
@@ -180,8 +181,11 @@ export const App: React.FC = () => {
       downloadPostBackupJson(postObj, currentUser);
     }
 
-    // 3. LocalStorage Blacklist & Purge local memory
+    // 3. LocalStorage Blacklist & Purge local memory & helper notifications
     addDeletedPostId(postId);
+    try {
+      removeNotificationsForPost(postId, postObj?.postCode);
+    } catch {}
     try {
       localStorage.removeItem('sahaya_help_posts');
     } catch {}

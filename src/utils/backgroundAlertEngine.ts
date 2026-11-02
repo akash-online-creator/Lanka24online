@@ -410,3 +410,39 @@ export function previewPickMeSound(kind: AlertKind): Promise<void> {
     }, 4000);
   });
 }
+
+/**
+ * 🛑 Post එකක් delete කල විට background alert / ringer නාදය වහාම නවත්වයි
+ */
+if (typeof window !== "undefined") {
+  window.addEventListener("sahaya_stop_alert_for_post", (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.postId && currentRingtoneState) {
+      if (
+        currentRingtoneState.targetPostId === detail.postId ||
+        (detail.postCode && currentRingtoneState.targetPostId?.includes(detail.postCode))
+      ) {
+        stopPickMeAlert();
+      }
+    }
+  });
+
+  window.addEventListener("sahaya_post_deleted", () => {
+    try {
+      const raw = localStorage.getItem("sahaya_deleted_post_ids");
+      if (raw && currentRingtoneState && currentRingtoneState.targetPostId) {
+        const deletedIds = JSON.parse(raw);
+        if (Array.isArray(deletedIds) && deletedIds.includes(currentRingtoneState.targetPostId)) {
+          stopPickMeAlert();
+        }
+      }
+    } catch {}
+  });
+
+  window.addEventListener("sahaya_post_notifications_cleared", (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.postId && currentRingtoneState && currentRingtoneState.targetPostId === detail.postId) {
+      stopPickMeAlert();
+    }
+  });
+}

@@ -1,3 +1,4 @@
+import { removeNotificationsForPost } from "./notificationManager";
 import { checkIsAdmin } from './postOwnerHelper';
 import { 
   HelpPost, 
@@ -131,6 +132,15 @@ if (typeof window !== 'undefined') {
       };
 
       mergeKey(DELETED_POST_IDS_KEY, getStoredDeletedPostIds, cloudRecords.deletedPostIds);
+      if (Array.isArray(cloudRecords.deletedPostIds)) {
+        cloudRecords.deletedPostIds.forEach((delId) => {
+          if (delId) {
+            try {
+              removeNotificationsForPost(delId);
+            } catch {}
+          }
+        });
+      }
       mergeKey(DELETED_USERS_KEY, getStoredDeletedUserIds, cloudRecords.deletedUserIds);
       mergeKey(DELETED_BLOOD_IDS_KEY, getStoredDeletedBloodIds, cloudRecords.deletedBloodIds);
       mergeKey(DELETED_DISASTER_IDS_KEY, getStoredDeletedDisasterIds, cloudRecords.deletedDisasterIds);
@@ -414,6 +424,10 @@ export function addDeletedPostId(postId: string): void {
   if (!current.includes(postId)) {
     saveIds(DELETED_POST_IDS_KEY, [...current, postId]);
   }
+  // 🗑️ Post එකක් delete කල විට සහයකයන් ඉල්ලා තිබෙන notification ඇතුළු සියල්ල ඉවත් කිරීම
+  try {
+    removeNotificationsForPost(postId);
+  } catch {}
 }
 
 export function removeDeletedPostId(postId: string): void {

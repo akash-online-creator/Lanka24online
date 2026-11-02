@@ -250,7 +250,9 @@ try {
   }
 } catch {}
 
-// Read real notifications from storage (Only genuine live user/system alerts)
+const DELETED_POST_IDS_KEY = 'sahaya_deleted_post_ids';
+
+// Read real notifications from storage (Only genuine live user/system alerts, automatically filters out deleted posts)
 export const getStoredNotifications = (): AppNotification[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -259,10 +261,29 @@ export const getStoredNotifications = (): AppNotification[] => {
     }
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
+
+    let deletedPostIds: Set<string> = new Set();
+    try {
+      const delRaw = localStorage.getItem(DELETED_POST_IDS_KEY);
+      if (delRaw) {
+        const parsedDel = JSON.parse(delRaw);
+        if (Array.isArray(parsedDel)) {
+          deletedPostIds = new Set(parsedDel.map(String));
+        }
+      }
+    } catch {}
     
-    // Purge any lingering dummy or seed notifications permanently
+    // Purge any lingering dummy or seed notifications permanently AND notifications of deleted posts
     const realNotifs = parsed.filter(
-      (n: any) => n && n.id && !n.id.startsWith('notif-seed') && !n.id.includes('sample') && !n.id.includes('dummy')
+      (n: any) => {
+        if (!n || !n.id) return false;
+        if (n.id.startsWith('notif-seed') || n.id.includes('sample') || n.id.includes('dummy')) return false;
+        if (n.targetPostId && deletedPostIds.has(String(n.targetPostId))) return false;
+        if (n.relatedPostId && deletedPostIds.has(String(n.relatedPostId))) return false;
+        if (n.meta?.alertId && deletedPostIds.has(String(n.meta.alertId))) return false;
+        if (n.meta?.postId && deletedPostIds.has(String(n.meta.postId))) return false;
+        return true;
+      }
     );
     if (realNotifs.length !== parsed.length) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(realNotifs));
@@ -438,4 +459,71 @@ export const isNotificationSoundEnabled = (): boolean => {
 
 export const setNotificationSoundEnabled = (enabled: boolean) => {
   localStorage.setItem(SOUND_ENABLED_KEY, enabled ? 'true' : 'false');
+};
+
+/**
+ * 🗑️ Post එකක් delete කල විට සහයකයන් ඉල්ලා තිබෙන notification ඇතුළු
+ * එම Post එකට අදාළ සියලුම Notifications සහ Active Alert Ringers වහාම ඉවත් කිරීම.
+ */
+export const removeNotificationsForPost = (postId: string, postCode?: string): void => {
+  if (!postId && !postCode) return;
+  const cleanPostId = postId ? String(postId).trim() : "";
+  const cleanPostCode = postCode ? String(postCode).trim() : "";
+  const codeWithoutHash = cleanPostCode ? cleanPostCode.replace(/^#/, "") : "";
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const remaining = parsed.filter((notif: any) => {
+          if (!notif) return false;
+
+          // 1. Direct targetPostId / relatedPostId match
+          if (cleanPostId) {
+            if (notif.targetPostId && (notif.targetPostId === cleanPostId || String(notif.targetPostId).includes(cleanPostId))) return false;
+            if (notif.relatedPostId && (notif.relatedPostId === cleanPostId || String(notif.relatedPostId).includes(cleanPostId))) return false;
+            if (notif.meta?.alertId && (notif.meta.alertId === cleanPostId || String(notif.meta.alertId).includes(cleanPostId))) return false;
+            if (notif.meta?.postId && (notif.meta.postId === cleanPostId || String(notif.meta.postId).includes(cleanPostId))) return false;
+            if (notif.id && (notif.id === cleanPostId || String(notif.id).includes(cleanPostId))) return false;
+            if (notif.title && notif.title.includes(cleanPostId)) return false;
+            if (notif.message && notif.message.includes(cleanPostId)) return false;
+          }
+
+          // 2. Post Code match (e.g., #SRV-1024 / #HELP-4912)
+          if (cleanPostCode) {
+            if (notif.title && notif.title.includes(cleanPostCode)) return false;
+            if (notif.message && notif.message.includes(cleanPostCode)) return false;
+            if (codeWithoutHash) {
+              if (notif.title && notif.title.includes(codeWithoutHash)) return false;
+              if (notif.message && notif.message.includes(codeWithoutHash)) return false;
+            }
+          }
+
+          return true;
+        });
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+      }
+    }
+  } catch (err) {
+    console.debug("Failed to purge post notifications from localStorage:", err);
+  }
+
+  // Stop active ringing continuous bells and background sound alerts if related to this post
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("sahaya_stop_alert_for_post", {
+          detail: { postId: cleanPostId, postCode: cleanPostCode },
+        })
+      );
+      window.dispatchEvent(new CustomEvent("sahaya_notifications_updated"));
+      window.dispatchEvent(
+        new CustomEvent("sahaya_post_notifications_cleared", {
+          detail: { postId: cleanPostId, postCode: cleanPostCode },
+        })
+      );
+    } catch {}
+  }
 };

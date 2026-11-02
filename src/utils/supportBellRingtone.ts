@@ -224,3 +224,39 @@ if (typeof window !== 'undefined') {
   window.addEventListener('click', unlockAudioGesture, { passive: true });
   window.addEventListener('touchstart', unlockAudioGesture, { passive: true });
 }
+
+/**
+ * 🛑 Post එකක් delete කල විට හෝ දැනුම්දීම් ඉවත් කළ විට සහයක සීනුව නාද වීම ස්වයංක්‍රීයව නවත්වයි
+ */
+if (typeof window !== "undefined") {
+  window.addEventListener("sahaya_stop_alert_for_post", (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.postId && currentAlertInfo) {
+      if (
+        currentAlertInfo.postId === detail.postId ||
+        (detail.postCode && currentAlertInfo.postId.includes(detail.postCode))
+      ) {
+        stopContinuousSupportBell();
+      }
+    }
+  });
+
+  window.addEventListener("sahaya_post_deleted", () => {
+    try {
+      const raw = localStorage.getItem("sahaya_deleted_post_ids");
+      if (raw && currentAlertInfo) {
+        const deletedIds = JSON.parse(raw);
+        if (Array.isArray(deletedIds) && deletedIds.includes(currentAlertInfo.postId)) {
+          stopContinuousSupportBell();
+        }
+      }
+    } catch {}
+  });
+
+  window.addEventListener("sahaya_post_notifications_cleared", (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.postId && currentAlertInfo && currentAlertInfo.postId === detail.postId) {
+      stopContinuousSupportBell();
+    }
+  });
+}
