@@ -217,10 +217,15 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setWhatsappPhone(sanitized);
   };
 
-  // 4. Image Upload & Compression Handler
+  // 4. Image Upload & Compression Handler (රූප සටහන් සියලු උපාංග සඳහා බාධාවකින් තොරව ක්‍රියාත්මක කිරීම)
   const handleImageFileChange = async (file: File) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+
+    // Check by MIME type OR by file extension (Android WebViews / certain cameras might have empty or generic MIME)
+    const isImage = (file.type && file.type.startsWith('image/')) || 
+      /\.(jpe?g|png|webp|bmp|gif|heic|heif|jfif|svg)$/i.test(file.name || '');
+
+    if (!isImage) {
       setErrorMessage('කරුණාකර වලංගු ඡායාරූපයක් (JPG, PNG හෝ WEBP) තෝරන්න.');
       return;
     }
@@ -229,24 +234,52 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setErrorMessage(null);
 
     try {
-      let compressedDataUrl: string;
-      if (typeof compressImageFile === 'function') {
-        compressedDataUrl = await compressImageFile(file, {
-          maxWidth: 1200,
-          maxHeight: 1200,
-          quality: 0.8
-        });
-      } else {
-        compressedDataUrl = await new Promise<string>((resolve, reject) => {
+      let resultDataUrl: string = '';
+
+      // Try client-side compression first
+      try {
+        if (typeof compressImageFile === 'function') {
+          resultDataUrl = await compressImageFile(file, {
+            maxWidth: 1200,
+            maxHeight: 1200,
+            quality: 0.8,
+            maxSizeBytes: 400 * 1024 // 400 KB
+          });
+        }
+      } catch (compressionErr) {
+        console.warn('Compression notice (falling back to direct reader):', compressionErr);
+      }
+
+      // If compression produced no result or failed, fall back to FileReader
+      if (!resultDataUrl) {
+        resultDataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
           reader.onerror = (err) => reject(err);
           reader.readAsDataURL(file);
         });
       }
-      setNicFrontPhoto(compressedDataUrl);
+
+      if (resultDataUrl) {
+        setNicFrontPhoto(resultDataUrl);
+      } else {
+        throw new Error('ඡායාරූපය කියවීමට නොහැකි විය.');
+      }
     } catch (err: any) {
-      setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.');
+      console.error('Image processing error:', err);
+      // Emergency fallback: directly read file as DataURL
+      try {
+        const fallbackReader = new FileReader();
+        fallbackReader.onload = () => {
+          if (fallbackReader.result) {
+            setNicFrontPhoto(fallbackReader.result as string);
+            setErrorMessage(null);
+          }
+        };
+        fallbackReader.readAsDataURL(file);
+      } catch (finalErr) {
+        setErrorMessage('ඡායාරූපය සැකසීමේදී දෝෂයක් ඇතිවිය. කරුණාකර වෙනත් ඡායාරූපයක් උත්සාහ කරන්න.');
+      }
     } finally {
       setIsProcessingPhoto(false);
     }
@@ -483,11 +516,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
             {nicFrontPhoto ? (
               /* ඡායාරූපය තෝරාගත් පසු පෙන්වන Preview එක */
-              <div
-                onClick={() => nicFileInputRef.current?.click()}
+              <label
+                htmlFor="nic-front-photo-input"
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                className="relative rounded-xl overflow-hidden border-2 border-emerald-400 dark:border-emerald-600 bg-slate-900 group cursor-pointer shadow-md"
+                className="relative block rounded-xl overflow-hidden border-2 border-emerald-400 dark:border-emerald-600 bg-slate-900 group cursor-pointer shadow-md"
               >
                 <img
                   src={nicFrontPhoto}
@@ -500,16 +533,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     ඡායාරූපය වෙනස් කිරීමට ක්ලික් කරන්න
                   </span>
                 </div>
-              </div>
+              </label>
             ) : (
-              /* කිසිදු අමතර බොත්තමක් නොමැතිව මුළු කොටුවේ ඕනෑම තැනක් ක්ලික් කළ විට Upload වන අංගය */
-              <div
-                onClick={() => nicFileInputRef.current?.click()}
+              /* කිසිදු අමතර ගැටලුවකින් තොරව ඕනෑම උපාංගයකින් පහසුවෙන් Upload කළ හැකි Box එක */
+              <label
+                htmlFor="nic-front-photo-input"
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                className="border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 sm:p-8 text-center transition-all bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/80 flex flex-col items-center justify-center gap-3 cursor-pointer group"
+                className="border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 sm:p-8 text-center transition-all bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/80 flex flex-col items-center justify-center gap-3 cursor-pointer group block"
               >
-                <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900 group-hover:bg-emerald-200 group-hover:scale-105 transition-all flex items-center justify-center text-emerald-600 dark:text-emerald-300 shadow-sm">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900 group-hover:bg-emerald-200 group-hover:scale-105 transition-all flex items-center justify-center text-emerald-600 dark:text-emerald-300 shadow-sm mx-auto">
                   {isProcessingPhoto ? (
                     <Loader2 className="w-7 h-7 animate-spin" />
                   ) : (
@@ -521,21 +554,22 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                     {isProcessingPhoto ? 'ඡායාරූපය සකසමින් පවතී...' : 'ඡායාරූපය උඩුගත කිරීමට මෙතන ක්ලික් කරන්න'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    (නැතහොත් ඡායාරූපය මෙතැනට ඇද දමන්න - Drag & Drop)
+                    (ගැලරියෙන් තේරීමට හෝ කැමරාවෙන් ඡායාරූපයක් ගැනීමට ස්පර්ශ කරන්න)
                   </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
-                    JPG, PNG හෝ WEBP (උපරිම 5MB)
+                    JPG, PNG හෝ WEBP (ස්වයංක්‍රීයව සම්පීඩනය වේ)
                   </p>
                 </div>
-              </div>
+              </label>
             )}
 
-            {/* Hidden Single File Input */}
+            {/* Universal Accessible File Input */}
             <input
+              id="nic-front-photo-input"
               ref={nicFileInputRef}
               type="file"
               accept="image/*"
-              className="hidden"
+              className="sr-only"
               onChange={handleFileInputChange}
             />
           </div>

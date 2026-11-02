@@ -38,7 +38,10 @@ import {
   FileText,
   Shield,
   Users,
-  UserPlus
+  UserPlus,
+  Settings,
+  Smartphone,
+  Laptop
 } from 'lucide-react';
 
 export interface EmergencyContact {
@@ -304,6 +307,31 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const [voiceCutPin, setVoiceCutPin] = useState<string>('');
   const [voiceCutPinError, setVoiceCutPinError] = useState<string | null>(null);
   const [isAudioCut, setIsAudioCut] = useState<boolean>(false);
+
+  // 🎙️ Microphone Permission & Settings State (Issue #2 Fix)
+  const [showMicSettingsModal, setShowMicSettingsModal] = useState<boolean>(false);
+  const [micSettingError, setMicSettingError] = useState<string | null>(null);
+  const [micActiveTab, setMicActiveTab] = useState<'mobile' | 'browser'>('mobile');
+
+  // Direct System Settings Launcher (Opens OS App Settings on Android / Web)
+  const openMicrophoneDeviceSettings = useCallback(() => {
+    try {
+      if ((window as any).Android?.openAppSettings) {
+        (window as any).Android.openAppSettings();
+        return;
+      }
+      if ((window as any).Android?.openPermissionSettings) {
+        (window as any).Android.openPermissionSettings('microphone');
+        return;
+      }
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=com.sahayasewa.app;end';
+      }
+    } catch (e) {
+      console.warn('Could not launch device settings intent directly:', e);
+    }
+  }, []);
 
   // Save contacts to localStorage whenever updated
   useEffect(() => {
@@ -586,7 +614,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
   const startAudioRecordingLoop = useCallback(async () => {
     if (isContinuousAudioRunningRef.current) return;
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      alert('හඬ පටිගත කිරීම සඳහා ඔබගේ උපකරණයේ MediaDevices සහය නොදක්වයි.');
+      setMicSettingError('හඬ පටිගත කිරීම සඳහා ඔබගේ උපකරණයේ MediaDevices සහය නොදක්වයි.');
+      setShowMicSettingsModal(true);
       return;
     }
 
@@ -603,6 +632,8 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       audioStreamRef.current = stream;
       isContinuousAudioRunningRef.current = true;
       setIsRecordingAudio(true);
+      setShowMicSettingsModal(false);
+      setMicSettingError(null);
       setRecordingSeconds(0);
 
       if (audioTimerIntervalRef.current) clearInterval(audioTimerIntervalRef.current);
@@ -627,7 +658,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       // Record discrete standalone 5-second segments so each chunk has a valid playable file header!
       const recordSegment = () => {
         if (!isContinuousAudioRunningRef.current || !stream.active) return;
-
         try {
           const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
           continuousRecorderRef.current = recorder;
@@ -648,7 +678,6 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 const base64Data = reader.result as string;
                 if (base64Data && base64Data.length > 100) {
                   setRecordedAudioUrl(base64Data);
-
                   const activeSessionId = sessionId || localStorage.getItem('active_sos_session_id');
                   if (activeSessionId) {
                     try {
@@ -693,11 +722,19 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
       recordSegment();
     } catch (err: any) {
       console.warn('Silent Audio evidence recorder permission notice:', err);
-      alert('හඬ පටිගත කිරීම සඳහා මයික්‍රෆෝන් (Microphone) අවසරය ලබා දෙන්න.');
       setIsRecordingAudio(false);
       isContinuousAudioRunningRef.current = false;
+      const isDenied = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
+      setMicSettingError(
+        isDenied
+          ? 'මයික්‍රෆෝන් (Microphone) අවසරය ලබා දී නොමැත. කරුණාකර Settings වෙත ගොස් Microphone අවසරය Allow කරන්න.'
+          : (err.message || 'මයික්‍රෆෝනය ක්‍රියාත්මක කිරීමට අවශ්‍ය අවසරය ලබා දෙන්න.')
+      );
+      // Automatically navigate / show settings to the user
+      setShowMicSettingsModal(true);
+      openMicrophoneDeviceSettings();
     }
-  }, [sessionId]);
+  }, [sessionId, openMicrophoneDeviceSettings]);
 
   const stopAudioRecordingLoop = useCallback(() => {
     isContinuousAudioRunningRef.current = false;
@@ -1300,7 +1337,7 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 <span>{isSirenOn ? 'සයිරනය Off' : 'සයිරන් නාදය On'}</span>
               </button>
 
-                            {isAudioCut ? (
+              {isAudioCut ? (
                 <button
                   type="button"
                   onClick={handleResumeVoiceStream}
@@ -1323,12 +1360,23 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleAudioRecording}
-                  className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 bg-white/20 text-white hover:bg-white/30 transition-all cursor-pointer shadow-sm"
+                  className="px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 bg-white/20 text-white hover:bg-white/30 transition-all cursor-pointer shadow-sm active:scale-95"
+                  title="මයික්‍රෆෝනය ක්‍රියාත්මක කරන්න (Turn on Microphone)"
                 >
                   <Mic className="w-4 h-4" />
                   <span>හඬ රෙකෝඩ් On</span>
                 </button>
               )}
+
+              {/* ⚙️ Setting එක තිබෙන ස්ථානයට රැගෙන යන බොත්තම (Microphone Settings Button) */}
+              <button
+                type="button"
+                onClick={() => setShowMicSettingsModal(true)}
+                title="මයික්‍රෆෝන් Settings සැකසුම් වෙත යන්න (Open Mic Settings)"
+                className="p-1.5 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all cursor-pointer shadow-sm"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
             </div>
 
             {/* Emergency Police 119 Quick Button (Issue #1 Fix) */}
@@ -2118,6 +2166,177 @@ export const SosLiveTrackerModal: React.FC<SosLiveTrackerModalProps> = ({
                 className="py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-all"
               >
                 තහවුරු කරන්න
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 🎙️ Microphone Permission & Settings Guide Modal (Issue #2 Fix: SOS mic on කිරිමට යාමේදි අවශ්‍ය setting එක තිබෙන ස්ථානයට රැගෙන යෑම) */}
+      {showMicSettingsModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white dark:bg-[#0c1f14] border-2 border-emerald-500/80 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl text-slate-900 dark:text-white space-y-4">
+            
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Mic className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black leading-tight">
+                    🎙️ මයික්‍රෆෝන් සැකසුම් (Mic Settings)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-emerald-400/80">
+                    SOS හදිසි හඬ පටිගත කිරීම සඳහා අවසරය
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMicSettingsModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error or Alert Banner */}
+            {micSettingError && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                <span>{micSettingError}</span>
+              </div>
+            )}
+
+            {/* Direct Device Settings Launcher Button */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  openMicrophoneDeviceSettings();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+              >
+                <Settings className="w-4 h-4" />
+                <span>⚙️ දුරකථන Settings වෙත යන්න (Open Device Settings)</span>
+              </button>
+              <p className="text-[11px] text-center text-slate-500 dark:text-slate-400">
+                ඉහත බොත්තම ඔබා ඔබගේ දුරකථනයේ හෝ බ්‍රවුසරයේ Microphone අවසරය Allow කරන්න.
+              </p>
+            </div>
+
+            {/* Step-by-Step Settings Guide */}
+            <div className="rounded-2xl bg-slate-50 dark:bg-[#12281b] border border-slate-200 dark:border-emerald-900/40 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>සැකසුම් සකසන පියවර (How to Enable)</span>
+                </span>
+                
+                {/* Tab Switcher */}
+                <div className="flex items-center gap-1 bg-slate-200 dark:bg-[#0a180f] p-0.5 rounded-lg text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setMicActiveTab('mobile')}
+                    className={`px-2 py-0.5 rounded-md transition-all ${
+                      micActiveTab === 'mobile'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <Smartphone className="w-3 h-3 inline mr-1" />
+                    Mobile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMicActiveTab('browser')}
+                    className={`px-2 py-0.5 rounded-md transition-all ${
+                      micActiveTab === 'browser'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <Laptop className="w-3 h-3 inline mr-1" />
+                    Browser
+                  </button>
+                </div>
+              </div>
+
+              {micActiveTab === 'mobile' ? (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <div>
+                      <span className="font-bold">Phone Settings:</span> දුරකථන <strong>Settings ➡️ Apps</strong> වෙත යන්න.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <div>
+                      <span className="font-bold">App තෝරන්න:</span> <strong>Sahaya Sewa</strong> (හෝ බ්‍රවුසරය) තෝරා <strong>Permissions</strong> ඔබන්න.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      3
+                    </span>
+                    <div>
+                      <span className="font-bold">Microphone Allow:</span> <strong>Microphone ➡️ "Allow only while using app"</strong> තෝරන්න.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <div>
+                      <span className="font-bold">ලිපින තීරුව:</span> බ්‍රව්සරයේ ලිපින තීරුවේ (URL Bar) වම්පස ඇති <strong>🔒 Lock / Tune</strong> අයිකනය ක්ලික් කරන්න.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <div>
+                      <span className="font-bold">Microphone Allow කරන්න:</span> <strong>Microphone</strong> ඉදිරියෙන් ඇති switch එක <strong>"Allow"</strong> කරන්න.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-xl bg-white dark:bg-[#183624] border border-slate-100 dark:border-emerald-800/30">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                      3
+                    </span>
+                    <div>
+                      <span className="font-bold">Mic On කරන්න:</span> පහත ඇති <strong>⚡ නැවත Mic On කරන්න</strong> බොත්තම ඔබන්න.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowMicSettingsModal(false)}
+                className="py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs transition-colors"
+              >
+                වසන්න (Close)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  startAudioRecordingLoop();
+                }}
+                className="py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Mic className="w-3.5 h-3.5" />
+                <span>⚡ නැවත Mic On කරන්න</span>
               </button>
             </div>
           </div>

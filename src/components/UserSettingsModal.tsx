@@ -43,6 +43,7 @@ import {
   QrCode,
   Key,
   HelpCircle,
+  Mic,
   Copy,
   ExternalLink,
   Smartphone,
@@ -2002,6 +2003,60 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                     >
                       {is24hWakeLockActive ? 'ON' : 'OFF'}
                     </span>
+                  </button>
+                </div>
+
+                {/* Microphone & SOS Audio Stream Settings Card */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#07170e] border-2 border-emerald-300 dark:border-emerald-700/60 flex items-center justify-between gap-4 shadow-sm mt-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center font-black transition-all shrink-0 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 border border-emerald-300 dark:border-emerald-800">
+                      <Mic className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        <span>{getLang('SOS හදිසි මයික්‍රෆෝන් අවසරය (Microphone):', 'SOS Emergency Microphone Access:', 'SOS மைக்ரோஃபோன் அனுமதி:')}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {getLang(
+                          'SOS හදිසි අවස්ථාවකදී සජීවී හඬ සාක්ෂි විකාශනය සඳහා අවශ්‍ය මයික්‍රෆෝන් අවසර සැකසුම',
+                          'Microphone permission configuration for continuous live SOS audio streaming',
+                          'நேரலை SOS ஆடியோவிற்கான மைக்ரோஃபோன் அனுமதி'
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        if ((window as any).Android?.openAppSettings) {
+                          (window as any).Android.openAppSettings();
+                          return;
+                        }
+                        if ((window as any).Android?.openPermissionSettings) {
+                          (window as any).Android.openPermissionSettings('microphone');
+                          return;
+                        }
+                        const isAndroid = /Android/i.test(navigator.userAgent);
+                        if (isAndroid) {
+                          window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=com.sahayasewa.app;end';
+                          return;
+                        }
+                        if (navigator.mediaDevices?.getUserMedia) {
+                          navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
+                            s.getTracks().forEach((t) => t.stop());
+                            setSaveSuccessMsg(getLang('✅ මයික්‍රෆෝන් අවසරය සක්‍රීයයි!', '✅ Microphone permission granted!', '✅ மைக்ரோஃபோன் அனுமதி வழங்கப்பட்டது!'));
+                            setTimeout(() => setSaveSuccessMsg(null), 3000);
+                          }).catch(() => {
+                            alert('කරුණාකර ඔබගේ බ්‍රවුසරයේ හෝ දුරකථනයේ Settings වෙත ගොස් Microphone අවසරය Allow කරන්න.');
+                          });
+                        }
+                      } catch (_) {}
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>{getLang('සැකසුම් (Settings)', 'Settings', 'அமைப்புகள்')}</span>
                   </button>
                 </div>
               </div>

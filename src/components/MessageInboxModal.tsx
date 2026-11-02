@@ -966,21 +966,18 @@ h(Check, { className: 'w-3 h-3' }), h('span', null, 'Sent') ) : null ),
     canDelete ? h('button', {
       type: 'button',
       onClick: () => handleInitiateDelete(msg, msgIdx),
-      title: 'දෙපිරිසටම නොපෙනෙන ලෙස මකා දමන්න (අනෙක් පාර්ශ්වයේ ප්‍රතිචාර: ' + otherRepliesAfterCount + '/3)',
+      title: 'දෙපිරිසටම නොපෙනෙන ලෙස මකා දමන්න (Delete for Everyone)',
       className: 'px-2 py-0.5 rounded-lg text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 transition-all flex items-center gap-1 cursor-pointer'
     },
       h(Trash2, { className: 'w-3 h-3 text-rose-500' }),
-      h('span', null, 'Delete'),
-      h('span', { className: 'text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono' },
-        (3 - otherRepliesAfterCount) + ' ඉතිරි'
-      )
+      h('span', null, 'Delete')
     ) : isDeleteLocked ? h('span', {
-      title: 'අනෙක් පාර්ශ්වයෙන් පණිවිඩ 3ක් ලැබී ඇති බැවින් මකා දැමිය නොහැක (Locked: ' + otherRepliesAfterCount + ' replies)',
+      title: 'අනෙක් පාර්ශ්වයෙන් පණිවිඩ ලැබී ඇති බැවින් මකා දැමිය නොහැක',
       className: 'px-2 py-0.5 rounded-lg text-[10px] font-medium text-slate-400 dark:text-slate-600 flex items-center gap-1 select-none cursor-not-allowed opacity-60'
     },
       h(Lock, { className: 'w-3 h-3' }),
       h(Trash2, { className: 'w-3 h-3' }),
-      h('span', null, 'Locked (3 replies)')
+      h('span', null, 'Locked')
     ) : null
   ) : null
 ) : null

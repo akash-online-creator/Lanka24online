@@ -20,12 +20,12 @@ export const IdPhotoUploadSection: React.FC<IdPhotoUploadSectionProps> = ({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onloadend = () => {
       callback(file, reader.result as string);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   return (
@@ -38,11 +38,10 @@ export const IdPhotoUploadSection: React.FC<IdPhotoUploadSectionProps> = ({
         
         <div className="relative flex justify-center rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 px-4 py-5 hover:border-emerald-500 transition-colors bg-gray-50 dark:bg-gray-800/60 overflow-hidden cursor-pointer group">
           
-          {/* Box එක මත සම්පූර්ණයෙන්ම ක්‍රියාත්මක වන Invisible Input එක */}
+          {/* Box එක මත සම්පූර්ණයෙන්ම ක්‍රියාත්මක වන Universal Input එක */}
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={(e) => handleFile(e, onFrontPhotoSelect)}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30"
             aria-label="හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය තෝරන්න"
@@ -88,7 +87,6 @@ export const IdPhotoUploadSection: React.FC<IdPhotoUploadSectionProps> = ({
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={(e) => handleFile(e, onBackPhotoSelect)}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30"
             aria-label="හැඳුනුම්පතේ පිටුපස ඡායාරූපය තෝරන්න"
