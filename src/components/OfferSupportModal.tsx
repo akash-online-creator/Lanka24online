@@ -1,3 +1,4 @@
+import { triggerSupportOfferAlert } from '../utils/supportBellRingtone';
 import React, { useState, useEffect } from 'react';
 
 import { Send, Phone, MessageSquare, CheckCircle2, MapPin, Compass, Clock, ShieldAlert } from 'lucide-react';
@@ -257,6 +258,18 @@ export const OfferSupportModal: React.FC<OfferSupportModalProps> = ({
 
     } catch (_) {}
 
+    // 🔔 Trigger continuous bell ringtone for the ad creator!
+    try {
+      triggerSupportOfferAlert({
+        postId: post.id,
+        postAuthorId: post.userId || post.authorId || '',
+        postTitle: post.headline || post.whatHappened || post.title || 'දැන්වීම',
+        helperName: name.trim(),
+        helperPhone: phone.trim(),
+        helperMsg: finalMsg,
+        timestamp: Date.now()
+      });
+    } catch (_) {}
     setSubmitted(true);
 
     if (isConfirmed && post.userPhone) {

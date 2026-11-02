@@ -1,3 +1,4 @@
+import { startContinuousSupportBell, stopContinuousSupportBell, isSupportBellRinging, SupportAlertInfo } from '../utils/supportBellRingtone';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem, Issue } from '../types';
 import { translations } from '../data/translations';
@@ -446,6 +447,21 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [selectedPostForOffer, setSelectedPostForOffer] = useState<HelpPost | null>(null);
   const [isSupportOffersModalOpen, setIsSupportOffersModalOpen] = useState(false);
   const [targetPostForOffers, setTargetPostForOffers] = useState<HelpPost | null>(null);
+  const [ringingSupportAlert, setRingingSupportAlert] = useState<SupportAlertInfo | null>(null);
+
+  // 🔔 Listen for support offer bell state & incoming alerts
+  useEffect(() => {
+    const handleBellState = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.isRinging) {
+        setRingingSupportAlert(detail.alertInfo || null);
+      } else {
+        setRingingSupportAlert(null);
+      }
+    };
+    window.addEventListener('sahaya_support_bell_state', handleBellState);
+    return () => window.removeEventListener('sahaya_support_bell_state', handleBellState);
+  }, []);
   const [editingPost, setEditingPost] = useState<HelpPost | null>(null);
   const [editingQuickServicePost, setEditingQuickServicePost] = useState<HelpPost | null>(null);
   const [editingFindForMePost, setEditingFindForMePost] = useState<HelpPost | null>(null);
@@ -1403,6 +1419,53 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         />
       )}
 
+      {/* 🔔 Incoming Support Offer Bell Banner (Rings continuously until clicked!) */}
+      {ringingSupportAlert && (
+        <div className="w-full rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-4 sm:p-5 text-slate-950 shadow-2xl border-2 border-white flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-3 duration-300 ring-4 ring-amber-400/50">
+          <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
+            <div className="w-12 h-12 rounded-2xl bg-white text-amber-600 flex items-center justify-center shrink-0 shadow-lg animate-bounce">
+              <Bell className="w-6 h-6 animate-pulse" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-950 text-amber-300 font-mono text-[10px] font-black uppercase">
+                  🔔 නව සහය පිරිනැමීමක් (Incoming Support Offer)
+                </span>
+                <span className="text-xs font-bold text-slate-900 bg-white/40 px-2 py-0.5 rounded-md">
+                  නාද වෙමින් පවතී...
+                </span>
+              </div>
+              <h4 className="text-sm sm:text-base font-black truncate text-slate-950 mt-1">
+                {ringingSupportAlert.helperName} ඔබගේ දැන්වීමට සහය දැක්වීමට ඉදිරිපත් විය!
+              </h4>
+              <p className="text-xs font-bold text-slate-900 truncate">
+                "{ringingSupportAlert.postTitle}"
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                stopContinuousSupportBell();
+                const matchingPost = (helpPosts || []).find((p: any) => p && p.id === ringingSupportAlert.postId) ||
+                                     targetPostForOffers;
+                if (matchingPost) {
+                  setTargetPostForOffers(matchingPost);
+                }
+                setIsSupportOffersModalOpen(true);
+                setRingingSupportAlert(null);
+              }}
+              className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer border border-amber-400"
+            >
+              <span>සහායකයාගේ විස්තර බලන්න</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 1. Integrated Unified Top Header Card (Combines Logo, User Info, Location/Address, App Help, and Controls) */}
       <UnifiedDashboardHeader
         user={user}
@@ -1553,6 +1616,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   if (isQuickActive) {
                     setSelectedPostForDetail(myActivePost);
                   } else {
+                    stopContinuousSupportBell();
                     setTargetPostForOffers(myActivePost);
                     setIsSupportOffersModalOpen(true);
                   }
@@ -1793,6 +1857,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setSelectedPostForConfirm(p);
           }}
           onOpenSupportOffers={(p) => {
+            // 🔔 Stop the continuous support bell ringtone when viewing helper details!
+            stopContinuousSupportBell();
             if (user?.isDemo) {
               setShowDemoRegisterPrompt(true);
               return;

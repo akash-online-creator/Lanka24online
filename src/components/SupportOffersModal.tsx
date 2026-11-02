@@ -1,3 +1,4 @@
+import { stopContinuousSupportBell } from '../utils/supportBellRingtone';
 import React, { useState, useEffect } from 'react';
 import { 
   HeartHandshake, 
@@ -58,6 +59,10 @@ export const SupportOffersModal: React.FC<SupportOffersModalProps> = ({
   const [confirmingCancelOffer, setConfirmingCancelOffer] = useState<{ post: HelpPost; reply: PostReply } | null>(null);
 
   useEffect(() => {
+    if (isOpen) {
+      // 🔔 Instantly stop the continuous support bell ringtone when helper details modal is opened!
+      stopContinuousSupportBell();
+    }
     if (targetPost && targetPost.id) {
       setSelectedPostIdFilter(targetPost.id);
     } else {
