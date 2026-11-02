@@ -1698,17 +1698,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           if (boardCategoryFilter === 'emergency' || boardCategoryFilter === 'red_alert' || isEmergTitle) {
             if (onOpenRedAlert) onOpenRedAlert();
             else setIsRedAlertCreateOpen(true);
-          } else if (boardCategoryFilter === 'normal_services' || boardCategoryFilter === 'services' || boardCategoryFilter === 'general') {
-            setIsHelpPostModalOpen(true);
-          } else if (boardCategoryFilter === 'quick_services' || boardCategoryFilter === 'quick') {
-            setIsQuickServiceModalOpen(true);
-          } else if (boardCategoryFilter === 'find_for_me') {
-            setIsFindForMeModalOpen(true);
-          } else if (boardCategoryFilter === 'from_me_to_you') {
-            setIsFromMeToYouModalOpen(true);
-          } else if (boardCategoryFilter === 'professional_services' || boardCategoryFilter === 'professional') {
-            setIsRegisterProfessionalServiceModalOpen(true);
           } else {
+            // Always open the full Category Selection modal on 'Need Help' click
             setIsCategoryModalOpen(true);
           }
         }}
@@ -1915,8 +1906,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setIsFromMeToYouModalOpen(true);
           } else if (catKey === 'professional_services' || catKey === 'professional') {
             setIsRegisterProfessionalServiceModalOpen(true);
-          } else {
+          } else if (catKey === 'quick_services' || catKey === 'quick') {
             setIsQuickServiceModalOpen(true);
+          } else {
+            setSelectedCategory(selectedCat || null);
+            setIsHelpPostModalOpen(true);
           }
         }}
         language={language}

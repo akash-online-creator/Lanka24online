@@ -28,6 +28,17 @@ defaultType?: any;
 
 }
 
+
+const formatNormalizeUrl = (rawUrl?: string): string | undefined => {
+  if (!rawUrl) return undefined;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
 const defaultSchedule: WeekSchedule = {
 
 monday: { isOpen: true, openTime: '08:30', closeTime: '19:00' },
@@ -496,13 +507,13 @@ categoryTag: categoryTag,
 
 email: email.trim() ? email.trim() : undefined,
 
-websiteUrl: websiteUrl.trim() ? websiteUrl.trim() : undefined,
+websiteUrl: formatNormalizeUrl(websiteUrl),
 
-facebookUrl: facebookUrl.trim() ? facebookUrl.trim() : undefined,
+facebookUrl: formatNormalizeUrl(facebookUrl),
 
-tiktokUrl: tiktokUrl.trim() ? tiktokUrl.trim() : undefined,
+tiktokUrl: formatNormalizeUrl(tiktokUrl),
 
-youtubeUrl: youtubeUrl.trim() ? youtubeUrl.trim() : undefined,
+youtubeUrl: formatNormalizeUrl(youtubeUrl),
 
 showWhatsapp: showWhatsapp,
 
@@ -1095,9 +1106,13 @@ className: 'w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 d
 
 null, h('label', { className: 'block text-[11px] font-semibold text-zinc-500 mb-1' }, 'වෙබ් අඩවිය (Website URL)'), h('input', {
 
-type: 'url',
+type: 'text',
+
+inputMode: 'url',
 
 value: websiteUrl,
+
+onBlur: (e: any) => { const n = formatNormalizeUrl(e.target.value); if (n) setWebsiteUrl(n); },
 
 onChange: (e: any) => setWebsiteUrl(e.target.value),
 
@@ -1109,9 +1124,13 @@ className: 'w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 d
 
 null, h('label', { className: 'block text-[11px] font-semibold text-zinc-500 mb-1' }, 'Facebook පිටුව'), h('input', {
 
-type: 'url',
+type: 'text',
+
+inputMode: 'url',
 
 value: facebookUrl,
+
+onBlur: (e: any) => { const n = formatNormalizeUrl(e.target.value); if (n) setFacebookUrl(n); },
 
 onChange: (e: any) => setFacebookUrl(e.target.value),
 
@@ -1123,9 +1142,13 @@ className: 'w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 d
 
 null, h('label', { className: 'block text-[11px] font-semibold text-zinc-500 mb-1' }, 'TikTok පිටුව'), h('input', {
 
-type: 'url',
+type: 'text',
+
+inputMode: 'url',
 
 value: tiktokUrl,
+
+onBlur: (e: any) => { const n = formatNormalizeUrl(e.target.value); if (n) setTiktokUrl(n); },
 
 onChange: (e: any) => setTiktokUrl(e.target.value),
 
@@ -1137,9 +1160,13 @@ className: 'w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 d
 
 { className: 'sm:col-span-2' }, h('label', { className: 'block text-[11px] font-semibold text-zinc-500 mb-1' }, 'YouTube නාලිකාව'), h('input', {
 
-type: 'url',
+type: 'text',
+
+inputMode: 'url',
 
 value: youtubeUrl,
+
+onBlur: (e: any) => { const n = formatNormalizeUrl(e.target.value); if (n) setYoutubeUrl(n); },
 
 onChange: (e: any) => setYoutubeUrl(e.target.value),
 
