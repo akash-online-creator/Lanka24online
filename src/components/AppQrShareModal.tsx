@@ -1,3 +1,4 @@
+import { generateQrDataUrl } from '../utils/qrPayManager';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   QrCode, 
@@ -67,32 +68,36 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
     }
   };
 
-  // https://supporservice.online/ සඳහා QR Code එක සෑදෙන API Url එක
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`;
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    let isMounted = true;
+    generateQrDataUrl(currentAppUrl).then((url) => {
+      if (isMounted) {
+        if (url) {
+          setQrDataUrl(url);
+        } else {
+          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentAppUrl]);
 
   const handleDownloadQr = () => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      canvas.width = 600;
-      canvas.height = 600;
-      if (ctx) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, 600, 600);
-        ctx.drawImage(img, 20, 20, 560, 560);
-        const pngUrl = canvas.toDataURL('image/png');
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pngUrl;
-        downloadLink.download = 'sahaya-sewa-qr-code.png';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-      }
-    };
-    img.src = qrApiUrl;
+    if (!qrDataUrl) return;
+    if (qrDataUrl.startsWith('data:image/')) {
+      const downloadLink = document.createElement('a');
+      downloadLink.href = qrDataUrl;
+      downloadLink.download = 'sahaya-sewa-web-qr.png';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      return;
+    }
+    window.open(qrDataUrl, '_blank');
   };
 
   return (

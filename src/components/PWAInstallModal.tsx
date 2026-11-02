@@ -1,3 +1,4 @@
+import { generateQrDataUrl } from '../utils/qrPayManager';
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -123,12 +124,32 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
   };
 
   const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supporservice.online';
+  const downloadLandingUrl = typeof window !== 'undefined' ? `${window.location.origin}/download` : 'https://supporservice.online/download';
   const apkDownloadUrl = FALLBACK_APK_DIRECT_URL;
+
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    let isMounted = true;
+    // Generate clean, high-resolution local QR data URL (works 100% offline, zero CORS issues)
+    generateQrDataUrl(downloadLandingUrl).then((url) => {
+      if (isMounted) {
+        if (url) {
+          setQrDataUrl(url);
+        } else {
+          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(downloadLandingUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [downloadLandingUrl]);
 
   const handleCopyLink = async () => {
     try {
       if (navigator.clipboard) {
-        await navigator.clipboard.writeText(apkDownloadUrl);
+        await navigator.clipboard.writeText(downloadLandingUrl);
         setIsCopied(true);
         setTimeout(() => setIsCopied(false), 3000);
       }
@@ -141,32 +162,18 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     window.open(directUrl, '_blank');
   };
 
-  // QR Code URL & Download (Direct APK download with High Error Correction &ecc=H)
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(apkDownloadUrl)}&color=064e3b&bgcolor=ffffff&margin=1&ecc=H`;
-
   const handleDownloadQr = () => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      canvas.width = 600;
-      canvas.height = 600;
-      if (ctx) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, 600, 600);
-        ctx.drawImage(img, 20, 20, 560, 560);
-        const pngUrl = canvas.toDataURL('image/png');
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pngUrl;
-        downloadLink.download = 'sahaya-sewa-qr-code.png';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-      }
-    };
-    img.src = qrApiUrl;
+    if (!qrDataUrl) return;
+    if (qrDataUrl.startsWith('data:image/')) {
+      const downloadLink = document.createElement('a');
+      downloadLink.href = qrDataUrl;
+      downloadLink.download = 'sahaya-sewa-download-qr.png';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      return;
+    }
+    window.open(qrDataUrl, '_blank');
   };
 
   return (
@@ -304,17 +311,18 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
 
             {/* QR Graphic Box */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 py-1">
-              <div className="relative p-2.5 bg-white rounded-2xl shadow-md border-2 border-emerald-400 max-w-[150px] aspect-square flex items-center justify-center shrink-0">
-                <img 
-                  src={qrApiUrl} 
-                  alt="Sahaya Sewa Download QR Code" 
-                  className="w-full h-full object-contain rounded-lg"
-                />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="px-1 py-0.5 bg-white rounded-md shadow-xs border border-emerald-600">
-                    <span className="text-[9px] font-black text-emerald-800">🇱🇰 සහය</span>
+              <div className="relative p-2.5 bg-white rounded-2xl shadow-md border-2 border-emerald-400 max-w-[160px] aspect-square flex items-center justify-center shrink-0">
+                {qrDataUrl ? (
+                  <img 
+                    src={qrDataUrl} 
+                    alt="Sahaya Sewa Download QR Code" 
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-bold animate-pulse">
+                    QR Loading...
                   </div>
-                </div>
+                )}
               </div>
 
               {/* QR Action Buttons */}
@@ -346,8 +354,8 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
                   )}
                 </button>
 
-                <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate font-mono bg-slate-100 dark:bg-zinc-900/60 p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800" title={apkDownloadUrl}>
-                  {apkDownloadUrl}
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate font-mono bg-slate-100 dark:bg-zinc-900/60 p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800" title={downloadLandingUrl}>
+                  {downloadLandingUrl}
                 </div>
               </div>
             </div>
