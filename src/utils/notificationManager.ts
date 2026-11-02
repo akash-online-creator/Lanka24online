@@ -232,64 +232,42 @@ export const triggerBrowserNotification = async (notif: AppNotification) => {
   }
 };
 
-// Initial Seed Notifications if empty
-const getInitialSampleNotifications = (): AppNotification[] => [
-  {
-    id: 'notif-seed-1',
-    type: 'emergency_blood',
-    title: '🩸 හදිසි ලේ ඉල්ලීමක්!',
-    message: 'මීගමුව මූලික රෝහල සඳහා O+ රුධිරය හදිසියේ අවශ්‍යයි.',
-    locationName: 'මීගමුව',
-    timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-    isRead: false,
-    badgeText: 'හදිසි',
-    targetModal: 'blood',
-  },
-  {
-    id: 'notif-seed-2',
-    type: 'quick_service',
-    title: '⚡ නව ඉක්මන් සේවාවක්!',
-    message: 'කඩවත ප්‍රදේශයේ නිවසක ජලනල හදිසි අලුත්වැඩියාවක් සඳහා කාර්මිකයෙකු අවශ්‍යයි.',
-    locationName: 'කඩවත',
-    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    isRead: false,
-    badgeText: 'ඉක්මන්',
-    targetModal: 'quick_service',
-  },
-  {
-    id: 'notif-seed-3',
-    type: 'marketplace_price',
-    title: '🏷️ වෙළඳපොල නවතම මිල ගණන්!',
-    message: 'සහල්, පොල් සහ අත්‍යවශ්‍ය ද්‍රව්‍ය සඳහා අද දින අඩුම තොග සහ සිල්ලර මිල ගණන් යාවත්කාලීන විය.',
-    locationName: 'පෑලියගොඩ / කොළඹ',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    isRead: true,
-    badgeText: 'හොඳම මිල',
-    targetModal: 'marketplace',
-  },
-  {
-    id: 'notif-seed-4',
-    type: 'find_for_me',
-    title: '🔍 සොයාදෙන්න ඉල්ලීමක්!',
-    message: 'නිට්ටඹුව අවටින් කුලී පදනම මත කොන්ක්‍රීට් මික්සර් යන්ත්‍රයක් සොයයි.',
-    locationName: 'නිට්ටඹුව',
-    timestamp: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    isRead: true,
-    badgeText: 'සොයාදෙන්න',
-    targetModal: 'find_for_me',
-  },
-];
+// Permanently purge any dummy seed notifications from memory storage upon module load
+try {
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(
+          (n: any) => n && n.id && !n.id.startsWith('notif-seed') && !n.id.includes('sample') && !n.id.includes('dummy')
+        );
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+        }
+      }
+    }
+  }
+} catch {}
 
-// Read notifications from storage
+// Read real notifications from storage (Only genuine live user/system alerts)
 export const getStoredNotifications = (): AppNotification[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const seeds = getInitialSampleNotifications();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(seeds));
-      return seeds;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    
+    // Purge any lingering dummy or seed notifications permanently
+    const realNotifs = parsed.filter(
+      (n: any) => n && n.id && !n.id.startsWith('notif-seed') && !n.id.includes('sample') && !n.id.includes('dummy')
+    );
+    if (realNotifs.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(realNotifs));
+    }
+    return realNotifs;
   } catch {
     return [];
   }

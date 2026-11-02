@@ -420,8 +420,7 @@ export async function askAssistant(
     }
     return {
       text: `${routine.titleSi}\n\n${routine.summarySi}\n\n` +
-        routine.detailedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n') +
-        `\n\n⚡ *[Local Knowledge Resolution: Instant & Zero-Cost]*`,
+        routine.detailedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
       actions,
       quickChips: ['GPS ගැටලුව', 'මුරපදය අමතකයි', 'ගිණුම අනුමත කිරීම', 'පරිපාලක අමතන්න'],
     };
@@ -432,7 +431,7 @@ export async function askAssistant(
   if (cachedAi) {
     const extractedActions = resolveActionsFromText(clean, userLang);
     return {
-      text: `${cachedAi.response}\n\n⚡ *[Semantic Cache: Zero-Token Cached Response (Hit #${cachedAi.hitCount})]*`,
+      text: cachedAi.response,
       actions: extractedActions.actions,
       quickChips: extractedActions.chips,
     };

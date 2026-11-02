@@ -52,16 +52,12 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
 
   // Dual-party language states
   const [userLang, setUserLang] = useState<Language>(language || 'si');
-  const [otherPartyLang, setOtherPartyLang] = useState<Language>(() => {
-    if (language === 'en') return 'si';
-    return 'en';
-  });
+  const [otherPartyLang, setOtherPartyLang] = useState<Language>('si');
   const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (language) {
       setUserLang(language);
-      setOtherPartyLang(language === 'en' ? 'si' : 'en');
     }
   }, [language]);
 

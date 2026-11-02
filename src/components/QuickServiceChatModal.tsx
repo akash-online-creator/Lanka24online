@@ -400,10 +400,53 @@ if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: dict
 const effectiveSource = msgDetected === 'singlish' ? 'si' : msgDetected; if (effectiveSource !== userLang) { translateWithGoogle(msg.text, userLang).then((gRes) => {
 if (isMounted && gRes && gRes.trim()) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: gRes.trim() })); } }).catch(() => {});
 } }); return () => { isMounted = false; }; }, [isOpen, activePartnerMessages, userLang]);
-const detectedOtherPartyLang = useMemo((): Language => { for (let i = activePartnerMessages.length - 1; Math.max(i, 0) === i; i--) {
-const m: any = activePartnerMessages[i]; if (m && !isMeMessage(m)) { if (m.senderLang === 'si' ? true : m.senderLang === 'en' ? true : m.senderLang === 'ta') {
-return m.senderLang as Language; } const det = detectLanguageOfText(m.text ? m.text : ''); if (det === 'en') return 'en'; if (det === 'ta') return 'ta';
-return 'si'; } } return userLang === 'en' ? 'si' : 'en'; }, [activePartnerMessages, userLang]);
+const [manualOtherPartyLang, setManualOtherPartyLang] = useState<string>(() => {
+  if (typeof localStorage !== 'undefined' && selectedPartnerKey) {
+    return localStorage.getItem('sahaya_partner_lang_' + selectedPartnerKey) || 'auto';
+  }
+  return 'auto';
+});
+
+useEffect(() => {
+  if (selectedPartnerKey && typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem('sahaya_partner_lang_' + selectedPartnerKey);
+    setManualOtherPartyLang(saved || 'auto');
+  }
+}, [selectedPartnerKey]);
+
+const handleSelectOtherPartyLanguage = (langVal: string) => {
+  setManualOtherPartyLang(langVal);
+  if (selectedPartnerKey && typeof localStorage !== 'undefined') {
+    if (langVal === 'auto') {
+      localStorage.removeItem('sahaya_partner_lang_' + selectedPartnerKey);
+    } else {
+      localStorage.setItem('sahaya_partner_lang_' + selectedPartnerKey, langVal);
+    }
+  }
+};
+
+const detectedOtherPartyLang = useMemo((): Language => {
+  if (manualOtherPartyLang === 'si' || manualOtherPartyLang === 'en' || manualOtherPartyLang === 'ta') {
+    return manualOtherPartyLang as Language;
+  }
+  for (let i = activePartnerMessages.length - 1; Math.max(i, 0) === i; i--) {
+    const m: any = activePartnerMessages[i];
+    if (m && !isMeMessage(m)) {
+      if (m.senderLang === 'si' || m.senderLang === 'en' || m.senderLang === 'ta') {
+        return m.senderLang as Language;
+      }
+      const rawText = m.text ? String(m.text).trim() : '';
+      if (/[඀-෿]/.test(rawText)) return 'si';
+      if (/[஀-௿]/.test(rawText)) return 'ta';
+      const det = detectLanguageOfText(rawText);
+      if (det === 'singlish' || det === 'si') return 'si';
+      if (det === 'ta') return 'ta';
+      if (det === 'en' && rawText.length > 15) return 'en';
+      return 'si';
+    }
+  }
+  return 'si';
+}, [activePartnerMessages, userLang, manualOtherPartyLang]);
 useEffect(() => { if (isOpen) { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); } }, [activePartnerMessages.length, selectedPartnerKey, isOpen]);
 if (!isOpen ? true : !post ? true : !currentUser) return null;
 const isConfirmed = Boolean(post.isConfirmed);
@@ -622,9 +665,19 @@ h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, h( 'div', { classN
 h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව (ස්ථිරයි):'), h( 'select', { value: userLang, onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
 className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
 }, h('option', { value: 'si' }, 'සිංහල 🇱🇰'), h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), h('option', { value: 'en' }, 'English 🇬🇧')
-) ), h( 'div', { className: 'flex items-center gap-1.5 bg-slate-800/90 border border-slate-600/60 px-2.5 py-1 rounded-xl text-xs select-none opacity-90',
-title: 'අනෙක් පාර්ශ්වයේ භාෂාව ඔබට වෙනස් කළ නොහැක' }, h(Lock, { className: 'w-3 h-3 text-amber-400 shrink-0' }), h('span', { className: 'text-[10px] text-slate-300 font-bold' }, 'අනෙක් පාර්ශ්වය:'),
-h('span', { className: 'text-xs font-black text-amber-300' }, otherLangInfo.badge) ) ), h( 'div', { className: 'flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-xl font-bold' },
+) ), h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
+h('span', { className: 'text-[10px] text-teal-300 font-bold' }, 'අනෙක් පාර්ශ්වය:'),
+h( 'select', {
+  value: manualOtherPartyLang,
+  onChange: (e: any) => handleSelectOtherPartyLanguage(e.target.value),
+  className: 'bg-teal-900 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer',
+  title: 'අනෙක් පාර්ශ්වයේ භාෂාව තෝරන්න (Auto හෝ නිශ්චිත භාෂාව)'
+},
+  h('option', { value: 'auto' }, 'ස්වයංක්‍රීය (' + otherLangInfo.badge + ')'),
+  h('option', { value: 'si' }, 'සිංහල 🇱🇰'),
+  h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'),
+  h('option', { value: 'en' }, 'English 🇬🇧')
+) ) ), h( 'div', { className: 'flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-xl font-bold' },
 h(Sparkles, { className: 'w-3 h-3 text-amber-300' }), h('span', null, 'Auto-Translate (' + userLangInfo.nativeName + ')') ) ),
 pinnedMessage ? h('div', {
   className: 'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn'

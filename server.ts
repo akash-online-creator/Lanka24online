@@ -683,8 +683,9 @@ async function startServer() {
   // -------------------------------------------------------------
   const GEMINI_MODELS = [
     'gemini-2.5-flash',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
     'gemini-2.5-pro',
   ];
   app.post('/api/chat', aiRateLimiter, async (req: any, res: any) => {
@@ -807,21 +808,42 @@ Guidelines:
 - Tone: Warm, empathetic, respectful, intelligent, and encouraging.
 - Mode: ${mode}. User's Current Location: ${locationContext || 'Sri Lanka'}. Always address what the user actually asked first!`;
 
-      const contents: any[] = [];
-      if (Array.isArray(conversationHistory)) {
-        for (const h of conversationHistory) {
-          if (h && h.text) {
-            contents.push({
-              role: h.role === 'model' ? 'model' : 'user',
-              parts: [{ text: String(h.text) }],
-            });
-          }
+      // Sanitize multi-turn conversation history for Gemini API:
+      // 1. Must alternate user / model
+      // 2. Must begin with a 'user' turn (skip leading model turns like welcome greeting)
+      // 3. Consecutive turns with same role must be merged
+      const rawHistory = Array.isArray(conversationHistory) ? conversationHistory : [];
+      const sanitizedTurns: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+      for (const h of rawHistory) {
+        if (!h || !h.text) continue;
+        const role: 'user' | 'model' = h.role === 'model' ? 'model' : 'user';
+        if (sanitizedTurns.length === 0 && role === 'model') {
+          continue; // Gemini API requires the first turn in contents to have role: 'user'
+        }
+        const lastTurn = sanitizedTurns[sanitizedTurns.length - 1];
+        if (lastTurn && lastTurn.role === role) {
+          lastTurn.parts[0].text += `\n${String(h.text)}`;
+        } else {
+          sanitizedTurns.push({
+            role,
+            parts: [{ text: String(h.text) }],
+          });
         }
       }
-      contents.push({
-        role: 'user',
-        parts: [{ text: String(message) }],
-      });
+
+      // Append current message as the final user turn
+      const lastTurn = sanitizedTurns[sanitizedTurns.length - 1];
+      if (lastTurn && lastTurn.role === 'user') {
+        lastTurn.parts[0].text += `\n${String(message)}`;
+      } else {
+        sanitizedTurns.push({
+          role: 'user',
+          parts: [{ text: String(message) }],
+        });
+      }
+
+      const contents = sanitizedTurns;
 
       let reply = '';
       let lastError: any = null;
