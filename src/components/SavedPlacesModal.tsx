@@ -226,14 +226,12 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
       setIsPublic(true);
       setSaveSuccessMsg(null);
 
-      // Real-time sync with Firebase Cloud Firestore
+      // Real-time sync with Firebase Cloud Firestore (without restrictive orderBy to never drop documents)
       try {
-        const q = query(collection(db, 'saved_places'), orderBy('createdAtMs', 'desc'));
-        const unsubscribe = onSnapshot(
-          q,
-          (snapshot) => {
-            const firestorePlaces: SavedPlaceItem[] = [];
-            snapshot.forEach((docSnap) => {
+        const handleSnapshot = (snapshot: any) => {
+          const firestorePlaces: SavedPlaceItem[] = [];
+          if (snapshot && snapshot.forEach) {
+            snapshot.forEach((docSnap: any) => {
               const data = docSnap.data();
               const placeIsPublic = data.isPublic !== false;
               const isMyPlace = data.userId === currentUserId;
@@ -252,29 +250,45 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                   userName: data.userName || 'ප්‍රජා සාමාජිකයෙක්',
                   userPhone: data.userPhone,
                   createdAt: data.createdAt,
-                  createdAtMs: data.createdAtMs || Date.now(),
+                  createdAtMs: Number(data.createdAtMs) || (data.createdAt ? new Date(data.createdAt).getTime() : Date.now()),
                 });
               }
             });
+          }
 
-            // Merge with default community places
-            const idSet = new Set(firestorePlaces.map((p) => p.id));
-            const merged = [
-              ...firestorePlaces,
-              ...DEFAULT_COMMUNITY_PLACES.filter((p) => !idSet.has(p.id)),
-            ];
-
-            setPlaces(merged);
+          // Merge Firestore places with existing local places so locally saved places are NEVER erased
+          setPlaces((prev) => {
+            const map = new Map<string, SavedPlaceItem>();
+            DEFAULT_COMMUNITY_PLACES.forEach((p) => map.set(p.id, p));
+            (prev || []).forEach((p) => { if (p && p.id) map.set(p.id, p); });
+            firestorePlaces.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+            const merged = Array.from(map.values()).sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
             try {
               localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
             } catch {}
-          },
-          (err) => {
-            console.debug('Firestore saved_places subscription notice:', err);
-          }
+            return merged;
+          });
+        };
+
+        const unsubscribe1 = onSnapshot(
+          collection(db, 'saved_places'),
+          handleSnapshot,
+          (err) => console.debug('Firestore saved_places subscription notice:', err)
         );
 
-        return () => unsubscribe();
+        let unsubscribe2 = () => {};
+        if (fallbackDb && fallbackDb !== db) {
+          unsubscribe2 = onSnapshot(
+            collection(fallbackDb, 'saved_places'),
+            handleSnapshot,
+            () => {}
+          );
+        }
+
+        return () => {
+          unsubscribe1();
+          unsubscribe2();
+        };
       } catch (e) {
         console.debug('Firestore initialization note:', e);
       }
@@ -345,14 +359,10 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
         } catch {}
       } else {
-        // Add new place to Firestore
-        const docRef = await addDoc(collection(db, 'saved_places'), {
-          ...placeData,
-          serverTimestamp: serverTimestamp(),
-        });
-
+        // Immediately save locally so data is NEVER missing or delayed
+        const localTempId = `plc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const newPlaceItem: SavedPlaceItem = {
-          id: docRef.id,
+          id: localTempId,
           ...placeData,
           accuracyMeters: gpsAccuracy || undefined,
         };
@@ -362,6 +372,24 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
         try {
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
         } catch {}
+
+        // Add new place to Firestore (Cloud sync)
+        try {
+          const docRef = await addDoc(collection(db, 'saved_places'), {
+            ...placeData,
+            serverTimestamp: serverTimestamp(),
+          });
+          if (docRef && docRef.id) {
+            newPlaceItem.id = docRef.id;
+            const finalizedList = places.map((p) => p.id === localTempId ? newPlaceItem : p);
+            setPlaces(finalizedList);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(finalizedList));
+            } catch {}
+          }
+        } catch (cloudErr) {
+          console.debug('Place saved locally, cloud sync notice:', cloudErr);
+        }
       }
 
       // Reset Form & Refresh View Tab

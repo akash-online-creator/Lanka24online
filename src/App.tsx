@@ -1,3 +1,13 @@
+import { 
+  getStoredHelpPosts, 
+  saveHelpPostsToStorage, 
+  getStoredUsers, 
+  saveUsersToStorage, 
+  getStoredRedAlerts, 
+  saveRedAlertsToStorage, 
+  getStoredIssues, 
+  saveIssuesToStorage 
+} from "./utils/storage";
 import { removeNotificationsForPost } from "./utils/notificationManager";
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Language, Theme, HelpPost, Issue, RedAlertItem } from './types';
@@ -134,15 +144,20 @@ export const App: React.FC = () => {
   }, [theme]);
 
   // Application Data State (Initial load filtered against permanent deletion blacklist)
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
-    try {
-      localStorage.removeItem('sahaya_help_posts');
-    } catch {}
-    return filterNonDeletedPosts(initialHelpPosts);
+  const [users, setUsers] = useState<User[]>(() => {
+    const stored = getStoredUsers();
+    if (stored.length > 0) return deduplicateUsers([...stored, ...initialUsers]);
+    return initialUsers;
   });
-  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>([]);
-  const [issues, setIssues] = useState<Issue[]>([]);
+  const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
+    return getStoredHelpPosts();
+  });
+  const [redAlerts, setRedAlerts] = useState<RedAlertItem[]>(() => {
+    return getStoredRedAlerts();
+  });
+  const [issues, setIssues] = useState<Issue[]>(() => {
+    return getStoredIssues();
+  });
 
   // Current User Session & Navigation View
 
@@ -186,12 +201,11 @@ export const App: React.FC = () => {
     try {
       removeNotificationsForPost(postId, postObj?.postCode);
     } catch {}
-    try {
-      localStorage.removeItem('sahaya_help_posts');
-    } catch {}
-
-    // 4. Real-time UI State Refresh
-    setHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
+    setHelpPosts((prev) => {
+      const next = filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId));
+      saveHelpPostsToStorage(next);
+      return next;
+    });
     window.dispatchEvent(new Event('sahaya_post_deleted'));
 
     // 5. Firestore Database එකෙන් සදහටම මකා දැමීම
@@ -255,32 +269,41 @@ export const App: React.FC = () => {
     const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
-      if (dbUsers) {
+      if (Array.isArray(dbUsers)) {
         const nonDeleted = filterNonDeletedUsers(dbUsers);
         const nonDeletedInitials = initialUsers.filter((u) => !isUserPermanentlyDeleted(u));
-        setUsers(deduplicateUsers([...nonDeleted, ...nonDeletedInitials]));
+        const mergedUsers = deduplicateUsers([...nonDeleted, ...nonDeletedInitials]);
+        setUsers(mergedUsers);
+        saveUsersToStorage(mergedUsers);
       }
     });
-
     const unsubscribePosts = subscribeToHelpPosts((dbPosts) => {
-      // Purge stale local memory cache
-      try {
-        localStorage.removeItem('sahaya_help_posts');
-      } catch {}
-
-      if (dbPosts) {
-        // Firestore is the authoritative source of truth: honor all deletions permanently
-        const sanitized = filterNonDeletedPosts(dbPosts);
-        setHelpPosts(sanitized);
+      if (Array.isArray(dbPosts)) {
+        const currentLocal = getStoredHelpPosts();
+        const map = new Map<string, HelpPost>();
+        currentLocal.forEach((p) => { if (p && p.id) map.set(String(p.id), p); });
+        dbPosts.forEach((p) => { if (p && p.id) map.set(String(p.id), p); });
+        const merged = filterNonDeletedPosts(Array.from(map.values())).sort((a: any, b: any) => {
+          const tA = Number(a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0));
+          const tB = Number(b.createdAtMs || (b.createdAt ? new Date(b.createdAt).getTime() : 0));
+          return tB - tA;
+        });
+        setHelpPosts(merged);
+        saveHelpPostsToStorage(merged);
       }
     });
-
     const unsubscribeAlerts = subscribeToRedAlerts((alerts) => {
-      setRedAlerts(alerts || []);
+      if (Array.isArray(alerts)) {
+        const filtered = filterNonDeletedRedAlerts(alerts);
+        setRedAlerts(filtered);
+        saveRedAlertsToStorage(filtered);
+      }
     });
-
     const unsubscribeIssues = subscribeToIssuesFromFirestore((dbIssues) => {
-      setIssues(dbIssues || []);
+      if (Array.isArray(dbIssues)) {
+        setIssues(dbIssues);
+        saveIssuesToStorage(dbIssues);
+      }
     });
 
     return () => {

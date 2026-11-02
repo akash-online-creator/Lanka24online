@@ -209,9 +209,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
   const savedStorageKey = `sahaya_saved_posts_${userIdentifier || 'guest'}`;
   const [savedPostIds, setSavedPostIds] = useState<string[]>(() => {
     try {
-      const stored = localStorage.getItem(savedStorageKey);
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) {
+      const userStored = userIdentifier ? localStorage.getItem(`sahaya_saved_posts_${userIdentifier}`) : null;
+      const guestStored = localStorage.getItem("sahaya_saved_posts_guest");
+      const uList = userStored ? JSON.parse(userStored) : [];
+      const gList = guestStored ? JSON.parse(guestStored) : [];
+      return Array.from(new Set([...(Array.isArray(uList) ? uList : []), ...(Array.isArray(gList) ? gList : [])]));
+    } catch {
       return [];
     }
   });
@@ -556,8 +559,12 @@ export const HelpRequestsPage: React.FC<HelpRequestsPageProps> = ({
       result = result.filter((p) => isEmergencyOrHighPriority(p));
     } else if (activeFeedTab === 'quick_services') {
       result = result.filter((p) => isQuickService(p));
-    } else if (activeFeedTab === 'saved') {
-      result = result.filter((p) => p?.id && savedPostIds.includes(p.id));
+    } else if (activeFeedTab === 'saved' || boardCategoryFilter === 'saved') {
+      // 📌 සුරැකි / ගබඩාකල දැන්වීම්: සියලුම සුරැකි දැන්වීම් සම්පූර්ණයෙන්ම ආරක්ෂිතව පෙන්වීම
+      const savedSet = new Set(savedPostIds);
+      result = (helpPosts || []).filter(
+        (p) => p && p.id && savedSet.has(p.id) && !isPostPermanentlyDeleted(p.id) && !p.isDeleted && p.status !== 'deleted'
+      );
     }
 
     // Sort strictly by:

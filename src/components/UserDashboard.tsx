@@ -1,3 +1,4 @@
+import { getStoredHelpPosts, saveHelpPostsToStorage } from "../utils/storage";
 import { startContinuousSupportBell, stopContinuousSupportBell, isSupportBellRinging, SupportAlertInfo } from '../utils/supportBellRingtone';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { User, Language, LocationOption, HelpPost, PostReply, Theme, CategoryItem, TagItem, ProfessionalService, ServiceReview, RedAlertItem, Issue } from '../types';
@@ -282,13 +283,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   // Synchronize local help posts with incoming props
   const [localHelpPosts, setLocalHelpPosts] = useState<HelpPost[]>(() => {
-    return filterNonDeletedPosts(propHelpPosts || initialHelpPosts);
+    if (propHelpPosts && propHelpPosts.length > 0) return filterNonDeletedPosts(propHelpPosts);
+    const stored = getStoredHelpPosts();
+    if (stored && stored.length > 0) return stored;
+    return filterNonDeletedPosts(initialHelpPosts);
   });
 
   useEffect(() => {
-    if (propHelpPosts) {
+    if (propHelpPosts && propHelpPosts.length > 0) {
       const filtered = filterNonDeletedPosts(propHelpPosts);
       setLocalHelpPosts(filtered);
+      saveHelpPostsToStorage(filtered);
       setSelectedPostForDetail((currentSelected) => {
         if (!currentSelected) return null;
         const found = filtered.find((item) => Boolean(item && item.id === currentSelected.id));
@@ -362,6 +367,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       if (Array.isArray(cloudPosts)) {
         const filtered = filterNonDeletedPosts(cloudPosts);
         setLocalHelpPosts(filtered);
+        saveHelpPostsToStorage(filtered);
         if (typeof setHelpPosts === 'function') {
           setHelpPosts(filtered);
         }
@@ -817,7 +823,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       postType: (newPost as any).postType || (resolvedPostCategory === 'quick_services' ? 'quick_service' : 'help_post'),
     };
 
-    setLocalHelpPosts((prev) => [fullPost, ...(prev || [])]);
+    setLocalHelpPosts((prev) => {
+      const next = [fullPost, ...(prev || []).filter((p) => p && p.id !== fullPost.id)];
+      saveHelpPostsToStorage(next);
+      return next;
+    });
     if (typeof onAddPost === 'function') {
       onAddPost(fullPost);
     }
@@ -911,7 +921,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     } catch {}
 
     // 4. Immediately remove from local state
-    setLocalHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
+    setLocalHelpPosts((prev) => {
+      const next = filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId));
+      saveHelpPostsToStorage(next);
+      return next;
+    });
     try {
       window.dispatchEvent(new Event('sahaya_post_deleted'));
     } catch {}
