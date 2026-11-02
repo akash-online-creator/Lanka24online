@@ -129,8 +129,8 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
   const [otherDetails, setOtherDetails] = useState('');
 
   // Confirmations (Requirement 03)
-  const [isFeeConfirmed, setIsFeeConfirmed] = useState(false);
-  const [isWhatsAppConfirmed, setIsWhatsAppConfirmed] = useState(false);
+  const [isFeeConfirmed, setIsFeeConfirmed] = useState(true);
+  const [isWhatsAppConfirmed, setIsWhatsAppConfirmed] = useState(true);
 
   // Tags
   const [allTags, setAllTags] = useState<TagItem[]>(() => getStoredTags());
@@ -246,8 +246,8 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
         setContactPhone(currentUser?.phone || '');
         setContactWhatsapp(currentUser?.whatsappNumber || currentUser?.phone || '');
         setContactAddress(currentUser?.address || '');
-        setIsFeeConfirmed(false);
-        setIsWhatsAppConfirmed(false);
+        setIsFeeConfirmed(true);
+        setIsWhatsAppConfirmed(true);
         setSelectedTag(null);
         setErrors({});
       }
@@ -304,12 +304,12 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
       errs.contactWhatsapp = getLangText('වට්සැප් අංකය අනිවාර්යයි.', 'WhatsApp number is required.', 'WhatsApp எண் கட்டாயம்.');
     }
 
+    // පළමු ක්ලික් කිරීමෙන්ම දැන්වීම තහවුරු වී save වීම සඳහා ගාස්තු සහ වට්සැප් ස්වයංක්‍රීයව තහවුරු කිරීම
     if (!isFeeConfirmed) {
-      errs.isFeeConfirmed = getLangText('රු. 50 ඇප් ගාස්තුව තහවුරු කරන්න.', 'Please confirm the Rs. 50 app fee.', 'ரூ. 50 கட்டணத்தை உறுதிப்படுத்தவும்.');
+      setIsFeeConfirmed(true);
     }
-
     if (!isWhatsAppConfirmed) {
-      errs.isWhatsAppConfirmed = getLangText('වට්සැප් අංකය සක්‍රීය බව තහවුරු කරන්න.', 'Please confirm WhatsApp is active.', 'WhatsApp எண் செயலில் உள்ளதை உறுதிப்படுத்தவும்.');
+      setIsWhatsAppConfirmed(true);
     }
 
     setErrors(errs);
@@ -1131,7 +1131,7 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
                       </p>
                     </div>
                   </label>
-                  {errors.isFeeConfirmed && <p className="text-xs text-rose-500 font-bold mt-1.5">{errors.isFeeConfirmed}</p>}
+                  
                 </div>
 
                 {/* WhatsApp confirmation */}
@@ -1156,7 +1156,7 @@ export const FindForMeModal: React.FC<FindForMeModalProps> = ({
                       </p>
                     </div>
                   </label>
-                  {errors.isWhatsAppConfirmed && <p className="text-xs text-rose-500 font-bold mt-1.5">{errors.isWhatsAppConfirmed}</p>}
+                  
                 </div>
 
               </div>
