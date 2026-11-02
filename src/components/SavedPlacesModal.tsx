@@ -403,6 +403,48 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
     }
   };
 
+  // 🧭 Turn-by-Turn Navigation Handler
+  const handleNavigateToPlace = (place: SavedPlaceItem) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&destination_place_id=&travelmode=driving`;
+    window.open(url, '_blank');
+  };
+
+  // 🔗 Share Handler for Saved Place (especially Private places)
+  const handleSharePlace = async (place: SavedPlaceItem) => {
+    const mapsLink = `https://maps.google.com/?q=${place.lat},${place.lng}`;
+    const descText = place.description ? `\n📝 විස්තර: ${place.description}` : '';
+    const shareTitle = `📍 ${place.name} (පෞද්ගලික ස්ථානය)`;
+    const shareText = `🔒 සුරකින ලද පෞද්ගලික ස්ථානය:\n📍 ස්ථානය: ${place.name}${descText}\n📌 ඛණ්ඩාංක (Coordinates): ${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}\n🗺️ Google Maps සබැඳිය: ${mapsLink}\n(සහය සේවා - Lanka24online)`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: mapsLink,
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareText);
+        setSharedToast(getLang('ස්ථානයේ විස්තර සහ Link එක Copy විය! ඔබට කැමති කෙනෙකුට යැවිය හැක.', 'Place link copied to clipboard!', 'இணைப்பு நகலெடுக்கப்பட்டது!'));
+        setTimeout(() => setSharedToast(null), 4000);
+      } else {
+        const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+        window.open(waUrl, '_blank');
+      }
+    } catch {
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+      window.open(waUrl, '_blank');
+    }
+  };
+
   // Filtered Places list calculation
   const filteredPlaces = useMemo(() => {
     return places.filter((place) => {
@@ -459,6 +501,23 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
           <div className="mx-6 mt-4 p-3 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 text-sm rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-2 animate-slide-down">
             <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <span>{saveSuccessMsg}</span>
+          </div>
+        )}
+
+        {/* Share Toast Banner */}
+        {sharedToast && (
+          <div className="mx-6 mt-4 p-3 bg-amber-500 text-slate-950 text-xs sm:text-sm font-black rounded-xl shadow-md flex items-center justify-between gap-2 animate-slide-down">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-slate-950 shrink-0" />
+              <span>{sharedToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSharedToast(null)}
+              className="p-1 hover:bg-black/10 rounded-md cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -674,6 +733,51 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
                     <div className="text-[11px] text-slate-400 flex items-center gap-3 pt-1">
                       <span>👤 {place.userName}</span>
                       <span>📍 {place.lat.toFixed(4)}, {place.lng.toFixed(4)}</span>
+                    </div>
+
+                    {/* 🧭 Details Box Action Buttons: Navigation & Share */}
+                    <div className="pt-2.5 flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleNavigateToPlace(place)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                        title={getLang('Google Maps මගින් මාර්ගය පෙන්වන්න (Turn-by-turn Navigation)', 'Navigate via Google Maps', 'வழிசெலுத்து')}
+                      >
+                        <Navigation className="w-3.5 h-3.5 fill-current" />
+                        <span>{getLang('මාර්ගය (Navigation)', 'Navigate', 'வழிசெலுத்து')}</span>
+                      </button>
+
+                      {!place.isPublic && (
+                        <button
+                          type="button"
+                          onClick={() => handleSharePlace(place)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-bold shadow-xs transition-all cursor-pointer"
+                          title={getLang('පෞද්ගලික ස්ථානය මිතුරෙකුට Share කරන්න (WhatsApp / Link)', 'Share Private Place', 'பகிரவும்')}
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>{getLang('Share කරන්න', 'Share', 'பகிர்')}</span>
+                        </button>
+                      )}
+
+                      {onSelectSavedLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectSavedLocation({
+                              nameSi: place.name,
+                              nameEn: place.name,
+                              nameTa: place.name,
+                              lat: place.lat,
+                              lng: place.lng,
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer"
+                          title={getLang('සිතියමේ තෝරන්න', 'Select on Map', 'வரைபடத்தில் தேர்ந்தெடு')}
+                        >
+                          <Compass className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>{getLang('තෝරන්න', 'Select', 'தேர்ந்தெடு')}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
