@@ -347,17 +347,23 @@ setIsDeletingLocal(true);
 if (targetId) {
 addDeletedPostId(targetId);
 try {
-await updateHelpPostInFirestore(targetId, {
-isDeleted: true,
-status: 'deleted',
-deletedAt: new Date().toISOString()
-}).catch(() => {});
-await deleteHelpPostFromFirestore(targetId).catch(() => {});
+  window.dispatchEvent(new Event('sahaya_post_deleted'));
+} catch {}
+try {
+  await updateHelpPostInFirestore(targetId, {
+    isDeleted: true,
+    status: 'deleted',
+    deletedAt: new Date().toISOString()
+  }).catch(() => {});
+  await deleteHelpPostFromFirestore(targetId).catch(() => {});
 } catch (err) {}
 }
 if (onDeletePost) {
-onDeletePost(targetId ? targetId : post);
+  onDeletePost(targetId ? targetId : post);
 }
+try {
+  window.dispatchEvent(new Event('sahaya_post_deleted'));
+} catch {}
 };
 const handleEditClick = (e: React.MouseEvent) => {
 e.stopPropagation();

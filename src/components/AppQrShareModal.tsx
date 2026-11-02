@@ -152,7 +152,7 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
         <div className="flex flex-col items-center justify-center space-y-4 py-2">
           <div className="relative p-4 bg-white rounded-3xl shadow-2xl border-4 border-emerald-400/80 max-w-[280px] sm:max-w-[320px] aspect-square flex flex-col items-center justify-center">
             <img 
-              src={qrApiUrl}
+              src={qrDataUrl || ("https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(currentAppUrl) + "&color=064e3b&bgcolor=ffffff&margin=1")}
               alt="Sahaya Sewa Web App QR Code" 
               className="w-full h-full object-contain rounded-xl"
             />

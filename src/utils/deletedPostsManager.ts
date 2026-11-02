@@ -508,11 +508,13 @@ export function downloadPostBackupJson(post: HelpPost, user?: User | null): bool
 
 export function filterNonDeletedPosts<T extends { id?: string; isDeleted?: boolean; status?: string }>(posts: T[]): T[] {
   if (!Array.isArray(posts)) return [];
-  const deletedIds = new Set(getStoredDeletedPostIds());
+  const deletedIds = new Set(getStoredDeletedPostIds().map(String));
   return posts.filter((p) => {
     if (!p || !p.id) return false;
-    if (deletedIds.has(p.id) || p.isDeleted || p.status === 'deleted') return false;
-    if (DUMMY_POST_IDS.has(p.id)) return false;
+    const pId = String(p.id);
+    if (deletedIds.has(pId)) return false;
+    if (p.isDeleted === true || (p as any).isDeleted === 'true' || p.status === 'deleted' || p.status === 'archived') return false;
+    if (DUMMY_POST_IDS.has(pId)) return false;
     const pAny = p as any;
     if (pAny.postCode && DUMMY_POST_CODES.has(String(pAny.postCode))) return false;
     if (pAny.isDummy || pAny.isSample || pAny.isDemoPost) return false;

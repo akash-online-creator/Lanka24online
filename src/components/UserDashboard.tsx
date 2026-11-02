@@ -130,7 +130,9 @@ import {
   ExternalLink, 
   TrendingUp, 
   Zap, 
-  Mic 
+  Mic,
+  Bell,
+  ArrowRight
 } from 'lucide-react';
 
 export interface UserDashboardProps {
@@ -357,7 +359,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     });
 
     const unsubPosts = subscribeToHelpPosts((cloudPosts: any) => {
-      if (Array.isArray(cloudPosts) && cloudPosts.length !== 0) {
+      if (Array.isArray(cloudPosts)) {
         const filtered = filterNonDeletedPosts(cloudPosts);
         setLocalHelpPosts(filtered);
         if (typeof setHelpPosts === 'function') {
@@ -366,8 +368,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     });
 
+    const handleGlobalPostDeleted = () => {
+      setLocalHelpPosts((prev) => filterNonDeletedPosts(prev || []));
+    };
+    window.addEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
     window.addEventListener('sahaya_sync_all_services', handleSync);
     return () => {
+      window.removeEventListener('sahaya_post_deleted', handleGlobalPostDeleted);
       window.removeEventListener('sahaya_sync_all_services', handleSync);
       unsubPro();
       unsubPosts();
@@ -875,7 +882,10 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     } catch {}
 
     // 4. Immediately remove from local state
-    setLocalHelpPosts((prev) => (prev || []).filter((p) => p && p.id !== postId));
+    setLocalHelpPosts((prev) => filterNonDeletedPosts((prev || []).filter((p) => p && p.id !== postId)));
+    try {
+      window.dispatchEvent(new Event('sahaya_post_deleted'));
+    } catch {}
 
     if (propOnDeletePost) {
       propOnDeletePost(postId);
@@ -2192,7 +2202,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         isOpen={Boolean(deletingPost)}
         onClose={() => setDeletingPost(null)}
         onConfirm={handleConfirmDeletePost}
-        postId={deletingPost?.id}
+        post={typeof deletingPost === 'object' ? deletingPost : (helpPosts || []).find((p) => p && p.id === deletingPost)}
+        postId={typeof deletingPost === 'string' ? deletingPost : deletingPost?.id}
         language={language}
       />
 

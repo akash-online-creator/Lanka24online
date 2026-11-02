@@ -126,6 +126,7 @@ export const SavedPlacesModal: React.FC<SavedPlacesModalProps> = ({
   currentUser,
   currentLocation,
   language = 'si',
+  onSelectSavedLocation,
 }) => {
   // Effective active user (from props or localStorage session)
   const activeUser = currentUser || (() => {

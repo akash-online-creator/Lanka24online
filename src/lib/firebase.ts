@@ -581,8 +581,13 @@ export function filterAndPurgeDummySnapDocs(snap: any): any[] {
   if (!snap) return valid;
   if (!(snap as QuerySnapshot<DocumentData>).docs) return valid;
   for (const d of (snap as QuerySnapshot<DocumentData>).docs) {
-    const item = { id: d.id, ...d.data() };
+    const data = d.data();
+    const item: any = { id: d.id, ...data };
     if (isBuiltInDummyRecord(item)) {
+      try {
+        deleteDoc(d.ref).catch(() => {});
+      } catch (e) {}
+    } else if (item.isDeleted === true || (item as any).isDeleted === 'true' || item.status === 'deleted' || item.status === 'archived') {
       try {
         deleteDoc(d.ref).catch(() => {});
       } catch (e) {}
@@ -625,7 +630,9 @@ export function subscribeToHelpPosts(callback: (posts: any[]) => void): () => vo
   const emitMerged = () => {
     const map = new Map();
     [...fallbackPosts, ...legacyPosts, ...primaryPosts].forEach((p) => {
-      if (p && p.id) map.set(String(p.id), p);
+      if (p && p.id && !p.isDeleted && p.status !== 'deleted' && p.status !== 'archived') {
+        map.set(String(p.id), p);
+      }
     });
     const sorted = Array.from(map.values()).sort((a: any, b: any) => {
       const tA = a.createdAtMs || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -767,7 +774,21 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
   try {
     const docRef = doc(db, POSTS_COLLECTION, postId);
 
-    // 1. Storage media cleanup if any
+    // 1. Soft-delete across all primary and fallback databases immediately so concurrent queries and snapshots discard it
+    const softDeleteData = {
+      isDeleted: true,
+      status: "deleted",
+      deletedAt: new Date().toISOString(),
+      deletedAtServer: serverTimestamp(),
+    };
+    await Promise.allSettled([
+      setDoc(doc(db, POSTS_COLLECTION, postId), softDeleteData, { merge: true }),
+      setDoc(doc(db, "helpPosts", postId), softDeleteData, { merge: true }),
+      fallbackDb !== db ? setDoc(doc(fallbackDb, POSTS_COLLECTION, postId), softDeleteData, { merge: true }) : Promise.resolve(),
+      fallbackDb !== db ? setDoc(doc(fallbackDb, "helpPosts", postId), softDeleteData, { merge: true }) : Promise.resolve(),
+    ]);
+
+    // 2. Storage media cleanup if any
     if (imageUrls && imageUrls.length > 0) {
       await deleteStorageFilesByUrls(imageUrls);
     } else {
@@ -778,8 +799,8 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
           const extractedUrls: string[] = [];
           if (Array.isArray(postData.images)) extractedUrls.push(...postData.images);
           if (Array.isArray(postData.photos)) extractedUrls.push(...postData.photos);
-          if (typeof postData.imageUrl === 'string') extractedUrls.push(postData.imageUrl);
-          if (typeof postData.photoUrl === 'string') extractedUrls.push(postData.photoUrl);
+          if (typeof postData.imageUrl === "string") extractedUrls.push(postData.imageUrl);
+          if (typeof postData.photoUrl === "string") extractedUrls.push(postData.photoUrl);
           if (extractedUrls.length > 0) {
             await deleteStorageFilesByUrls(extractedUrls);
           }
@@ -787,27 +808,37 @@ export async function deleteHelpPostFromFirestore(postId: string, imageUrls?: st
       } catch (e) {}
     }
 
-    // 2. Primary & legacy document deletion across databases
-    await deleteDoc(docRef);
-    deleteDoc(doc(db, 'helpPosts', postId)).catch(() => {});
-    if (fallbackDb !== db) {
-      deleteDoc(doc(fallbackDb, POSTS_COLLECTION, postId)).catch(() => {});
-      deleteDoc(doc(fallbackDb, 'helpPosts', postId)).catch(() => {});
-    }
+    // 3. Subcollection messages cleanup
+    try {
+      const msgsColRef = collection(db, POSTS_COLLECTION, postId, "messages");
+      const snap = await getDocs(msgsColRef);
+      if (snap && (snap as QuerySnapshot<DocumentData>).docs && (snap as QuerySnapshot<DocumentData>).docs.length > 0) {
+        const batch = writeBatch(db);
+        (snap as QuerySnapshot<DocumentData>).docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+    } catch (e) {}
 
-    // 3. Update deleted records map
-    const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
-    await setDoc(
-      deletedRecordsRef,
-      {
-        deletedPostIds: arrayUnion(postId),
-        updatedAt: new Date().toISOString(),
-        updatedAtServer: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    // 4. Primary & legacy document hard deletion across all collections and databases (AWAITED)
+    await Promise.allSettled([
+      deleteDoc(docRef),
+      deleteDoc(doc(db, "helpPosts", postId)),
+      fallbackDb !== db ? deleteDoc(doc(fallbackDb, POSTS_COLLECTION, postId)) : Promise.resolve(),
+      fallbackDb !== db ? deleteDoc(doc(fallbackDb, "helpPosts", postId)) : Promise.resolve(),
+    ]);
+
+    // 5. Update deleted records map in cloud with arrayUnion across both databases
+    const blacklistPayload = {
+      deletedPostIds: arrayUnion(postId),
+      updatedAt: new Date().toISOString(),
+      updatedAtServer: serverTimestamp(),
+    };
+    await Promise.allSettled([
+      setDoc(doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true }),
+      fallbackDb !== db ? setDoc(doc(fallbackDb, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), blacklistPayload, { merge: true }) : Promise.resolve(),
+    ]);
   } catch (err) {
-    console.warn(`deleteHelpPostFromFirestore notice:`, err);
+    console.warn("deleteHelpPostFromFirestore notice:", err);
   }
 }
 
@@ -883,6 +914,17 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
       };
 
       const isDirect = String(postId).startsWith('direct_user_chat_');
+      if (!isDirect) {
+        try {
+          const postSnap = await getDoc(postDocRef);
+          if (postSnap.exists()) {
+            const pData = postSnap.data();
+            if (pData?.isDeleted || pData?.status === "deleted") {
+              return; // Do not resurrect deleted post
+            }
+          }
+        } catch (_) {}
+      }
       const directMeta = isDirect ? {
         id: postId,
         postCode: 'USER-CHAT',
@@ -1830,10 +1872,19 @@ export interface DeletedRecordsMap {
 export async function saveDeletedRecordsToFirestore(records: DeletedRecordsMap): Promise<void> {
   try {
     const docRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
-    await setDoc(docRef, sanitizeForFirestore({
-      ...records,
+    const updatePayload: any = {
+      updatedAt: new Date().toISOString(),
       updatedAtServer: serverTimestamp(),
-    }), { merge: true });
+    };
+    for (const [key, val] of Object.entries(records)) {
+      if (Array.isArray(val) && val.length > 0) {
+        updatePayload[key] = arrayUnion(...val);
+      }
+    }
+    await Promise.allSettled([
+      setDoc(docRef, updatePayload, { merge: true }),
+      fallbackDb !== db ? setDoc(doc(fallbackDb, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC), updatePayload, { merge: true }) : Promise.resolve(),
+    ]);
   } catch (err) {
     console.warn('saveDeletedRecordsToFirestore warning:', err);
   }
