@@ -13,6 +13,7 @@ export interface ImageCompressionOptions {
 
 /**
  * Compresses an image File/Blob into an optimized JPEG Data URL.
+ * Robust across mobile browsers (Android WebView, iOS Safari, PWA).
  */
 export async function compressImageFile(
   file: File | Blob,
@@ -25,46 +26,74 @@ export async function compressImageFile(
     maxSizeBytes = 200 * 1024, // 200 KB
   } = options;
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read image file'));
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) {
-        reject(new Error('Image reader returned empty result'));
+  return new Promise((resolve) => {
+    // Fallback direct reader if canvas decoding fails
+    const fallbackFileReader = () => {
+      try {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const res = e.target?.result;
+          resolve(typeof res === 'string' ? res : '');
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      } catch {
+        resolve('');
+      }
+    };
+
+    try {
+      let objectUrl = '';
+      try {
+        objectUrl = URL.createObjectURL(file);
+      } catch {
+        fallbackFileReader();
         return;
       }
 
       const img = new Image();
-      img.onerror = () => reject(new Error('Failed to decode image'));
+      let isCleanedUp = false;
+
+      const cleanup = () => {
+        if (!isCleanedUp && objectUrl) {
+          isCleanedUp = true;
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch {}
+        }
+      };
+
       img.onload = () => {
+        cleanup();
         try {
           let { width, height } = img;
+          if (!width || !height) {
+            fallbackFileReader();
+            return;
+          }
 
           // Scale down dimensions proportionally if they exceed max limits
           if (width > maxWidth || height > maxHeight) {
             const widthRatio = maxWidth / width;
             const heightRatio = maxHeight / height;
             const ratio = Math.min(widthRatio, heightRatio);
-            width = Math.round(width * ratio);
-            height = Math.round(height * ratio);
+            width = Math.max(1, Math.round(width * ratio));
+            height = Math.max(1, Math.round(height * ratio));
           }
 
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
-
           const ctx = canvas.getContext('2d', { alpha: false });
           if (!ctx) {
-            resolve(dataUrl); // fallback
+            fallbackFileReader();
             return;
           }
 
-          // Use high quality image smoothing to prevent blurry downscaling
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
 
-          // Fill white background in case of transparent PNGs
+          // White background for transparent PNGs
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
@@ -73,9 +102,12 @@ export async function compressImageFile(
           let currentQuality = quality;
           let compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
 
-          // If still larger than maxSizeBytes, step down quality slightly
           let attempts = 0;
-          while (compressedDataUrl.length * 0.75 > maxSizeBytes && currentQuality > 0.5 && attempts < 3) {
+          while (
+            compressedDataUrl.length * 0.75 > maxSizeBytes &&
+            currentQuality > 0.4 &&
+            attempts < 4
+          ) {
             currentQuality -= 0.1;
             compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
             attempts++;
@@ -83,15 +115,20 @@ export async function compressImageFile(
 
           resolve(compressedDataUrl);
         } catch (err) {
-          console.warn('Image compression fallback:', err);
-          resolve(dataUrl);
+          console.warn('Canvas compression error, falling back:', err);
+          fallbackFileReader();
         }
       };
 
-      img.src = dataUrl;
-    };
+      img.onerror = () => {
+        cleanup();
+        fallbackFileReader();
+      };
 
-    reader.readAsDataURL(file);
+      img.src = objectUrl;
+    } catch {
+      fallbackFileReader();
+    }
   });
 }
 
@@ -110,40 +147,56 @@ export async function compressImageBase64(
     maxWidth = 1000,
     maxHeight = 1000,
     quality = 0.75,
+    maxSizeBytes = 200 * 1024,
   } = options;
 
   return new Promise((resolve) => {
-    const img = new Image();
-    img.onerror = () => resolve(base64Str);
-    img.onload = () => {
-      try {
-        let { width, height } = img;
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
+    try {
+      const img = new Image();
+      img.onerror = () => resolve(base64Str);
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.max(1, Math.round(width * ratio));
+            height = Math.max(1, Math.round(height * ratio));
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d', { alpha: false });
+          if (!ctx) return resolve(base64Str);
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          let currentQuality = quality;
+          let result = canvas.toDataURL('image/jpeg', currentQuality);
+
+          let attempts = 0;
+          while (
+            result.length * 0.75 > maxSizeBytes &&
+            currentQuality > 0.4 &&
+            attempts < 3
+          ) {
+            currentQuality -= 0.1;
+            result = canvas.toDataURL('image/jpeg', currentQuality);
+            attempts++;
+          }
+
+          resolve(result);
+        } catch {
+          resolve(base64Str);
         }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d', { alpha: false });
-        if (!ctx) return resolve(base64Str);
-
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const result = canvas.toDataURL('image/jpeg', quality);
-        resolve(result);
-      } catch {
-        resolve(base64Str);
-      }
-    };
-    img.src = base64Str;
+      };
+      img.src = base64Str;
+    } catch {
+      resolve(base64Str);
+    }
   });
 }

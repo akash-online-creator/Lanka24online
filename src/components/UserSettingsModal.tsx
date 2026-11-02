@@ -1,3 +1,4 @@
+import { compressImageFile } from '../utils/imageCompressor';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
@@ -957,17 +958,22 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              if (typeof event.target?.result === 'string') {
-                                setPhotoUrl(event.target.result);
-                              }
-                            };
-                            reader.readAsDataURL(file);
+                            try {
+                              const compressed = await compressImageFile(file, {
+                                maxWidth: 400,
+                                maxHeight: 400,
+                                quality: 0.8,
+                                maxSizeBytes: 80 * 1024,
+                              });
+                              if (compressed) setPhotoUrl(compressed);
+                            } catch (err) {
+                              console.warn('Profile image compression error:', err);
+                            }
                           }
+                          e.target.value = '';
                         }}
                       />
 

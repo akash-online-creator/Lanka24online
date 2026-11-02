@@ -1,3 +1,4 @@
+import { compressImageFile } from '../utils/imageCompressor';
 import React, { useState } from 'react';
 import {
   AccommodationListing,
@@ -147,19 +148,24 @@ export const AccommodationModal: React.FC<AccommodationModalProps> = ({
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      const updated = [...photos];
-      updated[index] = {
-        id: `local_${Date.now()}_${index}`,
-        url,
-        caption: `චායාරූපය ${index + 1}`,
-        aspectRatio: '9:16',
-      };
-      setPhotos(updated);
+      try {
+        const compressed = await compressImageFile(file, { maxWidth: 900, maxHeight: 1200, quality: 0.75 });
+        const updated = [...photos];
+        updated[index] = {
+          id: `local_${Date.now()}_${index}`,
+          url: compressed || photos[index]?.url,
+          caption: `ඡායාරූපය ${index + 1}`,
+          aspectRatio: '9:16',
+        };
+        setPhotos(updated);
+      } catch (err) {
+        console.warn('Image upload error:', err);
+      }
     }
+    e.target.value = '';
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -388,7 +394,7 @@ export const AccommodationModal: React.FC<AccommodationModalProps> = ({
                     alt={ph.caption}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-2">
+                  <div className="absolute inset-0 bg-black/40 sm:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-2">
                     <label className="p-2 rounded-full bg-white text-slate-900 cursor-pointer shadow-md hover:bg-amber-400 transition-colors">
                       <Upload className="w-4 h-4" />
                       <input

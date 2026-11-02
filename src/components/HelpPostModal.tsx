@@ -1,3 +1,4 @@
+import { compressImageFile } from '../utils/imageCompressor';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileText, Phone, ShieldCheck, CheckCircle2, MapPin, Sparkles, Image as ImageIcon, Trash2, Type, Send, Upload, User as UserIcon, Link as LinkIcon, BarChart3, Plus, ExternalLink, Copy, Check, Calendar, Clock, Globe, Lock, ArrowRight, ArrowLeft, Eye, EyeOff, Navigation, Tag } from 'lucide-react';
 import { HelpPost, Language, LocationOption, TagItem, User } from '../types';
@@ -251,8 +252,8 @@ const file = e.target.files?.[0];
 if (!file) return;
 setIsProcessingImage(true);
 try {
-const compressed = await compressImageFileToDataUrl(file, 1280, 720, 0.75);
-setImageBase64(compressed);
+const compressed = await compressImageFile(file, { maxWidth: 1280, maxHeight: 720, quality: 0.75 });
+if (compressed) setImageBase64(compressed);
 } catch (err) {
 console.error('Image processing error:', err);
 } finally {
@@ -509,6 +510,7 @@ return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-cente
   onClick: () => setSelectedFont(f.id),
   className: 'px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ' + (selectedFont === f.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-zinc-300 border-slate-300 dark:border-slate-700')
 }, f.name))) : null) : null, (composerTab === 'image' ? true : Boolean(imageBase64)) ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-emerald-200 dark:border-emerald-800/80 space-y-2' }, h('input', {
+  id: 'help-post-image-file-input',
   ref: imageInputRef,
   type: 'file',
   accept: 'image/*',
@@ -518,17 +520,15 @@ return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-cente
   src: imageBase64,
   alt: 'Selected',
   className: 'w-full h-full object-cover'
-}), h('div', { className: 'absolute top-2 right-2 flex items-center gap-1.5' }, h('button', {
-  type: 'button',
-  onClick: () => (imageInputRef.current as any)?.click(),
+}), h('div', { className: 'absolute top-2 right-2 flex items-center gap-1.5' }, h('label', {
+  htmlFor: 'help-post-image-file-input',
   className: 'px-2.5 py-1 rounded-lg bg-white/90 text-slate-900 font-bold text-xs shadow-md cursor-pointer'
 }, 'වෙනස් කරන්න'), h('button', {
   type: 'button',
   onClick: () => setImageBase64(''),
   className: 'p-1.5 rounded-lg bg-rose-600 text-white shadow-md cursor-pointer'
-}, h(Trash2, { className: 'w-3.5 h-3.5' })))) : h('button', {
-  type: 'button',
-  onClick: () => (imageInputRef.current as any)?.click(),
+}, h(Trash2, { className: 'w-3.5 h-3.5' })))) : h('label', {
+  htmlFor: 'help-post-image-file-input',
   className: 'w-full py-6 rounded-xl border-2 border-dashed border-emerald-400 dark:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all'
 }, h(Upload, { className: 'w-6 h-6 text-emerald-600' }), h('span', { className: 'text-xs font-black text-slate-800 dark:text-white' }, isProcessingImage ? 'ඡායාරූපය සකසමින් පවතී...' : '16:9 ඡායාරූපයක් එක් කරන්න (Upload Image)'), h('span', { className: 'text-[10px] text-slate-500' }, 'ගැලරියෙන් හෝ කැමරාවෙන් ඡායාරූපයක් තෝරන්න'))) : null, composerTab === 'poll' ? h('div', { className: 'p-3 rounded-xl bg-white dark:bg-[#06160d] border border-amber-300 dark:border-amber-800/80 space-y-2.5' }, h('div', { className: 'flex items-center justify-between' }, h('span', { className: 'text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5' }, h(BarChart3, { className: 'w-4 h-4' }), h('span', null, 'මත විමසුම් විකල්ප (Poll Options):'))), h('div', { className: 'space-y-1.5' }, pollOptions.map((opt, idx) => h('div', {
   key: idx,
