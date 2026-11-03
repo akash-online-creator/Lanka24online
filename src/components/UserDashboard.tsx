@@ -14,7 +14,6 @@ import { getExpandedSearchKeywords } from '../data/searchDictionary';
 import { MessageInboxBubble } from './MessageInboxBubble';
 import { HelpRequestsPage } from './HelpRequestsPage';
 import { ProximityAlertBanner } from './ProximityAlertBanner';
-import { RedAlertBanner } from './RedAlertBanner';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
 import { getStoredTags } from '../utils/tagUtils';
@@ -1503,30 +1502,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       {/* 🔔 Interactive Real-Time Live Notification Toast */}
       <LiveNotificationToast onOpenNotification={handleOpenFromNotification} />
 
-      {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}
-      {redAlerts && redAlerts.length > 0 && (
-        <RedAlertBanner
-          alerts={redAlerts}
-          currentLocation={currentLocation}
-          currentUser={user}
-          onOpenAlertDetail={(a) => {
-            if (user?.isDemo) {
-              setShowDemoRegisterPrompt(true);
-              return;
-            }
-            if (onViewRedAlertDetail) onViewRedAlertDetail(a as any);
-            else setSelectedAlertForDetail(a as any);
-          }}
-          onOpenCreate={() => {
-            if (user?.isDemo) {
-              setShowDemoRegisterPrompt(true);
-              return;
-            }
-            if (onOpenRedAlert) onOpenRedAlert();
-            else setIsRedAlertCreateOpen(true);
-          }}
-        />
-      )}
+      {/* 🚨 Red Alert Ticker Banner removed */}
 
       {/* 🔔 Incoming Support Offer Bell Banner (Rings continuously until clicked!) */}
       {ringingSupportAlert && (

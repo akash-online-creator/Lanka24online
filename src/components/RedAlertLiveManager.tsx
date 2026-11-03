@@ -38,7 +38,7 @@ export const RedAlertLiveManager: any = ({
   const activeAlertRef = useRef((null as any));
   const shouldRingRef = useRef(false);
   const popupTimeoutRef = useRef((null as any));
-  const triggerPopup = (msg: string) => {
+  const triggerPopup = (_msg: string) => { return; /* Live toasts removed */
     setPopupMessage(msg);
     if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
     popupTimeoutRef.current = setTimeout(() => {
@@ -156,20 +156,7 @@ export const RedAlertLiveManager: any = ({
     try {
       await activateBackgroundWakeLock();
     } catch (err) {}
-    try {
-      broadcastAppNotification({
-        id: 'red-alert-' + alertItem.id,
-        type: 'emergency_blood',
-        title: notifTitle,
-        message: notifBody,
-        timestamp: new Date().toISOString(),
-        isRead: false,
-        locationName: locName,
-        badgeText: '15KM RED ALERT',
-        targetPostId: alertItem.id,
-        targetModal: 'red_alert'
-      });
-    } catch (err) {}
+    /* In-App notification removed as requested */
     try {
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
         const reg: any = await navigator.serviceWorker.ready;
@@ -855,62 +842,5 @@ export const RedAlertLiveManager: any = ({
     className: 'py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-black shadow flex items-center justify-center gap-1.5 cursor-pointer'
   }, h(Trash2, {
     className: 'w-4 h-4'
-  }), h('span', null, 'දැන්වීම ඉවත් කරන්න')))) : null)) : null, h('div', {
-    className: 'fixed top-3 left-1/2 -translate-x-1/2 z-[9999] w-11/12 max-w-xl space-y-2 pointer-events-none'
-  }, popupMessage ? h('div', {
-    className: 'pointer-events-auto bg-slate-900 text-white border-2 border-emerald-500 p-3 sm:p-4 rounded-2xl shadow-2xl flex items-center justify-between'
-  }, h('p', {
-    className: 'text-xs sm:text-sm font-bold leading-relaxed'
-  }, popupMessage), h('button', {
-    type: 'button',
-    onClick: () => setPopupMessage(null),
-    className: 'ml-3 p-2 text-slate-400 hover:text-white font-black text-lg cursor-pointer',
-    'aria-label': 'Close notification'
-  }, '✕')) : null, !isDismissed && activeAlert && !showEmergencyModal ? h('div', {
-    onTouchStart: handleTouchStart,
-    onTouchMove: handleTouchMove,
-    onTouchEnd: handleTouchEnd,
-    style: {
-      transform: 'translate(' + translateX + 'px, ' + translateY + 'px)',
-      opacity: 1 - Math.abs(translateX) / 250 - Math.abs(translateY) / 180,
-      transition: isSwiping ? 'none' : 'transform 0.25s ease-out, opacity 0.25s ease-out'
-    },
-    className: 'pointer-events-auto bg-gradient-to-r from-red-600 via-rose-700 to-red-800 text-white p-3.5 sm:p-4 rounded-3xl shadow-[0_10px_35px_rgba(225,29,72,0.65)] border-2 border-yellow-300 relative select-none'
-  }, h('div', {
-    className: 'flex items-center justify-between gap-2'
-  }, h('span', {
-    className: 'bg-yellow-300 text-red-950 font-black px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow'
-  }, '🚨 සහය සේවා රතු එළිය: ' + (activeAny.alertCode ? activeAny.alertCode : 'EMERGENCY')), h('div', {
-    className: 'flex items-center gap-1.5 sm:gap-2'
-  }, h('button', {
-    type: 'button',
-    onClick: (e: any) => {
-      e.stopPropagation();
-      handleDismissByUser();
-    },
-    className: 'bg-yellow-400 hover:bg-yellow-300 text-red-950 text-xs font-black px-3 py-1 rounded-full flex items-center gap-1 shadow cursor-pointer active:scale-95 border border-white'
-  }, h(VolumeX, {
-    className: 'w-3.5 h-3.5 text-red-700'
-  }), h('span', null, 'සයිරන් සහ දැන්වීම ඉවත් කරන්න')), h('button', {
-    type: 'button',
-    onClick: (e: any) => {
-      e.stopPropagation();
-      handleDismissByUser();
-    },
-    className: 'w-8 h-8 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 border border-white/20',
-    title: 'ඉවත් කරන්න (Dismiss)',
-    'aria-label': 'Close alert'
-  }, h(X, {
-    className: 'w-4 h-4 font-bold'
-  })))), h('h3', {
-    className: 'text-sm sm:text-base font-black mt-1 leading-snug'
-  }, activeAny.disasterTitleSi ? activeAny.disasterTitleSi : activeAlert.title ? activeAlert.title : 'හදිසි අනතුරු ඇඟවීමයි'), h('p', {
-    className: 'text-xs mt-0.5 opacity-90 line-clamp-2'
-  }, activeAlert.description), h('div', {
-    className: 'mt-2 pt-2 border-t border-red-400/40 flex items-center justify-between text-[11px]'
-  }, h('span', null, '📍 ' + activeAlert.locationName + ' (කි.මී. ' + userDistanceKm.toFixed(1) + ')'), h('button', {
-    type: 'button',
-    onClick: () => setShowEmergencyModal(true),
-    className: 'bg-white text-red-700 font-black px-3 py-1 rounded-lg text-[11px] cursor-pointer shadow'
-  }, 'ආපදා විස්තරය බලන්න'))) : null));
+  }), h('span', null, 'දැන්වීම ඉවත් කරන්න')))) : null)) : null);
 };
