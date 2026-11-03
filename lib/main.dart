@@ -6,7 +6,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -247,6 +247,18 @@ void main() {
   runApp(const SahayaSewaApp());
 }
 
+
+// ⚡ NATIVE SCREEN WAKER CHANNEL (Wakes up display over lockscreen on Red Alert)
+const MethodChannel _screenWakerChannel = MethodChannel('com.sahayasewa.app/screen_waker');
+
+Future<void> _invokeNativeScreenWaker() async {
+  try {
+    await _screenWakerChannel.invokeMethod('wakeUpScreen');
+  } catch (e) {
+    debugPrint('Native screen waker invoke notice: $e');
+  }
+}
+
 class SahayaSewaApp extends StatelessWidget {
   const SahayaSewaApp({super.key});
 
@@ -288,6 +300,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
 
   void _onReceiveTaskData(Object data) {
     if (data is Map && data['type'] == 'NATIVE_BG_RED_ALERT') {
+      _invokeNativeScreenWaker();
       final payloadJson = jsonEncode(data);
       _controller.runJavaScript("""
         window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: $payloadJson }));
@@ -420,7 +433,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             );
           } else if (text == 'STOP_SOS_TRACKING' || text == 'STOP_RED_ALERT' || text == 'STOP_SIREN') {
             await FlutterForegroundTask.stopService();
-          } else if (text.startsWith('TRIGGER_RED_ALERT')) {
+          } else if (text.startsWith('TRIGGER_RED_ALERT') || text.startsWith('WAKE_SCREEN_AND_SHOW_NOTIFICATION')) {
+            _invokeNativeScreenWaker();
             // 🚨 NATIVE EMERGENCY DISASTER ALARM: WAKES UP SCREEN & SOUNDS MAX SIREN
             try {
               String alertDetails = 'හදිසි ආපදා අනතුරු ඇඟවීමක් වාර්තා වී ඇත. වහාම පරීක්ෂා කරන්න.';
