@@ -465,7 +465,7 @@ useEffect(() => {
     // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
     const senderLang = msg.senderLang || detectedOtherPartyLang;
     const msgDetected = detectLanguageOfText(msg.text);
-    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected === userLang && msgDetected !== 'singlish')) {
+    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected !== 'singlish' && msgDetected === userLang)) {
       return;
     }
 
@@ -622,7 +622,7 @@ const msgDetected = detectLanguageOfText(rawSanitized);
 const isSameLanguage = Boolean(
   (detectedOtherPartyLang && detectedOtherPartyLang === userLang) ||
   (senderLang && senderLang === userLang) ||
-  (msgDetected === userLang && msgDetected !== 'singlish')
+  (msgDetected !== 'singlish' && msgDetected === userLang)
 );
 
 if (isSameLanguage) {

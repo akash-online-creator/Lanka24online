@@ -1,7 +1,8 @@
 /**
  * High-performance Client-Side Image Compressor
- * Resizes and compresses image files/base64 strings to stay safely under 200KB,
+ * Resizes and compresses image files/base64 strings to stay safely under 200KB-300KB,
  * preventing Firestore 1MB document quota overflow and boosting mobile rendering speed.
+ * Robust across mobile browsers, Android WebView, APK wrappers, and iOS Safari.
  */
 
 export interface ImageCompressionOptions {
@@ -13,7 +14,7 @@ export interface ImageCompressionOptions {
 
 /**
  * Compresses an image File/Blob into an optimized JPEG Data URL.
- * Robust across mobile browsers (Android WebView, iOS Safari, PWA).
+ * Robust across mobile browsers (Android WebView, iOS Safari, PWA, APK wrappers).
  */
 export async function compressImageFile(
   file: File | Blob,
@@ -23,17 +24,89 @@ export async function compressImageFile(
     maxWidth = 1200,
     maxHeight = 1200,
     quality = 0.75,
-    maxSizeBytes = 200 * 1024, // 200 KB
+    maxSizeBytes = 250 * 1024, // 250 KB safe margin
   } = options;
 
+  if (!file) return '';
+
+  // 1. First attempt: Modern hardware-accelerated createImageBitmap (avoids WebView out-of-memory crashes on 24MP+ mobile camera photos)
+  if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file);
+      let { width, height } = bmp;
+
+      if (width > 0 && height > 0) {
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.max(1, Math.round(width * ratio));
+          height = Math.max(1, Math.round(height * ratio));
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(bmp, 0, 0, width, height);
+
+          try {
+            bmp.close();
+          } catch {}
+
+          let currentQuality = quality;
+          let compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
+
+          let attempts = 0;
+          while (
+            compressedDataUrl.length * 0.75 > maxSizeBytes &&
+            currentQuality > 0.35 &&
+            attempts < 5
+          ) {
+            currentQuality -= 0.1;
+            compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
+            attempts++;
+          }
+
+          if (compressedDataUrl && compressedDataUrl.startsWith('data:image/jpeg')) {
+            return compressedDataUrl;
+          }
+        }
+      }
+    } catch (bmpError) {
+      // Continue to Image element fallback
+      console.warn('createImageBitmap attempt skipped, using Image fallback:', bmpError);
+    }
+  }
+
+  // 2. Second attempt: URL.createObjectURL or FileReader -> HTMLImageElement -> Canvas
   return new Promise((resolve) => {
-    // Fallback direct reader if canvas decoding fails
+    // Ultimate fallback: direct FileReader with downscaled canvas
     const fallbackFileReader = () => {
       try {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          const res = e.target?.result;
-          resolve(typeof res === 'string' ? res : '');
+        reader.onload = async (e) => {
+          const rawResult = e.target?.result;
+          if (typeof rawResult === 'string' && rawResult.startsWith('data:image')) {
+            // Compress the base64 string so we never return an uncompressed 15MB string to Firestore
+            try {
+              const compressed = await compressImageBase64(rawResult, {
+                maxWidth,
+                maxHeight,
+                quality: 0.7,
+                maxSizeBytes,
+              });
+              resolve(compressed || rawResult);
+            } catch {
+              resolve(rawResult);
+            }
+          } else {
+            resolve(typeof rawResult === 'string' ? rawResult : '');
+          }
         };
         reader.onerror = () => resolve('');
         reader.readAsDataURL(file);
@@ -105,8 +178,8 @@ export async function compressImageFile(
           let attempts = 0;
           while (
             compressedDataUrl.length * 0.75 > maxSizeBytes &&
-            currentQuality > 0.4 &&
-            attempts < 4
+            currentQuality > 0.35 &&
+            attempts < 5
           ) {
             currentQuality -= 0.1;
             compressedDataUrl = canvas.toDataURL('image/jpeg', currentQuality);
@@ -133,7 +206,7 @@ export async function compressImageFile(
 }
 
 /**
- * Compresses an existing base64 image string to under 200KB.
+ * Compresses an existing base64 image string to under 200KB-300KB.
  */
 export async function compressImageBase64(
   base64Str: string,
@@ -147,7 +220,7 @@ export async function compressImageBase64(
     maxWidth = 1000,
     maxHeight = 1000,
     quality = 0.75,
-    maxSizeBytes = 200 * 1024,
+    maxSizeBytes = 250 * 1024,
   } = options;
 
   return new Promise((resolve) => {
@@ -181,8 +254,8 @@ export async function compressImageBase64(
           let attempts = 0;
           while (
             result.length * 0.75 > maxSizeBytes &&
-            currentQuality > 0.4 &&
-            attempts < 3
+            currentQuality > 0.35 &&
+            attempts < 4
           ) {
             currentQuality -= 0.1;
             result = canvas.toDataURL('image/jpeg', currentQuality);

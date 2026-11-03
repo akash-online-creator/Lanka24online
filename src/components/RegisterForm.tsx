@@ -5,7 +5,7 @@ import {
   SRI_LANKA_DISTRICTS,
   SRI_LANKA_POLICE_DIVISIONS
 } from '../data/sriLankaGeoData';
-import { compressImageFile } from '../utils/imageCompressor';
+import { compressImageFile, compressImageBase64 } from '../utils/imageCompressor';
 import { notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
 import {
   User as UserIcon,
@@ -24,7 +24,9 @@ import {
   AlertTriangle,
   HelpCircle,
   Camera,
-  Trash2
+  Trash2,
+  Image as ImageIcon,
+  RefreshCw
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { MedicalPlusBadge } from './MedicalPlusBadge';
@@ -149,6 +151,117 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [nicFrontPhoto, setNicFrontPhoto] = useState<string>('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState<boolean>(false);
   const nicFileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 📷 Live In-App Camera State (Android WebViews / APKs සඳහා සජීවී කැමරා සක්‍රීය කිරීම)
+  const [showLiveCameraModal, setShowLiveCameraModal] = useState<boolean>(false);
+  const [isCameraStarting, setIsCameraStarting] = useState<boolean>(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'environment' | 'user'>('environment');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // Clean up media stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  // Live Camera Launch Handler
+  const startLiveCamera = async (facing: 'environment' | 'user' = cameraFacingMode) => {
+    setIsCameraStarting(true);
+    setErrorMessage(null);
+    setShowLiveCameraModal(true);
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera not supported by browser/device');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+    } catch (err: any) {
+      console.warn('Live in-app camera error, triggering native camera input fallback:', err);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      setShowLiveCameraModal(false);
+      // Fallback: Click native camera input
+      cameraFileInputRef.current?.click();
+    } finally {
+      setIsCameraStarting(false);
+    }
+  };
+
+  const stopLiveCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setShowLiveCameraModal(false);
+  };
+
+  const toggleCameraFacing = async () => {
+    const nextFacing = cameraFacingMode === 'environment' ? 'user' : 'environment';
+    setCameraFacingMode(nextFacing);
+    await startLiveCamera(nextFacing);
+  };
+
+  const capturePhotoFromLiveCamera = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+
+    try {
+      setIsProcessingPhoto(true);
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas not available');
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const capturedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+      stopLiveCamera();
+
+      // Compress captured image
+      const compressed = await compressImageBase64(capturedDataUrl, {
+        maxWidth: 1200,
+        maxHeight: 1200,
+        quality: 0.8,
+        maxSizeBytes: 300 * 1024,
+      });
+
+      setNicFrontPhoto(compressed || capturedDataUrl);
+      setErrorMessage(null);
+    } catch (err: any) {
+      console.error('Camera capture error:', err);
+      setErrorMessage('ඡායාරූපය ලබා ගැනීමේදී ගැටලුවක් මතු විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+    } finally {
+      setIsProcessingPhoto(false);
+    }
+  };
 
   // UI Flow & Validation State
   const [loading, setLoading] = useState(false);
@@ -217,15 +330,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setWhatsappPhone(sanitized);
   };
 
-  // 4. Image Upload & Compression Handler (රූප සටහන් සියලු උපාංග සඳහා බාධාවකින් තොරව ක්‍රියාත්මක කිරීම)
+  // 4. Image Upload & Compression Handler (ඇන්ඩ්‍රොයිඩ් ඇප් සහ වෙබ් යන දෙකෙහිම බාධාවකින් තොරව ක්‍රියාත්මක කිරීම)
   const handleImageFileChange = async (file: File) => {
     if (!file) return;
 
-    // Check by MIME type OR by file extension (Android WebViews / certain cameras might have empty or generic MIME)
-    const isImage = (file.type && file.type.startsWith('image/')) || 
-      /\.(jpe?g|png|webp|bmp|gif|heic|heif|jfif|svg)$/i.test(file.name || '');
+    // Android WebViews, camera captures, and Google Photos pickers often return empty MIME types ("")
+    // or generic "application/octet-stream" and file names like "image:12345" without extensions.
+    // We only reject if the file is explicitly a non-image type (e.g. video, audio, pdf, text).
+    const isExplicitNonImage = Boolean(
+      file.type &&
+      !file.type.startsWith('image/') &&
+      !file.type.includes('octet-stream') &&
+      (file.type.startsWith('video/') ||
+       file.type.startsWith('audio/') ||
+       file.type.startsWith('text/') ||
+       file.type === 'application/pdf')
+    );
 
-    if (!isImage) {
+    if (isExplicitNonImage) {
       setErrorMessage('කරුණාකර වලංගු ඡායාරූපයක් (JPG, PNG හෝ WEBP) තෝරන්න.');
       return;
     }
@@ -236,25 +358,40 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     try {
       let resultDataUrl: string = '';
 
-      // Try client-side compression first
+      // Try client-side compression (hardware-accelerated createImageBitmap & Canvas)
       try {
         if (typeof compressImageFile === 'function') {
           resultDataUrl = await compressImageFile(file, {
             maxWidth: 1200,
             maxHeight: 1200,
             quality: 0.8,
-            maxSizeBytes: 400 * 1024 // 400 KB
+            maxSizeBytes: 300 * 1024 // 300 KB safe limit for Firestore & fast loading
           });
         }
       } catch (compressionErr) {
         console.warn('Compression notice (falling back to direct reader):', compressionErr);
       }
 
-      // If compression produced no result or failed, fall back to FileReader
+      // If compression produced no result or failed, fall back to FileReader with base64 compression
       if (!resultDataUrl) {
         resultDataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
+          reader.onload = async () => {
+            const raw = reader.result as string;
+            if (raw && typeof compressImageBase64 === 'function') {
+              try {
+                const compressed = await compressImageBase64(raw, {
+                  maxWidth: 1200,
+                  maxHeight: 1200,
+                  quality: 0.8,
+                  maxSizeBytes: 300 * 1024,
+                });
+                resolve(compressed || raw);
+                return;
+              } catch {}
+            }
+            resolve(raw);
+          };
           reader.onerror = (err) => reject(err);
           reader.readAsDataURL(file);
         });
@@ -485,7 +622,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* 🌟 Single Prominent NIC Front Photo Upload Box (බොත්තම් රහිතව මුළු කොටුවම ක්ලික් වන පරිදි) */}
+          {/* 🌟 Universal NIC Front Photo Upload Box (ඇන්ඩ්‍රොයිඩ් ඇප් සහ වෙබ් යන දෙකටම 100% ක්‍රියාත්මක වන පරිදි) */}
           <div className="bg-emerald-50/20 dark:bg-emerald-950/20 p-4 sm:p-5 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 space-y-3 shadow-sm hover:border-emerald-400 transition-colors">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-emerald-950 dark:text-emerald-200 font-bold text-sm sm:text-base">
@@ -511,66 +648,147 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපයක් පහත කොටුව මත ක්ලික් කර උඩුගත කරන්න.
+              ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස පැහැදිලි ඡායාරූපයක් පහතින් තෝරා හෝ සජීවී කැමරාවෙන් ලබා දෙන්න.
             </p>
 
             {nicFrontPhoto ? (
               /* ඡායාරූපය තෝරාගත් පසු පෙන්වන Preview එක */
-              <label
-                htmlFor="nic-front-photo-input"
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                className="relative block rounded-xl overflow-hidden border-2 border-emerald-400 dark:border-emerald-600 bg-slate-900 group cursor-pointer shadow-md"
-              >
-                <img
-                  src={nicFrontPhoto}
-                  alt="NIC Front Preview"
-                  className="w-full h-48 sm:h-56 object-contain bg-slate-950/80"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="bg-white/95 text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md">
-                    <Upload className="w-3.5 h-3.5" />
-                    ඡායාරූපය වෙනස් කිරීමට ක්ලික් කරන්න
-                  </span>
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden border-2 border-emerald-400 dark:border-emerald-600 bg-slate-900 shadow-md">
+                  <img
+                    src={nicFrontPhoto}
+                    alt="NIC Front Preview"
+                    className="w-full h-48 sm:h-56 object-contain bg-slate-950/80"
+                  />
+                  <div className="absolute bottom-2 right-2 bg-emerald-600/90 text-white text-[11px] font-semibold px-2 py-1 rounded-md flex items-center gap-1 shadow">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    සූදානම්
+                  </div>
                 </div>
-              </label>
+
+                {/* ඉක්මන් වෙනස් කිරීමේ විකල්ප */}
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => cameraFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>කැමරාවෙන් නැවත ගන්න</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => nicFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>ගැලරියෙන් තෝරන්න</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => startLiveCamera('environment')}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
+                    <span>සජීවී කැමරාවෙන් ගන්න</span>
+                  </button>
+                </div>
+              </div>
             ) : (
-              /* කිසිදු අමතර ගැටලුවකින් තොරව ඕනෑම උපාංගයකින් පහසුවෙන් Upload කළ හැකි Box එක */
-              <label
-                htmlFor="nic-front-photo-input"
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                className="border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 sm:p-8 text-center transition-all bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/80 flex flex-col items-center justify-center gap-3 cursor-pointer group block"
-              >
-                <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900 group-hover:bg-emerald-200 group-hover:scale-105 transition-all flex items-center justify-center text-emerald-600 dark:text-emerald-300 shadow-sm mx-auto">
-                  {isProcessingPhoto ? (
-                    <Loader2 className="w-7 h-7 animate-spin" />
-                  ) : (
-                    <Upload className="w-7 h-7" />
-                  )}
+              /* කිසිදු අමතර ගැටලුවකින් තොරව ඕනෑම උපාංගයකින් (Mobile App / WebView / Web) පහසුවෙන් Upload කළ හැකි Interactive Box */
+              <div className="space-y-3">
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  className="relative border-2 border-dashed border-emerald-300 dark:border-emerald-600 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 sm:p-7 text-center transition-all bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/80 flex flex-col items-center justify-center gap-3 cursor-pointer group"
+                >
+                  {/* Android WebView Direct Touch Overlay Input: Ensures tap directly hits real input */}
+                  <input
+                    type="file"
+                    accept="image/*,image/jpeg,image/png,image/webp,image/jpg"
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                    onChange={handleFileInputChange}
+                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                    title="ඡායාරූපය තෝරන්න"
+                  />
+
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900 group-hover:bg-emerald-200 group-hover:scale-105 transition-all flex items-center justify-center text-emerald-600 dark:text-emerald-300 shadow-sm mx-auto">
+                    {isProcessingPhoto ? (
+                      <Loader2 className="w-7 h-7 animate-spin" />
+                    ) : (
+                      <Upload className="w-7 h-7" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-emerald-950 dark:text-emerald-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-300 transition-colors">
+                      {isProcessingPhoto ? 'ඡායාරූපය සකසමින් පවතී...' : 'ඡායාරූපය උඩුගත කිරීමට මෙතන ස්පර්ශ කරන්න'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      (ගැලරියෙන් හෝ ගොනු අතරින් ඡායාරූපය තෝරන්න)
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                      JPG, PNG හෝ WEBP (ස්වයංක්‍රීයව සම්පීඩනය වේ)
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-emerald-950 dark:text-emerald-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-300 transition-colors">
-                    {isProcessingPhoto ? 'ඡායාරූපය සකසමින් පවතී...' : 'ඡායාරූපය උඩුගත කිරීමට මෙතන ක්ලික් කරන්න'}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    (ගැලරියෙන් තේරීමට හෝ කැමරාවෙන් ඡායාරූපයක් ගැනීමට ස්පර්ශ කරන්න)
-                  </p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
-                    JPG, PNG හෝ WEBP (ස්වයංක්‍රීයව සම්පීඩනය වේ)
-                  </p>
+
+                {/* 📱 Mobile App Dedicated Quick Access Buttons (කැමරාව / ගැලරිය / සජීවී කැමරාව) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  {/* 1. Device Camera */}
+                  <button
+                    type="button"
+                    onClick={() => cameraFileInputRef.current?.click()}
+                    className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>📸 කැමරාවෙන් ගන්න</span>
+                  </button>
+
+                  {/* 2. Device Gallery */}
+                  <button
+                    type="button"
+                    onClick={() => nicFileInputRef.current?.click()}
+                    className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span>🖼️ ගැලරියෙන් තෝරන්න</span>
+                  </button>
+
+                  {/* 3. In-App Live Camera */}
+                  <button
+                    type="button"
+                    onClick={() => startLiveCamera('environment')}
+                    className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4 text-white" />
+                    <span>🎥 සජීවී කැමරාව</span>
+                  </button>
                 </div>
-              </label>
+              </div>
             )}
 
-            {/* Universal Accessible File Input */}
+            {/* Hidden Native File Inputs for maximum device and Android WebView compatibility */}
             <input
               id="nic-front-photo-input"
               ref={nicFileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,image/jpeg,image/png,image/webp,image/jpg"
               className="sr-only"
               onChange={handleFileInputChange}
+              onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+            />
+
+            <input
+              id="nic-camera-photo-input"
+              ref={cameraFileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={handleFileInputChange}
+              onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
             />
           </div>
 
@@ -842,6 +1060,85 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               ඔබගේ ගිණුමේ ආරක්ෂාව සඳහා අවම වශයෙන් අක්ෂර හෝ ඉලක්කම් 6ක රහස් පදයක් භාවිතා කරන්න.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 📷 In-App Live Camera Modal for Mobile App & Web (Android WebView / APK සඳහා සහතික කළ සජීවී කැමරාව) */}
+      {showLiveCameraModal && (
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-4 sm:p-6 animate-fade-in">
+          {/* Header Bar */}
+          <div className="w-full max-w-lg flex items-center justify-between text-white py-2">
+            <div className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-emerald-400" />
+              <h3 className="text-sm sm:text-base font-bold">
+                ජාතික හැඳුනුම්පත් සජීවී ඡායාරූපය
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleCameraFacing}
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition active:scale-95 cursor-pointer"
+                title="කැමරාව මාරු කරන්න"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={stopLiveCamera}
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition active:scale-95 cursor-pointer"
+                title="වසන්න"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Viewfinder with Sri Lankan NIC Guideline Overlay */}
+          <div className="w-full max-w-lg flex-1 relative flex items-center justify-center my-3 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-2xl min-h-[300px]">
+            {isCameraStarting ? (
+              <div className="flex flex-col items-center justify-center gap-3 text-white">
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+                <p className="text-xs text-slate-300">කැමරාව ආරම්භ වෙමින් පවතී...</p>
+              </div>
+            ) : (
+              <>
+                <video
+                  ref={videoRef}
+                  playsInline
+                  autoPlay
+                  muted
+                  className="w-full h-full object-cover"
+                />
+
+                {/* Sri Lankan NIC Card Alignment Frame */}
+                <div className="absolute inset-x-6 sm:inset-x-12 aspect-[1.586/1] border-2 border-dashed border-emerald-400/90 rounded-2xl pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] flex flex-col justify-between p-3">
+                  <div className="flex justify-between items-center text-[11px] text-emerald-300 font-bold bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm self-start">
+                    <span>ජාතික හැඳුනුම්පත (NIC)</span>
+                  </div>
+                  <div className="text-center text-[11px] text-white/90 bg-black/60 px-2 py-1 rounded backdrop-blur-sm self-center font-medium">
+                    හැඳුනුම්පත මෙම රාමුව මැදට ගෙන පැහැදිලිව තබා ගන්න
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Bottom Controls */}
+          <div className="w-full max-w-lg flex flex-col items-center gap-3 py-2">
+            <button
+              type="button"
+              disabled={isCameraStarting}
+              onClick={capturePhotoFromLiveCamera}
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-500 hover:bg-emerald-400 active:scale-90 text-white flex items-center justify-center shadow-xl border-4 border-white/80 transition-all cursor-pointer disabled:opacity-50"
+              title="ඡායාරූපය ගන්න"
+            >
+              <Camera className="w-8 h-8 sm:w-9 sm:h-9" />
+            </button>
+            <p className="text-xs text-slate-400">
+              ඡායාරූපය ලබා ගැනීමට ඉහත බොත්තම ඔබන්න
             </p>
           </div>
         </div>

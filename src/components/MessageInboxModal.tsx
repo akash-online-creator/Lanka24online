@@ -626,7 +626,7 @@ useEffect(() => {
     // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
     const senderLang = msg.senderLang || detectedOtherPartyLang;
     const msgDetected = detectLanguageOfText(msg.text);
-    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected === userLang && msgDetected !== 'singlish')) {
+    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected !== 'singlish' && msgDetected === userLang)) {
       return;
     }
 
@@ -794,7 +794,7 @@ const msgDetected = detectLanguageOfText(rawSanitized);
 const isSameLanguage = Boolean(
   (detectedOtherPartyLang && detectedOtherPartyLang === userLang) ||
   (senderLang && senderLang === userLang) ||
-  (msgDetected === userLang && msgDetected !== 'singlish')
+  (msgDetected !== 'singlish' && msgDetected === userLang)
 );
 
 if (isSameLanguage) {
@@ -905,7 +905,7 @@ className: 'w-full bg-white dark:bg-[#081e13] border border-slate-200 dark:borde
 h('p', { className: 'text-xs font-extrabold text-slate-600 dark:text-slate-400' }, 'තවම සංවාද කිසිවක් නොමැත') ) : filteredThreads.map((thread, tIdx) => {
 const isSelected = Boolean(activeThread && activeThread.id === thread.id);
 const threadMsgDetected = detectLanguageOfText(thread.lastMessage || '');
-const isThreadSameLang = Boolean(threadMsgDetected === userLang && threadMsgDetected !== 'singlish');
+const isThreadSameLang = Boolean(threadMsgDetected !== 'singlish' && threadMsgDetected === userLang);
 const previewGreeting = isThreadSameLang ? '' : instantExactGreetingTranslate(thread.lastMessage, userLang);
 const previewTranslated = isThreadSameLang 
   ? thread.lastMessage 

@@ -338,7 +338,7 @@ const clean = text.trim();
 const detected = detectLanguageOfText(clean);
 
 // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
-if ((sourceLangHint && sourceLangHint === targetLang) || (detected === targetLang && detected !== 'singlish')) {
+if ((sourceLangHint && sourceLangHint === targetLang) || (detected !== 'singlish' && detected === targetLang)) {
   return { translatedText: clean, detectedLang: detected };
 }
 

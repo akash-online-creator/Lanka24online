@@ -425,18 +425,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 const senderName = p.lastMessageSenderName || 'පරිශීලක (User)';
                 broadcastAppNotification({
                   type: 'chat_message',
-                  titleSi: `නව පණිවිඩයක්: ${senderName}`,
-                  titleTa: `புதிய செய்தி: ${senderName}`,
-                  titleEn: `New message from ${senderName}`,
-                  descriptionSi: p.lastMessage,
-                  descriptionTa: p.lastMessage,
-                  descriptionEn: p.lastMessage,
+                  title: `නව පණිවිඩයක්: ${senderName}`,
+                  message: p.lastMessage || 'ඔබට නව පණිවිඩයක් ලැබී ඇත',
                   targetModal: 'message_inbox',
                   targetPostId: p.id,
                   relatedPostId: p.id,
-                  postCode: p.postCode,
-                  category: p.category,
-                  playSound: true,
                 });
               }
             }
