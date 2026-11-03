@@ -1,3 +1,5 @@
+import { isUserPermanentlyDeleted } from "./deletedPostsManager";
+import { isAuthorBlocked } from "./blockedCredentialsManager";
 import { User } from '../types';
 
 export interface StoredDevicePinData {
@@ -187,7 +189,7 @@ export async function verifyDevicePin(
     }
   }
 
-  if (!user) {
+  if (!user || isUserPermanentlyDeleted(user)) {
     return {
       success: false,
       reason: 'user_not_found',
@@ -195,11 +197,19 @@ export async function verifyDevicePin(
     };
   }
 
-  if (user.status === 'blocked' || user.isBlocked) {
+  if (user.status === 'blocked' || user.isBlocked || isAuthorBlocked(user)) {
     return {
       success: false,
       reason: 'user_blocked',
-      message: 'මෙම ගිණුම පරිපාලක විසින් අවහිර කර ඇත.',
+      message: user.blockedReason || (user.status === 'rejected' ? 'ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි' : 'මෙම ගිණුම පරිපාලක විසින් අවහිර කර ඇත.'),
+    };
+  }
+
+  if (user.status === 'rejected') {
+    return {
+      success: false,
+      reason: 'user_blocked',
+      message: user.blockedReason || (user as any).rejectionReason || 'ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි',
     };
   }
 

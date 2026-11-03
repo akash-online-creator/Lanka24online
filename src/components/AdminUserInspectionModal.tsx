@@ -37,6 +37,7 @@ interface AdminUserInspectionModalProps {
   onUnblock: (user: User) => void;
   onEdit: (user: User) => void;
   onDelete: (user: User) => void;
+  onReject?: (user: User, reason: string) => void;
   onUpdateUser?: (updatedUser: User) => Promise<void> | void;
   language?: Language;
 }
@@ -50,6 +51,7 @@ export const AdminUserInspectionModal: React.FC<AdminUserInspectionModalProps> =
   onUnblock,
   onEdit,
   onDelete,
+  onReject,
   onUpdateUser,
   language = 'si',
 }) => {
@@ -222,25 +224,32 @@ _පරිපාලක මණ්ඩලය - සහය සේවා_`;
       previousPhotoUrl: nicPhoto || '',
     };
 
-    const updatedUserWithRejection: User = {
-      ...currentUser,
-      status: 'rejected',
-      rejectionReason: rejectionReason.trim(),
-      rejectedAt: new Date().toISOString(),
-      submissionCount: currentAttempt,
-      rejectionHistory: [...history, newHistoryEntry],
-      updatedAt: new Date().toISOString(),
-    } as any;
+    const finalReason = rejectionReason.trim() || 'ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි';
+    if (onReject) {
+      onReject(currentUser, finalReason);
+    } else {
+      const updatedUserWithRejection: User = {
+        ...currentUser,
+        status: 'blocked',
+        isBlocked: true,
+        blockedReason: finalReason,
+        rejectionReason: finalReason,
+        rejectedAt: new Date().toISOString(),
+        blockedAt: new Date().toISOString(),
+        submissionCount: currentAttempt,
+        rejectionHistory: [...history, newHistoryEntry],
+        updatedAt: new Date().toISOString(),
+      } as any;
 
-    try {
-      syncUserProfileToFirestore(updatedUserWithRejection);
-    } catch (_) {}
+      try {
+        syncUserProfileToFirestore(updatedUserWithRejection);
+      } catch (_) {}
 
-    if (onUpdateUser) {
-      onUpdateUser(updatedUserWithRejection);
+      if (onUpdateUser) {
+        onUpdateUser(updatedUserWithRejection);
+      }
     }
 
-    onDelete(updatedUserWithRejection);
     setShowRejectPrompt(false);
     onClose();
   };

@@ -83,7 +83,9 @@ export const AdminEditUserModal: React.FC<AdminEditUserModalProps> = ({
       role,
       credits: Number(credits) || 0,
       creditBalance: Number(credits) || 0,
-      isBlocked: status === 'blocked',
+      isBlocked: status === 'blocked' || status === 'rejected',
+      blockedReason: status === 'rejected' ? 'ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි' : status === 'blocked' ? (user.blockedReason || 'පරිපාලක විසින් අවහිර කරන ලදී.') : undefined,
+      rejectionReason: status === 'rejected' ? 'ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි' : undefined,
       updatedAt: new Date().toISOString(),
     };
 

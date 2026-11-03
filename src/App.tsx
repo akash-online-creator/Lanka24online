@@ -1,3 +1,4 @@
+import { isAuthorBlocked } from "./utils/blockedCredentialsManager";
 import { 
   getStoredHelpPosts, 
   saveHelpPostsToStorage, 
@@ -146,8 +147,9 @@ export const App: React.FC = () => {
   // Application Data State (Initial load filtered against permanent deletion blacklist)
   const [users, setUsers] = useState<User[]>(() => {
     const stored = getStoredUsers();
-    if (stored.length > 0) return deduplicateUsers([...stored, ...initialUsers]);
-    return initialUsers;
+    const cleanInitials = initialUsers.filter((u) => !isUserPermanentlyDeleted(u));
+    if (stored.length > 0) return deduplicateUsers([...filterNonDeletedUsers(stored), ...cleanInitials]);
+    return cleanInitials;
   });
   const [helpPosts, setHelpPosts] = useState<HelpPost[]>(() => {
     return getStoredHelpPosts();
@@ -334,9 +336,10 @@ export const App: React.FC = () => {
       if (isRoleDifferent || isStatusDifferent || isCreditsDifferent) {
         setCurrentUser(freshUser);
 
-        if (freshUser.status === 'blocked') {
+        if (freshUser.status === "blocked" || freshUser.status === "rejected" || freshUser.isBlocked || isAuthorBlocked(freshUser)) {
           handleLogout();
-          alert('ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.');
+          const blockMsg = freshUser.blockedReason || (freshUser.status === "rejected" ? "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි" : "ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.");
+          alert(`⚠️ ${blockMsg}`);
           return;
         }
 
@@ -421,8 +424,18 @@ export const App: React.FC = () => {
     }
 
     // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම
-    if (!matchedUser) {
-      throw new Error('මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.');
+    if (!matchedUser || isUserPermanentlyDeleted(matchedUser)) {
+      throw new Error("මෙම ජාතික හැඳුනුම්පත් අංකය (NIC) සහිත ගිණුමක් සොයාගත නොහැක. කරුණාකර නිවැරදි NIC අංකය ඇතුළත් කරන්න හෝ ලියාපදිංචි වන්න.");
+    }
+
+    // 🛡️ Blocked or Rejected Check:
+    if (matchedUser.status === "blocked" || matchedUser.isBlocked || isAuthorBlocked(matchedUser)) {
+      const msg = matchedUser.blockedReason || (matchedUser.status === "rejected" ? "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි" : "ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.");
+      throw new Error(msg);
+    }
+    if (matchedUser.status === "rejected") {
+      const msg = matchedUser.blockedReason || (matchedUser as any).rejectionReason || "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි";
+      throw new Error(msg);
     }
 
     // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
@@ -492,6 +505,17 @@ export const App: React.FC = () => {
   }, [users]);
   // Device PIN Login Success Handler
   const handlePinLoginSuccess = useCallback((authenticatedUser: User) => {
+    if (isUserPermanentlyDeleted(authenticatedUser)) {
+      alert("⚠️ මෙම ගිණුම පද්ධතියෙන් ඉවත් කර ඇත.");
+      handleLogout();
+      return;
+    }
+    if (authenticatedUser.status === "blocked" || authenticatedUser.isBlocked || authenticatedUser.status === "rejected" || isAuthorBlocked(authenticatedUser)) {
+      const msg = authenticatedUser.blockedReason || (authenticatedUser.status === "rejected" ? "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි" : "ඔබගේ ගිණුම පරිපාලක විසින් අවහිර කර ඇත.");
+      alert(`⚠️ ${msg}`);
+      handleLogout();
+      return;
+    }
     setCurrentUser(authenticatedUser);
     try {
       localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));

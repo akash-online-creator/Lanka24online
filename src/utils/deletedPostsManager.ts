@@ -372,15 +372,31 @@ export function removeDeletedUserId(identifier: string): void {
 
 export function isUserPermanentlyDeleted(userOrId: any): boolean {
   if (!userOrId) return false;
-  if ((userOrId as any).isDeleted === true || (userOrId.status as string) === 'deleted') {
+  if ((userOrId as any).isDeleted === true || (userOrId.status as string) === "deleted") {
     return true;
   }
-  // For plain string IDs only
-  if (typeof userOrId === 'string') {
+  const deletedIds = getStoredDeletedUserIds();
+  if (!deletedIds || deletedIds.length === 0) return false;
+  const deletedSet = new Set(deletedIds.map((s) => s.trim().toLowerCase()));
+
+  // For plain string IDs
+  if (typeof userOrId === "string") {
     const clean = userOrId.trim().toLowerCase();
-    const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
-    return deletedSet.has(clean);
+    const digits = clean.replace(/[^0-9]/g, "");
+    return deletedSet.has(clean) || (digits.length >= 9 && deletedSet.has(digits));
   }
+
+  // For User objects
+  const uId = String(userOrId.id || "").trim().toLowerCase();
+  const uUserId = String(userOrId.userId || "").trim().toLowerCase();
+  const uNic = String(userOrId.nic || userOrId.nicNumber || "").trim().toLowerCase();
+  const uDigits = (uNic || uUserId || uId).replace(/[^0-9]/g, "");
+
+  if (uId && deletedSet.has(uId)) return true;
+  if (uUserId && deletedSet.has(uUserId)) return true;
+  if (uNic && deletedSet.has(uNic)) return true;
+  if (uDigits.length >= 9 && deletedSet.has(uDigits)) return true;
+
   return false;
 }
 
@@ -388,7 +404,8 @@ export function filterNonDeletedUsers(users: User[]): User[] {
   if (!Array.isArray(users)) return [];
   return users.filter((u) => {
     if (!u) return false;
-    if ((u.status as string) === 'deleted' || (u as any).isDeleted === true) return false;
+    if ((u.status as string) === "deleted" || (u as any).isDeleted === true) return false;
+    if (isUserPermanentlyDeleted(u)) return false;
     return true;
   });
 }

@@ -405,20 +405,44 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
     const idsToDelete = new Set<string>();
     let userObj: any = null;
 
-    if (typeof userOrId === 'string') {
+    if (typeof userOrId === "string") {
       const clean = userOrId.trim();
       if (clean) {
         idsToDelete.add(clean);
         idsToDelete.add(clean.toUpperCase());
-        const digits = clean.replace(/[^0-9]/g, '');
+        const digits = clean.replace(/[^0-9]/g, "");
         if (digits.length >= 9) idsToDelete.add(digits);
       }
     } else if (userOrId) {
       userObj = userOrId;
-      if (userOrId.id) idsToDelete.add(String(userOrId.id).trim());
-      if (userOrId.userId) idsToDelete.add(String(userOrId.userId).trim());
-      if (userOrId.nicNumber) idsToDelete.add(String(userOrId.nicNumber).trim());
-      if (userOrId.nic) idsToDelete.add(String(userOrId.nic).trim());
+      if (userOrId.id) {
+        const val = String(userOrId.id).trim();
+        idsToDelete.add(val);
+        idsToDelete.add(val.toUpperCase());
+      }
+      if (userOrId.userId) {
+        const val = String(userOrId.userId).trim();
+        idsToDelete.add(val);
+        idsToDelete.add(val.toUpperCase());
+      }
+      if (userOrId.nicNumber) {
+        const val = String(userOrId.nicNumber).trim();
+        idsToDelete.add(val);
+        idsToDelete.add(val.toUpperCase());
+        const digits = val.replace(/[^0-9]/g, "");
+        if (digits.length >= 9) idsToDelete.add(digits);
+      }
+      if (userOrId.nic) {
+        const val = String(userOrId.nic).trim();
+        idsToDelete.add(val);
+        idsToDelete.add(val.toUpperCase());
+        const digits = val.replace(/[^0-9]/g, "");
+        if (digits.length >= 9) idsToDelete.add(digits);
+      }
+      if (userOrId.phone || userOrId.whatsappPhone) {
+        const ph = String(userOrId.whatsappPhone || userOrId.phone || "").replace(/[^0-9]/g, "");
+        if (ph.length >= 9) idsToDelete.add(ph);
+      }
     }
 
     if (idsToDelete.size === 0) return;
@@ -428,21 +452,87 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
       markUserIdAsDeletedLocally(id);
     }
 
-    // 2. Soft-delete / tombstone document in Firestore (always works under update rules)
+    // 2. Immediately purge from localStorage caches
+    if (typeof localStorage !== "undefined") {
+      try {
+        const storageKeys = ["sahaya_users", "sahaya_users_cache_v2"];
+        for (const k of storageKeys) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              const cleaned = list.filter((u: any) => {
+                if (!u) return false;
+                const uId = String(u.id || "").trim();
+                const uUserId = String(u.userId || "").trim();
+                const uNic = String(u.nicNumber || u.nic || "").trim().toUpperCase();
+                const uDigits = (uNic || uUserId || uId).replace(/[^0-9]/g, "");
+                if (idsToDelete.has(uId)) return false;
+                if (idsToDelete.has(uUserId)) return false;
+                if (idsToDelete.has(uNic)) return false;
+                if (uDigits.length >= 9 && idsToDelete.has(uDigits)) return false;
+                return true;
+              });
+              localStorage.setItem(k, JSON.stringify(cleaned));
+            }
+          }
+        }
+
+        // Clean from device pins
+        const rawPins = localStorage.getItem("sahaya_device_pins");
+        if (rawPins) {
+          const pins = JSON.parse(rawPins);
+          if (Array.isArray(pins)) {
+            const cleanedPins = pins.filter((p: any) => {
+              const pId = String(p.userId || "").trim();
+              const pNic = String(p.nicNumber || "").trim().toUpperCase();
+              return !idsToDelete.has(pId) && !idsToDelete.has(pNic);
+            });
+            localStorage.setItem("sahaya_device_pins", JSON.stringify(cleanedPins));
+          }
+        }
+
+        // Clean session user if deleted
+        const sessionUserRaw = localStorage.getItem("sahaya_sewa_session_user");
+        if (sessionUserRaw) {
+          const sUser = JSON.parse(sessionUserRaw);
+          const sId = String(sUser?.id || "").trim();
+          const sNic = String(sUser?.nicNumber || sUser?.nic || sUser?.userId || "").trim().toUpperCase();
+          if (idsToDelete.has(sId) || idsToDelete.has(sNic)) {
+            localStorage.removeItem("sahaya_sewa_session_user");
+          }
+        }
+      } catch (storageErr) {
+        console.warn("Storage eviction notice:", storageErr);
+      }
+    }
+
+    // 3. Dispatch UI event immediately so UI drops the user with zero lag
+    if (typeof window !== "undefined") {
+      const primaryId = Array.from(idsToDelete)[0];
+      window.dispatchEvent(new CustomEvent("sahaya_entity_deleted", {
+        detail: { itemId: primaryId, entityType: "user", collectionName: USERS_COLLECTION }
+      }));
+      window.dispatchEvent(new CustomEvent("sahaya_user_deleted", {
+        detail: { itemId: primaryId, ids: Array.from(idsToDelete) }
+      }));
+    }
+
+    // 4. Soft-delete / tombstone document in Firestore (always works under update rules)
     for (const uId of idsToDelete) {
       try {
         await setDoc(doc(db, USERS_COLLECTION, uId), {
-          status: 'deleted',
+          status: "deleted",
           isDeleted: true,
           deletedAt: new Date().toISOString(),
           deletedAtMs: Date.now(),
         }, { merge: true });
       } catch (err) {
-        console.warn('User tombstone update notice:', err);
+        console.warn("User tombstone update notice:", err);
       }
     }
 
-    // 3. Attempt direct deleteDoc on client SDK
+    // 5. Attempt direct deleteDoc on client SDK
     for (const uId of idsToDelete) {
       try {
         await deleteDoc(doc(db, USERS_COLLECTION, uId));
@@ -454,15 +544,16 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
       }
     }
 
-    // 4. Query Firestore to find and delete ANY matching document by NIC or userId
+    // 6. Query Firestore to find and delete ANY matching document by NIC or userId
     try {
       const snap = await getDocs(collection(db, USERS_COLLECTION));
       for (const d of snap.docs) {
         const data: any = d.data();
-        const dId = String(d.id || '').trim();
-        const dNic = String(data.nicNumber || data.nic || '').trim();
-        const dUserId = String(data.userId || '').trim();
-        const dDigits = (dNic || dUserId || dId).replace(/[^0-9]/g, '');
+        const dId = String(d.id || "").trim();
+        const dNic = String(data.nicNumber || data.nic || "").trim().toUpperCase();
+        const dUserId = String(data.userId || "").trim().toUpperCase();
+        const dDigits = (dNic || dUserId || dId).replace(/[^0-9]/g, "");
+
         if (
           idsToDelete.has(dId) ||
           (dNic && idsToDelete.has(dNic)) ||
@@ -470,19 +561,19 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
           (dDigits.length >= 9 && idsToDelete.has(dDigits))
         ) {
           markUserIdAsDeletedLocally(dId);
-          await setDoc(d.ref, { status: 'deleted', isDeleted: true }, { merge: true }).catch(() => {});
+          await setDoc(d.ref, { status: "deleted", isDeleted: true }, { merge: true }).catch(() => {});
           await deleteDoc(d.ref).catch(() => {});
         }
       }
     } catch (_) {}
 
-    // 5. Call server backend endpoint (/api/admin/delete-user) for guaranteed Admin SDK deletion
+    // 7. Call server backend endpoint (/api/admin/delete-user) for guaranteed Admin SDK deletion
     try {
       const primaryId = userObj?.id || Array.from(idsToDelete)[0];
       const primaryNic = userObj?.nicNumber || userObj?.nic || userObj?.userId || primaryId;
-      await fetch('/api/admin/delete-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: primaryId,
           userId: primaryNic,
@@ -490,10 +581,10 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
         }),
       });
     } catch (apiErr) {
-      console.warn('Server delete user endpoint notice:', apiErr);
+      console.warn("Server delete user endpoint notice:", apiErr);
     }
 
-    // 6. Record in system_metadata/deleted_records in Firestore
+    // 8. Record in system_metadata/deleted_records in Firestore
     try {
       const deletedRecordsRef = doc(db, SYSTEM_SETTINGS_COLLECTION, DELETED_RECORDS_DOC);
       await setDoc(
@@ -506,13 +597,6 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
         { merge: true }
       );
     } catch (_) {}
-
-    // 7. Dispatch UI event so all open views immediately remove the user
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sahaya_entity_deleted', {
-        detail: { itemId: Array.from(idsToDelete)[0], entityType: 'user', collectionName: USERS_COLLECTION }
-      }));
-    }
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, USERS_COLLECTION);
   }

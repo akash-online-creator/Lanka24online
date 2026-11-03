@@ -1,3 +1,4 @@
+import { isAuthorBlocked } from "../utils/blockedCredentialsManager";
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Language, Theme } from '../types';
 import { translations } from '../data/translations';
@@ -386,6 +387,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     const hasActiveDuplicate = Array.isArray(users)
       ? users.some((u) => Boolean(u && u.status !== 'rejected' && isNicConflict(u, nicInfo.cleanNic)))
       : false;
+
+    // Blocked check
+    const isNicBlocked = isAuthorBlocked(nicInfo.cleanNic) || (users && users.some((u) => (u.status === "blocked" || u.isBlocked) && isNicConflict(u, nicInfo.cleanNic)));
+    if (isNicBlocked) {
+      setErrorMessage("ඔබගේ ගිණුම ප්‍රතික්ෂේප කර අවහිර කර ඇත (Blocked). වැඩි විස්තර සඳහා පරිපාලක අමතන්න.");
+      window.scrollTo({ top: 150, behavior: "smooth" });
+      return;
+    }
 
     // නිවැරදි කරන ලද: nicConflict විචල්‍ය දෝෂය ඉවත් කිරීම
     if (nicConflict || hasActiveDuplicate) {

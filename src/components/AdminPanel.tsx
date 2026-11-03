@@ -1,3 +1,4 @@
+import { addBlockedCredential, removeBlockedCredential } from "../utils/blockedCredentialsManager";
 import { addDeletedPostId } from "../utils/deletedPostsManager";
 import { removeNotificationsForPost } from "../utils/notificationManager";
 import React, { useState, useMemo } from 'react';
@@ -247,131 +248,232 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleRejectUser = async (userToReject: User, rejectionReason?: string) => {
-    const targetId = userToReject.id;
-    const targetNic = (userToReject.nicNumber || userToReject.nic || userToReject.userId || '').trim().toUpperCase();
-    const targetDigits = targetNic.replace(/[^0-9]/g, '');
+    const finalReason = (rejectionReason && rejectionReason.trim())
+      ? rejectionReason.trim()
+      : "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි";
 
-    // 1. Immediately remove from local UI state across all ID and NIC matching variants
+    const targetId = userToReject.id;
+    const targetNic = (userToReject.nicNumber || userToReject.nic || userToReject.userId || "").trim().toUpperCase();
+    const targetPhone = (userToReject.whatsappPhone || userToReject.phone || "").trim();
+
+    const currentAttempt = (userToReject as any).submissionCount || 1;
+    const history = (userToReject as any).rejectionHistory || [];
+
+    const updatedUser: User = {
+      ...userToReject,
+      status: "blocked",
+      isBlocked: true,
+      blockedReason: finalReason,
+      rejectionReason: finalReason,
+      rejectedAt: new Date().toISOString(),
+      blockedAt: new Date().toISOString(),
+      submissionCount: currentAttempt,
+      rejectionHistory: [
+        ...history,
+        {
+          attempt: currentAttempt,
+          date: new Date().toISOString(),
+          rejectionReason: finalReason,
+          previousName: userToReject.name,
+          previousPhone: targetPhone,
+        }
+      ],
+      updatedAt: new Date().toISOString(),
+    } as any;
+
+    // 1. Add to blocked credentials blacklist
+    addBlockedCredential({
+      id: targetId || targetNic,
+      userId: userToReject.userId || targetId,
+      phone: targetPhone,
+      nicNumber: targetNic,
+      userName: userToReject.name,
+      reason: finalReason,
+      blockedAt: new Date().toLocaleString("si-LK"),
+    });
+
+    // 2. Update local UI state
     if (setUsers) {
       setUsers((prev) =>
-        prev.filter((u) => {
-          if (u.id === targetId) return false;
-          const uNic = (u.nicNumber || u.nic || u.userId || '').trim().toUpperCase();
-          if (targetNic && (uNic === targetNic || u.userId === targetNic || u.id === targetNic)) return false;
-          const uDigits = uNic.replace(/[^0-9]/g, '');
-          if (targetDigits.length >= 9 && uDigits.length >= 9 && targetDigits === uDigits) return false;
-          return true;
+        prev.map((u) => {
+          if (u.id === targetId) return updatedUser;
+          const uNic = (u.nicNumber || u.nic || u.userId || "").trim().toUpperCase();
+          if (targetNic && (uNic === targetNic || u.userId === targetNic || u.id === targetNic)) return updatedUser;
+          return u;
         })
       );
     }
 
-    // 2. Perform persistent rejection & deletion in Firestore
+    // 3. Update localStorage caches
     try {
-      const docId = userToReject.id || userToReject.userId;
-      
-      // Update status to 'rejected' with full identity fields so Firestore security rules always pass
-      if (docId) {
-        try {
-          await updateUserInFirestore(docId, {
-            ...userToReject,
-            status: 'rejected',
-            isDeleted: true,
-            rejectionReason: rejectionReason || 'පරිපාලක විසින් අයදුම්පත ප්‍රතික්ෂේප කර ඉවත් කරන ලදී.',
-            rejectedAt: new Date().toISOString()
-          });
-        } catch (updateErr) {
-          console.warn('updateUserInFirestore notice:', updateErr);
-        }
-
-        // Also try hard delete if permitted by security rules
-        try {
-          await deleteUserAccount(userToReject);
-        } catch (delErr) {
-          console.warn('deleteUserAccount notice:', delErr);
+      const keys = ["sahaya_users", "sahaya_users_cache_v2"];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const updated = list.map((u: any) => {
+              if (u.id === targetId || (targetNic && (u.nicNumber === targetNic || u.nic === targetNic || u.userId === targetNic))) {
+                return updatedUser;
+              }
+              return u;
+            });
+            localStorage.setItem(k, JSON.stringify(updated));
+          }
         }
       }
+    } catch (_) {}
 
-      // If document was keyed under NIC number, update that as well
-      if (targetNic && targetNic !== docId) {
-        try {
-          await updateUserInFirestore(targetNic, {
-            ...userToReject,
-            status: 'rejected',
-            isDeleted: true,
-            rejectionReason: rejectionReason || 'පරිපාලක විසින් අයදුම්පත ප්‍රතික්ෂේප කර ඉවත් කරන ලදී.',
-            rejectedAt: new Date().toISOString()
-          });
-        } catch (_) {}
+    // 4. Update in Cloud Firestore
+    try {
+      await syncUserProfileToFirestore(updatedUser);
+      if (targetId) {
+        await updateUserInFirestore(targetId, updatedUser).catch(() => {});
       }
-
-      showNotification(`❌ ${userToReject.name} ගේ අයදුම්පත සාර්ථකව ඉවත් කරන ලදී.`);
+      if (targetNic && targetNic !== targetId) {
+        await updateUserInFirestore(targetNic, updatedUser).catch(() => {});
+      }
+      showNotification(`❌ ${userToReject.name} ගේ ගිණුම ප්‍රතික්ෂේප කර අවහිර (Block) කරන ලදී.`);
     } catch (err) {
-      console.warn('Rejection cleanup notice:', err);
-      showNotification(`❌ ${userToReject.name} ගේ අයදුම්පත ඉවත් කරන ලදී.`);
+      console.warn("Rejection Firestore sync error:", err);
+      showNotification(`❌ ${userToReject.name} ගේ ගිණුම ප්‍රතික්ෂේප කර අවහිර (Block) කරන ලදී.`);
     }
   };
 
   const handlePermanentDeleteUser = async (userToDelete: User) => {
-    const userName = userToDelete.name || 'පරිශීලකයා';
-    const userNic = (userToDelete.nicNumber || userToDelete.nic || userToDelete.userId || userToDelete.id || '').trim();
-    const confirmMsg = `⚠️ අවධානයට:\n\nඔබට ${userName} (${userNic}) පරිශීලකයා සහ ඔහුගේ සියලු දත්ත Cloud පද්ධතියෙන් සදහටම මකා දැමීමට (Permanent Delete) අවශ්‍ය බව තහවුරු කරන්න:\n\nමෙම ක්‍රියාවෙන් පසු මෙම පරිශීලකයා නැවත පද්ධතිය තුළ නොපෙනේ.`;
+    const userName = userToDelete.name || "පරිශීලකයා";
+    const userNic = (userToDelete.nicNumber || userToDelete.nic || userToDelete.userId || userToDelete.id || "").trim();
+    const confirmMsg = `⚠️ අවධානයට:\n\nඔබට ${userName} (${userNic}) පරිශීලකයා සහ ඔහුගේ සියලු දත්ත Cloud පද්ධතියෙන් සදහටම මකා දැමීමට (Permanent Delete) අවශ්‍ය බව තහවුරු කරන්න:\n\nමෙම ක්‍රියාවෙන් පසු මෙම පරිශීලකයා වහාම පද්ධතියෙන් ඉවත් වේ.`;
     if (!window.confirm(confirmMsg)) return;
 
-    const targetId = userToDelete.id;
-    const targetNic = (userToDelete.nicNumber || userToDelete.nic || userToDelete.userId || '').trim().toUpperCase();
-    const targetDigits = targetNic.replace(/[^0-9]/g, '');
+    const targetId = String(userToDelete.id || "").trim();
+    const targetUserId = String(userToDelete.userId || "").trim();
+    const targetNic = String(userToDelete.nicNumber || userToDelete.nic || "").trim().toUpperCase();
+    const targetPhone = String(userToDelete.phone || userToDelete.whatsappPhone || "").replace(/\D/g, "");
+    const targetDigits = (targetNic || targetUserId || targetId).replace(/[^0-9]/g, "");
 
     // 1. Immediately remove from local state
     if (setUsers) {
       setUsers((prev) =>
         prev.filter((u) => {
-          if (u.id === targetId) return false;
-          const uNic = (u.nicNumber || u.nic || u.userId || '').trim().toUpperCase();
-          if (targetNic && (uNic === targetNic || u.userId === targetNic || u.id === targetNic)) return false;
-          const uDigits = uNic.replace(/[^0-9]/g, '');
+          if (!u) return false;
+          const uId = String(u.id || "").trim();
+          const uUserId = String(u.userId || "").trim();
+          const uNic = String(u.nicNumber || u.nic || "").trim().toUpperCase();
+          const uPhone = String(u.phone || u.whatsappPhone || "").replace(/\D/g, "");
+          const uDigits = (uNic || uUserId || uId).replace(/[^0-9]/g, "");
+
+          if (targetId && uId === targetId) return false;
+          if (targetUserId && (uUserId === targetUserId || uId === targetUserId)) return false;
+          if (targetNic && (uNic === targetNic || uUserId === targetNic || uId === targetNic)) return false;
           if (targetDigits.length >= 9 && uDigits.length >= 9 && targetDigits === uDigits) return false;
+          if (targetPhone && uPhone && targetPhone.length >= 9 && targetPhone === uPhone) return false;
           return true;
         })
       );
     }
 
-    // 2. Add to deleted blacklist locally
+    // 2. Add to deleted blacklist locally for all variants immediately
     if (targetId) addDeletedUserId(targetId);
+    if (targetUserId) addDeletedUserId(targetUserId);
     if (targetNic) addDeletedUserId(targetNic);
     if (targetDigits.length >= 9) addDeletedUserId(targetDigits);
 
-    // 3. Mark and delete in Cloud
+    // 3. Purge immediately from local storage caches
+    try {
+      const keys = ["sahaya_users", "sahaya_users_cache_v2"];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const updated = list.filter((u: any) => {
+              if (!u) return false;
+              const uId = String(u.id || "").trim();
+              const uUserId = String(u.userId || "").trim();
+              const uNic = String(u.nicNumber || u.nic || "").trim().toUpperCase();
+              const uDigits = (uNic || uUserId || uId).replace(/[^0-9]/g, "");
+              if (targetId && uId === targetId) return false;
+              if (targetUserId && (uUserId === targetUserId || uId === targetUserId)) return false;
+              if (targetNic && (uNic === targetNic || uUserId === targetNic || uId === targetNic)) return false;
+              if (targetDigits.length >= 9 && uDigits.length >= 9 && targetDigits === uDigits) return false;
+              return true;
+            });
+            localStorage.setItem(k, JSON.stringify(updated));
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Clean from device pins if matched
+    try {
+      const pinsRaw = localStorage.getItem("sahaya_device_pins");
+      if (pinsRaw) {
+        const pins = JSON.parse(pinsRaw);
+        if (Array.isArray(pins)) {
+          const updatedPins = pins.filter((p: any) => {
+            const pId = String(p.userId || "").trim();
+            const pNic = String(p.nicNumber || "").trim().toUpperCase();
+            return pId !== targetId && pId !== targetUserId && pNic !== targetNic;
+          });
+          localStorage.setItem("sahaya_device_pins", JSON.stringify(updatedPins));
+        }
+      }
+    } catch (_) {}
+
+    // Dispatch global event so all components drop this user at once
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sahaya_entity_deleted", {
+        detail: { itemId: targetId || targetNic, entityType: "user", collectionName: "users" }
+      }));
+      window.dispatchEvent(new CustomEvent("sahaya_user_deleted", {
+        detail: { itemId: targetId || targetNic, ids: [targetId, targetUserId, targetNic, targetDigits].filter(Boolean) }
+      }));
+    }
+
+    // 4. Mark and delete in Cloud
     try {
       await deleteUserAccount(userToDelete);
       showNotification(`🗑️ ${userName} පරිශීලකයා පද්ධතියෙන් සදහටම ඉවත් කරන ලදී.`);
     } catch (err) {
-      console.warn('Permanent user deletion error:', err);
+      console.warn("Permanent user deletion error:", err);
       showNotification(`🗑️ ${userName} පරිශීලකයා ඉවත් කරන ලදී.`);
     }
   };
 
-  const handleTableRejectClick = (u: User) => {
-    if (window.confirm(`ඔබට ${u.name} ගේ ලියාපදිංචිය ප්‍රතික්ෂේප කර සදහටම ඉවත් කිරීමට අවශ්‍ය බව විශ්වාසද?`)) {
-      handlePermanentDeleteUser(u);
-    }
+  const handleTableRejectClick = async (u: User) => {
+    const reasonPrompt = window.prompt(
+      `⚠️ ${u.name} (${u.nicNumber || u.nic || u.userId}) සාමාජිකයාගේ අයදුම්පත ප්‍රතික්ෂේප කර Block කිරීමට අවශ්‍ය බව තහවුරු කරන්න:\n\nප්‍රතික්ෂේප කිරීමට හේතුව:`,
+      "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි"
+    );
+    if (reasonPrompt === null) return;
+    const finalReason = reasonPrompt.trim() || "ඔබගේ ගිණුම ප්‍රතික්ෂේප කරන ලදි";
+    await handleRejectUser(u, finalReason);
   };
 
   const handleBlockUser = async (userToBlock: User) => {
-    const targetNic = (userToBlock.nic || '').trim().toUpperCase();
+    const targetNic = (userToBlock.nic || "").trim().toUpperCase();
     const enteredNic = window.prompt(
       `⚠️ අනතුරු ඇඟවීමයි!\n\n${userToBlock.name} (${userToBlock.userId || userToBlock.nic}) පරිශීලකයා BLOCK කිරීමට තහවුරු කිරීම සඳහා එම පරිශීලකයාගේ ජාතික හැඳුනුම්පත් අංකය (NIC) ඇතුළත් කරන්න:`
     );
-
     if (enteredNic === null) return;
-
     if (!enteredNic || enteredNic.trim().toUpperCase() !== targetNic) {
-      alert('❌ ඇතුළත් කළ හැඳුනුම්පත් අංකය (NIC) නොගැලපේ! පරිශීලකයා අවහිර කිරීම (Block) අවලංගු විය.');
+      alert("❌ ඇතුළත් කළ හැඳුනුම්පත් අංකය (NIC) නොගැලපේ! පරිශීලකයා අවහිර කිරීම (Block) අවලංගු විය.");
       return;
     }
 
     try {
-      const updatedUser: User = { ...userToBlock, status: 'blocked' };
+      const updatedUser: User = { ...userToBlock, status: "blocked", isBlocked: true, blockedReason: "පරිපාලක විසින් අවහිර කරන ලදී." };
       await syncUserProfileToFirestore(updatedUser);
+      addBlockedCredential({
+        id: userToBlock.id,
+        userId: userToBlock.userId || userToBlock.id,
+        phone: userToBlock.phone || userToBlock.whatsappPhone,
+        nicNumber: targetNic,
+        userName: userToBlock.name,
+        reason: "පරිපාලක විසින් අවහිර කරන ලදී.",
+        blockedAt: new Date().toLocaleString("si-LK"),
+      });
 
       if (setUsers) {
         setUsers((prev) =>
@@ -382,18 +484,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       showNotification(`🚫 ${userToBlock.name} සාර්ථකව අවහිර (Blocked) කරන ලදී.`);
     } catch (err) {
-      console.error('Block failed:', err);
-      alert('අවහිර කිරීම අසාර්ථක විය.');
+      console.error("Block failed:", err);
+      alert("අවහිර කිරීම අසාර්ථක විය.");
     }
   };
 
   const handleUnblockUser = async (userToUnblock: User) => {
     const confirmUnblock = window.confirm(`${userToUnblock.name} ගේ අවහිරය (Block) ඉවත් කිරීමට ඔබට සහතිකද?`);
     if (!confirmUnblock) return;
-
     try {
-      const updatedUser: User = { ...userToUnblock, status: 'approved' };
+      const updatedUser: User = {
+        ...userToUnblock,
+        status: "approved",
+        isBlocked: false,
+        blockedReason: undefined,
+        rejectionReason: undefined,
+      };
       await syncUserProfileToFirestore(updatedUser);
+      if (userToUnblock.id) removeBlockedCredential(userToUnblock.id);
+      if (userToUnblock.userId) removeBlockedCredential(userToUnblock.userId);
+      const uNic = userToUnblock.nicNumber || userToUnblock.nic;
+      if (uNic) removeBlockedCredential(uNic);
 
       if (setUsers) {
         setUsers((prev) =>
@@ -404,8 +515,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       showNotification(`🔓 ${userToUnblock.name} ගේ අවහිරය සාර්ථකව ඉවත් කරන ලදී.`);
     } catch (err) {
-      console.error('Unblock failed:', err);
-      alert('අවහිරය ඉවත් කිරීම අසාර්ථක විය.');
+      console.error("Unblock failed:", err);
+      alert("අවහිරය ඉවත් කිරීම අසාර්ථක විය.");
     }
   };
 
@@ -748,9 +859,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   type="button"
                                   onClick={() => handleTableRejectClick(u)}
                                   className="px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition-all shadow-xs active:scale-95 cursor-pointer"
-                                  title="ප්‍රතික්ෂේප කර ඉවත් කරන්න"
+                                  title="ප්‍රතික්ෂේප කර Block කරන්න"
                                 >
-                                  ඉවත්
+                                  ප්‍රතික්ෂේප
                                 </button>
                               </>
                             )}
@@ -1148,6 +1259,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             setEditingUser(u);
           }}
           onDelete={handlePermanentDeleteUser}
+          onReject={handleRejectUser}
           onUpdateUser={handleSaveEditedUser}
           language={language}
         />
