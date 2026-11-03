@@ -39,6 +39,7 @@ detectLanguageOfText,
 getLanguageDisplayInfo
 } from '../utils/chatTranslator';
 import { translateWithGoogle } from '../utils/googleTranslator';
+import { playNotificationSound, triggerBrowserNotification } from '../utils/notificationManager';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 const h = React.createElement;
@@ -230,6 +231,8 @@ const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 const [toggledOriginals, setToggledOriginals] = useState({} as any);
 const [liveTranslations, setLiveTranslations] = useState({} as any);
 const chatBottomRef = useRef(null as any);
+const seenMessageIdsRef = useRef<Set<string>>(new Set());
+const isFirstSubRef = useRef<boolean>(true);
 const [isNewChatOpen, setIsNewChatOpen] = useState(false);
 const [newChatUsername, setNewChatUsername] = useState('');
 const [directContacts, setDirectContacts] = useState(() => loadDirectContacts(userKey));
@@ -525,9 +528,53 @@ list.sort((a, b) => {
 });
 return list; }, [helpPosts, user, isOpen, directContacts, pinnedThreadIds]);
 useEffect(() => { if (isOpen && !activeThread && conversationThreads.length !== 0) { setActiveThread(conversationThreads[0]); } }, [isOpen, conversationThreads.length]);
+useEffect(() => {
+  seenMessageIdsRef.current.clear();
+  isFirstSubRef.current = true;
+}, [activeThread?.id]);
+
 useEffect(() => { if (!isOpen ? true : !activeThread?.post?.id) return; const currentPost = activeThread.post; const partnerKey = activeThread.partnerKey;
-const unsubscribe = subscribeToChatMessages(currentPost.id, (firestoreMsgs) => { const localSaved = loadLocalPartnerMessages(currentPost.id, partnerKey);
-const combined: ChatMessage[] = []; if (Array.isArray(currentPost.replies)) { currentPost.replies.forEach((rep: any, rIdx: number) => {
+const unsubscribe = subscribeToChatMessages(currentPost.id, (firestoreMsgs) => {
+  // 🔔 Check for new incoming messages from other party to notify user
+  if (isFirstSubRef.current) {
+    (firestoreMsgs || []).forEach((m: any) => {
+      if (m && m.id) seenMessageIdsRef.current.add(m.id);
+    });
+    isFirstSubRef.current = false;
+  } else {
+    (firestoreMsgs || []).forEach((m: any) => {
+      if (!m || !m.id) return;
+      if (!seenMessageIdsRef.current.has(m.id)) {
+        seenMessageIdsRef.current.add(m.id);
+        const mine = isMeMessage(m);
+        if (!mine) {
+          // 🔔 Message from other party arrived! Notify with sound and vibration
+          playNotificationSound('chat_message');
+          try {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate([100, 50, 100]);
+            }
+          } catch {}
+          if (typeof document !== 'undefined' && document.hidden) {
+            triggerBrowserNotification({
+              id: 'chat_bg_' + m.id,
+              type: 'chat_message',
+              title: `💬 ${m.senderName || activeThread?.respondentName || 'නව පණිවිඩයක්'}`,
+              message: m.text || 'නව පණිවිඩයක් ලැබුණි.',
+              timestamp: new Date().toISOString(),
+              isRead: false,
+              badgeText: 'CHAT',
+              targetModal: 'message_inbox',
+              targetPostId: currentPost.id,
+            });
+          }
+        }
+      }
+    });
+  }
+
+  const localSaved = loadLocalPartnerMessages(currentPost.id, partnerKey);
+  const combined: ChatMessage[] = []; if (Array.isArray(currentPost.replies)) { currentPost.replies.forEach((rep: any, rIdx: number) => {
 if (!rep) return; const repKey = makePartnerKey(rep.responderName, rep.responderPhone, rep.responderId); if (activeThread.isCurrentUserAuthor && repKey !== partnerKey && rep.responderName !== activeThread.respondentName) {
 return; } const isDup = (firestoreMsgs ? firestoreMsgs : []).some( (m) => Boolean( m && m.text && rep.message && m.text.trim() === rep.message.trim() &&
 m.senderName && rep.responderName && m.senderName.trim() === rep.responderName.trim() ) ); if (!isDup) { const repMs = rep.createdAtMs ? rep.createdAtMs : parseTimeToMs(rep.createdAt);
@@ -547,44 +594,8 @@ currentPost.whatHappened ? currentPost.whatHappened : 'ඉල්ලීම', Bool
 senderName: currentPost.userName ? currentPost.userName : 'දැන්වීම්කරු', senderRole: 'seeker', text: 'සුබ උදෑසනක්! #' + (currentPost.postCode ? currentPost.postCode : '') + ' (' + safeDesc + ') සඳහා සංවාදය මෙතැනින් ආරම්භ කරන්න.',
 timestamp: formatMessageClockTime(undefined, nowMs), createdAtMs: nowMs, senderPhone: currentPost.userPhone ? currentPost.userPhone : '',
 senderLang: 'si', } as any, ]); } }); return () => unsubscribe(); }, [isOpen, activeThread?.id, activeThread?.post?.id]);
-useEffect(() => { if (!isOpen ? true : messages.length === 0) return; let isMounted = true; messages.forEach((msg: any) => { if (!msg ? true : !msg.text ? true : msg.audioUrl) return;
-const mine = isMeMessage(msg); if (mine) return; const cacheKey = msg.id + '_' + userLang; if (liveTranslations[cacheKey]) return; const exactGreeting = instantExactGreetingTranslate(msg.text, userLang);
-if (exactGreeting) { if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: exactGreeting })); } return; } const precomp = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
-const dictTrans = translateChatMessage(msg.text, userLang).translatedText; if (precomp && precomp.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
-if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: precomp })); } return; } if (dictTrans && dictTrans.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
-if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: dictTrans })); } return; } const msgDetected = msg.senderLang ? msg.senderLang : detectLanguageOfText(msg.text);
-const effectiveSource = msgDetected === 'singlish' ? 'si' : msgDetected; if (effectiveSource !== userLang) { translateWithGoogle(msg.text, userLang).then((gRes) => {
-if (isMounted && gRes && gRes.trim()) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: gRes.trim() })); } }).catch(() => {});
-} }); return () => { isMounted = false; }; }, [isOpen, messages, userLang]);
-const [manualOtherPartyLang, setManualOtherPartyLang] = useState<string>(() => {
-  if (typeof localStorage !== 'undefined' && activeThread?.partnerKey) {
-    return localStorage.getItem('sahaya_partner_lang_' + activeThread.partnerKey) || 'auto';
-  }
-  return 'auto';
-});
-
-useEffect(() => {
-  if (activeThread?.partnerKey && typeof localStorage !== 'undefined') {
-    const saved = localStorage.getItem('sahaya_partner_lang_' + activeThread.partnerKey);
-    setManualOtherPartyLang(saved || 'auto');
-  }
-}, [activeThread?.partnerKey]);
-
-const handleSelectOtherPartyLanguage = (langVal: string) => {
-  setManualOtherPartyLang(langVal);
-  if (activeThread?.partnerKey && typeof localStorage !== 'undefined') {
-    if (langVal === 'auto') {
-      localStorage.removeItem('sahaya_partner_lang_' + activeThread.partnerKey);
-    } else {
-      localStorage.setItem('sahaya_partner_lang_' + activeThread.partnerKey, langVal);
-    }
-  }
-};
 
 const detectedOtherPartyLang = useMemo((): Language => {
-  if (manualOtherPartyLang === 'si' || manualOtherPartyLang === 'en' || manualOtherPartyLang === 'ta') {
-    return manualOtherPartyLang as Language;
-  }
   for (let i = messages.length - 1; Math.max(i, 0) === i; i--) {
     const m: any = messages[i];
     if (m && !isMeMessage(m)) {
@@ -597,12 +608,56 @@ const detectedOtherPartyLang = useMemo((): Language => {
       const det = detectLanguageOfText(rawText);
       if (det === 'singlish' || det === 'si') return 'si';
       if (det === 'ta') return 'ta';
-      if (det === 'en' && rawText.length > 15) return 'en';
+      if (det === 'en' && rawText.length > 5) return 'en';
       return 'si';
     }
   }
   return 'si';
-}, [messages, userLang, manualOtherPartyLang]);
+}, [messages]);
+
+useEffect(() => { 
+  if (!isOpen ? true : messages.length === 0) return; 
+  let isMounted = true; 
+  messages.forEach((msg: any) => { 
+    if (!msg ? true : !msg.text ? true : msg.audioUrl) return;
+    const mine = isMeMessage(msg); 
+    if (mine) return; 
+
+    // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+    const senderLang = msg.senderLang || detectedOtherPartyLang;
+    const msgDetected = detectLanguageOfText(msg.text);
+    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected === userLang && msgDetected !== 'singlish')) {
+      return;
+    }
+
+    const cacheKey = msg.id + '_' + userLang; 
+    if (liveTranslations[cacheKey]) return; 
+    const exactGreeting = instantExactGreetingTranslate(msg.text, userLang);
+    if (exactGreeting) { 
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: exactGreeting })); } 
+      return; 
+    } 
+    const precomp = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
+    const dictTrans = translateChatMessage(msg.text, userLang, senderLang).translatedText; 
+    if (precomp && precomp.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: precomp })); } 
+      return; 
+    } 
+    if (dictTrans && dictTrans.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: dictTrans })); } 
+      return; 
+    } 
+    const effectiveSource = msgDetected === 'singlish' ? 'si' : msgDetected; 
+    if (effectiveSource !== userLang) { 
+      translateWithGoogle(msg.text, userLang).then((gRes) => {
+        if (isMounted && gRes && gRes.trim()) { 
+          setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: gRes.trim() })); 
+        } 
+      }).catch(() => {});
+    } 
+  }); 
+  return () => { isMounted = false; }; 
+}, [isOpen, messages, userLang, detectedOtherPartyLang]);
 useEffect(() => { if (activeThread) { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); } }, [messages.length, activeThread?.id]);
 const pinnedMessage = useMemo(() => {
   return messages.find((m) => m && m.isPinned && !m.isDeletedForEveryone);
@@ -730,13 +785,33 @@ setToggledOriginals((prev: any) => ({ ...prev, [msgId]: !prev[msgId], }));
 const resolveDisplayedMessageText = (msg: any, mine: boolean, isConfirmed: boolean) => {
 const rawSanitized = inspectAndSanitizeMessage(msg.text ? msg.text : '', isConfirmed).sanitizedText;
 if (msg.audioUrl ? true : mine) {
-return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized };
+return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized, translatedText: '' };
 }
+
+// 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+const senderLang = msg.senderLang || detectedOtherPartyLang;
+const msgDetected = detectLanguageOfText(rawSanitized);
+const isSameLanguage = Boolean(
+  (detectedOtherPartyLang && detectedOtherPartyLang === userLang) ||
+  (senderLang && senderLang === userLang) ||
+  (msgDetected === userLang && msgDetected !== 'singlish')
+);
+
+if (isSameLanguage) {
+  return {
+    primaryText: rawSanitized,
+    isTranslated: false,
+    originalText: rawSanitized,
+    translatedText: '',
+  };
+}
+
+// 🎯 Requirement 3: තම භාෂාව පමණක් වෙනස් කලවිට පැමිනෙන පණිවිඩද ඒ භාෂාවට පරිවර්ථනය කර පෙන්වන්න.
 const cacheKey = msg.id + '_' + userLang;
 const exactMatch = instantExactGreetingTranslate(rawSanitized, userLang);
 const fromLive = liveTranslations[cacheKey];
 const fromMsgObj = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
-const fromDict = translateChatMessage(rawSanitized, userLang).translatedText;
+const fromDict = translateChatMessage(rawSanitized, userLang, senderLang).translatedText;
 const translatedCandidate = exactMatch
 ? exactMatch
 : fromLive
@@ -753,6 +828,7 @@ return {
 primaryText: showOrig ? rawSanitized : translatedCandidate,
 isTranslated: isDiff,
 originalText: rawSanitized,
+translatedText: translatedCandidate,
 };
 };
 const userLangInfo = getLanguageDisplayInfo(userLang);
@@ -827,8 +903,13 @@ className: 'w-full bg-white dark:bg-[#081e13] border border-slate-200 dark:borde
 }) ) ), h( 'div', { className: 'flex-1 overflow-y-auto p-2.5 space-y-1.5 bg-[#f8faf9] dark:bg-[#040e08]' }, filteredThreads.length === 0
 ? h( 'div', { className: 'py-12 text-center flex flex-col items-center justify-center space-y-2 p-4' }, h(Inbox, { className: 'w-10 h-10 text-slate-300 dark:text-slate-600' }),
 h('p', { className: 'text-xs font-extrabold text-slate-600 dark:text-slate-400' }, 'තවම සංවාද කිසිවක් නොමැත') ) : filteredThreads.map((thread, tIdx) => {
-const isSelected = Boolean(activeThread && activeThread.id === thread.id); const previewGreeting = instantExactGreetingTranslate(thread.lastMessage, userLang);
-const previewTranslated = previewGreeting ? previewGreeting : translateChatMessage(thread.lastMessage ? thread.lastMessage : '', userLang).translatedText;
+const isSelected = Boolean(activeThread && activeThread.id === thread.id);
+const threadMsgDetected = detectLanguageOfText(thread.lastMessage || '');
+const isThreadSameLang = Boolean(threadMsgDetected === userLang && threadMsgDetected !== 'singlish');
+const previewGreeting = isThreadSameLang ? '' : instantExactGreetingTranslate(thread.lastMessage, userLang);
+const previewTranslated = isThreadSameLang 
+  ? thread.lastMessage 
+  : (previewGreeting ? previewGreeting : translateChatMessage(thread.lastMessage ? thread.lastMessage : '', userLang).translatedText);
 return h( 'div', { key: thread.id + '_' + tIdx, onClick: () => setActiveThread(thread), className: 'p-3 rounded-2xl transition-all cursor-pointer flex items-center gap-3 relative group ' +
 (isSelected ? 'bg-gradient-to-r from-[#0084ff]/15 to-emerald-500/15 border-2 border-emerald-500 shadow-xs' : thread.isPinned ? 'bg-amber-50/70 dark:bg-[#122216] border border-amber-400/50 shadow-xs' : 'bg-white dark:bg-[#071c12] hover:bg-emerald-50/50 dark:hover:bg-[#0a281a] border border-slate-200/80 dark:border-emerald-900/40')
 }, h( 'div', { className: 'relative shrink-0' }, h( 'div', { className: 'w-11 h-11 rounded-full font-black text-sm flex items-center justify-center text-white shadow-sm ' +
@@ -886,24 +967,44 @@ const p = activeThread.post; onClose(); onOpenConfirm(p); }, className: 'px-3 py
 title: 'වසන්න' }, '✕' ) ) ), !activeThread.post.isConfirmed ? h( 'div', { className: 'bg-amber-400/20 border border-amber-400/30 rounded-xl px-2.5 py-1 text-[10px] text-amber-100 flex items-center gap-1.5' },
 h(ShieldAlert, { className: 'w-3 h-3 text-amber-300 shrink-0' }), h('span', null, 'සහය තහවුරු (Confirm) කරන තුරු පෞද්ගලික දුරකථන අංක හා ලිපින හුවමාරුව තහනම්ය.')
 ) : null ), h( 'div', { className: 'bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0' },
-h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, h( 'div', { className: 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව (ස්ථිරයි):'), h( 'select', { value: userLang, onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
-className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
-}, h('option', { value: 'si' }, 'සිංහල 🇱🇰'), h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), h('option', { value: 'en' }, 'English 🇬🇧')
-) ), h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-h('span', { className: 'text-[10px] text-teal-300 font-bold' }, 'අනෙක් පාර්ශ්වය:'),
-h( 'select', {
-  value: manualOtherPartyLang,
-  onChange: (e: any) => handleSelectOtherPartyLanguage(e.target.value),
-  className: 'bg-teal-900 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer',
-  title: 'අනෙක් පාර්ශ්වයේ භාෂාව තෝරන්න (Auto හෝ නිශ්චිත භාෂාව)'
+h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, 
+  h( 'div', { className: 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
+    h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව:'), 
+    h( 'select', { 
+      value: userLang, 
+      onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
+      className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
+    }, 
+      h('option', { value: 'si' }, 'සිංහල 🇱🇰'), 
+      h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), 
+      h('option', { value: 'en' }, 'English 🇬🇧')
+    ) 
+  ), 
+  // 🎯 Requirement 3: අනෙක් පාර්ශවයේ භාෂාව පෙන්වුවද එය වෙනස් කිරිමට නොහැකි ලෙස සකසන්න.
+  h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
+    h('span', { className: 'text-[10px] text-teal-300 font-bold flex items-center gap-1' }, 
+      h(Lock, { className: 'w-2.5 h-2.5 opacity-80' }),
+      'අනෙක් පාර්ශ්වය:'
+    ),
+    h('span', { 
+      className: 'bg-teal-900/90 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 select-none shadow-xs flex items-center gap-1',
+      title: 'අනෙක් පාර්ශ්වයේ භාෂාව (වෙනස් කළ නොහැක / ස්වයංක්‍රීයව හඳුනාගැනේ)'
+    }, otherLangInfo.badge)
+  ) 
+), 
+h( 'div', { 
+  className: 'flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl font-bold border ' + 
+    (detectedOtherPartyLang === userLang 
+      ? 'bg-slate-800/80 text-emerald-300 border-emerald-500/40' 
+      : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40') 
 },
-  h('option', { value: 'auto' }, 'ස්වයංක්‍රීය (' + otherLangInfo.badge + ')'),
-  h('option', { value: 'si' }, 'සිංහල 🇱🇰'),
-  h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'),
-  h('option', { value: 'en' }, 'English 🇬🇧')
-) ) ), h( 'div', { className: 'flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-xl font-bold' },
-h(Sparkles, { className: 'w-3 h-3 text-amber-300' }), h('span', null, 'Auto-Translate (' + userLangInfo.nativeName + ')') ) ),
+  detectedOtherPartyLang === userLang 
+    ? h('span', null, '✓ භාෂා සමානයි (Original Message)')
+    : [
+        h(Sparkles, { className: 'w-3 h-3 text-amber-300', key: 'spk' }), 
+        h('span', { key: 'txt' }, 'Auto-Translate (' + userLangInfo.nativeName + ')')
+      ]
+) ),
 pinnedMessage ? h('div', {
   className: 'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn'
 },

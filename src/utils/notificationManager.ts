@@ -11,6 +11,7 @@ export type NotificationType =
   | 'group_work' 
   | 'from_me_to_you' 
   | 'issue_reply'
+  | 'chat_message'
   | 'general';
 
 export interface AppNotification {
@@ -26,7 +27,7 @@ export interface AppNotification {
   badgeText?: string;
   targetPostId?: string;
   relatedPostId?: string;
-  targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert' | 'admin';
+  targetModal?: 'blood' | 'aid_ledger' | 'quick_service' | 'find_for_me' | 'marketplace' | 'group_work' | 'from_me_to_you' | 'detail' | 'red_alert' | 'admin' | 'message_inbox' | 'chat';
   meta?: {
     hazardName?: string;
     hazardType?: string;
@@ -52,7 +53,32 @@ export const playNotificationSound = (type: NotificationType = 'general') => {
 
     const ctx = new AudioContextClass();
 
-    if (type === 'emergency_blood') {
+    if (type === 'chat_message') {
+      // 💬 Crisp pleasant double-chime for incoming chat message (C6 -> G6)
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(1046.50, now); // C6
+      gain1.gain.setValueAtTime(0.28, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.17);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1567.98, now + 0.12); // G6
+      gain2.gain.setValueAtTime(0.32, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.38);
+
+    } else if (type === 'emergency_blood') {
       // Urgent double beep for emergency blood
       const now = ctx.currentTime;
       

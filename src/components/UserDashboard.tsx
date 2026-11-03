@@ -74,6 +74,7 @@ import { initialMarketItems, getStoredMarketShops, saveMarketShopsToStorage } fr
 import { UniversalEntityMatch, getEntitySerialNumber } from '../utils/entitySerialNumberHelper';
 import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
+import { LiveNotificationToast } from './LiveNotificationToast';
 import { broadcastAppNotification, AppNotification, removeNotificationsForPost } from '../utils/notificationManager';
 import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
 import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
@@ -218,6 +219,15 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     creditBalance: 100,
   } as unknown as User);
   }, [propUser, currentUser]);
+
+  const currentUserRef = useRef(user);
+  useEffect(() => {
+    currentUserRef.current = user;
+  }, [user]);
+
+  const lastSeenChatTimestampsRef = useRef<Map<string, number>>(new Map());
+  const isFirstPostsSnapshotRef = useRef(true);
+
   const t = translations[language];
 
   // Active Location State (Defaults to Kadawatha or saved location)
@@ -370,6 +380,67 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         saveHelpPostsToStorage(filtered);
         if (typeof setHelpPosts === 'function') {
           setHelpPosts(filtered);
+        }
+
+        // 🔔 Real-time incoming chat message notification
+        if (isFirstPostsSnapshotRef.current) {
+          isFirstPostsSnapshotRef.current = false;
+          filtered.forEach((p: any) => {
+            if (p && p.id && p.lastMessageTimeMs) {
+              lastSeenChatTimestampsRef.current.set(p.id, Number(p.lastMessageTimeMs));
+            }
+          });
+        } else {
+          const currentU = currentUserRef.current;
+          const currentUserId = currentU?.userId || currentU?.id || '';
+          const currentUserPhone = (currentU?.whatsappPhone || currentU?.phone || '').replace(/\D/g, '');
+
+          filtered.forEach((p: any) => {
+            if (!p || !p.id || !p.lastMessageTimeMs || !p.lastMessage) return;
+            const newTime = Number(p.lastMessageTimeMs);
+            const prevTime = lastSeenChatTimestampsRef.current.get(p.id) || 0;
+
+            if (newTime > prevTime) {
+              lastSeenChatTimestampsRef.current.set(p.id, newTime);
+
+              // Check if sender is someone else
+              const senderId = p.lastMessageSenderId;
+              const isFromOther = !senderId || senderId !== currentUserId;
+
+              // Check if current user is involved in this post
+              const isOwner = checkIsPostOwner(currentU, p);
+              const isHelper = p.confirmedHelperId === currentUserId ||
+                (p.confirmedHelperPhone && currentUserPhone && p.confirmedHelperPhone.replace(/\D/g, '') === currentUserPhone);
+              const isApplicant = Array.isArray(p.applicants) && p.applicants.some((a: any) => 
+                (a.userId && a.userId === currentUserId) || 
+                (a.id && a.id === currentUserId) || 
+                (a.phone && currentUserPhone && a.phone.replace(/\D/g, '') === currentUserPhone)
+              );
+              const isReplier = Array.isArray(p.replies) && p.replies.some((r: any) => 
+                (r.userId && r.userId === currentUserId) || 
+                (r.phone && currentUserPhone && r.phone.replace(/\D/g, '') === currentUserPhone)
+              );
+
+              if (isFromOther && (isOwner || isHelper || isApplicant || isReplier)) {
+                const senderName = p.lastMessageSenderName || 'පරිශීලක (User)';
+                broadcastAppNotification({
+                  type: 'chat_message',
+                  titleSi: `නව පණිවිඩයක්: ${senderName}`,
+                  titleTa: `புதிய செய்தி: ${senderName}`,
+                  titleEn: `New message from ${senderName}`,
+                  descriptionSi: p.lastMessage,
+                  descriptionTa: p.lastMessage,
+                  descriptionEn: p.lastMessage,
+                  targetModal: 'message_inbox',
+                  targetPostId: p.id,
+                  relatedPostId: p.id,
+                  postCode: p.postCode,
+                  category: p.category,
+                  playSound: true,
+                });
+              }
+            }
+          });
         }
       }
     });
@@ -568,7 +639,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       setBoardCategoryFilter('quick_services');
     } else if (targetModal === 'group_work' || targetModal === 'group') {
       setBoardCategoryFilter('group_work');
-    } else if (targetModal === 'chat' || targetModal === 'inbox') {
+    } else if (targetModal === 'chat' || targetModal === 'inbox' || targetModal === 'message_inbox') {
       setIsInboxModalOpen(true);
     } else if (targetModal === 'marketplace') {
       setIsMarketplaceLowestModalOpen(true);
@@ -1436,6 +1507,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto py-2 sm:py-4 space-y-4 sm:space-y-6 animate-fadeIn">
+      {/* 🔔 Interactive Real-Time Live Notification Toast */}
+      <LiveNotificationToast onOpenNotification={handleOpenFromNotification} />
+
       {/* 🚨 Active Red Alert Ticker Banner at the Very Top of Notice Board */}
       {redAlerts && redAlerts.length > 0 && (
         <RedAlertBanner

@@ -11,11 +11,13 @@ import {
   Clock,
   Briefcase,
   ArrowRightLeft,
-  Globe
+  Globe,
+  Lock
 } from 'lucide-react';
 import { ProfessionalService, ChatMessage, User as UserType, Language } from '../types';
 import { subscribeToChatMessages, sendChatMessageToFirestore } from '../lib/firebase';
 import { parseTimeToMs, formatMessageClockTime } from '../utils/dateUtils';
+import { playNotificationSound, triggerBrowserNotification } from '../utils/notificationManager';
 import { 
   inspectAndSanitizeMessage, 
   getUserStrikes, 
@@ -49,10 +51,11 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const isFirstSubRef = useRef<boolean>(true);
 
   // Dual-party language states
   const [userLang, setUserLang] = useState<Language>(language || 'si');
-  const [otherPartyLang, setOtherPartyLang] = useState<Language>('si');
   const [toggledOriginals, setToggledOriginals] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -60,6 +63,12 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
       setUserLang(language);
     }
   }, [language]);
+
+  // Reset notification tracking when switching service
+  useEffect(() => {
+    seenMessageIdsRef.current.clear();
+    isFirstSubRef.current = true;
+  }, [service?.id]);
 
   // Policy Guard Modal State
   const userKey = currentUser?.userId || currentUser?.phone || currentUser?.nicNumber || currentUser?.name || 'user';
@@ -82,6 +91,42 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
 
     const channelId = `ps_${service.id}`;
     const unsubscribe = subscribeToChatMessages(channelId, (firestoreMsgs) => {
+      // 🔔 Detect new incoming messages from other party and notify
+      if (isFirstSubRef.current) {
+        (firestoreMsgs || []).forEach((m) => {
+          if (m?.id) seenMessageIdsRef.current.add(m.id);
+        });
+        isFirstSubRef.current = false;
+      } else {
+        (firestoreMsgs || []).forEach((m) => {
+          if (!m || !m.id) return;
+          if (!seenMessageIdsRef.current.has(m.id)) {
+            seenMessageIdsRef.current.add(m.id);
+            const isMine = isCurrentSender(m);
+            if (!isMine) {
+              playNotificationSound('chat_message');
+              try {
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                  navigator.vibrate([100, 50, 100]);
+                }
+              } catch {}
+              if (typeof document !== 'undefined' && document.hidden) {
+                triggerBrowserNotification({
+                  id: 'ps_chat_' + m.id,
+                  type: 'chat_message',
+                  title: `💬 ${m.senderName || service.providerName || 'නව පණිවිඩයක්'}`,
+                  message: m.text || 'නව පණිවිඩයක් ලැබුණි.',
+                  timestamp: new Date().toISOString(),
+                  isRead: false,
+                  badgeText: 'CHAT',
+                  targetModal: 'detail',
+                });
+              }
+            }
+          }
+        });
+      }
+
       const combined: ChatMessage[] = [];
 
       firestoreMsgs.forEach((fMsg) => {
@@ -102,6 +147,22 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
       if (unsubscribe) unsubscribe();
     };
   }, [isOpen, service?.id]);
+
+  const otherPartyLang = useMemo((): Language => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m && !isCurrentSender(m)) {
+        if (m.senderLang === 'si' || m.senderLang === 'en' || m.senderLang === 'ta') {
+          return m.senderLang;
+        }
+        const det = detectLanguageOfText(m.text || '');
+        if (det === 'si' || det === 'singlish') return 'si';
+        if (det === 'ta') return 'ta';
+        if (det === 'en' && (m.text || '').length > 5) return 'en';
+      }
+    }
+    return 'si';
+  }, [messages]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
@@ -263,7 +324,7 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
         {/* DUAL-LANGUAGE REAL-TIME TRANSLATION BAR */}
         <div className="bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-xl shadow-inner text-xs">
+            <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-xl shadow-inner text-xs">
               <span className="text-[9px] text-emerald-300 font-bold uppercase">ඔබේ භාෂාව:</span>
               <select
                 value={userLang}
@@ -280,23 +341,34 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
               <ArrowRightLeft className="w-3 h-3 animate-pulse" />
             </div>
 
-            <div className="flex items-center gap-1 bg-teal-950/80 border border-teal-500/50 px-2 py-0.5 rounded-xl shadow-inner text-xs">
-              <span className="text-[9px] text-teal-300 font-bold uppercase">අනෙක් පාර්ශ්වය:</span>
-              <select
-                value={otherPartyLang}
-                onChange={(e) => setOtherPartyLang(e.target.value as Language)}
-                className="bg-teal-900/90 text-white font-black text-xs rounded-lg px-1.5 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer"
+            {/* 🎯 Requirement 3: අනෙක් පාර්ශවයේ භාෂාව පෙන්වුවද එය වෙනස් කිරිමට නොහැකි ලෙස සකසන්න. */}
+            <div className="flex items-center gap-1.5 bg-teal-950/80 border border-teal-500/50 px-2.5 py-1 rounded-xl shadow-inner text-xs">
+              <span className="text-[9px] text-teal-300 font-bold uppercase flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 opacity-80" />
+                අනෙක් පාර්ශ්වය:
+              </span>
+              <span
+                className="bg-teal-900/90 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 select-none shadow-xs"
+                title="අනෙක් පාර්ශ්වයේ භාෂාව (වෙනස් කළ නොහැක / ස්වයංක්‍රීයව හඳුනාගැනේ)"
               >
-                <option value="en">English 🇬🇧</option>
-                <option value="si">සිංහල 🇱🇰</option>
-                <option value="ta">தமிழ் 🇱🇰</option>
-              </select>
+                {otherLangInfo.badge}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 text-[9px] bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-lg font-bold">
-            <Sparkles className="w-3 h-3 text-amber-300" />
-            <span>Auto-Translate Active</span>
+          <div className={`flex items-center gap-1 text-[9px] border px-2 py-0.5 rounded-lg font-bold ${
+            userLang === otherPartyLang
+              ? 'bg-slate-800/80 text-emerald-300 border-emerald-500/40'
+              : 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-400/40'
+          }`}>
+            {userLang === otherPartyLang ? (
+              <span>✓ භාෂා සමානයි (Original Message)</span>
+            ) : (
+              <>
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>Auto-Translate ({userLangInfo.nativeName})</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -329,7 +401,13 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
               let secondaryTranslationText = '';
               let isAutoTranslated = false;
 
-              if (msg.translations && msg.translations[userLang]) {
+              // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+              const isSameLanguage = Boolean(userLang === otherPartyLang || (msg.senderLang && msg.senderLang === userLang));
+
+              if (isSameLanguage) {
+                primaryText = rawSanitized;
+                isAutoTranslated = false;
+              } else if (msg.translations && msg.translations[userLang]) {
                 if (isMine) {
                   primaryText = showOriginal ? (msg.translations[otherPartyLang] || rawSanitized) : rawSanitized;
                   secondaryTranslationText = msg.translations[otherPartyLang] || '';
@@ -345,9 +423,9 @@ export const ProfessionalServiceChatModal: React.FC<ProfessionalServiceChatModal
                   }
                 }
               } else {
-                const transResult = translateChatMessage(rawSanitized, userLang);
+                const transResult = translateChatMessage(rawSanitized, userLang, msg.senderLang || otherPartyLang);
                 if (isMine) {
-                  const otherTrans = translateChatMessage(rawSanitized, otherPartyLang);
+                  const otherTrans = translateChatMessage(rawSanitized, otherPartyLang, userLang);
                   primaryText = rawSanitized;
                   secondaryTranslationText = otherTrans.translatedText;
                   if (otherTrans.translatedText && otherTrans.translatedText !== rawSanitized) {

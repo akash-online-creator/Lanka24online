@@ -10,7 +10,8 @@ import {
   Gift, 
   ArrowRight,
   MapPin,
-  Clock
+  Clock,
+  MessageSquare
 } from 'lucide-react';
 import { AppNotification, markNotificationAsRead } from '../utils/notificationManager';
 import { formatRelativeTime } from '../utils/dateUtils';
@@ -47,6 +48,8 @@ export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ on
 
   const getIcon = () => {
     switch (activeToast.type) {
+      case 'chat_message':
+        return <MessageSquare className="w-5 h-5 text-white animate-pulse" />;
       case 'emergency_blood':
         return <Droplet className="w-5 h-5 text-white fill-white animate-bounce" />;
       case 'quick_service':
@@ -66,6 +69,13 @@ export const LiveNotificationToast: React.FC<LiveNotificationToastProps> = ({ on
 
   const getThemeClasses = () => {
     switch (activeToast.type) {
+      case 'chat_message':
+        return {
+          cardBg: 'bg-gradient-to-r from-emerald-600 via-teal-600 to-[#007a4b] text-white border-emerald-300 shadow-emerald-500/40 ring-2 ring-emerald-400/50',
+          iconBg: 'bg-white/20 text-white',
+          btnBg: 'bg-white text-emerald-900 hover:bg-emerald-50',
+          badgeBg: 'bg-white text-emerald-950 font-black',
+        };
       case 'emergency_blood':
         return {
           cardBg: 'bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white border-red-400/80 shadow-red-500/30',

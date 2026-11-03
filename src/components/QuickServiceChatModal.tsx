@@ -35,6 +35,7 @@ detectLanguageOfText,
 getLanguageDisplayInfo
 } from '../utils/chatTranslator';
 import { translateWithGoogle } from '../utils/googleTranslator';
+import { playNotificationSound, triggerBrowserNotification } from '../utils/notificationManager';
 import { PolicyViolationModal } from './PolicyViolationModal';
 import { AudioVoiceRecorder, AudioVoicePlayer } from './AudioVoiceNote';
 const h = React.createElement;
@@ -176,6 +177,8 @@ const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 const [toggledOriginals, setToggledOriginals] = useState({} as any);
 const [liveTranslations, setLiveTranslations] = useState({} as any);
 const chatBottomRef = useRef(null as any);
+const seenMessageIdsRef = useRef<Set<string>>(new Set());
+const isFirstSubRef = useRef<boolean>(true);
 const [showPolicyModal, setShowPolicyModal] = useState(false);
 const [policyStrikes, setPolicyStrikes] = useState(() => getUserStrikes(userKey));
 const [isBlocked, setIsBlocked] = useState(() => isUserPolicyBlocked(userKey));
@@ -244,7 +247,48 @@ const msgPhone = normalizePhoneStr(msg.senderPhone);
 if (msgPhone && currentUserPhone && (msgPhone === currentUserPhone ? true : msgPhone.slice(-7) === currentUserPhone.slice(-7))) return true;
 return false;
 };
+useEffect(() => {
+  seenMessageIdsRef.current.clear();
+  isFirstSubRef.current = true;
+}, [post?.id, selectedPartnerKey]);
+
 useEffect(() => { if (!isOpen ? true : !post?.id) return; const unsubscribe = subscribeToChatMessages(post.id, (firestoreMsgs) => {
+  if (isFirstSubRef.current) {
+    (firestoreMsgs || []).forEach((m: any) => {
+      if (m && m.id) seenMessageIdsRef.current.add(m.id);
+    });
+    isFirstSubRef.current = false;
+  } else {
+    (firestoreMsgs || []).forEach((m: any) => {
+      if (!m || !m.id) return;
+      if (!seenMessageIdsRef.current.has(m.id)) {
+        seenMessageIdsRef.current.add(m.id);
+        const mine = isMeMessage(m);
+        if (!mine) {
+          playNotificationSound('chat_message');
+          try {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate([100, 50, 100]);
+            }
+          } catch {}
+          if (typeof document !== 'undefined' && document.hidden) {
+            triggerBrowserNotification({
+              id: 'qs_chat_' + m.id,
+              type: 'chat_message',
+              title: `💬 ${m.senderName || 'නව පණිවිඩයක්'}`,
+              message: m.text || 'නව පණිවිඩයක් ලැබුණි.',
+              timestamp: new Date().toISOString(),
+              isRead: false,
+              badgeText: 'CHAT',
+              targetModal: 'quick_service',
+              targetPostId: post.id,
+            });
+          }
+        }
+      }
+    });
+  }
+
 const combined: ChatMessage[] = []; if (Array.isArray(post.replies)) { post.replies.forEach((rep: any, rIdx: number) => { if (!rep) return;
 const isDup = (firestoreMsgs ? firestoreMsgs : []).some( (m) => Boolean( m && m.text && rep.message && m.text.trim() === rep.message.trim() &&
 m.senderName && rep.responderName && m.senderName.trim() === rep.responderName.trim() ) ); if (!isDup) { const repMs = rep.createdAtMs ? rep.createdAtMs : parseTimeToMs(rep.createdAt);
@@ -390,45 +434,7 @@ const handleConfirmDelete = async () => {
     console.error('Failed to delete message for everyone:', err);
   }
 };
-useEffect(() => { if (!isOpen ? true : activePartnerMessages.length === 0) return; let isMounted = true; activePartnerMessages.forEach((msg: any) => {
-if (!msg ? true : !msg.text ? true : msg.audioUrl) return; const mine = isMeMessage(msg); if (mine) return; const cacheKey = msg.id + '_' + userLang;
-if (liveTranslations[cacheKey]) return; const exactGreeting = instantExactGreetingTranslate(msg.text, userLang); if (exactGreeting) {
-if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: exactGreeting })); } return; } const precomp = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
-const dictTrans = translateChatMessage(msg.text, userLang).translatedText; if (precomp && precomp.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
-if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: precomp })); } return; } if (dictTrans && dictTrans.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
-if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: dictTrans })); } return; } const msgDetected = msg.senderLang ? msg.senderLang : detectLanguageOfText(msg.text);
-const effectiveSource = msgDetected === 'singlish' ? 'si' : msgDetected; if (effectiveSource !== userLang) { translateWithGoogle(msg.text, userLang).then((gRes) => {
-if (isMounted && gRes && gRes.trim()) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: gRes.trim() })); } }).catch(() => {});
-} }); return () => { isMounted = false; }; }, [isOpen, activePartnerMessages, userLang]);
-const [manualOtherPartyLang, setManualOtherPartyLang] = useState<string>(() => {
-  if (typeof localStorage !== 'undefined' && selectedPartnerKey) {
-    return localStorage.getItem('sahaya_partner_lang_' + selectedPartnerKey) || 'auto';
-  }
-  return 'auto';
-});
-
-useEffect(() => {
-  if (selectedPartnerKey && typeof localStorage !== 'undefined') {
-    const saved = localStorage.getItem('sahaya_partner_lang_' + selectedPartnerKey);
-    setManualOtherPartyLang(saved || 'auto');
-  }
-}, [selectedPartnerKey]);
-
-const handleSelectOtherPartyLanguage = (langVal: string) => {
-  setManualOtherPartyLang(langVal);
-  if (selectedPartnerKey && typeof localStorage !== 'undefined') {
-    if (langVal === 'auto') {
-      localStorage.removeItem('sahaya_partner_lang_' + selectedPartnerKey);
-    } else {
-      localStorage.setItem('sahaya_partner_lang_' + selectedPartnerKey, langVal);
-    }
-  }
-};
-
 const detectedOtherPartyLang = useMemo((): Language => {
-  if (manualOtherPartyLang === 'si' || manualOtherPartyLang === 'en' || manualOtherPartyLang === 'ta') {
-    return manualOtherPartyLang as Language;
-  }
   for (let i = activePartnerMessages.length - 1; Math.max(i, 0) === i; i--) {
     const m: any = activePartnerMessages[i];
     if (m && !isMeMessage(m)) {
@@ -441,12 +447,54 @@ const detectedOtherPartyLang = useMemo((): Language => {
       const det = detectLanguageOfText(rawText);
       if (det === 'singlish' || det === 'si') return 'si';
       if (det === 'ta') return 'ta';
-      if (det === 'en' && rawText.length > 15) return 'en';
+      if (det === 'en' && rawText.length > 5) return 'en';
       return 'si';
     }
   }
   return 'si';
-}, [activePartnerMessages, userLang, manualOtherPartyLang]);
+}, [activePartnerMessages]);
+
+useEffect(() => { 
+  if (!isOpen ? true : activePartnerMessages.length === 0) return; 
+  let isMounted = true; 
+  activePartnerMessages.forEach((msg: any) => {
+    if (!msg ? true : !msg.text ? true : msg.audioUrl) return; 
+    const mine = isMeMessage(msg); 
+    if (mine) return; 
+
+    // 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+    const senderLang = msg.senderLang || detectedOtherPartyLang;
+    const msgDetected = detectLanguageOfText(msg.text);
+    if (senderLang === userLang || detectedOtherPartyLang === userLang || (msgDetected === userLang && msgDetected !== 'singlish')) {
+      return;
+    }
+
+    const cacheKey = msg.id + '_' + userLang;
+    if (liveTranslations[cacheKey]) return; 
+    const exactGreeting = instantExactGreetingTranslate(msg.text, userLang); 
+    if (exactGreeting) {
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: exactGreeting })); } 
+      return; 
+    } 
+    const precomp = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
+    const dictTrans = translateChatMessage(msg.text, userLang, senderLang).translatedText; 
+    if (precomp && precomp.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: precomp })); } 
+      return; 
+    } 
+    if (dictTrans && dictTrans.trim().toLowerCase() !== msg.text.trim().toLowerCase()) {
+      if (isMounted) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: dictTrans })); } 
+      return; 
+    } 
+    const effectiveSource = msgDetected === 'singlish' ? 'si' : msgDetected; 
+    if (effectiveSource !== userLang) { 
+      translateWithGoogle(msg.text, userLang).then((gRes) => {
+        if (isMounted && gRes && gRes.trim()) { setLiveTranslations((prev: any) => ({ ...prev, [cacheKey]: gRes.trim() })); } 
+      }).catch(() => {});
+    } 
+  }); 
+  return () => { isMounted = false; }; 
+}, [isOpen, activePartnerMessages, userLang, detectedOtherPartyLang]);
 useEffect(() => { if (isOpen) { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); } }, [activePartnerMessages.length, selectedPartnerKey, isOpen]);
 if (!isOpen ? true : !post ? true : !currentUser) return null;
 const isConfirmed = Boolean(post.isConfirmed);
@@ -562,16 +610,36 @@ setToggledOriginals((prev: any) => ({ ...prev, [msgId]: !prev[msgId], }));
 const resolveDisplayedMessageText = (msg: any, mine: boolean) => {
 const rawSanitized = inspectAndSanitizeMessage(msg.text ? msg.text : '', isConfirmed).sanitizedText;
 if (msg.audioUrl) {
-return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized };
+return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized, translatedText: '' };
 }
 if (mine) {
-return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized };
+return { primaryText: rawSanitized, isTranslated: false, originalText: rawSanitized, translatedText: '' };
 }
+
+// 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+const senderLang = msg.senderLang || detectedOtherPartyLang;
+const msgDetected = detectLanguageOfText(rawSanitized);
+const isSameLanguage = Boolean(
+  (detectedOtherPartyLang && detectedOtherPartyLang === userLang) ||
+  (senderLang && senderLang === userLang) ||
+  (msgDetected === userLang && msgDetected !== 'singlish')
+);
+
+if (isSameLanguage) {
+  return {
+    primaryText: rawSanitized,
+    isTranslated: false,
+    originalText: rawSanitized,
+    translatedText: '',
+  };
+}
+
+// 🎯 Requirement 3: තම භාෂාව පමණක් වෙනස් කලවිට පැමිනෙන පණිවිඩද ඒ භාෂාවට පරිවර්ථනය කර පෙන්වන්න.
 const cacheKey = msg.id + '_' + userLang;
 const exactMatch = instantExactGreetingTranslate(rawSanitized, userLang);
 const fromLive = liveTranslations[cacheKey];
 const fromMsgObj = msg.translations && msg.translations[userLang] ? msg.translations[userLang] : '';
-const fromDict = translateChatMessage(rawSanitized, userLang).translatedText;
+const fromDict = translateChatMessage(rawSanitized, userLang, senderLang).translatedText;
 const translatedCandidate = exactMatch
 ? exactMatch
 : fromLive
@@ -661,24 +729,44 @@ onClose(); handleConfirm(post); }, className: 'px-3 py-1 bg-gradient-to-r from-a
 title: 'වසන්න' }, '✕' ) ) ), !isConfirmed ? h( 'div', { className: 'bg-amber-400/20 border border-amber-400/30 rounded-xl px-2.5 py-1 text-[10px] text-amber-100 flex items-center gap-1.5' },
 h(ShieldAlert, { className: 'w-3 h-3 text-amber-300 shrink-0' }), h('span', null, 'සහය තහවුරු (Confirm) කරන තුරු පෞද්ගලික දුරකථන අංක හා ලිපින හුවමාරුව තහනම්ය.')
 ) : null ), h( 'div', { className: 'bg-slate-900 dark:bg-[#03120a] border-b border-emerald-800/60 px-3 py-2 text-white flex flex-wrap items-center justify-between gap-2 shrink-0' },
-h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, h( 'div', { className: 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව (ස්ථිරයි):'), h( 'select', { value: userLang, onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
-className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
-}, h('option', { value: 'si' }, 'සිංහල 🇱🇰'), h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), h('option', { value: 'en' }, 'English 🇬🇧')
-) ), h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
-h('span', { className: 'text-[10px] text-teal-300 font-bold' }, 'අනෙක් පාර්ශ්වය:'),
-h( 'select', {
-  value: manualOtherPartyLang,
-  onChange: (e: any) => handleSelectOtherPartyLanguage(e.target.value),
-  className: 'bg-teal-900 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 focus:outline-none cursor-pointer',
-  title: 'අනෙක් පාර්ශ්වයේ භාෂාව තෝරන්න (Auto හෝ නිශ්චිත භාෂාව)'
+h( 'div', { className: 'flex items-center gap-2 flex-wrap' }, 
+  h( 'div', { className: 'flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
+    h('span', { className: 'text-[10px] text-emerald-300 font-bold' }, 'ඔබගේ භාෂාව:'), 
+    h( 'select', { 
+      value: userLang, 
+      onChange: (e: any) => handleSelectOwnLanguage(e.target.value as Language),
+      className: 'bg-emerald-900 text-white font-black text-xs rounded-lg px-2 py-0.5 border border-emerald-400/40 focus:outline-none cursor-pointer'
+    }, 
+      h('option', { value: 'si' }, 'සිංහල 🇱🇰'), 
+      h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'), 
+      h('option', { value: 'en' }, 'English 🇬🇧')
+    ) 
+  ), 
+  // 🎯 Requirement 3: අනෙක් පාර්ශවයේ භාෂාව පෙන්වුවද එය වෙනස් කිරිමට නොහැකි ලෙස සකසන්න.
+  h( 'div', { className: 'flex items-center gap-1.5 bg-teal-950/90 border border-teal-500/60 px-2.5 py-1 rounded-xl shadow-inner text-xs' },
+    h('span', { className: 'text-[10px] text-teal-300 font-bold flex items-center gap-1' }, 
+      h(Lock, { className: 'w-2.5 h-2.5 opacity-80' }),
+      'අනෙක් පාර්ශ්වය:'
+    ),
+    h('span', { 
+      className: 'bg-teal-900/90 text-amber-300 font-black text-xs rounded-lg px-2 py-0.5 border border-teal-400/40 select-none shadow-xs flex items-center gap-1',
+      title: 'අනෙක් පාර්ශ්වයේ භාෂාව (වෙනස් කළ නොහැක / ස්වයංක්‍රීයව හඳුනාගැනේ)'
+    }, otherLangInfo.badge)
+  ) 
+), 
+h( 'div', { 
+  className: 'flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-xl font-bold border ' + 
+    (detectedOtherPartyLang === userLang 
+      ? 'bg-slate-800/80 text-emerald-300 border-emerald-500/40' 
+      : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40') 
 },
-  h('option', { value: 'auto' }, 'ස්වයංක්‍රීය (' + otherLangInfo.badge + ')'),
-  h('option', { value: 'si' }, 'සිංහල 🇱🇰'),
-  h('option', { value: 'ta' }, 'தமிழ் 🇱🇰'),
-  h('option', { value: 'en' }, 'English 🇬🇧')
-) ) ), h( 'div', { className: 'flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-xl font-bold' },
-h(Sparkles, { className: 'w-3 h-3 text-amber-300' }), h('span', null, 'Auto-Translate (' + userLangInfo.nativeName + ')') ) ),
+  detectedOtherPartyLang === userLang 
+    ? h('span', null, '✓ භාෂා සමානයි (Original Message)')
+    : [
+        h(Sparkles, { className: 'w-3 h-3 text-amber-300', key: 'spk' }), 
+        h('span', { key: 'txt' }, 'Auto-Translate (' + userLangInfo.nativeName + ')')
+      ]
+) ),
 pinnedMessage ? h('div', {
   className: 'bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-emerald-500/15 dark:from-amber-950/60 dark:to-[#071c12] border-b border-amber-400/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs shrink-0 animate-fadeIn'
 },

@@ -337,6 +337,11 @@ return { translatedText: '', detectedLang: 'en' };
 const clean = text.trim();
 const detected = detectLanguageOfText(clean);
 
+// 🎯 Requirement 2: දෙපාර්ශවයම එකම භාෂාවකනම් පරිවර්ථනය කිරිම අවශ්ෂ නොවේ. ORIGINAL MSG එකම පෙන්වන්න.
+if ((sourceLangHint && sourceLangHint === targetLang) || (detected === targetLang && detected !== 'singlish')) {
+  return { translatedText: clean, detectedLang: detected };
+}
+
 const lower = clean.toLowerCase().replace(/[?!.,;:_!]/g, '').trim();
 
 for (const item of CHAT_EXACT_PHRASES) {
