@@ -372,41 +372,23 @@ export function removeDeletedUserId(identifier: string): void {
 
 export function isUserPermanentlyDeleted(userOrId: any): boolean {
   if (!userOrId) return false;
-  const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
-  if (typeof userOrId === 'string') {
-    const clean = userOrId.trim().toLowerCase();
-    const digits = clean.replace(/[^0-9]/g, '');
-    return deletedSet.has(clean) || (digits.length >= 9 && deletedSet.has(digits));
-  }
   if ((userOrId as any).isDeleted === true || (userOrId.status as string) === 'deleted') {
     return true;
   }
-  const id = userOrId.id ? String(userOrId.id).trim().toLowerCase() : '';
-  const userId = userOrId.userId ? String(userOrId.userId).trim().toLowerCase() : '';
-  const nic = String(userOrId.nicNumber || userOrId.nic || '').trim().toLowerCase();
-  const digits = (nic || userId || id).replace(/[^0-9]/g, '');
-  return Boolean(
-    (id && deletedSet.has(id)) ||
-    (userId && deletedSet.has(userId)) ||
-    (nic && deletedSet.has(nic)) ||
-    (digits.length >= 9 && deletedSet.has(digits))
-  );
+  // For plain string IDs only
+  if (typeof userOrId === 'string') {
+    const clean = userOrId.trim().toLowerCase();
+    const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
+    return deletedSet.has(clean);
+  }
+  return false;
 }
 
 export function filterNonDeletedUsers(users: User[]): User[] {
   if (!Array.isArray(users)) return [];
-  const deletedSet = new Set(getStoredDeletedUserIds().map((s) => s.toLowerCase()));
   return users.filter((u) => {
     if (!u) return false;
     if ((u.status as string) === 'deleted' || (u as any).isDeleted === true) return false;
-    const id = u.id ? String(u.id).trim().toLowerCase() : '';
-    const userId = u.userId ? String(u.userId).trim().toLowerCase() : '';
-    const nic = String(u.nicNumber || u.nic || '').trim().toLowerCase();
-    const digits = (nic || userId || id).replace(/[^0-9]/g, '');
-    if (id && deletedSet.has(id)) return false;
-    if (userId && deletedSet.has(userId)) return false;
-    if (nic && deletedSet.has(nic)) return false;
-    if (digits.length >= 9 && deletedSet.has(digits)) return false;
     return true;
   });
 }

@@ -606,12 +606,6 @@ export function subscribeToUsers(callback: (users: any[]) => void): () => void {
     const users = rawUsers.filter((u: any) => {
       if (!u) return false;
       if (u.isDeleted === true || (u.status as string) === 'deleted') return false;
-      const id = String(u.id || '').trim();
-      const userId = String(u.userId || '').trim();
-      const nic = String(u.nicNumber || u.nic || '').trim();
-      if (id && isStoredDeletedUserId(id)) return false;
-      if (userId && isStoredDeletedUserId(userId)) return false;
-      if (nic && isStoredDeletedUserId(nic)) return false;
       return true;
     });
     callback(users);
@@ -942,7 +936,7 @@ export async function sendChatMessageToFirestore(postId: string, messageData: an
         try {
           const postSnap = await getDoc(postDocRef);
           if (postSnap.exists()) {
-            const pData = postSnap.data();
+            const pData = postSnap.data() as any;
             if (pData?.isDeleted || pData?.status === "deleted") {
               return; // Do not resurrect deleted post
             }

@@ -84,6 +84,30 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     };
   }, []);
 
+  const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supporservice.online';
+  const downloadLandingUrl = typeof window !== 'undefined' ? `${window.location.origin}/download` : 'https://supporservice.online/download';
+  const apkDownloadUrl = FALLBACK_APK_DIRECT_URL;
+
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    // Generate clean, high-resolution local QR data URL (works 100% offline, zero CORS issues)
+    generateQrDataUrl(downloadLandingUrl).then((url) => {
+      if (isMounted) {
+        if (url) {
+          setQrDataUrl(url);
+        } else {
+          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(downloadLandingUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, downloadLandingUrl]);
+
   if (!isOpen) return null;
 
   const getLang = (si: string, en: string, ta: string) => {
@@ -122,29 +146,6 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
     const active = await toggleFullscreen();
     setIsFullscreen(active);
   };
-
-  const directUrl = typeof window !== 'undefined' ? window.location.origin : 'https://supporservice.online';
-  const downloadLandingUrl = typeof window !== 'undefined' ? `${window.location.origin}/download` : 'https://supporservice.online/download';
-  const apkDownloadUrl = FALLBACK_APK_DIRECT_URL;
-
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-
-  useEffect(() => {
-    let isMounted = true;
-    // Generate clean, high-resolution local QR data URL (works 100% offline, zero CORS issues)
-    generateQrDataUrl(downloadLandingUrl).then((url) => {
-      if (isMounted) {
-        if (url) {
-          setQrDataUrl(url);
-        } else {
-          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(downloadLandingUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
-        }
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [downloadLandingUrl]);
 
   const handleCopyLink = async () => {
     try {

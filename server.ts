@@ -682,11 +682,9 @@ async function startServer() {
   // 🤖 3. AI Smart Assistant Proxy (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
   const GEMINI_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-flash-latest',
     'gemini-3.8-flash',
+    'gemini-flash-latest',
     'gemini-3.1-flash-lite',
-    'gemini-2.5-pro',
   ];
   app.post('/api/chat', aiRateLimiter, async (req: any, res: any) => {
     try {

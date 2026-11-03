@@ -514,17 +514,6 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [isSavedPlacesModalOpen, setIsSavedPlacesModalOpen] = useState(false);
   const [isQuickRegistrationHubOpen, setIsQuickRegistrationHubOpen] = useState(false);
   const [isInsufficientCreditsModalOpen, setIsInsufficientCreditsModalOpen] = useState(false);
-      <InsufficientCreditsModal
-        isOpen={isInsufficientCreditsModalOpen}
-        onClose={() => setIsInsufficientCreditsModalOpen(false)}
-        requiredFee={requiredFeeForModal}
-        currentBalance={user?.creditBalance || 0}
-        onOpenWallet={() => {
-          setIsInsufficientCreditsModalOpen(false);
-          setIsWalletModalOpen(true);
-        }}
-        language={language}
-      />
   const [isModerationModalOpen, setIsModerationModalOpen] = useState(false);
   const [moderatingPost, setModeratingPost] = useState<HelpPost | null>(null);
   const [isPosterResponseModalOpen, setIsPosterResponseModalOpen] = useState(false);
@@ -2296,6 +2285,19 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         } : undefined}
       />
 
+      {/* 11.5 Insufficient Credits Modal */}
+      <InsufficientCreditsModal
+        isOpen={isInsufficientCreditsModalOpen}
+        onClose={() => setIsInsufficientCreditsModalOpen(false)}
+        requiredFee={requiredFeeForModal}
+        currentBalance={user?.creditBalance || 0}
+        onOpenWallet={() => {
+          setIsInsufficientCreditsModalOpen(false);
+          setIsWalletModalOpen(true);
+        }}
+        language={language}
+      />
+
       {/* 12. Instant QR Payment & Barcode Transfer Modal */}
       {systemSettings.enableQrPay && (
       <UserQrPayModal
@@ -2593,6 +2595,23 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           }
           setSelectedAlertForDetail(null);
         }}
+      />
+      {/* 🤖 Sahaya Mithura AI Companion & Interactive Guide */}
+      <OmniAssistantChatBox
+        currentLanguage={language}
+        onLanguageChange={setLanguage}
+        mode="full"
+        currentLocation={currentLocation}
+        onOpenBloodAndDisaster={() => setIsBloodAndDisasterModalOpen(true)}
+        onOpenQuickServices={() => setIsQuickServiceModalOpen(true)}
+        onOpenFindForMe={() => setIsFindForMeModalOpen(true)}
+        onOpenFromMeToYou={() => setIsFromMeToYouModalOpen(true)}
+        onOpenGroupWork={() => setBoardCategoryFilter('group_work')}
+        onOpenMarketplace={() => setIsMarketplaceLowestModalOpen(true)}
+        onOpenWallet={() => setIsWalletModalOpen(true)}
+        onOpenEmergencyDirectory={() => setIsEmergencyDirectoryModalOpen(true)}
+        onOpenHelpPost={() => setIsCategoryModalOpen(true)}
+        onOpenRedAlertCreate={() => setIsRedAlertCreateOpen(true)}
       />
       </React.Suspense>
 

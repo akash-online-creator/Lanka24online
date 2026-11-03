@@ -22,7 +22,7 @@ import { User, LocationOption, Language } from '../types';
 import { calculateDistanceKm, calculateRoadDistanceKm, resolveExactLocation } from '../utils/geoUtils';
 import { checkIsAdmin } from '../utils/postOwnerHelper';
 import { getHighAccuracyLocation } from '../utils/highAccuracyGps';
-import { db } from '../lib/firebase';
+import { db, fallbackDb } from '../lib/firebase';
 import {
   collection,
   addDoc,

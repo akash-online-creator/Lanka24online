@@ -53,7 +53,8 @@ import {
   Award,
   Edit,
   KeyRound,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -122,7 +123,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const [userSearch, setUserSearch] = useState('');
-  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'blocked'>('pending');
+  const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'blocked'>('all');
   const [postSearch, setPostSearch] = useState('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
@@ -436,7 +437,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const pendingUsersCount = users.filter((u) => u.status === 'pending' && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
+  const approvedUsersCount = users.filter((u) => (u.status === 'approved' || !u.status) && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
   const rejectedUsersCount = users.filter((u) => u.status === 'rejected' && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
+  const blockedUsersCount = users.filter((u) => u.status === 'blocked' && !(u as any).isDeleted && !isUserPermanentlyDeleted(u)).length;
   const pendingIssuesCount = issues.filter((i) => i.status === 'pending').length;
   const activeAlertsCount = redAlerts.filter((a) => a.status === 'active').length;
 
@@ -551,34 +554,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span>පරිශීලක කළමනාකරණය සහ අනුමැතිය (User Approvals)</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                මුළු පරිශීලකයින්: {users.length} • අනුමැතිය බලාපොරොත්තුවෙන්: {pendingUsersCount}
+                මුළු පරිශීලකයින්: {users.length} • අනුමැතියට: {pendingUsersCount} • අනුමත: {approvedUsersCount}
               </p>
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#07170e] p-1.5 rounded-2xl border border-slate-200/80 dark:border-[#153422] text-xs font-bold">
-              {(['pending', 'approved', 'rejected', 'blocked', 'all'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setUserFilter(f)}
-                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer capitalize ${
-                    userFilter === f
-                      ? 'bg-[#007a4b] text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {f === 'pending'
-                    ? `අනුමැතියට (${pendingUsersCount})`
-                    : f === 'approved'
-                    ? 'අනුමත අය'
-                    : f === 'rejected'
-                    ? `ප්‍රතික්ෂේපිත (${rejectedUsersCount})`
-                    : f === 'blocked'
-                    ? 'අවහිර කළ අය'
-                    : 'සියල්ල'}
-                </button>
-              ))}
+            {/* Filter Pills & Ghost Purge Button */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#07170e] p-1.5 rounded-2xl border border-slate-200/80 dark:border-[#153422] text-xs font-bold">
+                {(['all', 'pending', 'approved', 'rejected', 'blocked'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setUserFilter(f)}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer capitalize ${
+                      userFilter === f
+                        ? 'bg-[#007a4b] text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {f === 'all'
+                      ? `සියල්ල (${users.length})`
+                      : f === 'pending'
+                      ? `අනුමැතියට (${pendingUsersCount})`
+                      : f === 'approved'
+                      ? `අනුමත අය (${approvedUsersCount})`
+                      : f === 'rejected'
+                      ? `ප්‍රතික්ෂේපිත (${rejectedUsersCount})`
+                      : `අවහිර කළ අය (${blockedUsersCount})`}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem('sahaya_deleted_user_ids');
+                    showNotification('✅ අවලංගු / Ghost ගිණුම් පිරිසිදු කර සියලු පරිශීලකයින් සාර්ථකව Sync කරන ලදී.');
+                  } catch {}
+                }}
+                title="අවලංගු / සැඟවුණු ගිණුම් පිරිසිදු කර සියල්ල පෙන්වන්න"
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>අවලංගු ගිණුම් පිරිසිදු කරන්න</span>
+              </button>
             </div>
           </div>
 

@@ -52,6 +52,25 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    generateQrDataUrl(currentAppUrl).then((url) => {
+      if (isMounted) {
+        if (url) {
+          setQrDataUrl(url);
+        } else {
+          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, currentAppUrl]);
+
   if (!isOpen) return null;
 
   const getLang = (si: string, en: string, ta: string) => {
@@ -67,24 +86,6 @@ export const AppQrShareModal: React.FC<AppQrShareModalProps> = ({
       setTimeout(() => setCopied(false), 3000);
     }
   };
-
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-
-  useEffect(() => {
-    let isMounted = true;
-    generateQrDataUrl(currentAppUrl).then((url) => {
-      if (isMounted) {
-        if (url) {
-          setQrDataUrl(url);
-        } else {
-          setQrDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(currentAppUrl)}&color=064e3b&bgcolor=ffffff&margin=1`);
-        }
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [currentAppUrl]);
 
   const handleDownloadQr = () => {
     if (!qrDataUrl) return;

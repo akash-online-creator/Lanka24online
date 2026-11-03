@@ -39,7 +39,7 @@ import {
 import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
-import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
+import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, filterNonDeletedRedAlerts, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 
 async function hashUserPassword(rawPass: string): Promise<string> {
