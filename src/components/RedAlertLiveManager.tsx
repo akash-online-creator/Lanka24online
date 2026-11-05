@@ -38,12 +38,8 @@ export const RedAlertLiveManager: any = ({
   const activeAlertRef = useRef((null as any));
   const shouldRingRef = useRef(false);
   const popupTimeoutRef = useRef((null as any));
-  const triggerPopup = (_msg: string) => { return; /* Live toasts removed */
-    setPopupMessage(msg);
-    if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
-    popupTimeoutRef.current = setTimeout(() => {
-      setPopupMessage(null);
-    }, 8000);
+  const triggerPopup = (_msg: string) => {
+    return; /* Live toasts removed */
   };
   const persistStoppedAndDismissedAlert = (alertObj?: any, persistDismissed: boolean = true) => {
     const targetObj = alertObj ? alertObj : activeAlertRef.current;
@@ -514,7 +510,7 @@ export const RedAlertLiveManager: any = ({
             };
             if (isAlertCreatedByMe(candidateAlert)) continue;
             const latF = fields.latitude ? fields.latitude : fields.lat;
-            const lngF = fields.longitude ? fields.longitude : fields.lat;
+            const lngF = fields.longitude ? fields.longitude : fields.lng;
             const alertLat = latF ? Number(latF.doubleValue !== undefined ? latF.doubleValue : latF.integerValue) : 7.151;
             const alertLng = lngF ? Number(lngF.doubleValue !== undefined ? lngF.doubleValue : lngF.integerValue) : 79.885;
             const userCoords = getUserCoordinates();

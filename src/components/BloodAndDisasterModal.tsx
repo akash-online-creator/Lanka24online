@@ -49,6 +49,7 @@ import {
   subscribeToVolunteerDonorsFromFirestore
 } from '../lib/firebase';
 import { broadcastAppNotification } from '../utils/notificationManager';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
 interface BloodAndDisasterModalProps {
   isOpen: boolean;
@@ -219,7 +220,7 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
     saveBloodRequestsToStorage(updated);
     saveBloodRequestToFirestore(newRequest).catch((err) => console.warn('saveBloodRequestToFirestore error:', err));
     
-    // 🚨 PickMe-style background alert broadcast
+    // 🚨 PickMe-style background alert broadcast & Cross-device Push Queue
     broadcastAppNotification({
       type: 'emergency_blood',
       title: `🩸 හදිසි ${newBloodGroup} ලේ අවශ්‍යතාවයක්!`,
@@ -228,6 +229,17 @@ export const BloodAndDisasterModal: React.FC<BloodAndDisasterModalProps> = ({
       badgeText: 'හදිසි',
       targetModal: 'blood',
       targetPostId: newRequest.id,
+    });
+
+    broadcastPushNotification({
+      category: 'emergency_blood',
+      title: `🩸 හදිසි ${newBloodGroup} ලේ ඉල්ලීමක්!`,
+      body: `${newHospitalName} (${newDistrict}) - ${newPatientName} වෙනුවෙන් ${newBloodGroup} ලේ ඒකක ${newUnitsNeeded}ක් හදිසියේ අවශ්‍යයි.`,
+      postId: newRequest.id,
+      locationName: `${newHospitalName}, ${newDistrict}`,
+      urgency: 'critical',
+      badgeText: `ලේ (${newBloodGroup})`,
+      targetModal: 'blood',
     });
 
     setShowAddBloodRequestForm(false);

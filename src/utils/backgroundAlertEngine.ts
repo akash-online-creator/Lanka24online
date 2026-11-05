@@ -300,6 +300,35 @@ async function fireBackgroundPushNotification(params: {
   const fullBody = `${params.message}${params.locationName ? ` • 📍 ${params.locationName}` : ''}`;
   const tagId = `sahaya-24h-alert-${params.kind}-${Date.now()}`;
 
+  // 📲 Bridge to Native Android Alert Channel (Works when app is minimized or screen is off)
+  if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+    try {
+      if (params.kind === 'red_alert') {
+        (window as any).SahayaNativeAlertChannel.postMessage(
+          'WAKE_SCREEN_AND_SHOW_NOTIFICATION:' +
+            JSON.stringify({
+              title: params.title,
+              locationName: params.locationName || 'ශ්‍රී ලංකාව',
+              description: params.message,
+              playSiren: true,
+            })
+        );
+      } else {
+        (window as any).SahayaNativeAlertChannel.postMessage(
+          'SHOW_BACKGROUND_NOTIFICATION:' +
+            JSON.stringify({
+              category: params.kind,
+              title: params.title,
+              body: fullBody,
+              locationName: params.locationName,
+              postId: params.targetPostId,
+              targetModal: params.targetModal,
+            })
+        );
+      }
+    } catch {}
+  }
+
   // Native Platform Push handled via FCM Server Channel Trigger
   if (Capacitor.isNativePlatform()) {
     return;
@@ -312,14 +341,31 @@ async function fireBackgroundPushNotification(params: {
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.active) {
+        reg.active.postMessage({
+          type: 'TRIGGER_BACKGROUND_PUSH_ALERT',
+          payload: {
+            category: params.kind === 'disaster_relief' ? 'aid_ledger' : params.kind,
+            title: params.title,
+            body: fullBody,
+            description: params.message,
+            locationName: params.locationName,
+            postId: params.targetPostId,
+            targetModal: params.targetModal,
+            targetPostId: params.targetPostId,
+          },
+        });
+        return;
+      }
       if (reg && (reg as any).showNotification) {
         await (reg as any).showNotification(params.title, {
           body: fullBody,
           icon: '/logo.jpg',
           badge: '/logo.jpg',
           tag: tagId,
-          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [200, 100, 200],
-          requireInteraction: params.kind === 'red_alert',
+          renotify: true,
+          vibrate: params.kind === 'red_alert' ? [1000, 300, 1000, 300] : [400, 150, 400],
+          requireInteraction: true,
           data: {
             url: '/',
             targetModal: params.targetModal,

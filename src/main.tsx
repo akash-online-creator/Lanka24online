@@ -20,6 +20,19 @@ L.Icon.Default.mergeOptions({
 
 initSirenSettings();
 
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then((reg) => {
+        if (reg && reg.active) {
+          reg.active.postMessage({ type: 'START_BACKGROUND_ALERT_WATCHER' });
+        }
+      })
+      .catch((err) => console.debug('SW registration notice:', err));
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (rootElement) {
   createRoot(rootElement).render(

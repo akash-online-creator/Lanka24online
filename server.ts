@@ -1233,7 +1233,16 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       console.log(`🚨 [Push Broadcast] Dispatching "${category}" alert: ${title}`);
 
       const isRedAlert = category === 'red_alert';
-      const targetChannelId = isRedAlert ? 'sahaya_emergency_red_alert' : 'sahaya_general';
+      const isBloodOrRelief = category === 'emergency_blood' || category === 'blood' || category === 'aid_ledger' || category === 'disaster_relief' || category === 'sos_live';
+      const isQuickOrHelp = category === 'quick_service' || category === 'quick_services' || category === 'help_request';
+
+      const targetChannelId = isRedAlert
+        ? 'sahaya_emergency_red_alert'
+        : isBloodOrRelief
+        ? 'sos_live_channel'
+        : isQuickOrHelp
+        ? 'quick_service_channel'
+        : 'sahaya_general';
       const soundFile = isRedAlert ? 'siren' : 'default';
 
       const messagePayload = {
@@ -1249,10 +1258,11 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           locationName: String(locationName || ''),
           latitude: String(latitude || ''),
           longitude: String(longitude || ''),
-          radiusKm: String(radiusKm || '5.0'),
+          radiusKm: String(radiusKm || '15.0'),
           urgency: String(urgency),
           senderName: String(senderName || ''),
           actionUrl: String(actionUrl || '/'),
+          targetModal: String(req.body.targetModal || (isRedAlert ? 'red_alert' : category === 'emergency_blood' ? 'blood' : category === 'aid_ledger' ? 'aid_ledger' : category === 'quick_service' ? 'quick_service' : 'detail')),
           isEmergencySiren: isRedAlert ? 'true' : 'false',
         },
         android: {

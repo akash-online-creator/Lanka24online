@@ -110,6 +110,8 @@ flutter:
     - assets/web/index.html
     - assets/web/logo.jpg
     - assets/web/manifest.json
+    - assets/web/siren.wav
+    - assets/web/mixkit-manual-siren-fire-alert-1652.wav
 """
 
 with open(pubspec_path, "w", encoding="utf-8") as f:

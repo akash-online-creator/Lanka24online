@@ -534,116 +534,141 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   }
 
+  // 📲 Bridge to Native Android Alert Channel for Background & Lockscreen Notifications
+  if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+    try {
+      (window as any).SahayaNativeAlertChannel.postMessage(
+        'SHOW_BACKGROUND_NOTIFICATION:' +
+          JSON.stringify({
+            category,
+            title,
+            body: message,
+            locationName,
+            postId: payload.postId || payload.alertId,
+            targetModal: payload.targetModal || category,
+          })
+      );
+    } catch {}
+  }
+
   switch (category) {
-
     case 'sos_live': {
-
       playNotificationSound('emergency_blood');
-
       const notif: AppNotification = {
-
         id: notifId,
-
         type: 'emergency_blood',
-
         title: `📡 SOS LIVE: ${title}`,
-
         message,
-
         locationName,
-
         timestamp: new Date().toISOString(),
-
         isRead: false,
-
         badgeText: 'SOS',
-
         targetModal: 'red_alert',
-
         targetPostId: payload.alertId,
-
       };
-
       broadcastAppNotification(notif);
-
       triggerBrowserNotification(notif);
-
       break;
-
     }
 
-    case 'quick_service': {
-
-      playNotificationSound('quick_service');
-
+    case 'emergency_blood':
+    case 'blood': {
+      playNotificationSound('emergency_blood');
       const notif: AppNotification = {
-
         id: notifId,
-
-        type: 'quick_service',
-
-        title: `⚡ ක්ෂණික සේවය: ${title}`,
-
+        type: 'emergency_blood',
+        title: title.startsWith('🩸') ? title : `🩸 හදිසි ලේ ඉල්ලීමක්: ${title}`,
         message,
-
         locationName,
-
         timestamp: new Date().toISOString(),
-
         isRead: false,
-
-        badgeText: 'ඉක්මන්',
-
-        targetModal: 'quick_service',
-
-        targetPostId: payload.postId,
-
+        badgeText: payload.badgeText || 'හදිසි ලේ',
+        targetModal: 'blood',
+        targetPostId: payload.postId || payload.alertId,
       };
-
       broadcastAppNotification(notif);
-
       triggerBrowserNotification(notif);
-
       break;
+    }
 
+    case 'aid_ledger':
+    case 'disaster_relief': {
+      playNotificationSound('emergency_blood');
+      const notif: AppNotification = {
+        id: notifId,
+        type: 'aid_ledger',
+        title: title.startsWith('📦') ? title : `📦 සහන සේවා ඉල්ලීමක්: ${title}`,
+        message,
+        locationName,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        badgeText: payload.badgeText || 'ආපදා සහන',
+        targetModal: 'aid_ledger',
+        targetPostId: payload.postId || payload.alertId,
+      };
+      broadcastAppNotification(notif);
+      triggerBrowserNotification(notif);
+      break;
+    }
+
+    case 'quick_service':
+    case 'quick_services': {
+      playNotificationSound('quick_service');
+      const notif: AppNotification = {
+        id: notifId,
+        type: 'quick_service',
+        title: title.startsWith('⚡') ? title : `⚡ ඉක්මන් සේවය: ${title}`,
+        message,
+        locationName,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        badgeText: payload.badgeText || 'ඉක්මන් සේවා',
+        targetModal: 'quick_service',
+        targetPostId: payload.postId,
+      };
+      broadcastAppNotification(notif);
+      triggerBrowserNotification(notif);
+      break;
+    }
+
+    case 'help_request':
+    case 'normal_services': {
+      playNotificationSound('quick_service');
+      const notif: AppNotification = {
+        id: notifId,
+        type: 'quick_service',
+        title: title.startsWith('🤝') ? title : `🤝 සහන සේවා ඉල්ලීමක්: ${title}`,
+        message,
+        locationName,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        badgeText: payload.badgeText || 'සහන සේවා',
+        targetModal: (payload.targetModal as any) || 'detail',
+        targetPostId: payload.postId,
+      };
+      broadcastAppNotification(notif);
+      triggerBrowserNotification(notif);
+      break;
     }
 
     default: {
-
       playNotificationSound('admin_broadcast');
-
       const notif: AppNotification = {
-
         id: notifId,
-
         type: 'admin_broadcast',
-
         title,
-
         message,
-
         locationName,
-
         timestamp: new Date().toISOString(),
-
         isRead: false,
-
         badgeText: 'නිවේදන',
-
         targetModal: 'admin',
-
       };
-
       broadcastAppNotification(notif);
-
       triggerBrowserNotification(notif);
-
       break;
-
     }
-
   }
-
 }
 
 export function initFcmNotificationService(currentUserId?: string) {

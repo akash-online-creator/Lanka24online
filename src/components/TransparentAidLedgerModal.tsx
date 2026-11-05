@@ -97,6 +97,7 @@ import {
   subscribeToDisasterReliefFromFirestore
 } from '../lib/firebase';
 import { broadcastAppNotification } from '../utils/notificationManager';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 interface TransparentAidLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -842,6 +843,17 @@ export const TransparentAidLedgerModal: React.FC<TransparentAidLedgerModalProps>
       badgeText: 'ආපදා සහන',
       targetModal: 'aid_ledger',
       targetPostId: newItem.id,
+    });
+
+    broadcastPushNotification({
+      category: 'aid_ledger',
+      title: `📦 හදිසි ආපදා සහන ඉල්ලීමක්: ${reliefTitle}`,
+      body: `${reliefLocation} (${reliefDistrict}) - ${reliefDesc || 'ආපදා සහනාධාර ද්‍රව්‍ය කඩිනමින් අවශ්‍යයි.'}`,
+      postId: newItem.id,
+      locationName: `${reliefLocation}, ${reliefDistrict}`,
+      urgency: 'high',
+      badgeText: 'ආපදා සහන',
+      targetModal: 'aid_ledger',
     });
 
     setShowAddDisasterForm(false);

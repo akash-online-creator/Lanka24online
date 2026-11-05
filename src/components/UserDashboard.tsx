@@ -75,6 +75,7 @@ import { MarketShop } from '../types';
 import { OmniAssistantChatBox } from './OmniAssistantChatBox';
 import { LiveNotificationToast } from './LiveNotificationToast';
 import { broadcastAppNotification, AppNotification, removeNotificationsForPost } from '../utils/notificationManager';
+import { broadcastPushNotification } from '../utils/fcmNotificationService';
 import { getUserCreditBalance, deductPostingFee, getCategoryFee, awardServiceReward, resolveCategoryKeyForPost, getCategoryFeeDetail } from '../utils/creditManager';
 import { awardSPoints, getUserSPoints } from '../utils/sPointManager';
 import { 
@@ -891,6 +892,93 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       await addHelpPostToFirestore(fullPost);
     } catch (err) {
       console.warn('Post saved locally, cloud sync notice:', err);
+    }
+
+    // 📢 Dispatch Background Push Notification & App Notification for Quick Services, Blood, Relief, and Help Requests
+    try {
+      const pCode = String(fullPost.postCode || '');
+      const pTitle = String((fullPost as any).headline || fullPost.title || fullPost.whatHappened || 'නව සහන සේවා ඉල්ලීමක්');
+      const pBody = String(fullPost.whatIsNeeded || fullPost.whatHappened || (fullPost as any).content || pTitle).slice(0, 120);
+      const pLoc = String(fullPost.locationName || (fullPost as any).district || 'ශ්‍රී ලංකාව');
+      const pLat = typeof fullPost.latitude === 'number' ? fullPost.latitude : typeof fullPost.lat === 'number' ? fullPost.lat : undefined;
+      const pLng = typeof fullPost.longitude === 'number' ? fullPost.longitude : typeof fullPost.lng === 'number' ? fullPost.lng : undefined;
+      const senderUid = user?.userId || user?.id || '';
+
+      if (pCode.startsWith('#BLD-') || resolvedPostCategory === 'blood_disaster') {
+        broadcastPushNotification({
+          category: 'emergency_blood',
+          title: pTitle.startsWith('🩸') ? pTitle : `🩸 හදිසි ලේ ඉල්ලීමක්: ${pTitle}`,
+          body: `${pBody} • 📍 ${pLoc}`,
+          postId: fullPost.id,
+          locationName: pLoc,
+          latitude: pLat,
+          longitude: pLng,
+          senderId: senderUid,
+          targetModal: 'blood',
+        });
+      } else if (pCode.startsWith('#EMG-') || resolvedPostCategory === 'emergency') {
+        broadcastPushNotification({
+          category: 'aid_ledger',
+          title: pTitle.startsWith('📦') ? pTitle : `📦 සහන සේවා ඉල්ලීමක්: ${pTitle}`,
+          body: `${pBody} • 📍 ${pLoc}`,
+          postId: fullPost.id,
+          locationName: pLoc,
+          latitude: pLat,
+          longitude: pLng,
+          senderId: senderUid,
+          targetModal: 'aid_ledger',
+        });
+      } else if (resolvedPostCategory === 'quick_services' || fullPost.postType === 'quick_service') {
+        broadcastAppNotification({
+          id: `notif-qs-${fullPost.id}`,
+          type: 'quick_service',
+          title: pTitle.startsWith('⚡') ? pTitle : `⚡ ඉක්මන් සේවා ඉල්ලීමක්: ${pTitle}`,
+          message: pBody,
+          locationName: pLoc,
+          lat: pLat,
+          lng: pLng,
+          badgeText: 'ඉක්මන් සේවා',
+          targetModal: 'quick_service',
+          targetPostId: fullPost.id,
+        });
+        broadcastPushNotification({
+          category: 'quick_service',
+          title: pTitle.startsWith('⚡') ? pTitle : `⚡ ඉක්මන් සේවා ඉල්ලීමක්: ${pTitle}`,
+          body: `${pBody} • 📍 ${pLoc}`,
+          postId: fullPost.id,
+          locationName: pLoc,
+          latitude: pLat,
+          longitude: pLng,
+          senderId: senderUid,
+          targetModal: 'quick_service',
+        });
+      } else {
+        broadcastAppNotification({
+          id: `notif-help-${fullPost.id}`,
+          type: 'quick_service',
+          title: `🤝 සහන සේවා ඉල්ලීමක්: ${pTitle}`,
+          message: pBody,
+          locationName: pLoc,
+          lat: pLat,
+          lng: pLng,
+          badgeText: 'සහන සේවා',
+          targetModal: 'detail',
+          targetPostId: fullPost.id,
+        });
+        broadcastPushNotification({
+          category: 'help_request',
+          title: `🤝 සහන සේවා ඉල්ලීමක්: ${pTitle}`,
+          body: `${pBody} • 📍 ${pLoc}`,
+          postId: fullPost.id,
+          locationName: pLoc,
+          latitude: pLat,
+          longitude: pLng,
+          senderId: senderUid,
+          targetModal: 'detail',
+        });
+      }
+    } catch (pushErr) {
+      console.debug('Post notification dispatch notice:', pushErr);
     }
 
     // 1. සියලුම Modal Popups ස්වයංක්‍රීයව වසා දැමීම (Auto-close)
