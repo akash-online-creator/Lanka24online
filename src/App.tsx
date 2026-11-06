@@ -42,6 +42,7 @@ import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, filterNonDeletedRedAlerts, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
+import { initAutoGps } from './utils/autoGpsService';
 
 async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
@@ -265,9 +266,10 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Real-time Firestore Sync Listeners (Mounts once)
+  // Real-time Firestore Sync Listeners & Auto GPS Service (Mounts once)
   useEffect(() => {
-    // Initialize FCM & Background Push Worker
+    // Initialize Auto GPS & FCM Background Push Worker
+    const unsubscribeAutoGps = initAutoGps();
     const unsubscribeFcm = initFcmNotificationService(currentUser?.userId || currentUser?.id);
 
     const unsubscribeUsers = subscribeToUsers((dbUsers) => {
@@ -309,6 +311,7 @@ export const App: React.FC = () => {
     });
 
     return () => {
+      unsubscribeAutoGps?.();
       unsubscribeFcm?.();
       unsubscribeUsers?.();
       unsubscribePosts?.();

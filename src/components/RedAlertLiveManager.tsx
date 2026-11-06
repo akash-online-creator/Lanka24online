@@ -221,10 +221,10 @@ export const RedAlertLiveManager: any = ({
             lng: nativeGps.lng
           };
         }
-        const savedLoc = localStorage.getItem('sahaya_current_location');
+        const savedLoc = localStorage.getItem('sahaya_current_location') || localStorage.getItem('sahaya_last_known_location');
         if (savedLoc) {
           const parsed = JSON.parse(savedLoc);
-          if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+          if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && parsed.lat !== 0 && parsed.lng !== 0) {
             return {
               lat: parsed.lat,
               lng: parsed.lng
@@ -459,12 +459,11 @@ export const RedAlertLiveManager: any = ({
     window.addEventListener('touchstart', handleUserGestureUnlock, {
       passive: true
     });
+    window.addEventListener('sahaya:location_updated', syncServiceWorkerWatchConfig);
     try {
       const workerScript = [
         'var urls = [',
-        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15",',
-        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents/red_alerts?pageSize=15",',
-        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents/red_alerts?pageSize=15"',
+        '  "https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents/red_alerts?pageSize=15"',
         '];',
         'function pollNow() {',
         '  urls.forEach(function(u) {',
@@ -473,9 +472,8 @@ export const RedAlertLiveManager: any = ({
         '      .then(function(d){ if (d && d.documents) postMessage({ type: "REST_DOCS", documents: d.documents }); })',
         '      .catch(function(){});',
         '  });',
-        '  postMessage({ type: "TICK" });',
         '}',
-        'setInterval(pollNow, 2500);',
+        'setInterval(pollNow, 15000);',
         'pollNow();'
       ].join(String.fromCharCode(10));
       const workerBlob = new Blob([workerScript], {
@@ -483,7 +481,6 @@ export const RedAlertLiveManager: any = ({
       });
       bgWorker = new Worker(URL.createObjectURL(workerBlob));
       bgWorker.onmessage = (ev: any) => {
-        syncServiceWorkerWatchConfig();
         if (ev && ev.data && ev.data.type === "REST_DOCS" && Array.isArray(ev.data.documents)) {
           for (const d of ev.data.documents) {
             if (!d) continue;
@@ -630,6 +627,7 @@ export const RedAlertLiveManager: any = ({
       }
       window.removeEventListener('sahaya_notification_clicked', handleNotificationClick);
       window.removeEventListener('sahaya_red_alert_received', handleCustomRedAlert);
+      window.removeEventListener('sahaya:location_updated', syncServiceWorkerWatchConfig);
       window.removeEventListener('click', handleUserGestureUnlock);
       window.removeEventListener('touchstart', handleUserGestureUnlock);
       if (pushListenerHandle) pushListenerHandle.remove();

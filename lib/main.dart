@@ -104,9 +104,7 @@ class SahayaSosTaskHandler extends TaskHandler {
   bool isFirstPoll = true;
 
   static const List<String> baseUrls = [
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents',
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents',
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents'
+    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents'
   ];
 
   double _calcDistanceKm(double lat1, double lon1, double lat2, double lon2) {
@@ -400,13 +398,7 @@ class SahayaSosTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     debugPrint('🚨 Sahaya Sewa 24/7 Background Alert Service Started');
-    await pollFirestoreAllAlerts();
-  }
-
-  @override
-  void onRepeatEvent(DateTime timestamp) async {
     try {
-      await pollFirestoreAllAlerts();
       Position pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 5),
@@ -414,10 +406,33 @@ class SahayaSosTaskHandler extends TaskHandler {
       userLat = pos.latitude;
       userLng = pos.longitude;
       FlutterForegroundTask.sendDataToMain({
+        'type': 'NATIVE_BG_GPS_UPDATE',
         'lat': pos.latitude,
         'lng': pos.longitude,
         'accuracy': pos.accuracy,
       });
+    } catch (_) {}
+    await pollFirestoreAllAlerts();
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) async {
+    try {
+      try {
+        Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5),
+        );
+        userLat = pos.latitude;
+        userLng = pos.longitude;
+        FlutterForegroundTask.sendDataToMain({
+          'type': 'NATIVE_BG_GPS_UPDATE',
+          'lat': pos.latitude,
+          'lng': pos.longitude,
+          'accuracy': pos.accuracy,
+        });
+      } catch (_) {}
+      await pollFirestoreAllAlerts();
     } catch (e) {
       debugPrint('Background scan notice: $e');
     }
@@ -565,6 +580,17 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         final payloadJson = jsonEncode(data);
         _controller.runJavaScript("""
           window.dispatchEvent(new CustomEvent('sahaya_native_bg_notification', { detail: $payloadJson }));
+        """);
+      } else if (data['type'] == 'NATIVE_BG_GPS_UPDATE' || (data['lat'] is num && data['lng'] is num)) {
+        final double lat = (data['lat'] as num).toDouble();
+        final double lng = (data['lng'] as num).toDouble();
+        final double acc = data['accuracy'] is num ? (data['accuracy'] as num).toDouble() : 10.0;
+        _controller.runJavaScript("""
+          window.__sahaya_native_gps = { lat: $lat, lng: $lng, accuracy: $acc, updatedAt: Date.now() };
+          window.dispatchEvent(new CustomEvent('flutter_gps_update', { detail: { latitude: $lat, longitude: $lng, accuracy: $acc } }));
+          if (window.onGpsLocationUpdated) {
+            window.onGpsLocationUpdated($lat, $lng, $acc);
+          }
         """);
       }
     }
@@ -792,6 +818,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         timeLimit: const Duration(seconds: 6),
       );
       _controller.runJavaScript("""
+        window.__sahaya_native_gps = { lat: ${pos.latitude}, lng: ${pos.longitude}, accuracy: ${pos.accuracy}, updatedAt: Date.now() };
+        window.dispatchEvent(new CustomEvent('flutter_gps_update', { detail: { latitude: ${pos.latitude}, longitude: ${pos.longitude}, accuracy: ${pos.accuracy} } }));
         if (window.onGpsLocationUpdated) {
           window.onGpsLocationUpdated(${pos.latitude}, ${pos.longitude}, ${pos.accuracy});
         }

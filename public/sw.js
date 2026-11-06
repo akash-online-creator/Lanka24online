@@ -11,9 +11,7 @@ let watcherConfig = {
   lng: 79.885,
   ignoredAlertIds: [],
   firestoreBaseUrls: [
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents',
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents',
-    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents'
+    'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents'
   ]
 };
 
@@ -59,9 +57,7 @@ async function pollFirestoreCollection(colName, pageSize = 15) {
   const baseUrls = Array.isArray(watcherConfig.firestoreBaseUrls) && watcherConfig.firestoreBaseUrls.length > 0
     ? watcherConfig.firestoreBaseUrls
     : [
-        'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents',
-        'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/(default)/documents',
-        'https://firestore.googleapis.com/v1/projects/gen-lang-client-0536295842/databases/(default)/documents'
+        'https://firestore.googleapis.com/v1/projects/gen-lang-client-0262698872/databases/ai-studio-sahayaseva-08bfd3be-2f42-4de8-a3a8-ad7279ec7d1f/documents'
       ];
   let docs = [];
   for (const base of baseUrls) {
@@ -370,7 +366,7 @@ function ensureBackgroundWatcherStarted() {
   if (!watcherInterval) {
     watcherInterval = setInterval(() => {
       pollFirestoreAllAlertsInBackground();
-    }, 3000);
+    }, 12000);
   }
 }
 

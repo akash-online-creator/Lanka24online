@@ -17,6 +17,7 @@ export interface AutoGpsLocation {
 }
 
 const STORAGE_KEY = 'sahaya_last_known_location';
+const CURRENT_LOC_STORAGE_KEY = 'sahaya_current_location';
 const THROTTLE_INTERVAL_MS = 90 * 1000; // තත්පර 90ක ස්මාර්ට් කාල පරතරය (Battery Safe Throttling)
 
 let memoryCache: AutoGpsLocation | null = null;
@@ -35,13 +36,22 @@ export function getLastKnownLocation(): AutoGpsLocation | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CURRENT_LOC_STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed: AutoGpsLocation = JSON.parse(raw);
+      const parsed: any = JSON.parse(raw);
+      const ts = parsed.timestamp || parsed.updatedAt || Date.now();
       // පසුගිය පැය 24 තුළ ලබාගත් එකක් නම් වලංගුයි
-      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-        memoryCache = parsed;
-        return parsed;
+      if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && Date.now() - ts < 24 * 60 * 60 * 1000) {
+        memoryCache = {
+          lat: parsed.lat,
+          lng: parsed.lng,
+          accuracy: parsed.accuracy || 15,
+          speed: parsed.speed ?? null,
+          heading: parsed.heading ?? null,
+          timestamp: ts,
+          source: parsed.source || 'cache',
+        };
+        return memoryCache;
       }
     }
   } catch (err) {
@@ -59,17 +69,41 @@ export function saveKnownLocation(
   location: Omit<AutoGpsLocation, 'source'>,
   source: 'gps' | 'flutter_native' = 'gps'
 ): void {
+  const now = location.timestamp || Date.now();
   const loc: AutoGpsLocation = {
     ...location,
     source,
-    timestamp: location.timestamp || Date.now(),
+    timestamp: now,
   };
 
   memoryCache = loc;
 
   if (typeof window !== 'undefined') {
     try {
+      (window as any).__sahaya_native_gps = {
+        lat: loc.lat,
+        lng: loc.lng,
+        accuracy: loc.accuracy,
+        updatedAt: now,
+      };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(loc));
+      // Sync with sahaya_current_location while preserving any resolved address fields
+      let existingCurrent: any = {};
+      try {
+        const rawCur = localStorage.getItem(CURRENT_LOC_STORAGE_KEY);
+        if (rawCur) existingCurrent = JSON.parse(rawCur);
+      } catch {}
+      localStorage.setItem(
+        CURRENT_LOC_STORAGE_KEY,
+        JSON.stringify({
+          ...existingCurrent,
+          lat: loc.lat,
+          lng: loc.lng,
+          accuracy: loc.accuracy,
+          updatedAt: now,
+          timestamp: now,
+        })
+      );
       window.dispatchEvent(new CustomEvent('sahaya:location_updated', { detail: loc }));
     } catch (err) {
       console.warn('[AutoGps] Error caching location:', err);
@@ -88,6 +122,13 @@ export function triggerGpsRefresh(force = false): Promise<AutoGpsLocation | null
 
   const cached = getLastKnownLocation();
   const now = Date.now();
+
+  // Request fresh coordinates from Flutter Native bridge if available
+  try {
+    if ((window as any).SahayaGpsChannel && typeof (window as any).SahayaGpsChannel.postMessage === 'function') {
+      (window as any).SahayaGpsChannel.postMessage('GET_GPS');
+    }
+  } catch {}
 
   // දැනටමත් දත්ත ලබාගනිමින් පවතී නම් හෝ පසුගිය තත්පර 90 ඇතුළත ලබාගත් එකක් තිබේ නම්
   if (isFetching) {
@@ -155,15 +196,35 @@ export function initAutoGps(): () => void {
 
   // 3. Android WebView (Flutter) Native GPS පාලකය සමඟ සබඳතාවය
   const handleFlutterNativeGps = (event: any) => {
-    if (event.detail && event.detail.latitude && event.detail.longitude) {
+    const detail = event?.detail;
+    const lat = Number(detail?.latitude ?? detail?.lat);
+    const lng = Number(detail?.longitude ?? detail?.lng);
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
       saveKnownLocation({
-        lat: Number(event.detail.latitude),
-        lng: Number(event.detail.longitude),
-        accuracy: event.detail.accuracy || 10,
-        speed: event.detail.speed || null,
-        heading: event.detail.heading || null,
+        lat,
+        lng,
+        accuracy: Number(detail?.accuracy || 10),
+        speed: detail?.speed || null,
+        heading: detail?.heading || null,
         timestamp: Date.now(),
       }, 'flutter_native');
+    }
+  };
+
+  const prevOnGpsUpdated = (window as any).onGpsLocationUpdated;
+  (window as any).onGpsLocationUpdated = (lat: number, lng: number, acc?: number) => {
+    if (typeof lat === 'number' && typeof lng === 'number' && lat !== 0 && lng !== 0) {
+      saveKnownLocation({
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+        accuracy: acc ? Math.round(acc) : 10,
+        speed: null,
+        heading: null,
+        timestamp: Date.now(),
+      }, 'flutter_native');
+    }
+    if (typeof prevOnGpsUpdated === 'function') {
+      try { prevOnGpsUpdated(lat, lng, acc); } catch {}
     }
   };
 
