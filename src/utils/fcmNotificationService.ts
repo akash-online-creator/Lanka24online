@@ -849,11 +849,13 @@ export async function broadcastPushNotification(payload: FcmPayloadData) {
   }
 
   try {
+    const storedToken = typeof window !== 'undefined' ? localStorage.getItem('sahaya_auth_session_token') : null;
     fetch('/api/push/broadcast', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
       },
       body: JSON.stringify(enrichedPayload),
     }).catch(() => {});
@@ -870,7 +872,10 @@ export async function subscribeDeviceToTopic(token: string, topicName: string): 
   try {
     const res = await fetch('/api/fcm/subscribe-topic', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+      },
       body: JSON.stringify({ token, topic: cleanTopic }),
     });
     if (res.ok) {
@@ -892,7 +897,10 @@ export async function unsubscribeDeviceFromTopic(token: string, topicName: strin
   try {
     const res = await fetch('/api/fcm/unsubscribe-topic', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+      },
       body: JSON.stringify({ token, topic: cleanTopic }),
     });
     return res.ok;

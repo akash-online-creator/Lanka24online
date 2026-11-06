@@ -51,6 +51,42 @@ export function getApiBaseUrl(): string {
   return '';
 }
 
+const AUTH_SESSION_TOKEN_KEY = 'sahaya_auth_session_token';
+
+export function getAuthSessionToken(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return sessionStorage.getItem(AUTH_SESSION_TOKEN_KEY) || localStorage.getItem(AUTH_SESSION_TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setAuthSessionToken(token: string): void {
+  if (typeof window === 'undefined' || !token) return;
+  try {
+    sessionStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
+  } catch {}
+}
+
+export function clearAuthSessionToken(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
+    localStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
+  } catch {}
+}
+
+export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = getAuthSessionToken();
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 /**
  * ඕනෑම API Endpoint එකක් සඳහා සම්පූර්ණ නිවැරදි URL එක සකස් කිරීම
  */
@@ -61,7 +97,7 @@ export function resolveApiUrl(endpoint: string): string {
 }
 
 /**
- * ආරක්ෂිත Core apiFetch Wrapper එක (Timeout සහ Content-Type සහිතව)
+ * ආරක්ෂිත Core apiFetch Wrapper එක (Timeout, Auth Token සහ Content-Type සහිතව)
  */
 export async function apiFetch(
   endpoint: string,
@@ -73,9 +109,9 @@ export async function apiFetch(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const defaultHeaders: Record<string, string> = {
+  const defaultHeaders: Record<string, string> = getAuthHeaders({
     Accept: 'application/json',
-  };
+  });
 
   if (!(options.body instanceof FormData)) {
     defaultHeaders['Content-Type'] = 'application/json';

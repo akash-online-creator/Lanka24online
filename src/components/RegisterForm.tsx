@@ -102,7 +102,6 @@ interface RegisterFormProps {
 async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
   if (!clean) return '';
-  if (clean.startsWith('sha256_v1$')) return clean;
   const payload = 'sahaya_pass_salt_2026::' + clean;
   if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
     try {

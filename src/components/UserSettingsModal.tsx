@@ -56,6 +56,8 @@ import {
 } from 'lucide-react';
 import { User, Language, HelpPost, PendingProfileUpdate } from '../types';
 import { syncUserProfileToFirestore, syncUserPasswordInFirestore } from '../lib/firebase';
+import { hashUserPassword } from '../utils/userUtils';
+import { getAuthHeaders } from '../utils/apiConfig';
 import { useDataSaver } from '../utils/dataSaver';
 import { TrustBadge } from './TrustBadge';
 import { calculateTrustProfile } from '../utils/trustScore';
@@ -596,6 +598,8 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     // Check if username was modified and update lastUsernameChangedAt
     const isUsernameChanged = username.trim() !== (user?.username || '') && username.trim() !== '';
 
+    const hashedNewKey = (changePassword && cleanNewKey) ? await hashUserPassword(cleanNewKey) : '';
+
     // Name and Address must NOT be updated immediately if changed!
     const updatedUser: User = {
       ...user,
@@ -610,11 +614,11 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
       photoUrl: photoUrl || user.photoUrl,
       facePhotoUrl: photoUrl || user.facePhotoUrl || user.photoUrl,
       pendingProfileUpdate: (isNameChanged || isAddressChanged) ? pendingUpdate : user.pendingProfileUpdate,
-      ...(changePassword && cleanNewKey
+      ...(changePassword && hashedNewKey
         ? {
-            key: cleanNewKey,
-            securityCode: cleanNewKey,
-            password: cleanNewKey,
+            key: hashedNewKey,
+            securityCode: hashedNewKey,
+            password: hashedNewKey,
             tempCode: '',
             tempPassword: '',
             isPasswordChanged: true,
@@ -652,14 +656,11 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
     // Sync profile and password to Firestore & Backend
     try {
       await syncUserProfileToFirestore(updatedUser);
-      if (changePassword && cleanNewKey) {
-        await syncUserPasswordInFirestore(updatedUser, cleanNewKey);
+      if (changePassword && cleanNewKey && hashedNewKey) {
+        await syncUserPasswordInFirestore(updatedUser, hashedNewKey);
         fetch('/api/user/update-password', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             userId: updatedUser?.id || updatedUser?.userId || '',
             nicNumber: updatedUser?.nicNumber || updatedUser?.userId || '',

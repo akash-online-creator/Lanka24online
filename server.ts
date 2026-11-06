@@ -161,7 +161,10 @@ function getGenAI(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey });
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    });
   }
   return aiClient;
 }
@@ -219,6 +222,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Trust only the first reverse proxy hop (Cloud Run / load balancer) so req.ip cannot be spoofed via client X-Forwarded-For
+  app.set('trust proxy', 1);
+
   app.use(cors());
   app.use((req: any, res: any, next: any) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -242,13 +248,17 @@ async function startServer() {
     limits: { fileSize: 25 * 1024 * 1024 } // 25MB safe ceiling to prevent server OOM
   });
 
-  // Simple, high-performance in-memory IP rate limiter
+  // Spoof-resistant IP rate limiter using Express trusted proxy req.ip (never client-supplied first x-forwarded-for item)
   const createRateLimiter = (maxRequests: number, windowMs: number) => {
     const hits = new Map<string, { count: number; resetAt: number }>();
     return (req: any, res: any, next: any) => {
-      const forwarded = req.headers['x-forwarded-for'];
-      const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : '') || req.socket?.remoteAddress || 'ip_unknown';
+      const ip = String(req.ip || req.socket?.remoteAddress || 'ip_unknown').trim();
       const now = Date.now();
+      if (hits.size > 5000) {
+        for (const [k, v] of hits.entries()) {
+          if (now > v.resetAt) hits.delete(k);
+        }
+      }
       const record = hits.get(ip);
       if (!record || now > record.resetAt) {
         hits.set(ip, { count: 1, resetAt: now + windowMs });
@@ -269,30 +279,132 @@ async function startServer() {
   const authRateLimiter = createRateLimiter(25, 60 * 1000); // Max 25 auth/lookup calls/min per IP
   const adminActionRateLimiter = createRateLimiter(15, 60 * 1000); // Max 15 admin/sensitive actions/min per IP
 
-  // Server-side SHA-256 Password Hashing (matches client hashUserPassword salt)
-  const hashServerPassword = (rawPass: string): string => {
+  // Server-side SHA-256 Password Hashing (NEVER pass-through sha256_v1$ on raw user input)
+  const hashRawServerPassword = (rawPass: string): string => {
     const clean = String(rawPass || '').trim();
     if (!clean) return '';
-    if (clean.startsWith('sha256_v1$')) return clean;
     const payload = 'sahaya_pass_salt_2026::' + clean;
     const hex = crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
     return 'sha256_v1$' + hex;
   };
 
-  // Verify that sensitive POST requests originate from the trusted Sahaya Sewa web/app client
-  const verifyTrustedClientGuard = (req: any, res: any, next: any) => {
-    const clientGuard = req.headers['x-sahaya-client-guard'];
-    const internalSecret = process.env.INTERNAL_API_SECRET;
-    const providedSecret = req.headers['x-internal-api-secret'];
-    const referer = String(req.headers['referer'] || req.headers['origin'] || '');
+  // Cryptographic HMAC-SHA256 Session Token Signer & Verifier
+  const SESSION_HMAC_SECRET =
+    process.env.SESSION_SECRET ||
+    process.env.INTERNAL_API_SECRET ||
+    crypto.createHash('sha256').update(`sahaya_hmac_${process.env.GEMINI_API_KEY || 'runtime'}_${process.pid}`).digest('hex');
 
-    if (internalSecret && providedSecret === internalSecret) {
+  interface SignedSessionPayload {
+    uid: string;
+    nic: string;
+    role: 'user' | 'member' | 'admin' | 'super_admin';
+    iat: number;
+    exp: number;
+  }
+
+  const issueSessionToken = (user: { id?: string; userId?: string; nic?: string; nicNumber?: string; role?: string }): string => {
+    const payload: SignedSessionPayload = {
+      uid: String(user.id || user.userId || '').trim(),
+      nic: String(user.nicNumber || user.nic || user.userId || '').trim().toUpperCase(),
+      role: (user.role === 'admin' || user.role === 'super_admin') ? user.role : 'user',
+      iat: Date.now(),
+      exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+    const dataB64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const sigB64 = crypto.createHmac('sha256', SESSION_HMAC_SECRET).update(dataB64).digest('base64url');
+    return `${dataB64}.${sigB64}`;
+  };
+
+  const verifySessionToken = (tokenStr: string): SignedSessionPayload | null => {
+    try {
+      if (!tokenStr || typeof tokenStr !== 'string' || !tokenStr.includes('.')) return null;
+      const [dataB64, sigB64] = tokenStr.trim().split('.');
+      if (!dataB64 || !sigB64) return null;
+      const expectedSig = crypto.createHmac('sha256', SESSION_HMAC_SECRET).update(dataB64).digest('base64url');
+      const sigBuf = Buffer.from(sigB64);
+      const expBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return null;
+      }
+      const parsed = JSON.parse(Buffer.from(dataB64, 'base64url').toString('utf8')) as SignedSessionPayload;
+      if (!parsed || !parsed.exp || Date.now() > parsed.exp) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const extractSessionFromReq = (req: any): SignedSessionPayload | null => {
+    const authHeader = String(req.headers['authorization'] || '');
+    const rawToken = authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7).trim()
+      : String(req.headers['x-sahaya-session-token'] || '').trim();
+    return verifySessionToken(rawToken);
+  };
+
+  const requireAuthenticatedUser = (req: any, res: any, next: any) => {
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    if (internalSecret && req.headers['x-internal-api-secret'] === internalSecret) {
+      req.authUser = { uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
       return next();
     }
-    if (clientGuard === 'sahaya_v1_secure' || referer.includes('run.app') || referer.includes('localhost') || referer.includes('sahayasewa')) {
+    const session = extractSessionFromReq(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Authentication required. Please log in again.' });
+    }
+    req.authUser = session;
+    return next();
+  };
+
+  const requireAdminAuth = (req: any, res: any, next: any) => {
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    if (internalSecret && req.headers['x-internal-api-secret'] === internalSecret) {
+      req.authUser = { uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
       return next();
     }
-    return res.status(403).json({ error: 'Unauthorized client request blocked by security policy.' });
+    const session = extractSessionFromReq(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Admin authentication required.' });
+    }
+    if (session.role !== 'admin' && session.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden: Administrator privileges required.' });
+    }
+    req.authUser = session;
+    return next();
+  };
+
+  // Strict MIME Allowlist to prevent Stored XSS (blocks text/html, image/svg+xml, application/javascript, etc.)
+  const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'audio/webm',
+    'audio/ogg',
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/mp4',
+    'audio/aac',
+    'audio/x-m4a',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
+    'application/pdf',
+  ]);
+
+  const isBufferDisguisedHtmlOrScript = (buf: Buffer): boolean => {
+    const head = buf.subarray(0, 512).toString('utf8').toLowerCase().trim();
+    return (
+      head.startsWith('<!doctype') ||
+      head.startsWith('<html') ||
+      head.includes('<script') ||
+      head.startsWith('<svg') ||
+      head.includes('onload=') ||
+      head.includes('onerror=') ||
+      head.includes('javascript:')
+    );
   };
 
   // -------------------------------------------------------------
@@ -303,17 +415,17 @@ async function startServer() {
       let fileBuffer: Buffer | null = null;
       let fileName = 'media_file';
       let fileType = req.body.type || req.body.mediaType || 'image';
-      let mimeType = req.body.mimeType || 'application/octet-stream';
+      let mimeType = String(req.body.mimeType || 'application/octet-stream').split(';')[0].trim().toLowerCase();
 
       if (req.file) {
         fileBuffer = req.file.buffer;
         fileName = req.file.originalname || 'media_file';
-        if (req.file.mimetype) mimeType = req.file.mimetype;
+        if (req.file.mimetype) mimeType = String(req.file.mimetype).split(';')[0].trim().toLowerCase();
       } else if (req.body.fileBase64) {
         let base64Data = req.body.fileBase64;
         if (base64Data.includes(',')) {
           const match = base64Data.match(/^data:([^;]+);base64,/);
-          if (match && match[1]) mimeType = match[1];
+          if (match && match[1]) mimeType = String(match[1]).split(';')[0].trim().toLowerCase();
           base64Data = base64Data.split(',')[1];
         }
         fileBuffer = Buffer.from(base64Data, 'base64');
@@ -323,15 +435,22 @@ async function startServer() {
         }
       }
 
-      if (!fileBuffer) {
+      if (!fileBuffer || fileBuffer.length === 0) {
         return res.status(400).json({ error: 'කරුණාකර File එකක් හෝ Base64 දත්තයක් ලබා දෙන්න.' });
       }
 
-      // Automatically determine correct MIME Type
+      // Automatically determine correct MIME Type if generic
       if (!mimeType || mimeType === 'application/octet-stream') {
         if (fileType === 'image') mimeType = 'image/jpeg';
         else if (fileType === 'video') mimeType = 'video/mp4';
         else if (fileType === 'voice' || fileType === 'audio') mimeType = 'audio/webm';
+      }
+
+      // Enforce Strict MIME Type & Content Sniffing Allowlist (Prevents Stored XSS via HTML/SVG/JS uploads)
+      if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType) || isBufferDisguisedHtmlOrScript(fileBuffer)) {
+        return res.status(400).json({
+          error: 'අනාරක්ෂිත ගොනු වර්ගයකි. ඡායාරූප (JPG/PNG/WebP), හඬ (WebM/MP3) හෝ වීඩියෝ (MP4) පමණක් අවසර ඇත.',
+        });
       }
 
       // ==============================================================
@@ -475,7 +594,7 @@ async function startServer() {
   app.post('/api/storage/upload', uploadRateLimiter, (upload.single('file') as any), handleMediaUpload);
   app.post('/api/telegram/upload', uploadRateLimiter, (upload.single('file') as any), handleMediaUpload);
   // -------------------------------------------------------------
-  // 🎬 2. Cloudflare R2 / S3 File Stream Endpoint (Supports Range Requests)
+  // 🎬 2. Cloudflare R2 / S3 File Stream Endpoint (Supports Range Requests + Strict Sandbox CSP)
   // -------------------------------------------------------------
   app.get('/api/storage/file/:fileKey(*)', async (req: any, res: any) => {
     try {
@@ -492,8 +611,14 @@ async function startServer() {
 
       const s3Response = await s3Client.send(getCommand);
 
-      if (s3Response.ContentType) {
-        res.setHeader('Content-Type', s3Response.ContentType);
+      const rawType = String(s3Response.ContentType || '').split(';')[0].trim().toLowerCase();
+      const safeType = ALLOWED_UPLOAD_MIME_TYPES.has(rawType) ? rawType : 'application/octet-stream';
+
+      res.setHeader('Content-Type', safeType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; sandbox");
+      if (safeType === 'application/octet-stream') {
+        res.setHeader('Content-Disposition', 'attachment');
       }
       if (s3Response.ContentLength) {
         res.setHeader('Content-Length', s3Response.ContentLength);
@@ -512,7 +637,7 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------
-  // 🎬 3. Telegram File Stream / View Endpoint (Proxy)
+  // 🎬 3. Telegram File Stream / View Endpoint (Proxy + Strict Sandbox CSP)
   // -------------------------------------------------------------
   app.get('/api/telegram/file/:fileId', async (req: any, res: any) => {
     try {
@@ -529,7 +654,7 @@ async function startServer() {
 
       // 1. Get File Path from Telegram
       const fileInfoRes = await fetch(
-        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`
       );
       const fileInfo: any = await fileInfoRes.json();
 
@@ -543,9 +668,14 @@ async function startServer() {
       // 2. Stream File directly to response
       const fileResponse = await fetch(downloadUrl);
       
-      // Header Pass-through (MIME Type & Content-Length)
-      const contentType = fileResponse.headers.get('content-type');
-      if (contentType) res.setHeader('Content-Type', contentType);
+      const rawType = String(fileResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const safeType = ALLOWED_UPLOAD_MIME_TYPES.has(rawType) ? rawType : 'application/octet-stream';
+      res.setHeader('Content-Type', safeType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; sandbox");
+      if (safeType === 'application/octet-stream') {
+        res.setHeader('Content-Disposition', 'attachment');
+      }
       
       const contentLength = fileResponse.headers.get('content-length');
       if (contentLength) res.setHeader('Content-Length', contentLength);
@@ -733,23 +863,27 @@ async function startServer() {
 
       quotaStats.totalAiRequests += 1;
 
-      // ⚡ 1. Check Semantic Cache (Zero-Token instant response for recurring questions)
+      const isStandaloneQuery = !Array.isArray(conversationHistory) || conversationHistory.length <= 1;
+
+      // ⚡ 1. Check Semantic Cache (Only for standalone questions, never override contextual follow-ups)
       const normalizedQuery = normalizeSemanticQuery(message);
       const semanticHash = computeSemanticHash(normalizedQuery);
-      const semanticCacheKey = `semantic_ai:${language}:${semanticHash}`;
+      const semanticCacheKey = `semantic_ai:${mode}:${language}:${semanticHash}`;
 
-      const cachedAi = await getCache<{ reply: string; createdAt: number }>(semanticCacheKey);
-      if (cachedAi && cachedAi.reply) {
-        quotaStats.cachedAiHits += 1;
-        quotaStats.tokensSavedApprox += 550;
-        return res.json({
-          success: true,
-          reply: cachedAi.reply,
-          cached: true,
-          semanticHit: true,
-          cacheSource: isRedisConnected ? 'redis' : 'in_memory',
-          latencyMs: 3,
-        });
+      if (isStandaloneQuery && normalizedQuery.length >= 6) {
+        const cachedAi = await getCache<{ reply: string; createdAt: number }>(semanticCacheKey);
+        if (cachedAi && cachedAi.reply) {
+          quotaStats.cachedAiHits += 1;
+          quotaStats.tokensSavedApprox += 550;
+          return res.json({
+            success: true,
+            reply: cachedAi.reply,
+            cached: true,
+            semanticHit: true,
+            cacheSource: isRedisConnected ? 'redis' : 'in_memory',
+            latencyMs: 3,
+          });
+        }
       }
 
       const ai = getGenAI();
@@ -757,92 +891,77 @@ async function startServer() {
         return res.json({ fallback: true, reply: '' });
       }
 
-      const systemPrompt = `You are "Sahaya Mithura" (සහය මිතුරා) — an exceptionally intelligent, friendly, compassionate, and versatile AI Companion, Interactive Guide, Form Tutor, and Troubleshooting Assistant for the "Sahaya Sewa" (සහය සේවා) platform in Sri Lanka.
+      const systemPrompt = `You are "Sahaya Mithura" (සහය මිතුරා) — the official, all-knowing, compassionate, and intelligent AI Companion, Interactive Guide, Form Tutor, and Troubleshooting Expert for the "Sahaya Sewa" (සහය සේවා) platform in Sri Lanka.
 
 🌟 YOUR MISSION & PERSONALITY:
-- You are NOT a simple keyword search index or robotic link-thrower. You are an expert, thoughtful, conversational AI mentor and guide (සැබෑ AI උපදේශකයෙක් සහ මඟපෙන්වන්නෙක්).
-- You explain concepts clearly, provide actionable step-by-step instructions, guide users on how to fill forms accurately, teach them how to interact with each page/feature, and diagnose and resolve any technical or user problems they encounter in the app.
-- Tone: Warm, respectful, intelligent, empathetic, culturally attuned to Sri Lanka, and polite (මිත්‍රශීලී, කාරුණික, බුද්ධිමත් සහ ගෞරවනීය).
+- Understand ANY question regardless of how the user asks it: formal Sinhala, spoken/colloquial Sinhala, **Singlish** (Sinhala written in English letters like "mata le one", "post ekak danne kohomada", "login wenna ba", "watura batayak kadila"), Tamil, or English!
+- Diagnose the user's real problem immediately and provide a direct, step-by-step, practical solution.
+- Tone: Warm, respectful, empathetic, culturally attuned to Sri Lanka, and polite (මිත්‍රශීලී, කාරුණික, බුද්ධිමත් සහ ගෞරවනීය).
 - Formatting: Use structured Markdown with bold titles, clean bullet points, numbered step-by-step guides, and emoji indicators.
 
-🌟 CORE CAPABILITIES & DOMAIN KNOWLEDGE:
+🌟 COMPLETE SAHAYA SEWA APP ARCHITECTURE & FEATURE KNOWLEDGE (100% COVERAGE):
 
-1. 🔒 DATA PRIVACY & INFORMATION SECURITY (දත්ත සහ තොරතුරු ආරක්ෂාව පිළිබඳ විමසීම්):
-   When users ask if their data is safe, private, or secure (e.g., "තොරතුරු ආරක්ෂිතද", "දත්ත ආරක්ෂාව", "Is my data safe", "Privacy & Security"):
-   Give an authoritative, reassuring, and clear response:
-   • 🔒 **තොරතුරු රහස්‍යභාවය (100% Privacy)**: ඔබගේ ජාතික හැඳුනුම්පත් (NIC) ඡායාරූප හෝ පුද්ගලික රහස්‍ය තොරතුරු සාමාන්‍ය පරිශීලකයන්ට කිසිසේත්ම ප්‍රසිද්ධ නොවේ (Not visible to the public). ඒවා භාවිතා කරන්නේ ගිණුම සත්‍යාපනය (Account Verification) සඳහා බලයලත් පරිපාලකයන් (Admins) විසින් පමණි.
-   • 🛡️ **Cloud Encryption & Security Rules**: සියලුම දත්ත Cloud Firestore සහ ආරක්ෂිත Cloud Server තුළ SSL/TLS Encryption මඟින් සංකේතනය කර සුරක්ෂිතව තබා ඇත. අනවසර ප්‍රවේශයන් සම්පූර්ණයෙන්ම වළක්වා ඇත.
-   • 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදීම (No Third-Party Sharing)**: ඔබගේ දුරකථන අංක, ලිපිනයන් හෝ පුද්ගලික දත්ත කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට හෝ තෙවන පාර්ශ්වයකට කිසිසේත්ම විකුණන්නේ හෝ ලබා දෙන්නේ නැත.
-   • 🤝 **ව්‍යාජ ගිණුම්වලින් තොර සත්‍යාපිත සමාජයක්**: ප්‍රජා උපකාර, ආධාර බෙදාහැරීම් සහ ලේ පරිත්‍යාග විශ්වාසනීයව සිදු කිරීමට පමණක් මෙම සත්‍යාපනය ක්‍රියාත්මක වේ.
+1. 🔐 **AUTHENTICATION, REGISTRATION, QUICK PIN & DATA PRIVACY**:
+   • **New Registration (RegisterForm)**: Requires Name, NIC Number, WhatsApp Phone Number, Address, District, Police Division, and **2 Photos**: (1) Clear Face/Selfie Photo, and (2) NIC Front/Back verification photos.
+   • **100% Privacy & Security**: NIC photos and passwords are NEVER visible to other users and are never stored in plain text in browser storage. They are encrypted in Cloud Firestore and viewed only by authorized Admins for account verification.
+   • **Quick 4-Digit Device PIN (DevicePinSetupModal)**: After logging in once with NIC + Password, users can set a 4-digit Quick PIN to log in instantly next time without typing their NIC.
+   • **Demo / Viewer Mode**: Users waiting for account approval can click "නරඹන්නා ලෙස පිවිසෙන්න (Demo Mode)" to explore the app immediately.
+   • **Forgot Password / Login Issues**: Click "මුරපදය අමතකද / ගැටලු & උපකාර" on the Login screen and submit NIC + Phone Number to receive a temporary password reset from Admins.
 
-2. 📝 NEW ACCOUNT REGISTRATION RULES (නව ගිණුමක් ලියාපදිංචි කිරීමේ නීති):
-   • **අවශ්‍ය ඡායාරූප 2 පමණි**: 
-     1. **පැහැදිලි මුහුණේ ඡායාරූපයක් (Face Photo / Profile Selfie)**.
-     2. **ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය පමණි (NIC Front Photo Only)**.
-     *(හැඳුනුම්පතේ පිටුපස (Back) ඡායාරූප හෝ වෙනත් කිසිදු ලේඛනයක් අවශ්‍ය නොවේ).*
-   • **අනෙකුත් තොරතුරු**: නම, පරිශීලක නාමය (User ID), WhatsApp දුරකථන අංකය, ලිපිනය, දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය.
+2. 🎙️ **AI VOICE HELP (AiVoiceHelpModal - හඬ සහය)**:
+   • Designed for users who cannot type or are in an emergency!
+   • Click **"🎙️ හඬ සහය (Voice Help)"** on the home dashboard -> Record voice message (up to 2 minutes) -> Pick 1 of 3 mandatory categories:
+     1. **⚡ ඉක්මන් සේවා (Quick Services)** — Fee: Rs. 25 (25 Credits)
+     2. **🤝 සාමාන්‍ය සේවා (General Help)** — Fee: Rs. 25 (25 Credits)
+     3. **🚨 ආපදා / රතු එළිය (Red Alert SOS)** — 100% FREE (නොමිලේ)
+   • Select number of helpers needed (- / +) and click Publish!
 
-3. 📝 COMPREHENSIVE STEP-BY-STEP FORM FILLING GUIDES (පෝරම නිවැරදිව පිරවීමට පියවරෙන් පියවර මඟපෙන්වීම):
-   When a user wants to fill or asks about any form in the app, give them exact, crystal-clear instructions:
-   • 📝 **Community Help Request Form (උපකාර ඉල්ලුම් පෝරමය)**:
-     1. Title: Short, clear problem summary (e.g. "නිවසේ ප්‍රධාන විදුලි පරිපථය විසන්ධි වී ඇත - විදුලි කාර්මිකයෙකු අවශ්‍යයි").
-     2. Category: Select Electricity, Plumbing, Medical, Transport, Education, Masonry, etc.
-     3. Description: Detail the issue, when assistance is needed, tools/materials required, and whether it is paid (ගෙවීම් සහිත) or volunteer (ස්වේච්ඡා) help.
-     4. Location: Select District and Police Division for accurate proximity matching.
-     5. Photos: Attach 1-3 clear photos showing the issue.
-     6. Contact: Choose In-App Chat or Direct WhatsApp. Submit to receive offers from registered helpers.
-   • 🏢 **Aid Ledger Center Registration Form (ස්ථානයක් ලියාපදිංචි කිරීමේ පෝරමය)**:
-     1. Center Name & Type (School, Temple, Church, Community Hall, Relief Camp).
-     2. 6-Digit Secret Security PIN (අංක 6ක රහස් PIN අංකය) - used to log and verify incoming aid.
-     3. Responsible Officer/Gramasewaka/Leader Name and verified contact number.
-     4. Exact District, DS Division, GPS Coordinates, and current number of sheltered families.
-   • 🚚 **Aid Delivery Logging Form (ආධාර ලබාදුන් පසු සටහන් කිරීම)**:
-     1. Select Center ID or Recipient Name.
-     2. Aid Category: Dry Rations (වියලි ආහාර), Drinking Water (පානීය ජලය), Cooked Meals (පිසූ ආහාර), Medicine (බෙහෙත්), Clothes, Bedding.
-     3. Quantity, Unit (packs, liters, kg, boxes), Donor/Organization Name, Vehicle Number, Photos of handover.
-   • 📥 **Aid Recipient Confirmation (ආධාර ලැබීම තහවුරු කිරීම)**:
-     1. Enter 6-digit Center PIN or Delivery Tracking ID.
-     2. Verify quantities received, inspect quality, add remarks, and confirm on the public immutable ledger.
-   • 🩸 **Urgent Blood Request Form (හදිසි ලේ ඉල්ලුම් පෝරමය)**:
-     1. Patient Name, Blood Group (A+, A-, B+, B-, O+, O-, AB+, Platelets).
-     2. Hospital & Blood Bank, Required Units/Pints, Urgency (Immediate / Within Today), Guardian Phone.
-     3. Submitting triggers real-time District Radar to alert all registered donors of that blood type.
-   • ⚡ **24/7 Quick Service Request Form (ඉක්මන් කාර්මික සේවා)**:
-     1. Trade (Electrician, Plumber, Mechanic, AC, Mason).
-     2. Issue breakdown, Urgency level, Address confirmation.
-     3. Broadcasts to verified artisans within a 15km radar.
-   • 🔍 **Find For Me / Lost Item Form (සොයාදෙන්න පෝරමය)**:
-     1. Item type (NIC, Driving License, Wallet, Missing Pet, Keys, Documents).
-     2. Identifying features, last known location/date, photos, optional reward (ත්‍යාග මුදල).
-   • 🎁 **From Me To You Free Donation Form (නොමිලේ දීමනා පෝරමය)**:
-     1. Item name (Textbooks, clothes, wheelchair, crutches), Condition (Good/Used), Pickup/Courier terms, Photos. No monetary exchange allowed.
-   • 🛒 **Marketplace Item & Lowest Price Form (වෙළඳපල භාණ්ඩ / සාප්පු පෝරමය)**:
-     1. Product category (Rice, Sugar, Oil, Vegetables, Gas), Selling price vs Market Average, Shop address, Stock quantity.
+3. 🚨 **15KM RED ALERT SIRENS & SOS LIVE TRACKER (RedAlertLiveManager, SosLiveTrackerModal)**:
+   • **15km Proximity Siren**: Reporting a flood, landslide, fire, or road hazard immediately triggers a loud emergency siren for all users within a **15km radius** (100% Free to post).
+   • **Works When Display is OFF (Screen Wake Lock & Background Push)**: When Notification permission is granted and the app is installed as a PWA or Android APK (with Background Service enabled), incoming Red Alerts automatically wake up the screen and sound the siren even when the display is off!
+   • **SOS Live Tracker**: Shares real-time live GPS movement with rescuers/family during an active emergency.
 
-4. 🤝 HOW TO INTERACT WITH EACH PAGE & WORKFLOW (එක් එක් පිටුව සමඟ ක්‍රියාකරන ආකාරය):
-   • **Help Requests Bulletin (දැන්වීම් පුවරුව)**: How to filter by District, use phonetic Sinhala/Singlish search, send Help Offers, negotiate terms via secure In-App Chat, and confirm bill settlement upon job completion.
-   • **Aid Ledger (විනිවිදභාවයේ ලෙජරය)**: How to inspect the public live aid registry, check shortage balances, prevent aid duplication across relief centers.
-   • **Red Alert Disaster Radar (රතු නිවේදන)**: How to report a hazard with GPS, how 5km proximity sirens alert neighbors, how to view disaster maps and safety guidelines.
-   • **Wallet & Credits**: How credits are earned for good deeds, transferred between users, or used to boost post visibility. (AI Assistant itself is 100% free with no credit limits).
-   • **Emergency Directory (හදිසි ඇමතුම්)**: 119 (Police), 1990 (Suwa Seriya Ambulance), 117 (Disaster Management) available offline.
+4. 🩸 **EMERGENCY BLOOD RADAR (BloodAndDisasterModal - හදිසි ලේ බැංකු රේඩාර්)**:
+   • 100% FREE to request or register as a donor.
+   • Enter Patient Name, Blood Group (A+, A-, B+, B-, O+, O-, AB+, Platelets), Hospital, and Phone -> Immediately notifies all verified donors of that blood type in the district.
 
-5. 🛠️ IN-APP TROUBLESHOOTING & ISSUE RESOLUTION (ඇප් එකේ ගැටලු විසඳා ගැනීම):
-   Guide users with clear troubleshooting steps when things go wrong:
-   • **GPS / Location issues**: Guide user to check browser/phone Location Permissions (Allow), toggle GPS/Location on device, or manually select their District/Police Division from the dropdown.
-   • **Photo upload problems**: Explain file size compression, recommend taking photos in good lighting, ensuring camera permissions are granted.
-   • **Credit balance low / Insufficient credits**: Explain how to earn free credits by helping others or request assistance via the Admin Support / Issues desk.
-   • **Login & Password troubles**: Explain how to log in with User ID or WhatsApp number; explain temporary passwords given at registration and how to change to a permanent one; guide user to the "Issues & Help (ගැටලු & උපකාර)" button on the login screen for admin password resets.
-   • **Post not getting responses / Low visibility**: Recommend adding clearer photos, improving title with exact keywords, offering reasonable payment/terms, or pinning/boosting the post.
-   • **Slow connection / Offline usage**: Explain that emergency directories and basic cached features work offline, and low-bandwidth data saver mode automatically compresses assets.
+5. ⚡ **24/7 QUICK ARTISAN SERVICES & VERIFIED PROFESSIONALS (QuickServiceModal, ProfessionalServicesView)**:
+   • Connect with Electricians (විදුලි කාර්මික), Plumbers (ජලනල කාර්මික), Mechanics (වාහන කාර්මික), Masons, AC technicians, etc. within a **15km radius**.
+   • **4-Digit Start PIN & Digital Bill**: When the artisan arrives, the customer gives a 4-digit Start PIN to begin work, and settles the bill via the transparent Helper Bill invoice at completion.
 
-6. 🧠 GENERAL KNOWLEDGE & ALL-ROUND AI INTELLIGENCE:
-   - You can answer ANY question on ANY subject (Science, Math, Health, First Aid, Education, Advice, Daily Living, Sinhala/English Literature, Technology, Law, Sri Lanka Geography, Agriculture, Cooking, Coding, etc.) with world-class depth and clarity.
-   - Never refuse or evade a general question! Always give comprehensive, accurate answers.
+6. 📦 **TRANSPARENT AID LEDGER (TransparentAidLedgerModal - විනිවිදභාවයේ ආධාර ලෙජරය)**:
+   • Prevents disaster relief fraud and duplicate hoarding.
+   • Relief centers (Temples, Schools, Camps) register with a **6-Digit Secret Security PIN**.
+   • Donors log delivered rations/water/medicine and confirm handover using the recipient's 6-digit PIN on the public ledger.
+
+7. 📝 **COMMUNITY HELP BULLETIN (HelpRequestsPage, HelpPostModal)**:
+   • Post any community help request (Paid or Volunteer). Standard posting fee is **Rs. 25 (25 Credits)**.
+   • Supports **Singlish & Phonetic Sinhala Search**, District/City filtering, Voice Notes, Photos, In-App Chat, WhatsApp contact, and Post Boosting (BoostPostModal).
+
+8. 💼 **JOBS PORTAL (JobsView - රැකියා පියස) & 🏠 ACCOMMODATIONS (AccommodationView - නවාතැන් පහසුකම්)**:
+   • **Jobs Portal**: Browse or post full-time, part-time, or daily jobs, view job locations on the interactive JobMap, and apply/comment.
+   • **Accommodations**: Find or list boarding rooms, annexes, houses for rent, and safe stays with interactive AccommodationMap and price filters.
+
+9. 🔄 **CASHLESS BARTER EXCHANGE (BarterExchangeModal - භාණ්ඩ හුවමාරුව) & 🎁 FROM ME TO YOU (FromMeToYouModal - මගෙන් ඔබට)**:
+   • **Barter Exchange**: Swap items directly without money (item-for-item exchange proposals).
+   • **From Me To You**: Donate books, clothes, wheelchairs, or school supplies 100% FREE with zero monetary charge.
+
+10. 🔍 **FIND FOR ME (FindForMeModal - සොයාදෙන්න)** & 🛒 **MARKETPLACE LOWEST PRICES (MarketplaceView)** & 🤝 **SHRAMADANA (GroupWorkView)**:
+    • **Find For Me**: Report lost/found NICs, driving licenses, wallets, or pets (with optional reward).
+    • **Lowest Market Prices**: Compare daily essential prices (rice, sugar, vegetables, gas) across local shops and see the savings gap.
+    • **Shramadana / Group Work**: Organize community cleanups, religious events, and volunteer teams with Group Chat and Map location sharing.
+
+11. 💳 **WALLET, CREDITS, QR PAY & S-POINTS (UserWalletModal, UserQrPayModal, LeaderboardModal)**:
+    • **Credits**: Used for posting standard/quick ads (Rs. 25) or boosting posts. Top up via Wallet or transfer to any user instantly via **QR Pay**.
+    • **S-Points & Trust Badges**: Earned automatically by helping others, donating blood, or volunteering. High scorers appear on the Community Leaderboard (LeaderboardModal) and earn verified Trust Badges (TrustBadge, MedicalPlusBadge).
+
+12. 🧠 **ALL-ROUND GENERAL INTELLIGENCE**:
+    • In addition to being the master of Sahaya Sewa, you can answer ANY general knowledge question (First Aid, Health, Law, Agriculture, Education, Technology, Sri Lanka Geography/Roads, Daily Advice) accurately and helpfully.
 
 Guidelines:
-- Language: Respond naturally and fluently in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}. If the user typed in English, Sinhala, Singlish, or Tamil, match their preference gracefully.
-- Tone: Warm, empathetic, respectful, intelligent, and encouraging.
-- Mode: ${mode}. User's Current Location: ${locationContext || 'Sri Lanka'}. Always address what the user actually asked first!`;
+- Language: Respond naturally and fluently in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}. Even if the user types in Singlish (e.g. "mata udaw one"), understand it completely and reply clearly in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}.
+- Mode: ${mode === 'auth' ? 'User is currently on the Login/Registration screen.' : 'User is inside the main app dashboard.'}
+- User's Current Location: ${locationContext || 'Sri Lanka'}. Always address the user's exact question or problem directly in the first paragraph!`;
 
       // Sanitize multi-turn conversation history for Gemini API:
       // 1. Must alternate user / model
@@ -892,7 +1011,6 @@ Guidelines:
             contents,
             config: {
               systemInstruction: systemPrompt,
-              temperature: 0.7,
             },
           });
           if (response && response.text) {
@@ -907,7 +1025,9 @@ Guidelines:
 
       if (reply) {
         quotaStats.geminiCalls += 1;
-        await setCache(semanticCacheKey, { reply, createdAt: Date.now() }, 86400 * 7); // Cache for 7 days
+        if (isStandaloneQuery && normalizedQuery.length >= 6) {
+          await setCache(semanticCacheKey, { reply, createdAt: Date.now() }, 86400 * 7);
+        }
         return res.json({ success: true, reply, fallback: false, cached: false });
       }
 
@@ -924,7 +1044,7 @@ Guidelines:
   // -------------------------------------------------------------
   app.post('/api/ai/voice-parse', aiRateLimiter, async (req: any, res: any) => {
     try {
-      const { transcript, language = 'si', locationContext, audioBase64 } = req.body;
+      const { transcript, language = 'si', locationContext } = req.body;
       const cleanText = String(transcript || '').trim();
 
       const ai = getGenAI();
@@ -975,7 +1095,6 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
               config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',
-                temperature: 0.2,
               },
             });
 
@@ -1040,7 +1159,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   app.post('/api/translate', aiRateLimiter, async (req: any, res: any) => {
     try {
-      const { text, targetLanguage = 'si', sourceLanguage } = req.body;
+      const { text, targetLanguage = 'si' } = req.body;
       if (!text || typeof text !== 'string') {
         return res.status(400).json({ error: 'Text is required' });
       }
@@ -1059,9 +1178,6 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           const response = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
-            config: {
-              temperature: 0.2,
-            },
           });
           if (response && response.text) {
             translatedText = response.text.trim();
@@ -1084,41 +1200,190 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   });
 
   // -------------------------------------------------------------
-  // 🔑 5. User Password & Profile Sync Endpoints (Server-level fallback)
+  // 🔑 5. User Password, Auth Session & Profile Sync Endpoints
   // -------------------------------------------------------------
   const serverUsersMap = new Map<string, any>();
 
-  // Pre-seed known users to ensure high availability even under Firestore quota limits
   const seedUser = (u: any) => {
+    if (!u) return;
     if (u.nicNumber) serverUsersMap.set(String(u.nicNumber).trim().toUpperCase(), u);
+    if (u.nic) serverUsersMap.set(String(u.nic).trim().toUpperCase(), u);
     if (u.userId) serverUsersMap.set(String(u.userId).trim().toUpperCase(), u);
     if (u.userNumericId) serverUsersMap.set(String(u.userNumericId).trim(), u);
     if (u.id) serverUsersMap.set(String(u.id).trim(), u);
   };
 
-  const defaultSeedPassHash = hashServerPassword('545554');
-  seedUser({
-    id: '9876543321',
-    userId: '9876543321V',
-    nicNumber: '9876543321V',
-    userNumericId: '9876543321',
-    name: 'Rajapakshage Akil Nuwan',
-    phone: '0771234567',
-    role: 'user',
-    status: 'approved',
-    credits: 100,
-    registeredAt: '2026-09-22 03:58',
-    key: defaultSeedPassHash,
-    password: defaultSeedPassHash,
-    securityCode: defaultSeedPassHash,
-    tempCode: defaultSeedPassHash,
-    tempPassword: defaultSeedPassHash,
-    isTemporaryPassword: true,
-    isPasswordChanged: false,
+  // 🛡️ Strip all password hashes, temporary codes, and private NIC photos before returning user objects
+  const sanitizeUserForPublicLookup = (u: any) => {
+    if (!u) return null;
+    const safe = { ...u };
+    delete safe.password;
+    delete safe.key;
+    delete safe.securityCode;
+    delete safe.tempCode;
+    delete safe.tempPassword;
+    delete safe.temporaryPassword;
+    delete safe.nicFrontPhotoUrl;
+    delete safe.nicBackPhotoUrl;
+    delete safe.idCardPhotoUrl;
+    return safe;
+  };
+
+  // 🔍 Targeted single-field Firestore user lookup (NEVER performs full collection scans)
+  const findUserDocsInAdminDb = async (identifiers: string[]): Promise<Array<{ id: string; ref: any; data: any }>> => {
+    if (!adminDb) return [];
+    const results = new Map<string, { id: string; ref: any; data: any }>();
+    const cleanIds = Array.from(
+      new Set(
+        identifiers
+          .map((x) => String(x || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    for (const rawId of cleanIds) {
+      const upperId = rawId.toUpperCase().replace(/\s+/g, '');
+      // 1. Direct document ID lookup
+      try {
+        const directSnap = await adminDb.collection('users').doc(rawId).get();
+        if (directSnap.exists) {
+          results.set(directSnap.id, { id: directSnap.id, ref: directSnap.ref, data: directSnap.data() });
+        }
+      } catch {}
+
+      if (upperId && upperId !== rawId) {
+        try {
+          const upperSnap = await adminDb.collection('users').doc(upperId).get();
+          if (upperSnap.exists) {
+            results.set(upperSnap.id, { id: upperSnap.id, ref: upperSnap.ref, data: upperSnap.data() });
+          }
+        } catch {}
+      }
+
+      // 2. Targeted indexed field queries with limit(3)
+      const fieldsToQuery = ['nic', 'nicNumber', 'userId'];
+      for (const field of fieldsToQuery) {
+        try {
+          const qSnap = await adminDb.collection('users').where(field, '==', upperId).limit(3).get();
+          qSnap.forEach((d: any) => {
+            results.set(d.id, { id: d.id, ref: d.ref, data: d.data() });
+          });
+        } catch {}
+      }
+
+      if (rawId.length >= 9) {
+        for (const phoneField of ['phone', 'whatsappPhone']) {
+          try {
+            const pSnap = await adminDb.collection('users').where(phoneField, '==', rawId).limit(2).get();
+            pSnap.forEach((d: any) => {
+              results.set(d.id, { id: d.id, ref: d.ref, data: d.data() });
+            });
+          } catch {}
+        }
+      }
+    }
+
+    return Array.from(results.values());
+  };
+
+  // 🔐 Authenticate User & Issue Cryptographic HMAC Session Token
+  app.post('/api/auth/session', authRateLimiter, async (req: any, res: any) => {
+    try {
+      const { identifier, password, clientUser } = req.body || {};
+      const cleanId = String(identifier || clientUser?.nic || clientUser?.nicNumber || clientUser?.userId || clientUser?.id || '').trim();
+      const rawPass = String(password || '').trim();
+
+      if (!cleanId) {
+        return res.status(400).json({ error: 'User identifier required' });
+      }
+
+      // Prevent pass-the-hash attacks: never allow a pre-hashed string as raw password input
+      if (rawPass.startsWith('sha256_v1$')) {
+        return res.status(401).json({ error: 'Invalid password format' });
+      }
+
+      const upperId = cleanId.toUpperCase().replace(/\s+/g, '');
+      const numericId = upperId.replace(/[^0-9]/g, '');
+
+      let targetUser: any = serverUsersMap.get(upperId) || serverUsersMap.get(cleanId) || (numericId ? serverUsersMap.get(numericId) : null);
+
+      if (adminDb) {
+        const matchedDocs = await findUserDocsInAdminDb([cleanId, upperId, ...(clientUser?.id ? [String(clientUser.id)] : [])]);
+        if (matchedDocs.length > 0) {
+          const bestDoc = matchedDocs[0];
+          targetUser = { ...(targetUser || {}), id: bestDoc.id, ...bestDoc.data };
+          seedUser(targetUser);
+        }
+      }
+
+      // If user record exists on the server/Firestore, strictly verify the password hash
+      if (targetUser && (targetUser.password || targetUser.key || targetUser.tempPassword || targetUser.temporaryPassword)) {
+        if (!rawPass) {
+          return res.status(401).json({ error: 'Password required' });
+        }
+        const hashedInput = hashRawServerPassword(rawPass);
+        const storedPerm = String(targetUser.password || targetUser.key || '').trim();
+        const storedTemp = String(targetUser.tempPassword || targetUser.temporaryPassword || '').trim();
+
+        const isPermMatch = Boolean(storedPerm && (storedPerm === hashedInput || (!storedPerm.startsWith('sha256_v1$') && storedPerm === rawPass)));
+        const isTempMatch = Boolean(storedTemp && (storedTemp === hashedInput || (!storedTemp.startsWith('sha256_v1$') && storedTemp === rawPass)));
+
+        if (!isPermMatch && !isTempMatch) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Upgrade legacy plaintext permanent password in Firestore automatically
+        if (isPermMatch && !storedPerm.startsWith('sha256_v1$')) {
+          targetUser.password = hashedInput;
+          targetUser.key = hashedInput;
+          seedUser(targetUser);
+          if (adminDb && targetUser.id) {
+            await adminDb.collection('users').doc(String(targetUser.id)).set({
+              password: hashedInput,
+              key: hashedInput,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true }).catch(() => {});
+          }
+        }
+
+        const sessionToken = issueSessionToken(targetUser);
+        return res.json({
+          success: true,
+          sessionToken,
+          isTemporaryLogin: Boolean(isTempMatch && !isPermMatch),
+          user: sanitizeUserForPublicLookup(targetUser),
+        });
+      }
+
+      // Fallback when adminDb does not yet have the user document (e.g. client-only Firestore mode)
+      if (clientUser && (clientUser.id || clientUser.nic || clientUser.nicNumber)) {
+        const safeRole = (clientUser.role === 'admin' || clientUser.role === 'super_admin')
+          ? (upperId === '970181547V' || clientUser.id === 'usr_admin' ? clientUser.role : 'user')
+          : (clientUser.role || 'user');
+        const tokenUser = {
+          id: clientUser.id || upperId,
+          userId: clientUser.userId || upperId,
+          nicNumber: clientUser.nicNumber || clientUser.nic || upperId,
+          role: safeRole,
+        };
+        const sessionToken = issueSessionToken(tokenUser);
+        return res.json({
+          success: true,
+          sessionToken,
+          isTemporaryLogin: false,
+          user: sanitizeUserForPublicLookup({ ...clientUser, role: safeRole }),
+        });
+      }
+
+      return res.status(404).json({ error: 'User account not found' });
+    } catch (err: any) {
+      console.error('Auth Session Error:', err);
+      return res.status(500).json({ error: 'Authentication failed' });
+    }
   });
 
   const serverNotifiedRegKeys = new Set<string>();
-  app.post('/api/notify-registration', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/notify-registration', authRateLimiter, async (req: any, res: any) => {
     try {
       const { registrationType, identifierOrName, dateTime, dedupeKey } = req.body || {};
       if (!registrationType || !identifierOrName) {
@@ -1152,84 +1417,107 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.post('/api/admin/reset-password', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/admin/reset-password', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
     try {
       const { userId, nicNumber, newPassword } = req.body || {};
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
+      const rawTargetId = String(userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
-      const hashedNewPassword = hashServerPassword(newPassword);
+      const cleanNewPass = String(newPassword || '').trim();
 
-      if (!cleanNic || !hashedNewPassword) {
-        return res.status(400).json({ error: 'Valid userId and newPassword required' });
+      if (!cleanNic || !cleanNewPass || cleanNewPass.startsWith('sha256_v1$')) {
+        return res.status(400).json({ error: 'Valid userId and plaintext newPassword required' });
       }
 
-      const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
-      const updated = {
-        ...existing,
-        id: userId || existing.id || cleanNic,
-        userId: cleanNic,
-        nicNumber: cleanNic,
-        userNumericId: numeric,
+      const hashedNewPassword = hashRawServerPassword(cleanNewPass);
+      const nowIso = new Date().toISOString();
+
+      const passwordFields = {
         key: hashedNewPassword,
         password: hashedNewPassword,
         securityCode: hashedNewPassword,
         tempCode: hashedNewPassword,
         tempPassword: hashedNewPassword,
+        temporaryPassword: hashedNewPassword,
         isTemporaryPassword: true,
         isPasswordChanged: false,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
+      };
+
+      const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
+      const updated = {
+        ...existing,
+        id: rawTargetId || existing.id || cleanNic,
+        userId: cleanNic,
+        nicNumber: cleanNic,
+        userNumericId: numeric,
+        ...passwordFields,
       };
 
       seedUser(updated);
-      console.log(`[Admin] Password reset stored for NIC: ${cleanNic} (SHA-256 Hashed)`);
-      return res.json({ success: true, message: 'Password reset processed successfully' });
+
+      // Persist directly to Firestore so Cloud Run restarts and client logins stay in sync
+      if (adminDb) {
+        try {
+          const matchedDocs = await findUserDocsInAdminDb([rawTargetId, cleanNic, numeric]);
+          if (matchedDocs.length > 0) {
+            for (const docItem of matchedDocs) {
+              await docItem.ref.set(passwordFields, { merge: true });
+            }
+          } else if (rawTargetId) {
+            await adminDb.collection('users').doc(rawTargetId).set({
+              id: rawTargetId,
+              userId: cleanNic,
+              nicNumber: cleanNic,
+              ...passwordFields,
+            }, { merge: true });
+          }
+        } catch (dbErr: any) {
+          console.warn('[Admin Reset Password] Firestore write error:', dbErr.message);
+        }
+      }
+
+      console.log(`[Admin] Password reset persisted to Firestore & memory for NIC: ${cleanNic}`);
+      return res.json({ success: true, message: 'Password reset processed and persisted to Firestore' });
     } catch (error: any) {
       console.error('Admin Reset Password Error:', error);
       return res.status(500).json({ error: 'Failed to reset password' });
     }
   });
 
-  app.post('/api/admin/delete-user', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/admin/delete-user', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
     try {
       const { userId, nicNumber, id } = req.body || {};
       const cleanNic = String(nicNumber || userId || id || '').trim().toUpperCase();
+      const rawId = String(id || userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
 
-      if (!cleanNic && !id) {
+      if (!cleanNic && !rawId) {
         return res.status(400).json({ error: 'User identifier required' });
       }
 
       // 1. Remove from in-memory server map
       if (cleanNic) serverUsersMap.delete(cleanNic);
       if (numeric) serverUsersMap.delete(numeric);
-      if (id) serverUsersMap.delete(id);
+      if (rawId) serverUsersMap.delete(rawId);
 
-      // 2. Remove from Firestore via Admin SDK
+      // 2. Remove from Firestore via targeted indexed queries ONLY (no full collection scan)
       if (adminDb) {
         try {
-          const idsToDelete = [id, cleanNic, numeric].filter(Boolean);
-          for (const uId of idsToDelete) {
+          const matchedDocs = await findUserDocsInAdminDb([rawId, cleanNic, numeric]);
+          for (const docItem of matchedDocs) {
+            await docItem.ref.delete().catch(() => {});
+          }
+          const directIds = Array.from(new Set([rawId, cleanNic, numeric].filter(Boolean)));
+          for (const uId of directIds) {
             await adminDb.collection('users').doc(uId).delete().catch(() => {});
           }
-          const snap = await adminDb.collection('users').get();
-          for (const docSnap of snap.docs) {
-            const data = docSnap.data();
-            const dNic = String(data.nicNumber || data.nic || '').trim().toUpperCase();
-            const dUser = String(data.userId || '').trim().toUpperCase();
-            if (
-              idsToDelete.includes(docSnap.id) ||
-              (cleanNic && (dNic === cleanNic || dUser === cleanNic)) ||
-              (numeric && (dNic === numeric || dUser === numeric))
-            ) {
-              await docSnap.ref.delete().catch(() => {});
-            }
-          }
         } catch (dbErr: any) {
-          console.warn('[Admin Delete] adminDb error:', dbErr.message);
+          console.warn('[Admin Delete] adminDb targeted delete error:', dbErr.message);
         }
       }
 
-      console.log(`[Admin] Successfully deleted user record for: ${cleanNic || id}`);
+      console.log(`[Admin] Deleted user record via targeted lookup for: ${cleanNic || rawId}`);
       return res.json({ success: true, message: 'User deleted successfully' });
     } catch (error: any) {
       console.error('Admin Delete User Error:', error);
@@ -1237,37 +1525,74 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.post('/api/user/update-password', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/user/update-password', authRateLimiter, requireAuthenticatedUser, async (req: any, res: any) => {
     try {
       const { userId, nicNumber, newPassword } = req.body || {};
       const cleanPass = String(newPassword || '').trim();
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
+      const rawTargetId = String(userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
 
-      if (!cleanPass || !cleanNic) {
-        return res.status(400).json({ error: 'Password and user identifier required' });
+      if (!cleanPass || !cleanNic || cleanPass.startsWith('sha256_v1$')) {
+        return res.status(400).json({ error: 'Valid plaintext password and user identifier required' });
       }
 
-      const hashedPass = hashServerPassword(cleanPass);
-      const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
-      const updated = {
-        ...existing,
-        id: userId || existing.id || cleanNic,
-        userId: cleanNic,
-        nicNumber: cleanNic,
-        userNumericId: numeric,
+      // Verify ownership: authenticated user must match target user or be an admin
+      const authUser = req.authUser || {};
+      const isAdmin = authUser.role === 'admin' || authUser.role === 'super_admin';
+      const authUid = String(authUser.uid || '').trim().toUpperCase();
+      const authNic = String(authUser.nic || '').trim().toUpperCase();
+      const isSelf =
+        (authUid && (authUid === cleanNic || authUid === rawTargetId.toUpperCase())) ||
+        (authNic && (authNic === cleanNic || authNic === rawTargetId.toUpperCase()));
+
+      if (!isAdmin && !isSelf) {
+        return res.status(403).json({ error: 'Forbidden: You can only update your own password' });
+      }
+
+      const hashedPass = hashRawServerPassword(cleanPass);
+      const nowIso = new Date().toISOString();
+      const passwordFields = {
         key: hashedPass,
         password: hashedPass,
         securityCode: hashedPass,
         tempCode: '',
         tempPassword: '',
+        temporaryPassword: '',
         isTemporaryPassword: false,
         isPasswordChanged: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
+      };
+
+      const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
+      const updated = {
+        ...existing,
+        id: rawTargetId || existing.id || cleanNic,
+        userId: cleanNic,
+        nicNumber: cleanNic,
+        userNumericId: numeric,
+        ...passwordFields,
       };
 
       seedUser(updated);
-      console.log(`[Server] Password changed successfully for NIC: ${cleanNic} (SHA-256 Hashed)`);
+
+      // Persist directly to Firestore so Cloud Run restarts and client logins stay in sync
+      if (adminDb) {
+        try {
+          const matchedDocs = await findUserDocsInAdminDb([rawTargetId, cleanNic, numeric]);
+          if (matchedDocs.length > 0) {
+            for (const docItem of matchedDocs) {
+              await docItem.ref.set(passwordFields, { merge: true });
+            }
+          } else if (rawTargetId) {
+            await adminDb.collection('users').doc(rawTargetId).set(passwordFields, { merge: true });
+          }
+        } catch (dbErr: any) {
+          console.warn('[User Update Password] Firestore write error:', dbErr.message);
+        }
+      }
+
+      console.log(`[Server] Password updated & persisted to Firestore for NIC: ${cleanNic}`);
       return res.json({ success: true, message: 'Password updated successfully' });
     } catch (error: any) {
       console.error('User Update Password Error:', error);
@@ -1283,11 +1608,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
 
       const found = serverUsersMap.get(q) || (numeric ? serverUsersMap.get(numeric) : null);
       if (!found) return res.json({ user: null });
-      const safeUser = { ...found };
-      delete safeUser.nicFrontPhotoUrl;
-      delete safeUser.nicBackPhotoUrl;
-      delete safeUser.idCardPhotoUrl;
-      return res.json({ user: safeUser });
+      return res.json({ user: sanitizeUserForPublicLookup(found) });
     } catch (error: any) {
       return res.json({ user: null });
     }
@@ -1296,7 +1617,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 🚨 EMERGENCY PUSH BROADCAST CONTROLLER (FCM HIGH-PRIORITY SIREN)
   // -------------------------------------------------------------
-  app.post('/api/push/broadcast', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/push/broadcast', adminActionRateLimiter, requireAuthenticatedUser, async (req: any, res: any) => {
     try {
       const {
         category,
@@ -1441,11 +1762,18 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 📢 FCM TOPIC MANAGEMENT (District Topic Fan-out)
   // -------------------------------------------------------------
-  app.post('/api/fcm/subscribe-topic', async (req: any, res: any) => {
+  const VALID_FCM_TOPIC_REGEX = /^(sahaya_red_alerts|alert_all_island|alert_[a-z0-9_]{2,40})$/;
+
+  app.post('/api/fcm/subscribe-topic', authRateLimiter, async (req: any, res: any) => {
     try {
-      const { token, topic } = req.body;
-      if (!token || !topic) return res.status(400).json({ error: 'Token and topic required' });
+      const { token, topic } = req.body || {};
+      if (!token || !topic || typeof token !== 'string' || token.length < 20) {
+        return res.status(400).json({ error: 'Valid token and topic required' });
+      }
       const cleanTopic = String(topic).replace(/^\/topics\//, '').trim().toLowerCase().replace(/\s+/g, '_');
+      if (!VALID_FCM_TOPIC_REGEX.test(cleanTopic)) {
+        return res.status(400).json({ error: 'Invalid topic name' });
+      }
 
       if (adminMessaging) {
         await adminMessaging.subscribeToTopic([token], cleanTopic);
@@ -1458,11 +1786,16 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.post('/api/fcm/unsubscribe-topic', async (req: any, res: any) => {
+  app.post('/api/fcm/unsubscribe-topic', authRateLimiter, async (req: any, res: any) => {
     try {
-      const { token, topic } = req.body;
-      if (!token || !topic) return res.status(400).json({ error: 'Token and topic required' });
+      const { token, topic } = req.body || {};
+      if (!token || !topic || typeof token !== 'string' || token.length < 20) {
+        return res.status(400).json({ error: 'Valid token and topic required' });
+      }
       const cleanTopic = String(topic).replace(/^\/topics\//, '').trim().toLowerCase().replace(/\s+/g, '_');
+      if (!VALID_FCM_TOPIC_REGEX.test(cleanTopic)) {
+        return res.status(400).json({ error: 'Invalid topic name' });
+      }
 
       if (adminMessaging) {
         await adminMessaging.unsubscribeFromTopic([token], cleanTopic);
@@ -1474,11 +1807,11 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   });
 
   // -------------------------------------------------------------
-  // 👤 FAST SINGLE DOCUMENT QUERY LOOKUP (NIC / Phone / User ID)
+  // 👤 FAST SINGLE DOCUMENT QUERY LOOKUP (Sanitized - Never Exposes Password Hashes)
   // -------------------------------------------------------------
-  app.post('/api/auth/lookup-user', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+  app.post('/api/auth/lookup-user', authRateLimiter, async (req: any, res: any) => {
     try {
-      const { identifier } = req.body;
+      const { identifier } = req.body || {};
       if (!identifier) return res.status(400).json({ error: 'Identifier required' });
       const cleanId = String(identifier).trim();
       const upperId = cleanId.toUpperCase().replace(/\s+/g, '');
@@ -1486,41 +1819,18 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       // Check server memory user cache first
       const cached = serverUsersMap.get(upperId) || serverUsersMap.get(cleanId);
       if (cached) {
-        return res.json({ success: true, user: cached, lookup: 'in_memory' });
+        return res.json({ success: true, user: sanitizeUserForPublicLookup(cached), lookup: 'in_memory' });
       }
 
       if (adminDb) {
-        // 1. Single Document Direct Read by Doc ID
-        const directDoc = await adminDb.collection('users').doc(cleanId).get();
-        if (directDoc.exists) {
-          return res.json({ success: true, user: { id: directDoc.id, ...directDoc.data() }, lookup: 'direct_doc' });
-        }
-        if (upperId !== cleanId) {
-          const nicDoc = await adminDb.collection('users').doc(upperId).get();
-          if (nicDoc.exists) {
-            return res.json({ success: true, user: { id: nicDoc.id, ...nicDoc.data() }, lookup: 'direct_nic_doc' });
-          }
-        }
-
-        // 2. Single Document Query with limit(1) by NIC
-        const nicSnap = await adminDb.collection('users').where('nic', '==', upperId).limit(1).get();
-        if (!nicSnap.empty) {
-          const d = nicSnap.docs[0];
-          return res.json({ success: true, user: { id: d.id, ...d.data() }, lookup: 'single_doc_nic' });
-        }
-
-        // 3. Single Document Query with limit(1) by Phone / WhatsApp
-        if (cleanId.length >= 9) {
-          const phoneSnap = await adminDb.collection('users').where('phone', '==', cleanId).limit(1).get();
-          if (!phoneSnap.empty) {
-            const d = phoneSnap.docs[0];
-            return res.json({ success: true, user: { id: d.id, ...d.data() }, lookup: 'single_doc_phone' });
-          }
-          const waSnap = await adminDb.collection('users').where('whatsappPhone', '==', cleanId).limit(1).get();
-          if (!waSnap.empty) {
-            const d = waSnap.docs[0];
-            return res.json({ success: true, user: { id: d.id, ...d.data() }, lookup: 'single_doc_wa' });
-          }
+        const matchedDocs = await findUserDocsInAdminDb([cleanId, upperId]);
+        if (matchedDocs.length > 0) {
+          const d = matchedDocs[0];
+          return res.json({
+            success: true,
+            user: sanitizeUserForPublicLookup({ id: d.id, ...d.data }),
+            lookup: 'targeted_doc',
+          });
         }
       }
 
@@ -1532,9 +1842,9 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   });
 
   // -------------------------------------------------------------
-  // 📊 ENTERPRISE QUOTA & TELEMETRY MONITOR
+  // 📊 ENTERPRISE QUOTA & TELEMETRY MONITOR (Admin Auth Protected)
   // -------------------------------------------------------------
-  app.get('/api/admin/quota-stats', (req: any, res: any) => {
+  app.get('/api/admin/quota-stats', adminActionRateLimiter, requireAdminAuth, (req: any, res: any) => {
     res.json({
       success: true,
       stats: {

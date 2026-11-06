@@ -17,7 +17,8 @@ import {
   deletePasswordResetRequestFromFirestore, 
   updateUserInFirestore 
 } from '../lib/firebase';
-import { normalizeNIC } from '../utils/userUtils';
+import { normalizeNIC, hashUserPassword } from '../utils/userUtils';
+import { getAuthHeaders } from '../utils/apiConfig';
 
 interface AdminPasswordResetsManagementProps {
   users?: User[];
@@ -53,22 +54,37 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
   // 🔑 තාවකාලික මුරපදය සාදා WhatsApp/SMS පණිවිඩය සකස් කිරීම
   const handleGenerateTempPassword = async (req: any, matchedUser: User) => {
     const tempPass = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedTempPass = await hashUserPassword(tempPass);
+    const userNic = matchedUser.nic || matchedUser.nicNumber || req.nic;
 
     await updateUserInFirestore(matchedUser.id, {
-      password: tempPass,
-      key: tempPass,
-      tempPassword: tempPass,
+      password: hashedTempPass,
+      key: hashedTempPass,
+      tempPassword: hashedTempPass,
+      temporaryPassword: hashedTempPass,
       isTemporaryPassword: true,
       isPasswordChanged: false,
       updatedAt: new Date().toISOString()
     });
 
+    // Sync with backend Admin endpoint (persists to Firestore via Admin SDK + server cache)
+    fetch('/api/admin/reset-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        userId: matchedUser.id,
+        nicNumber: userNic,
+        newPassword: tempPass,
+      }),
+    }).catch(() => {});
+
     if (setUsers) {
       setUsers((prev) => prev.map((u) => u.id === matchedUser.id ? {
         ...u,
-        password: tempPass,
-        key: tempPass,
-        tempPassword: tempPass,
+        password: hashedTempPass,
+        key: hashedTempPass,
+        tempPassword: hashedTempPass,
+        temporaryPassword: hashedTempPass,
         isTemporaryPassword: true,
         isPasswordChanged: false
       } : u));
@@ -76,13 +92,10 @@ export const AdminPasswordResetsManagement: React.FC<AdminPasswordResetsManageme
 
     await updatePasswordResetRequestInFirestore(req.id, {
       status: 'completed',
-      tempPassword: tempPass,
       matchedUserId: matchedUser.id,
       matchedUserName: matchedUser.name,
       processedAt: new Date().toISOString()
     });
-
-    const userNic = matchedUser.nic || matchedUser.nicNumber || req.nic;
     const msg = `සහය සේවා (Sahaya Sewa) - මුරපද යාවත්කාලීන කිරීම
 
 හිතවත් ${matchedUser.name},

@@ -43,11 +43,11 @@ import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, filterNonDeletedRedAlerts, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 import { initAutoGps } from './utils/autoGpsService';
+import { setAuthSessionToken, clearAuthSessionToken, getAuthHeaders } from './utils/apiConfig';
 
 async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
   if (!clean) return '';
-  if (clean.startsWith('sha256_v1$')) return clean;
   const payload = 'sahaya_pass_salt_2026::' + clean;
   if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
     try {
@@ -383,6 +383,11 @@ export const App: React.FC = () => {
       throw new Error('කරුණාකර ඔබගේ මුරපදය ඇතුළත් කරන්න.');
     }
 
+    // 🛡️ Block Pass-the-Hash attacks: never allow a pre-hashed string as raw password input
+    if (cleanPass.startsWith('sha256_v1$')) {
+      throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර ඔබගේ සත්‍ය මුරපදය ඇතුළත් කරන්න.');
+    }
+
     const norm = normalizeNIC(cleanId);
 
     // 1. පරිශීලක ලැයිස්තුවෙන් (users) අදාළ NIC හෝ User ID හිමි ගිණුම සෙවීම
@@ -447,15 +452,43 @@ export const App: React.FC = () => {
       throw new Error(msg);
     }
 
-    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK):
-    // කිසිදු Backdoor මුරපදයක්, විශ්ව මුරපදයක් හෝ මුරපදය නොමැතිව පිවිසීමක් සිදු නොවේ!
-    // මෙම නිශ්චිත ගිණුමට අදාළ ස්ථිර මුරපදය (password / key) හෝ පරිපාලක ලබා දුන් තාවකාලික මුරපදය (temporaryPassword / tempPassword) පමණක් පිළිගැනේ.
+    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK + SERVER SESSION TOKEN):
     const userPass = String(matchedUser.password ? matchedUser.password : (matchedUser as any).key ? (matchedUser as any).key : '').trim();
     const userTempPass = String(matchedUser.temporaryPassword ? matchedUser.temporaryPassword : (matchedUser as any).tempPassword ? (matchedUser as any).tempPassword : '').trim();
     const hashedInputPass = await hashUserPassword(cleanPass);
 
-    const isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass ? true : userPass === cleanPass));
-    const isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass ? true : userTempPass === cleanPass));
+    let isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass || (!userPass.startsWith('sha256_v1$') && userPass === cleanPass)));
+    let isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass || (!userTempPass.startsWith('sha256_v1$') && userTempPass === cleanPass)));
+
+    // Verify with backend /api/auth/session and obtain cryptographic HMAC session token
+    try {
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+        },
+        body: JSON.stringify({
+          identifier: cleanId,
+          password: cleanPass,
+          clientUser: (isPermanentMatch || isTemporaryMatch) ? sanitizeUserForSessionStorage(matchedUser) : undefined,
+        }),
+      });
+      if (sessionRes.ok) {
+        const sessionData = await sessionRes.json();
+        if (sessionData.sessionToken) {
+          setAuthSessionToken(sessionData.sessionToken);
+        }
+        if (sessionData.success && sessionData.user && !isPermanentMatch && !isTemporaryMatch) {
+          matchedUser = { ...matchedUser, ...sessionData.user };
+          if (sessionData.isTemporaryLogin) {
+            isTemporaryMatch = true;
+          } else {
+            isPermanentMatch = true;
+          }
+        }
+      }
+    } catch (_) {}
 
     if (!isPermanentMatch && !isTemporaryMatch) {
       throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
@@ -465,7 +498,7 @@ export const App: React.FC = () => {
     let authenticatedUser: User = { ...matchedUser };
 
     // පැරණි Plain-text මුරපදයක් නම් ස්වයංක්‍රීයව SHA-256 Hash එකට උසස් කර Firestore හි සුරැකීම
-    if (isPermanentMatch && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
+    if (isPermanentMatch && userPass && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
       authenticatedUser.password = hashedInputPass;
       (authenticatedUser as any).key = hashedInputPass;
       updateUserInFirestore(matchedUser.id, {
@@ -527,7 +560,7 @@ export const App: React.FC = () => {
     }
     setCurrentUser(authenticatedUser);
     try {
-      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(authenticatedUser));
+      localStorage.setItem('sahaya_sewa_session_user', JSON.stringify(sanitizeUserForSessionStorage(authenticatedUser)));
     } catch (e) {
       console.warn(e);
     }
@@ -619,6 +652,7 @@ export const App: React.FC = () => {
   const handleLogout = useCallback(() => {
     setCurrentUser(null);
     setActiveView('login');
+    clearAuthSessionToken();
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
@@ -626,7 +660,7 @@ export const App: React.FC = () => {
   const handleSaveNewPassword = useCallback(async (newPassword: string) => {
     if (!currentUser) return;
     const cleanNewPass = newPassword.trim();
-    if (!cleanNewPass) return;
+    if (!cleanNewPass || cleanNewPass.startsWith('sha256_v1$')) return;
     const hashedNewPass = await hashUserPassword(cleanNewPass);
 
     const updatedUser: User = {
@@ -640,7 +674,7 @@ export const App: React.FC = () => {
       updatedAt: new Date().toISOString(),
     };
 
-    // 1. Update in Firestore
+    // 1. Update in Firestore & Backend Server
     try {
       await updateUserInFirestore(currentUser.id, {
         password: hashedNewPass,
@@ -651,6 +685,15 @@ export const App: React.FC = () => {
         temporaryPassword: '',
         updatedAt: new Date().toISOString(),
       });
+      fetch('/api/user/update-password', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          userId: currentUser.id,
+          nicNumber: currentUser.nicNumber || currentUser.nic || currentUser.userId || currentUser.id,
+          newPassword: cleanNewPass,
+        }),
+      }).catch(() => {});
     } catch (e) {
       console.warn('Firestore password update error:', e);
     }

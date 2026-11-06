@@ -179,7 +179,6 @@ export const initialUsers: User[] = [
     status: 'approved',
     photoUrl: '',
     registeredAt: '2026-08-01 09:00',
-    key: '1691@@Devhas',
     welcomeGiftCredited: true,
   }
 ];

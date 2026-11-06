@@ -308,6 +308,13 @@ ${
   }
 }
 
+const STOP_WORDS_MATCH = new Set([
+  'කොහොමද', 'කරන්නේ', 'කරන්නෙ', 'මොකක්ද', 'මොනවද', 'මොනවාද', 'මගේ', 'අපේ', 'එක', 'එකක්',
+  'ඇයි', 'නැහැ', 'නෑ', 'ඕනේ', 'ඕනෙ', 'පුළුවන්ද', 'පුලුවන්ද', 'කියන්න', 'දැනගන්න', 'සහය',
+  'උදව්', 'වෙන්නේ', 'වෙන්නෙ', 'තියෙන්නේ', 'ගැන', 'මට', 'අපට', 'ඔබට', 'what', 'how', 'why',
+  'can', 'the', 'for', 'with', 'this', 'app', 'is', 'to', 'in', 'help', 'please',
+]);
+
 export function matchVerifiedKnowledge(
   cleanQuery: string,
   lowerQuery: string,
@@ -318,14 +325,22 @@ export function matchVerifiedKnowledge(
   const queryWords = lowerQuery
     .replace(/[?.,!:-]/g, '')
     .split(/\s+/)
-    .filter((w) => w.length > 2);
+    .filter((w) => w.length > 2 && !STOP_WORDS_MATCH.has(w));
 
   for (const item of cachedVerifiedKnowledge) {
-    const itemQuestionLower = (item.question || '').toLowerCase();
-    
-    // 1. Direct question match
-    if (lowerQuery.includes(itemQuestionLower) || itemQuestionLower.includes(lowerQuery)) {
-      const actionsObj = resolveActionsFromText(item.answer, lang);
+    const itemQuestionLower = (item.question || '').toLowerCase().trim();
+    if (!itemQuestionLower) continue;
+
+    // 1. Strict or high-similarity question match
+    const minLen = Math.min(lowerQuery.length, itemQuestionLower.length);
+    const maxLen = Math.max(lowerQuery.length, itemQuestionLower.length);
+    if (
+      lowerQuery === itemQuestionLower ||
+      (minLen >= 10 &&
+        minLen / maxLen >= 0.75 &&
+        (lowerQuery.includes(itemQuestionLower) || itemQuestionLower.includes(lowerQuery)))
+    ) {
+      const actionsObj = resolveActionsFromText(cleanQuery + ' ' + item.answer, lang);
       return {
         text: item.answer,
         actions: actionsObj.actions,
@@ -333,31 +348,29 @@ export function matchVerifiedKnowledge(
       };
     }
 
-    // 2. Keyword tag match
-    if (Array.isArray(item.keywords)) {
-      for (const kw of item.keywords) {
-        const cleanKw = (kw || '').trim().toLowerCase();
-        if (cleanKw && cleanKw.length > 2 && lowerQuery.includes(cleanKw)) {
-          const actionsObj = resolveActionsFromText(item.answer, lang);
-          return {
-            text: item.answer,
-            actions: actionsObj.actions,
-            quickChips: item.keywords.slice(0, 4),
-          };
-        }
-      }
-    }
+    // 2. Meaningful token overlap match (requires >= 2 meaningful words and >= 75% overlap)
+    const itemTokens = itemQuestionLower
+      .replace(/[?.,!:-]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS_MATCH.has(w));
 
-    // 3. Word Token Overlap Match (Fuzzy semantic token overlap)
-    if (queryWords.length > 0) {
+    if (queryWords.length >= 2 && itemTokens.length >= 2) {
       let matchCount = 0;
       for (const w of queryWords) {
-        if (itemQuestionLower.includes(w) || (item.keywords && item.keywords.some((k) => k.toLowerCase().includes(w)))) {
+        if (
+          itemTokens.includes(w) ||
+          (item.keywords &&
+            item.keywords.some((k) => {
+              const ck = k.toLowerCase().trim();
+              return ck.length > 2 && !STOP_WORDS_MATCH.has(ck) && ck === w;
+            }))
+        ) {
           matchCount++;
         }
       }
-      if (matchCount >= Math.min(2, queryWords.length)) {
-        const actionsObj = resolveActionsFromText(item.answer, lang);
+      const requiredMatches = Math.max(2, Math.ceil(Math.max(queryWords.length, itemTokens.length) * 0.75));
+      if (matchCount >= requiredMatches) {
+        const actionsObj = resolveActionsFromText(cleanQuery + ' ' + item.answer, lang);
         return {
           text: item.answer,
           actions: actionsObj.actions,
@@ -369,6 +382,7 @@ export function matchVerifiedKnowledge(
 
   return null;
 }
+
 export async function askAssistant(
   userQuery: string,
   userLang: Language,
@@ -382,22 +396,19 @@ export async function askAssistant(
   // Initialize background cache for admin-verified Q&A
   initAiKnowledgeCache();
 
-  // If in Auth Mode (Login / Registration / Pending / Issues Screen), strictly provide login/reg guidance
-  if (mode === 'auth') {
-    return resolveAuthKnowledge(clean, lower, userLang);
-  }
-
   // 1. Check Smart Location & Real-World Road Distance Resolver (100% Free & Instant)
-  try {
-    const locationAnswer = await resolveLocationAndDistanceQuery(clean, lower, currentLocation, userLang);
-    if (locationAnswer) {
-      return locationAnswer;
+  if (mode === 'full') {
+    try {
+      const locationAnswer = await resolveLocationAndDistanceQuery(clean, lower, currentLocation, userLang);
+      if (locationAnswer) {
+        return locationAnswer;
+      }
+    } catch (err) {
+      console.warn('Location query resolution error:', err);
     }
-  } catch (err) {
-    console.warn('Location query resolution error:', err);
   }
 
-  // 2. Check Admin-Verified Knowledge Base (Approved Answers - Instant & 0 Cost)
+  // 2. Check Admin-Verified Knowledge Base (High-confidence approved answers)
   try {
     const verifiedAnswer = matchVerifiedKnowledge(clean, lower, userLang);
     if (verifiedAnswer) {
@@ -407,37 +418,20 @@ export async function askAssistant(
     console.warn('Verified knowledge match error:', err);
   }
 
-  // 2.3 Local & Admin Knowledge Resolution (GPS, Password, Account Approval - 70%-80% Instant Zero-Cost)
-  const routine = resolveRoutineLocalKnowledge(clean);
-  if (routine && routine.matched) {
-    const actions: AssistantAction[] = [];
-    if (routine.actionType === 'open_gps_modal') {
-      actions.push({ type: 'open_directory', label: routine.actionLabelSi || 'GPS සහාය' });
-    } else if (routine.actionType === 'open_password_reset') {
-      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || 'මුරපද සහාය' });
-    } else if (routine.actionType === 'open_issues') {
-      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || 'ගැටලු & උපකාර' });
+  // 2.5 Semantic Caching (Only for standalone / initial queries, never override multi-turn follow-up context)
+  if (history.length <= 1) {
+    const cachedAi = getClientCachedAiResponse(`${mode}:${clean}`);
+    if (cachedAi) {
+      const extractedActions = resolveActionsFromText(clean + ' ' + cachedAi.response, userLang, mode);
+      return {
+        text: cachedAi.response,
+        actions: extractedActions.actions,
+        quickChips: extractedActions.chips,
+      };
     }
-    return {
-      text: `${routine.titleSi}\n\n${routine.summarySi}\n\n` +
-        routine.detailedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
-      actions,
-      quickChips: ['GPS ගැටලුව', 'මුරපදය අමතකයි', 'ගිණුම අනුමත කිරීම', 'පරිපාලක අමතන්න'],
-    };
   }
 
-  // 2.5 Semantic Caching (Zero-Token response for recurring questions across users)
-  const cachedAi = getClientCachedAiResponse(clean);
-  if (cachedAi) {
-    const extractedActions = resolveActionsFromText(clean, userLang);
-    return {
-      text: cachedAi.response,
-      actions: extractedActions.actions,
-      quickChips: extractedActions.chips,
-    };
-  }
-
-  // 3. Query Server-side Gemini AI Model Cascade (Enterprise Tier with fallback)
+  // 3. Query Server-side Gemini AI Model Cascade (Primary Intelligent Brain for all Sinhala/Singlish/Tamil/English queries)
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -454,8 +448,9 @@ export async function askAssistant(
     if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       if (data.reply && !data.fallback) {
-        // Cache response in client semantic cache for future callers
-        setClientCachedAiResponse(clean, data.reply);
+        if (history.length <= 1) {
+          setClientCachedAiResponse(`${mode}:${clean}`, data.reply);
+        }
 
         // Automatically submit novel question & Gemini answer to Admin Panel for review
         savePendingAiQuery({
@@ -465,8 +460,8 @@ export async function askAssistant(
           locationContext: (currentLocation as any)?.nameSi || (currentLocation as any)?.districtSi || '',
         }).catch((e) => console.warn('Auto-log pending AI query notice:', e));
 
-        // Extract relevant action buttons based on content
-        const extractedActions = resolveActionsFromText(clean, userLang);
+        // Extract relevant action buttons based on both question and AI reply
+        const extractedActions = resolveActionsFromText(clean + ' ' + data.reply, userLang, mode);
         return {
           text: data.reply,
           actions: extractedActions.actions,
@@ -475,10 +470,32 @@ export async function askAssistant(
       }
     }
   } catch {
-    // Network or server offline, gracefully use local knowledge engine
+    // Network or server offline, gracefully use local knowledge engine below
   }
 
-  // 4. High-Fidelity Local Knowledge Engine (covers all 8 app sectors natively in SI, EN, TA)
+  // 4. Offline / Fallback Knowledge Engines
+  if (mode === 'auth') {
+    return resolveAuthKnowledge(clean, lower, userLang);
+  }
+
+  const routine = resolveRoutineLocalKnowledge(clean);
+  if (routine && routine.matched) {
+    const actions: AssistantAction[] = [];
+    if (routine.actionType === 'open_gps_modal') {
+      actions.push({ type: 'open_directory', label: routine.actionLabelSi || '📍 හදිසි ඇමතුම් & ස්ථාන සහාය' });
+    } else if (routine.actionType === 'open_password_reset') {
+      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || '🔑 මුරපද සහාය' });
+    } else if (routine.actionType === 'open_issues') {
+      actions.push({ type: 'open_issues_help', label: routine.actionLabelSi || '❓ ගැටලු & උපකාර' });
+    }
+    return {
+      text: `${routine.titleSi}\n\n${routine.summarySi}\n\n` +
+        routine.detailedSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
+      actions,
+      quickChips: ['GPS ගැටලුව', 'මුරපදය අමතකයි', 'ගිණුම අනුමත කිරීම', 'පරිපාලක අමතන්න'],
+    };
+  }
+
   return resolveLocalKnowledge(clean, lower, userLang);
 }
 
@@ -756,27 +773,66 @@ function resolveAuthKnowledge(
 
 function resolveActionsFromText(
   query: string,
-  lang: Language
+  lang: Language,
+  mode: 'auth' | 'full' = 'full'
 ): { actions: AssistantAction[]; chips: string[] } {
   const lower = query.toLowerCase();
   const actions: AssistantAction[] = [];
   const chips: string[] = [];
 
-  const isForm = lower.includes('පෝරම') || lower.includes('form') || lower.includes('පුරව') || lower.includes('fill') || lower.includes('படிவம்');
-  const isBlood = lower.includes('ලේ') || lower.includes('blood') || lower.includes('இரத்தம்') || lower.includes('donor');
-  const isQuick = lower.includes('කාර්මික') || lower.includes('electric') || lower.includes('plumb') || lower.includes('quick') || lower.includes('repair') || lower.includes('පැච්') || lower.includes('බාස්');
-  const isFind = lower.includes('නැති') || lower.includes('lost') || lower.includes('found') || lower.includes('සොයා') || lower.includes('தொலைந்த') || lower.includes('wallet') || lower.includes('nic');
-  const isFromYou = lower.includes('දීමන') || lower.includes('donate') || lower.includes('give') || lower.includes('නොමිලේ') || lower.includes('தானம்') || lower.includes('පොත්');
-  const isGroup = lower.includes('ශ්‍රමදාන') || lower.includes('group') || lower.includes('කණ්ඩායම්') || lower.includes('சிரமதானம்');
-  const isMarket = lower.includes('මිල') || lower.includes('price') || lower.includes('market') || lower.includes('හාල්') || lower.includes('සීනි') || lower.includes('விலை');
-  const isWallet = lower.includes('credit') || lower.includes('wallet') || lower.includes('ණය') || lower.includes('මුදල්') || lower.includes('ශේෂ');
-  const isHelpPost = lower.includes('උපකාර') || lower.includes('ඉල්ලුම්') || lower.includes('help post') || lower.includes('දැන්වීම');
-  const isRedAlert = lower.includes('රතු නිවේදන') || lower.includes('red alert') || lower.includes('ආපදා');
+  if (mode === 'auth') {
+    const isReg = lower.includes('ලියාපදිංචි') || lower.includes('register') || lower.includes('ගිණුමක්') || lower.includes('nic') || lower.includes('හැඳුනුම්පත') || lower.includes('பதிவு');
+    const isLogin = lower.includes('login') || lower.includes('පිවිස') || lower.includes('මුරපද') || lower.includes('password') || lower.includes('pin') || lower.includes('உள்நுழை');
+    const isIssue = lower.includes('ගැටලු') || lower.includes('අමතක') || lower.includes('අනුමත') || lower.includes('බැහැ') || lower.includes('error') || lower.includes('help');
 
-  if (isHelpPost || isForm) {
+    if (isReg) {
+      actions.push({
+        type: 'switch_to_register',
+        label: lang === 'en' ? '📝 Go to Registration' : lang === 'ta' ? '📝 பதிவு பக்கம்' : '📝 නව ලියාපදිංචිය',
+      });
+    }
+    if (isLogin) {
+      actions.push({
+        type: 'switch_to_login',
+        label: lang === 'en' ? '🔑 Go to Login' : lang === 'ta' ? '🔑 உள்நுழைவு பக்கம்' : '🔑 Login පිටුව',
+      });
+    }
+    if (isIssue) {
+      actions.push({
+        type: 'open_issues_help',
+        label: lang === 'en' ? '❓ Issues & Password Help' : lang === 'ta' ? '❓ சிக்கல்கள் & உதவி' : '❓ ගැටලු & මුරපද සහය',
+      });
+    }
     actions.push({
-      type: 'open_help_post',
-      label: lang === 'en' ? '📝 Open Help Post Form' : lang === 'ta' ? '📝 உதவி படிவத்தைத் திறக்கவும்' : '📝 උපකාර ඉල්ලුම් පෝරමය විවෘත කරන්න',
+      type: 'demo_login',
+      label: lang === 'en' ? '👁️ Enter Demo Mode' : lang === 'ta' ? '👁️ டெமோ பயன்முறை' : '👁️ නරඹන්නා ලෙස පිවිසෙන්න (Demo)',
+    });
+    chips.push(
+      lang === 'en' ? 'How to register?' : 'නව ගිණුමක් හදන්නේ කොහොමද?',
+      lang === 'en' ? 'Forgot password' : 'මුරපදය අමතක වුණොත්?',
+      lang === 'en' ? 'How to take NIC photos?' : 'NIC ඡායාරූප ගන්නේ කොහොමද?'
+    );
+    return { actions: actions.slice(0, 4), chips: chips.slice(0, 4) };
+  }
+
+  const isForm = lower.includes('පෝරම') || lower.includes('form') || lower.includes('පුරව') || lower.includes('fill') || lower.includes('படிவம்');
+  const isBlood = lower.includes('ලේ') || lower.includes('රුධිර') || lower.includes('blood') || lower.includes('இரத்தம்') || lower.includes('donor') || lower.includes('පට්ටිකා');
+  const isQuick = lower.includes('කාර්මික') || lower.includes('electric') || lower.includes('plumb') || lower.includes('quick') || lower.includes('repair') || lower.includes('පැච්') || lower.includes('බාස්') || lower.includes('විදුලි') || lower.includes('නල');
+  const isPro = lower.includes('වෘත්තීය') || lower.includes('professional') || lower.includes('artisan') || lower.includes('ශිල්පී');
+  const isFind = lower.includes('නැති') || lower.includes('lost') || lower.includes('found') || lower.includes('සොයා') || lower.includes('தொலைந்த');
+  const isFromYou = lower.includes('දීමන') || lower.includes('donate') || lower.includes('give') || lower.includes('නොමිලේ') || lower.includes('தானம்') || lower.includes('පරිත්‍යාග');
+  const isGroup = lower.includes('ශ්‍රමදාන') || lower.includes('group') || lower.includes('කණ්ඩායම්') || lower.includes('சிரமதானம்');
+  const isMarket = lower.includes('මිල') || lower.includes('price') || lower.includes('market') || lower.includes('හාල්') || lower.includes('සීනි') || lower.includes('விலை') || lower.includes('වෙළඳපල');
+  const isWallet = lower.includes('credit') || lower.includes('wallet') || lower.includes('ක්‍රෙඩිට්') || lower.includes('මුදල්') || lower.includes('ශේෂ') || lower.includes('qr pay') || lower.includes('s-points');
+  const isHelpPost = lower.includes('උපකාර') || lower.includes('ඉල්ලුම්') || lower.includes('help post') || lower.includes('දැන්වීම') || lower.includes('හඬ සහය') || lower.includes('voice help');
+  const isRedAlert = lower.includes('රතු නිවේදන') || lower.includes('රතු එළිය') || lower.includes('red alert') || lower.includes('ආපදා') || lower.includes('ගංවතුර') || lower.includes('නාය') || lower.includes('සයිරන්');
+  const isEmergencyDir = lower.includes('හදිසි ඇමතුම්') || lower.includes('1990') || lower.includes('119') || lower.includes('117') || lower.includes('hotline') || lower.includes('රෝහල්') || lower.includes('පොලිස්');
+  const isIssue = lower.includes('මුරපද') || lower.includes('password') || lower.includes('ගැටලු') || lower.includes('අනුමත');
+
+  if (isRedAlert) {
+    actions.push({
+      type: 'open_red_alert_create',
+      label: lang === 'en' ? '🚨 Create Red Alert' : lang === 'ta' ? '🚨 அவசர எச்சரிக்கை விடுக்க' : '🚨 රතු නිවේදනයක් නිකුත් කරන්න',
     });
   }
 
@@ -794,6 +850,20 @@ function resolveActionsFromText(
       label: lang === 'en' ? '⚡ Open Quick Services' : lang === 'ta' ? '⚡ விரைவு சேவைகளைத் திறக்கவும்' : '⚡ ඉක්මන් සේවා විවෘත කරන්න',
     });
     chips.push(lang === 'en' ? 'How to fill Quick Service Form?' : lang === 'ta' ? 'விரைவு சேவை படிவம் நிரப்புவது எப்படி?' : 'ඉක්මන් සේවා පෝරමය පුරවන හැටි');
+  }
+
+  if (isPro) {
+    actions.push({
+      type: 'open_pro_services',
+      label: lang === 'en' ? '👷 Verified Professionals' : lang === 'ta' ? '👷 தொழில் வல்லுநர்கள்' : '👷 ලියාපදිංචි වෘත්තිකයන් බලන්න',
+    });
+  }
+
+  if (isHelpPost || isForm) {
+    actions.push({
+      type: 'open_help_post',
+      label: lang === 'en' ? '📝 Open Help Post Form' : lang === 'ta' ? '📝 உதவி படிவத்தைத் திறக்கவும்' : '📝 උපකාර ඉල්ලුම් පෝරමය විවෘත කරන්න',
+    });
   }
 
   if (isFind) {
@@ -827,10 +897,10 @@ function resolveActionsFromText(
     chips.push(lang === 'en' ? 'How does Marketplace work?' : lang === 'ta' ? 'சந்தை எவ்வாறு இயங்குகிறது?' : 'වෙළඳපල ක්‍රියාකරන්නේ කොහොමද?');
   }
 
-  if (isRedAlert) {
+  if (isEmergencyDir) {
     actions.push({
-      type: 'open_red_alert_create',
-      label: lang === 'en' ? '🚨 Create Red Alert' : lang === 'ta' ? '🚨 அவசர எச்சரிக்கை விடுக்க' : '🚨 රතු නිවේදනයක් නිකුත් කරන්න',
+      type: 'open_directory',
+      label: lang === 'en' ? '📞 Emergency Hotlines' : lang === 'ta' ? '📞 அவசர தொலைபேசி எண்கள்' : '📞 හදිසි ඇමතුම් නාමාවලිය',
     });
   }
 
@@ -841,7 +911,22 @@ function resolveActionsFromText(
     });
   }
 
-  return { actions, chips };
+  if (isIssue) {
+    actions.push({
+      type: 'open_issues_help',
+      label: lang === 'en' ? '❓ Issues & Support' : lang === 'ta' ? '❓ சிக்கல்கள் & உதவி' : '❓ ගැටලු & උපකාර පිටුව',
+    });
+  }
+
+  if (chips.length === 0) {
+    chips.push(
+      lang === 'en' ? 'What does this app do?' : 'මේ ඇප් එකෙන් වෙන්නේ කුමක්ද?',
+      lang === 'en' ? 'How does Voice Help work?' : 'හඬ සහය (Voice Help) භාවිතා කරන්නේ කොහොමද?',
+      lang === 'en' ? 'How to request blood?' : 'හදිසි ලේ ඉල්ලුම් කරන්නේ කොහොමද?'
+    );
+  }
+
+  return { actions: actions.slice(0, 4), chips: chips.slice(0, 4) };
 }
 
 function resolveLocalKnowledge(
@@ -878,17 +963,19 @@ function resolveLocalKnowledge(
     if (lang === 'en') {
       return {
         text: `🌟 **Welcome to Sahaya Sewa (සහය සේවා)!**
-Sri Lanka's premier community mutual aid, emergency response, and verified services network.
+Sri Lanka's complete community mutual aid, emergency disaster response, and verified services platform.
 
-Here is what you can do through this app:
-1. 🩸 **Emergency Blood Radar**: Match with verified blood donors across your district in real time.
-2. ⚡ **24/7 Quick Artisan Services**: Connect with electricians, plumbers, and mechanics within a 15km radar.
-3. 🚨 **5km Red Alert Sirens**: Instant community alerts for floods, accidents, and sudden hazards.
-4. 📦 **Transparent Aid Ledger**: Track flood/disaster relief donations with 6-digit security PINs to eliminate fraud.
-5. 🔍 **Find For Me (Lost & Found)**: Community search network for lost national ID cards, driving licenses, and pets.
-6. 🎁 **From Me To You Free Gifts**: Give away books, clothes, and medical equipment with zero monetary exchange.
-7. 🛒 **Lowest Market Prices Index**: Compare daily grocery and vegetable price gaps across local shops.
-8. 🤝 **Group Work & Shramadana**: Organize neighborhood cleanups and community volunteering projects.`,
+Here is everything you can do through this app:
+1. 🩸 **Emergency Blood Radar**: Instant real-time matching with verified blood donors in your district (100% Free).
+2. 🚨 **15km Red Alert Sirens & SOS Live Tracker**: Instant emergency sirens (works even with screen off!) and real-time GPS tracking for floods, landslides, and hazards (100% Free).
+3. 🎙️ **Voice Help (හඬ සහය)**: Record a voice message in 1 tap to post Quick Service, General Help, or Red Alert requests without typing.
+4. ⚡ **24/7 Quick Artisan Services & Verified Pros**: Connect with electricians, plumbers, mechanics, and skilled professionals within 15km.
+5. 📦 **Transparent Aid Ledger**: Track disaster relief distributions with 6-digit security PINs to prevent fraud.
+6. 💼 **Jobs Portal & 🏠 Accommodations**: Find or post local job vacancies and boarding/rental accommodations with interactive maps.
+7. 🔄 **Barter Exchange & 🎁 Free Gifts**: Swap goods without cash (Barter) or donate books, clothes, and medical equipment 100% free (From Me To You).
+8. 🔍 **Find For Me (Lost & Found)**: Recover lost NICs, licenses, wallets, and pets with community help.
+9. 🛒 **Lowest Market Prices & 🤝 Shramadana**: Compare grocery price gaps across local shops and organize community teamwork projects.
+10. 💳 **Wallet, QR Pay & S-Points**: Earn S-Points & Trust Badges for helping others, or pay/transfer credits via QR.`,
         actions: [
           { type: 'open_help_post', label: '📝 Post a Help Request' },
           { type: 'open_quick', label: '⚡ 24/7 Quick Services' },
@@ -896,9 +983,9 @@ Here is what you can do through this app:
           { type: 'open_market', label: '🛒 Lowest Market Prices' },
         ],
         quickChips: [
-          'How to post a request?',
+          'How does Voice Help work?',
           'How does Blood Radar work?',
-          'How are helpers verified?',
+          'How do Jobs & Barter work?',
           'Check Market Prices',
         ],
       };
@@ -909,12 +996,13 @@ Here is what you can do through this app:
 
 இந்த செயலியின் மூலம் நீங்கள் செய்யக்கூடியவை:
 1. 🩸 **அவசர இரத்த தானம்**: உங்கள் மாவட்டத்தில் உள்ள இரத்தக் கொடையாளர்களை உடனுக்குடன் கண்டறியலாம்.
-2. ⚡ **24/7 விரைவு சேவைகள்**: 15 கி.மீ சுற்றளவில் உள்ள எலக்ட்ரீஷியன், பிளம்பர் போன்ற கைவினைஞர்களை இணைத்தல்.
-3. 🚨 **5 கி.மீ அவசர எச்சரிக்கைகள்**: இயற்கை அனர்த்தங்கள், விபத்துக்கள் குறித்த அவசர எச்சரிக்கைகள்.
-4. 📦 **வெளிப்படையான நிவாரண லெட்ஜர்**: நிவாரணப் பொருட்களை ஏமாற்றுதலின்றி விநியோகிக்கும் முறைமை.
-5. 🔍 **தொலைந்தவை தேடல்**: அடையாள அட்டை, ஓட்டுநர் உரிமம் போன்றவற்றைத் தேடும் தளம்.
-6. 🎁 **இலவச அன்பளிப்புகள்**: புத்தகங்கள், உபகரணங்களை இலவசமாகப் பகிர்தல்.
-7. 🛒 **குறைந்தபட்ச சந்தை விலைகள்**: அத்தியாவசியப் பொருட்களின் குறைந்தபட்ச விலைகளை ஒப்பிடுதல்.`,
+2. 🚨 **15 கி.மீ அவசர எச்சரிக்கைகள் (Red Alert) & SOS**: இயற்கை அனர்த்தங்கள், விபத்துக்கள் குறித்த உடனடி சைரன் எச்சரிக்கைகள்.
+3. 🎙️ **குரல் உதவி (Voice Help)**: தட்டச்சு செய்யாமல் குரல் பதிவு மூலம் உதவி கோரிக்கைகளை இடுக.
+4. ⚡ **24/7 விரைவு சேவைகள்**: 15 கி.மீ சுற்றளவில் உள்ள எலக்ட்ரீஷியன், பிளம்பர் போன்ற கைவினைஞர்களை இணைத்தல்.
+5. 📦 **வெளிப்படையான நிவாரண லெட்ஜர்**: நிவாரணப் பொருட்களை ஏமாற்றுதலின்றி விநியோகிக்கும் முறைமை.
+6. 💼 **வேலைவாய்ப்புகள் & 🏠 தங்குமிடங்கள்**: வேலைகள் மற்றும் தங்குமிடங்களை வரைபடத்தில் தேடுதல்.
+7. 🔄 **பண்டமாற்று (Barter) & 🎁 இலவச அன்பளிப்புகள்**: பணமின்றி பொருட்களை மாற்றுதல் அல்லது இலவசமாகப் பகிர்தல்.
+8. 🛒 **குறைந்தபட்ச சந்தை விலைகள் & 🔍 தொலைந்தவை தேடல்**.`,
         actions: [
           { type: 'open_help_post', label: '📝 உதவி கோரிக்கையை இடுக' },
           { type: 'open_quick', label: '⚡ விரைவு சேவைகள்' },
@@ -924,26 +1012,30 @@ Here is what you can do through this app:
       };
     } else {
       return {
-        text: `🌟 **සහය සේවා (Sahaya Sewa) යනු ශ්‍රී ලාංකික අපේම ප්‍රජා සත්කාරක සහ හදිසි සේවා ජාලයයි!**
+        text: `🌟 **සහය සේවා (Sahaya Sewa) යනු ශ්‍රී ලාංකික අපේම සම්පූර්ණ ප්‍රජා සත්කාරක සහ හදිසි සේවා ජාලයයි!**
 
-මෙම ඇප් එක හරහා ඔබට පහත ප්‍රධාන සේවාවන් 8 සම්පූර්ණයෙන්ම ලබාගත හැක:
+මෙම ඇප් එක හරහා ඔබට ලබාගත හැකි සියලුම සේවාවන් මෙන්න:
 
-1. 🩸 **හදිසි ලේ බැංකු රේඩාර් (Emergency Blood Radar)**:
+1. 🩸 **හදිසි ලේ බැංකු රේඩාර් (Emergency Blood Radar - නොමිලේ)**:
    රෝගීන්ට අවශ්‍ය ලේ වර්ගයට අදාළ ඔබගේ දිස්ත්‍රික්කයේ සිටින සත්‍යාපිත ලේ පරිත්‍යාගශීලීන් රේඩාර් මඟින් ක්ෂණිකව සම්බන්ධ කරගැනීම.
-2. ⚡ **24/7 ක්ෂණික කාර්මික සේවා (Quick Services)**:
-   කි.මී. 15 සීමාවේ සිටින විදුලි, නල, වාහන කාර්මිකයන් නිවසටම ගෙන්වා ගැනීම සහ සාධාරණ බිල්පත් ගෙවීම.
-3. 🚨 **කි.මී. 5 රතු නිවේදන (Red Alert Hazard Sirens)**:
-   ගංවතුර, නායයෑම්, හදිසි අනතුරු පිළිබඳව අවට කි.මී. 5ක අසල්වැසියන්ට ක්ෂණික සයිරන් අනතුරු ඇඟවීම් නිකුත් කිරීම.
-4. 📦 **විනිවිදභාවයේ ආධාර ලෙජරය (Transparent Aid Ledger)**:
-   ආපදා සහන කඳවුරු සහ පවුල් වෙත ආධාර බෙදාදීම අංක 6ක රහස් PIN එකකින් සත්‍යාපනය කර වංචාවලින් තොරව ප්‍රසිද්ධ ලෙජරයක සටහන් කිරීම.
-5. 🔍 **සොයාදෙන්න (Lost & Found)**:
-   නැතිවූ ජාතික හැඳුනුම්පත්, රියදුරු බලපත්‍ර, සුරතල් සතුන් හෝ ලියකියවිලි ප්‍රජාව සමඟ එක්ව සොයාගැනීම.
-6. 🎁 **මා වෙතින් ඔබට නොමිලේ දීමනා (From Me To You Free Gifts)**:
-   පොත්පත්, ඇඳුම්, රෝද පුටු වැනි දෑ අවශ්‍යතා සහිත අයට මුදල් අය කිරීමකින් තොරව 100% නොමිලේ පරිත්‍යාග කිරීම.
-7. 🛒 **වෙළඳපල අඩුම මිල දර්ශකය (Lowest Market Prices)**:
-   අත්‍යවශ්‍ය භාණ්ඩ හා එළවළු සඳහා නගරයේ සාප්පු වල අඩුම මිල ගණන් සහ ඉතිරි කරගත හැකි ලාභ පරතරය සංසන්දනය.
-8. 🤝 **ශ්‍රමදාන සහ කණ්ඩායම් වැඩ (Group Work)**:
-   ප්‍රදේශයේ පන්සල්, පාසල් හෝ ගම්මාන ශ්‍රමදාන කටයුතු සංවිධානය කර ස්වේච්ඡා සහායකයින් එක්රැස් කිරීම.`,
+2. 🚨 **කි.මී. 15 රතු නිවේදන සහ SOS සජීවී ලුහුබැඳීම (Red Alert & SOS - නොමිලේ)**:
+   ගංවතුර, නායයෑම්, හදිසි අනතුරු පිළිබඳව අවට කි.මී. 15ක අසල්වැසියන්ට (තිරය නිවී තිබියදී පවා) ක්ෂණික සයිරන් අනතුරු ඇඟවීම් නිකුත් කිරීම.
+3. 🎙️ **හඬ සහය (AI Voice Help)**:
+   ටයිප් කිරීමට අපහසු ඕනෑම අයෙකුට තම අවශ්‍යතාවය හඬින් පටිගත කර තත්පර කිහිපයකින් දැන්වීමක් පළකිරීමේ පහසුකම.
+4. ⚡ **24/7 ක්ෂණික කාර්මික සේවා සහ වෘත්තිකයන් (Quick & Pro Services)**:
+   කි.මී. 15 සීමාවේ සිටින විදුලි, නල, වාහන කාර්මිකයන් සහ ලියාපදිංචි වෘත්තිකයන් නිවසටම ගෙන්වා ගැනීම.
+5. 📦 **විනිවිදභාවයේ ආධාර ලෙජරය (Transparent Aid Ledger)**:
+   ආපදා සහන කඳවුරු වෙත ආධාර බෙදාදීම අංක 6ක රහස් PIN එකකින් සත්‍යාපනය කර වංචාවලින් තොරව ප්‍රසිද්ධ ලෙජරයක සටහන් කිරීම.
+6. 💼 **රැකියා පියස (Jobs) සහ 🏠 නවාතැන් පහසුකම් (Accommodations)**:
+   ප්‍රදේශයේ රැකියා අවස්ථා සහ බෝඩිං/නවාතැන් සිතියම ආධාරයෙන් පහසුවෙන් සොයාගැනීම.
+7. 🔄 **භාණ්ඩ හුවමාරුව (Barter Exchange) සහ 🎁 මගෙන් ඔබට නොමිලේ දීමනා**:
+   මුදල් නොමැතිව භාණ්ඩයකට භාණ්ඩයක් හුවමාරු කරගැනීම හෝ පොත්පත්, ඇඳුම්, රෝද පුටු 100% නොමිලේ පරිත්‍යාග කිරීම.
+8. 🔍 **සොයාදෙන්න (Lost & Found)**:
+   නැතිවූ ජාතික හැඳුනුම්පත්, බලපත්‍ර, සුරතල් සතුන් ප්‍රජාව සමඟ එක්ව සොයාගැනීම.
+9. 🛒 **වෙළඳපල අඩුම මිල දර්ශකය සහ 🤝 ශ්‍රමදාන කණ්ඩායම් වැඩ**:
+   භාණ්ඩවල අඩුම මිල ගණන් සංසන්දනය සහ ගමේ පොදු ශ්‍රමදාන සංවිධානය.
+10. 💳 **Wallet, QR Pay සහ S-Points ප්‍රසාද ලකුණු**:
+    අන් අයට උදව් කර S-Points සහ Trust Badges දිනාගැනීම සහ QR මඟින් ක්‍රෙඩිට් හුවමාරුව.`,
         actions: [
           { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
           { type: 'open_quick', label: '⚡ 24/7 ක්ෂණික කාර්මික සේවා' },
@@ -951,9 +1043,9 @@ Here is what you can do through this app:
           { type: 'open_market', label: '🛒 වෙළඳපල අඩුම මිල ගණන්' },
         ],
         quickChips: [
-          'පෝරම පුරවන්නේ කොහොමද?',
+          'හඬ සහය (Voice Help) කියන්නේ මොකක්ද?',
           'ලේ ඉල්ලුම් කරන්නේ කොහොමද?',
-          'කාර්මික සේවා ලබාගන්නේ කොහොමද?',
+          'රැකියා සහ නවාතැන් සොයන්නේ කොහොමද?',
           'තොරතුරු ආරක්ෂිතද?',
         ],
       };
@@ -1224,6 +1316,113 @@ Our real-time radar immediately alerts registered, verified blood donors of the 
         { type: 'open_blood', label: '🩸 ලේ ඉල්ලුම් පෝරමය' },
       ],
       quickChips: ['ඡායාරූප Upload කරන්නේ කෙසේද?', 'Start PIN එක යනු කුමක්ද?'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 11. VOICE HELP (හඬ සහය - AI Voice Help)
+  // -------------------------------------------------------------
+  const isVoiceHelpQuery =
+    lower.includes('හඬ සහය') ||
+    lower.includes('හඬ පණිවිඩ') ||
+    lower.includes('voice help') ||
+    lower.includes('voice post') ||
+    lower.includes('ටයිප් කරන්න බෑ') ||
+    lower.includes('කතා කරලා');
+
+  if (isVoiceHelpQuery) {
+    return {
+      text: `🎙️ **හඬ සහය (AI Voice Help - ටයිප් නොකර දැන්වීම් පළකිරීම)**
+
+ටයිප් කිරීමට අපහසු හෝ හදිසි අවස්ථාවක සිටින ඕනෑම අයෙකුට තම හඬින් දැන්වීමක් පළ කළ හැක:
+1. මුල් පිටුවේ ඇති **"🎙️ හඬ සහය (Voice Help)"** බොත්තම ඔබන්න.
+2. මයික්‍රෆෝන් බොත්තම ඔබා ඔබගේ අවශ්‍යතාවය පැහැදිලිව පවසන්න (විනාඩි 2ක් දක්වා).
+3. අදාළ කාණ්ඩය තෝරන්න:
+   • ⚡ **ඉක්මන් සේවා** (ගාස්තුව රු. 25)
+   • 🤝 **සාමාන්‍ය සේවා** (ගාස්තුව රු. 25)
+   • 🚨 **ආපදා / රතු එළිය** (100% නොමිලේ)
+4. අවශ්‍ය සහායකයින් ගණන තෝරා **"දැන්වීම පළකරන්න"** ඔබන්න!`,
+      actions: [
+        { type: 'open_help_post', label: '📝 දැන්වීම් පුවරුව වෙත යන්න' },
+      ],
+      quickChips: ['රතු නිවේදනයක් නිකුත් කරන්නේ කොහොමද?', 'ක්‍රෙඩිට් (Wallet) ලබාගන්නේ කොහොමද?'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 12. JOBS & ACCOMMODATIONS (රැකියා පියස සහ නවාතැන් පහසුකම්)
+  // -------------------------------------------------------------
+  const isJobsOrStayQuery =
+    lower.includes('රැකියා') ||
+    lower.includes('ජොබ්') ||
+    lower.includes('job') ||
+    lower.includes('නවාතැන්') ||
+    lower.includes('බෝඩිං') ||
+    lower.includes('කාමර') ||
+    lower.includes('accommodation') ||
+    lower.includes('boarding');
+
+  if (isJobsOrStayQuery) {
+    return {
+      text: `💼 **රැකියා පියස (Jobs Portal) සහ 🏠 නවාතැන් පහසුකම් (Accommodations)**
+
+• **💼 රැකියා පියස**: ඔබගේ ප්‍රදේශයේ පූර්ණ කාලීන, අර්ධ කාලීන හෝ දෛනික රැකියා අවස්ථා සිතියම (Job Map) ආධාරයෙන් සොයාගැනීමට හෝ ඔබගේ ආයතනයේ ඇබෑර්තු පළකිරීමට ප්‍රධාන මෙනුවේ **"රැකියා (Jobs)"** වෙත පිවිසෙන්න.
+• **🏠 නවාතැන් පහසුකම්**: බෝඩිං කාමර, නිවාස කුලියට දීම් සහ තාවකාලික නවාතැන් ගාස්තු හා සිතියම් පිහිටීම සමඟ පරීක්ෂා කිරීමට **"නවාතැන් (Accommodations)"** වෙත පිවිසෙන්න.`,
+      actions: [
+        { type: 'open_help_post', label: '📝 දැන්වීමක් පළකරන්න' },
+      ],
+      quickChips: ['භාණ්ඩ හුවමාරුව (Barter) යනු කුමක්ද?', 'වෙළඳපල අඩුම මිල ගණන්'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 13. BARTER EXCHANGE (භාණ්ඩ හුවමාරුව)
+  // -------------------------------------------------------------
+  const isBarterQuery =
+    lower.includes('හුවමාරු') ||
+    lower.includes('barter') ||
+    lower.includes('භාණ්ඩ හුවමාරු');
+
+  if (isBarterQuery) {
+    return {
+      text: `🔄 **භාණ්ඩ හුවමාරුව (Cashless Barter Exchange)**
+
+මුදල් භාවිතයකින් තොරව ඔබ සතුව ඇති භාණ්ඩයක් දී ඔබට අවශ්‍ය වෙනත් භාණ්ඩයක් හුවමාරු කරගැනීමට:
+1. **"භාණ්ඩ හුවමාරුව (Barter Exchange)"** විවෘත කර ඔබ සතුව ඇති දෙය සහ ඒ වෙනුවට බලාපොරොත්තු වන දෙය පළකරන්න.
+2. වෙනත් පරිශීලකයින් එවන හුවමාරු යෝජනා (Swap Proposals) පරීක්ෂා කර කැමති යෝජනාව පිළිගන්න.`,
+      actions: [
+        { type: 'open_from_you', label: '🎁 නොමිලේ දීමනා / හුවමාරු' },
+      ],
+      quickChips: ['මගෙන් ඔබට නොමිලේ දීමනා', 'වෙළඳපල අඩුම මිල ගණන්'],
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 14. WALLET, CREDITS, QR PAY & S-POINTS (පසුම්බිය සහ ක්‍රෙඩිට්)
+  // -------------------------------------------------------------
+  const isWalletOrPointsQuery =
+    lower.includes('wallet') ||
+    lower.includes('credit') ||
+    lower.includes('ක්‍රෙඩිට්') ||
+    lower.includes('පසුම්බි') ||
+    lower.includes('ගාස්තු') ||
+    lower.includes('qr pay') ||
+    lower.includes('s-points') ||
+    lower.includes('ලකුණු');
+
+  if (isWalletOrPointsQuery) {
+    return {
+      text: `💳 **Wallet ක්‍රෙඩිට්, QR Pay සහ S-Points ප්‍රසාද ලකුණු**
+
+1. **දැන්වීම් ගාස්තු**:
+   • 🚨 **රතු නිවේදන (Red Alerts) සහ 🩸 හදිසි ලේ ඉල්ලීම්**: 100% **නොමිලේ**!
+   • 📝 **සාමාන්‍ය සහ ඉක්මන් සේවා දැන්වීම්**: එක් දැන්වීමක් සඳහා රු. 25 (25 Credits) පමණි.
+2. **QR Pay**: ඔබගේ Wallet එකේ ඇති QR කේතය මඟින් වෙනත් පරිශීලකයෙකුට ක්ෂණිකව ක්‍රෙඩිට් යැවිය හැක.
+3. **S-Points සහ Trust Badges**: අන් අයගේ දැන්වීම් වලට උදව් කිරීමෙන් ඔබට S-Points සහ විශ්වසනීයත්ව පදක්කම් (Trust Badges) හිමිවන අතර ප්‍රමුඛතා ලැයිස්තුවේ (Leaderboard) ඉහළට පැමිණිය හැක.`,
+      actions: [
+        { type: 'open_wallet', label: '💳 මගේ Wallet එක විවෘත කරන්න' },
+      ],
+      quickChips: ['ක්‍රෙඩිට් Top-up කරන්නේ කොහොමද?', 'දැන්වීමක් Boost කරන්නේ කොහොමද?'],
     };
   }
 

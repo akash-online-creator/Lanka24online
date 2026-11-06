@@ -196,3 +196,29 @@ export function deduplicateUsers(usersList: User[] | null | undefined): User[] {
 
   return finalUsers;
 }
+
+/**
+ * Strictly hashes a raw plaintext password using salted SHA-256.
+ * Never returns pre-hashed strings as-is (prevents Pass-the-Hash attacks).
+ */
+export async function hashUserPassword(rawPass: string): Promise<string> {
+  const clean = (rawPass ? rawPass : '').trim();
+  if (!clean) return '';
+  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const hex = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      return 'sha256_v1$' + hex;
+    } catch (e) {}
+  }
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) {
+    h = (h * 33) ^ payload.charCodeAt(i);
+  }
+  return 'sha256_v1$fb_' + String(h >>> 0);
+}
+

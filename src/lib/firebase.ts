@@ -543,38 +543,36 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
       }
     }
 
-    // 6. Query Firestore to find and delete ANY matching document by NIC or userId
+    // 6. Query Firestore using targeted indexed queries ONLY (never scans entire collection)
     try {
-      const snap = await getDocs(collection(db, USERS_COLLECTION));
-      for (const d of snap.docs) {
-        const data: any = d.data();
-        const dId = String(d.id || "").trim();
-        const dNic = String(data.nicNumber || data.nic || "").trim().toUpperCase();
-        const dUserId = String(data.userId || "").trim().toUpperCase();
-        const dDigits = (dNic || dUserId || dId).replace(/[^0-9]/g, "");
-
-        if (
-          idsToDelete.has(dId) ||
-          (dNic && idsToDelete.has(dNic)) ||
-          (dUserId && idsToDelete.has(dUserId)) ||
-          (dDigits.length >= 9 && idsToDelete.has(dDigits))
-        ) {
-          markUserIdAsDeletedLocally(dId);
-          await setDoc(d.ref, { status: "deleted", isDeleted: true }, { merge: true }).catch(() => {});
-          await deleteDoc(d.ref).catch(() => {});
+      const targetCandidates = Array.from(idsToDelete).slice(0, 6);
+      for (const candidate of targetCandidates) {
+        const upperCandidate = candidate.toUpperCase();
+        for (const field of ['nicNumber', 'nic', 'userId']) {
+          try {
+            const q = query(collection(db, USERS_COLLECTION), where(field, '==', upperCandidate), limit(3));
+            const qSnap = await getDocs(q);
+            for (const d of qSnap.docs) {
+              markUserIdAsDeletedLocally(d.id);
+              await setDoc(d.ref, { status: "deleted", isDeleted: true }, { merge: true }).catch(() => {});
+              await deleteDoc(d.ref).catch(() => {});
+            }
+          } catch (_) {}
         }
       }
     } catch (_) {}
 
-    // 7. Call server backend endpoint (/api/admin/delete-user) for guaranteed Admin SDK deletion
+    // 7. Call server backend endpoint (/api/admin/delete-user) with Admin Auth session token
     try {
       const primaryId = userObj?.id || Array.from(idsToDelete)[0];
       const primaryNic = userObj?.nicNumber || userObj?.nic || userObj?.userId || primaryId;
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('sahaya_auth_session_token') : null;
       await fetch("/api/admin/delete-user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Sahaya-Client-Guard": "sahaya_v1_secure",
+          ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
         },
         body: JSON.stringify({
           id: primaryId,
