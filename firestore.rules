@@ -28,12 +28,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'super_admin' ||
-        (request.auth.token.email_verified == true && (
-          request.auth.token.email == 'admin@sahaya.lk' ||
-          request.auth.token.email == 'www.akash.online@gmail.com'
-        )) ||
+        (request.auth.token.email_verified == true &&
+         request.auth.token.email == 'www.akash.online@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
       );
@@ -49,21 +46,21 @@ service cloud.firestore {
 
     function isSafeUserCreate(userId) {
       let data = request.resource.data;
-      let isBootstrapAdminId = (userId == 'usr_admin' || userId == '970181547V' || userId == 'ADMIN');
+      let isFirstTimeBootstrapAdmin = (userId == 'usr_admin' || userId == '970181547V') &&
+                                      !exists(/databases/$(database)/documents/users/$(userId));
       let hasAdminRole = ('role' in data && data.role in ['admin', 'super_admin']) ||
                          ('isAdmin' in data && data.isAdmin == true) ||
                          ('isSuperAdmin' in data && data.isSuperAdmin == true);
       let validInitialCredits = !('credits' in data) || !(data.credits is number) || (data.credits >= 0 && data.credits <= 5000);
       return isValidId(userId) &&
              isValidPayload() &&
-             (!hasAdminRole || isBootstrapAdminId || isAdmin()) &&
-             (validInitialCredits || isBootstrapAdminId || isAdmin());
+             (!hasAdminRole || isFirstTimeBootstrapAdmin || isAdmin()) &&
+             (validInitialCredits || isFirstTimeBootstrapAdmin || isAdmin());
     }
 
     function isSafeUserUpdate(userId) {
       let data = request.resource.data;
       let prev = resource.data;
-      let isBootstrapAdminId = (userId == 'usr_admin' || userId == '970181547V' || userId == 'ADMIN');
       let wasAlreadyAdmin = ('role' in prev && prev.role in ['admin', 'super_admin']) ||
                             ('isAdmin' in prev && prev.isAdmin == true) ||
                             ('isSuperAdmin' in prev && prev.isSuperAdmin == true);
@@ -74,9 +71,9 @@ service cloud.firestore {
       let nicNumUnchanged = !('nicNumber' in prev) || prev.nicNumber == '' || !('nicNumber' in data) || data.nicNumber == prev.nicNumber;
       return isValidId(userId) &&
              isValidPayload() &&
-             (!isPromotingToAdmin || isBootstrapAdminId || isAdmin()) &&
-             ((nicUnchanged && nicNumUnchanged) || isBootstrapAdminId || isAdmin()) &&
-             (isSafeCreditValue(data) || isBootstrapAdminId || isAdmin());
+             (!isPromotingToAdmin || isAdmin()) &&
+             ((nicUnchanged && nicNumUnchanged) || wasAlreadyAdmin || isAdmin()) &&
+             (isSafeCreditValue(data) || wasAlreadyAdmin || isAdmin());
     }
 
     // 🔒 2. Post Ownership & Timestamp Immutability Lock

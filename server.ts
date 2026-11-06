@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import FormData from 'form-data';
@@ -225,14 +226,77 @@ async function startServer() {
   // Trust only the first reverse proxy hop (Cloud Run / load balancer) so req.ip cannot be spoofed via client X-Forwarded-For
   app.set('trust proxy', 1);
 
-  app.use(cors());
-  app.use((req: any, res: any, next: any) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    next();
-  });
+  // 🛡️ Helmet.js Security Middleware (configured for SPA + AI Studio Preview compatibility)
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Handled per-route on media endpoints; SPA uses inline scripts/styles & external map tiles
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      frameguard: false, // Allow embedding inside trusted AI Studio preview environment
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      dnsPrefetchControl: { allow: false },
+      permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    })
+  );
+
+  // 🛡️ Strict CORS Origin Allowlist (blocks unauthorized third-party websites)
+  const customAllowedOrigins = String(process.env.ALLOWED_CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const STATIC_TRUSTED_ORIGINS = new Set([
+    'https://supporservice.online',
+    'https://www.supporservice.online',
+    'https://sahayasewa.lk',
+    'https://www.sahayasewa.lk',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'http://localhost',
+    'https://localhost',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    ...customAllowedOrigins,
+  ]);
+
+  const isTrustedCorsOrigin = (origin?: string): boolean => {
+    // Allow same-origin requests, native Android/Capacitor calls, or server health probes (no Origin header)
+    if (!origin) return true;
+    const cleanOrigin = origin.trim().replace(/\/$/, '');
+    if (STATIC_TRUSTED_ORIGINS.has(cleanOrigin)) return true;
+    // Allow official Cloud Run deployment URLs (*.run.app) and Google AI Studio preview frames
+    if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.run\.app$/i.test(cleanOrigin)) return true;
+    if (/^https:\/\/([a-z0-9-]+\.)?aistudio\.google\.com$/i.test(cleanOrigin)) return true;
+    return false;
+  };
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (isTrustedCorsOrigin(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error('CORS policy: Origin not allowed'), false);
+      },
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Sahaya-Client-Guard',
+        'X-Sahaya-Session-Token',
+        'X-Internal-Api-Secret',
+      ],
+      credentials: true,
+      maxAge: 86400,
+    })
+  );
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -288,11 +352,31 @@ async function startServer() {
     return 'sha256_v1$' + hex;
   };
 
-  // Cryptographic HMAC-SHA256 Session Token Signer & Verifier
-  const SESSION_HMAC_SECRET =
-    process.env.SESSION_SECRET ||
-    process.env.INTERNAL_API_SECRET ||
-    crypto.createHash('sha256').update(`sahaya_hmac_${process.env.GEMINI_API_KEY || 'runtime'}_${process.pid}`).digest('hex');
+  // Cryptographic HMAC-SHA256 Session Token Signer & Verifier (Never uses predictable PID or static fallback)
+  const resolveSessionHmacSecret = (): string => {
+    const envSecret = String(process.env.SESSION_SECRET || process.env.INTERNAL_API_SECRET || '').trim();
+    if (envSecret.length >= 32) {
+      return envSecret;
+    }
+    if (envSecret.length > 0) {
+      // Derive a full 256-bit key if a shorter secret was supplied in env
+      return crypto.createHmac('sha256', 'sahaya_kdf_v1').update(envSecret).digest('hex');
+    }
+    const secretFilePath = path.join(process.cwd(), '.sahaya_session_secret');
+    try {
+      if (fs.existsSync(secretFilePath)) {
+        const stored = fs.readFileSync(secretFilePath, 'utf8').trim();
+        if (stored.length >= 64) return stored;
+      }
+      const generated = crypto.randomBytes(32).toString('hex');
+      fs.writeFileSync(secretFilePath, generated, { encoding: 'utf8', mode: 0o600 });
+      return generated;
+    } catch {
+      return crypto.randomBytes(32).toString('hex');
+    }
+  };
+
+  const SESSION_HMAC_SECRET = resolveSessionHmacSecret();
 
   interface SignedSessionPayload {
     uid: string;
