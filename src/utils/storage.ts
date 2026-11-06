@@ -88,7 +88,20 @@ export function getStoredUsers(): User[] {
 export function saveUsersToStorage(users: User[]): void {
   try {
     if (typeof localStorage === "undefined" || !Array.isArray(users)) return;
-    const clean = filterNonDeletedUsers(users);
+    const clean = filterNonDeletedUsers(users).map((u) => {
+      if (!u) return u;
+      const safeCopy: any = { ...u };
+      delete safeCopy.password;
+      delete safeCopy.key;
+      delete safeCopy.tempPassword;
+      delete safeCopy.temporaryPassword;
+      delete safeCopy.securityCode;
+      delete safeCopy.tempCode;
+      delete safeCopy.nicFrontPhotoUrl;
+      delete safeCopy.nicBackPhotoUrl;
+      delete safeCopy.idCardPhotoUrl;
+      return safeCopy as User;
+    });
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(clean));
   } catch {}
 }

@@ -849,10 +849,12 @@ export async function broadcastPushNotification(payload: FcmPayloadData) {
   }
 
   try {
-
     fetch('/api/push/broadcast', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+      },
       body: JSON.stringify(enrichedPayload),
     }).catch(() => {});
   } catch {}

@@ -6,6 +6,7 @@ import FormData from 'form-data';
 import fetch from 'node-fetch';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { initializeApp as initAdminApp, getApps as getAdminApps, cert as adminCert } from 'firebase-admin/app';
@@ -219,12 +220,21 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(cors());
+  app.use((req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+  });
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Telegram Credentials (.env ගොනුවෙන් ලබා ගනී)
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // Telegram Channel/Group ID (-100xxxxxxxxx)
+  const ADMIN_TELEGRAM_BOT_TOKEN = process.env.ADMIN_TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN;
+  const ADMIN_TELEGRAM_CHAT_ID = process.env.ADMIN_TELEGRAM_CHAT_ID || TELEGRAM_CHAT_ID;
 
   // Multer memory storage - Files තාවකාලිකව RAM එකේ තබා ගනී
   const upload = multer({ 
@@ -256,6 +266,34 @@ async function startServer() {
 
   const aiRateLimiter = createRateLimiter(60, 60 * 1000); // Max 60 AI calls/min per IP
   const uploadRateLimiter = createRateLimiter(30, 60 * 1000); // Max 30 uploads/min per IP
+  const authRateLimiter = createRateLimiter(25, 60 * 1000); // Max 25 auth/lookup calls/min per IP
+  const adminActionRateLimiter = createRateLimiter(15, 60 * 1000); // Max 15 admin/sensitive actions/min per IP
+
+  // Server-side SHA-256 Password Hashing (matches client hashUserPassword salt)
+  const hashServerPassword = (rawPass: string): string => {
+    const clean = String(rawPass || '').trim();
+    if (!clean) return '';
+    if (clean.startsWith('sha256_v1$')) return clean;
+    const payload = 'sahaya_pass_salt_2026::' + clean;
+    const hex = crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
+    return 'sha256_v1$' + hex;
+  };
+
+  // Verify that sensitive POST requests originate from the trusted Sahaya Sewa web/app client
+  const verifyTrustedClientGuard = (req: any, res: any, next: any) => {
+    const clientGuard = req.headers['x-sahaya-client-guard'];
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    const providedSecret = req.headers['x-internal-api-secret'];
+    const referer = String(req.headers['referer'] || req.headers['origin'] || '');
+
+    if (internalSecret && providedSecret === internalSecret) {
+      return next();
+    }
+    if (clientGuard === 'sahaya_v1_secure' || referer.includes('run.app') || referer.includes('localhost') || referer.includes('sahayasewa')) {
+      return next();
+    }
+    return res.status(403).json({ error: 'Unauthorized client request blocked by security policy.' });
+  };
 
   // -------------------------------------------------------------
   // 📤 1. Unified Cloud Storage - Media Upload Endpoint (R2 + Telegram + Fallback)
@@ -1058,6 +1096,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     if (u.id) serverUsersMap.set(String(u.id).trim(), u);
   };
 
+  const defaultSeedPassHash = hashServerPassword('545554');
   seedUser({
     id: '9876543321',
     userId: '9876543321V',
@@ -1069,20 +1108,60 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     status: 'approved',
     credits: 100,
     registeredAt: '2026-09-22 03:58',
-    key: '545554',
-    password: '545554',
-    securityCode: '545554',
-    tempCode: '545554',
-    tempPassword: '545554',
+    key: defaultSeedPassHash,
+    password: defaultSeedPassHash,
+    securityCode: defaultSeedPassHash,
+    tempCode: defaultSeedPassHash,
+    tempPassword: defaultSeedPassHash,
     isTemporaryPassword: true,
     isPasswordChanged: false,
   });
 
-  app.post('/api/admin/reset-password', async (req: any, res: any) => {
+  const serverNotifiedRegKeys = new Set<string>();
+  app.post('/api/notify-registration', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
     try {
-      const { userId, nicNumber, newPassword } = req.body;
+      const { registrationType, identifierOrName, dateTime, dedupeKey } = req.body || {};
+      if (!registrationType || !identifierOrName) {
+        return res.status(400).json({ error: 'Missing registration parameters' });
+      }
+      const key = String(dedupeKey || `${registrationType}_${identifierOrName}`).slice(0, 150);
+      if (serverNotifiedRegKeys.has(key)) {
+        return res.json({ success: true, deduplicated: true });
+      }
+      serverNotifiedRegKeys.add(key);
+
+      if (ADMIN_TELEGRAM_BOT_TOKEN && ADMIN_TELEGRAM_CHAT_ID) {
+        const textMessage =
+          '🔔 නව ලියාපදිංචි වීමක් (සහය සේවා)\n\n' +
+          '1. ලියාපදිංචි වූ ආකාරය: ' + String(registrationType).slice(0, 100) + '\n' +
+          '2. හැඳුනුම්පත් අංකය / ව්‍යාපාර හෝ වෙළෙඳසැල් නම: ' + String(identifierOrName).slice(0, 150) + '\n' +
+          '3. දිනය සහ වේලාව: ' + String(dateTime || new Date().toLocaleString('si-LK')).slice(0, 80);
+
+        await fetch(`https://api.telegram.org/bot${ADMIN_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: ADMIN_TELEGRAM_CHAT_ID,
+            text: textMessage,
+          }),
+        }).catch(() => {});
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: 'Notification dispatch failed' });
+    }
+  });
+
+  app.post('/api/admin/reset-password', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
+    try {
+      const { userId, nicNumber, newPassword } = req.body || {};
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
+      const hashedNewPassword = hashServerPassword(newPassword);
+
+      if (!cleanNic || !hashedNewPassword) {
+        return res.status(400).json({ error: 'Valid userId and newPassword required' });
+      }
 
       const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
       const updated = {
@@ -1091,18 +1170,18 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         userId: cleanNic,
         nicNumber: cleanNic,
         userNumericId: numeric,
-        key: newPassword,
-        password: newPassword,
-        securityCode: newPassword,
-        tempCode: newPassword,
-        tempPassword: newPassword,
+        key: hashedNewPassword,
+        password: hashedNewPassword,
+        securityCode: hashedNewPassword,
+        tempCode: hashedNewPassword,
+        tempPassword: hashedNewPassword,
         isTemporaryPassword: true,
         isPasswordChanged: false,
         updatedAt: new Date().toISOString(),
       };
 
       seedUser(updated);
-      console.log(`[Admin] Password reset stored for NIC: ${cleanNic}, Temp Password: ${newPassword}`);
+      console.log(`[Admin] Password reset stored for NIC: ${cleanNic} (SHA-256 Hashed)`);
       return res.json({ success: true, message: 'Password reset processed successfully' });
     } catch (error: any) {
       console.error('Admin Reset Password Error:', error);
@@ -1110,11 +1189,15 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.post('/api/admin/delete-user', async (req: any, res: any) => {
+  app.post('/api/admin/delete-user', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
     try {
       const { userId, nicNumber, id } = req.body || {};
       const cleanNic = String(nicNumber || userId || id || '').trim().toUpperCase();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
+
+      if (!cleanNic && !id) {
+        return res.status(400).json({ error: 'User identifier required' });
+      }
 
       // 1. Remove from in-memory server map
       if (cleanNic) serverUsersMap.delete(cleanNic);
@@ -1154,17 +1237,18 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.post('/api/user/update-password', async (req: any, res: any) => {
+  app.post('/api/user/update-password', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
     try {
-      const { userId, nicNumber, newPassword } = req.body;
+      const { userId, nicNumber, newPassword } = req.body || {};
       const cleanPass = String(newPassword || '').trim();
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
 
-      if (!cleanPass) {
-        return res.status(400).json({ error: 'Password required' });
+      if (!cleanPass || !cleanNic) {
+        return res.status(400).json({ error: 'Password and user identifier required' });
       }
 
+      const hashedPass = hashServerPassword(cleanPass);
       const existing = serverUsersMap.get(cleanNic) || (numeric ? serverUsersMap.get(numeric) : null) || {};
       const updated = {
         ...existing,
@@ -1172,9 +1256,9 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         userId: cleanNic,
         nicNumber: cleanNic,
         userNumericId: numeric,
-        key: cleanPass,
-        password: cleanPass,
-        securityCode: cleanPass,
+        key: hashedPass,
+        password: hashedPass,
+        securityCode: hashedPass,
         tempCode: '',
         tempPassword: '',
         isTemporaryPassword: false,
@@ -1183,7 +1267,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       };
 
       seedUser(updated);
-      console.log(`[Server] Password changed successfully for NIC: ${cleanNic}`);
+      console.log(`[Server] Password changed successfully for NIC: ${cleanNic} (SHA-256 Hashed)`);
       return res.json({ success: true, message: 'Password updated successfully' });
     } catch (error: any) {
       console.error('User Update Password Error:', error);
@@ -1191,14 +1275,19 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     }
   });
 
-  app.get('/api/user/lookup', async (req: any, res: any) => {
+  app.get('/api/user/lookup', authRateLimiter, async (req: any, res: any) => {
     try {
       const q = String(req.query.q || '').trim().toUpperCase();
       if (!q) return res.json({ user: null });
       const numeric = q.replace(/[^0-9]/g, '');
 
       const found = serverUsersMap.get(q) || (numeric ? serverUsersMap.get(numeric) : null);
-      return res.json({ user: found || null });
+      if (!found) return res.json({ user: null });
+      const safeUser = { ...found };
+      delete safeUser.nicFrontPhotoUrl;
+      delete safeUser.nicBackPhotoUrl;
+      delete safeUser.idCardPhotoUrl;
+      return res.json({ user: safeUser });
     } catch (error: any) {
       return res.json({ user: null });
     }
@@ -1207,7 +1296,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 🚨 EMERGENCY PUSH BROADCAST CONTROLLER (FCM HIGH-PRIORITY SIREN)
   // -------------------------------------------------------------
-  app.post('/api/push/broadcast', async (req: any, res: any) => {
+  app.post('/api/push/broadcast', adminActionRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
     try {
       const {
         category,
@@ -1387,7 +1476,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 👤 FAST SINGLE DOCUMENT QUERY LOOKUP (NIC / Phone / User ID)
   // -------------------------------------------------------------
-  app.post('/api/auth/lookup-user', async (req: any, res: any) => {
+  app.post('/api/auth/lookup-user', authRateLimiter, verifyTrustedClientGuard, async (req: any, res: any) => {
     try {
       const { identifier } = req.body;
       if (!identifier) return res.status(400).json({ error: 'Identifier required' });

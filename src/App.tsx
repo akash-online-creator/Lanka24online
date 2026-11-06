@@ -399,19 +399,22 @@ export const App: React.FC = () => {
       );
     });
 
-    // 2. Local memory එකෙහි නැතිනම් Firestore වෙතින් Document ID අනුව සෙවීම
-    if (!matchedUser) {
+    // 2. Local memory එකෙහි නැතිනම් හෝ ආරක්ෂාව සඳහා මුරපදය LocalStorage වෙතින් ඉවත් කර ඇත්නම් Firestore වෙතින් සෙවීම
+    const hasCreds = (u: any) => Boolean(u && (u.password || u.key || u.temporaryPassword || u.tempPassword));
+    if (!matchedUser || !hasCreds(matchedUser)) {
       try {
         const remoteUser = await getUserFromFirestore(cleanId);
-        if (remoteUser) {
+        if (remoteUser && hasCreds(remoteUser)) {
+          matchedUser = remoteUser;
+        } else if (!matchedUser && remoteUser) {
           matchedUser = remoteUser;
         }
       } catch (_) {}
     }
 
     // 3. initialUsers (පද්ධතියේ මූලික පරිශීලකයින්) අතර සෙවීම
-    if (!matchedUser) {
-      matchedUser = initialUsers.find((u) => {
+    if (!matchedUser || !hasCreds(matchedUser)) {
+      const initMatch = initialUsers.find((u) => {
         if (!u) return false;
         const uNic = normalizeNIC(u.nicNumber || u.nic || '');
         const uUserId = normalizeNIC(u.userId || '');
@@ -421,6 +424,9 @@ export const App: React.FC = () => {
           (cleanId.toLowerCase() === 'admin' && (u.role === 'admin' || u.role === 'super_admin'))
         );
       });
+      if (initMatch) {
+        matchedUser = matchedUser ? { ...initMatch, ...matchedUser, password: matchedUser.password || initMatch.password } : initMatch;
+      }
     }
 
     // 4. එවැනි NIC එකක් සහිත කිසිදු ගිණුමක් නොමැති නම් දෝෂයක් පෙන්වීම

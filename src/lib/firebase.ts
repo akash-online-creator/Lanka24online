@@ -247,7 +247,10 @@ export async function getUserFromFirestore(userIdOrInput: string) {
     try {
       const res = await fetch('/api/auth/lookup-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+        },
         body: JSON.stringify({ identifier: cleanInput }),
       });
       if (res.ok) {
@@ -265,8 +268,6 @@ export async function getUserFromFirestore(userIdOrInput: string) {
   }
 }
 
-const ADMIN_TELEGRAM_BOT_TOKEN = '8722901764:AAECy4vulQ7LCY4P0wxKEM9F1o_x9k8j6iU';
-const ADMIN_TELEGRAM_CHAT_ID = '1349273525';
 const notifiedTelegramRegKeys = new Set();
 
 export async function notifyAdminViaTelegramOnRegistration(params: {
@@ -285,20 +286,18 @@ export async function notifyAdminViaTelegramOnRegistration(params: {
       ? params.dateTime
       : now.toLocaleDateString('si-LK') + ' ' + now.toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const textMessage =
-      '🔔 නව ලියාපදිංචි වීමක් (සහය සේවා)\n\n' +
-      '1. ලියාපදිංචි වූ ආකාරය: ' + params.registrationType + '\n' +
-      '2. හැඳුනුම්පත් අංකය / ව්‍යාපාර හෝ වෙළෙඳසැල් නම: ' + params.identifierOrName + '\n' +
-      '3. දිනය සහ වේලාව: ' + formattedDateTime;
-
-    const tgUrl = 'https://api.telegram.org/bot' + ADMIN_TELEGRAM_BOT_TOKEN + '/sendMessage';
-    await fetch(tgUrl, {
+    await fetch('/api/notify-registration', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+      },
       body: JSON.stringify({
-        chat_id: ADMIN_TELEGRAM_CHAT_ID,
-        text: textMessage
-      })
+        registrationType: params.registrationType,
+        identifierOrName: params.identifierOrName,
+        dateTime: formattedDateTime,
+        dedupeKey: key,
+      }),
     });
   } catch (err) {
     console.warn('Telegram admin notification note:', err);
@@ -573,7 +572,10 @@ export async function deleteUserAccount(userOrId: any, _permanent = true): Promi
       const primaryNic = userObj?.nicNumber || userObj?.nic || userObj?.userId || primaryId;
       await fetch("/api/admin/delete-user", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sahaya-Client-Guard": "sahaya_v1_secure",
+        },
         body: JSON.stringify({
           id: primaryId,
           userId: primaryNic,

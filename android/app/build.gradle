@@ -45,9 +45,9 @@ android {
     signingConfigs {
         release {
             storeFile file("release-keystore.jks")
-            storePassword "SupportServiceRelease2026"
-            keyAlias "supportservice"
-            keyPassword "SupportServiceRelease2026"
+            storePassword localProperties.getProperty('keystore.storePassword') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: ""
+            keyAlias localProperties.getProperty('keystore.keyAlias') ?: System.getenv('ANDROID_KEY_ALIAS') ?: "supportservice"
+            keyPassword localProperties.getProperty('keystore.keyPassword') ?: System.getenv('ANDROID_KEY_PASSWORD') ?: ""
         }
     }
 

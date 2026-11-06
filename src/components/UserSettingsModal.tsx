@@ -656,7 +656,10 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({
         await syncUserPasswordInFirestore(updatedUser, cleanNewKey);
         fetch('/api/user/update-password', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+          },
           body: JSON.stringify({
             userId: updatedUser?.id || updatedUser?.userId || '',
             nicNumber: updatedUser?.nicNumber || updatedUser?.userId || '',
