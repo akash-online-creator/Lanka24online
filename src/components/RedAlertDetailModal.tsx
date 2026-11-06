@@ -59,13 +59,22 @@ import {
 
   cancelRedAlertByReporter,
 
-  addReporterUpdateToRedAlert
+  addReporterUpdateToRedAlert,
+
+  castWeightedRedAlertVoteTransaction
 
 } from '../lib/firebase';
 
 import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 
 import { stopEmergencySiren } from '../utils/sirenAudio';
+
+import {
+  calculateAlertConfidenceState,
+  calculateUserVoteWeight,
+  checkVoterGpsEligibility,
+  getDeviceFingerprint,
+} from '../utils/redAlertVoteEngine';
 
 export interface RedAlertDetailModalProps {
 
@@ -143,6 +152,11 @@ export const RedAlertDetailModal: any = ({
 
   const [copiedShare, setCopiedShare] = useState(false);
 
+  const [localVotesMap, setLocalVotesMap] = useState<Record<string, any>>({});
+  const [isCastingVote, setIsCastingVote] = useState(false);
+  const [gpsConfirmed5km, setGpsConfirmed5km] = useState(true);
+  const [voteErrorMsg, setVoteErrorMsg] = useState<string | null>(null);
+
   const commentInputRef = useRef(null as any);
 
   useEffect(() => {
@@ -152,6 +166,10 @@ export const RedAlertDetailModal: any = ({
       setLocalComments(((alert.comments as RedAlertComment[]) || []));
 
       setLocalFakeReports(Array.isArray(alert.fakeReports) ? alert.fakeReports : []);
+
+      setLocalVotesMap(alert.votesMap && typeof alert.votesMap === 'object' ? { ...alert.votesMap } : {});
+
+      setVoteErrorMsg(null);
 
       setConfirmDialog(null);
 
@@ -756,9 +774,109 @@ export const RedAlertDetailModal: any = ({
 
     : `කි.මී. ${distanceKm.toFixed(1)}`;
 
-  const fakeVotesCount = Math.max(localFakeReports.length, alert.fakeReportsCount || 0);
+  const alertWithLocalVotes: RedAlertItem = {
+    ...alert,
+    votesMap: Object.keys(localVotesMap).length > 0 ? localVotesMap : alert.votesMap,
+  };
 
-  const isFakeHighlighted = Boolean(alertAny.isFlaggedFake || alert.status === 'fake' || Math.max(fakeVotesCount, 4) === fakeVotesCount);
+  const confidenceState = calculateAlertConfidenceState(alertWithLocalVotes);
+  const currentVoterId = String(currentUser?.userId || currentUser?.id || currentUser?.nicNumber || 'guest_voter').trim();
+  const existingUserVote = localVotesMap[currentVoterId] || alert.votesMap?.[currentVoterId] || null;
+  const voterWeightInfo = calculateUserVoteWeight(currentUser, existingUserVote?.flipCount || 0);
+  const gpsEligibility = checkVoterGpsEligibility(
+    alertLat,
+    alertLng,
+    currentLocation?.lat ?? null,
+    currentLocation?.lng ?? null,
+    5.0
+  );
+
+  const handleCastWeightedVote = async (voteType: 'true' | 'false') => {
+    if (!alert?.id || isCastingVote) return;
+    setVoteErrorMsg(null);
+
+    if (isAuthorOfAlert) {
+      setVoteErrorMsg('වාර්තා කළ පුද්ගලයාට තමන්ගේම නිවේදනයට ඡන්දය දිය නොහැක.');
+      return;
+    }
+
+    if (!gpsConfirmed5km) {
+      setVoteErrorMsg('කරුණාකර ඔබ මෙම ස්ථානයේ සිට කි.මී. 5ක් ඇතුළත සිටින බව තහවුරු කරන්න.');
+      return;
+    }
+
+    if (gpsEligibility.hasCoordinates && !gpsEligibility.isWithinRadius && !isAdmin) {
+      setVoteErrorMsg(
+        `GPS පරීක්ෂාව: ඡන්දය ප්‍රකාශ කළ හැක්කේ සිදුවීම සිදුවූ ස්ථානයේ සිට කි.මී. 5ක් ඇතුළත සිටින අයට පමණි (ඔබ සිටින්නේ කි.මී. ${gpsEligibility.distanceKm} දුරිනි).`
+      );
+      return;
+    }
+
+    setIsCastingVote(true);
+    try {
+      const fp = await getDeviceFingerprint();
+      const result = await castWeightedRedAlertVoteTransaction({
+        alertId: alert.id,
+        userId: currentVoterId,
+        userName: currentUser?.name || 'ප්‍රජා සාමාජික',
+        userPhone: currentUser?.phone || '',
+        voteType,
+        baseWeight: voterWeightInfo.baseWeight,
+        trustLevel: voterWeightInfo.level,
+        distanceKm: gpsEligibility.distanceKm ?? distanceKm,
+        deviceFingerprint: fp,
+      });
+
+      const updatedVotesMap = {
+        ...localVotesMap,
+        [currentVoterId]: result.userVote,
+      };
+      setLocalVotesMap(updatedVotesMap);
+
+      const updatedAlertObj: RedAlertItem = {
+        ...alert,
+        votesMap: updatedVotesMap,
+        trueVotes: result.trueVotes,
+        falseVotes: result.falseVotes,
+        weightedTrueScore: result.weightedTrueScore,
+        weightedFalseScore: result.weightedFalseScore,
+        score: result.score,
+        confidenceStatus: result.confidenceStatus,
+        isRemovedAsFake: result.confidenceStatus === 'removed',
+        isFlaggedFake: result.confidenceStatus === 'disputed' || result.confidenceStatus === 'removed',
+      };
+
+      onAlertUpdated?.(updatedAlertObj);
+
+      if (result.confidenceStatus === 'removed') {
+        stopSirenForThisAlert();
+        setActionSuccessMsg('❌ ප්‍රජා ඡන්ද මගින් ලකුණු -10 සීමාවට ළඟා වූ බැවින් මෙම නිවේදනය අසත්‍ය ලෙස ඉවත් කර සංරක්ෂණය (Archive) කරන ලදී.');
+      } else if (result.crossedConfirmedThreshold) {
+        setActionSuccessMsg('✅ ලකුණු +10 ඉක්මවූ බැවින් රතු එළිය පූර්ණ ලෙස තහවුරු විය! සියලුම Push නාලිකා (Web Push, ntfy.sh, Telegram, RSS) වෙත නිවේදනය යොමු කරන ලදී.');
+      } else if (result.crossedNearbyThreshold) {
+        setActionSuccessMsg('🟢 ලකුණු +4 සීමාව පසු කළ බැවින් "බොහෝ දුරට සත්‍ය" තත්ත්වයට පත් විය!');
+      } else {
+        setActionSuccessMsg(
+          voteType === 'true'
+            ? `✅ ඔබේ "සත්‍යයි" ඡන්දය (+${result.userVote.weight} බර) සාර්ථකව සටහන් විය! (ශුද්ධ ලකුණු: ${result.score >= 0 ? '+' + result.score : result.score})`
+            : `❌ ඔබේ "අසත්‍යයි" ඡන්දය (-${result.userVote.weight} බර) සාර්ථකව සටහන් විය! (ශුද්ධ ලකුණු: ${result.score >= 0 ? '+' + result.score : result.score})`
+        );
+      }
+    } catch (err: any) {
+      setVoteErrorMsg(err?.message || 'ඡන්දය සටහන් කිරීමේදී දෝෂයක් ඇතිවිය.');
+    } finally {
+      setIsCastingVote(false);
+    }
+  };
+
+  const fakeVotesCount = Math.max(confidenceState.falseVotes, localFakeReports.length, alert.fakeReportsCount || 0);
+
+  const isFakeHighlighted = Boolean(
+    confidenceState.confidenceStatus === 'removed' ||
+    confidenceState.confidenceStatus === 'disputed' ||
+    alertAny.isFlaggedFake ||
+    alert.status === 'fake'
+  );
 
   const isDeletedOrCancelled = Boolean(alert.status === 'cancelled' || alertAny.isDeleted);
 
@@ -1582,69 +1700,256 @@ export const RedAlertDetailModal: any = ({
             )
           : null,
         h(
-
           'div',
+          { className: 'p-4 rounded-2xl bg-slate-900/95 text-white border-2 border-slate-700/80 space-y-3.5 shadow-xl' },
+          // Header: Confidence Status & Net Weighted Score
+          h(
+            'div',
+            { className: 'flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5' },
+            h(
+              'div',
+              { className: 'space-y-0.5' },
+              h(
+                'span',
+                { className: 'text-[11px] font-extrabold uppercase tracking-wider text-slate-400 block' },
+                '📊 ප්‍රජා විශ්වාස මිනුම (Confidence Bar • සමමිතික ±10)'
+              ),
+              h(
+                'span',
+                { className: `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black border ${confidenceState.badgeBgClass}` },
+                confidenceState.statusLabelSi
+              )
+            ),
+            h(
+              'div',
+              { className: 'text-right bg-black/50 px-3 py-1.5 rounded-xl border border-slate-700' },
+              h('span', { className: 'text-[10px] font-bold text-slate-400 block' }, 'ශුද්ධ ලකුණු (Score)'),
+              h(
+                'span',
+                {
+                  className: `text-base sm:text-lg font-black font-mono ${
+                    confidenceState.score >= 4
+                      ? 'text-emerald-400'
+                      : confidenceState.score <= -4
+                      ? 'text-rose-400'
+                      : 'text-amber-300'
+                  }`,
+                },
+                `${confidenceState.score > 0 ? '+' : ''}${confidenceState.score} / ±10`
+              )
+            )
+          ),
 
-          { className: 'flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-xs' },
+          // 5-Zone Animated Confidence Bar
+          h(
+            'div',
+            { className: 'space-y-1.5' },
+            h(
+              'div',
+              { className: 'grid grid-cols-5 text-[10px] font-black text-center gap-1' },
+              h('span', { className: 'bg-zinc-950 text-zinc-300 py-1 rounded border border-zinc-700' }, '❌ ≤-10 අසත්‍ය'),
+              h('span', { className: 'bg-orange-950/80 text-orange-300 py-1 rounded border border-orange-700/50' }, '🟠 -4..-9 මතභේද'),
+              h('span', { className: 'bg-yellow-950/80 text-yellow-200 py-1 rounded border border-yellow-600/50' }, '🟡 -3..+3 සැක'),
+              h('span', { className: 'bg-emerald-950/80 text-emerald-300 py-1 rounded border border-emerald-600/50' }, '🟢 +4..+9 සත්‍ය'),
+              h('span', { className: 'bg-red-950/90 text-red-200 py-1 rounded border border-red-500/60' }, '✅ ≥+10 තහවුරු')
+            ),
+            h(
+              'div',
+              { className: 'relative h-4 w-full rounded-full overflow-hidden bg-gradient-to-r from-zinc-900 via-orange-500 via-yellow-400 via-emerald-500 to-red-600 p-0.5 shadow-inner' },
+              h('div', {
+                className: 'absolute top-0 bottom-0 w-1 bg-white/60 left-1/2 -translate-x-1/2 z-10',
+                title: '0 මධ්‍ය ලක්ෂ්‍යය',
+              }),
+              h('div', {
+                className: 'h-full rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.95)] transition-all duration-500',
+                style: { width: `${Math.max(4, confidenceState.percentage)}%` },
+              })
+            ),
+            h(
+              'div',
+              { className: 'flex items-center justify-between text-[11px] font-bold text-slate-300 pt-0.5' },
+              h(
+                'span',
+                { className: 'text-emerald-400' },
+                `✅ සත්‍ය ඡන්ද: ${confidenceState.trueVotes} (බර ලකුණු +${confidenceState.weightedTrueScore})`
+              ),
+              h(
+                'span',
+                { className: 'text-rose-400' },
+                `❌ අසත්‍ය ඡන්ද: ${confidenceState.falseVotes} (බර ලකුණු -${confidenceState.weightedFalseScore})`
+              )
+            ),
+            h('p', { className: 'text-[11px] text-slate-400 font-medium' }, confidenceState.statusSubLabelSi)
+          ),
+
+          // Voter Weight & Existing Vote Badge
+          h(
+            'div',
+            { className: 'flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs' },
+            h(
+              'div',
+              { className: 'flex items-center gap-2 flex-wrap' },
+              h('span', { className: 'text-slate-300 font-bold' }, 'ඔබේ ඡන්ද බර:'),
+              h(
+                'span',
+                { className: `px-2.5 py-0.5 rounded-full text-[11px] font-black border ${voterWeightInfo.badgeColor}` },
+                `${voterWeightInfo.labelSi} -> ${voterWeightInfo.effectiveWeight}x`
+              ),
+              voterWeightInfo.isFlipPenalized
+                ? h(
+                    'span',
+                    { className: 'text-[10px] text-amber-300 font-bold' },
+                    '(නිතර ඡන්දය වෙනස් කිරීම නිසා බර 50% කින් අඩු වී ඇත)'
+                  )
+                : null
+            ),
+            existingUserVote
+              ? h(
+                  'span',
+                  {
+                    className: `px-2.5 py-1 rounded-lg font-black text-xs ${
+                      existingUserVote.vote === 'true'
+                        ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-400/50'
+                        : 'bg-rose-600/30 text-rose-200 border border-rose-400/50'
+                    }`,
+                  },
+                  existingUserVote.vote === 'true' ? 'ඔබේ ඡන්දය: සත්‍ය ✅' : 'ඔබේ ඡන්දය: අසත්‍ය ❌'
+                )
+              : h('span', { className: 'text-[11px] text-slate-400 font-semibold' }, 'ඔබ තවම ඡන්දය ප්‍රකාශ කර නැත')
+          ),
+
+          // 5km GPS Proximity Confirmation & Vote Buttons (Only for non-authors)
           !isAuthorOfAlert
             ? h(
                 'div',
-                { className: 'space-y-0.5' },
+                { className: 'space-y-2.5 pt-1' },
                 h(
-                  'span',
-                  { className: 'text-rose-800 dark:text-rose-300 font-black block' },
-                  '🚩 දැන්වීම අසත්‍යයක් ලෙස ප්‍රතිචාර දැක්වීම'
+                  'label',
+                  { className: 'flex items-center gap-2 text-xs text-slate-200 font-bold cursor-pointer select-none bg-black/40 p-2.5 rounded-xl border border-slate-700/80' },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: gpsConfirmed5km,
+                    onChange: (e: any) => setGpsConfirmed5km(Boolean(e.target.checked)),
+                    className: 'w-4 h-4 rounded border-slate-500 text-emerald-500 focus:ring-emerald-500 cursor-pointer',
+                  }),
+                  h(
+                    'span',
+                    null,
+                    `📍 ඔබ මෙම ස්ථානයේ (කි.මී. 5ක් ඇතුළත) සිටීද? — මම මෙම ස්ථානය අවට සිටින බව තහවුරු කරමි ${
+                      gpsEligibility.distanceKm !== null ? `(GPS දුර: කි.මී. ${gpsEligibility.distanceKm})` : ''
+                    }`
+                  )
                 ),
+                voteErrorMsg
+                  ? h(
+                      'div',
+                      { className: 'p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/60 text-rose-200 text-xs font-bold' },
+                      `⚠️ ${voteErrorMsg}`
+                    )
+                  : null,
                 h(
-                  'span',
-                  { className: 'text-rose-600 dark:text-rose-400 font-medium text-[11px] block' },
-                  'පරිශීලකයන් 4 දෙනෙකු අසත්‍යයක් ලෙස වාර්තා කළ විගස මෙය අසත්‍ය ලෙස පළකරන ලද දැන්වීමක් ලෙස Highlight වේ (දැනට: ' + fakeVotesCount + '/4)'
+                  'div',
+                  { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2.5' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      disabled: isCastingVote,
+                      onClick: () => handleCastWeightedVote('true'),
+                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md border ${
+                        existingUserVote?.vote === 'true'
+                          ? 'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400'
+                          : 'bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400/50'
+                      }`,
+                    },
+                    isCastingVote
+                      ? h(Loader2, { className: 'w-4 h-4 animate-spin' })
+                      : h(CheckCircle2, { className: 'w-4 h-4' }),
+                    h(
+                      'span',
+                      null,
+                      existingUserVote?.vote === 'true'
+                        ? `✅ සත්‍යයි ලෙස ඡන්දය දී ඇත (+${voterWeightInfo.effectiveWeight})`
+                        : `✅ මෙය සත්‍ය ආපදාවකි (+${voterWeightInfo.effectiveWeight})`
+                    )
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      disabled: isCastingVote,
+                      onClick: () => handleCastWeightedVote('false'),
+                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md border ${
+                        existingUserVote?.vote === 'false'
+                          ? 'bg-rose-600 text-white border-rose-300 ring-2 ring-rose-400'
+                          : 'bg-rose-600/90 hover:bg-rose-600 text-white border-rose-400/50'
+                      }`,
+                    },
+                    isCastingVote
+                      ? h(Loader2, { className: 'w-4 h-4 animate-spin' })
+                      : h(Flag, { className: 'w-4 h-4' }),
+                    h(
+                      'span',
+                      null,
+                      existingUserVote?.vote === 'false'
+                        ? `❌ අසත්‍යයි ලෙස ඡන්දය දී ඇත (-${voterWeightInfo.effectiveWeight})`
+                        : `❌ මෙය අසත්‍ය වාර්තාවකි (-${voterWeightInfo.effectiveWeight})`
+                    )
+                  )
                 )
               )
             : h(
                 'div',
-                { className: 'space-y-0.5' },
-                h(
-                  'span',
-                  { className: 'text-emerald-800 dark:text-emerald-300 font-black block' },
-                  '💬 ප්‍රජා අදහස් හා තොරතුරු හුවමාරුව'
-                ),
-                h(
-                  'span',
-                  { className: 'text-slate-600 dark:text-slate-400 font-medium text-[11px] block' },
-                  'මෙම ආපදාව පිළිබඳ නවතම තොරතුරු පහතින් සටහන් කරන්න'
-                )
+                { className: 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-bold' },
+                '🛡️ වාර්තාකරුගේ ආරක්ෂාව: ඔබ විසින් පළ කළ නිවේදනයට ඔබටම ඡන්දය දිය නොහැක. අවට කි.මී. 5 ඇතුළත සිටින සාමාජිකයින්ගේ ඡන්දයෙන් මෙය තහවුරු වේ.'
               ),
+
+          // Official Sri Lanka Emergency Hotlines (119 / 110 / 117 / 1990) & Legal Disclaimer
           h(
             'div',
-            { className: 'flex items-center gap-2 shrink-0' },
+            { className: 'pt-2 border-t border-slate-800 space-y-2' },
             h(
-              'button',
-              {
-                type: 'button',
-                onClick: () => {
-                  setShowCommentsPanel(true);
-                  if (commentInputRef.current) commentInputRef.current.focus();
-                },
-                className: 'px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm'
-              },
-              h(MessageSquare, { className: 'w-3.5 h-3.5' }),
-              h('span', null, 'අදහස් දක්වන්න (' + localComments.length + ')')
-            ),
-            !isAuthorOfAlert
-              ? h(
-                  'button',
+              'div',
+              { className: 'grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center' },
+              [
+                { num: '119', label: 'පොලිස් හදිසි ඇමතුම්' },
+                { num: '110', label: 'ගිනි නිවීමේ සේවය' },
+                { num: '117', label: 'ආපදා කළමනාකරණ' },
+                { num: '1990', label: 'සුව සැරිය ගිලන්රථ' },
+              ].map((em) =>
+                h(
+                  'a',
                   {
-                    type: 'button',
-                    onClick: () => setShowFakeReportModal(true),
-                    className: 'px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm'
+                    key: em.num,
+                    href: `tel:${em.num}`,
+                    className: 'p-2 rounded-xl bg-red-950/60 hover:bg-red-900/70 border border-red-500/40 text-white transition-all flex flex-col items-center justify-center',
                   },
-                  h(Flag, { className: 'w-3.5 h-3.5' }),
-                  h('span', null, 'අසත්‍යයක් ලෙස ප්‍රතිචාර දක්වන්න (' + fakeVotesCount + '/4)')
+                  h('span', { className: 'text-sm font-black text-red-300 font-mono' }, `📞 ${em.num}`),
+                  h('span', { className: 'text-[10px] font-bold text-slate-200' }, em.label)
                 )
-              : null
+              )
+            ),
+            h(
+              'div',
+              { className: 'p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/40 text-amber-200 text-[11px] font-bold text-center leading-relaxed' },
+              '⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි — නිල රජයේ තහවුරු කිරීමක් නොවේ. හිතාමතා අසත්‍ය තොරතුරු පළකිරීම ශ්‍රී ලංකා නීතිය යටතේ දඬුවම් ලැබිය හැකි වරදකි.'
+            ),
+            h(
+              'div',
+              { className: 'flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1' },
+              h('span', null, '🔔 නොමිලේ බහු-නාලිකා (Rs. 0): Web Push • ntfy.sh • Telegram • Brevo'),
+              h(
+                'a',
+                {
+                  href: '/feed.xml',
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                  className: 'text-emerald-400 hover:underline font-bold',
+                },
+                '📡 RSS Feed (/feed.xml)'
+              )
+            )
           )
-
         ),
 
         showCommentsPanel

@@ -25,11 +25,12 @@ import {
   arrayRemove,
   serverTimestamp,
   writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, deleteObject } from 'firebase/storage';
 
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { User, RedAlertItem, RedAlertComment, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem } from '../types';
+import { User, RedAlertItem, RedAlertComment, RedAlertVoteRecord, RedAlertConfidenceStatus, AuditLogRecord, SosLiveSession, PendingAiQuery, VerifiedAiKnowledgeItem } from '../types';
 
 export type { RedAlertItem, RedAlertComment, SosLiveSession };
 
@@ -1237,15 +1238,311 @@ export function subscribeToRedAlerts(callback: (alerts: any[]) => void): () => v
   };
 }
 
+export const AUDIT_LOGS_COLLECTION = 'auditLogs';
+
+export async function recordAuditLog(log: Omit<AuditLogRecord, 'timestamp' | 'timestampMs'>): Promise<void> {
+  try {
+    const id = log.id || `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const payload = sanitizeForFirestore({
+      ...log,
+      id,
+      timestamp: nowIso,
+      timestampMs: nowMs,
+      createdAtServer: serverTimestamp(),
+    });
+    await setDoc(doc(db, AUDIT_LOGS_COLLECTION, id), payload, { merge: true });
+  } catch (err) {
+    console.warn('recordAuditLog notice:', err);
+  }
+}
+
 export async function createRedAlertInFirestore(alertData: any) {
   const id = alertData.id ? String(alertData.id) : 'red_alert_' + Date.now();
-  const payload = sanitizeForFirestore({ ...alertData, id, createdAtServer: serverTimestamp() });
+  const expiresAtIso = alertData.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const payload = sanitizeForFirestore({
+    trueVotes: 0,
+    falseVotes: 0,
+    weightedTrueScore: 0,
+    weightedFalseScore: 0,
+    score: 0,
+    confidenceStatus: 'suspicious',
+    votesMap: {},
+    expiresAt: expiresAtIso,
+    ...alertData,
+    id,
+    createdAtServer: serverTimestamp(),
+  });
   await setDoc(doc(db, RED_ALERTS_COLLECTION, id), payload, { merge: true });
   setDoc(doc(db, 'redAlerts', id), payload, { merge: true }).catch(() => {});
   if (fallbackDb !== db) {
     setDoc(doc(fallbackDb, RED_ALERTS_COLLECTION, id), payload, { merge: true }).catch(() => {});
   }
+  recordAuditLog({
+    action: 'alert_created',
+    userId: String(alertData.reportedByUserId || 'usr_anonymous'),
+    targetId: id,
+    details: {
+      disasterType: alertData.disasterType,
+      locationName: alertData.locationName,
+      confidenceStatus: payload.confidenceStatus,
+    },
+  }).catch(() => {});
   return id;
+}
+
+export interface CastWeightedVoteParams {
+  alertId: string;
+  userId: string;
+  userName: string;
+  userPhone?: string;
+  voteType: 'true' | 'false';
+  baseWeight: number;
+  trustLevel: 'new' | 'normal' | 'trusted' | 'moderator';
+  distanceKm?: number | null;
+  deviceFingerprint?: string;
+  reason?: string;
+}
+
+export interface CastWeightedVoteResult {
+  success: boolean;
+  errorSi?: string;
+  score: number;
+  trueVotes: number;
+  falseVotes: number;
+  weightedTrueScore: number;
+  weightedFalseScore: number;
+  confidenceStatus: RedAlertConfidenceStatus;
+  userVote: RedAlertVoteRecord;
+  crossedNearbyThreshold: boolean;
+  crossedConfirmedThreshold: boolean;
+}
+
+export async function castWeightedRedAlertVoteTransaction(
+  params: CastWeightedVoteParams
+): Promise<CastWeightedVoteResult> {
+  const alertRef = doc(db, RED_ALERTS_COLLECTION, params.alertId);
+  const voteSubRef = doc(db, RED_ALERTS_COLLECTION, params.alertId, 'votes', params.userId);
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+
+  const txResult = await runTransaction(db, async (transaction) => {
+    const alertSnap = await transaction.get(alertRef);
+    if (!alertSnap.exists()) {
+      throw new Error('ආපදා නිවේදනය සොයාගත නොහැක.');
+    }
+
+    const data: any = alertSnap.data() || {};
+    if (data.reportedByUserId && String(data.reportedByUserId) === String(params.userId)) {
+      throw new Error('වාර්තා කළ පුද්ගලයාට තමන්ගේම නිවේදනයට ඡන්දය දිය නොහැක.');
+    }
+
+    const existingVotesMap: Record<string, RedAlertVoteRecord> =
+      data.votesMap && typeof data.votesMap === 'object' ? { ...data.votesMap } : {};
+
+    // Anti-Fraud: Check if another account on the exact same device fingerprint already voted
+    if (params.deviceFingerprint && params.deviceFingerprint !== 'fp_fallback_device') {
+      for (const [otherUid, vRec] of Object.entries(existingVotesMap)) {
+        if (
+          otherUid !== params.userId &&
+          vRec &&
+          vRec.deviceFingerprint &&
+          vRec.deviceFingerprint === params.deviceFingerprint
+        ) {
+          throw new Error('එකම උපාංගයෙන් (Device) ගිණුම් කිහිපයක් භාවිතා කර ඡන්දය ප්‍රකාශ කිරීමට ඉඩ නොදේ.');
+        }
+      }
+    }
+
+    const prevVote = existingVotesMap[params.userId];
+    let flipCount = prevVote?.flipCount || 0;
+    if (prevVote && prevVote.vote !== params.voteType) {
+      flipCount += 1;
+    }
+
+    // Penalize frequent vote flippers (flipCount >= 3 -> 50% weight reduction)
+    const effectiveWeight =
+      flipCount >= 3 ? Number((params.baseWeight * 0.5).toFixed(2)) : Number(params.baseWeight.toFixed(2));
+
+    const newVoteRecord: RedAlertVoteRecord = {
+      userId: params.userId,
+      userName: params.userName || 'පරිශීලක',
+      vote: params.voteType,
+      weight: effectiveWeight,
+      trustLevel: params.trustLevel,
+      flipCount,
+      distanceKm: params.distanceKm ?? null,
+      deviceFingerprint: params.deviceFingerprint || '',
+      timestamp: nowIso,
+      timestampMs: nowMs,
+    };
+
+    existingVotesMap[params.userId] = newVoteRecord;
+
+    // Recalculate totals from votesMap
+    let trueVotes = 0;
+    let falseVotes = 0;
+    let weightedTrueScore = 0;
+    let weightedFalseScore = 0;
+    const verifiedByUserIds: string[] = [];
+    const fakeReportedByUserIds: string[] = [];
+
+    for (const [uidKey, rec] of Object.entries(existingVotesMap)) {
+      if (!rec) continue;
+      const w = typeof rec.weight === 'number' && rec.weight > 0 ? rec.weight : 1.0;
+      if (rec.vote === 'true') {
+        trueVotes += 1;
+        weightedTrueScore += w;
+        verifiedByUserIds.push(uidKey);
+      } else if (rec.vote === 'false') {
+        falseVotes += 1;
+        weightedFalseScore += w;
+        fakeReportedByUserIds.push(uidKey);
+      }
+    }
+
+    weightedTrueScore = Number(weightedTrueScore.toFixed(2));
+    weightedFalseScore = Number(weightedFalseScore.toFixed(2));
+
+    const createdMs = data.createdAt ? new Date(data.createdAt).getTime() : nowMs;
+    const isOlderThan24h = nowMs - createdMs >= 24 * 60 * 60 * 1000;
+    const rawScore = Number((weightedTrueScore - weightedFalseScore).toFixed(2));
+    const score = isOlderThan24h ? Number((rawScore * 0.5).toFixed(2)) : rawScore;
+
+    const prevScore = typeof data.score === 'number' ? data.score : 0;
+    const prevStatus: RedAlertConfidenceStatus = data.confidenceStatus || 'suspicious';
+
+    let confidenceStatus: RedAlertConfidenceStatus = 'suspicious';
+    if (score >= 10) {
+      confidenceStatus = 'confirmed';
+    } else if (score >= 4) {
+      confidenceStatus = 'likely_true';
+    } else if (score <= -10) {
+      confidenceStatus = 'removed';
+    } else if (score <= -4) {
+      confidenceStatus = 'disputed';
+    } else {
+      confidenceStatus = 'suspicious';
+    }
+
+    const isRemovedAsFake = confidenceStatus === 'removed';
+    const crossedNearbyThreshold = prevScore < 4 && score >= 4;
+    const crossedConfirmedThreshold = prevScore < 10 && score >= 10;
+
+    const updatePayload: Record<string, any> = {
+      votesMap: existingVotesMap,
+      trueVotes,
+      falseVotes,
+      weightedTrueScore,
+      weightedFalseScore,
+      score,
+      confidenceStatus,
+      verifiedByUserIds,
+      fakeReportedByUserIds,
+      fakeVotesCount: falseVotes,
+      fakeReportsCount: falseVotes,
+      isFlaggedFake: confidenceStatus === 'disputed' || confidenceStatus === 'removed',
+      isRemovedAsFake,
+      ...(isRemovedAsFake
+        ? {
+            status: 'fake',
+            fakeHighlightedAt: nowIso,
+            statusChangeMessage: '❌ ප්‍රජා ඡන්ද (ලකුණු ≤ -10) මගින් අසත්‍ය බවට තහවුරු කර සංරක්ෂණය (Archive) කරන ලදී.',
+          }
+        : confidenceStatus === 'confirmed' && prevStatus !== 'confirmed'
+        ? {
+            status: 'active',
+            statusChangeMessage: '✅ ප්‍රජා ඡන්ද (ලකුණු ≥ +10) මගින් මෙම රතු එළිය පූර්ණ ලෙස තහවුරු කරන ලදී!',
+          }
+        : {}),
+      updatedAtServer: serverTimestamp(),
+    };
+
+    transaction.set(alertRef, sanitizeForFirestore(updatePayload), { merge: true });
+    transaction.set(voteSubRef, sanitizeForFirestore(newVoteRecord), { merge: true });
+
+    return {
+      score,
+      trueVotes,
+      falseVotes,
+      weightedTrueScore,
+      weightedFalseScore,
+      confidenceStatus,
+      userVote: newVoteRecord,
+      crossedNearbyThreshold,
+      crossedConfirmedThreshold,
+      alertData: { ...data, ...updatePayload, id: params.alertId },
+    };
+  });
+
+  // Mirror to fallbackDb if separate
+  if (fallbackDb !== db) {
+    setDoc(
+      doc(fallbackDb, RED_ALERTS_COLLECTION, params.alertId),
+      sanitizeForFirestore({
+        votesMap: { [params.userId]: txResult.userVote },
+        trueVotes: txResult.trueVotes,
+        falseVotes: txResult.falseVotes,
+        weightedTrueScore: txResult.weightedTrueScore,
+        weightedFalseScore: txResult.weightedFalseScore,
+        score: txResult.score,
+        confidenceStatus: txResult.confidenceStatus,
+      }),
+      { merge: true }
+    ).catch(() => {});
+  }
+
+  // Write Audit Log
+  recordAuditLog({
+    action: txResult.confidenceStatus === 'removed' ? 'alert_removed' : 'vote_cast',
+    userId: params.userId,
+    targetId: params.alertId,
+    details: {
+      vote: params.voteType,
+      weight: txResult.userVote.weight,
+      trustLevel: params.trustLevel,
+      flipCount: txResult.userVote.flipCount,
+      newScore: txResult.score,
+      confidenceStatus: txResult.confidenceStatus,
+    },
+  }).catch(() => {});
+
+  // Trigger free multi-channel push broadcast (Web Push VAPID, ntfy.sh, Telegram, Brevo Email) when crossing +4 or +10
+  if (txResult.crossedNearbyThreshold || txResult.crossedConfirmedThreshold) {
+    fetch('/api/alerts/notify-channels', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+      },
+      body: JSON.stringify({
+        alertId: params.alertId,
+        title: txResult.alertData.disasterTitleSi || txResult.alertData.title || 'හදිසි ආපදා අනතුරු ඇඟවීමක්',
+        description: txResult.alertData.description || '',
+        locationName: txResult.alertData.locationName || 'ශ්‍රී ලංකාව',
+        district: txResult.alertData.district || txResult.alertData.locationName || 'srilanka',
+        latitude: txResult.alertData.latitude || txResult.alertData.lat || 6.9271,
+        longitude: txResult.alertData.longitude || txResult.alertData.lng || 79.8612,
+        score: txResult.score,
+        confidenceStatus: txResult.confidenceStatus,
+        tier: txResult.crossedConfirmedThreshold ? 'confirmed' : 'likely_true',
+      }),
+    }).catch(() => {});
+  }
+
+  return {
+    success: true,
+    score: txResult.score,
+    trueVotes: txResult.trueVotes,
+    falseVotes: txResult.falseVotes,
+    weightedTrueScore: txResult.weightedTrueScore,
+    weightedFalseScore: txResult.weightedFalseScore,
+    confidenceStatus: txResult.confidenceStatus,
+    userVote: txResult.userVote,
+    crossedNearbyThreshold: txResult.crossedNearbyThreshold,
+    crossedConfirmedThreshold: txResult.crossedConfirmedThreshold,
+  };
 }
 
 export async function updateRedAlertStatus(id: string, status: string, reasonOrNote?: string): Promise<void> {

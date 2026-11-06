@@ -56,6 +56,8 @@ import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySiren
 
 import { broadcastPushNotification } from '../utils/fcmNotificationService';
 
+import { compressImageFile } from '../utils/imageCompressor';
+
 export interface RedAlertCreateModalProps {
 
   isOpen: boolean;
@@ -136,6 +138,10 @@ export const RedAlertCreateModal: any = ({
 
   const [activeUser, setActiveUser] = useState((currentUser || null) as any);
 
+  const [photoEvidenceUrl, setPhotoEvidenceUrl] = useState('');
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [legalTermsAccepted, setLegalTermsAccepted] = useState(true);
+  const [formErrorMsg, setFormErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
 
@@ -361,13 +367,37 @@ export const RedAlertCreateModal: any = ({
 
   }, [showVerifyModal, verifyPin, isVerifying]);
 
+  const handlePhotoEvidenceChange = async (e: any) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    setIsCompressingPhoto(true);
+    setFormErrorMsg(null);
+    try {
+      // Canvas re-encoding automatically strips EXIF GPS/camera metadata for user privacy
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1080,
+        maxHeight: 1080,
+        quality: 0.75,
+        maxSizeBytes: 220 * 1024,
+      });
+      if (compressed) {
+        setPhotoEvidenceUrl(compressed);
+      }
+    } catch {
+      setFormErrorMsg('ඡායාරූපය සැකසීමේදී දෝෂයක් ඇතිවිය.');
+    } finally {
+      setIsCompressingPhoto(false);
+    }
+  };
+
   const handlePreSubmitCheck = (e: React.FormEvent) => {
 
     e.preventDefault();
+    setFormErrorMsg(null);
 
     if (!locationName.trim()) {
 
-      alert('කරුණාකර ආපදාව සිදුවූ ස්ථානය ඇතුළත් කරන්න.');
+      setFormErrorMsg('කරුණාකර ආපදාව සිදුවූ ස්ථානය ඇතුළත් කරන්න.');
 
       return;
 
@@ -375,10 +405,15 @@ export const RedAlertCreateModal: any = ({
 
     if (selectedDisaster === 'other' && !customTitle.trim()) {
 
-      alert('කරුණාකර වෙනත් ආපදාවේ නම ඇතුළත් කරන්න.');
+      setFormErrorMsg('කරුණාකර වෙනත් ආපදාවේ නම ඇතුළත් කරන්න.');
 
       return;
 
+    }
+
+    if (!legalTermsAccepted) {
+      setFormErrorMsg('කරුණාකර අසත්‍ය අනතුරු ඇඟවීම් පළ නොකිරීමේ නීතිමය එකඟතාවය තහවුරු කරන්න.');
+      return;
     }
 
     const stored = getStoredDevicePin();
@@ -564,6 +599,17 @@ export const RedAlertCreateModal: any = ({
         verifiedByPin: true,
 
         isVoiceAlert: false,
+
+        trueVotes: 0,
+        falseVotes: 0,
+        weightedTrueScore: 0,
+        weightedFalseScore: 0,
+        score: 0,
+        confidenceStatus: 'suspicious',
+        votesMap: {},
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        hasPhotoEvidence: Boolean(photoEvidenceUrl),
+        ...(photoEvidenceUrl ? { photoEvidenceUrl } : {}),
 
         ...(selectedDisaster === 'other' && customTitle.trim() ? { customDisasterTitle: customTitle.trim() } : {}),
 
@@ -1364,6 +1410,90 @@ export const RedAlertCreateModal: any = ({
           )
 
         ),
+
+        // 4. Photo Evidence (EXIF Auto-Stripped) & Legal Disclaimer
+        h(
+          'div',
+          { className: 'space-y-3 p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300/70 dark:border-amber-800/60 text-xs' },
+          h(
+            'div',
+            { className: 'flex items-center justify-between gap-2' },
+            h(
+              'span',
+              { className: 'font-extrabold text-amber-900 dark:text-amber-200' },
+              '📸 4. සිදුවීමේ ඡායාරූප සාක්ෂිය (නිර්දේශිතයි - EXIF දත්ත ස්වයංක්‍රීයව ඉවත් කෙරේ)'
+            ),
+            photoEvidenceUrl
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => setPhotoEvidenceUrl(''),
+                    className: 'text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer',
+                  },
+                  'ඉවත් කරන්න'
+                )
+              : null
+          ),
+          h('input', {
+            type: 'file',
+            accept: 'image/jpeg,image/png,image/webp',
+            onChange: handlePhotoEvidenceChange,
+            className: 'w-full text-xs text-slate-700 dark:text-slate-200 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-red-600 file:text-white hover:file:bg-red-700 cursor-pointer',
+          }),
+          isCompressingPhoto
+            ? h('p', { className: 'text-amber-700 dark:text-amber-300 font-bold' }, '⏳ ඡායාරූපයේ EXIF පෞද්ගලික දත්ත ඉවත් කරමින් සකසයි...')
+            : !photoEvidenceUrl
+            ? h(
+                'p',
+                { className: 'text-[11px] text-amber-800 dark:text-amber-300 font-medium' },
+                '⚠️ ඉහළ/රතු මට්ටමේ අනතුරු ඇඟවීම් සඳහා ඡායාරූපයක් එක් කිරීමෙන් අවට සිටින අයට වහාම තහවුරු (+4 / +10) කිරීමට පහසු වේ.'
+              )
+            : h('p', { className: 'text-[11px] text-emerald-600 dark:text-emerald-400 font-bold' }, '✅ ඡායාරූප සාක්ෂිය එක් කරන ලදී (EXIF Metadata Stripped).')
+        ),
+
+        h(
+          'div',
+          { className: 'p-3.5 rounded-2xl bg-slate-900 text-slate-100 border border-slate-700 space-y-2 text-xs' },
+          h(
+            'div',
+            { className: 'font-black text-amber-300 flex items-center gap-1.5' },
+            h('span', null, '🛡️ ප්‍රජා තහවුරු කිරීමේ පද්ධතිය (±10 Confidence Bar):')
+          ),
+          h(
+            'p',
+            { className: 'text-[11px] text-slate-300 leading-relaxed' },
+            'තනි පුද්ගලයෙකුට කිසිවිටෙකත් තනිව රතු එළියක් තහවුරු කළ නොහැක. ඔබ පළ කළ විගස එය 🟡 සැක සහිත (තහවුරු වෙමින්) ලෙස යෙදුමේ පළ වන අතර, අවට කි.මී. 5 ඇතුළත සිටින සාමාජිකයින්ගේ ඡන්දයෙන් ලකුණු +4 (🟢 බොහෝ දුරට සත්‍ය) සහ +10 (✅ තහවුරු විය) වූ වහාම පුළුල් Push, ntfy.sh, Telegram සහ RSS නිවේදන ස්වයංක්‍රීයව බෙදාහැරේ.'
+          ),
+          h(
+            'p',
+            { className: 'text-[11px] text-sky-300 font-semibold' },
+            '📱 iPhone (iOS 16.4+) පරිශීලකයින්: යෙදුම වසා තිබියදීත් රතු එළිය Push ලබාගැනීමට Safari හි Share -> "Add to Home Screen" මගින් PWA ලෙස ස්ථාපනය කරන්න.'
+          ),
+          h(
+            'label',
+            { className: 'flex items-start gap-2 pt-2 border-t border-slate-800 cursor-pointer select-none' },
+            h('input', {
+              type: 'checkbox',
+              checked: legalTermsAccepted,
+              onChange: (e: any) => setLegalTermsAccepted(Boolean(e.target.checked)),
+              className: 'mt-0.5 w-4 h-4 rounded border-slate-500 text-red-600 focus:ring-red-500 cursor-pointer',
+            }),
+            h(
+              'span',
+              { className: 'text-[11px] text-amber-200 font-bold leading-snug' },
+              '⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි: හිතාමතා අසත්‍ය අනතුරු ඇඟවීම් පළකිරීම ශ්‍රී ලංකා නීතිය යටතේ වරදක් බවත් මගේ ගිණුම අත්හිටුවීමට හේතු වන බවත් මම පිළිගනිමි. (හදිසි නිල අංක: 119 / 110 / 117 / 1990)'
+            )
+          )
+        ),
+
+        formErrorMsg
+          ? h(
+              'div',
+              { className: 'p-3 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-400 text-rose-800 dark:text-rose-200 text-xs font-bold' },
+              `⚠️ ${formErrorMsg}`
+            )
+          : null,
 
         h(
 

@@ -22,6 +22,7 @@ import {
   HeadBucketCommand,
   CreateBucketCommand
 } from '@aws-sdk/client-s3';
+import webPush from 'web-push';
 
 dotenv.config();
 
@@ -343,26 +344,88 @@ async function startServer() {
   const authRateLimiter = createRateLimiter(25, 60 * 1000); // Max 25 auth/lookup calls/min per IP
   const adminActionRateLimiter = createRateLimiter(15, 60 * 1000); // Max 15 admin/sensitive actions/min per IP
 
-  // Server-side SHA-256 Password Hashing (NEVER pass-through sha256_v1$ on raw user input)
+  // 🔐 Server-side Cryptographic Scrypt Password Hashing (Salt + N=16384, r=8, p=1)
+  // Replaces fast SHA-256 with memory-hard scrypt while transparently migrating legacy hashes on login
   const hashRawServerPassword = (rawPass: string): string => {
     const clean = String(rawPass || '').trim();
     if (!clean) return '';
-    const payload = 'sahaya_pass_salt_2026::' + clean;
-    const hex = crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
-    return 'sha256_v1$' + hex;
+    const saltHex = crypto.randomBytes(16).toString('hex');
+    const derivedKey = crypto.scryptSync(clean, saltHex, 64, { N: 16384, r: 8, p: 1 });
+    return `scrypt_v1$${saltHex}$${derivedKey.toString('hex')}`;
   };
 
-  // Cryptographic HMAC-SHA256 Session Token Signer & Verifier (Never uses predictable PID or static fallback)
+  const verifyServerPassword = (
+    rawPass: string,
+    storedHash: string
+  ): { valid: boolean; needsUpgrade: boolean } => {
+    const cleanPass = String(rawPass || '').trim();
+    const cleanStored = String(storedHash || '').trim();
+    if (!cleanPass || !cleanStored) return { valid: false, needsUpgrade: false };
+
+    // 1. Modern scrypt_v1$<saltHex>$<hashHex>
+    if (cleanStored.startsWith('scrypt_v1$')) {
+      const parts = cleanStored.split('$');
+      if (parts.length !== 3) return { valid: false, needsUpgrade: false };
+      const [, saltHex, hashHex] = parts;
+      try {
+        const expectedBuf = Buffer.from(hashHex, 'hex');
+        const derivedBuf = crypto.scryptSync(cleanPass, saltHex, expectedBuf.length, { N: 16384, r: 8, p: 1 });
+        if (expectedBuf.length === derivedBuf.length && crypto.timingSafeEqual(expectedBuf, derivedBuf)) {
+          return { valid: true, needsUpgrade: false };
+        }
+      } catch {}
+      return { valid: false, needsUpgrade: false };
+    }
+
+    // 2. Legacy sha256_v1$<hex> (verify with timingSafeEqual and flag for immediate scrypt upgrade)
+    if (cleanStored.startsWith('sha256_v1$')) {
+      const legacyPayload = 'sahaya_pass_salt_2026::' + cleanPass;
+      const legacyHex = crypto.createHash('sha256').update(legacyPayload, 'utf8').digest('hex');
+      const expectedLegacy = 'sha256_v1$' + legacyHex;
+      const bufA = Buffer.from(cleanStored);
+      const bufB = Buffer.from(expectedLegacy);
+      if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
+        return { valid: true, needsUpgrade: true };
+      }
+      return { valid: false, needsUpgrade: false };
+    }
+
+    // 3. Legacy plaintext fallback (flag for immediate scrypt upgrade)
+    const bufA = Buffer.from(cleanStored);
+    const bufB = Buffer.from(cleanPass);
+    if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
+      return { valid: true, needsUpgrade: true };
+    }
+    return { valid: false, needsUpgrade: false };
+  };
+
+  // 🛡️ Cryptographic HMAC-SHA256 Session Secret (NEVER uses GEMINI_API_KEY, PID, or predictable values)
+  // Fails fast in production if SESSION_HMAC_SECRET / SESSION_SECRET is not configured
   const resolveSessionHmacSecret = (): string => {
-    const envSecret = String(process.env.SESSION_SECRET || process.env.INTERNAL_API_SECRET || '').trim();
+    const envSecret = String(
+      process.env.SESSION_HMAC_SECRET ||
+      process.env.SESSION_SECRET ||
+      process.env.INTERNAL_API_SECRET ||
+      ''
+    ).trim();
+
     if (envSecret.length >= 32) {
       return envSecret;
     }
-    if (envSecret.length > 0) {
-      // Derive a full 256-bit key if a shorter secret was supplied in env
-      return crypto.createHmac('sha256', 'sahaya_kdf_v1').update(envSecret).digest('hex');
-    }
+
     const secretFilePath = path.join(process.cwd(), '.sahaya_session_secret');
+    if (process.env.NODE_ENV === 'production' && !envSecret && !fs.existsSync(secretFilePath)) {
+      throw new Error(
+        'FATAL SECURITY ERROR: SESSION_HMAC_SECRET or SESSION_SECRET environment variable (min 32 chars) must be set in production!'
+      );
+    }
+
+    if (envSecret.length > 0) {
+      throw new Error(
+        'FATAL SECURITY ERROR: SESSION_HMAC_SECRET / SESSION_SECRET must be at least 32 characters long.'
+      );
+    }
+
     try {
       if (fs.existsSync(secretFilePath)) {
         const stored = fs.readFileSync(secretFilePath, 'utf8').trim();
@@ -371,7 +434,10 @@ async function startServer() {
       const generated = crypto.randomBytes(32).toString('hex');
       fs.writeFileSync(secretFilePath, generated, { encoding: 'utf8', mode: 0o600 });
       return generated;
-    } catch {
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FATAL SECURITY ERROR: Unable to load or persist SESSION_HMAC_SECRET.');
+      }
       return crypto.randomBytes(32).toString('hex');
     }
   };
@@ -478,8 +544,24 @@ async function startServer() {
     'application/pdf',
   ]);
 
+  const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.gif',
+    '.webm',
+    '.ogg',
+    '.mp3',
+    '.wav',
+    '.m4a',
+    '.mp4',
+    '.mov',
+    '.pdf',
+  ]);
+
   const isBufferDisguisedHtmlOrScript = (buf: Buffer): boolean => {
-    const head = buf.subarray(0, 512).toString('utf8').toLowerCase().trim();
+    const head = buf.subarray(0, 1024).toString('utf8').toLowerCase().trim();
     return (
       head.startsWith('<!doctype') ||
       head.startsWith('<html') ||
@@ -487,8 +569,102 @@ async function startServer() {
       head.startsWith('<svg') ||
       head.includes('onload=') ||
       head.includes('onerror=') ||
-      head.includes('javascript:')
+      head.includes('javascript:') ||
+      head.includes('<?php') ||
+      head.includes('#!/')
     );
+  };
+
+  // Binary Magic-Byte Signature Validator (prevents disguised executables/scripts renamed to .jpg/.png)
+  const validateFileMagicBytes = (buf: Buffer, mimeType: string): boolean => {
+    if (!buf || buf.length < 12) return false;
+    // JPEG: FF D8 FF
+    if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (mimeType === 'image/png') {
+      return (
+        buf[0] === 0x89 &&
+        buf[1] === 0x50 &&
+        buf[2] === 0x4e &&
+        buf[3] === 0x47
+      );
+    }
+    // GIF: GIF87a or GIF89a
+    if (mimeType === 'image/gif') {
+      const sig = buf.subarray(0, 6).toString('ascii');
+      return sig === 'GIF87a' || sig === 'GIF89a';
+    }
+    // WebP: RIFF....WEBP
+    if (mimeType === 'image/webp') {
+      return (
+        buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        buf.subarray(8, 12).toString('ascii') === 'WEBP'
+      );
+    }
+    // PDF: %PDF-
+    if (mimeType === 'application/pdf') {
+      return buf.subarray(0, 5).toString('ascii') === '%PDF-';
+    }
+    // WebM / Matroska: 1A 45 DF A3
+    if (mimeType === 'audio/webm' || mimeType === 'video/webm') {
+      return buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3;
+    }
+    // Ogg: OggS
+    if (mimeType === 'audio/ogg') {
+      return buf.subarray(0, 4).toString('ascii') === 'OggS';
+    }
+    // WAV: RIFF....WAVE
+    if (mimeType === 'audio/wav') {
+      return (
+        buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        buf.subarray(8, 12).toString('ascii') === 'WAVE'
+      );
+    }
+    // MP3 / AAC: ID3 or FF FB / FF F3 / FF F2 / FF F1 / FF F9
+    if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3' || mimeType === 'audio/aac') {
+      if (buf.subarray(0, 3).toString('ascii') === 'ID3') return true;
+      return buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0;
+    }
+    // MP4 / M4A / QuickTime: ....ftyp or ....moov or ....wide
+    if (
+      mimeType === 'video/mp4' ||
+      mimeType === 'audio/mp4' ||
+      mimeType === 'audio/x-m4a' ||
+      mimeType === 'video/quicktime'
+    ) {
+      const boxType = buf.subarray(4, 8).toString('ascii');
+      return ['ftyp', 'moov', 'mdat', 'wide', 'free'].includes(boxType);
+    }
+    return false;
+  };
+
+  // Validate reasonable image dimensions from PNG/JPEG header to block decompression bombs
+  const validateImageDimensionsSafe = (buf: Buffer, mimeType: string): boolean => {
+    try {
+      if (mimeType === 'image/png' && buf.length >= 24) {
+        const width = buf.readUInt32BE(16);
+        const height = buf.readUInt32BE(20);
+        if (width <= 0 || height <= 0 || width > 12000 || height > 12000) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Path-traversal safe filename sanitizer
+  const sanitizeUploadFileName = (rawName: string, defaultExt = '.jpg'): string => {
+    const rawStr = String(rawName || '').replace(/\0/g, '');
+    if (rawStr.includes('..') || rawStr.includes('/') || rawStr.includes('\\')) {
+      throw new Error('PATH_TRAVERSAL_DETECTED');
+    }
+    const base = path.basename(rawStr).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const ext = path.extname(base).toLowerCase();
+    const safeExt = ALLOWED_UPLOAD_EXTENSIONS.has(ext) ? ext : defaultExt;
+    const stem = path.basename(base, ext).slice(0, 48) || 'media';
+    return `${stem}${safeExt}`;
   };
 
   // -------------------------------------------------------------
@@ -497,25 +673,28 @@ async function startServer() {
   const handleMediaUpload = async (req: any, res: any) => {
     try {
       let fileBuffer: Buffer | null = null;
-      let fileName = 'media_file';
-      let fileType = req.body.type || req.body.mediaType || 'image';
+      let rawFileName = 'media_file.jpg';
+      let fileType = String(req.body.type || req.body.mediaType || 'image').trim().toLowerCase();
+      if (!['image', 'video', 'voice', 'audio', 'document'].includes(fileType)) {
+        fileType = 'image';
+      }
       let mimeType = String(req.body.mimeType || 'application/octet-stream').split(';')[0].trim().toLowerCase();
 
       if (req.file) {
         fileBuffer = req.file.buffer;
-        fileName = req.file.originalname || 'media_file';
+        rawFileName = req.file.originalname || 'media_file.jpg';
         if (req.file.mimetype) mimeType = String(req.file.mimetype).split(';')[0].trim().toLowerCase();
       } else if (req.body.fileBase64) {
-        let base64Data = req.body.fileBase64;
+        let base64Data = String(req.body.fileBase64 || '');
         if (base64Data.includes(',')) {
           const match = base64Data.match(/^data:([^;]+);base64,/);
           if (match && match[1]) mimeType = String(match[1]).split(';')[0].trim().toLowerCase();
           base64Data = base64Data.split(',')[1];
         }
         fileBuffer = Buffer.from(base64Data, 'base64');
-        fileName = req.body.fileName || `media_${Date.now()}`;
+        rawFileName = req.body.fileName || `media_${Date.now()}.jpg`;
         if (req.body.mediaType) {
-          fileType = req.body.mediaType;
+          fileType = String(req.body.mediaType).trim().toLowerCase();
         }
       }
 
@@ -530,10 +709,46 @@ async function startServer() {
         else if (fileType === 'voice' || fileType === 'audio') mimeType = 'audio/webm';
       }
 
-      // Enforce Strict MIME Type & Content Sniffing Allowlist (Prevents Stored XSS via HTML/SVG/JS uploads)
-      if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType) || isBufferDisguisedHtmlOrScript(fileBuffer)) {
+      // Enforce Per-Category File Size Limits (Images <= 10MB, Audio <= 15MB, Video <= 25MB)
+      const maxBytes =
+        mimeType.startsWith('image/')
+          ? 10 * 1024 * 1024
+          : mimeType.startsWith('audio/')
+          ? 15 * 1024 * 1024
+          : 25 * 1024 * 1024;
+      if (fileBuffer.length > maxBytes) {
+        return res.status(413).json({
+          error: `ගොනුවේ විශාලත්වය උපරිම සීමාව (${Math.round(maxBytes / (1024 * 1024))}MB) ඉක්මවා ඇත.`,
+        });
+      }
+
+      const defaultExt =
+        mimeType === 'image/png'
+          ? '.png'
+          : mimeType === 'image/webp'
+          ? '.webp'
+          : mimeType.startsWith('audio/')
+          ? '.webm'
+          : mimeType.startsWith('video/')
+          ? '.mp4'
+          : '.jpg';
+
+      let fileName = 'media_file.jpg';
+      try {
+        fileName = sanitizeUploadFileName(rawFileName, defaultExt);
+      } catch {
+        return res.status(400).json({ error: 'අනාරක්ෂිත ගොනු නාමයකි (Path traversal blocked).' });
+      }
+
+      // Enforce Strict MIME Type, Binary Magic Bytes, Image Dimensions & Script Sniffing
+      if (
+        !ALLOWED_UPLOAD_MIME_TYPES.has(mimeType) ||
+        isBufferDisguisedHtmlOrScript(fileBuffer) ||
+        !validateFileMagicBytes(fileBuffer, mimeType) ||
+        !validateImageDimensionsSafe(fileBuffer, mimeType)
+      ) {
         return res.status(400).json({
-          error: 'අනාරක්ෂිත ගොනු වර්ගයකි. ඡායාරූප (JPG/PNG/WebP), හඬ (WebM/MP3) හෝ වීඩියෝ (MP4) පමණක් අවසර ඇත.',
+          error: 'අනාරක්ෂිත හෝ විකෘති කළ ගොනු වර්ගයකි. වලංගු ඡායාරූප (JPG/PNG/WebP), හඬ (WebM/MP3) හෝ වීඩියෝ (MP4) පමණක් අවසර ඇත.',
         });
       }
 
@@ -547,7 +762,7 @@ async function startServer() {
           const now = new Date();
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');
-          const cleanName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const cleanName = fileName;
           const fileKey = `${fileType}s/${year}/${month}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${cleanName}`;
 
           await s3Client.send(new PutObjectCommand({
@@ -682,7 +897,17 @@ async function startServer() {
   // -------------------------------------------------------------
   app.get('/api/storage/file/:fileKey(*)', async (req: any, res: any) => {
     try {
-      const fileKey = decodeURIComponent(req.params.fileKey);
+      const fileKey = decodeURIComponent(String(req.params.fileKey || '')).replace(/\0/g, '');
+      // Block path traversal or unauthorized bucket key probing
+      if (
+        !fileKey ||
+        fileKey.includes('..') ||
+        fileKey.includes('\\') ||
+        fileKey.startsWith('/') ||
+        !/^(images|videos|voices|audios|documents)\/\d{4}\/\d{2}\/[a-zA-Z0-9._-]+$/.test(fileKey)
+      ) {
+        return res.status(400).send('Invalid file key');
+      }
 
       if (!s3Client) {
         return res.status(503).send('Cloudflare R2 Object Storage not configured');
@@ -938,12 +1163,77 @@ async function startServer() {
     'gemini-flash-latest',
     'gemini-3.1-flash-lite',
   ];
+
+  // 🛡️ AI Prompt Injection Sanitizer & Per-Actor Daily Quota Limiter
+  const PROMPT_INJECTION_PATTERNS = [
+    /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|rules|prompts)/gi,
+    /disregard\s+(all\s+)?(previous|prior|above)\s+(instructions|rules|prompts)/gi,
+    /system\s*prompt\s*:/gi,
+    /you\s+are\s+now\s+(dan|a\s+different|unrestricted)/gi,
+    /reveal\s+(your\s+)?(system\s+prompt|api\s+key|secret)/gi,
+    /<script[\s\S]*?>[\s\S]*?<\/script>/gi,
+  ];
+
+  const sanitizeAiPromptInput = (raw: string, maxLen = 1500): string => {
+    let cleaned = String(raw || '').replace(/\0/g, '').trim().slice(0, maxLen);
+    for (const pattern of PROMPT_INJECTION_PATTERNS) {
+      cleaned = cleaned.replace(pattern, '[filtered]');
+    }
+    return cleaned;
+  };
+
+  const aiDailyQuotaMap = new Map<string, { count: number; dayKey: string }>();
+  const enforceAiAbuseProtection = (req: any, res: any): boolean => {
+    const session = extractSessionFromReq(req);
+    const clientGuard = String(req.headers['x-sahaya-client-guard'] || '').trim();
+    const origin = String(req.headers['origin'] || req.headers['referer'] || '').trim();
+    const isSameAppOrigin =
+      !origin ||
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      origin.includes('supporservice.online') ||
+      origin.includes('sahayasewa') ||
+      origin.includes('.run.app') ||
+      origin.includes('aistudio.google.com');
+
+    if (!session && clientGuard !== 'sahaya_v1_secure' && !isSameAppOrigin) {
+      res.status(401).json({ error: 'Unauthorized AI endpoint access.' });
+      return false;
+    }
+
+    const actorKey = session?.uid || String(req.ip || req.socket?.remoteAddress || 'ip_anon');
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const maxDaily = session ? 120 : 45; // Authenticated users get 120/day, guests 45/day
+
+    const rec = aiDailyQuotaMap.get(actorKey);
+    if (!rec || rec.dayKey !== dayKey) {
+      aiDailyQuotaMap.set(actorKey, { count: 1, dayKey });
+      return true;
+    }
+    if (rec.count >= maxDaily) {
+      res.status(429).json({
+        error: 'දෛනික AI විමසුම් සීමාව ඉක්මවා ඇත. කරුණාකර පසුව නැවත උත්සාහ කරන්න.',
+        fallback: true,
+        reply: '',
+      });
+      return false;
+    }
+    rec.count += 1;
+    return true;
+  };
+
   app.post('/api/chat', aiRateLimiter, async (req: any, res: any) => {
     try {
-      const { message, language = 'si', conversationHistory = [], mode = 'full', locationContext = '' } = req.body;
-      if (!message || typeof message !== 'string') {
+      if (!enforceAiAbuseProtection(req, res)) return;
+      const { message: rawMessage, language = 'si', conversationHistory = [], mode = 'full', locationContext = '' } = req.body;
+      if (!rawMessage || typeof rawMessage !== 'string') {
         return res.status(400).json({ error: 'Message is required' });
       }
+      if (rawMessage.length > 2000) {
+        return res.status(400).json({ error: 'පණිවිඩය දිග වැඩිය (උපරිම අකුරු 2000).' });
+      }
+      const message = sanitizeAiPromptInput(rawMessage, 1500);
+      const safeLocationContext = sanitizeAiPromptInput(String(locationContext || ''), 120);
 
       quotaStats.totalAiRequests += 1;
 
@@ -1163,28 +1453,30 @@ When a user asks how to fill out ANY form in Sahaya Sewa (පෝරමයක් 
 Guidelines:
 - Language: Respond naturally and fluently in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}. Even if the user types in Singlish (e.g. "mata udaw one"), understand it completely and reply clearly in ${language === 'ta' ? 'Tamil' : language === 'en' ? 'English' : 'Sinhala'}.
 - Mode: ${mode === 'auth' ? 'User is currently on the Login/Registration screen.' : 'User is inside the main app dashboard.'}
-- User's Current Location: ${locationContext || 'Sri Lanka'}. Always address the user's exact question or problem directly in the first paragraph!`;
+- User's Current Location: ${safeLocationContext || 'Sri Lanka'}. Always address the user's exact question or problem directly in the first paragraph!`;
 
-      // Sanitize multi-turn conversation history for Gemini API:
+      // Sanitize multi-turn conversation history for Gemini API (cap at last 10 turns & sanitize each turn):
       // 1. Must alternate user / model
       // 2. Must begin with a 'user' turn (skip leading model turns like welcome greeting)
       // 3. Consecutive turns with same role must be merged
-      const rawHistory = Array.isArray(conversationHistory) ? conversationHistory : [];
+      const rawHistory = Array.isArray(conversationHistory) ? conversationHistory.slice(-10) : [];
       const sanitizedTurns: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
       for (const h of rawHistory) {
         if (!h || !h.text) continue;
+        const cleanTurnText = sanitizeAiPromptInput(String(h.text), 800);
+        if (!cleanTurnText) continue;
         const role: 'user' | 'model' = h.role === 'model' ? 'model' : 'user';
         if (sanitizedTurns.length === 0 && role === 'model') {
           continue; // Gemini API requires the first turn in contents to have role: 'user'
         }
         const lastTurn = sanitizedTurns[sanitizedTurns.length - 1];
         if (lastTurn && lastTurn.role === role) {
-          lastTurn.parts[0].text += `\n${String(h.text)}`;
+          lastTurn.parts[0].text += `\n${cleanTurnText}`;
         } else {
           sanitizedTurns.push({
             role,
-            parts: [{ text: String(h.text) }],
+            parts: [{ text: cleanTurnText }],
           });
         }
       }
@@ -1246,8 +1538,9 @@ Guidelines:
   // -------------------------------------------------------------
   app.post('/api/ai/voice-parse', aiRateLimiter, async (req: any, res: any) => {
     try {
+      if (!enforceAiAbuseProtection(req, res)) return;
       const { transcript, language = 'si', locationContext } = req.body;
-      const cleanText = String(transcript || '').trim();
+      const cleanText = sanitizeAiPromptInput(String(transcript || ''), 1000);
 
       const ai = getGenAI();
       if (!ai && !cleanText) {
@@ -1361,10 +1654,12 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   app.post('/api/translate', aiRateLimiter, async (req: any, res: any) => {
     try {
-      const { text, targetLanguage = 'si' } = req.body;
-      if (!text || typeof text !== 'string') {
+      if (!enforceAiAbuseProtection(req, res)) return;
+      const { text: rawText, targetLanguage = 'si' } = req.body;
+      if (!rawText || typeof rawText !== 'string') {
         return res.status(400).json({ error: 'Text is required' });
       }
+      const text = sanitizeAiPromptInput(rawText, 1500);
 
       const ai = getGenAI();
       if (!ai) {
@@ -1500,7 +1795,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       }
 
       // Prevent pass-the-hash attacks: never allow a pre-hashed string as raw password input
-      if (rawPass.startsWith('sha256_v1$')) {
+      if (rawPass.startsWith('sha256_v1$') || rawPass.startsWith('scrypt_v1$')) {
         return res.status(401).json({ error: 'Invalid password format' });
       }
 
@@ -1518,31 +1813,34 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         }
       }
 
-      // If user record exists on the server/Firestore, strictly verify the password hash
+      // If user record exists on the server/Firestore, strictly verify the password hash with scrypt + timingSafeEqual
       if (targetUser && (targetUser.password || targetUser.key || targetUser.tempPassword || targetUser.temporaryPassword)) {
         if (!rawPass) {
           return res.status(401).json({ error: 'Password required' });
         }
-        const hashedInput = hashRawServerPassword(rawPass);
         const storedPerm = String(targetUser.password || targetUser.key || '').trim();
         const storedTemp = String(targetUser.tempPassword || targetUser.temporaryPassword || '').trim();
 
-        const isPermMatch = Boolean(storedPerm && (storedPerm === hashedInput || (!storedPerm.startsWith('sha256_v1$') && storedPerm === rawPass)));
-        const isTempMatch = Boolean(storedTemp && (storedTemp === hashedInput || (!storedTemp.startsWith('sha256_v1$') && storedTemp === rawPass)));
+        const permCheck = verifyServerPassword(rawPass, storedPerm);
+        const tempCheck = verifyServerPassword(rawPass, storedTemp);
+
+        const isPermMatch = permCheck.valid;
+        const isTempMatch = tempCheck.valid;
 
         if (!isPermMatch && !isTempMatch) {
           return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Upgrade legacy plaintext permanent password in Firestore automatically
-        if (isPermMatch && !storedPerm.startsWith('sha256_v1$')) {
-          targetUser.password = hashedInput;
-          targetUser.key = hashedInput;
+        // Automatically upgrade legacy sha256_v1$ or plaintext password to scrypt_v1$ in Firestore
+        if (isPermMatch && permCheck.needsUpgrade) {
+          const upgradedScryptHash = hashRawServerPassword(rawPass);
+          targetUser.password = upgradedScryptHash;
+          targetUser.key = upgradedScryptHash;
           seedUser(targetUser);
           if (adminDb && targetUser.id) {
             await adminDb.collection('users').doc(String(targetUser.id)).set({
-              password: hashedInput,
-              key: hashedInput,
+              password: upgradedScryptHash,
+              key: upgradedScryptHash,
               updatedAt: new Date().toISOString(),
             }, { merge: true }).catch(() => {});
           }
@@ -1627,7 +1925,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       const numeric = cleanNic.replace(/[^0-9]/g, '');
       const cleanNewPass = String(newPassword || '').trim();
 
-      if (!cleanNic || !cleanNewPass || cleanNewPass.startsWith('sha256_v1$')) {
+      if (!cleanNic || !cleanNewPass || cleanNewPass.startsWith('sha256_v1$') || cleanNewPass.startsWith('scrypt_v1$')) {
         return res.status(400).json({ error: 'Valid userId and plaintext newPassword required' });
       }
 
@@ -1735,7 +2033,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       const rawTargetId = String(userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
 
-      if (!cleanPass || !cleanNic || cleanPass.startsWith('sha256_v1$')) {
+      if (!cleanPass || !cleanNic || cleanPass.startsWith('sha256_v1$') || cleanPass.startsWith('scrypt_v1$')) {
         return res.status(400).json({ error: 'Valid plaintext password and user identifier required' });
       }
 
@@ -2005,6 +2303,332 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       return res.json({ success: true, topic: cleanTopic });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // 🔔 FREE MULTI-CHANNEL RED ALERT DISPATCHER (Rs. 0 Cost Architecture)
+  // Channel 1: Web Push (VAPID RFC8030/RFC8291)
+  // Channel 2: ntfy.sh Public Topic Push (https://ntfy.sh/lanka24-<district>)
+  // Channel 3: Telegram Bot Channel/Group Broadcast
+  // Channel 4: Brevo Email API (300/day free tier)
+  // Channel 5: Public RSS 2.0 XML Feed (/feed.xml & /api/alerts/rss.xml)
+  // -------------------------------------------------------------
+  const resolveVapidKeys = (): { publicKey: string; privateKey: string; subject: string } => {
+    const envPub = String(process.env.VAPID_PUBLIC_KEY || '').trim();
+    const envPriv = String(process.env.VAPID_PRIVATE_KEY || '').trim();
+    const subject = String(process.env.VAPID_SUBJECT || 'mailto:admin@sahayasewa.lk').trim();
+    if (envPub && envPriv) {
+      return { publicKey: envPub, privateKey: envPriv, subject };
+    }
+    const vapidPath = path.join(process.cwd(), '.sahaya_vapid_keys.json');
+    try {
+      if (fs.existsSync(vapidPath)) {
+        const parsed = JSON.parse(fs.readFileSync(vapidPath, 'utf8'));
+        if (parsed.publicKey && parsed.privateKey) {
+          return { publicKey: parsed.publicKey, privateKey: parsed.privateKey, subject };
+        }
+      }
+      const generated = webPush.generateVAPIDKeys();
+      fs.writeFileSync(vapidPath, JSON.stringify(generated, null, 2), { encoding: 'utf8', mode: 0o600 });
+      return { publicKey: generated.publicKey, privateKey: generated.privateKey, subject };
+    } catch {
+      const generated = webPush.generateVAPIDKeys();
+      return { publicKey: generated.publicKey, privateKey: generated.privateKey, subject };
+    }
+  };
+
+  const vapidConfig = resolveVapidKeys();
+  try {
+    webPush.setVapidDetails(vapidConfig.subject, vapidConfig.publicKey, vapidConfig.privateKey);
+  } catch (vapidErr: any) {
+    console.warn('WebPush VAPID initialization notice:', vapidErr?.message || vapidErr);
+  }
+
+  const inMemoryWebPushSubscriptions = new Map<string, any>();
+  const recentConfirmedAlertsFeed: Array<{
+    id: string;
+    title: string;
+    description: string;
+    locationName: string;
+    district: string;
+    score: number;
+    confidenceStatus: string;
+    pubDate: string;
+  }> = [];
+
+  app.get('/api/webpush/vapid-public-key', (_req: any, res: any) => {
+    res.json({
+      success: true,
+      publicKey: vapidConfig.publicKey,
+      ntfyPrefix: process.env.NTFY_TOPIC_PREFIX || 'lanka24',
+      rssUrl: '/feed.xml',
+    });
+  });
+
+  app.post('/api/webpush/subscribe', authRateLimiter, async (req: any, res: any) => {
+    try {
+      const { userId, subscription, lat, lng, radiusKm = 15, categories = ['all'] } = req.body || {};
+      if (!subscription || !subscription.endpoint) {
+        return res.status(400).json({ error: 'Valid PushSubscription object required' });
+      }
+      const subKey = String(userId || crypto.createHash('sha256').update(subscription.endpoint).digest('hex').slice(0, 24));
+      const record = {
+        userId: subKey,
+        subscription,
+        lat: typeof lat === 'number' ? lat : null,
+        lng: typeof lng === 'number' ? lng : null,
+        radiusKm: Number(radiusKm) || 15,
+        categories: Array.isArray(categories) ? categories : ['all'],
+        updatedAt: new Date().toISOString(),
+      };
+      inMemoryWebPushSubscriptions.set(subKey, record);
+
+      if (adminDb) {
+        await adminDb.collection('subscriptions').doc(subKey).set(record, { merge: true }).catch(() => {});
+      }
+      return res.json({ success: true, subscriptionId: subKey });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  const notifiedAlertMilestones = new Set<string>();
+
+  app.post('/api/alerts/notify-channels', authRateLimiter, async (req: any, res: any) => {
+    try {
+      const {
+        alertId,
+        title = 'හදිසි ආපදා අනතුරු ඇඟවීමක්',
+        description = '',
+        locationName = 'ශ්‍රී ලංකාව',
+        district = 'srilanka',
+        latitude = 6.9271,
+        longitude = 79.8612,
+        score = 4,
+        confidenceStatus = 'likely_true',
+        tier = 'likely_true',
+      } = req.body || {};
+
+      if (!alertId) {
+        return res.status(400).json({ error: 'alertId required' });
+      }
+
+      const milestoneKey = `${alertId}_${tier}`;
+      if (notifiedAlertMilestones.has(milestoneKey)) {
+        return res.json({ success: true, deduplicated: true });
+      }
+      notifiedAlertMilestones.add(milestoneKey);
+
+      const cleanTitle = String(title).slice(0, 120);
+      const cleanDesc = String(description || `${locationName} ප්‍රදේශයෙන් ප්‍රජාව තහවුරු කළ ආපදා තත්ත්වයක්.`).slice(0, 350);
+      const cleanLoc = String(locationName).slice(0, 80);
+      const districtSlug = String(district || locationName || 'srilanka')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '') || 'srilanka';
+
+      // Add to RSS feed buffer (keep latest 20)
+      recentConfirmedAlertsFeed.unshift({
+        id: String(alertId),
+        title: `${tier === 'confirmed' ? '✅ [තහවුරු විය]' : '🟢 [බොහෝ දුරට සත්‍ය]'} ${cleanTitle} — ${cleanLoc}`,
+        description: `${cleanDesc} (ලකුණු: ${score >= 0 ? '+' + score : score}) | හදිසි ඇමතුම්: 119 / 110 / 117 / 1990`,
+        locationName: cleanLoc,
+        district: districtSlug,
+        score: Number(score),
+        confidenceStatus: String(confidenceStatus),
+        pubDate: new Date().toUTCString(),
+      });
+      if (recentConfirmedAlertsFeed.length > 20) {
+        recentConfirmedAlertsFeed.length = 20;
+      }
+
+      const channelResults: Record<string, string> = {};
+
+      // 1. Web Push (VAPID)
+      try {
+        const pushPayload = JSON.stringify({
+          title: `🚨 ${cleanTitle} (${cleanLoc})`,
+          body: `${cleanDesc}\n⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි. හදිසි: 119 / 117 / 1990`,
+          tag: `sahaya_red_alert_${alertId}`,
+          url: `/?alertId=${encodeURIComponent(String(alertId))}`,
+          alertId: String(alertId),
+          latitude,
+          longitude,
+          score,
+          confidenceStatus,
+        });
+
+        let webPushSent = 0;
+        for (const [subKey, subRec] of inMemoryWebPushSubscriptions.entries()) {
+          if (subRec?.subscription?.endpoint) {
+            try {
+              await webPush.sendNotification(subRec.subscription, pushPayload);
+              webPushSent++;
+            } catch (wpErr: any) {
+              if (wpErr?.statusCode === 404 || wpErr?.statusCode === 410) {
+                inMemoryWebPushSubscriptions.delete(subKey);
+              }
+            }
+          }
+        }
+        channelResults.webPush = `sent_${webPushSent}`;
+      } catch (e: any) {
+        channelResults.webPush = `err_${e?.message || 'failed'}`;
+      }
+
+      // 2. ntfy.sh Free Topic Push (https://ntfy.sh/lanka24-<district>)
+      try {
+        const ntfyPrefix = String(process.env.NTFY_TOPIC_PREFIX || 'lanka24').trim();
+        const ntfyTopic = `${ntfyPrefix}-${districtSlug}`;
+        await fetch(`https://ntfy.sh/${encodeURIComponent(ntfyTopic)}`, {
+          method: 'POST',
+          headers: {
+            Title: `Red Alert: ${cleanLoc}`,
+            Priority: tier === 'confirmed' ? 'urgent' : 'high',
+            Tags: 'rotating_light,warning,sri_lanka',
+          },
+          body: `🚨 ${cleanTitle} (${cleanLoc})\n${cleanDesc}\nලකුණු: ${score >= 0 ? '+' + score : score}\nහදිසි: 119 / 110 / 117 / 1990\n⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද නිල නොවන අනතුරු ඇඟවීමකි.`,
+        }).catch(() => {});
+        channelResults.ntfy = `published_${ntfyTopic}`;
+      } catch {
+        channelResults.ntfy = 'skipped';
+      }
+
+      // 3. Telegram Bot Channel Broadcast
+      if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        try {
+          const tgMsg =
+            `${tier === 'confirmed' ? '🚨✅ *තහවුරු වූ රතු එළිය (CONFIRMED RED ALERT)*' : '🟢 *බොහෝ දුරට සත්‍ය ආපදා වාර්තාවක්*'}\n\n` +
+            `📌 *ආපදාව:* ${cleanTitle}\n` +
+            `📍 *ස්ථානය:* ${cleanLoc}\n` +
+            `📊 *ප්‍රජා විශ්වාස ලකුණු:* ${score >= 0 ? '+' + score : score}\n` +
+            `📝 *විස්තරය:* ${cleanDesc}\n\n` +
+            `📞 *නිල හදිසි අංක:* 119 (පොලිසිය) | 110 (ගිනි නිවීම) | 117 (ආපදා කළමනාකරණ) | 1990 (සුව සැරිය)\n` +
+            `⚠️ _ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි._`;
+
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: TELEGRAM_CHAT_ID,
+              text: tgMsg,
+              parse_mode: 'Markdown',
+            }),
+          }).catch(() => {});
+          channelResults.telegram = 'sent';
+        } catch {
+          channelResults.telegram = 'failed';
+        }
+      }
+
+      // 4. Brevo Email API (Free Tier 300/day when BREVO_API_KEY is configured)
+      const brevoKey = String(process.env.BREVO_API_KEY || '').trim();
+      const brevoRecipient = String(process.env.BREVO_ALERT_RECIPIENT || '').trim();
+      if (brevoKey && brevoRecipient && tier === 'confirmed') {
+        try {
+          await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'api-key': brevoKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sender: {
+                name: 'Lanka24 Sahaya Red Alert',
+                email: process.env.BREVO_SENDER_EMAIL || 'alerts@sahayasewa.lk',
+              },
+              to: [{ email: brevoRecipient }],
+              subject: `🚨 [තහවුරු විය] ${cleanTitle} - ${cleanLoc}`,
+              htmlContent: `<h2>🚨 ${cleanTitle} (${cleanLoc})</h2><p>${cleanDesc}</p><p><strong>ලකුණු:</strong> +${score}</p><p><strong>නිල හදිසි අංක:</strong> 119 / 110 / 117 / 1990</p><hr/><p><small>⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි.</small></p>`,
+            }),
+          }).catch(() => {});
+          channelResults.brevoEmail = 'sent';
+        } catch {
+          channelResults.brevoEmail = 'failed';
+        }
+      }
+
+      return res.json({
+        success: true,
+        alertId,
+        tier,
+        channels: channelResults,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 📡 Public RSS 2.0 XML Feed (/feed.xml & /api/alerts/rss.xml) — 100% Free Open Standard
+  const escapeXml = (unsafe: string): string =>
+    String(unsafe || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+  app.get(['/feed.xml', '/api/alerts/rss.xml'], async (_req: any, res: any) => {
+    try {
+      let items = [...recentConfirmedAlertsFeed];
+
+      // Also pull latest active alerts from Firestore if available
+      if (adminDb && items.length < 5) {
+        try {
+          const snap = await adminDb
+            .collection('red_alerts')
+            .orderBy('createdAt', 'desc')
+            .limit(20)
+            .get();
+          snap.forEach((docSnap: any) => {
+            const d = docSnap.data() || {};
+            if (d.confidenceStatus === 'removed' || d.status === 'fake' || d.status === 'cancelled') return;
+            if (!items.some((x) => x.id === docSnap.id)) {
+              items.push({
+                id: docSnap.id,
+                title: `${d.disasterTitleSi || d.title || 'හදිසි ආපදා අනතුරු ඇඟවීමක්'} — ${d.locationName || 'ශ්‍රී ලංකාව'}`,
+                description: `${d.description || ''} (ලකුණු: ${d.score ?? 0}) | ⚠️ ප්‍රජාව විසින් වාර්තා කරන ලද, නිල නොවන අනතුරු ඇඟවීමකි. හදිසි: 119 / 110 / 117 / 1990`,
+                locationName: d.locationName || 'ශ්‍රී ලංකාව',
+                district: d.district || 'srilanka',
+                score: Number(d.score || 0),
+                confidenceStatus: String(d.confidenceStatus || 'suspicious'),
+                pubDate: d.createdAt ? new Date(d.createdAt).toUTCString() : new Date().toUTCString(),
+              });
+            }
+          });
+        } catch {}
+      }
+
+      const xmlItems = items
+        .slice(0, 20)
+        .map(
+          (item) => `    <item>
+      <guid isPermaLink="false">${escapeXml(item.id)}</guid>
+      <title>${escapeXml(item.title)}</title>
+      <description>${escapeXml(item.description)}</description>
+      <category>${escapeXml(item.confidenceStatus)}</category>
+      <pubDate>${escapeXml(item.pubDate)}</pubDate>
+    </item>`
+        )
+        .join('\n');
+
+      const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Lanka24online — සහය සේවා රතු එළිය හදිසි අනතුරු ඇඟවීම් (Red Alerts RSS)</title>
+    <link>https://supporservice.online</link>
+    <description>ප්‍රජාව විසින් වාර්තා කර තහවුරු කරන ලද හදිසි ආපදා නිවේදන (නිල නොවන ප්‍රජා අනතුරු ඇඟවීම් පද්ධතිය - 119 / 110 / 117 / 1990)</description>
+    <language>si-LK</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+${xmlItems}
+  </channel>
+</rss>`;
+
+      res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      return res.status(200).send(rssXml);
+    } catch (err: any) {
+      return res.status(500).send('Failed to generate RSS feed');
     }
   });
 

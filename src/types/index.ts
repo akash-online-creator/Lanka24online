@@ -483,6 +483,16 @@ export interface User {
   accountDepositId?: string;
   privacySettings?: Record<string, any>;
   sPoints?: any;
+  helpedCount?: number;
+  VerifyCount?: number;
+  rating?: number;
+  ratingCount?: number;
+  isIdentityVerified?: boolean;
+  deviceFingerprint?: string;
+  voteFlipCount?: number;
+  verifiedAlertCount?: number;
+  alertAccuracyRate?: number;
+  isCommunityVerifier?: boolean;
 }
 
 export interface PendingProfileUpdate {
@@ -1198,6 +1208,27 @@ export interface RedAlertItem {
   comments: RedAlertComment[];
   fakeReports: RedAlertFakeReport[];
   isFlaggedFake?: boolean;
+  isRemovedAsFake?: boolean;
+  fakeVotesCount?: number;
+  fakeReportedByUserIds?: string[];
+  fakeReporterDetails?: {
+    userId: string;
+    name: string;
+    phone: string;
+    reportedAt: string;
+  }[];
+  verifiedByUserIds?: string[];
+  trueVotes?: number;
+  falseVotes?: number;
+  weightedTrueScore?: number;
+  weightedFalseScore?: number;
+  score?: number;
+  confidenceStatus?: RedAlertConfidenceStatus;
+  votesMap?: Record<string, RedAlertVoteRecord>;
+  expiresAt?: string;
+  district?: string;
+  photoEvidenceUrl?: string;
+  hasPhotoEvidence?: boolean;
   verifiedByPin?: boolean;
   adminActionNote?: string;
   resolvedAt?: string;
@@ -1209,6 +1240,37 @@ export interface RedAlertItem {
     reporterName?: string;
     notificationText?: string;
   };
+}
+
+export type RedAlertConfidenceStatus =
+  | 'confirmed'    // ≥ +10 (✅ තහවුරු විය - රතු)
+  | 'likely_true'  // +4 සිට +9 (🟢 බොහෝ දුරට සත්‍ය - කොළ)
+  | 'suspicious'   // -3 සිට +3 (🟡 සැක සහිත - කහ)
+  | 'disputed'     // -4 සිට -9 (🟠 තර්කානුකූල / මතභේදාත්මක - තැඹිලි)
+  | 'removed'      // ≤ -10 (❌ අසත්‍ය ලෙස ඉවත් විය - කළු)
+  | 'expired';     // පැය 24 කින් ඡන්ද 0 (⏳ කල් ඉකුත්)
+
+export interface RedAlertVoteRecord {
+  userId: string;
+  userName?: string;
+  vote: 'true' | 'false';
+  weight: number;
+  trustLevel: 'new' | 'normal' | 'trusted' | 'moderator';
+  flipCount: number;
+  distanceKm?: number | null;
+  deviceFingerprint?: string;
+  timestamp: string;
+  timestampMs: number;
+}
+
+export interface AuditLogRecord {
+  id?: string;
+  action: 'alert_created' | 'vote_cast' | 'alert_removed' | 'admin_action';
+  userId: string;
+  targetId: string;
+  details?: Record<string, any>;
+  timestamp: string;
+  timestampMs: number;
 }
 
 // ==========================================
