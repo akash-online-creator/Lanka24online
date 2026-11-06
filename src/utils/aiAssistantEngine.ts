@@ -420,7 +420,7 @@ export async function askAssistant(
 
   // 2.5 Semantic Caching (Only for standalone / initial queries, never override multi-turn follow-up context)
   if (history.length <= 1) {
-    const cachedAi = getClientCachedAiResponse(`${mode}:${clean}`);
+    const cachedAi = getClientCachedAiResponse(`v3:${mode}:${clean}`);
     if (cachedAi) {
       const extractedActions = resolveActionsFromText(clean + ' ' + cachedAi.response, userLang, mode);
       return {
@@ -449,7 +449,7 @@ export async function askAssistant(
       const data = await res.json();
       if (data.reply && !data.fallback) {
         if (history.length <= 1) {
-          setClientCachedAiResponse(`${mode}:${clean}`, data.reply);
+          setClientCachedAiResponse(`v3:${mode}:${clean}`, data.reply);
         }
 
         // Automatically submit novel question & Gemini answer to Admin Panel for review
@@ -563,7 +563,7 @@ function resolveAuthKnowledge(
 
 **Yes, 100%!** All your personal data, identity documents, and interactions are strictly secured:
 
-1. 🔒 **NIC & Profile Privacy**: Your National Identity Card (NIC) photo and private details are **never published publicly**. They are exclusively accessible to verified system administrators solely for identity authentication and anti-fraud verification.
+1. 🔒 **NIC Privacy**: Your National Identity Card (NIC) front photo and private details are **never published publicly**. They are exclusively accessible to verified system administrators solely for identity authentication and anti-fraud verification.
 2. 🛡️ **Cloud Encryption (SSL/TLS)**: All data transmissions and stored records are secured using enterprise 256-bit SSL encryption and protected by Firestore Security Rules.
 3. 🚫 **No Third-Party Sharing**: We never sell, share, or disclose your phone numbers, addresses, or photos to any advertisers or third-party entities.
 4. 🤝 **Trusted Community**: Identity verification ensures real, authentic community members for mutual aid and safety.`,
@@ -571,7 +571,7 @@ function resolveAuthKnowledge(
           { type: 'switch_to_register', label: '📝 Create Secure Account' },
           { type: 'switch_to_login', label: '🔑 Sign In' },
         ],
-        quickChips: ['How to register?', 'What photos are needed?'],
+        quickChips: ['How to register?', 'What photo is needed?'],
       };
     } else if (lang === 'ta') {
       return {
@@ -594,7 +594,7 @@ function resolveAuthKnowledge(
 
 **ඔව්, 100% ක්ම සුරක්ෂිතයි!** ඔබගේ දත්ත සහ පුද්ගලික තොරතුරු පද්ධතිය තුළ ඉහළම ආරක්ෂාවක් සහිතව (Highly Secure & Encrypted) පවත්වාගෙන යනු ලැබේ:
 
-1. 🔒 **හැඳුනුම්පත් (NIC) සහ තොරතුරු රහස්‍යභාවය**: ඔබ ලබාදෙන ජාතික හැඳුනුම්පත් (NIC) ඡායාරූප හෝ පුද්ගලික රහස්‍ය තොරතුරු **කිසිදු සාමාන්‍ය පරිශීලකයෙකුට හෝ ප්‍රසිද්ධියට පත් නොවේ**. ඒවා පරිශීලනය කරන්නේ ගිණුම සත්‍යාපනය (Verification) සඳහා බලයලත් Admin වරුන් විසින් පමණි.
+1. 🔒 **හැඳුනුම්පත් (NIC) සහ තොරතුරු රහස්‍යභාවය**: ඔබ ලබාදෙන ජාතික හැඳුනුම්පතේ ඉදිරිපස (NIC Front) ඡායාරූපය හෝ පුද්ගලික රහස්‍ය තොරතුරු **කිසිදු සාමාන්‍ය පරිශීලකයෙකුට හෝ ප්‍රසිද්ධියට පත් නොවේ**. ඒවා පරිශීලනය කරන්නේ ගිණුම සත්‍යාපනය (Verification) සඳහා බලයලත් Admin වරුන් විසින් පමණි.
 2. 🛡️ **Cloud Encryption & Security Rules**: සියලුම දත්ත Cloud Firestore සහ ආරක්ෂිත සේවාදායකයන් තුළ SSL/TLS 256-bit Encryption මඟින් සංකේතනය කර ඇත. අනවසර ප්‍රවේශයන් සම්පූර්ණයෙන්ම වළක්වා ඇත.
 3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදීම (No Third-Party Sharing)**: ඔබගේ දුරකථන අංක, ලිපිනයන් හෝ දත්ත කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට හෝ තෙවන පාර්ශ්වයකට කිසිසේත්ම විකුණන්නේ හෝ ලබා දෙන්නේ නැත.
 4. 🤝 **ව්‍යාජ ගිණුම්වලින් තොර සත්‍යාපිත සමාජයක්**: ප්‍රජා උපකාර, ආධාර බෙදාහැරීම් සහ ලේ පරිත්‍යාග විශ්වාසනීයව සිදු කිරීමට පමණක් මෙම සත්‍යාපනය ක්‍රියාත්මක වේ.`,
@@ -602,25 +602,24 @@ function resolveAuthKnowledge(
           { type: 'switch_to_register', label: '📝 සුරක්ෂිතව ලියාපදිංචි වන්න' },
           { type: 'switch_to_login', label: '🔑 Login වන්න' },
         ],
-        quickChips: ['ලියාපදිංචි වන්නේ කෙසේද?', 'අවශ්‍ය ඡායාරූප මොනවාද?', 'Login ගැටලුවක්'],
+        quickChips: ['ලියාපදිංචි වන්නේ කෙසේද?', 'අවශ්‍ය ඡායාරූපය කුමක්ද?', 'Login ගැටලුවක්'],
       };
     }
   }
 
-  // 3. How to register / Registration help (Strictly 2 photos: Face photo + NIC front photo only)
+  // 3. How to register / Registration help (Strictly matches RegisterForm.tsx: ONLY 1 photo = NIC Front Photo via Camera)
   if (lower.includes('ලියාපදිංචි') || lower.includes('register') || lower.includes('ගිණුමක්') || lower.includes('signup') || lower.includes('sign up') || lower.includes('பதிவு')) {
     if (lang === 'en') {
       return {
-        text: `📝 **How to Register a New Account (Step-by-Step)**:
+        text: `📝 **How to Fill the New Account Registration Form (Exact Fields)**:
 
-1. Click the **Register** button on the screen.
-2. Enter your Name, unique User ID, WhatsApp Phone Number, Address, District, and Police Division.
-3. **Upload only 2 photos**:
-   • 📸 **Clear Face Photo** (Profile Selfie).
-   • 🆔 **NIC Front Photo ONLY** (National Identity Card Front).
-   *(NIC back photo or other documents are NOT required).*
-4. Set a secure password and submit.
-5. Once verified by our administrators for safety, your account will be activated!`,
+1. **🆔 NIC Front Photo (1 Photo ONLY)**: Capture a clear photo of the **front side of your National Identity Card** directly using the camera button. *(Face/Selfie photo or NIC back photo are NOT required).*
+2. **👤 Full Name \***: Enter your full name.
+3. **🔢 NIC Number \***: Enter your National Identity Card number (e.g., \`970181547V\` or \`199701815470\`).
+4. **📞 Phone / WhatsApp Number \***: Enter your 10-digit mobile number (e.g., \`0771234567\`).
+5. **📍 District & Police Division**: Select your District and Police Division from the dropdowns.
+6. **🏙️ City / Town** & **🏠 Address \***: Enter your city and permanent address.
+7. **🔑 Password (PIN) \*** & **Confirm Password \***: Enter a password (at least 6 characters) and click **Register**.`,
         actions: [
           { type: 'switch_to_register', label: '📝 Open Registration Form' },
           { type: 'open_issues_help', label: '❓ Help & Support' },
@@ -629,15 +628,13 @@ function resolveAuthKnowledge(
       };
     } else if (lang === 'ta') {
       return {
-        text: `📝 **புதிய கணக்கை எவ்வாறு பதிவு செய்வது (படிபடியாக)**:
+        text: `📝 **புதிய கணக்கு பதிவு படிவத்தை நிரப்புவது எப்படி**:
 
-1. **பதிவு செய்க** பொத்தானைக் கிளிக் செய்யவும்.
-2. பெயர், பயனர் ஐடி, வாட்ஸ்அப் எண், முகவரி, மாவட்டம் ஆகியவற்றை உள்ளிடவும்.
-3. **2 புகைப்படங்கள் மட்டுமே தேவை**:
-   • 📸 **தெளிவான முகப் புகைப்படம்** (Selfie).
-   • 🆔 **அடையாள அட்டையின் முன்பக்க புகைப்படம் மட்டுமே (NIC Front Only)**.
-   *(பின்பக்க புகைப்படம் தேவையில்லை).*
-4. கடவுச்சொல்லை அமைத்து சமர்ப்பிக்கவும். நிர்வாகி அனுமதித்தவுடன் கணக்கு செயல்படும்.`,
+1. **🆔 அடையாள அட்டையின் முன்பக்க புகைப்படம் மட்டுமே (1 Photo Only)**: கேமரா மூலம் தேசிய அடையாள அட்டையின் முன்பக்கத்தை மட்டும் புகைப்படம் எடுக்கவும். *(முகப் புகைப்படம் அல்லது பின்பக்க புகைப்படம் தேவையில்லை).*
+2. **👤 முழுப் பெயர் \*** மற்றும் **🔢 அடையாள அட்டை எண் (NIC) \***.
+3. **📞 தொலைபேசி / வாட்ஸ்அப் எண் \***.
+4. **📍 மாவட்டம், பொலிஸ் பிரிவு, நகரம்** மற்றும் **🏠 முகவரி \***.
+5. **🔑 கடவுச்சொல் (குறைந்தது 6 எழுத்துக்கள்) \*** உள்ளிட்டு பதிவு செய்யவும்.`,
         actions: [
           { type: 'switch_to_register', label: '📝 பதிவு படிவத்தைத் திறக்கவும்' },
           { type: 'open_issues_help', label: '❓ உதவி கோரிக்கை' },
@@ -646,44 +643,42 @@ function resolveAuthKnowledge(
       };
     } else {
       return {
-        text: `📝 **නව ගිණුමක් ලියාපදිංචි කරගන්නේ කෙසේද? (පියවරෙන් පියවර)**:
+        text: `📝 **නව ගිණුමක් ලියාපදිංචි කිරීමේ පෝරමය පුරවන ආකාරය (පෝරමයේ ඇති නිවැරදි ක්ෂේත්‍ර පමණි)**:
 
-1. **ලියාපදිංචි වන්න** බොත්තම ඔබන්න.
-2. ඔබගේ නම, කැමති පරිශීලක නාමය (User ID), WhatsApp දුරකථන අංකය, ලිපිනය, දිස්ත්‍රික්කය සහ පොලිස් බලප්‍රදේශය ඇතුළත් කරන්න.
-3. **ලබාගත යුත්තේ ඡායාරූප 2ක් පමණි**:
-   • 📸 **පැහැදිලි මුහුණේ ඡායාරූපයක් (Face Photo / Selfie)**.
-   • 🆔 **ජාතික හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය පමණි (NIC Front Photo Only)**.
-   *(හැඳුනුම්පතේ පිටුපස (Back) ඡායාරූප හෝ වෙනත් ලිපි ලේඛන අවශ්‍ය නොවේ).*
-4. ආරක්ෂිත මුරපදයක් ඇතුළත් කර Submit කරන්න. පරිපාලක අනුමැතියෙන් පසු ගිණුම සක්‍රිය වේ.`,
+1. **🆔 හැඳුනුම්පතේ ඉදිරිපස ඡායාරූපය (1ක් පමණි) \***: කැමරා බොත්තම ඔබා ඔබගේ ජාතික හැඳුනුම්පතේ **ඉදිරිපස (NIC Front)** පැහැදිලි ඡායාරූපයක් පමණක් ලබාගන්න. *(මුහුණේ ඡායාරූපයක්/Selfie හෝ හැඳුනුම්පතේ පිටුපස ඡායාරූපයක් මෙම පෝරමයේ නැත).*
+2. **👤 සම්පූර්ණ නම \***: ඔබගේ සම්පූර්ණ නම ඇතුළත් කරන්න.
+3. **🔢 ජාතික හැඳුනුම්පත් අංකය (NIC) \***: ඔබගේ NIC අංකය ඇතුළත් කරන්න (උදා: \`970181547V\` හෝ \`199701815470\`).
+4. **📞 දුරකථන / WhatsApp අංකය \***: ඔබගේ දුරකථන අංකය ඇතුළත් කරන්න (\`0771234567\`).
+5. **📍 දිස්ත්‍රික්කය** සහ **පොලිස් බලප්‍රදේශය**: ලැයිස්තුවෙන් තෝරන්න.
+6. **🏙️ නගරය (City / Town)** සහ **🏠 ලිපිනය \***: ඔබගේ නගරය සහ ස්ථිර ලිපිනය ඇතුළත් කරන්න.
+7. **🔑 රහස් පදය (PIN) \*** සහ **රහස් පදය තහවුරු කරන්න \***: අවම අකුරු/ඉලක්කම් 6ක මුරපදයක් ලබා දී **"ලියාපදිංචි වන්න"** බොත්තම ඔබන්න.`,
         actions: [
           { type: 'switch_to_register', label: '📝 ලියාපදිංචි පෝරමයට යන්න' },
           { type: 'open_issues_help', label: '❓ ගැටලු සහ උපකාර' },
         ],
-        quickChips: ['NIC ඉදිරිපස ඡායාරූප ගන්නේ කොහොමද?', 'තොරතුරු ආරක්ෂිතද?', 'මුරපද රීති මොනවාද?'],
+        quickChips: ['NIC ඉදිරිපස ඡායාරූප ගන්නේ කොහොමද?', 'තොරතුරු ආරක්ෂිතද?', 'Login වන්නේ කොහොමද?'],
       };
     }
   }
 
-  // 4. Taking NIC Front / Face Photos
+  // 4. Taking NIC Front Photo
   if (lower.includes('nic') || lower.includes('හැඳුනුම්පත') || lower.includes('photo') || lower.includes('ඡායාරූප') || lower.includes('කාඩ්පත') || lower.includes('புகைப்படம்')) {
     if (lang === 'en') {
       return {
-        text: `🆔 **Guidance for Photo Uploads in Registration**:
+        text: `🆔 **Guidance for NIC Front Photo in Registration**:
 
-• 📸 **Face Photo**: Ensure good lighting with your face clearly visible directly into the camera.
-• 🆔 **NIC Front Photo ONLY**: Place your National Identity Card on a flat surface and capture the **front side only** clearly. Ensure text and numbers are readable.
-• *Note: NIC back side is NOT required.*`,
+• 🆔 **NIC Front Photo ONLY**: Place your National Identity Card on a flat surface in good lighting and capture the **front side only** clearly using the camera. Ensure the NIC number and name are readable.
+• *Note: Face/Selfie photo and NIC back side photo are NOT required in the registration form.*`,
         actions: [
           { type: 'switch_to_register', label: '📝 Go to Registration' },
         ],
-        quickChips: ['Is my data safe?', 'Can I register without NIC?'],
+        quickChips: ['Is my data safe?', 'How to register?'],
       };
     } else if (lang === 'ta') {
       return {
-        text: `🆔 **அடையாள அட்டை (NIC Front) மற்றும் புகைப்பட வழிகாட்டல்**:
+        text: `🆔 **அடையாள அட்டை (NIC Front) புகைப்பட வழிகாட்டல்**:
 
-• 📸 **முகப் புகைப்படம்**: நல்ல வெளிச்சத்தில் உங்கள் முகம் தெளிவாகத் தெரிய வேண்டும்.
-• 🆔 **அடையாள அட்டையின் முன்பக்கம் மட்டுமே**: முன்பக்கத்தை மட்டும் நிழல் விழாமல் தெளிவாகப் புகைப்படம் எடுக்கவும். (பின்பக்கம் தேவையில்லை).`,
+• 🆔 **அடையாள அட்டையின் முன்பக்கம் மட்டுமே**: முன்பக்கத்தை மட்டும் நிழல் விழாமல் தெளிவாக கேமரா மூலம் புகைப்படம் எடுக்கவும். (முகப் புகைப்படம் அல்லது பின்பக்கம் தேவையில்லை).`,
         actions: [
           { type: 'switch_to_register', label: '📝 பதிவுக்குச் செல்லவும்' },
         ],
@@ -691,24 +686,23 @@ function resolveAuthKnowledge(
       };
     } else {
       return {
-        text: `🆔 **හැඳුනුම්පත් (NIC Front) සහ මුහුණේ ඡායාරූප ගැනීමේ උපදෙස්**:
+        text: `🆔 **ලියාපදිංචි පෝරමයේ හැඳුනුම්පත් (NIC Front) ඡායාරූපය ගැනීමේ උපදෙස්**:
 
-• 📸 **මුහුණේ ඡායාරූපය**: හොඳ ආලෝකයක් ඇති ස්ථානයක කෙළින්ම කැමරාව දෙස බලා මුහුණ පැහැදිලිව පෙනෙන සේ ගන්න.
-• 🆔 **ජාතික හැඳුනුම්පතේ ඉදිරිපස පමණි (NIC Front Photo Only)**: හැඳුනුම්පත තලයක තබා ඉදිරිපස අකුරු, අංක සහ ඡායාරූපය ආලෝකය පරාවර්තනය නොවී පැහැදිලිව ලබාගන්න.
-• *සැ.යු: හැඳුනුම්පතේ පසුපස (Back) ඡායාරූප අවශ්‍ය නොවේ.*`,
+• 🆔 **ජාතික හැඳුනුම්පතේ ඉදිරිපස පමණි (NIC Front Photo Only)**: ලියාපදිංචි පෝරමයේ ඇති කැමරා බොත්තම ඔබා, හැඳුනුම්පතේ ඉදිරිපස අකුරු සහ අංක ආලෝකය පරාවර්තනය නොවී පැහැදිලිව පෙනෙන සේ ඡායාරූපය ලබාගන්න.
+• *සැ.යු: මුහුණේ (Selfie) ඡායාරූපයක් හෝ හැඳුනුම්පතේ පිටුපස (Back) ඡායාරූපයක් පෝරමයට අවශ්‍ය නොවේ.*`,
         actions: [
           { type: 'switch_to_register', label: '📝 ලියාපදිංචි වීමට යන්න' },
         ],
-        quickChips: ['තොරතුරු ආරක්ෂිතද?', 'ලියාපදිංචි පෝරමය'],
+        quickChips: ['තොරතුරු ආරක්ෂිතද?', 'ලියාපදිංචි පෝරමය පුරවන හැටි'],
       };
     }
   }
 
-  // 4. Login Issues / Password Forgotten / Account approval
+  // 5. Login Issues / Password Forgotten / Account approval
   if (lower.includes('login') || lower.includes('බැහැ') || lower.includes('මුරපද') || lower.includes('password') || lower.includes('අමතක') || lower.includes('අනුමත') || lower.includes('approve') || lower.includes('உள்நுழைய')) {
     if (lang === 'en') {
       return {
-        text: '🔑 **Login & Password Support**:\n• **Login Identifier**: You can log in using either your **User ID** or your **WhatsApp Phone Number** along with your password.\n• **Pending Approval**: New registrations undergo brief safety verification before activation.\n• **Forgot Password or Locked**: Click **Issues & Help** at the bottom of the login card to send a direct message to system administrators.',
+        text: '🔑 **Login & Password Support**:\n• **Login Identifier**: Enter your **NIC Number** (or registered Phone Number) along with your password.\n• **Pending Approval**: New registrations undergo brief safety verification before activation.\n• **Forgot Password or Locked**: Click **Issues & Help** at the bottom of the login card to request a password reset from administrators.',
         actions: [
           { type: 'switch_to_login', label: '🔑 Login Page' },
           { type: 'open_issues_help', label: '❓ Report Login Issue' },
@@ -718,7 +712,7 @@ function resolveAuthKnowledge(
       };
     } else if (lang === 'ta') {
       return {
-        text: '🔑 **உள்நுழைவு மற்றும் கடவுச்சொல் உதவி**:\n• உங்கள் **பயனர் ஐடி** அல்லது **வாட்ஸ்அப் எண்** மற்றும் கடவுச்சொல்லைப் பயன்படுத்தி உள்நுழையலாம்.\n• சிக்கல்கள் இருந்தால், உள்நுழைவுப் பக்கத்தில் உள்ள **உதவி மற்றும் சிக்கல்கள்** பொத்தானைக் கிளிக் செய்யவும்.',
+        text: '🔑 **உள்நுழைவு மற்றும் கடவுச்சொல் உதவி**:\n• உங்கள் **NIC எண்** அல்லது **தொலைபேசி எண்** மற்றும் கடவுச்சொல்லைப் பயன்படுத்தி உள்நுழையலாம்.\n• சிக்கல்கள் இருந்தால், உள்நுழைவுப் பக்கத்தில் உள்ள **உதவி மற்றும் சிக்கல்கள்** பொத்தானைக் கிளிக் செய்யவும்.',
         actions: [
           { type: 'switch_to_login', label: '🔑 உள்நுழைவு பக்கம்' },
           { type: 'open_issues_help', label: '❓ சிக்கலைத் தெரிவிக்கவும்' },
@@ -727,7 +721,7 @@ function resolveAuthKnowledge(
       };
     } else {
       return {
-        text: '🔑 **Login වීමේ ගැටලු සහ මුරපද සහය**:\n• **Login වීමට**: ඔබගේ **User ID** එක හෝ **WhatsApp දුරකථන අංකය** සමඟ ඔබ ලබාදුන් මුරපදය ඇතුළත් කරන්න.\n• **ගිණුම අනුමත වීම (Pending Approval)**: ප්‍රජාවේ ආරක්ෂාව තහවුරු කිරීමට පරිපාලක විසින් විස්තර සත්‍යාපනය කරනු ලැබේ.\n• **මුරපදය අමතක නම් හෝ ගැටලුවක් ඇත්නම්**: Login පිටුවේ පහළ ඇති **ගැටලු & උපකාර (Issues & Help)** බොත්තම ඔබා පණිවිඩයක් එවන්න. පරිපාලක කණ්ඩායම ඔබට සහය වනු ඇත.',
+        text: '🔑 **Login වීමේ ගැටලු සහ මුරපද සහය**:\n• **Login වීමට**: ඔබගේ **ජාතික හැඳුනුම්පත් අංකය (NIC)** හෝ **දුරකථන අංකය** සමඟ ඔබ ලබාදුන් මුරපදය ඇතුළත් කරන්න.\n• **ගිණුම අනුමත වීම (Pending Approval)**: ප්‍රජාවේ ආරක්ෂාව තහවුරු කිරීමට පරිපාලක විසින් විස්තර සත්‍යාපනය කරනු ලැබේ.\n• **මුරපදය අමතක නම් හෝ ගැටලුවක් ඇත්නම්**: Login පිටුවේ පහළ ඇති **ගැටලු & උපකාර (Issues & Help)** බොත්තම ඔබා පණිවිඩයක් එවන්න. පරිපාලක කණ්ඩායම ඔබට සහය වනු ඇත.',
         actions: [
           { type: 'switch_to_login', label: '🔑 Login පිටුවට' },
           { type: 'open_issues_help', label: '❓ ගැටලු & උපකාර පණිවිඩයක් යවන්න' },
@@ -741,13 +735,13 @@ function resolveAuthKnowledge(
   // Default Auth Welcome
   if (lang === 'en') {
     return {
-      text: '👋 Hello! I am your **Login & Registration Support Assistant**.\nI am here to guide you through getting started:\n• 📝 How to Register a New Account\n• 🆔 Taking clear NIC and Face Photos\n• 🔑 Resolving Login and Password Issues\n• ⏳ Checking Account Approval Status\n\nHow may I help you today?',
+      text: '👋 Hello! I am your **Login & Registration Support Assistant**.\nI am here to guide you through getting started:\n• 📝 How to Fill the Registration Form\n• 🆔 Taking a clear NIC Front Photo\n• 🔑 Resolving Login and Password Issues\n• ⏳ Checking Account Approval Status\n\nHow may I help you today?',
       actions: [
         { type: 'switch_to_login', label: '🔑 Sign In' },
         { type: 'switch_to_register', label: '📝 Register' },
         { type: 'open_issues_help', label: '❓ Help & Support' },
       ],
-      quickChips: ['How to register?', 'Cannot log in', 'NIC photo upload help', 'Try User Demo'],
+      quickChips: ['How to register?', 'Cannot log in', 'NIC photo help', 'Try User Demo'],
     };
   } else if (lang === 'ta') {
     return {
@@ -760,7 +754,7 @@ function resolveAuthKnowledge(
     };
   } else {
     return {
-      text: '👋 ආයුබෝවන්! මම ඔබගේ **පිවිසුම් සහ ලියාපදිංචි සහය මිතුරා (Login & Registration Support)**.\nපද්ධතියට සාදරයෙන් පිළිගනිමු. පිවිසීමට අදාළ ඕනෑම සහයක් ලබාදීමට මම සූදානම්:\n• 📝 නව ගිණුමක් ලියාපදිංචි කරගැනීම\n• 🆔 හැඳුනුම්පත් (NIC) සහ මුහුණේ ඡායාරූප නිවැරදිව ගැනීම\n• 🔑 Login වීමේ ගැටලු සහ මුරපද සහය\n• ⏳ ගිණුම් අනුමැතිය සහ සත්‍යාපනය\n\nඔබට අවශ්‍ය උපකාරය කුමක්ද?',
+      text: '👋 ආයුබෝවන්! මම ඔබගේ **පිවිසුම් සහ ලියාපදිංචි සහය මිතුරා (Login & Registration Support)**.\nපද්ධතියට සාදරයෙන් පිළිගනිමු. පිවිසීමට අදාළ ඕනෑම සහයක් ලබාදීමට මම සූදානම්:\n• 📝 නව ලියාපදිංචි පෝරමය නිවැරදිව පිරවීම\n• 🆔 හැඳුනුම්පතේ ඉදිරිපස (NIC Front) ඡායාරූපය නිවැරදිව ගැනීම\n• 🔑 Login වීමේ ගැටලු සහ මුරපද සහය\n• ⏳ ගිණුම් අනුමැතිය සහ සත්‍යාපනය\n\nඔබට අවශ්‍ය උපකාරය කුමක්ද?',
       actions: [
         { type: 'switch_to_login', label: '🔑 Login පිටුව' },
         { type: 'switch_to_register', label: '📝 නව ලියාපදිංචිය' },
@@ -1223,12 +1217,14 @@ Our real-time radar immediately alerts registered, verified blood donors of the 
 
   if (isLostFoundQuery) {
     return {
-      text: `🔍 **සොයාදෙන්න (Find For Me / Lost & Found)**
+      text: `🔍 **සොයාදෙන්න පෝරමය (Find For Me / Lost & Found)**
 
-ඔබගේ ජාතික හැඳුනුම්පත (NIC), රියදුරු බලපත්‍රය, මුදල් පසුම්බිය හෝ සුරතල් සතෙකු නැතිවූ විට:
-1. නැතිවූ ද්‍රව්‍යයේ ඡායාරූපයක් සහ නැතිවූ ප්‍රදේශය සඳහන් කර දැන්වීමක් පළකරන්න.
-2. අවශ්‍ය නම් සොයාදෙන්නා සඳහා ත්‍යාග මුදලක් (Reward) ද නියම කළ හැක.
-3. ප්‍රජාවේ අයෙකුට එය හමුවූ විට In-App Chat හරහා ඔබට දැනුම් දෙනු ඇත.`,
+ඔබගේ ජාතික හැඳුනුම්පත (NIC), රියදුරු බලපත්‍රය, මුදල් පසුම්බිය හෝ සුරතල් සතෙකු නැතිවූ විට හෝ යමක් සොයාගැනීමට පෝරමයේ ඇති ක්ෂේත්‍ර:
+1. **අනු-වර්ගය තෝරන්න**: \`නැතිවූ දෙයක් (Lost)\` / \`සොරාගත් දෙයක් (Stolen)\` / \`මිලදී ගැනීමට සොයන දෙයක් (Find)\` / \`හමුවූ දෙයක් (Found)\`. *(ඉහළින් ඇති **AI හඬ පිරවුම** මඟින් කතා කර ස්වයංක්‍රීයව පෝරමය පිරවීමට ද හැක).*
+2. **භාණ්ඩයේ නම \*** සහ **Tag එකක් තේරීම**.
+3. **නැතිවූ/සොරාගත් දෙයක් නම්**: සිදුවූ ස්ථානය, දිනය, වේලාව, හඳුනාගැනීමේ විශේෂ ලක්ෂණ/අංක, සහ **ත්‍යාග මුදලක් (Reward)** පිරිනමන්නේ නම් එහි විස්තර.
+4. **මිලදී ගැනීමට සොයන දෙයක් නම්**: අපේක්ෂිත මිල, ප්‍රමාණය, අවසන් දිනය සහ බෙදාහැරීමේ ක්‍රමය.
+5. **සම්බන්ධ කරගත හැකි දුරකථන අංකය, WhatsApp අංකය, ලිපිනය** සහ **වෙනත් විස්තර**.`,
       actions: [
         { type: 'open_find', label: '🔍 සොයාදෙන්න දැන්වීමක් පළකරන්න' },
       ],
@@ -1249,11 +1245,13 @@ Our real-time radar immediately alerts registered, verified blood donors of the 
 
   if (isDonationQuery) {
     return {
-      text: `🎁 **මා වෙතින් ඔබට (From Me To You Free Donations)**
+      text: `🎁 **මගෙන් ඔබට පෝරමය (From Me To You Free Donations & Exchange)**
 
-ඔබ සතුව ඇති පාවිච්චි කළ හැකි අමතර පොත්පත්, පාසල් උපකරණ, රෝද පුටු හෝ ඇඳුම් පැළඳුම් අවශ්‍යතා ඇති අයෙකුට 100% නොමිලේ පරිත්‍යාග කිරීමට:
-• කිසිදු මුදල් අය කිරීමක් නොමැතිව පරිත්‍යාගයක් ලෙස පළකරන්න.
-• අවශ්‍ය අයදුම්කරුට එය රැගෙන යාමට අවස්ථාව සලසා දෙන්න.`,
+ඔබ සතුව ඇති පොත්පත්, පාසල් උපකරණ, රෝද පුටු, ඇඳුම් පැළඳුම් 100% නොමිලේ පරිත්‍යාග කිරීමට හෝ හුවමාරු කරගැනීමට පෝරමයේ ඇති ක්ෂේත්‍ර:
+1. **අරමුණ තෝරන්න**: \`පරිත්‍යාග කිරීම (Donation)\` / \`නොමිලේ ඉවත් කිරීම (Giveaway)\` / \`භාණ්ඩ හුවමාරුව (Exchange)\`.
+2. **පරිත්‍යාග හෝ ඉවත් කිරීම නම්**: ලබාදෙන දෙය, කාණ්ඩය සහ Tag එක, කා වෙනුවෙන්ද (පාසල් ළමුන් / අඩු ආදායම්ලාභී පවුල් / වැඩිහිටියන් / ආබාධිත අය), ප්‍රමාණය, ලබාගන්නා ක්‍රමය (\`ඇවිත් රැගෙන යන්න\` / \`ගෙනවිත් දෙන්නම්\` / \`එවන්නම්\`), සහ දිනය.
+3. **හුවමාරුවක් (Exchange) නම්**: ඔබ ළඟ ඇති භාණ්ඩය හා ප්‍රමාණය, ඔබට අවශ්‍ය භාණ්ඩය හා ප්‍රමාණය.
+4. **ස්ථානය (GPS), WhatsApp දුරකථන අංකය සහ වැඩිදුර විස්තර**.`,
       actions: [
         { type: 'open_from_you', label: '🎁 නොමිලේ දීමනාවක් පළකරන්න' },
       ],
@@ -1278,7 +1276,7 @@ Our real-time radar immediately alerts registered, verified blood donors of the 
     return {
       text: `🔒 **සහය සේවා පද්ධතිය තුළ ඔබගේ තොරතුරු 100% ආරක්ෂිතයි!**
 
-1. 🔒 **තොරතුරු රහස්‍යභාවය**: ඔබගේ ජාතික හැඳුනුම්පත් (NIC) ඡායාරූපය සාමාන්‍ය පරිශීලකයන්ට කිසිසේත්ම නොපෙනේ. ඒවා භාවිතා කරන්නේ ගිණුම සත්‍යාපනය සඳහා ඇඩ්මින්වරුන් පමණි.
+1. 🔒 **තොරතුරු රහස්‍යභාවය**: ඔබගේ ජාතික හැඳුනුම්පතේ ඉදිරිපස (NIC Front) ඡායාරූපය සාමාන්‍ය පරිශීලකයන්ට කිසිසේත්ම නොපෙනේ. එය භාවිතා කරන්නේ ගිණුම සත්‍යාපනය සඳහා ඇඩ්මින්වරුන් පමණි.
 2. 🛡️ **Cloud Encryption**: සියලුම දත්ත Cloud Firestore තුළ SSL/TLS Encryption මඟින් සුරක්ෂිතව තබා ඇත.
 3. 🚫 **තෙවන පාර්ශ්වයන්ට ලබා නොදේ**: ඔබගේ දුරකථන අංක කිසිදු වෙළඳ දැන්වීම්කරුවෙකුට විකුණන්නේ හෝ ලබා දෙන්නේ නැත.`,
       actions: [
@@ -1290,32 +1288,41 @@ Our real-time radar immediately alerts registered, verified blood donors of the 
   }
 
   // -------------------------------------------------------------
-  // 10. FORM FILLING GUIDANCE (පෝරම පුරවන ආකාරය)
+  // 10. FORM FILLING GUIDANCE (පෝරම පුරවන ආකාරය - පෝරමයේ ඇති සැබෑ ක්ෂේත්‍ර පමණි)
   // -------------------------------------------------------------
   const isFormFillingQuery =
     lower.includes('පෝරම') ||
     lower.includes('පුරවන්නේ') ||
+    lower.includes('පුරවන') ||
     lower.includes('form') ||
     lower.includes('ලේඛන');
 
   if (isFormFillingQuery) {
     return {
-      text: `📝 **පෝරම නිවැරදිව පිරවීමට පියවරෙන් පියවර මඟපෙන්වීම**:
+      text: `📝 **සහය සේවා පෝරම නිවැරදිව පිරවීම (එක් එක් පෝරමයේ ඇති සැබෑ ක්ෂේත්‍ර පමණි)**:
 
-1. **උපකාර ඉල්ලුම් පෝරමය (Community Help Form)**:
-   - මාතෘකාව: ගැටලුව කෙටියෙන් ලියන්න.
-   - කාණ්ඩය: විදුලි, නල, වෛද්‍ය, ප්‍රවාහන ආදී සුදුසු කාණ්ඩය තෝරන්න.
-   - ගෙවීම්: ස්වේච්ඡා (නොමිලේ) ද ගෙවීම් සහිත ද යන්න සඳහන් කරන්න.
-   - ස්ථානය: ඔබගේ දිස්ත්‍රික්කය සහ පොලිස් වසම තෝරන්න.
-2. **ක්ෂණික සේවා පෝරමය (Quick Services)**:
-   - සිදුවී ඇති දෝෂය සහ අවශ්‍ය කාර්මිකයා තෝරන්න.
-3. **හදිසි ලේ ඉල්ලුම් පෝරමය**:
-   - රෝගියාගේ නම, රෝහල සහ ලේ වර්ගය තෝරන්න.`,
+1. **📝 නව ගිණුමක් ලියාපදිංචි කිරීමේ පෝරමය (Registration Form)**:
+   • **ඡායාරූපය (1ක් පමණි)**: කැමරාවෙන් ගන්නා **හැඳුනුම්පතේ ඉදිරිපස (NIC Front) ඡායාරූපය පමණි** *(මුහුණේ Selfie හෝ NIC පිටුපස ඡායාරූප අවශ්‍ය නොවේ)*.
+   • **සම්පූර්ණ නම \***, **NIC අංකය \***, **දුරකථන / WhatsApp අංකය \***, **දිස්ත්‍රික්කය හා පොලිස් බලප්‍රදේශය**, **නගරය**, **ලිපිනය \*** සහ **රහස් පදය (අවම අකුරු 6ක්) \***.
+
+2. **🤝 සාමාන්‍ය සේවා / උපකාර ඉල්ලුම් පෝරමය (Community Help Form - පියවර 2කි)**:
+   • **පියවර 1**: **හෙඩ්ලයින් එක (Headline) \***, **විස්තරය (Text) / ඡායාරූප (Image) / මත විමසුම (Poll)** යන Tabs 3න් එකක්, **සාමාන්‍ය සේවා Tag එකක් \***, සහ බාහිර Link එකක් (අත්‍යවශ්‍ය නොවේ).
+   • **පියවර 2**: පෙරදසුන බලා අවශ්‍ය නම් **නම සඟවා නිර්නාමිකව (Anonymous)** පළ කිරීම හෝ දිනයක්/වේලාවක් නියම කර (**Schedule**) පළ කිරීම. *(ගාස්තුව: රු. 25)*.
+
+3. **⚡ ඉක්මන් සේවා පෝරමය (Quick Services Form)**:
+   • **Tag එක**, **සිදුවී ඇති දේ \***, **විය යුතු දේ \***, කොන්දේසි/විශේෂ දැනුම්දීම්, **ප්‍රවාහන ක්‍රමය (විකල්ප 5න් 1ක්)**, **ගෙවීම් එකඟතාවය හෝ මුදල**, **අවශ්‍ය සහායකයින් ගණන (-/+)**, සහ **WhatsApp අංකය \***. *(ගාස්තුව: රු. 25)*.
+
+4. **🩸 හදිසි ලේ ඉල්ලුම් පෝරමය (Blood Request Form - 100% නොමිලේ)**:
+   • **රෝගියාගේ නම \***, **ලේ වර්ගය (A+, A-, B+, B-, AB+, AB-, O+, O-)**, **ඒකක ගණන**, **රෝහලේ නම \***, **දිස්ත්‍රික්කය**, **හදිසිභාවය හා දිනය**, **සම්බන්ධීකාරකගේ නම හා දුරකථන අංකය \***.
+
+5. **🚨 රතු නිවේදන පෝරමය (Red Alert Form - 100% නොමිලේ)**:
+   • **ආපදා වර්ගය** (ගංවතුර/නායයෑම්/ගින්නක් ආදිය), **විස්තරය \***, **GPS ස්ථානය**, **දැනුම් දෙන්නාගේ විස්තර පෙන්වීමේ Toggle එක**, සහ **ඉලක්කම් 4ක Device PIN තහවුරු කිරීම**.`,
       actions: [
         { type: 'open_help_post', label: '📝 උපකාර ඉල්ලුම් පෝරමය' },
+        { type: 'open_quick', label: '⚡ ඉක්මන් සේවා පෝරමය' },
         { type: 'open_blood', label: '🩸 ලේ ඉල්ලුම් පෝරමය' },
       ],
-      quickChips: ['ඡායාරූප Upload කරන්නේ කෙසේද?', 'Start PIN එක යනු කුමක්ද?'],
+      quickChips: ['සොයාදෙන්න පෝරමය පුරවන හැටි', 'මගෙන් ඔබට පෝරමය පුරවන හැටි', 'රැකියා පෝරමය පුරවන හැටි'],
     };
   }
 
