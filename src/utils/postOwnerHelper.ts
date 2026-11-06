@@ -21,15 +21,20 @@ export const normalizePhone = (phone?: string): string => {
  */
 export const checkIsAdmin = (user: UserProfile | User | null | undefined): boolean => {
   if (!user) return false;
-  if (user.role === 'admin' || (user as any).isAdmin === true || (user as any).isSuperAdmin === true) return true;
-  
+  if (
+    user.role === 'admin' ||
+    user.role === 'super_admin' ||
+    (user as any).isAdmin === true ||
+    (user as any).isSuperAdmin === true
+  ) {
+    return true;
+  }
+
   const uid = ((user as any).userId || (user as any).uid || '').trim().toUpperCase();
   const nic = ((user as any).nicNumber || '').trim().toUpperCase();
-  const email = ((user as any).email || '').trim().toLowerCase();
   const id = ((user as any).id || '').trim();
 
   if (uid === '970181547V' || nic === '970181547V' || uid === 'ADMIN' || nic === 'ADMIN') return true;
-  if (email === 'admin@sahaya.lk' || email === 'www.akash.online@gmail.com') return true;
   if (id === 'usr_admin') return true;
 
   return false;

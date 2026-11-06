@@ -56,7 +56,28 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
 };
 
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+// 🛡️ Firebase App Check Initialization (protects Firestore, Storage & Backend from unauthorized clients)
+const appCheckSiteKey = String(
+  env.VITE_FIREBASE_APPCHECK_SITE_KEY ||
+  env.VITE_RECAPTCHA_SITE_KEY ||
+  (firebaseConfigJson as any).recaptchaSiteKey ||
+  ''
+).trim();
+
+if (typeof window !== 'undefined' && appCheckSiteKey.length > 10) {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (appCheckErr) {
+    console.warn('Firebase App Check initialization note:', appCheckErr);
+  }
+}
 
 export const db = firebaseConfigJson.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
@@ -106,11 +127,39 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType | string;
   path: string | null;
+  authInfo?: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
 }
 
 export function handleFirestoreError(error: any, operation: OperationType | string, path: string | null): never {
-  console.warn(`Firestore Warning [${operation}] on ${path}:`, error);
-  throw new Error(error instanceof Error ? error.message : String(error));
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType: operation,
+    path,
+    authInfo: {
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified ?? null,
+      isAnonymous: auth?.currentUser?.isAnonymous ?? null,
+      tenantId: auth?.currentUser?.tenantId || null,
+      providerInfo:
+        auth?.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+  };
+  console.warn(`Firestore Warning [${operation}] on ${path}:`, JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
 export function sanitizeForFirestore(obj: any): any {

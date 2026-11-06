@@ -8,11 +8,16 @@ on:
       - '**.md'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: apk-release-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -193,9 +198,9 @@ jobs:
               "    signingConfigs \x7b",
               "        release \x7b",
               "            storeFile file(\"release-keystore.jks\")",
-              "            storePassword \"SupportServiceRelease2026\"",
+              "            storePassword System.getenv(\"ANDROID_KEYSTORE_PASSWORD\") ?: \"ephemeral_ci_keystore_pass\"",
               "            keyAlias \"supportservice\"",
-              "            keyPassword \"SupportServiceRelease2026\"",
+              "            keyPassword System.getenv(\"ANDROID_KEY_PASSWORD\") ?: (System.getenv(\"ANDROID_KEYSTORE_PASSWORD\") ?: \"ephemeral_ci_keystore_pass\")",
               "        \x7d",
               "    \x7d",
               "",
@@ -239,8 +244,10 @@ jobs:
                       pass
               Image.new('RGBA', (size, size), (0, 122, 75, 255)).save(p, 'PNG')
           "
+          KEYSTORE_PASS="${ANDROID_KEYSTORE_PASSWORD:-ephemeral_ci_keystore_pass}"
+          KEY_PASS="${ANDROID_KEY_PASSWORD:-$KEYSTORE_PASS}"
           if [ ! -f "android/app/release-keystore.jks" ]; then
-            keytool -genkey -v -keystore android/app/release-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias supportservice -dname "CN=Support Service, OU=Support Service, O=Lanka24, L=Colombo, ST=Western, C=LK" -storepass "SupportServiceRelease2026" -keypass "SupportServiceRelease2026"
+            keytool -genkey -v -keystore android/app/release-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias supportservice -dname "CN=Support Service, OU=Support Service, O=Lanka24, L=Colombo, ST=Western, C=LK" -storepass "$KEYSTORE_PASS" -keypass "$KEY_PASS"
           fi
           FLUTTER_BIN=$(which flutter)
           FLUTTER_DIR=$(dirname $(dirname "$FLUTTER_BIN"))

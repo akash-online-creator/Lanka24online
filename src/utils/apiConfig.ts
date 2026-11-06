@@ -52,37 +52,75 @@ export function getApiBaseUrl(): string {
 }
 
 const AUTH_SESSION_TOKEN_KEY = 'sahaya_auth_session_token';
+const CSRF_TOKEN_KEY = 'sahaya_csrf_token';
+
+// In-memory primary token store to reduce XSS exposure compared to persistent storage
+let inMemorySessionToken = '';
+let inMemoryCsrfToken = '';
 
 export function getAuthSessionToken(): string {
+  if (inMemorySessionToken) return inMemorySessionToken;
   if (typeof window === 'undefined') return '';
   try {
-    return sessionStorage.getItem(AUTH_SESSION_TOKEN_KEY) || localStorage.getItem(AUTH_SESSION_TOKEN_KEY) || '';
+    return sessionStorage.getItem(AUTH_SESSION_TOKEN_KEY) || '';
   } catch {
     return '';
   }
 }
 
 export function setAuthSessionToken(token: string): void {
+  inMemorySessionToken = token || '';
   if (typeof window === 'undefined' || !token) return;
   try {
     sessionStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
-    localStorage.setItem(AUTH_SESSION_TOKEN_KEY, token);
+  } catch {}
+}
+
+export function getCsrfToken(): string {
+  if (inMemoryCsrfToken) return inMemoryCsrfToken;
+  if (typeof document !== 'undefined') {
+    const match = document.cookie.match(/(?:^|;\s*)sahaya_csrf=([^;]+)/);
+    if (match && match[1]) return decodeURIComponent(match[1]);
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      return sessionStorage.getItem(CSRF_TOKEN_KEY) || '';
+    } catch {}
+  }
+  return '';
+}
+
+export function setCsrfToken(token: string): void {
+  inMemoryCsrfToken = token || '';
+  if (typeof window === 'undefined' || !token) return;
+  try {
+    sessionStorage.setItem(CSRF_TOKEN_KEY, token);
   } catch {}
 }
 
 export function clearAuthSessionToken(): void {
+  inMemorySessionToken = '';
+  inMemoryCsrfToken = '';
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
+    sessionStorage.removeItem(CSRF_TOKEN_KEY);
     localStorage.removeItem(AUTH_SESSION_TOKEN_KEY);
   } catch {}
 }
 
 export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = getAuthSessionToken();
-  const headers: Record<string, string> = { ...extraHeaders };
+  const csrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+    ...extraHeaders,
+  };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (csrf) {
+    headers['X-CSRF-Token'] = csrf;
   }
   return headers;
 }
@@ -97,7 +135,7 @@ export function resolveApiUrl(endpoint: string): string {
 }
 
 /**
- * ආරක්ෂිත Core apiFetch Wrapper එක (Timeout, Auth Token සහ Content-Type සහිතව)
+ * ආරක්ෂිත Core apiFetch Wrapper එක (Timeout, Auth Token, CSRF සහ Content-Type සහිතව)
  */
 export async function apiFetch(
   endpoint: string,
@@ -120,6 +158,7 @@ export async function apiFetch(
   try {
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       signal: controller.signal,
       headers: {
         ...defaultHeaders,

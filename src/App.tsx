@@ -37,32 +37,13 @@ import {
   deleteHelpPostFromFirestore,
   updateUserInFirestore
 } from './lib/firebase';
-import { deduplicateUsers, normalizeNIC } from './utils/userUtils';
+import { deduplicateUsers, normalizeNIC, hashUserPassword, verifyUserPasswordClient } from './utils/userUtils';
 import { checkIsAdmin } from './utils/postOwnerHelper';
 import { getCachedSettings } from './utils/systemSettingsManager';
 import { addDeletedPostId, filterNonDeletedPosts, downloadPostBackupJson, filterNonDeletedUsers, filterNonDeletedRedAlerts, isUserPermanentlyDeleted } from './utils/deletedPostsManager';
 import { initFcmNotificationService } from './utils/fcmNotificationService';
 import { initAutoGps } from './utils/autoGpsService';
-import { setAuthSessionToken, clearAuthSessionToken, getAuthHeaders } from './utils/apiConfig';
-
-async function hashUserPassword(rawPass: string): Promise<string> {
-  const clean = (rawPass ? rawPass : '').trim();
-  if (!clean) return '';
-  const payload = 'sahaya_pass_salt_2026::' + clean;
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-    try {
-      const encoder = new TextEncoder();
-      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
-      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
-      return 'sha256_v1$' + hex;
-    } catch (e) {}
-  }
-  let h = 5381;
-  for (let i = 0; i < payload.length; i++) {
-    h = (h * 33) ^ payload.charCodeAt(i);
-  }
-  return 'sha256_v1$fb_' + String(h >>> 0);
-}
+import { setAuthSessionToken, clearAuthSessionToken, getAuthHeaders, setCsrfToken } from './utils/apiConfig';
 
 function sanitizeUserForSessionStorage(u: User | null): any {
   if (!u) return null;
@@ -384,7 +365,11 @@ export const App: React.FC = () => {
     }
 
     // 🛡️ Block Pass-the-Hash attacks: never allow a pre-hashed string as raw password input
-    if (cleanPass.startsWith('sha256_v1$')) {
+    if (
+      cleanPass.startsWith('scrypt_v1$') ||
+      cleanPass.startsWith('pbkdf2_v1$') ||
+      cleanPass.startsWith('sha256_v1$')
+    ) {
       throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර ඔබගේ සත්‍ය මුරපදය ඇතුළත් කරන්න.');
     }
 
@@ -452,32 +437,39 @@ export const App: React.FC = () => {
       throw new Error(msg);
     }
 
-    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK + SERVER SESSION TOKEN):
+    // 5. 🛡️ අතිශය දැඩි මුරපද සත්‍යාපනය (STRICT PASSWORD CHECK + SERVER SCRYPT SESSION TOKEN):
     const userPass = String(matchedUser.password ? matchedUser.password : (matchedUser as any).key ? (matchedUser as any).key : '').trim();
     const userTempPass = String(matchedUser.temporaryPassword ? matchedUser.temporaryPassword : (matchedUser as any).tempPassword ? (matchedUser as any).tempPassword : '').trim();
-    const hashedInputPass = await hashUserPassword(cleanPass);
 
-    let isPermanentMatch = Boolean(userPass !== '' && (userPass === hashedInputPass || (!userPass.startsWith('sha256_v1$') && userPass === cleanPass)));
-    let isTemporaryMatch = Boolean(userTempPass !== '' && (userTempPass === hashedInputPass || (!userTempPass.startsWith('sha256_v1$') && userTempPass === cleanPass)));
+    let isPermanentMatch = await verifyUserPasswordClient(cleanPass, userPass);
+    let isTemporaryMatch = await verifyUserPasswordClient(cleanPass, userTempPass);
 
-    // Verify with backend /api/auth/session and obtain cryptographic HMAC session token
+    // Verify with backend /api/auth/session (scrypt_v1$ + timingSafeEqual + Account Lockout check) and obtain HMAC session + CSRF token
     try {
       const sessionRes = await fetch('/api/auth/session', {
         method: 'POST',
-        headers: {
+        credentials: 'include',
+        headers: getAuthHeaders({
           'Content-Type': 'application/json',
           'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
-        },
+        }),
         body: JSON.stringify({
           identifier: cleanId,
           password: cleanPass,
           clientUser: (isPermanentMatch || isTemporaryMatch) ? sanitizeUserForSessionStorage(matchedUser) : undefined,
         }),
       });
+      if (sessionRes.status === 429 || sessionRes.status === 423) {
+        const lockData = await sessionRes.json().catch(() => ({}));
+        throw new Error(lockData.error || 'වැරදි මුරපද උත්සාහයන් වැඩි බැවින් ගිණුම තාවකාලිකව අගුළු දමා ඇත. මිනිත්තු 15කින් නැවත උත්සාහ කරන්න.');
+      }
       if (sessionRes.ok) {
         const sessionData = await sessionRes.json();
         if (sessionData.sessionToken) {
           setAuthSessionToken(sessionData.sessionToken);
+        }
+        if (sessionData.csrfToken) {
+          setCsrfToken(sessionData.csrfToken);
         }
         if (sessionData.success && sessionData.user && !isPermanentMatch && !isTemporaryMatch) {
           matchedUser = { ...matchedUser, ...sessionData.user };
@@ -488,7 +480,11 @@ export const App: React.FC = () => {
           }
         }
       }
-    } catch (_) {}
+    } catch (sessionErr: any) {
+      if (sessionErr?.message?.includes('අගුළු')) {
+        throw sessionErr;
+      }
+    }
 
     if (!isPermanentMatch && !isTemporaryMatch) {
       throw new Error('ඇතුළත් කළ මුරපදය වැරදියි! කරුණාකර මෙම ජාතික හැඳුනුම්පතට අදාළ නිවැරදි මුරපදය ඇතුළත් කරන්න.');
@@ -497,14 +493,25 @@ export const App: React.FC = () => {
     // 6. මුරපදය නිවැරදි නම් පමණක් Login වීම සම්පූර්ණ කිරීම
     let authenticatedUser: User = { ...matchedUser };
 
-    // පැරණි Plain-text මුරපදයක් නම් ස්වයංක්‍රීයව SHA-256 Hash එකට උසස් කර Firestore හි සුරැකීම
-    if (isPermanentMatch && userPass && !userPass.startsWith('sha256_v1$') && matchedUser.id) {
-      authenticatedUser.password = hashedInputPass;
-      (authenticatedUser as any).key = hashedInputPass;
-      updateUserInFirestore(matchedUser.id, {
-        password: hashedInputPass,
-        key: hashedInputPass,
-      }).catch(() => {});
+    // පැරණි Plain-text හෝ sha256_v1$ මුරපදයක් නම් ස්වයංක්‍රීයව scrypt_v1$ / pbkdf2_v1$ Hash එකට උසස් කර Firestore හි සුරැකීම
+    if (
+      isPermanentMatch &&
+      userPass &&
+      !userPass.startsWith('scrypt_v1$') &&
+      !userPass.startsWith('pbkdf2_v1$') &&
+      matchedUser.id
+    ) {
+      try {
+        const upgradedHash = await hashUserPassword(cleanPass);
+        if (upgradedHash) {
+          authenticatedUser.password = upgradedHash;
+          (authenticatedUser as any).key = upgradedHash;
+          updateUserInFirestore(matchedUser.id, {
+            password: upgradedHash,
+            key: upgradedHash,
+          }).catch(() => {});
+        }
+      } catch {}
     }
 
     // තාවකාලික මුරපදයකින් පිවිසියේ නම් මුරපදය වෙනස් කිරීමේ Modal එක විවෘත කිරීමට සටහන් කිරීම
@@ -648,19 +655,31 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Logout Handler
+  // Logout Handler (with server-side session revocation)
   const handleLogout = useCallback(() => {
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    }).catch(() => {});
     setCurrentUser(null);
     setActiveView('login');
     clearAuthSessionToken();
     localStorage.removeItem('sahaya_sewa_session_user');
   }, []);
 
-  // 🔑 Permanent Password Update Handler (නව මුරපදය SHA-256 Hash මඟින් ස්ථිරව සුරැකීම)
+  // 🔑 Permanent Password Update Handler (නව මුරපදය scrypt_v1$ Hash මඟින් ස්ථිරව සුරැකීම)
   const handleSaveNewPassword = useCallback(async (newPassword: string) => {
     if (!currentUser) return;
     const cleanNewPass = newPassword.trim();
-    if (!cleanNewPass || cleanNewPass.startsWith('sha256_v1$')) return;
+    if (
+      !cleanNewPass ||
+      cleanNewPass.startsWith('scrypt_v1$') ||
+      cleanNewPass.startsWith('pbkdf2_v1$') ||
+      cleanNewPass.startsWith('sha256_v1$')
+    ) {
+      return;
+    }
     const hashedNewPass = await hashUserPassword(cleanNewPass);
 
     const updatedUser: User = {

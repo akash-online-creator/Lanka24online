@@ -198,27 +198,151 @@ export function deduplicateUsers(usersList: User[] | null | undefined): User[] {
 }
 
 /**
- * Strictly hashes a raw plaintext password using salted SHA-256.
- * Never returns pre-hashed strings as-is (prevents Pass-the-Hash attacks).
+ * Generates a slow, salted cryptographic password hash.
+ * Primary: Server-side Node.js crypto.scryptSync (scrypt_v1$<saltHex>$<hashHex>, N=16384, r=8, p=1).
+ * Offline Fallback: WebCrypto PBKDF2-HMAC-SHA256 with 100,000 iterations & 16-byte CSPRNG salt (pbkdf2_v1$<saltHex>$<hashHex>).
+ * Never uses fast unsalted/static-salted SHA-256 for new passwords and blocks Pass-the-Hash inputs.
  */
 export async function hashUserPassword(rawPass: string): Promise<string> {
   const clean = (rawPass ? rawPass : '').trim();
   if (!clean) return '';
-  const payload = 'sahaya_pass_salt_2026::' + clean;
+  if (
+    clean.startsWith('scrypt_v1$') ||
+    clean.startsWith('pbkdf2_v1$') ||
+    clean.startsWith('sha256_v1$')
+  ) {
+    throw new Error('Invalid password format: pre-hashed strings are not accepted.');
+  }
+
+  // 1. Primary: Request cryptographic scrypt_v1$ hash from backend server
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/auth/hash-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+        },
+        body: JSON.stringify({ password: clean }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.hash && String(data.hash).startsWith('scrypt_v1$')) {
+          return String(data.hash);
+        }
+      }
+    } catch {
+      // Fall through to 100,000-iteration salted WebCrypto PBKDF2 when offline
+    }
+  }
+
+  // 2. Offline Fallback: WebCrypto PBKDF2-HMAC-SHA256 (100,000 iterations + 16-byte CSPRNG random salt)
   if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
     try {
+      const saltBytes = new Uint8Array(16);
+      window.crypto.getRandomValues(saltBytes);
+      const saltHex = Array.from(saltBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
       const encoder = new TextEncoder();
-      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
+      const baseKey = await window.crypto.subtle.importKey(
+        'raw',
+        encoder.encode(clean),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+      const derivedBits = await window.crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: saltBytes,
+          iterations: 100000,
+          hash: 'SHA-256',
+        },
+        baseKey,
+        256
+      );
+      const hashHex = Array.from(new Uint8Array(derivedBits))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      return `pbkdf2_v1$${saltHex}$${hashHex}`;
+    } catch {}
+  }
+
+  throw new Error('Cryptographic password hashing unavailable in this environment.');
+}
+
+/**
+ * Verifies a plaintext password on the client against stored pbkdf2_v1$ or legacy hashes
+ * when server verification is pending or offline. (scrypt_v1$ is verified on the server via /api/auth/session).
+ */
+export async function verifyUserPasswordClient(rawPass: string, storedHash: string): Promise<boolean> {
+  const cleanPass = (rawPass || '').trim();
+  const cleanStored = (storedHash || '').trim();
+  if (!cleanPass || !cleanStored) return false;
+  if (
+    cleanPass.startsWith('scrypt_v1$') ||
+    cleanPass.startsWith('pbkdf2_v1$') ||
+    cleanPass.startsWith('sha256_v1$')
+  ) {
+    return false;
+  }
+
+  // 1. scrypt_v1$ is verified by backend /api/auth/session
+  if (cleanStored.startsWith('scrypt_v1$')) {
+    return false;
+  }
+
+  // 2. pbkdf2_v1$<saltHex>$<hashHex> (100,000 iterations)
+  if (cleanStored.startsWith('pbkdf2_v1$') && typeof window !== 'undefined' && window.crypto?.subtle) {
+    const parts = cleanStored.split('$');
+    if (parts.length !== 3) return false;
+    const [, saltHex, expectedHex] = parts;
+    try {
+      const saltPairs = saltHex.match(/.{1,2}/g) || [];
+      const saltBytes = new Uint8Array(saltPairs.map((byte) => parseInt(byte, 16)));
+      const encoder = new TextEncoder();
+      const baseKey = await window.crypto.subtle.importKey(
+        'raw',
+        encoder.encode(cleanPass),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+      const derivedBits = await window.crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: saltBytes,
+          iterations: 100000,
+          hash: 'SHA-256',
+        },
+        baseKey,
+        256
+      );
+      const actualHex = Array.from(new Uint8Array(derivedBits))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      return actualHex === expectedHex;
+    } catch {
+      return false;
+    }
+  }
+
+  // 3. Legacy sha256_v1$ (only for migrating existing accounts to scrypt_v1$ upon login)
+  if (cleanStored.startsWith('sha256_v1$') && typeof window !== 'undefined' && window.crypto?.subtle) {
+    try {
+      const payload = 'sahaya_pass_salt_2026::' + cleanPass;
+      const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
       const hex = Array.from(new Uint8Array(buf))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-      return 'sha256_v1$' + hex;
-    } catch (e) {}
+      return cleanStored === `sha256_v1$${hex}`;
+    } catch {
+      return false;
+    }
   }
-  let h = 5381;
-  for (let i = 0; i < payload.length; i++) {
-    h = (h * 33) ^ payload.charCodeAt(i);
-  }
-  return 'sha256_v1$fb_' + String(h >>> 0);
+
+  return cleanStored === cleanPass;
 }
+
 

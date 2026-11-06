@@ -103,12 +103,13 @@ export const EmergencyDirectoryModal: React.FC<EmergencyDirectoryModalProps> = (
     message: string;
   } | null>(null);
 
-  // Check user registration status
+  // Check user registration & RBAC admin status
   const isRegisteredUser = !!currentUser && currentUser.status === 'approved' && !currentUser.isDemo;
-  const isAdmin = currentUser?.role === 'admin' || 
-                  currentUser?.email?.includes('admin') || 
-                  currentUser?.email === 'www.akash.online@gmail.com' ||
-                  currentUser?.phone === '0771234567';
+  const isAdmin =
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'super_admin' ||
+    (currentUser as any)?.isAdmin === true ||
+    (currentUser as any)?.isSuperAdmin === true;
 
   const districtsList = [
     'all',

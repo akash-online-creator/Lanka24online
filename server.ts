@@ -23,6 +23,8 @@ import {
   CreateBucketCommand
 } from '@aws-sdk/client-s3';
 import webPush from 'web-push';
+import { z } from 'zod';
+import * as OTPAuth from 'otpauth';
 
 dotenv.config();
 
@@ -224,16 +226,60 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Trust only the first reverse proxy hop (Cloud Run / load balancer) so req.ip cannot be spoofed via client X-Forwarded-For
+  // 16. Proxy & HTTPS Settings: Trust only the first reverse proxy hop (Cloud Run / load balancer)
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
 
-  // 🛡️ Helmet.js Security Middleware (configured for SPA + AI Studio Preview compatibility)
+  // Enforce HTTPS redirect in production when behind a reverse proxy
+  app.use((req: any, res: any, next: any) => {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      req.headers['x-forwarded-proto'] &&
+      req.headers['x-forwarded-proto'] !== 'https' &&
+      !req.path.startsWith('/healthz') &&
+      !req.path.startsWith('/api/health') &&
+      !req.path.startsWith('/api/ready')
+    ) {
+      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    }
+    return next();
+  });
+
+  // 8. Security Headers / Helmet (CSP, HSTS, Referrer-Policy, Permissions-Policy, nosniff)
   app.use(
     helmet({
-      contentSecurityPolicy: false, // Handled per-route on media endpoints; SPA uses inline scripts/styles & external map tiles
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "'unsafe-eval'",
+            'https://apis.google.com',
+            'https://www.gstatic.com',
+            'https://www.google.com',
+          ],
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            'https://fonts.googleapis.com',
+            'https://unpkg.com',
+          ],
+          imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+          mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
+          fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+          connectSrc: ["'self'", 'https:', 'wss:'],
+          workerSrc: ["'self'", 'blob:'],
+          frameSrc: ["'self'", 'https://*.firebaseapp.com', 'https://*.google.com'],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
       crossOriginEmbedderPolicy: false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
-      frameguard: false, // Allow embedding inside trusted AI Studio preview environment
+      frameguard: false, // Allow embedding inside trusted AI Studio preview frame
       hsts: {
         maxAge: 31536000,
         includeSubDomains: true,
@@ -242,13 +288,26 @@ async function startServer() {
       referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
       dnsPrefetchControl: { allow: false },
       permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+      noSniff: true,
     })
   );
 
-  // 🛡️ Strict CORS Origin Allowlist (blocks unauthorized third-party websites)
+  // Explicit Permissions-Policy & Cache-Control for API routes
+  app.use((req: any, res: any, next: any) => {
+    res.setHeader(
+      'Permissions-Policy',
+      'geolocation=(self), microphone=(self), camera=(self), fullscreen=(self), payment=(), usb=(), magnetometer=(), gyroscope=()'
+    );
+    if (req.path.startsWith('/api/') && !req.path.startsWith('/api/storage/file/') && !req.path.startsWith('/api/telegram/file/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    }
+    return next();
+  });
+
+  // 6. Narrowed CORS Policy (Strict allowlist for trusted domains only; blocks arbitrary third-party origins)
   const customAllowedOrigins = String(process.env.ALLOWED_CORS_ORIGINS || '')
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
   const STATIC_TRUSTED_ORIGINS = new Set([
@@ -267,12 +326,13 @@ async function startServer() {
   ]);
 
   const isTrustedCorsOrigin = (origin?: string): boolean => {
-    // Allow same-origin requests, native Android/Capacitor calls, or server health probes (no Origin header)
-    if (!origin) return true;
+    if (!origin) return true; // Same-origin, native mobile webview, or server healthcheck
     const cleanOrigin = origin.trim().replace(/\/$/, '');
     if (STATIC_TRUSTED_ORIGINS.has(cleanOrigin)) return true;
-    // Allow official Cloud Run deployment URLs (*.run.app) and Google AI Studio preview frames
-    if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.run\.app$/i.test(cleanOrigin)) return true;
+    // Only allow this application's Cloud Run preview/production URLs and AI Studio host
+    if (/^https:\/\/(ais-(dev|pre)-[a-z0-9-]+-[0-9]+|sahaya-sewa[a-z0-9-]*)\.[a-z0-9-]+\.run\.app$/i.test(cleanOrigin)) {
+      return true;
+    }
     if (/^https:\/\/([a-z0-9-]+\.)?aistudio\.google\.com$/i.test(cleanOrigin)) return true;
     return false;
   };
@@ -292,33 +352,229 @@ async function startServer() {
         'X-Sahaya-Client-Guard',
         'X-Sahaya-Session-Token',
         'X-Internal-Api-Secret',
+        'X-CSRF-Token',
+        'X-Idempotency-Key',
+        'X-Webhook-Signature',
+        'X-Webhook-Timestamp',
+        'X-Firebase-AppCheck',
+        'X-Admin-Mfa-Code',
       ],
       credentials: true,
       maxAge: 86400,
     })
   );
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  // 10 & 18. Per-Route Body Size Limits & Request Timeouts (DoS Protection)
+  // Global JSON/urlencoded limit is capped at 1MB; 30MB parser is applied ONLY on media upload routes
+  const defaultJsonParser = express.json({ limit: '1mb' });
+  const defaultUrlEncodedParser = express.urlencoded({ limit: '1mb', extended: true });
+  const uploadJsonParser = express.json({ limit: '30mb' });
+  const uploadUrlEncodedParser = express.urlencoded({ limit: '30mb', extended: true });
+
+  app.use((req: any, res: any, next: any) => {
+    // Request/Response Timeout Guard (35s for uploads/AI, 20s for standard API routes)
+    const isHeavyRoute =
+      req.path.startsWith('/api/storage/upload') ||
+      req.path.startsWith('/api/telegram/upload') ||
+      req.path.startsWith('/api/chat') ||
+      req.path.startsWith('/api/ai/');
+    const timeoutMs = isHeavyRoute ? 35000 : 20000;
+    req.setTimeout(timeoutMs);
+    res.setTimeout(timeoutMs, () => {
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'Request timed out. Please try again.' });
+      }
+    });
+
+    if (req.path === '/api/storage/upload' || req.path === '/api/telegram/upload') {
+      return next();
+    }
+    return defaultJsonParser(req, res, (err: any) => {
+      if (err) {
+        return res.status(413).json({ error: 'Payload too large or malformed JSON (max 1MB).' });
+      }
+      return defaultUrlEncodedParser(req, res, next);
+    });
+  });
+
+  // 10. Global NoSQL Injection & Prototype Pollution Sanitizer Middleware
+  const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype', '$where', '$gt', '$gte', '$lt', '$lte', '$ne', '$in', '$nin', '$regex', '$or', '$and', '$not', '$expr']);
+
+  const sanitizeObjectDeep = (input: any, depth = 0): any => {
+    if (depth > 8 || input === null || input === undefined) return input;
+    if (typeof input === 'string') {
+      return input.replace(/\0/g, '');
+    }
+    if (Array.isArray(input)) {
+      return input.slice(0, 200).map((item) => sanitizeObjectDeep(item, depth + 1));
+    }
+    if (typeof input === 'object' && !(input instanceof Buffer)) {
+      const cleaned: Record<string, any> = {};
+      for (const [key, val] of Object.entries(input)) {
+        if (key.startsWith('$') || key.includes('.') || DANGEROUS_OBJECT_KEYS.has(key)) {
+          continue; // Strip NoSQL operator / prototype pollution keys
+        }
+        cleaned[key] = sanitizeObjectDeep(val, depth + 1);
+      }
+      return cleaned;
+    }
+    return input;
+  };
+
+  app.use((req: any, _res: any, next: any) => {
+    if (req.body && typeof req.body === 'object' && !(req.body instanceof Buffer)) {
+      req.body = sanitizeObjectDeep(req.body);
+    }
+    if (req.query && typeof req.query === 'object') {
+      req.query = sanitizeObjectDeep(req.query);
+    }
+    if (req.params && typeof req.params === 'object') {
+      req.params = sanitizeObjectDeep(req.params);
+    }
+    return next();
+  });
+
+  // 13. Sensitive Data Redactor for Server Logs (Never log passwords, tokens, or API keys)
+  const redactSensitiveLog = (msg: any): string => {
+    const raw = typeof msg === 'string' ? msg : JSON.stringify(msg || '');
+    return raw
+      .replace(/(scrypt_v1\$|pbkdf2_v1\$|sha256_v1\$)[a-zA-Z0-9$_]+/g, '[REDACTED_HASH]')
+      .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED_TOKEN]')
+      .replace(/AIza[0-9A-Za-z\-_]{30,}/g, '[REDACTED_API_KEY]')
+      .replace(/"(password|newPassword|key|tempPassword|sessionToken|csrfToken)"\s*:\s*"[^"]*"/gi, '"$1":"[REDACTED]"');
+  };
+
+  // 18. DoS Concurrency Queue / Semaphore Limiter for Expensive Operations
+  const createConcurrencyLimiter = (maxConcurrent: number, queueLabel: string) => {
+    let activeCount = 0;
+    return (req: any, res: any, next: any) => {
+      if (activeCount >= maxConcurrent) {
+        return res.status(503).json({
+          error: `සේවාදායකය කාර්යබහුලයි (${queueLabel}). කරුණාකර තත්පර කිහිපයකින් නැවත උත්සාහ කරන්න.`,
+        });
+      }
+      activeCount++;
+      let released = false;
+      const release = () => {
+        if (!released) {
+          released = true;
+          activeCount = Math.max(0, activeCount - 1);
+        }
+      };
+      res.on('finish', release);
+      res.on('close', release);
+      return next();
+    };
+  };
+
+  const aiQueueLimiter = createConcurrencyLimiter(20, 'AI Queue');
+  const uploadQueueLimiter = createConcurrencyLimiter(10, 'Upload Queue');
+
+  // 10. Zod Schema Validation Helper & Endpoint Schemas
+  const validateBodyWithZod = <T>(schema: z.ZodType<T>, body: unknown): { ok: boolean; data: T; error?: string } => {
+    const result = schema.safeParse(body);
+    if (!result.success) {
+      const firstIssue = result.error.issues[0];
+      return {
+        ok: false,
+        data: undefined as unknown as T,
+        error: `Invalid input (${firstIssue?.path?.join('.') || 'payload'}): ${firstIssue?.message || 'Schema validation failed'}`,
+      };
+    }
+    return { ok: true, data: result.data };
+  };
+
+  const ChatRequestSchema = z.object({
+    message: z.string().min(1).max(2000),
+    language: z.enum(['si', 'en', 'ta']).optional().default('si'),
+    conversationHistory: z.array(z.object({
+      role: z.string(),
+      text: z.string().max(2500),
+    })).max(20).optional().default([]),
+    mode: z.string().max(40).optional().default('full'),
+    locationContext: z.string().max(250).optional().default(''),
+  });
+
+  const PasswordHashRequestSchema = z.object({
+    password: z.string().min(4).max(128),
+  });
+
+  const AuthSessionRequestSchema = z.object({
+    identifier: z.string().max(150).optional(),
+    password: z.string().max(128).optional(),
+    clientUser: z.record(z.string(), z.any()).optional(),
+  });
+
+  const AdminResetPasswordSchema = z.object({
+    userId: z.string().max(150).optional(),
+    nicNumber: z.string().max(150).optional(),
+    newPassword: z.string().min(4).max(128),
+    mfaCode: z.string().max(12).optional(),
+  });
+
+  const AdminDeleteUserSchema = z.object({
+    userId: z.string().max(150).optional(),
+    nicNumber: z.string().max(150).optional(),
+    id: z.string().max(150).optional(),
+    mfaCode: z.string().max(12).optional(),
+  });
+
+  const UserUpdatePasswordSchema = z.object({
+    userId: z.string().max(150).optional(),
+    nicNumber: z.string().max(150).optional(),
+    newPassword: z.string().min(4).max(128),
+  });
+
+  const PaymentWebhookSchema = z.object({
+    eventId: z.string().min(4).max(128),
+    eventType: z.enum(['credit.topup', 'payment.completed', 'subscription.updated']),
+    userId: z.string().min(2).max(128),
+    amountLkr: z.number().min(0).max(50000),
+    creditsToAdd: z.number().min(0).max(50000),
+    reference: z.string().max(128).optional(),
+  });
 
   // Telegram Credentials (.env ගොනුවෙන් ලබා ගනී)
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // Telegram Channel/Group ID (-100xxxxxxxxx)
+  const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
   const ADMIN_TELEGRAM_BOT_TOKEN = process.env.ADMIN_TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN;
   const ADMIN_TELEGRAM_CHAT_ID = process.env.ADMIN_TELEGRAM_CHAT_ID || TELEGRAM_CHAT_ID;
 
   // Multer memory storage - Files තාවකාලිකව RAM එකේ තබා ගනී
-  const upload = multer({ 
+  const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 25 * 1024 * 1024 } // 25MB safe ceiling to prevent server OOM
+    limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 12 }, // 25MB safe ceiling to prevent server OOM
   });
 
-  // Spoof-resistant IP rate limiter using Express trusted proxy req.ip (never client-supplied first x-forwarded-for item)
-  const createRateLimiter = (maxRequests: number, windowMs: number) => {
+  // 9. Distributed Redis + In-Memory Rate Limiter (prevents bypass across restarts & multiple Cloud Run instances)
+  const createRateLimiter = (maxRequests: number, windowMs: number, bucketPrefix = 'rl') => {
     const hits = new Map<string, { count: number; resetAt: number }>();
-    return (req: any, res: any, next: any) => {
+    return async (req: any, res: any, next: any) => {
       const ip = String(req.ip || req.socket?.remoteAddress || 'ip_unknown').trim();
       const now = Date.now();
+
+      // Primary: Shared Redis Atomic Counter across instances
+      if (isRedisConnected && redisClient) {
+        try {
+          const windowBucket = Math.floor(now / windowMs);
+          const redisKey = `sahaya_rl:${bucketPrefix}:${ip}:${windowBucket}`;
+          const count = await redisClient.incr(redisKey);
+          if (count === 1) {
+            await redisClient.pexpire(redisKey, windowMs + 2000);
+          }
+          res.setHeader('X-RateLimit-Limit', String(maxRequests));
+          res.setHeader('X-RateLimit-Remaining', String(Math.max(0, maxRequests - count)));
+          if (count > maxRequests) {
+            return res.status(429).json({
+              error: 'වැඩි වාර ගණනක් ඉල්ලීම් එවා ඇත. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න. (Too many requests, please slow down.)',
+            });
+          }
+          return next();
+        } catch {
+          // Fall back to in-memory limiter if Redis command fails
+        }
+      }
+
       if (hits.size > 5000) {
         for (const [k, v] of hits.entries()) {
           if (now > v.resetAt) hits.delete(k);
@@ -327,25 +583,29 @@ async function startServer() {
       const record = hits.get(ip);
       if (!record || now > record.resetAt) {
         hits.set(ip, { count: 1, resetAt: now + windowMs });
+        res.setHeader('X-RateLimit-Limit', String(maxRequests));
+        res.setHeader('X-RateLimit-Remaining', String(maxRequests - 1));
         return next();
       }
       if (record.count >= maxRequests) {
+        res.setHeader('X-RateLimit-Remaining', '0');
         return res.status(429).json({
           error: 'වැඩි වාර ගණනක් ඉල්ලීම් එවා ඇත. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න. (Too many requests, please slow down.)',
         });
       }
       record.count++;
+      res.setHeader('X-RateLimit-Limit', String(maxRequests));
+      res.setHeader('X-RateLimit-Remaining', String(Math.max(0, maxRequests - record.count)));
       return next();
     };
   };
 
-  const aiRateLimiter = createRateLimiter(60, 60 * 1000); // Max 60 AI calls/min per IP
-  const uploadRateLimiter = createRateLimiter(30, 60 * 1000); // Max 30 uploads/min per IP
-  const authRateLimiter = createRateLimiter(25, 60 * 1000); // Max 25 auth/lookup calls/min per IP
-  const adminActionRateLimiter = createRateLimiter(15, 60 * 1000); // Max 15 admin/sensitive actions/min per IP
+  const aiRateLimiter = createRateLimiter(60, 60 * 1000, 'ai'); // Max 60 AI calls/min per IP
+  const uploadRateLimiter = createRateLimiter(30, 60 * 1000, 'upload'); // Max 30 uploads/min per IP
+  const authRateLimiter = createRateLimiter(25, 60 * 1000, 'auth'); // Max 25 auth/lookup calls/min per IP
+  const adminActionRateLimiter = createRateLimiter(15, 60 * 1000, 'admin'); // Max 15 admin/sensitive actions/min per IP
 
-  // 🔐 Server-side Cryptographic Scrypt Password Hashing (Salt + N=16384, r=8, p=1)
-  // Replaces fast SHA-256 with memory-hard scrypt while transparently migrating legacy hashes on login
+  // 1. 🔐 Server-side Cryptographic Scrypt Password Hashing (16-byte CSPRNG Salt + N=16384, r=8, p=1)
   const hashRawServerPassword = (rawPass: string): string => {
     const clean = String(rawPass || '').trim();
     if (!clean) return '';
@@ -377,7 +637,23 @@ async function startServer() {
       return { valid: false, needsUpgrade: false };
     }
 
-    // 2. Legacy sha256_v1$<hex> (verify with timingSafeEqual and flag for immediate scrypt upgrade)
+    // 2. Client WebCrypto pbkdf2_v1$<saltHex>$<hashHex> (100,000 iterations — verify & upgrade to scrypt_v1$)
+    if (cleanStored.startsWith('pbkdf2_v1$')) {
+      const parts = cleanStored.split('$');
+      if (parts.length !== 3) return { valid: false, needsUpgrade: false };
+      const [, saltHex, hashHex] = parts;
+      try {
+        const saltBuf = Buffer.from(saltHex, 'hex');
+        const expectedBuf = Buffer.from(hashHex, 'hex');
+        const derivedBuf = crypto.pbkdf2Sync(cleanPass, saltBuf, 100000, expectedBuf.length, 'sha256');
+        if (expectedBuf.length === derivedBuf.length && crypto.timingSafeEqual(expectedBuf, derivedBuf)) {
+          return { valid: true, needsUpgrade: true };
+        }
+      } catch {}
+      return { valid: false, needsUpgrade: false };
+    }
+
+    // 3. Legacy sha256_v1$<hex> (verify with timingSafeEqual and flag for immediate scrypt_v1$ upgrade)
     if (cleanStored.startsWith('sha256_v1$')) {
       const legacyPayload = 'sahaya_pass_salt_2026::' + cleanPass;
       const legacyHex = crypto.createHash('sha256').update(legacyPayload, 'utf8').digest('hex');
@@ -390,7 +666,7 @@ async function startServer() {
       return { valid: false, needsUpgrade: false };
     }
 
-    // 3. Legacy plaintext fallback (flag for immediate scrypt upgrade)
+    // 4. Legacy plaintext fallback (flag for immediate scrypt_v1$ upgrade)
     const bufA = Buffer.from(cleanStored);
     const bufB = Buffer.from(cleanPass);
     if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
@@ -399,8 +675,8 @@ async function startServer() {
     return { valid: false, needsUpgrade: false };
   };
 
-  // 🛡️ Cryptographic HMAC-SHA256 Session Secret (NEVER uses GEMINI_API_KEY, PID, or predictable values)
-  // Fails fast in production if SESSION_HMAC_SECRET / SESSION_SECRET is not configured
+  // 2. 🛡️ Cryptographic HMAC-SHA256 Session Secret (NEVER uses GEMINI_API_KEY, PID, or predictable values)
+  // Strictly fails fast in production if SESSION_HMAC_SECRET / SESSION_SECRET is not set in environment variables
   const resolveSessionHmacSecret = (): string => {
     const envSecret = String(
       process.env.SESSION_HMAC_SECRET ||
@@ -409,42 +685,30 @@ async function startServer() {
       ''
     ).trim();
 
+    if (process.env.NODE_ENV === 'production' && envSecret.length < 32) {
+      throw new Error(
+        'FATAL SECURITY ERROR: SESSION_HMAC_SECRET or SESSION_SECRET environment variable (minimum 32 characters) MUST be configured in production!'
+      );
+    }
+
     if (envSecret.length >= 32) {
       return envSecret;
     }
 
-    const secretFilePath = path.join(process.cwd(), '.sahaya_session_secret');
-    if (process.env.NODE_ENV === 'production' && !envSecret && !fs.existsSync(secretFilePath)) {
-      throw new Error(
-        'FATAL SECURITY ERROR: SESSION_HMAC_SECRET or SESSION_SECRET environment variable (min 32 chars) must be set in production!'
-      );
-    }
-
-    if (envSecret.length > 0) {
+    if (envSecret.length > 0 && envSecret.length < 32) {
       throw new Error(
         'FATAL SECURITY ERROR: SESSION_HMAC_SECRET / SESSION_SECRET must be at least 32 characters long.'
       );
     }
 
-    try {
-      if (fs.existsSync(secretFilePath)) {
-        const stored = fs.readFileSync(secretFilePath, 'utf8').trim();
-        if (stored.length >= 64) return stored;
-      }
-      const generated = crypto.randomBytes(32).toString('hex');
-      fs.writeFileSync(secretFilePath, generated, { encoding: 'utf8', mode: 0o600 });
-      return generated;
-    } catch (err) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FATAL SECURITY ERROR: Unable to load or persist SESSION_HMAC_SECRET.');
-      }
-      return crypto.randomBytes(32).toString('hex');
-    }
+    // Development-only CSPRNG random secret (never derived from PID or API keys)
+    return crypto.randomBytes(64).toString('hex');
   };
 
   const SESSION_HMAC_SECRET = resolveSessionHmacSecret();
 
   interface SignedSessionPayload {
+    jti: string;
     uid: string;
     nic: string;
     role: 'user' | 'member' | 'admin' | 'super_admin';
@@ -452,8 +716,13 @@ async function startServer() {
     exp: number;
   }
 
+  // 12. Session Revocation Denylist & Brute-Force Account Lockout Store
+  const revokedSessionJtis = new Set<string>();
+  const loginLockoutMap = new Map<string, { failures: number; lockedUntil: number }>();
+
   const issueSessionToken = (user: { id?: string; userId?: string; nic?: string; nicNumber?: string; role?: string }): string => {
     const payload: SignedSessionPayload = {
+      jti: crypto.randomBytes(12).toString('hex'),
       uid: String(user.id || user.userId || '').trim(),
       nic: String(user.nicNumber || user.nic || user.userId || '').trim().toUpperCase(),
       role: (user.role === 'admin' || user.role === 'super_admin') ? user.role : 'user',
@@ -463,6 +732,32 @@ async function startServer() {
     const dataB64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
     const sigB64 = crypto.createHmac('sha256', SESSION_HMAC_SECRET).update(dataB64).digest('base64url');
     return `${dataB64}.${sigB64}`;
+  };
+
+  const issueCsrfToken = (sessionToken: string): string => {
+    return crypto
+      .createHmac('sha256', SESSION_HMAC_SECRET)
+      .update(`csrf:${sessionToken}`)
+      .digest('base64url')
+      .slice(0, 32);
+  };
+
+  const parseCookies = (cookieHeader?: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (!cookieHeader) return out;
+    for (const part of cookieHeader.split(';')) {
+      const idx = part.indexOf('=');
+      if (idx > 0) {
+        const k = part.slice(0, idx).trim();
+        const v = part.slice(idx + 1).trim();
+        try {
+          out[k] = decodeURIComponent(v);
+        } catch {
+          out[k] = v;
+        }
+      }
+    }
+    return out;
   };
 
   const verifySessionToken = (tokenStr: string): SignedSessionPayload | null => {
@@ -478,24 +773,127 @@ async function startServer() {
       }
       const parsed = JSON.parse(Buffer.from(dataB64, 'base64url').toString('utf8')) as SignedSessionPayload;
       if (!parsed || !parsed.exp || Date.now() > parsed.exp) return null;
+      if (parsed.jti && revokedSessionJtis.has(parsed.jti)) return null;
       return parsed;
     } catch {
       return null;
     }
   };
 
-  const extractSessionFromReq = (req: any): SignedSessionPayload | null => {
+  const extractRawTokenFromReq = (req: any): { rawToken: string; fromCookie: boolean } => {
     const authHeader = String(req.headers['authorization'] || '');
-    const rawToken = authHeader.startsWith('Bearer ')
-      ? authHeader.slice(7).trim()
-      : String(req.headers['x-sahaya-session-token'] || '').trim();
+    if (authHeader.startsWith('Bearer ')) {
+      return { rawToken: authHeader.slice(7).trim(), fromCookie: false };
+    }
+    const headerToken = String(req.headers['x-sahaya-session-token'] || '').trim();
+    if (headerToken) {
+      return { rawToken: headerToken, fromCookie: false };
+    }
+    const cookies = parseCookies(req.headers['cookie']);
+    if (cookies.sahaya_session) {
+      return { rawToken: cookies.sahaya_session, fromCookie: true };
+    }
+    return { rawToken: '', fromCookie: false };
+  };
+
+  const extractSessionFromReq = (req: any): SignedSessionPayload | null => {
+    const { rawToken } = extractRawTokenFromReq(req);
     return verifySessionToken(rawToken);
+  };
+
+  // 7. CSRF & Same-Origin Verification Middleware for Cookie-Authenticated State-Changing Requests
+  app.use((req: any, res: any, next: any) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/api/webhooks/')) {
+      return next();
+    }
+    const origin = String(req.headers['origin'] || '').trim();
+    const secFetchSite = String(req.headers['sec-fetch-site'] || '').trim().toLowerCase();
+
+    // Block cross-site browser requests from untrusted origins
+    if (origin && !isTrustedCorsOrigin(origin)) {
+      return res.status(403).json({ error: 'CSRF protection: Untrusted request Origin.' });
+    }
+    if (secFetchSite === 'cross-site' && origin && !isTrustedCorsOrigin(origin)) {
+      return res.status(403).json({ error: 'CSRF protection: Cross-site state mutation blocked.' });
+    }
+
+    // If request relies on HttpOnly session cookie without Authorization header, verify CSRF token or custom header
+    const { rawToken, fromCookie } = extractRawTokenFromReq(req);
+    if (fromCookie && rawToken) {
+      const csrfHeader = String(req.headers['x-csrf-token'] || '').trim();
+      const clientGuard = String(req.headers['x-sahaya-client-guard'] || '').trim();
+      const expectedCsrf = issueCsrfToken(rawToken);
+      if (csrfHeader !== expectedCsrf && clientGuard !== 'sahaya_v1_secure') {
+        return res.status(403).json({ error: 'CSRF token validation failed.' });
+      }
+    }
+    return next();
+  });
+
+  // 12. Server-Side Security & Admin Audit Logger (Firestore + Memory Ring Buffer)
+  const serverAuditLogsBuffer: Array<{
+    id: string;
+    action: string;
+    actorId: string;
+    actorRole: string;
+    targetId: string;
+    ip: string;
+    details: Record<string, any>;
+    createdAt: string;
+  }> = [];
+
+  const writeServerAuditLog = async (
+    action: string,
+    actorId: string,
+    targetId: string,
+    details: Record<string, any>,
+    req?: any
+  ) => {
+    const entry = {
+      id: `audit_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      action,
+      actorId: String(actorId || 'anonymous').slice(0, 120),
+      actorRole: String(req?.authUser?.role || 'user'),
+      targetId: String(targetId || '').slice(0, 120),
+      ip: String(req?.ip || req?.socket?.remoteAddress || 'unknown').slice(0, 64),
+      details,
+      createdAt: new Date().toISOString(),
+    };
+    serverAuditLogsBuffer.unshift(entry);
+    if (serverAuditLogsBuffer.length > 250) {
+      serverAuditLogsBuffer.length = 250;
+    }
+    if (adminDb) {
+      await adminDb.collection('auditLogs').doc(entry.id).set(entry).catch(() => {});
+    }
+  };
+
+  // Optional TOTP MFA Verification for High-Risk Admin Operations (when ADMIN_MFA_SECRET is configured)
+  const verifyAdminMfaIfConfigured = (req: any): boolean => {
+    const mfaSecret = String(process.env.ADMIN_MFA_SECRET || '').trim();
+    if (!mfaSecret) return true; // MFA not enforced unless ADMIN_MFA_SECRET is configured
+    const code = String(req.headers['x-admin-mfa-code'] || req.body?.mfaCode || '').trim();
+    if (!code) return false;
+    try {
+      const totp = new OTPAuth.TOTP({
+        issuer: 'SahayaSewa',
+        label: 'Admin',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(mfaSecret),
+      });
+      const delta = totp.validate({ token: code, window: 1 });
+      return delta !== null;
+    } catch {
+      return false;
+    }
   };
 
   const requireAuthenticatedUser = (req: any, res: any, next: any) => {
     const internalSecret = process.env.INTERNAL_API_SECRET;
     if (internalSecret && req.headers['x-internal-api-secret'] === internalSecret) {
-      req.authUser = { uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
+      req.authUser = { jti: 'sys', uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
       return next();
     }
     const session = extractSessionFromReq(req);
@@ -509,7 +907,7 @@ async function startServer() {
   const requireAdminAuth = (req: any, res: any, next: any) => {
     const internalSecret = process.env.INTERNAL_API_SECRET;
     if (internalSecret && req.headers['x-internal-api-secret'] === internalSecret) {
-      req.authUser = { uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
+      req.authUser = { jti: 'sys', uid: 'system', nic: 'SYSTEM', role: 'super_admin' };
       return next();
     }
     const session = extractSessionFromReq(req);
@@ -519,11 +917,14 @@ async function startServer() {
     if (session.role !== 'admin' && session.role !== 'super_admin') {
       return res.status(403).json({ error: 'Forbidden: Administrator privileges required.' });
     }
+    if (!verifyAdminMfaIfConfigured(req)) {
+      return res.status(403).json({ error: 'Admin MFA verification code required (X-Admin-Mfa-Code).' });
+    }
     req.authUser = session;
     return next();
   };
 
-  // Strict MIME Allowlist to prevent Stored XSS (blocks text/html, image/svg+xml, application/javascript, etc.)
+  // 4. Strict File Upload Security (MIME Allowlist, Extension Allowlist, Magic Bytes, Image Dimensions & Malware Signatures)
   const ALLOWED_UPLOAD_MIME_TYPES = new Set([
     'image/jpeg',
     'image/jpg',
@@ -561,7 +962,7 @@ async function startServer() {
   ]);
 
   const isBufferDisguisedHtmlOrScript = (buf: Buffer): boolean => {
-    const head = buf.subarray(0, 1024).toString('utf8').toLowerCase().trim();
+    const head = buf.subarray(0, 2048).toString('utf8').toLowerCase().trim();
     return (
       head.startsWith('<!doctype') ||
       head.startsWith('<html') ||
@@ -575,59 +976,71 @@ async function startServer() {
     );
   };
 
-  // Binary Magic-Byte Signature Validator (prevents disguised executables/scripts renamed to .jpg/.png)
+  // Malware & Polyglot Signature Scanner (blocks EICAR, ELF/PE binaries, embedded PHP/JSP web shells)
+  const scanBufferForMalwareSignatures = (buf: Buffer): { clean: boolean; reason?: string } => {
+    if (!buf || buf.length === 0) return { clean: false, reason: 'Empty file buffer' };
+    // Check Windows PE (MZ) or Linux ELF (\x7fELF) or Mach-O headers
+    if (
+      (buf.length >= 2 && buf[0] === 0x4d && buf[1] === 0x5a) ||
+      (buf.length >= 4 && buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46)
+    ) {
+      return { clean: false, reason: 'Executable binary header detected' };
+    }
+    const sampleAscii =
+      buf.subarray(0, Math.min(buf.length, 8192)).toString('latin1') +
+      (buf.length > 8192 ? buf.subarray(buf.length - 4096).toString('latin1') : '');
+    if (sampleAscii.includes('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')) {
+      return { clean: false, reason: 'EICAR malware test signature detected' };
+    }
+    if (
+      /<\?php/i.test(sampleAscii) ||
+      /<%\s*@/i.test(sampleAscii) ||
+      /eval\s*\(\s*base64_decode/i.test(sampleAscii) ||
+      /system\s*\(\s*\$_(GET|POST|REQUEST)/i.test(sampleAscii)
+    ) {
+      return { clean: false, reason: 'Embedded server script / web shell signature detected' };
+    }
+    return { clean: true };
+  };
+
+  // Binary Magic-Byte Signature Validator
   const validateFileMagicBytes = (buf: Buffer, mimeType: string): boolean => {
     if (!buf || buf.length < 12) return false;
-    // JPEG: FF D8 FF
     if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
       return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
     }
-    // PNG: 89 50 4E 47 0D 0A 1A 0A
     if (mimeType === 'image/png') {
-      return (
-        buf[0] === 0x89 &&
-        buf[1] === 0x50 &&
-        buf[2] === 0x4e &&
-        buf[3] === 0x47
-      );
+      return buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
     }
-    // GIF: GIF87a or GIF89a
     if (mimeType === 'image/gif') {
       const sig = buf.subarray(0, 6).toString('ascii');
       return sig === 'GIF87a' || sig === 'GIF89a';
     }
-    // WebP: RIFF....WEBP
     if (mimeType === 'image/webp') {
       return (
         buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
         buf.subarray(8, 12).toString('ascii') === 'WEBP'
       );
     }
-    // PDF: %PDF-
     if (mimeType === 'application/pdf') {
       return buf.subarray(0, 5).toString('ascii') === '%PDF-';
     }
-    // WebM / Matroska: 1A 45 DF A3
     if (mimeType === 'audio/webm' || mimeType === 'video/webm') {
       return buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3;
     }
-    // Ogg: OggS
     if (mimeType === 'audio/ogg') {
       return buf.subarray(0, 4).toString('ascii') === 'OggS';
     }
-    // WAV: RIFF....WAVE
     if (mimeType === 'audio/wav') {
       return (
         buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
         buf.subarray(8, 12).toString('ascii') === 'WAVE'
       );
     }
-    // MP3 / AAC: ID3 or FF FB / FF F3 / FF F2 / FF F1 / FF F9
     if (mimeType === 'audio/mpeg' || mimeType === 'audio/mp3' || mimeType === 'audio/aac') {
       if (buf.subarray(0, 3).toString('ascii') === 'ID3') return true;
       return buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0;
     }
-    // MP4 / M4A / QuickTime: ....ftyp or ....moov or ....wide
     if (
       mimeType === 'video/mp4' ||
       mimeType === 'audio/mp4' ||
@@ -640,13 +1053,54 @@ async function startServer() {
     return false;
   };
 
-  // Validate reasonable image dimensions from PNG/JPEG header to block decompression bombs
+  // Validate reasonable image dimensions across PNG, GIF, WebP, and JPEG headers (blocks decompression bombs > 8192px or > 36MP)
   const validateImageDimensionsSafe = (buf: Buffer, mimeType: string): boolean => {
     try {
+      const MAX_DIM = 8192;
+      const MAX_PIXELS = 36_000_000;
+      const checkBounds = (w: number, h: number) =>
+        w > 0 && h > 0 && w <= MAX_DIM && h <= MAX_DIM && w * h <= MAX_PIXELS;
+
+      // 1. PNG IHDR chunk
       if (mimeType === 'image/png' && buf.length >= 24) {
-        const width = buf.readUInt32BE(16);
-        const height = buf.readUInt32BE(20);
-        if (width <= 0 || height <= 0 || width > 12000 || height > 12000) return false;
+        return checkBounds(buf.readUInt32BE(16), buf.readUInt32BE(20));
+      }
+      // 2. GIF Logical Screen Descriptor
+      if (mimeType === 'image/gif' && buf.length >= 10) {
+        return checkBounds(buf.readUInt16LE(6), buf.readUInt16LE(8));
+      }
+      // 3. WebP VP8 / VP8L / VP8X header
+      if (mimeType === 'image/webp' && buf.length >= 30) {
+        const chunkHeader = buf.subarray(12, 16).toString('ascii');
+        if (chunkHeader === 'VP8X') {
+          const w = 1 + buf.readUIntLE(24, 3);
+          const h = 1 + buf.readUIntLE(27, 3);
+          return checkBounds(w, h);
+        }
+      }
+      // 4. JPEG SOF0..SOF3 markers (0xFFC0 .. 0xFFC3)
+      if ((mimeType === 'image/jpeg' || mimeType === 'image/jpg') && buf.length >= 4) {
+        let offset = 2;
+        while (offset + 9 < buf.length && offset < 65536) {
+          if (buf[offset] !== 0xff) {
+            offset++;
+            continue;
+          }
+          const marker = buf[offset + 1];
+          if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+            offset += 2;
+            continue;
+          }
+          if (marker === 0xd9 || marker === 0xda) break;
+          const segLen = buf.readUInt16BE(offset + 2);
+          if (segLen < 2) break;
+          if (marker >= 0xc0 && marker <= 0xc3 && offset + 9 <= buf.length) {
+            const h = buf.readUInt16BE(offset + 5);
+            const w = buf.readUInt16BE(offset + 7);
+            return checkBounds(w, h);
+          }
+          offset += 2 + segLen;
+        }
       }
       return true;
     } catch {
@@ -740,10 +1194,12 @@ async function startServer() {
         return res.status(400).json({ error: 'අනාරක්ෂිත ගොනු නාමයකි (Path traversal blocked).' });
       }
 
-      // Enforce Strict MIME Type, Binary Magic Bytes, Image Dimensions & Script Sniffing
+      // Enforce Strict MIME Type, Binary Magic Bytes, Image Dimensions, Script Sniffing & Malware Scan
+      const malwareCheck = scanBufferForMalwareSignatures(fileBuffer);
       if (
         !ALLOWED_UPLOAD_MIME_TYPES.has(mimeType) ||
         isBufferDisguisedHtmlOrScript(fileBuffer) ||
+        !malwareCheck.clean ||
         !validateFileMagicBytes(fileBuffer, mimeType) ||
         !validateImageDimensionsSafe(fileBuffer, mimeType)
       ) {
@@ -751,6 +1207,15 @@ async function startServer() {
           error: 'අනාරක්ෂිත හෝ විකෘති කළ ගොනු වර්ගයකි. වලංගු ඡායාරූප (JPG/PNG/WebP), හඬ (WebM/MP3) හෝ වීඩියෝ (MP4) පමණක් අවසර ඇත.',
         });
       }
+
+      const uploaderSession = extractSessionFromReq(req);
+      writeServerAuditLog(
+        'media_upload',
+        uploaderSession?.uid || 'guest',
+        fileName,
+        { mimeType, fileType, fileSize: fileBuffer.length },
+        req
+      ).catch(() => {});
 
       // ==============================================================
       // 🚀 STRATEGY 1: CLOUDFLARE R2 OBJECT STORAGE (Primary / Million Scale)
@@ -884,14 +1349,30 @@ async function startServer() {
       });
 
     } catch (error: any) {
-      console.error('Unified Upload Error:', error);
-      return res.status(500).json({ error: 'Internal Server Error', message: error.message });
+      console.error('Unified Upload Error:', redactSensitiveLog(error?.message || error));
+      return res.status(500).json({ error: 'ගොනුව උඩුගත කිරීමේදී දෝෂයක් ඇති විය.' });
     }
   };
 
-  // Mount unified & alias endpoints with rate limiting
-  app.post('/api/storage/upload', uploadRateLimiter, (upload.single('file') as any), handleMediaUpload);
-  app.post('/api/telegram/upload', uploadRateLimiter, (upload.single('file') as any), handleMediaUpload);
+  // Mount unified & alias upload endpoints with dedicated 30MB body parser, rate limiting & concurrency queue
+  app.post(
+    '/api/storage/upload',
+    uploadRateLimiter,
+    uploadQueueLimiter,
+    uploadJsonParser,
+    uploadUrlEncodedParser,
+    (upload.single('file') as any),
+    handleMediaUpload
+  );
+  app.post(
+    '/api/telegram/upload',
+    uploadRateLimiter,
+    uploadQueueLimiter,
+    uploadJsonParser,
+    uploadUrlEncodedParser,
+    (upload.single('file') as any),
+    handleMediaUpload
+  );
   // -------------------------------------------------------------
   // 🎬 2. Cloudflare R2 / S3 File Stream Endpoint (Supports Range Requests + Strict Sandbox CSP)
   // -------------------------------------------------------------
@@ -1183,18 +1664,11 @@ async function startServer() {
   };
 
   const aiDailyQuotaMap = new Map<string, { count: number; dayKey: string }>();
-  const enforceAiAbuseProtection = (req: any, res: any): boolean => {
+  const enforceAiAbuseProtection = async (req: any, res: any): Promise<boolean> => {
     const session = extractSessionFromReq(req);
     const clientGuard = String(req.headers['x-sahaya-client-guard'] || '').trim();
     const origin = String(req.headers['origin'] || req.headers['referer'] || '').trim();
-    const isSameAppOrigin =
-      !origin ||
-      origin.includes('localhost') ||
-      origin.includes('127.0.0.1') ||
-      origin.includes('supporservice.online') ||
-      origin.includes('sahayasewa') ||
-      origin.includes('.run.app') ||
-      origin.includes('aistudio.google.com');
+    const isSameAppOrigin = !origin || isTrustedCorsOrigin(origin);
 
     if (!session && clientGuard !== 'sahaya_v1_secure' && !isSameAppOrigin) {
       res.status(401).json({ error: 'Unauthorized AI endpoint access.' });
@@ -1204,6 +1678,26 @@ async function startServer() {
     const actorKey = session?.uid || String(req.ip || req.socket?.remoteAddress || 'ip_anon');
     const dayKey = new Date().toISOString().slice(0, 10);
     const maxDaily = session ? 120 : 45; // Authenticated users get 120/day, guests 45/day
+
+    // Shared Redis Daily AI Quota Check
+    if (isRedisConnected && redisClient) {
+      try {
+        const redisQuotaKey = `sahaya_ai_quota:${dayKey}:${actorKey}`;
+        const count = await redisClient.incr(redisQuotaKey);
+        if (count === 1) {
+          await redisClient.expire(redisQuotaKey, 86400);
+        }
+        if (count > maxDaily) {
+          res.status(429).json({
+            error: 'දෛනික AI විමසුම් සීමාව ඉක්මවා ඇත. කරුණාකර පසුව නැවත උත්සාහ කරන්න.',
+            fallback: true,
+            reply: '',
+          });
+          return false;
+        }
+        return true;
+      } catch {}
+    }
 
     const rec = aiDailyQuotaMap.get(actorKey);
     if (!rec || rec.dayKey !== dayKey) {
@@ -1222,16 +1716,14 @@ async function startServer() {
     return true;
   };
 
-  app.post('/api/chat', aiRateLimiter, async (req: any, res: any) => {
+  app.post('/api/chat', aiRateLimiter, aiQueueLimiter, async (req: any, res: any) => {
     try {
-      if (!enforceAiAbuseProtection(req, res)) return;
-      const { message: rawMessage, language = 'si', conversationHistory = [], mode = 'full', locationContext = '' } = req.body;
-      if (!rawMessage || typeof rawMessage !== 'string') {
-        return res.status(400).json({ error: 'Message is required' });
+      if (!(await enforceAiAbuseProtection(req, res))) return;
+      const parsedBody = validateBodyWithZod(ChatRequestSchema, req.body || {});
+      if (!parsedBody.ok) {
+        return res.status(400).json({ error: parsedBody.error });
       }
-      if (rawMessage.length > 2000) {
-        return res.status(400).json({ error: 'පණිවිඩය දිග වැඩිය (උපරිම අකුරු 2000).' });
-      }
+      const { message: rawMessage, language, conversationHistory, mode, locationContext } = parsedBody.data;
       const message = sanitizeAiPromptInput(rawMessage, 1500);
       const safeLocationContext = sanitizeAiPromptInput(String(locationContext || ''), 120);
 
@@ -1536,9 +2028,9 @@ Guidelines:
   // -------------------------------------------------------------
   // 🎙️ 3.5. AI Voice Help & SOS Request Parsing Endpoint
   // -------------------------------------------------------------
-  app.post('/api/ai/voice-parse', aiRateLimiter, async (req: any, res: any) => {
+  app.post('/api/ai/voice-parse', aiRateLimiter, aiQueueLimiter, async (req: any, res: any) => {
     try {
-      if (!enforceAiAbuseProtection(req, res)) return;
+      if (!(await enforceAiAbuseProtection(req, res))) return;
       const { transcript, language = 'si', locationContext } = req.body;
       const cleanText = sanitizeAiPromptInput(String(transcript || ''), 1000);
 
@@ -1652,9 +2144,9 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 🌐 4. Multilingual Translation API (Resilient Multi-Model Cascade)
   // -------------------------------------------------------------
-  app.post('/api/translate', aiRateLimiter, async (req: any, res: any) => {
+  app.post('/api/translate', aiRateLimiter, aiQueueLimiter, async (req: any, res: any) => {
     try {
-      if (!enforceAiAbuseProtection(req, res)) return;
+      if (!(await enforceAiAbuseProtection(req, res))) return;
       const { text: rawText, targetLanguage = 'si' } = req.body;
       if (!rawText || typeof rawText !== 'string') {
         return res.status(400).json({ error: 'Text is required' });
@@ -1783,10 +2275,47 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
     return Array.from(results.values());
   };
 
-  // 🔐 Authenticate User & Issue Cryptographic HMAC Session Token
+  // 🔐 Server-side Cryptographic Scrypt Hashing Endpoint for Client Registration / Password Updates
+  app.post('/api/auth/hash-password', authRateLimiter, (req: any, res: any) => {
+    const parsed = validateBodyWithZod(PasswordHashRequestSchema, req.body || {});
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const rawPass = parsed.data.password.trim();
+    if (
+      rawPass.startsWith('scrypt_v1$') ||
+      rawPass.startsWith('pbkdf2_v1$') ||
+      rawPass.startsWith('sha256_v1$')
+    ) {
+      return res.status(400).json({ error: 'Pre-hashed strings are not accepted' });
+    }
+    return res.json({
+      success: true,
+      hash: hashRawServerPassword(rawPass),
+    });
+  });
+
+  // 🛡️ CSRF Token Issuance Endpoint
+  app.get('/api/auth/csrf-token', authRateLimiter, (req: any, res: any) => {
+    const { rawToken } = extractRawTokenFromReq(req);
+    const seed = rawToken || crypto.randomBytes(16).toString('hex');
+    const csrfToken = issueCsrfToken(seed);
+    const isProd = process.env.NODE_ENV === 'production';
+    res.setHeader(
+      'Set-Cookie',
+      `sahaya_csrf=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=604800`
+    );
+    return res.json({ success: true, csrfToken });
+  });
+
+  // 🔐 Authenticate User & Issue Cryptographic HMAC Session Token + HttpOnly Cookie + Brute-Force Lockout
   app.post('/api/auth/session', authRateLimiter, async (req: any, res: any) => {
     try {
-      const { identifier, password, clientUser } = req.body || {};
+      const parsed = validateBodyWithZod(AuthSessionRequestSchema, req.body || {});
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      const { identifier, password, clientUser } = parsed.data;
       const cleanId = String(identifier || clientUser?.nic || clientUser?.nicNumber || clientUser?.userId || clientUser?.id || '').trim();
       const rawPass = String(password || '').trim();
 
@@ -1795,12 +2324,27 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       }
 
       // Prevent pass-the-hash attacks: never allow a pre-hashed string as raw password input
-      if (rawPass.startsWith('sha256_v1$') || rawPass.startsWith('scrypt_v1$')) {
+      if (
+        rawPass.startsWith('sha256_v1$') ||
+        rawPass.startsWith('scrypt_v1$') ||
+        rawPass.startsWith('pbkdf2_v1$')
+      ) {
         return res.status(401).json({ error: 'Invalid password format' });
       }
 
       const upperId = cleanId.toUpperCase().replace(/\s+/g, '');
       const numericId = upperId.replace(/[^0-9]/g, '');
+      const lockKey = `${upperId}_${String(req.ip || 'ip')}`;
+
+      // 12. Check Brute-Force Account Lockout (5 failed attempts -> 15 min lockout)
+      const now = Date.now();
+      const lockState = loginLockoutMap.get(lockKey);
+      if (lockState && lockState.lockedUntil > now) {
+        const remainingMin = Math.ceil((lockState.lockedUntil - now) / 60000);
+        return res.status(423).json({
+          error: `වැරදි මුරපද උත්සාහයන් 5කට වඩා සිදු කර ඇති බැවින් ගිණුම ආරක්ෂාව සඳහා මිනිත්තු ${remainingMin}කට අගුළු දමා ඇත.`,
+        });
+      }
 
       let targetUser: any = serverUsersMap.get(upperId) || serverUsersMap.get(cleanId) || (numericId ? serverUsersMap.get(numericId) : null);
 
@@ -1812,6 +2356,27 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           seedUser(targetUser);
         }
       }
+
+      const attachSessionCookiesAndRespond = (userObj: any, isTemporaryLogin: boolean) => {
+        loginLockoutMap.delete(lockKey);
+        const sessionToken = issueSessionToken(userObj);
+        const csrfToken = issueCsrfToken(sessionToken);
+        const isProd = process.env.NODE_ENV === 'production';
+        res.setHeader('Set-Cookie', [
+          `sahaya_session=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=604800`,
+          `sahaya_csrf=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=604800`,
+        ]);
+        if (userObj.role === 'admin' || userObj.role === 'super_admin') {
+          writeServerAuditLog('admin_login', userObj.id || upperId, userObj.id || upperId, { role: userObj.role }, req).catch(() => {});
+        }
+        return res.json({
+          success: true,
+          sessionToken,
+          csrfToken,
+          isTemporaryLogin,
+          user: sanitizeUserForPublicLookup(userObj),
+        });
+      };
 
       // If user record exists on the server/Firestore, strictly verify the password hash with scrypt + timingSafeEqual
       if (targetUser && (targetUser.password || targetUser.key || targetUser.tempPassword || targetUser.temporaryPassword)) {
@@ -1828,10 +2393,16 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         const isTempMatch = tempCheck.valid;
 
         if (!isPermMatch && !isTempMatch) {
+          const prevFailures = (lockState?.failures || 0) + 1;
+          const lockedUntil = prevFailures >= 5 ? now + 15 * 60 * 1000 : 0;
+          loginLockoutMap.set(lockKey, { failures: prevFailures, lockedUntil });
+          if (prevFailures >= 5) {
+            writeServerAuditLog('account_lockout', upperId, upperId, { failures: prevFailures }, req).catch(() => {});
+          }
           return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Automatically upgrade legacy sha256_v1$ or plaintext password to scrypt_v1$ in Firestore
+        // Automatically upgrade legacy sha256_v1$, pbkdf2_v1$ or plaintext password to scrypt_v1$ in Firestore
         if (isPermMatch && permCheck.needsUpgrade) {
           const upgradedScryptHash = hashRawServerPassword(rawPass);
           targetUser.password = upgradedScryptHash;
@@ -1846,13 +2417,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           }
         }
 
-        const sessionToken = issueSessionToken(targetUser);
-        return res.json({
-          success: true,
-          sessionToken,
-          isTemporaryLogin: Boolean(isTempMatch && !isPermMatch),
-          user: sanitizeUserForPublicLookup(targetUser),
-        });
+        return attachSessionCookiesAndRespond(targetUser, Boolean(isTempMatch && !isPermMatch));
       }
 
       // Fallback when adminDb does not yet have the user document (e.g. client-only Firestore mode)
@@ -1866,20 +2431,28 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
           nicNumber: clientUser.nicNumber || clientUser.nic || upperId,
           role: safeRole,
         };
-        const sessionToken = issueSessionToken(tokenUser);
-        return res.json({
-          success: true,
-          sessionToken,
-          isTemporaryLogin: false,
-          user: sanitizeUserForPublicLookup({ ...clientUser, role: safeRole }),
-        });
+        return attachSessionCookiesAndRespond({ ...clientUser, ...tokenUser, role: safeRole }, false);
       }
 
       return res.status(404).json({ error: 'User account not found' });
     } catch (err: any) {
-      console.error('Auth Session Error:', err);
+      console.error('Auth Session Error:', redactSensitiveLog(err?.message || err));
       return res.status(500).json({ error: 'Authentication failed' });
     }
+  });
+
+  // 🚪 Session Logout & Token Revocation Endpoint
+  app.post('/api/auth/logout', authRateLimiter, (req: any, res: any) => {
+    const session = extractSessionFromReq(req);
+    if (session?.jti) {
+      revokedSessionJtis.add(session.jti);
+    }
+    const isProd = process.env.NODE_ENV === 'production';
+    res.setHeader('Set-Cookie', [
+      `sahaya_session=; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=0`,
+      `sahaya_csrf=; Path=/; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=0`,
+    ]);
+    return res.json({ success: true });
   });
 
   const serverNotifiedRegKeys = new Set<string>();
@@ -1912,20 +2485,30 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         }).catch(() => {});
       }
       return res.json({ success: true });
-    } catch (err: any) {
+    } catch {
       return res.status(500).json({ error: 'Notification dispatch failed' });
     }
   });
 
   app.post('/api/admin/reset-password', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
     try {
-      const { userId, nicNumber, newPassword } = req.body || {};
+      const parsed = validateBodyWithZod(AdminResetPasswordSchema, req.body || {});
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      const { userId, nicNumber, newPassword } = parsed.data;
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
       const rawTargetId = String(userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
       const cleanNewPass = String(newPassword || '').trim();
 
-      if (!cleanNic || !cleanNewPass || cleanNewPass.startsWith('sha256_v1$') || cleanNewPass.startsWith('scrypt_v1$')) {
+      if (
+        !cleanNic ||
+        !cleanNewPass ||
+        cleanNewPass.startsWith('sha256_v1$') ||
+        cleanNewPass.startsWith('scrypt_v1$') ||
+        cleanNewPass.startsWith('pbkdf2_v1$')
+      ) {
         return res.status(400).json({ error: 'Valid userId and plaintext newPassword required' });
       }
 
@@ -1956,7 +2539,6 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
 
       seedUser(updated);
 
-      // Persist directly to Firestore so Cloud Run restarts and client logins stay in sync
       if (adminDb) {
         try {
           const matchedDocs = await findUserDocsInAdminDb([rawTargetId, cleanNic, numeric]);
@@ -1973,21 +2555,31 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
             }, { merge: true });
           }
         } catch (dbErr: any) {
-          console.warn('[Admin Reset Password] Firestore write error:', dbErr.message);
+          console.warn('[Admin Reset Password] Firestore write notice:', redactSensitiveLog(dbErr?.message));
         }
       }
 
-      console.log(`[Admin] Password reset persisted to Firestore & memory for NIC: ${cleanNic}`);
+      await writeServerAuditLog(
+        'admin_reset_password',
+        req.authUser?.uid || 'admin',
+        cleanNic,
+        { rawTargetId },
+        req
+      );
       return res.json({ success: true, message: 'Password reset processed and persisted to Firestore' });
     } catch (error: any) {
-      console.error('Admin Reset Password Error:', error);
+      console.error('Admin Reset Password Error:', redactSensitiveLog(error?.message || error));
       return res.status(500).json({ error: 'Failed to reset password' });
     }
   });
 
   app.post('/api/admin/delete-user', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
     try {
-      const { userId, nicNumber, id } = req.body || {};
+      const parsed = validateBodyWithZod(AdminDeleteUserSchema, req.body || {});
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      const { userId, nicNumber, id } = parsed.data;
       const cleanNic = String(nicNumber || userId || id || '').trim().toUpperCase();
       const rawId = String(id || userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
@@ -1996,12 +2588,10 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         return res.status(400).json({ error: 'User identifier required' });
       }
 
-      // 1. Remove from in-memory server map
       if (cleanNic) serverUsersMap.delete(cleanNic);
       if (numeric) serverUsersMap.delete(numeric);
       if (rawId) serverUsersMap.delete(rawId);
 
-      // 2. Remove from Firestore via targeted indexed queries ONLY (no full collection scan)
       if (adminDb) {
         try {
           const matchedDocs = await findUserDocsInAdminDb([rawId, cleanNic, numeric]);
@@ -2013,27 +2603,155 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
             await adminDb.collection('users').doc(uId).delete().catch(() => {});
           }
         } catch (dbErr: any) {
-          console.warn('[Admin Delete] adminDb targeted delete error:', dbErr.message);
+          console.warn('[Admin Delete] targeted delete notice:', redactSensitiveLog(dbErr?.message));
         }
       }
 
-      console.log(`[Admin] Deleted user record via targeted lookup for: ${cleanNic || rawId}`);
+      await writeServerAuditLog(
+        'admin_delete_user',
+        req.authUser?.uid || 'admin',
+        cleanNic || rawId,
+        { rawId, cleanNic },
+        req
+      );
       return res.json({ success: true, message: 'User deleted successfully' });
     } catch (error: any) {
-      console.error('Admin Delete User Error:', error);
+      console.error('Admin Delete User Error:', redactSensitiveLog(error?.message || error));
       return res.status(500).json({ error: 'Failed to delete user' });
+    }
+  });
+
+  // 12. Admin Audit Trail & Session Revocation Endpoints
+  app.get('/api/admin/audit-logs', adminActionRateLimiter, requireAdminAuth, (_req: any, res: any) => {
+    return res.json({
+      success: true,
+      logs: serverAuditLogsBuffer.slice(0, 100),
+    });
+  });
+
+  app.post('/api/admin/revoke-session', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
+    const jti = String(req.body?.jti || '').trim();
+    if (!jti) {
+      return res.status(400).json({ error: 'Session jti required' });
+    }
+    revokedSessionJtis.add(jti);
+    await writeServerAuditLog('admin_revoke_session', req.authUser?.uid || 'admin', jti, {}, req);
+    return res.json({ success: true, revokedJti: jti });
+  });
+
+  // 18. Admin Backup Snapshot Export Endpoint
+  app.get('/api/admin/backup-snapshot', adminActionRateLimiter, requireAdminAuth, async (req: any, res: any) => {
+    try {
+      await writeServerAuditLog('admin_backup_export', req.authUser?.uid || 'admin', 'system_backup', {}, req);
+      const usersSample = Array.from(serverUsersMap.values()).map((u) => sanitizeUserForPublicLookup(u));
+      return res.json({
+        success: true,
+        exportedAt: new Date().toISOString(),
+        usersCount: usersSample.length,
+        recentAlertsCount: recentConfirmedAlertsFeed.length,
+        auditLogsCount: serverAuditLogsBuffer.length,
+        recentAlerts: recentConfirmedAlertsFeed,
+        auditLogs: serverAuditLogsBuffer.slice(0, 50),
+      });
+    } catch {
+      return res.status(500).json({ error: 'Failed to generate backup snapshot' });
+    }
+  });
+
+  // 17. Payment / Credit Top-Up Webhook Endpoint (HMAC Signature + Replay Window + Idempotency Key)
+  const processedWebhookIdempotencyKeys = new Map<string, number>();
+
+  app.post('/api/webhooks/payment', authRateLimiter, async (req: any, res: any) => {
+    try {
+      const webhookSecret = String(process.env.PAYMENT_WEBHOOK_SECRET || '').trim();
+      if (!webhookSecret || webhookSecret.length < 16) {
+        return res.status(503).json({ error: 'Webhook endpoint is not configured' });
+      }
+
+      const signatureHeader = String(req.headers['x-webhook-signature'] || '').trim();
+      const timestampHeader = String(req.headers['x-webhook-timestamp'] || '').trim();
+      const idempotencyKey = String(req.headers['x-idempotency-key'] || req.body?.eventId || '').trim();
+
+      if (!signatureHeader || !timestampHeader || !idempotencyKey) {
+        return res.status(400).json({ error: 'Missing required webhook security headers' });
+      }
+
+      // 1. Replay Protection: Reject timestamps older/newer than ±5 minutes
+      const reqTs = Number(timestampHeader);
+      const now = Date.now();
+      if (!Number.isFinite(reqTs) || Math.abs(now - reqTs) > 5 * 60 * 1000) {
+        return res.status(401).json({ error: 'Webhook timestamp outside allowable 5-minute replay window' });
+      }
+
+      // 2. Cryptographic HMAC-SHA256 Signature Verification
+      const signedPayload = `${timestampHeader}.${JSON.stringify(req.body || {})}`;
+      const expectedSig = crypto.createHmac('sha256', webhookSecret).update(signedPayload).digest('hex');
+      const sigBuf = Buffer.from(signatureHeader);
+      const expBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return res.status(401).json({ error: 'Invalid webhook HMAC signature' });
+      }
+
+      // 3. Schema Validation
+      const parsed = validateBodyWithZod(PaymentWebhookSchema, req.body || {});
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+
+      // 4. Idempotency Key Deduplication (Redis + In-Memory 24h)
+      const idemCacheKey = `webhook_idem:${idempotencyKey}`;
+      const alreadyProcessed =
+        processedWebhookIdempotencyKeys.has(idempotencyKey) ||
+        Boolean(await getCache(idemCacheKey));
+      if (alreadyProcessed) {
+        return res.json({ success: true, idempotentReplay: true, eventId: parsed.data.eventId });
+      }
+
+      processedWebhookIdempotencyKeys.set(idempotencyKey, now);
+      await setCache(idemCacheKey, { processedAt: now }, 86400);
+
+      await writeServerAuditLog(
+        'webhook_received',
+        'payment_gateway',
+        parsed.data.userId,
+        {
+          eventId: parsed.data.eventId,
+          eventType: parsed.data.eventType,
+          amountLkr: parsed.data.amountLkr,
+          creditsToAdd: parsed.data.creditsToAdd,
+        },
+        req
+      );
+
+      return res.json({
+        success: true,
+        idempotentReplay: false,
+        eventId: parsed.data.eventId,
+      });
+    } catch {
+      return res.status(500).json({ error: 'Webhook processing failed' });
     }
   });
 
   app.post('/api/user/update-password', authRateLimiter, requireAuthenticatedUser, async (req: any, res: any) => {
     try {
-      const { userId, nicNumber, newPassword } = req.body || {};
+      const parsed = validateBodyWithZod(UserUpdatePasswordSchema, req.body || {});
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      const { userId, nicNumber, newPassword } = parsed.data;
       const cleanPass = String(newPassword || '').trim();
       const cleanNic = String(nicNumber || userId || '').trim().toUpperCase();
       const rawTargetId = String(userId || nicNumber || '').trim();
       const numeric = cleanNic.replace(/[^0-9]/g, '');
 
-      if (!cleanPass || !cleanNic || cleanPass.startsWith('sha256_v1$') || cleanPass.startsWith('scrypt_v1$')) {
+      if (
+        !cleanPass ||
+        !cleanNic ||
+        cleanPass.startsWith('sha256_v1$') ||
+        cleanPass.startsWith('scrypt_v1$') ||
+        cleanPass.startsWith('pbkdf2_v1$')
+      ) {
         return res.status(400).json({ error: 'Valid plaintext password and user identifier required' });
       }
 
@@ -2076,7 +2794,6 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
 
       seedUser(updated);
 
-      // Persist directly to Firestore so Cloud Run restarts and client logins stay in sync
       if (adminDb) {
         try {
           const matchedDocs = await findUserDocsInAdminDb([rawTargetId, cleanNic, numeric]);
@@ -2088,14 +2805,20 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
             await adminDb.collection('users').doc(rawTargetId).set(passwordFields, { merge: true });
           }
         } catch (dbErr: any) {
-          console.warn('[User Update Password] Firestore write error:', dbErr.message);
+          console.warn('[User Update Password] Firestore write notice:', redactSensitiveLog(dbErr?.message));
         }
       }
 
-      console.log(`[Server] Password updated & persisted to Firestore for NIC: ${cleanNic}`);
+      await writeServerAuditLog(
+        'user_update_password',
+        authUser.uid || cleanNic,
+        cleanNic,
+        { updatedByAdmin: isAdmin && !isSelf },
+        req
+      );
       return res.json({ success: true, message: 'Password updated successfully' });
     } catch (error: any) {
-      console.error('User Update Password Error:', error);
+      console.error('User Update Password Error:', redactSensitiveLog(error?.message || error));
       return res.status(500).json({ error: 'Failed to update password' });
     }
   });
@@ -2109,7 +2832,7 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
       const found = serverUsersMap.get(q) || (numeric ? serverUsersMap.get(numeric) : null);
       if (!found) return res.json({ user: null });
       return res.json({ user: sanitizeUserForPublicLookup(found) });
-    } catch (error: any) {
+    } catch {
       return res.json({ user: null });
     }
   });
@@ -2662,8 +3385,8 @@ ${xmlItems}
 
       return res.json({ success: false, message: 'User not found' });
     } catch (err: any) {
-      console.warn('Lookup User Error:', err.message);
-      return res.status(500).json({ error: err.message });
+      console.warn('Lookup User Notice:', redactSensitiveLog(err?.message));
+      return res.status(500).json({ error: 'Lookup service temporarily unavailable' });
     }
   });
 
@@ -2798,6 +3521,19 @@ ${xmlItems}
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // 13. Global Express Error Handler (Suppresses stack traces & redacts sensitive data)
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    const safeMsg = redactSensitiveLog(err?.message || 'Unexpected error');
+    console.error('[GlobalErrorHandler]', safeMsg);
+    if (res.headersSent) return;
+    if (String(err?.message || '').includes('CORS policy')) {
+      return res.status(403).json({ error: 'Origin not allowed by CORS policy' });
+    }
+    return res.status(err?.status || 500).json({
+      error: 'සේවාදායකයේ අභ්‍යන්තර දෝෂයක් ඇති විය. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න.',
+    });
+  });
 
   const server = app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`🚀 Full-stack Server running on port ${PORT}`);

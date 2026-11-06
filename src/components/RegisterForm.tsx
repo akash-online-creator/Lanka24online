@@ -8,6 +8,7 @@ import {
 } from '../data/sriLankaGeoData';
 import { compressImageFile, compressImageBase64 } from '../utils/imageCompressor';
 import { notifyAdminViaTelegramOnRegistration } from '../lib/firebase';
+import { hashUserPassword } from '../utils/userUtils';
 import {
   User as UserIcon,
   CreditCard,
@@ -97,25 +98,6 @@ interface RegisterFormProps {
   theme?: Theme;
   toggleTheme?: () => void;
   users?: User[];
-}
-
-async function hashUserPassword(rawPass: string): Promise<string> {
-  const clean = (rawPass ? rawPass : '').trim();
-  if (!clean) return '';
-  const payload = 'sahaya_pass_salt_2026::' + clean;
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-    try {
-      const encoder = new TextEncoder();
-      const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(payload));
-      const hex = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
-      return 'sha256_v1$' + hex;
-    } catch (e) {}
-  }
-  let h = 5381;
-  for (let i = 0; i < payload.length; i++) {
-    h = (h * 33) ^ payload.charCodeAt(i);
-  }
-  return 'sha256_v1$fb_' + String(h >>> 0);
 }
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({
