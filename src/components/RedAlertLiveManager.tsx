@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { X, VolumeX, AlertTriangle, ShieldAlert, CheckCircle2, BellRing, MapPin, Clock, Radio, Send, Phone, Navigation, MessageSquare, Flag, Trash2 } from 'lucide-react';
-import { subscribeToRedAlerts, markRedAlertAsResolved, cancelRedAlertByReporter, addCommentToRedAlert, reportRedAlertAsFake, RedAlertItem } from '../lib/firebase';
+import { subscribeToRedAlerts, markRedAlertAsResolved, cancelRedAlertByReporter, addCommentToRedAlert, reportRedAlertAsFake, castWeightedRedAlertVoteTransaction, RedAlertItem } from '../lib/firebase';
 import { triggerBrowserNotification, activateBackgroundWakeLock, broadcastAppNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySirenLock, isEmergencySirenPlaying, subscribeToLocalSirenChanges } from '../utils/sirenAudio';
 import { calculateDistanceKm } from '../utils/geoUtils';
@@ -717,6 +717,29 @@ export const RedAlertLiveManager: any = ({
       setIsSubmitting(false);
     }
   };
+  const handleQuickConfirmTrue = async () => {
+    if (!activeAlert?.id) return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await castWeightedRedAlertVoteTransaction({
+        alertId: activeAlert.id,
+        userId: currentUserId,
+        userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
+        userPhone: currentUser?.phone ? currentUser.phone : '',
+        voteType: 'true',
+        baseWeight: 1,
+        trustLevel: 'normal',
+        distanceKm: userDistanceKm
+      }).catch(() => {});
+      stopAllAlertEffects(activeAlert.id, true);
+      setShowEmergencyModal(false);
+      setIsDismissed(true);
+      triggerPopup('✅ මෙම දැන්වීම සත්‍ය සිදුවීමක් ලෙස තහවුරු කරන ලදී.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   const handleQuickReportFake = async () => {
     if (!activeAlert?.id) return;
     if (isSubmitting) return;
@@ -730,10 +753,20 @@ export const RedAlertLiveManager: any = ({
         reportedAt: new Date().toISOString(),
         reason: 'අසත්‍ය දැන්වීමක් ලෙස වාර්තා කරන ලදී'
       });
+      await castWeightedRedAlertVoteTransaction({
+        alertId: activeAlert.id,
+        userId: currentUserId,
+        userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
+        userPhone: currentUser?.phone ? currentUser.phone : '',
+        voteType: 'false',
+        baseWeight: 1,
+        trustLevel: 'normal',
+        distanceKm: userDistanceKm
+      }).catch(() => {});
       stopAllAlertEffects(activeAlert.id, true);
       setShowEmergencyModal(false);
       setIsDismissed(true);
-      triggerPopup('🚩 මෙම දැන්වීම අසත්‍යයක් ලෙස වාර්තා කරන ලදී.');
+      triggerPopup('🚩 මෙම දැන්වීම අසත්‍ය සිදුවීමක් ලෙස වාර්තා කරන ලදී.');
     } finally {
       setIsSubmitting(false);
     }
@@ -747,7 +780,6 @@ export const RedAlertLiveManager: any = ({
   } catch (err) {}
   const activeAny = ((activeAlert ? activeAlert : {}) as any);
   const isReporter = Boolean(isCreatedByMeLocal ? true : activeAlert?.reportedByUserId && currentUserId && activeAlert.reportedByUserId === currentUserId ? true : currentUser?.phone && activeAny.reportedByPhone && String(currentUser.phone).replace(/\D/g, '') === String(activeAny.reportedByPhone).replace(/\D/g, ''));
-  const fakeVotesCount = activeAlert?.fakeReports?.length ? activeAlert.fakeReports.length : activeAlert?.fakeReportsCount ? activeAlert.fakeReportsCount : 0;
   const h = React.createElement;
   return h(React.Fragment, null, (showEmergencyModal ? showEmergencyModal : isSirenActive) && activeAlert ? h('div', {
     className: 'fixed inset-0 z-[999999] bg-red-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-fadeIn'
@@ -779,7 +811,7 @@ export const RedAlertLiveManager: any = ({
     className: 'text-left leading-tight'
   }, h('div', {
     className: 'text-sm sm:text-base font-black text-red-950'
-  }, '🔇 සයිරන් නාදය සහ දැන්වීම ඉවත් කරන්න'), h('div', {
+  }, '🔇 සයිරන් නාදය ඉවත් කර දැන්විමෙන් ඉවත් වන්න'), h('div', {
     className: 'text-[11px] font-extrabold text-red-800'
   }, '(මෙම දැන්වීම සඳහා නැවත සයිරන් නාද නොවේ)'))), h('div', {
     className: 'space-y-2.5 bg-black/35 p-4 rounded-2xl border border-red-400/40'
@@ -829,20 +861,23 @@ export const RedAlertLiveManager: any = ({
     className: 'px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer disabled:opacity-50'
   }, h(Send, {
     className: 'w-3.5 h-3.5'
-  }), h('span', null, 'අදහස් දක්වන්න'))), h('div', {
-    className: 'flex items-center justify-between gap-2 pt-1'
-  }, !isReporter ? h('button', {
+  }), h('span', null, 'අදහස් දක්වන්න'))), !isReporter ? h('div', {
+    className: 'grid grid-cols-2 gap-2.5 pt-1'
+  }, h('button', {
+    type: 'button',
+    onClick: handleQuickConfirmTrue,
+    disabled: isSubmitting,
+    className: 'w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/60 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50'
+  }, h(CheckCircle2, {
+    className: 'w-4 h-4 text-emerald-200 shrink-0'
+  }), h('span', null, 'සත්‍ය සිදුවීමකි')), h('button', {
     type: 'button',
     onClick: handleQuickReportFake,
     disabled: isSubmitting,
-    className: 'flex-1 py-2.5 px-3 rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-400/50 text-rose-100 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer'
+    className: 'w-full py-3 px-3 rounded-xl bg-rose-900 hover:bg-rose-800 border border-rose-400/60 text-rose-100 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50'
   }, h(Flag, {
-    className: 'w-3.5 h-3.5 text-rose-300'
-  }), h('span', null, 'අසත්‍ය දැන්වීමක් ලෙස ප්‍රතිචාර දක්වන්න (' + fakeVotesCount + '/4)')) : null, h('button', {
-    type: 'button',
-    onClick: handleDismissByUser,
-    className: 'py-2.5 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer border border-white/20'
-  }, 'වසන්න')), isReporter ? h('div', {
+    className: 'w-4 h-4 text-rose-300 shrink-0'
+  }), h('span', null, 'අසත්‍ය සිදුවීමකි'))) : null, isReporter ? h('div', {
     className: 'pt-3 border-t border-red-500/40 space-y-2'
   }, h('p', {
     className: 'text-[11px] text-yellow-300 font-bold'
