@@ -182,8 +182,19 @@ export const RedAlertDetailModal: any = ({
       try {
 
         const stoppedList = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+        const dismissedList = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+        const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+        const codeVal = (alert as any).alertCode;
+        const alreadyStopped =
+          (Array.isArray(stoppedList) && (stoppedList.includes(alert.id) || (codeVal && stoppedList.includes(codeVal)))) ||
+          (Array.isArray(dismissedList) && (dismissedList.includes(alert.id) || (codeVal && dismissedList.includes(codeVal)))) ||
+          (Array.isArray(myAlerts) && (myAlerts.includes(alert.id) || (codeVal && myAlerts.includes(codeVal))));
 
-        setSirenStoppedByMe(Array.isArray(stoppedList) && stoppedList.includes(alert.id));
+        setSirenStoppedByMe(alreadyStopped);
+        if (alreadyStopped && isOpen) {
+          setEmergencySirenLock(false);
+          stopEmergencySiren(true);
+        }
 
       } catch {
 
@@ -193,7 +204,7 @@ export const RedAlertDetailModal: any = ({
 
     }
 
-  }, [alert]);
+  }, [alert, isOpen]);
 
   useEffect(() => {
 
@@ -1334,7 +1345,13 @@ export const RedAlertDetailModal: any = ({
 
               'div',
 
-              { className: 'p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 border-2 border-red-500/70 flex flex-col sm:flex-row items-center justify-between gap-3' },
+              {
+                className: `p-3.5 rounded-2xl border-2 flex flex-col sm:flex-row items-center justify-between gap-3 ${
+                  sirenStoppedByMe
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500/60'
+                    : 'bg-red-50 dark:bg-red-950/40 border-red-500/70'
+                }`
+              },
 
               h(
 
@@ -1342,7 +1359,15 @@ export const RedAlertDetailModal: any = ({
 
                 { className: 'text-xs space-y-0.5 text-center sm:text-left' },
 
-                h('span', { className: 'font-black text-red-700 dark:text-red-300 block' }, '🔊 15km හදිසි සයිරන් කලාපය'),
+                h(
+                  'span',
+                  {
+                    className: `font-black block ${
+                      sirenStoppedByMe ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'
+                    }`
+                  },
+                  sirenStoppedByMe ? '🔇 15km හදිසි සයිරන් නාදය අක්‍රියයි' : '🔊 15km හදිසි සයිරන් කලාපය'
+                ),
 
                 h(
 
@@ -1370,13 +1395,17 @@ export const RedAlertDetailModal: any = ({
 
                   onClick: stopSirenForThisAlert,
 
-                  className: 'w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0'
+                  className: `w-full sm:w-auto px-5 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0 ${
+                    sirenStoppedByMe
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white'
+                  }`
 
                 },
 
-                h(VolumeX, { className: 'w-4 h-4' }),
+                h(sirenStoppedByMe ? CheckCircle2 : VolumeX, { className: 'w-4 h-4' }),
 
-                h('span', null, 'සයිරන් එක නවත්වන්න (Stop Siren)')
+                h('span', null, sirenStoppedByMe ? 'සයිරන් නාදය නවත්වා ඇත (Stopped)' : 'සයිරන් එක නවත්වන්න (Stop Siren)')
 
               )
 

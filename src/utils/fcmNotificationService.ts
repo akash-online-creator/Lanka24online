@@ -431,28 +431,35 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   if (category === 'red_alert') {
 
-    const dedupeKey = payload.alertId || `${title}_${locationName}`;
+    const alertCodeVal = (payload as any).alertCode ? String((payload as any).alertCode) : '';
+    const dedupeKey = payload.alertId || alertCodeVal || `${title}_${locationName}`;
     if (dedupeKey && processedRedAlertPushIds.has(dedupeKey)) {
       return;
     }
 
     try {
+      const nowMs = Date.now();
+      const muteUntil = Number(localStorage.getItem('sahaya_siren_global_mute_until_ms') || 0);
+      const creatingUntil = Number(localStorage.getItem('sahaya_creating_alert_until_ms') || 0);
+      if ((muteUntil > 0 && nowMs < muteUntil) || (creatingUntil > 0 && nowMs < creatingUntil)) {
+        return;
+      }
 
       const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
-
       const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
-
       const dismissed = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
 
-      if (
-        payload.alertId &&
-        ((Array.isArray(myAlerts) && myAlerts.includes(payload.alertId)) ||
-          (Array.isArray(stoppedSirens) && stoppedSirens.includes(payload.alertId)) ||
-          (Array.isArray(dismissed) && dismissed.includes(payload.alertId)))
-      ) {
+      const isIgnored = (val?: string) => {
+        if (!val) return false;
+        return (
+          (Array.isArray(myAlerts) && myAlerts.includes(val)) ||
+          (Array.isArray(stoppedSirens) && stoppedSirens.includes(val)) ||
+          (Array.isArray(dismissed) && dismissed.includes(val))
+        );
+      };
 
+      if (isIgnored(payload.alertId) || isIgnored(alertCodeVal)) {
         return;
-
       }
 
     } catch {}
@@ -523,40 +530,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
         (window as any).SahayaNativeAlertChannel.postMessage('TRIGGER_RED_ALERT:' + JSON.stringify(payload));
 
       } catch {}
-
-    }
-
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-
-      navigator.serviceWorker.ready.then((reg: any) => {
-
-        if (reg && reg.active) {
-
-          reg.active.postMessage({
-
-            type: 'TRIGGER_EMERGENCY_RED_ALERT',
-
-            payload: {
-
-              ...payload,
-
-              category: 'red_alert',
-
-              disasterTitleSi: title,
-
-              locationName,
-
-              distanceKm: distanceKm.toFixed(1),
-
-              description: message
-
-            }
-
-          });
-
-        }
-
-      }).catch(() => {});
 
     }
 

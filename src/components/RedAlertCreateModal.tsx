@@ -526,9 +526,45 @@ export const RedAlertCreateModal: any = ({
 
       const alertCode = `#RED-${Math.floor(1000 + Math.random() * 9000)}`;
 
+      const preGeneratedDocId = `red_alert_${Date.now()}`;
+
       const uid = activeUser?.userId || activeUser?.id || effectiveUser.id || '';
 
+      try {
+        localStorage.setItem('sahaya_creating_alert_until_ms', String(Date.now() + 20000));
+        const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
+        if (Array.isArray(myAlerts)) {
+          [preGeneratedDocId, alertCode].forEach((val) => {
+            if (val && !myAlerts.includes(val)) myAlerts.push(val);
+          });
+          localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(myAlerts));
+        }
+        const dismissKeys = ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${uid}`];
+        dismissKeys.forEach((k) => {
+          const list = JSON.parse(localStorage.getItem(k) || '[]');
+          if (Array.isArray(list)) {
+            [preGeneratedDocId, alertCode].forEach((val) => {
+              if (val && !list.includes(val)) list.push(val);
+            });
+            localStorage.setItem(k, JSON.stringify(list));
+          }
+        });
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((reg: any) => {
+            if (reg && reg.active) {
+              reg.active.postMessage({
+                type: 'DISMISS_RED_ALERT',
+                alertId: preGeneratedDocId,
+                alertCode
+              });
+            }
+          }).catch(() => {});
+        }
+      } catch (_) {}
+
       const newAlertData: any = {
+
+        id: preGeneratedDocId,
 
         alertCode,
 
@@ -614,36 +650,6 @@ export const RedAlertCreateModal: any = ({
       };
 
       const docId = await createRedAlertInFirestore(newAlertData);
-
-      try {
-
-        const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
-
-        if (Array.isArray(myAlerts) && !myAlerts.includes(docId)) {
-
-          myAlerts.push(docId);
-
-          localStorage.setItem('sahaya_my_created_alerts', JSON.stringify(myAlerts));
-
-        }
-
-        const dismissKeys = ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${uid}`];
-
-        dismissKeys.forEach((k) => {
-
-          const list = JSON.parse(localStorage.getItem(k) || '[]');
-
-          if (Array.isArray(list) && !list.includes(docId)) {
-
-            list.push(docId);
-
-            localStorage.setItem(k, JSON.stringify(list));
-
-          }
-
-        });
-
-      } catch (_) {}
 
       const createdAlert: RedAlertItem = {
 

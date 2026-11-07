@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sahaya-sewa-v11';
+const CACHE_NAME = 'sahaya-sewa-v13';
 
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/logo.jpg', '/mixkit-manual-siren-fire-alert-1652.wav', '/siren.wav'];
 
@@ -160,8 +160,8 @@ async function pollFirestoreAllAlertsInBackground() {
       if (!docId || notifiedBroadcastIdsInSw.has(docId)) continue;
 
       const createdAtMs = getNumberField(fields, 'createdAtMs', 0);
-      // Only fire for recent broadcasts (within last 2 minutes) or after initial service worker boot
-      if (isInitialSeed && createdAtMs > 0 && (nowMs - createdAtMs) > 60000) {
+      // Only fire for recent broadcasts (within last 60 seconds)
+      if (isInitialSeed || (createdAtMs > 0 && (nowMs - createdAtMs) > 60000)) {
         notifiedBroadcastIdsInSw.add(docId);
         continue;
       }
@@ -174,10 +174,17 @@ async function pollFirestoreAllAlertsInBackground() {
 
       const category = getStringField(fields, 'category', 'quick_service');
       const alertId = getStringField(fields, 'alertId', '');
+      const alertCode = getStringField(fields, 'alertCode', '');
       const postId = getStringField(fields, 'postId', '');
       const uniqueRefId = alertId || postId || docId;
 
-      if (notifiedAlertIdsInSw.has(uniqueRefId)) {
+      if (
+        notifiedAlertIdsInSw.has(uniqueRefId) ||
+        (Array.isArray(watcherConfig.ignoredAlertIds) &&
+          ((alertId && watcherConfig.ignoredAlertIds.includes(alertId)) ||
+            (alertCode && watcherConfig.ignoredAlertIds.includes(alertCode)) ||
+            watcherConfig.ignoredAlertIds.includes(uniqueRefId)))
+      ) {
         notifiedBroadcastIdsInSw.add(docId);
         continue;
       }
@@ -477,7 +484,14 @@ self.addEventListener('fetch', event => {
   );
 });
 
-async function showHighPriorityEmergencyNotification(payload) {
+async function showHighPriorityEmergencyNotification(payload, notifyClients = true) {
+  if (
+    Array.isArray(watcherConfig.ignoredAlertIds) &&
+    ((payload.alertId && watcherConfig.ignoredAlertIds.includes(payload.alertId)) ||
+      (payload.alertCode && watcherConfig.ignoredAlertIds.includes(payload.alertCode)))
+  ) {
+    return;
+  }
   const category = payload.category ? payload.category : 'red_alert';
   const isRedAlert = category === 'red_alert';
   const disasterTitle = payload.disasterTitleSi
@@ -592,6 +606,8 @@ async function showHighPriorityEmergencyNotification(payload) {
   };
 
   await self.registration.showNotification(notifTitle, options);
+
+  if (!notifyClients) return;
 
   const clients = await self.clients.matchAll({
     type: 'window',
@@ -728,28 +744,37 @@ self.addEventListener('message', event => {
     }
     ensureBackgroundWatcherStarted();
   } else if (event.data.type === 'DISMISS_RED_ALERT') {
-    if (event.data.alertId) {
-      notifiedAlertIdsInSw.add(event.data.alertId);
+    const idsToIgnore = [event.data.alertId, event.data.alertCode].filter(Boolean);
+    idsToIgnore.forEach(idVal => {
+      notifiedAlertIdsInSw.add(idVal);
       if (
         Array.isArray(watcherConfig.ignoredAlertIds) &&
-        !watcherConfig.ignoredAlertIds.includes(event.data.alertId)
+        !watcherConfig.ignoredAlertIds.includes(idVal)
       ) {
-        watcherConfig.ignoredAlertIds.push(event.data.alertId);
+        watcherConfig.ignoredAlertIds.push(idVal);
       }
-      if (self.registration && self.registration.getNotifications) {
-        self.registration
-          .getNotifications({ tag: 'sahaya-red-alert-' + event.data.alertId })
-          .then(notifs => {
-            notifs.forEach(n => n.close());
-          })
-          .catch(() => {});
-      }
+    });
+    if (self.registration && self.registration.getNotifications) {
+      self.registration
+        .getNotifications()
+        .then(notifs => {
+          notifs.forEach(n => {
+            if (
+              event.data.stopAll ||
+              (event.data.alertId && n.tag === 'sahaya-red-alert-' + event.data.alertId) ||
+              (n.tag && String(n.tag).startsWith('sahaya-red-alert-'))
+            ) {
+              n.close();
+            }
+          });
+        })
+        .catch(() => {});
     }
   } else if (event.data.type === 'TRIGGER_EMERGENCY_RED_ALERT' || event.data.type === 'TRIGGER_BACKGROUND_PUSH_ALERT') {
     const payload = event.data.payload ? event.data.payload : {};
     const uniqueId = payload.alertId || payload.postId;
     if (uniqueId) notifiedAlertIdsInSw.add(uniqueId);
-    event.waitUntil(showHighPriorityEmergencyNotification(payload));
+    event.waitUntil(showHighPriorityEmergencyNotification(payload, false));
   } else if (event.data.type === 'TRIGGER_NOTIFICATION') {
     const title = event.data.title ? event.data.title : '🚨 සහය සේවා';
     const options = event.data.options ? event.data.options : {};

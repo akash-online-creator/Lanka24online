@@ -16,9 +16,13 @@ let audioBuffer: any = null;
 
 let activeSourceNode: any = null;
 
+let activeSourceNodes: any[] = [];
+
 let activeGainNode: any = null;
 
 let synthOscillator: any = null;
+
+let activeOscillators: any[] = [];
 
 let synthGainNode: any = null;
 
@@ -228,13 +232,13 @@ export function getSirenFileName(): string {
 
 }
 
-export async function persistSirenSettings(audioUrl?: any, fileName?: any, ...rest: any) {
+export async function persistSirenSettings(_audioUrl?: any, _fileName?: any, ..._rest: any) {
 
   notifyLocalChanges();
 
 }
 
-export function setCustomSirenAudio(audioUrl?: any, ...rest: any): void {
+export function setCustomSirenAudio(_audioUrl?: any, ..._rest: any): void {
 
   notifyLocalChanges();
 
@@ -266,7 +270,7 @@ function acquirePersistentWebLock() {
 
 }
 
-function getOrCreateAudioContext(): any {
+function getOrCreateAudioContext(resumeIfSuspended: boolean = false): any {
 
   if (typeof window === 'undefined') return null;
 
@@ -276,13 +280,13 @@ function getOrCreateAudioContext(): any {
 
     const AudioContextClass = winAny.AudioContext ? winAny.AudioContext : winAny.webkitAudioContext;
 
-    if (AudioContextClass && !audioContext) {
+    if (AudioContextClass && (!audioContext || audioContext.state === 'closed')) {
 
       audioContext = new AudioContextClass();
 
     }
 
-    if (audioContext && audioContext.state === 'suspended') {
+    if (resumeIfSuspended && audioContext && audioContext.state === 'suspended') {
 
       audioContext.resume().catch(() => {});
 
@@ -370,9 +374,11 @@ function getKeepAliveWavUrl(): string {
 
 function startSubAudibleKeepAlive() {
 
+  if (!isSirenActive) return;
+
   try {
 
-    const ctx = getOrCreateAudioContext();
+    const ctx = getOrCreateAudioContext(true);
 
     if (ctx && !keepAliveOscillator) {
 
@@ -391,54 +397,6 @@ function startSubAudibleKeepAlive() {
       keepAliveGain.connect(ctx.destination);
 
       keepAliveOscillator.start(0);
-
-    }
-
-  } catch (err) {}
-
-  try {
-
-    if (typeof document !== 'undefined' && !silentKeepAliveAudio) {
-
-      silentKeepAliveAudio = document.getElementById('sahaya-silent-keepalive-audio');
-
-      if (!silentKeepAliveAudio) {
-
-        silentKeepAliveAudio = document.createElement('audio');
-
-        silentKeepAliveAudio.id = 'sahaya-silent-keepalive-audio';
-
-        silentKeepAliveAudio.loop = true;
-
-        silentKeepAliveAudio.preload = 'auto';
-
-        silentKeepAliveAudio.playsInline = true;
-
-        silentKeepAliveAudio.webkitPlaysInline = true;
-
-        silentKeepAliveAudio.volume = 0.01;
-
-        silentKeepAliveAudio.src = getKeepAliveWavUrl();
-
-        silentKeepAliveAudio.addEventListener('pause', () => {
-
-          if (silentKeepAliveAudio && silentKeepAliveAudio.paused) {
-
-            silentKeepAliveAudio.play().catch(() => {});
-
-          }
-
-        });
-
-        document.body.appendChild(silentKeepAliveAudio);
-
-      }
-
-    }
-
-    if (silentKeepAliveAudio && silentKeepAliveAudio.paused) {
-
-      silentKeepAliveAudio.play().catch(() => {});
 
     }
 
@@ -494,7 +452,7 @@ export async function preloadSirenBuffer() {
 
   try {
 
-    const ctx = getOrCreateAudioContext();
+    const ctx = getOrCreateAudioContext(false);
 
     if (!ctx) return;
 
@@ -554,18 +512,10 @@ export function unlockAudio(): boolean {
 
     acquirePersistentWebLock();
 
-    const ctx = getOrCreateAudioContext();
+    const ctx = getOrCreateAudioContext(false);
 
-    if (ctx) {
-
-      if (ctx.state === 'suspended') {
-
-        ctx.resume().catch(() => {});
-
-      }
-
-      startSubAudibleKeepAlive();
-
+    if (ctx && isSirenActive && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
     }
 
     const audio = getAudioElement();
@@ -598,7 +548,7 @@ function stopSynthEmergencyBackup() {
 
     try {
 
-      synthOscillator.stop();
+      synthOscillator.stop(0);
 
     } catch (err) {}
 
@@ -612,10 +562,19 @@ function stopSynthEmergencyBackup() {
 
   }
 
+  while (activeOscillators.length > 0) {
+    const osc = activeOscillators.pop();
+    if (osc) {
+      try { osc.stop(0); } catch {}
+      try { osc.disconnect(); } catch {}
+    }
+  }
+
   if (synthGainNode) {
 
     try {
 
+      if (audioContext) synthGainNode.gain.setValueAtTime(0, audioContext.currentTime);
       synthGainNode.disconnect();
 
     } catch (err) {}
@@ -638,15 +597,16 @@ function startSynthEmergencyBackup() {
 
   try {
 
-    const ctx = getOrCreateAudioContext();
+    if (!isSirenActive) return;
+
+    const ctx = getOrCreateAudioContext(true);
 
     if (!ctx) return;
-
-    if (!isSirenActive) return;
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume() ? getSirenVolume() : 1.0;
 
     synthOscillator = ctx.createOscillator();
+    activeOscillators.push(synthOscillator);
 
     synthGainNode = ctx.createGain();
 
@@ -869,8 +829,9 @@ export function initSirenSettings() {
     window.addEventListener('pointerdown', unlocker, { passive: true });
 
     document.addEventListener('visibilitychange', () => {
+      if (!isSirenActive) return;
 
-      const ctx = getOrCreateAudioContext();
+      const ctx = getOrCreateAudioContext(true);
 
       if (ctx && ctx.state === 'suspended') {
 
@@ -917,13 +878,35 @@ function stopAllPlaybackEnginesOnly() {
 
   }
 
-  if (activeGainNode && audioContext) {
+  while (activeSourceNodes.length > 0) {
+    const node = activeSourceNodes.pop();
+    if (node) {
+      try { node.onended = null; node.stop(0); } catch {}
+      try { node.disconnect(); } catch {}
+    }
+  }
+
+  if (keepAliveOscillator) {
+    try { keepAliveOscillator.stop(0); } catch {}
+    try { keepAliveOscillator.disconnect(); } catch {}
+    keepAliveOscillator = null;
+  }
+
+  if (keepAliveGain) {
+    try { keepAliveGain.disconnect(); } catch {}
+    keepAliveGain = null;
+  }
+
+  if (activeGainNode) {
 
     try {
 
-      activeGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      if (audioContext) activeGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      activeGainNode.disconnect();
 
     } catch (err) {}
+
+    activeGainNode = null;
 
   }
 
@@ -940,6 +923,14 @@ function stopAllPlaybackEnginesOnly() {
 
   }
 
+  if (silentKeepAliveAudio) {
+    try {
+      silentKeepAliveAudio.muted = true;
+      silentKeepAliveAudio.volume = 0;
+      silentKeepAliveAudio.pause();
+    } catch (err) {}
+  }
+
   if (typeof document !== 'undefined') {
 
     try {
@@ -952,6 +943,18 @@ function stopAllPlaybackEnginesOnly() {
         playerEl.currentTime = 0;
       }
 
+      const allAudios = document.querySelectorAll('audio');
+      allAudios.forEach((aud: HTMLAudioElement) => {
+        if (aud.id === 'sahaya-siren-audio-player' || aud.id === 'sahaya-silent-keepalive-audio' || (aud.src && (aud.src.includes('siren') || aud.src.includes('1652')))) {
+          try {
+            aud.muted = true;
+            aud.volume = 0;
+            aud.pause();
+            aud.currentTime = 0;
+          } catch {}
+        }
+      });
+
     } catch (err) {}
 
   }
@@ -962,13 +965,13 @@ function stopAllPlaybackEnginesOnly() {
 
 function startWebAudioPlayback(): boolean {
 
-  const ctx = getOrCreateAudioContext();
+  if (!isSirenActive) return false;
+
+  const ctx = getOrCreateAudioContext(true);
 
   if (!ctx) return false;
 
   if (!audioBuffer) return false;
-
-  if (!isSirenActive) return false;
 
   try {
 
@@ -976,25 +979,22 @@ function startWebAudioPlayback(): boolean {
 
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume();
 
-    activeSourceNode = ctx.createBufferSource();
+    const sourceNode = ctx.createBufferSource();
 
-    activeSourceNode.buffer = audioBuffer;
+    sourceNode.buffer = audioBuffer;
 
-    activeSourceNode.loop = true;
+    sourceNode.loop = true;
 
-    if (!activeGainNode) {
-
-      activeGainNode = ctx.createGain();
-
-      activeGainNode.connect(ctx.destination);
-
-    }
-
+    activeGainNode = ctx.createGain();
     activeGainNode.gain.setValueAtTime(effectiveVolume, ctx.currentTime);
+    activeGainNode.connect(ctx.destination);
 
-    activeSourceNode.connect(activeGainNode);
+    sourceNode.connect(activeGainNode);
 
-    activeSourceNode.start(0);
+    sourceNode.start(0);
+
+    activeSourceNode = sourceNode;
+    activeSourceNodes.push(sourceNode);
 
     isWebAudioPlaying = true;
 
@@ -1012,9 +1012,20 @@ function startWebAudioPlayback(): boolean {
 
 }
 
-export function startEmergencySiren() {
+export function startEmergencySiren(forceTest: boolean = false) {
 
   try {
+
+    if (!forceTest && typeof window !== 'undefined') {
+      try {
+        const muteUntil = Number(localStorage.getItem('sahaya_siren_global_mute_until_ms') || 0);
+        const creatingUntil = Number(localStorage.getItem('sahaya_creating_alert_until_ms') || 0);
+        const now = Date.now();
+        if ((muteUntil > 0 && now < muteUntil) || (creatingUntil > 0 && now < creatingUntil)) {
+          return stopEmergencySiren;
+        }
+      } catch {}
+    }
 
     const isHtmlPlaying = Boolean(htmlAudioElement && !htmlAudioElement.paused);
 
@@ -1036,11 +1047,9 @@ export function startEmergencySiren() {
 
     acquireScreenWakeLock();
 
-    startSubAudibleKeepAlive();
-
     const effectiveVolume = isDeviceSirenMuted() ? 0 : getSirenVolume() ? getSirenVolume() : 1.0;
 
-    const ctx = getOrCreateAudioContext();
+    const ctx = getOrCreateAudioContext(true);
 
     stopAllPlaybackEnginesOnly();
 
@@ -1180,15 +1189,9 @@ export function setEmergencySirenLock(locked: boolean): void {
 
 }
 
-export function stopEmergencySiren(force: boolean = false): void {
+export function stopEmergencySiren(_force: boolean = true): void {
 
   try {
-
-    if (isEmergencyLocked && !force) {
-
-      return;
-
-    }
 
     isEmergencyLocked = false;
 
@@ -1198,7 +1201,9 @@ export function stopEmergencySiren(force: boolean = false): void {
 
       if (typeof window !== 'undefined') {
 
-        localStorage.setItem('sahaya_last_siren_stopped_at_ms', String(Date.now()));
+        const nowMs = Date.now();
+        localStorage.setItem('sahaya_last_siren_stopped_at_ms', String(nowMs));
+        localStorage.setItem('sahaya_siren_global_mute_until_ms', String(nowMs + 25000));
 
       }
 
@@ -1206,21 +1211,33 @@ export function stopEmergencySiren(force: boolean = false): void {
 
     stopAllPlaybackEnginesOnly();
 
-    if (activeGainNode) {
-
+    if (audioContext && audioContext.state === 'running') {
       try {
-
-        activeGainNode.disconnect();
-
+        audioContext.suspend().catch(() => {});
       } catch (err) {}
-
-      activeGainNode = null;
-
     }
 
     stopContinuousVibration();
 
     releaseScreenWakeLock();
+
+    try {
+      if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
+        (window as any).SahayaNativeAlertChannel.postMessage('STOP_RED_ALERT');
+        (window as any).SahayaNativeAlertChannel.postMessage('STOP_SIREN');
+        (window as any).SahayaNativeAlertChannel.postMessage('STOP_ALERT_AUDIO');
+      }
+    } catch (err) {}
+
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((reg: any) => {
+          if (reg && reg.active) {
+            reg.active.postMessage({ type: 'DISMISS_RED_ALERT', stopAll: true });
+          }
+        }).catch(() => {});
+      }
+    } catch (err) {}
 
     notifyLocalChanges();
 
@@ -1246,7 +1263,7 @@ export function testEmergencySiren(durationSeconds = 10) {
 
   return new Promise(resolve => {
 
-    startEmergencySiren();
+    startEmergencySiren(true);
 
     setTimeout(() => {
 
