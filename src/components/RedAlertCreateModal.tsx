@@ -512,10 +512,6 @@ export const RedAlertCreateModal: any = ({
 
       }
 
-      setEmergencySirenLock(true);
-
-      startEmergencySiren();
-
       setIsSubmitting(true);
 
       setShowVerifyModal(false);
@@ -631,7 +627,7 @@ export const RedAlertCreateModal: any = ({
 
         }
 
-        const dismissKeys = ['sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${uid}`];
+        const dismissKeys = ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${uid}`];
 
         dismissKeys.forEach((k) => {
 
@@ -673,11 +669,36 @@ export const RedAlertCreateModal: any = ({
 
         longitude,
 
+        radiusKm: 15,
+
+        senderId: uid,
+
+        senderName: reporterName.trim() || 'සහය සාමාජිකයෙක්',
+
         urgency: 'critical',
 
         badgeText: 'රතු එළිය 15KM'
 
       });
+
+      fetch('/api/alerts/notify-channels', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+        },
+        body: JSON.stringify({
+          alertId: docId,
+          title: titleSi,
+          description: description.trim() || `${locationName.trim()} ප්‍රදේශයෙන් ${titleSi} හදිසි ආපදාවක් වාර්තා වී ඇත.`,
+          locationName: locationName.trim(),
+          latitude,
+          longitude,
+          score: 0,
+          confidenceStatus: 'suspicious',
+          tier: 'initial_report',
+        }),
+      }).catch(() => {});
 
       setPublishedAlert(createdAlert);
 

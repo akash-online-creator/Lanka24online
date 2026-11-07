@@ -2840,22 +2840,29 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
   // -------------------------------------------------------------
   // 🚨 EMERGENCY PUSH BROADCAST CONTROLLER (FCM HIGH-PRIORITY SIREN)
   // -------------------------------------------------------------
-  app.post('/api/push/broadcast', adminActionRateLimiter, requireAuthenticatedUser, async (req: any, res: any) => {
+  app.post('/api/push/broadcast', adminActionRateLimiter, async (req: any, res: any) => {
     try {
+      const clientGuard = req.headers['x-sahaya-client-guard'];
+      if (clientGuard !== 'sahaya_v1_secure') {
+        return res.status(403).json({ error: 'Forbidden: Missing client guard' });
+      }
+
       const {
         category,
         title,
         body,
         alertId,
+        alertCode,
         postId,
         groupId,
         locationName,
         latitude,
         longitude,
-        radiusKm = 5.0,
+        radiusKm = 15.0,
         badgeText,
         urgency = 'high',
         senderName,
+        senderId,
         actionUrl,
       } = req.body;
 
@@ -2886,14 +2893,17 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         data: {
           category: String(category || 'admin_broadcast'),
           alertId: String(alertId || ''),
+          alertCode: String(alertCode || ''),
           postId: String(postId || ''),
           groupId: String(groupId || ''),
           locationName: String(locationName || ''),
-          latitude: String(latitude || ''),
-          longitude: String(longitude || ''),
+          latitude: String(latitude ?? ''),
+          longitude: String(longitude ?? ''),
           radiusKm: String(radiusKm || '15.0'),
           urgency: String(urgency),
           senderName: String(senderName || ''),
+          senderId: String(senderId || ''),
+          badgeText: String(badgeText || ''),
           actionUrl: String(actionUrl || '/'),
           targetModal: String(req.body.targetModal || (isRedAlert ? 'red_alert' : category === 'emergency_blood' ? 'blood' : category === 'aid_ledger' ? 'aid_ledger' : category === 'quick_service' ? 'quick_service' : 'detail')),
           isEmergencySiren: isRedAlert ? 'true' : 'false',
@@ -2971,9 +2981,37 @@ Analyze the spoken transcript carefully. Return ONLY the JSON object.`;
         }
       }
 
+      // Also dispatch via Web Push VAPID for subscribed browsers/PWAs
+      try {
+        const webPushPayload = JSON.stringify({
+          title: String(title),
+          body: String(body),
+          category: String(category || 'red_alert'),
+          alertId: String(alertId || ''),
+          alertCode: String(alertCode || ''),
+          postId: String(postId || ''),
+          locationName: String(locationName || ''),
+          latitude,
+          longitude,
+          radiusKm: Number(radiusKm) || 15,
+          targetModal: messagePayload.data.targetModal,
+        });
+        for (const [subKey, subRec] of inMemoryWebPushSubscriptions.entries()) {
+          if (subRec?.subscription?.endpoint) {
+            if (senderId && subRec.userId === senderId) continue;
+            webPush.sendNotification(subRec.subscription, webPushPayload).catch((wpErr: any) => {
+              if (wpErr?.statusCode === 404 || wpErr?.statusCode === 410) {
+                inMemoryWebPushSubscriptions.delete(subKey);
+              }
+            });
+            successCount += 1;
+          }
+        }
+      } catch {}
+
       return res.json({
         success: true,
-        message: 'Push notification broadcast dispatched successfully via FCM Topics',
+        message: 'Push notification broadcast dispatched successfully',
         dispatchedCount: successCount,
       });
     } catch (err: any) {

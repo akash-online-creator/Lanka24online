@@ -267,6 +267,15 @@ export async function registerFcmToken(currentUserId?: string) {
 
       try {
 
+        let vapidPubKey = SAHAYA_VAPID_PUBLIC_KEY;
+        try {
+          const keyRes = await fetch('/api/webpush/vapid-public-key');
+          if (keyRes.ok) {
+            const keyData = await keyRes.json();
+            if (keyData?.publicKey) vapidPubKey = keyData.publicKey;
+          }
+        } catch {}
+
         let sub = await swRegistration.pushManager.getSubscription();
 
         if (!sub) {
@@ -275,7 +284,7 @@ export async function registerFcmToken(currentUserId?: string) {
 
             userVisibleOnly: true,
 
-            applicationServerKey: urlBase64ToUint8Array(SAHAYA_VAPID_PUBLIC_KEY) as any
+            applicationServerKey: urlBase64ToUint8Array(vapidPubKey) as any
 
           });
 
@@ -290,6 +299,23 @@ export async function registerFcmToken(currentUserId?: string) {
           p256dh = subJson.keys && subJson.keys.p256dh ? subJson.keys.p256dh : '';
 
           auth = subJson.keys && subJson.keys.auth ? subJson.keys.auth : '';
+
+          const coords = getLocalCoordinates();
+          fetch('/api/webpush/subscribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Sahaya-Client-Guard': 'sahaya_v1_secure',
+            },
+            body: JSON.stringify({
+              userId: currentUserId || 'usr_guest',
+              subscription: subJson,
+              lat: coords.lat,
+              lng: coords.lng,
+              radiusKm: 15,
+              categories: ['all', 'red_alert'],
+            }),
+          }).catch(() => {});
 
         }
 
@@ -368,10 +394,11 @@ export async function registerFcmToken(currentUserId?: string) {
         } catch (e) {}
       }
 
-      // 📢 Auto-subscribe token to district and island-wide topic
+      // 📢 Auto-subscribe token to red alerts, district, and island-wide topics
       try {
         const storedDistrict = (typeof localStorage !== 'undefined' ? localStorage.getItem('sahaya_user_district') : '') || 'colombo';
         const cleanDist = storedDistrict.toLowerCase().replace(/\s+/g, '_');
+        subscribeDeviceToTopic(token, 'sahaya_red_alerts');
         subscribeDeviceToTopic(token, `alert_${cleanDist}`);
         subscribeDeviceToTopic(token, 'alert_all_island');
       } catch {}
@@ -388,13 +415,15 @@ export async function registerFcmToken(currentUserId?: string) {
 
 }
 
+const processedRedAlertPushIds = new Set<string>();
+
 export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   const category = payload.category || 'admin_broadcast';
 
   const title = payload.title || '🚨 සහය සේවා දැනුම්දීම';
 
-  const message = payload.body || 'නව හදිසි ආපදා යාවත්කාලීනයක් ඇත.';
+  const message = payload.body || payload.message || 'නව හදිසි ආපදා යාවත්කාලීනයක් ඇත.';
 
   const locationName = payload.locationName || '';
 
@@ -402,13 +431,25 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
   if (category === 'red_alert') {
 
+    const dedupeKey = payload.alertId || `${title}_${locationName}`;
+    if (dedupeKey && processedRedAlertPushIds.has(dedupeKey)) {
+      return;
+    }
+
     try {
 
       const myAlerts = JSON.parse(localStorage.getItem('sahaya_my_created_alerts') || '[]');
 
       const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
 
-      if (payload.alertId && ((Array.isArray(myAlerts) && myAlerts.includes(payload.alertId)) || (Array.isArray(stoppedSirens) && stoppedSirens.includes(payload.alertId)))) {
+      const dismissed = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+
+      if (
+        payload.alertId &&
+        ((Array.isArray(myAlerts) && myAlerts.includes(payload.alertId)) ||
+          (Array.isArray(stoppedSirens) && stoppedSirens.includes(payload.alertId)) ||
+          (Array.isArray(dismissed) && dismissed.includes(payload.alertId)))
+      ) {
 
         return;
 
@@ -420,40 +461,59 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
     const radiusLimit = payload.radiusKm || 15.0;
 
-    if (payload.latitude !== undefined && payload.longitude !== undefined) {
+    if (payload.latitude !== undefined && payload.longitude !== undefined && payload.latitude !== '' && payload.longitude !== '') {
 
       const alertLat = Number(payload.latitude);
 
       const alertLng = Number(payload.longitude);
 
-      const userCoords = getLocalCoordinates();
+      if (!isNaN(alertLat) && !isNaN(alertLng)) {
+        const userCoords = getLocalCoordinates();
 
-      distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
+        distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
 
-      if (!userCoords.isFallback && Math.max(distanceKm, radiusLimit) === distanceKm && distanceKm !== radiusLimit) {
+        if (!userCoords.isFallback && distanceKm > radiusLimit) {
 
-        return;
+          return;
 
+        }
       }
 
     }
+
+    if (dedupeKey) {
+      processedRedAlertPushIds.add(dedupeKey);
+    }
+
+    // Store in notification center without calling triggerPickMeAlert('emergency_blood') which would stop the emergency siren
+    try {
+      const storageKey = 'sahaya_live_notifications';
+      const existingRaw = localStorage.getItem(storageKey);
+      const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+      const redNotif: AppNotification = {
+        id: notifId,
+        type: 'emergency_blood',
+        title: title.startsWith('🚨') ? title : '🚨 සහය සේවා (රතු එළිය): ' + title,
+        message: message + (distanceKm > 0 ? ' (ඔබට දුර: කි.මී. ' + distanceKm.toFixed(1) + ')' : ''),
+        locationName,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        badgeText: 'රතු එළිය 15KM',
+        targetModal: 'red_alert',
+        targetPostId: payload.alertId
+      };
+      const updatedList = [redNotif, ...(Array.isArray(existingList) ? existingList.filter((n: any) => n && n.id !== notifId) : [])].slice(0, 50);
+      localStorage.setItem(storageKey, JSON.stringify(updatedList));
+      window.dispatchEvent(new CustomEvent('sahaya_new_notification', { detail: redNotif }));
+    } catch {}
+
+    setEmergencySirenLock(true);
+    startEmergencySiren();
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: payload }));
     }
-    setEmergencySirenLock(true);
-    startEmergencySiren();
-    broadcastAppNotification({
-      id: notifId,
-      type: 'emergency_blood',
-      title: '🚨 සහය සේවා (රතු එළිය): ' + title,
-      message: message + ' (ඔබට දුර: කි.මී. ' + distanceKm.toFixed(1) + ')',
-      locationName,
-      timestamp: new Date().toISOString(),
-      isRead: false,
-      badgeText: 'රතු එළිය 15KM',
-      targetModal: 'red_alert',
-      targetPostId: payload.alertId
-    });
+
     if (typeof window !== 'undefined' && (window as any).SahayaNativeAlertChannel) {
 
       try {
@@ -506,9 +566,9 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
 
       type: 'emergency_blood',
 
-      title: `🚨 ${title}`,
+      title: title.startsWith('🚨') ? title : `🚨 ${title}`,
 
-      message: `${message} (ඔබට දුර: කි.මී. ${distanceKm.toFixed(1)})`,
+      message: `${message}${distanceKm > 0 ? ` (ඔබට දුර: කි.මී. ${distanceKm.toFixed(1)})` : ''}`,
 
       locationName,
 
@@ -523,12 +583,6 @@ export function processIncomingPushAlert(payload: FcmPayloadData) {
       targetPostId: payload.alertId,
 
     });
-
-    if (typeof window !== 'undefined') {
-
-      window.dispatchEvent(new CustomEvent('sahaya_red_alert_received', { detail: payload }));
-
-    }
 
     return;
 

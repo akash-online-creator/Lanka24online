@@ -152,7 +152,27 @@ export const RedAlertLiveManager: any = ({
     try {
       await activateBackgroundWakeLock();
     } catch (err) {}
-    /* In-App notification removed as requested */
+    try {
+      const storageKey = 'sahaya_live_notifications';
+      const notifId = 'red-alert-' + alertItem.id;
+      const raw = localStorage.getItem(storageKey);
+      const list = raw ? JSON.parse(raw) : [];
+      const newNotif = {
+        id: notifId,
+        type: 'emergency_blood',
+        title: notifTitle,
+        message: notifBody,
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        locationName: locName,
+        badgeText: within15Km ? '15KM RED ALERT' : 'RED ALERT',
+        targetPostId: alertItem.id,
+        targetModal: 'red_alert'
+      };
+      const updated = [newNotif, ...(Array.isArray(list) ? list.filter((n: any) => n && n.id !== notifId) : [])].slice(0, 50);
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('sahaya_new_notification', { detail: newNotif }));
+    } catch (err) {}
     try {
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
         const reg: any = await navigator.serviceWorker.ready;
@@ -244,13 +264,14 @@ export const RedAlertLiveManager: any = ({
         const general = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') ? (localStorage.getItem('sahaya_dismissed_alerts') as string) : '[]');
         const userSpecific = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts_' + currentUserId) ? (localStorage.getItem('sahaya_dismissed_alerts_' + currentUserId) as string) : '[]');
         const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') ? (localStorage.getItem('sahaya_siren_stopped_alerts') as string) : '[]');
+        const deletedIds = JSON.parse(localStorage.getItem('sahaya_deleted_post_ids') ? (localStorage.getItem('sahaya_deleted_post_ids') as string) : '[]');
         const checkArr = (arr: any) => {
           if (!Array.isArray(arr)) return false;
           if (idVal && arr.includes(idVal)) return true;
           if (codeVal && arr.includes(codeVal)) return true;
           return false;
         };
-        return checkArr(general) ? true : checkArr(userSpecific) ? true : checkArr(stoppedSirens);
+        return checkArr(general) ? true : checkArr(userSpecific) ? true : checkArr(stoppedSirens) ? true : checkArr(deletedIds);
       } catch (err) {
         return false;
       }
@@ -352,7 +373,7 @@ export const RedAlertLiveManager: any = ({
         if (isAlertCreatedByMe(payload)) {
           return;
         }
-        if (!activeAlertRef.current) {
+        if (!activeAlertRef.current || activeAlertRef.current.id !== incomingId) {
           const fallbackAlert = {
             id: incomingId,
             alertCode: payload.alertCode ? payload.alertCode : 'RED ALERT',
@@ -482,12 +503,18 @@ export const RedAlertLiveManager: any = ({
       bgWorker = new Worker(URL.createObjectURL(workerBlob));
       bgWorker.onmessage = (ev: any) => {
         if (ev && ev.data && ev.data.type === "REST_DOCS" && Array.isArray(ev.data.documents)) {
+          const nowMs = Date.now();
           for (const d of ev.data.documents) {
             if (!d) continue;
             const fields = d.fields ? d.fields : {};
             const status = fields.status && fields.status.stringValue ? fields.status.stringValue : "";
             const isFlaggedFake = Boolean(fields.isFlaggedFake && fields.isFlaggedFake.booleanValue);
-            if (status !== "active" ? true : isFlaggedFake) continue;
+            const isDeleted = Boolean(fields.isDeleted && fields.isDeleted.booleanValue);
+            const isRemovedAsFake = Boolean(fields.isRemovedAsFake && fields.isRemovedAsFake.booleanValue);
+            const confStatus = fields.confidenceStatus && fields.confidenceStatus.stringValue ? fields.confidenceStatus.stringValue : "";
+            if (status !== "active" || isFlaggedFake || isDeleted || isRemovedAsFake || confStatus === "removed") continue;
+            const createdMsField = fields.createdAtMs ? Number(fields.createdAtMs.integerValue !== undefined ? fields.createdAtMs.integerValue : fields.createdAtMs.doubleValue) : 0;
+            if (createdMsField > 0 && (nowMs - createdMsField) > 24 * 60 * 60 * 1000) continue;
             const nameParts = String(d.name ? d.name : "").split("/");
             const docId = fields.id && fields.id.stringValue ? fields.id.stringValue : nameParts[nameParts.length - 1];
             const alertCode = fields.alertCode && fields.alertCode.stringValue ? fields.alertCode.stringValue : "RED ALERT";
@@ -520,13 +547,13 @@ export const RedAlertLiveManager: any = ({
             setActiveAlert(candidateAlert);
             setUserDistanceKm(distKm);
             setIsWithin15Km(true);
-            setIsDismissed(false);
-            setShowEmergencyModal(true);
-            shouldRingRef.current = true;
-            setIsSirenActive(true);
-            setEmergencySirenLock(true);
-            startEmergencySiren();
             if (isNew) {
+              setIsDismissed(false);
+              setShowEmergencyModal(true);
+              shouldRingRef.current = true;
+              setIsSirenActive(true);
+              setEmergencySirenLock(true);
+              startEmergencySiren();
               triggerWakeScreenAndNotification(candidateAlert, distKm, true);
             }
             break;
@@ -545,18 +572,17 @@ export const RedAlertLiveManager: any = ({
             shouldRingRef.current = false;
             return;
           }
-          setShowEmergencyModal(true);
-          setIsSirenActive(true);
-          startEmergencySiren();
         } catch (err) {}
       };
     } catch (err) {}
     const unsubscribe = subscribeToRedAlerts(alerts => {
       const alertList = alerts ? alerts : [];
+      const nowMs = Date.now();
       const activeAlerts = alertList.filter(a => {
         if (!a) return false;
         if (a.status !== 'active') return false;
-        if (a.isFlaggedFake) return false;
+        if (a.isFlaggedFake || a.isDeleted || a.isRemovedAsFake || a.confidenceStatus === 'removed') return false;
+        if (a.createdAtMs && (nowMs - Number(a.createdAtMs)) > 24 * 60 * 60 * 1000) return false;
         const fakeCount = a.fakeReports?.length ? a.fakeReports.length : a.fakeReportsCount ? a.fakeReportsCount : 0;
         return Math.min(fakeCount, 3) === fakeCount;
       }).sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));

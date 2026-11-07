@@ -86,11 +86,27 @@ async function pollFirestoreAllAlertsInBackground() {
       const fields = docItem.fields ? docItem.fields : {};
       const nameParts = (docItem.name ? docItem.name : '').split('/');
       const docId = getStringField(fields, 'id', nameParts[nameParts.length - 1]);
-      if (!docId) continue;
+      if (!docId || notifiedAlertIdsInSw.has(docId)) continue;
 
       const status = getStringField(fields, 'status', '');
       const isFlaggedFake = getBoolField(fields, 'isFlaggedFake');
-      if (status !== 'active' || isFlaggedFake) continue;
+      const isDeleted = getBoolField(fields, 'isDeleted');
+      const isRemovedAsFake = getBoolField(fields, 'isRemovedAsFake');
+      const confidenceStatus = getStringField(fields, 'confidenceStatus', '');
+      if (status !== 'active' || isFlaggedFake || isDeleted || isRemovedAsFake || confidenceStatus === 'removed') {
+        notifiedAlertIdsInSw.add(docId);
+        continue;
+      }
+
+      const createdAtMs = getNumberField(fields, 'createdAtMs', 0);
+      if (isInitialSeed && createdAtMs > 0 && (nowMs - createdAtMs) > 60000) {
+        notifiedAlertIdsInSw.add(docId);
+        continue;
+      }
+      if (createdAtMs > 0 && (nowMs - createdAtMs) > 24 * 60 * 60 * 1000) {
+        notifiedAlertIdsInSw.add(docId);
+        continue;
+      }
 
       const reportedByUserId = getStringField(fields, 'reportedByUserId', '');
       if (reportedByUserId && watcherConfig.userId && reportedByUserId === watcherConfig.userId) {
@@ -99,10 +115,15 @@ async function pollFirestoreAllAlertsInBackground() {
       }
 
       const alertCode = getStringField(fields, 'alertCode', '');
-      if (notifiedAlertIdsInSw.has(docId)) continue;
       if (Array.isArray(watcherConfig.ignoredAlertIds)) {
-        if (watcherConfig.ignoredAlertIds.includes(docId)) continue;
-        if (alertCode && watcherConfig.ignoredAlertIds.includes(alertCode)) continue;
+        if (watcherConfig.ignoredAlertIds.includes(docId)) {
+          notifiedAlertIdsInSw.add(docId);
+          continue;
+        }
+        if (alertCode && watcherConfig.ignoredAlertIds.includes(alertCode)) {
+          notifiedAlertIdsInSw.add(docId);
+          continue;
+        }
       }
 
       const alertLat = getNumberField(fields, 'latitude', getNumberField(fields, 'lat', 7.151));
