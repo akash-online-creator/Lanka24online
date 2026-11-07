@@ -4,6 +4,7 @@ import { subscribeToRedAlerts, markRedAlertAsResolved, cancelRedAlertByReporter,
 import { triggerBrowserNotification, activateBackgroundWakeLock, broadcastAppNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySirenLock, isEmergencySirenPlaying, subscribeToLocalSirenChanges } from '../utils/sirenAudio';
 import { calculateDistanceKm } from '../utils/geoUtils';
+import { calculateAlertConfidenceState } from '../utils/redAlertVoteEngine';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { User, Language } from '../types';
 interface Props {
@@ -779,6 +780,7 @@ export const RedAlertLiveManager: any = ({
     }
   } catch (err) {}
   const activeAny = ((activeAlert ? activeAlert : {}) as any);
+  const confidenceState = activeAlert ? calculateAlertConfidenceState(activeAlert) : null;
   const isReporter = Boolean(isCreatedByMeLocal ? true : activeAlert?.reportedByUserId && currentUserId && activeAlert.reportedByUserId === currentUserId ? true : currentUser?.phone && activeAny.reportedByPhone && String(currentUser.phone).replace(/\D/g, '') === String(activeAny.reportedByPhone).replace(/\D/g, ''));
   const h = React.createElement;
   return h(React.Fragment, null, (showEmergencyModal ? showEmergencyModal : isSirenActive) && activeAlert ? h('div', {
@@ -840,7 +842,51 @@ export const RedAlertLiveManager: any = ({
     className: 'px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold flex items-center gap-1'
   }, h(Phone, {
     className: 'w-3 h-3'
-  }), h('span', null, 'අමතන්න')) : null) : null), isSirenActive ? h('button', {
+  }), h('span', null, 'අමතන්න')) : null) : null), confidenceState ? h('div', {
+    className: 'bg-black/45 border border-yellow-400/40 rounded-2xl p-3.5 space-y-2'
+  }, h('div', {
+    className: 'flex items-center justify-between gap-2'
+  }, h('div', {
+    className: 'space-y-0.5'
+  }, h('span', {
+    className: 'text-[10px] font-extrabold uppercase tracking-wider text-yellow-200/90 block'
+  }, '📊 ප්‍රජා විශ්වාස මිනුම (Rating Bar • ±10)'), h('span', {
+    className: 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black border ' + confidenceState.badgeBgClass
+  }, confidenceState.statusLabelSi)), h('div', {
+    className: 'text-right bg-black/60 px-2.5 py-1 rounded-xl border border-red-400/40 shrink-0'
+  }, h('span', {
+    className: 'text-[9px] font-bold text-red-200 block'
+  }, 'ලකුණු (Score)'), h('span', {
+    className: 'text-sm font-black font-mono ' + (confidenceState.score >= 4 ? 'text-emerald-400' : confidenceState.score <= -4 ? 'text-rose-400' : 'text-amber-300')
+  }, (confidenceState.score > 0 ? '+' : '') + confidenceState.score + ' / ±10'))), h('div', {
+    className: 'grid grid-cols-5 text-[9px] font-black text-center gap-1'
+  }, h('span', {
+    className: 'bg-zinc-950/90 text-zinc-300 py-0.5 rounded border border-zinc-700'
+  }, '❌ ≤-10'), h('span', {
+    className: 'bg-orange-950/80 text-orange-300 py-0.5 rounded border border-orange-700/50'
+  }, '🟠 -4..-9'), h('span', {
+    className: 'bg-yellow-950/80 text-yellow-200 py-0.5 rounded border border-yellow-600/50'
+  }, '🟡 -3..+3'), h('span', {
+    className: 'bg-emerald-950/80 text-emerald-300 py-0.5 rounded border border-emerald-600/50'
+  }, '🟢 +4..+9'), h('span', {
+    className: 'bg-red-950/90 text-red-200 py-0.5 rounded border border-red-500/60'
+  }, '✅ ≥+10')), h('div', {
+    className: 'relative h-3.5 w-full rounded-full overflow-hidden bg-gradient-to-r from-zinc-900 via-orange-500 via-yellow-400 via-emerald-500 to-red-600 p-0.5 shadow-inner'
+  }, h('div', {
+    className: 'absolute top-0 bottom-0 w-0.5 bg-white/70 left-1/2 -translate-x-1/2 z-10',
+    title: '0 මධ්‍ය ලක්ෂ්‍යය'
+  }), h('div', {
+    className: 'h-full rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.95)] transition-all duration-500',
+    style: {
+      width: Math.max(4, confidenceState.percentage) + '%'
+    }
+  })), h('div', {
+    className: 'flex items-center justify-between text-[11px] font-bold pt-0.5'
+  }, h('span', {
+    className: 'text-emerald-300'
+  }, '✅ සත්‍ය: ' + confidenceState.trueVotes + ' (+' + confidenceState.weightedTrueScore + ')'), h('span', {
+    className: 'text-rose-300'
+  }, '❌ අසත්‍ය: ' + confidenceState.falseVotes + ' (-' + confidenceState.weightedFalseScore + ')'))) : null, isSirenActive ? h('button', {
     type: 'button',
     onClick: handleStopSirenOnly,
     className: 'w-full py-2.5 px-4 rounded-xl bg-red-950/90 hover:bg-red-900 text-yellow-200 font-bold text-xs border border-yellow-400/50 flex items-center justify-center gap-2 cursor-pointer'
