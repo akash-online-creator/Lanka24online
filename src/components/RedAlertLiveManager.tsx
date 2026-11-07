@@ -4,7 +4,7 @@ import { subscribeToRedAlerts, markRedAlertAsResolved, cancelRedAlertByReporter,
 import { triggerBrowserNotification, activateBackgroundWakeLock, broadcastAppNotification } from '../utils/notificationManager';
 import { startEmergencySiren, stopEmergencySiren, unlockAudio, setEmergencySirenLock, isEmergencySirenPlaying, subscribeToLocalSirenChanges } from '../utils/sirenAudio';
 import { calculateDistanceKm } from '../utils/geoUtils';
-import { calculateAlertConfidenceState } from '../utils/redAlertVoteEngine';
+import { calculateAlertConfidenceState, getDeviceFingerprint, calculateUserVoteWeight } from '../utils/redAlertVoteEngine';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { User, Language } from '../types';
 interface Props {
@@ -20,7 +20,7 @@ export const RedAlertLiveManager: any = ({
   currentUserName: propUserName,
   currentUser
 }: any) => {
-  const currentUserId = propUserId ? propUserId : currentUser?.id ? currentUser.id : currentUser?.userId ? currentUser.userId : 'usr_guest';
+  const currentUserId = String(currentUser?.userId || currentUser?.id || currentUser?.nicNumber || propUserId || 'usr_guest').trim();
   const [activeAlert, setActiveAlert] = useState((null as any));
   const [userDistanceKm, setUserDistanceKm] = useState(0);
   const [isWithin15Km, setIsWithin15Km] = useState(true);
@@ -718,34 +718,87 @@ export const RedAlertLiveManager: any = ({
       setIsSubmitting(false);
     }
   };
+  const activeAny = ((activeAlert ? activeAlert : {}) as any);
+  let localSavedVote: any = null;
+  try {
+    const rawSaved = localStorage.getItem('sahaya_voted_red_alerts_map');
+    const savedMap = rawSaved ? JSON.parse(rawSaved) : {};
+    if (activeAlert?.id && savedMap[activeAlert.id]) {
+      localSavedVote = savedMap[activeAlert.id];
+    }
+  } catch (err) {}
+  const existingUserVote =
+    (activeAlert?.votesMap && currentUserId ? activeAlert.votesMap[currentUserId] : null) ||
+    (activeAlert?.votesMap && currentUser?.id ? activeAlert.votesMap[String(currentUser.id)] : null) ||
+    (activeAlert?.votesMap && currentUser?.userId ? activeAlert.votesMap[String(currentUser.userId)] : null) ||
+    (activeAlert?.votesMap && currentUser?.nicNumber ? activeAlert.votesMap[String(currentUser.nicNumber)] : null) ||
+    localSavedVote ||
+    null;
+  const hasAlreadyVoted = Boolean(
+    existingUserVote ||
+    (Array.isArray(activeAlert?.verifiedByUserIds) && activeAlert.verifiedByUserIds.includes(currentUserId)) ||
+    (Array.isArray(activeAlert?.fakeReportedByUserIds) && activeAlert.fakeReportedByUserIds.includes(currentUserId))
+  );
+  const voterWeightInfo = calculateUserVoteWeight(currentUser, 0);
+
   const handleQuickConfirmTrue = async () => {
     if (!activeAlert?.id) return;
-    if (isSubmitting) return;
+    if (isSubmitting || hasAlreadyVoted) return;
     setIsSubmitting(true);
     try {
-      await castWeightedRedAlertVoteTransaction({
+      const fp = await getDeviceFingerprint();
+      const res = await castWeightedRedAlertVoteTransaction({
         alertId: activeAlert.id,
         userId: currentUserId,
         userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
         userPhone: currentUser?.phone ? currentUser.phone : '',
         voteType: 'true',
-        baseWeight: 1,
-        trustLevel: 'normal',
-        distanceKm: userDistanceKm
-      }).catch(() => {});
+        baseWeight: voterWeightInfo.baseWeight,
+        trustLevel: voterWeightInfo.level,
+        distanceKm: userDistanceKm,
+        deviceFingerprint: fp
+      });
+      try {
+        const rawSaved = localStorage.getItem('sahaya_voted_red_alerts_map');
+        const savedMap = rawSaved ? JSON.parse(rawSaved) : {};
+        savedMap[activeAlert.id] = res.userVote;
+        localStorage.setItem('sahaya_voted_red_alerts_map', JSON.stringify(savedMap));
+      } catch (err) {}
       stopAllAlertEffects(activeAlert.id, true);
       setShowEmergencyModal(false);
       setIsDismissed(true);
       triggerPopup('✅ මෙම දැන්වීම සත්‍ය සිදුවීමක් ලෙස තහවුරු කරන ලදී.');
+    } catch (err) {
+      stopAllAlertEffects(activeAlert.id, true);
+      setShowEmergencyModal(false);
+      setIsDismissed(true);
     } finally {
       setIsSubmitting(false);
     }
   };
   const handleQuickReportFake = async () => {
     if (!activeAlert?.id) return;
-    if (isSubmitting) return;
+    if (isSubmitting || hasAlreadyVoted) return;
     setIsSubmitting(true);
     try {
+      const fp = await getDeviceFingerprint();
+      const res = await castWeightedRedAlertVoteTransaction({
+        alertId: activeAlert.id,
+        userId: currentUserId,
+        userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
+        userPhone: currentUser?.phone ? currentUser.phone : '',
+        voteType: 'false',
+        baseWeight: voterWeightInfo.baseWeight,
+        trustLevel: voterWeightInfo.level,
+        distanceKm: userDistanceKm,
+        deviceFingerprint: fp
+      });
+      try {
+        const rawSaved = localStorage.getItem('sahaya_voted_red_alerts_map');
+        const savedMap = rawSaved ? JSON.parse(rawSaved) : {};
+        savedMap[activeAlert.id] = res.userVote;
+        localStorage.setItem('sahaya_voted_red_alerts_map', JSON.stringify(savedMap));
+      } catch (err) {}
       await reportRedAlertAsFake(activeAlert.id, {
         id: 'fake_' + Date.now(),
         userId: currentUserId,
@@ -753,21 +806,15 @@ export const RedAlertLiveManager: any = ({
         userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
         reportedAt: new Date().toISOString(),
         reason: 'අසත්‍ය දැන්වීමක් ලෙස වාර්තා කරන ලදී'
-      });
-      await castWeightedRedAlertVoteTransaction({
-        alertId: activeAlert.id,
-        userId: currentUserId,
-        userName: currentUser?.name ? currentUser.name : propUserName ? propUserName : 'පරිශීලක',
-        userPhone: currentUser?.phone ? currentUser.phone : '',
-        voteType: 'false',
-        baseWeight: 1,
-        trustLevel: 'normal',
-        distanceKm: userDistanceKm
       }).catch(() => {});
       stopAllAlertEffects(activeAlert.id, true);
       setShowEmergencyModal(false);
       setIsDismissed(true);
       triggerPopup('🚩 මෙම දැන්වීම අසත්‍ය සිදුවීමක් ලෙස වාර්තා කරන ලදී.');
+    } catch (err) {
+      stopAllAlertEffects(activeAlert.id, true);
+      setShowEmergencyModal(false);
+      setIsDismissed(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -779,7 +826,6 @@ export const RedAlertLiveManager: any = ({
       isCreatedByMeLocal = true;
     }
   } catch (err) {}
-  const activeAny = ((activeAlert ? activeAlert : {}) as any);
   const confidenceState = activeAlert ? calculateAlertConfidenceState(activeAlert) : null;
   const isReporter = Boolean(isCreatedByMeLocal ? true : activeAlert?.reportedByUserId && currentUserId && activeAlert.reportedByUserId === currentUserId ? true : currentUser?.phone && activeAny.reportedByPhone && String(currentUser.phone).replace(/\D/g, '') === String(activeAny.reportedByPhone).replace(/\D/g, ''));
   const h = React.createElement;
@@ -803,19 +849,7 @@ export const RedAlertLiveManager: any = ({
     className: 'text-[11px] text-red-100 font-bold'
   }, 'හදිසි ආපදා සජීවී අනතුරු ඇඟවීමේ පද්ධතිය (15km Siren Alert)'))), h('span', {
     className: 'bg-yellow-400 text-red-950 font-black text-[11px] px-2.5 py-1 rounded-full shadow shrink-0'
-  }, activeAny.alertCode ? activeAny.alertCode : 'RED ALERT')), h('button', {
-    type: 'button',
-    onClick: handleDismissByUser,
-    className: 'w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-red-950 font-black text-base sm:text-lg shadow-[0_0_35px_rgba(250,204,21,0.9)] border-2 border-white flex items-center justify-center gap-3 transition-transform active:scale-95 cursor-pointer'
-  }, h(VolumeX, {
-    className: 'w-7 h-7 text-red-700 shrink-0 animate-bounce'
-  }), h('div', {
-    className: 'text-left leading-tight'
-  }, h('div', {
-    className: 'text-sm sm:text-base font-black text-red-950'
-  }, '🔇 සයිරන් නාදය ඉවත් කර දැන්විමෙන් ඉවත් වන්න'), h('div', {
-    className: 'text-[11px] font-extrabold text-red-800'
-  }, '(මෙම දැන්වීම සඳහා නැවත සයිරන් නාද නොවේ)'))), h('div', {
+  }, activeAny.alertCode ? activeAny.alertCode : 'RED ALERT')), h('div', {
     className: 'space-y-2.5 bg-black/35 p-4 rounded-2xl border border-red-400/40'
   }, h('h2', {
     className: 'text-xl sm:text-2xl font-black text-white leading-snug'
@@ -842,7 +876,19 @@ export const RedAlertLiveManager: any = ({
     className: 'px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold flex items-center gap-1'
   }, h(Phone, {
     className: 'w-3 h-3'
-  }), h('span', null, 'අමතන්න')) : null) : null), confidenceState ? h('div', {
+  }), h('span', null, 'අමතන්න')) : null) : null), h('button', {
+    type: 'button',
+    onClick: handleDismissByUser,
+    className: 'w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-red-950 font-black text-base sm:text-lg shadow-[0_0_35px_rgba(250,204,21,0.9)] border-2 border-white flex items-center justify-center gap-3 transition-transform active:scale-95 cursor-pointer'
+  }, h(VolumeX, {
+    className: 'w-7 h-7 text-red-700 shrink-0 animate-bounce'
+  }), h('div', {
+    className: 'text-left leading-tight'
+  }, h('div', {
+    className: 'text-sm sm:text-base font-black text-red-950'
+  }, '🔇 සයිරන් නාදය ඉවත් කර දැන්විමෙන් ඉවත් වන්න'), h('div', {
+    className: 'text-[11px] font-extrabold text-red-800'
+  }, '(මෙම දැන්වීම සඳහා නැවත සයිරන් නාද නොවේ)'))), confidenceState ? h('div', {
     className: 'bg-black/45 border border-yellow-400/40 rounded-2xl p-3.5 space-y-2'
   }, h('div', {
     className: 'flex items-center justify-between gap-2'
@@ -861,7 +907,7 @@ export const RedAlertLiveManager: any = ({
   }, (confidenceState.score > 0 ? '+' : '') + confidenceState.score + ' / ±10'))), h('div', {
     className: 'grid grid-cols-5 text-[9px] font-black text-center gap-1'
   }, h('span', {
-    className: 'bg-zinc-950/90 text-zinc-300 py-0.5 rounded border border-zinc-700'
+    className: 'bg-red-950/90 text-red-200 py-0.5 rounded border border-red-500/60'
   }, '❌ ≤-10'), h('span', {
     className: 'bg-orange-950/80 text-orange-300 py-0.5 rounded border border-orange-700/50'
   }, '🟠 -4..-9'), h('span', {
@@ -869,9 +915,9 @@ export const RedAlertLiveManager: any = ({
   }, '🟡 -3..+3'), h('span', {
     className: 'bg-emerald-950/80 text-emerald-300 py-0.5 rounded border border-emerald-600/50'
   }, '🟢 +4..+9'), h('span', {
-    className: 'bg-red-950/90 text-red-200 py-0.5 rounded border border-red-500/60'
+    className: 'bg-emerald-900/90 text-emerald-100 py-0.5 rounded border border-emerald-400/70'
   }, '✅ ≥+10')), h('div', {
-    className: 'relative h-3.5 w-full rounded-full overflow-hidden bg-gradient-to-r from-zinc-900 via-orange-500 via-yellow-400 via-emerald-500 to-red-600 p-0.5 shadow-inner'
+    className: 'relative h-3.5 w-full rounded-full overflow-hidden bg-gradient-to-r from-red-600 via-orange-500 via-yellow-400 via-emerald-400 to-emerald-600 p-0.5 shadow-inner'
   }, h('div', {
     className: 'absolute top-0 bottom-0 w-0.5 bg-white/70 left-1/2 -translate-x-1/2 z-10',
     title: '0 මධ්‍ය ලක්ෂ්‍යය'
@@ -883,16 +929,10 @@ export const RedAlertLiveManager: any = ({
   })), h('div', {
     className: 'flex items-center justify-between text-[11px] font-bold pt-0.5'
   }, h('span', {
-    className: 'text-emerald-300'
-  }, '✅ සත්‍ය: ' + confidenceState.trueVotes + ' (+' + confidenceState.weightedTrueScore + ')'), h('span', {
     className: 'text-rose-300'
-  }, '❌ අසත්‍ය: ' + confidenceState.falseVotes + ' (-' + confidenceState.weightedFalseScore + ')'))) : null, isSirenActive ? h('button', {
-    type: 'button',
-    onClick: handleStopSirenOnly,
-    className: 'w-full py-2.5 px-4 rounded-xl bg-red-950/90 hover:bg-red-900 text-yellow-200 font-bold text-xs border border-yellow-400/50 flex items-center justify-center gap-2 cursor-pointer'
-  }, h(VolumeX, {
-    className: 'w-4 h-4 text-yellow-300'
-  }), h('span', null, 'සයිරන් නාදය පමණක් නවතා විස්තර කියවන්න')) : null, h('form', {
+  }, '❌ අසත්‍ය: ' + confidenceState.falseVotes + ' (-' + confidenceState.weightedFalseScore + ')'), h('span', {
+    className: 'text-emerald-300'
+  }, '✅ සත්‍ය: ' + confidenceState.trueVotes + ' (+' + confidenceState.weightedTrueScore + ')'))) : null, h('form', {
     onSubmit: handleQuickAddComment,
     className: 'flex gap-2 pt-1'
   }, h('input', {
@@ -912,18 +952,18 @@ export const RedAlertLiveManager: any = ({
   }, h('button', {
     type: 'button',
     onClick: handleQuickConfirmTrue,
-    disabled: isSubmitting,
-    className: 'w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/60 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50'
+    disabled: isSubmitting || hasAlreadyVoted,
+    className: 'w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/60 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed'
   }, h(CheckCircle2, {
     className: 'w-4 h-4 text-emerald-200 shrink-0'
-  }), h('span', null, 'සත්‍ය සිදුවීමකි')), h('button', {
+  }), h('span', null, existingUserVote?.vote === 'true' ? '✅ සත්‍ය ලෙස ලකුණු කර ඇත' : 'සත්‍ය සිදුවීමකි')), h('button', {
     type: 'button',
     onClick: handleQuickReportFake,
-    disabled: isSubmitting,
-    className: 'w-full py-3 px-3 rounded-xl bg-rose-900 hover:bg-rose-800 border border-rose-400/60 text-rose-100 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50'
+    disabled: isSubmitting || hasAlreadyVoted,
+    className: 'w-full py-3 px-3 rounded-xl bg-rose-900 hover:bg-rose-800 border border-rose-400/60 text-rose-100 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow cursor-pointer transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed'
   }, h(Flag, {
     className: 'w-4 h-4 text-rose-300 shrink-0'
-  }), h('span', null, 'අසත්‍ය සිදුවීමකි'))) : null, isReporter ? h('div', {
+  }), h('span', null, existingUserVote?.vote === 'false' ? '❌ අසත්‍ය ලෙස ලකුණු කර ඇත' : 'අසත්‍ය සිදුවීමකි'))) : null, isReporter ? h('div', {
     className: 'pt-3 border-t border-red-500/40 space-y-2'
   }, h('p', {
     className: 'text-[11px] text-yellow-300 font-bold'

@@ -781,7 +781,24 @@ export const RedAlertDetailModal: any = ({
 
   const confidenceState = calculateAlertConfidenceState(alertWithLocalVotes);
   const currentVoterId = String(currentUser?.userId || currentUser?.id || currentUser?.nicNumber || 'guest_voter').trim();
-  const existingUserVote = localVotesMap[currentVoterId] || alert.votesMap?.[currentVoterId] || null;
+  let localSavedVote: any = null;
+  try {
+    const rawSaved = localStorage.getItem('sahaya_voted_red_alerts_map');
+    const savedMap = rawSaved ? JSON.parse(rawSaved) : {};
+    if (alert?.id && savedMap[alert.id]) {
+      localSavedVote = savedMap[alert.id];
+    }
+  } catch {}
+  const existingUserVote =
+    localVotesMap[currentVoterId] ||
+    (currentUser?.id ? localVotesMap[String(currentUser.id)] : null) ||
+    (currentUser?.userId ? localVotesMap[String(currentUser.userId)] : null) ||
+    alert.votesMap?.[currentVoterId] ||
+    (currentUser?.id ? alert.votesMap?.[String(currentUser.id)] : null) ||
+    (currentUser?.userId ? alert.votesMap?.[String(currentUser.userId)] : null) ||
+    (currentUser?.nicNumber ? alert.votesMap?.[String(currentUser.nicNumber)] : null) ||
+    localSavedVote ||
+    null;
   const voterWeightInfo = calculateUserVoteWeight(currentUser, existingUserVote?.flipCount || 0);
   const gpsEligibility = checkVoterGpsEligibility(
     alertLat,
@@ -794,6 +811,11 @@ export const RedAlertDetailModal: any = ({
   const handleCastWeightedVote = async (voteType: 'true' | 'false') => {
     if (!alert?.id || isCastingVote) return;
     setVoteErrorMsg(null);
+
+    if (existingUserVote) {
+      setVoteErrorMsg('එක් ගිණුමකින් සත්‍ය/අසත්‍ය ලෙස ලකුණු දිය හැක්කේ එක් වරක් පමණි. ඔබ දැනටමත් ප්‍රතිචාර දක්වා ඇත.');
+      return;
+    }
 
     if (isAuthorOfAlert) {
       setVoteErrorMsg('වාර්තා කළ පුද්ගලයාට තමන්ගේම නිවේදනයට ඡන්දය දිය නොහැක.');
@@ -826,6 +848,13 @@ export const RedAlertDetailModal: any = ({
         distanceKm: gpsEligibility.distanceKm ?? distanceKm,
         deviceFingerprint: fp,
       });
+
+      try {
+        const rawSaved = localStorage.getItem('sahaya_voted_red_alerts_map');
+        const savedMap = rawSaved ? JSON.parse(rawSaved) : {};
+        savedMap[alert.id] = result.userVote;
+        localStorage.setItem('sahaya_voted_red_alerts_map', JSON.stringify(savedMap));
+      } catch {}
 
       const updatedVotesMap = {
         ...localVotesMap,
@@ -1747,15 +1776,15 @@ export const RedAlertDetailModal: any = ({
             h(
               'div',
               { className: 'grid grid-cols-5 text-[10px] font-black text-center gap-1' },
-              h('span', { className: 'bg-zinc-950 text-zinc-300 py-1 rounded border border-zinc-700' }, '❌ ≤-10 අසත්‍ය'),
+              h('span', { className: 'bg-red-950/90 text-red-200 py-1 rounded border border-red-500/60' }, '❌ ≤-10 අසත්‍ය'),
               h('span', { className: 'bg-orange-950/80 text-orange-300 py-1 rounded border border-orange-700/50' }, '🟠 -4..-9 මතභේද'),
               h('span', { className: 'bg-yellow-950/80 text-yellow-200 py-1 rounded border border-yellow-600/50' }, '🟡 -3..+3 සැක'),
               h('span', { className: 'bg-emerald-950/80 text-emerald-300 py-1 rounded border border-emerald-600/50' }, '🟢 +4..+9 සත්‍ය'),
-              h('span', { className: 'bg-red-950/90 text-red-200 py-1 rounded border border-red-500/60' }, '✅ ≥+10 තහවුරු')
+              h('span', { className: 'bg-emerald-900/90 text-emerald-100 py-1 rounded border border-emerald-400/70' }, '✅ ≥+10 තහවුරු')
             ),
             h(
               'div',
-              { className: 'relative h-4 w-full rounded-full overflow-hidden bg-gradient-to-r from-zinc-900 via-orange-500 via-yellow-400 via-emerald-500 to-red-600 p-0.5 shadow-inner' },
+              { className: 'relative h-4 w-full rounded-full overflow-hidden bg-gradient-to-r from-red-600 via-orange-500 via-yellow-400 via-emerald-400 to-emerald-600 p-0.5 shadow-inner' },
               h('div', {
                 className: 'absolute top-0 bottom-0 w-1 bg-white/60 left-1/2 -translate-x-1/2 z-10',
                 title: '0 මධ්‍ය ලක්ෂ්‍යය',
@@ -1770,13 +1799,13 @@ export const RedAlertDetailModal: any = ({
               { className: 'flex items-center justify-between text-[11px] font-bold text-slate-300 pt-0.5' },
               h(
                 'span',
-                { className: 'text-emerald-400' },
-                `✅ සත්‍ය ඡන්ද: ${confidenceState.trueVotes} (බර ලකුණු +${confidenceState.weightedTrueScore})`
+                { className: 'text-rose-400' },
+                `❌ අසත්‍ය ඡන්ද: ${confidenceState.falseVotes} (බර ලකුණු -${confidenceState.weightedFalseScore})`
               ),
               h(
                 'span',
-                { className: 'text-rose-400' },
-                `❌ අසත්‍ය ඡන්ද: ${confidenceState.falseVotes} (බර ලකුණු -${confidenceState.weightedFalseScore})`
+                { className: 'text-emerald-400' },
+                `✅ සත්‍ය ඡන්ද: ${confidenceState.trueVotes} (බර ලකුණු +${confidenceState.weightedTrueScore})`
               )
             ),
             h('p', { className: 'text-[11px] text-slate-400 font-medium' }, confidenceState.statusSubLabelSi)
@@ -1794,14 +1823,7 @@ export const RedAlertDetailModal: any = ({
                 'span',
                 { className: `px-2.5 py-0.5 rounded-full text-[11px] font-black border ${voterWeightInfo.badgeColor}` },
                 `${voterWeightInfo.labelSi} -> ${voterWeightInfo.effectiveWeight}x`
-              ),
-              voterWeightInfo.isFlipPenalized
-                ? h(
-                    'span',
-                    { className: 'text-[10px] text-amber-300 font-bold' },
-                    '(නිතර ඡන්දය වෙනස් කිරීම නිසා බර 50% කින් අඩු වී ඇත)'
-                  )
-                : null
+              )
             ),
             existingUserVote
               ? h(
@@ -1823,23 +1845,25 @@ export const RedAlertDetailModal: any = ({
             ? h(
                 'div',
                 { className: 'space-y-2.5 pt-1' },
-                h(
-                  'label',
-                  { className: 'flex items-center gap-2 text-xs text-slate-200 font-bold cursor-pointer select-none bg-black/40 p-2.5 rounded-xl border border-slate-700/80' },
-                  h('input', {
-                    type: 'checkbox',
-                    checked: gpsConfirmed5km,
-                    onChange: (e: any) => setGpsConfirmed5km(Boolean(e.target.checked)),
-                    className: 'w-4 h-4 rounded border-slate-500 text-emerald-500 focus:ring-emerald-500 cursor-pointer',
-                  }),
-                  h(
-                    'span',
-                    null,
-                    `📍 ඔබ මෙම ස්ථානයේ (කි.මී. 5ක් ඇතුළත) සිටීද? — මම මෙම ස්ථානය අවට සිටින බව තහවුරු කරමි ${
-                      gpsEligibility.distanceKm !== null ? `(GPS දුර: කි.මී. ${gpsEligibility.distanceKm})` : ''
-                    }`
-                  )
-                ),
+                !existingUserVote
+                  ? h(
+                      'label',
+                      { className: 'flex items-center gap-2 text-xs text-slate-200 font-bold cursor-pointer select-none bg-black/40 p-2.5 rounded-xl border border-slate-700/80' },
+                      h('input', {
+                        type: 'checkbox',
+                        checked: gpsConfirmed5km,
+                        onChange: (e: any) => setGpsConfirmed5km(Boolean(e.target.checked)),
+                        className: 'w-4 h-4 rounded border-slate-500 text-emerald-500 focus:ring-emerald-500 cursor-pointer',
+                      }),
+                      h(
+                        'span',
+                        null,
+                        `📍 ඔබ මෙම ස්ථානයේ (කි.මී. 5ක් ඇතුළත) සිටීද? — මම මෙම ස්ථානය අවට සිටින බව තහවුරු කරමි ${
+                          gpsEligibility.distanceKm !== null ? `(GPS දුර: කි.මී. ${gpsEligibility.distanceKm})` : ''
+                        }`
+                      )
+                    )
+                  : null,
                 voteErrorMsg
                   ? h(
                       'div',
@@ -1854,12 +1878,14 @@ export const RedAlertDetailModal: any = ({
                     'button',
                     {
                       type: 'button',
-                      disabled: isCastingVote,
+                      disabled: isCastingVote || Boolean(existingUserVote),
                       onClick: () => handleCastWeightedVote('true'),
-                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md border ${
+                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md border ${
                         existingUserVote?.vote === 'true'
-                          ? 'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400'
-                          : 'bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400/50'
+                          ? 'bg-emerald-600 text-white border-emerald-300 ring-2 ring-emerald-400 cursor-not-allowed'
+                          : existingUserVote
+                          ? 'bg-slate-800/60 text-slate-400 border-slate-700 cursor-not-allowed opacity-60'
+                          : 'bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400/50 cursor-pointer'
                       }`,
                     },
                     isCastingVote
@@ -1869,7 +1895,7 @@ export const RedAlertDetailModal: any = ({
                       'span',
                       null,
                       existingUserVote?.vote === 'true'
-                        ? `✅ සත්‍යයි ලෙස ඡන්දය දී ඇත (+${voterWeightInfo.effectiveWeight})`
+                        ? `✅ සත්‍යයි ලෙස ඡන්දය දී ඇත`
                         : `✅ මෙය සත්‍ය ආපදාවකි (+${voterWeightInfo.effectiveWeight})`
                     )
                   ),
@@ -1877,12 +1903,14 @@ export const RedAlertDetailModal: any = ({
                     'button',
                     {
                       type: 'button',
-                      disabled: isCastingVote,
+                      disabled: isCastingVote || Boolean(existingUserVote),
                       onClick: () => handleCastWeightedVote('false'),
-                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md border ${
+                      className: `py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md border ${
                         existingUserVote?.vote === 'false'
-                          ? 'bg-rose-600 text-white border-rose-300 ring-2 ring-rose-400'
-                          : 'bg-rose-600/90 hover:bg-rose-600 text-white border-rose-400/50'
+                          ? 'bg-rose-600 text-white border-rose-300 ring-2 ring-rose-400 cursor-not-allowed'
+                          : existingUserVote
+                          ? 'bg-slate-800/60 text-slate-400 border-slate-700 cursor-not-allowed opacity-60'
+                          : 'bg-rose-600/90 hover:bg-rose-600 text-white border-rose-400/50 cursor-pointer'
                       }`,
                     },
                     isCastingVote
@@ -1892,7 +1920,7 @@ export const RedAlertDetailModal: any = ({
                       'span',
                       null,
                       existingUserVote?.vote === 'false'
-                        ? `❌ අසත්‍යයි ලෙස ඡන්දය දී ඇත (-${voterWeightInfo.effectiveWeight})`
+                        ? `❌ අසත්‍යයි ලෙස ඡන්දය දී ඇත`
                         : `❌ මෙය අසත්‍ය වාර්තාවකි (-${voterWeightInfo.effectiveWeight})`
                     )
                   )

@@ -1390,29 +1390,26 @@ export async function castWeightedRedAlertVoteTransaction(
     const existingVotesMap: Record<string, RedAlertVoteRecord> =
       data.votesMap && typeof data.votesMap === 'object' ? { ...data.votesMap } : {};
 
-    // Anti-Fraud: Check if another account on the exact same device fingerprint already voted
+    // Strict One-Vote-Per-Account & One-Vote-Per-Device Enforcement
+    const alreadyInVerifiedList = Array.isArray(data.verifiedByUserIds) && data.verifiedByUserIds.includes(params.userId);
+    const alreadyInFakeList = Array.isArray(data.fakeReportedByUserIds) && data.fakeReportedByUserIds.includes(params.userId);
+    if (existingVotesMap[params.userId] || alreadyInVerifiedList || alreadyInFakeList) {
+      throw new Error('එක් ගිණුමකින් සත්‍ය/අසත්‍ය ලෙස ලකුණු දිය හැක්කේ එක් වරක් පමණි. ඔබ දැනටමත් ප්‍රතිචාර දක්වා ඇත.');
+    }
+
     if (params.deviceFingerprint && params.deviceFingerprint !== 'fp_fallback_device') {
-      for (const [otherUid, vRec] of Object.entries(existingVotesMap)) {
+      for (const [, vRec] of Object.entries(existingVotesMap)) {
         if (
-          otherUid !== params.userId &&
           vRec &&
           vRec.deviceFingerprint &&
           vRec.deviceFingerprint === params.deviceFingerprint
         ) {
-          throw new Error('එකම උපාංගයෙන් (Device) ගිණුම් කිහිපයක් භාවිතා කර ඡන්දය ප්‍රකාශ කිරීමට ඉඩ නොදේ.');
+          throw new Error('එක් ගිණුමකින් හෝ උපාංගයකින් සත්‍ය/අසත්‍ය ලෙස ලකුණු දිය හැක්කේ එක් වරක් පමණි. ඔබ දැනටමත් ප්‍රතිචාර දක්වා ඇත.');
         }
       }
     }
 
-    const prevVote = existingVotesMap[params.userId];
-    let flipCount = prevVote?.flipCount || 0;
-    if (prevVote && prevVote.vote !== params.voteType) {
-      flipCount += 1;
-    }
-
-    // Penalize frequent vote flippers (flipCount >= 3 -> 50% weight reduction)
-    const effectiveWeight =
-      flipCount >= 3 ? Number((params.baseWeight * 0.5).toFixed(2)) : Number(params.baseWeight.toFixed(2));
+    const effectiveWeight = Number(params.baseWeight.toFixed(2));
 
     const newVoteRecord: RedAlertVoteRecord = {
       userId: params.userId,
@@ -1420,7 +1417,7 @@ export async function castWeightedRedAlertVoteTransaction(
       vote: params.voteType,
       weight: effectiveWeight,
       trustLevel: params.trustLevel,
-      flipCount,
+      flipCount: 0,
       distanceKm: params.distanceKm ?? null,
       deviceFingerprint: params.deviceFingerprint || '',
       timestamp: nowIso,
