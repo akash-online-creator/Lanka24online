@@ -902,7 +902,8 @@ function stopAllPlaybackEnginesOnly() {
 
     try {
 
-      activeSourceNode.stop();
+      activeSourceNode.onended = null;
+      activeSourceNode.stop(0);
 
     } catch (err) {}
 
@@ -916,13 +917,40 @@ function stopAllPlaybackEnginesOnly() {
 
   }
 
+  if (activeGainNode && audioContext) {
+
+    try {
+
+      activeGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+
+    } catch (err) {}
+
+  }
+
   if (htmlAudioElement) {
 
     try {
 
+      htmlAudioElement.muted = true;
+      htmlAudioElement.volume = 0;
       htmlAudioElement.pause();
-
       htmlAudioElement.currentTime = 0;
+
+    } catch (err) {}
+
+  }
+
+  if (typeof document !== 'undefined') {
+
+    try {
+
+      const playerEl = document.getElementById('sahaya-siren-audio-player') as HTMLAudioElement | null;
+      if (playerEl) {
+        playerEl.muted = true;
+        playerEl.volume = 0;
+        playerEl.pause();
+        playerEl.currentTime = 0;
+      }
 
     } catch (err) {}
 
@@ -1030,6 +1058,8 @@ export function startEmergencySiren() {
 
       if (audio) {
 
+        audio.muted = false;
+
         audio.volume = effectiveVolume;
 
         audio.loop = true;
@@ -1040,7 +1070,15 @@ export function startEmergencySiren() {
 
           startedSingleStream = true;
 
-          playPromise.catch(() => {
+          playPromise.then(() => {
+
+            if (!isSirenActive) {
+
+              stopAllPlaybackEnginesOnly();
+
+            }
+
+          }).catch(() => {
 
             if (!isSirenActive) return;
 
@@ -1060,13 +1098,13 @@ export function startEmergencySiren() {
 
               }).catch(() => {
 
-                startSynthEmergencyBackup();
+                if (isSirenActive) startSynthEmergencyBackup();
 
               });
 
             } else {
 
-              startSynthEmergencyBackup();
+              if (isSirenActive) startSynthEmergencyBackup();
 
             }
 
@@ -1102,13 +1140,13 @@ export function startEmergencySiren() {
 
         }).catch(() => {
 
-          startSynthEmergencyBackup();
+          if (isSirenActive) startSynthEmergencyBackup();
 
         });
 
       } else {
 
-        startSynthEmergencyBackup();
+        if (isSirenActive) startSynthEmergencyBackup();
 
       }
 
@@ -1156,6 +1194,16 @@ export function stopEmergencySiren(force: boolean = false): void {
 
     isSirenActive = false;
 
+    try {
+
+      if (typeof window !== 'undefined') {
+
+        localStorage.setItem('sahaya_last_siren_stopped_at_ms', String(Date.now()));
+
+      }
+
+    } catch (err) {}
+
     stopAllPlaybackEnginesOnly();
 
     if (activeGainNode) {
@@ -1175,6 +1223,16 @@ export function stopEmergencySiren(force: boolean = false): void {
     releaseScreenWakeLock();
 
     notifyLocalChanges();
+
+    try {
+
+      if (typeof window !== 'undefined') {
+
+        window.dispatchEvent(new CustomEvent('sahaya_siren_force_stopped'));
+
+      }
+
+    } catch (err) {}
 
   } catch (err) {
 

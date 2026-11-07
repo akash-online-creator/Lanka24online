@@ -67,7 +67,7 @@ import {
 
 import { broadcastRedAlertResolvedNotification } from '../utils/notificationManager';
 
-import { stopEmergencySiren } from '../utils/sirenAudio';
+import { stopEmergencySiren, setEmergencySirenLock } from '../utils/sirenAudio';
 
 import {
   calculateAlertConfidenceState,
@@ -257,6 +257,7 @@ export const RedAlertDetailModal: any = ({
 
     try {
 
+      setEmergencySirenLock(false);
       stopEmergencySiren(true);
 
     } catch (_) {}
@@ -283,21 +284,34 @@ export const RedAlertDetailModal: any = ({
 
     } catch (_) {}
 
+    try {
+
+      localStorage.setItem('sahaya_last_siren_stopped_at_ms', String(Date.now()));
+
+    } catch (_) {}
+
     if (alert?.id) {
 
       try {
 
-        const uid = currentUser?.id || currentUser?.userId || 'usr_guest';
+        const uid = currentUser?.userId || currentUser?.id || currentUser?.nicNumber || 'usr_guest';
 
         const keys = ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', `sahaya_dismissed_alerts_${uid}`];
+
+        const idsToStore = [String(alert.id)];
+        if (alertAny?.alertCode) idsToStore.push(String(alertAny.alertCode));
 
         keys.forEach((k) => {
 
           const list = JSON.parse(localStorage.getItem(k) || '[]');
 
-          if (Array.isArray(list) && !list.includes(alert.id)) {
+          if (Array.isArray(list)) {
 
-            list.push(alert.id);
+            idsToStore.forEach((val) => {
+              if (val && !list.includes(val)) {
+                list.push(val);
+              }
+            });
 
             localStorage.setItem(k, JSON.stringify(list));
 
@@ -308,6 +322,12 @@ export const RedAlertDetailModal: any = ({
       } catch (_) {}
 
     }
+
+    try {
+      window.dispatchEvent(new CustomEvent('sahaya_stop_all_red_alert_sirens', {
+        detail: { alertId: alert?.id, alertCode: alertAny?.alertCode }
+      }));
+    } catch (_) {}
 
     setSirenStoppedByMe(true);
 

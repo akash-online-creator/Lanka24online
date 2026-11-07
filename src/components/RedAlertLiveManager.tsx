@@ -259,9 +259,14 @@ export const RedAlertLiveManager: any = ({
         isFallback: true
       };
     };
-    const isAlertAlreadyStoppedOrDismissed = (idVal?: string, codeVal?: string): boolean => {
-      if (!idVal && !codeVal) return false;
+    const isAlertAlreadyStoppedOrDismissed = (idVal?: string, codeVal?: string, createdAtMsVal?: number): boolean => {
       try {
+        const lastStoppedRaw = localStorage.getItem('sahaya_last_siren_stopped_at_ms');
+        const lastStoppedMs = lastStoppedRaw ? Number(lastStoppedRaw) : 0;
+        if (lastStoppedMs > 0 && createdAtMsVal && createdAtMsVal <= lastStoppedMs + 5000) {
+          return true;
+        }
+        if (!idVal && !codeVal) return false;
         const general = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') ? (localStorage.getItem('sahaya_dismissed_alerts') as string) : '[]');
         const userSpecific = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts_' + currentUserId) ? (localStorage.getItem('sahaya_dismissed_alerts_' + currentUserId) as string) : '[]');
         const stoppedSirens = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') ? (localStorage.getItem('sahaya_siren_stopped_alerts') as string) : '[]');
@@ -293,6 +298,9 @@ export const RedAlertLiveManager: any = ({
         if (alertObj.reportedByUserId && currentUser.userId && String(alertObj.reportedByUserId).toLowerCase() === String(currentUser.userId).toLowerCase()) {
           return true;
         }
+        if (alertObj.reportedByUserId && currentUser.id && String(alertObj.reportedByUserId).toLowerCase() === String(currentUser.id).toLowerCase()) {
+          return true;
+        }
         if (alertObj.reportedByPhone && currentUser.phone) {
           const p1 = String(alertObj.reportedByPhone).replace(/\D/g, '');
           const p2 = String(currentUser.phone).replace(/\D/g, '');
@@ -301,26 +309,26 @@ export const RedAlertLiveManager: any = ({
       }
       return false;
     };
+    const handleExternalSirenStop = (e?: any) => {
+      shouldRingRef.current = false;
+      setIsSirenActive(false);
+      setShowEmergencyModal(false);
+      setIsDismissed(true);
+      const detail = e?.detail;
+      if (detail?.alertId || activeAlertRef.current) {
+        persistStoppedAndDismissedAlert(
+          detail?.alertId ? { id: detail.alertId, alertCode: detail.alertCode } : activeAlertRef.current,
+          true
+        );
+      }
+    };
+    window.addEventListener('sahaya_stop_all_red_alert_sirens', handleExternalSirenStop);
+    window.addEventListener('sahaya_siren_force_stopped', handleExternalSirenStop);
     const unsubSirenListener = subscribeToLocalSirenChanges(() => {
       const playing = isEmergencySirenPlaying();
       setIsSirenActive(playing);
-      if (playing) {
-        setShowEmergencyModal(true);
-        setIsDismissed(false);
-        if (!activeAlertRef.current) {
-          const fallbackAlert = {
-            id: prevAlertIdRef.current ? prevAlertIdRef.current : 'live_emergency_alert',
-            alertCode: 'RED ALERT',
-            disasterTitleSi: 'හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)',
-            title: 'හදිසි ආපදා අනතුරු ඇඟවීම (රතු එළිය)',
-            locationName: 'ඔබගේ ප්‍රදේශය අවට (15km කලාපය)',
-            description: 'ඔබගේ ප්‍රදේශය ආසන්නයේ හදිසි ආපදා තත්ත්වයක් වාර්තා වී ඇත. සයිරන් නාදය සහ දැන්වීම ඉවත් කිරීමට පහත රතු බොත්තම ඔබන්න.',
-            status: 'active',
-            createdAtMs: Date.now()
-          };
-          activeAlertRef.current = fallbackAlert;
-          setActiveAlert(fallbackAlert);
-        }
+      if (!playing) {
+        shouldRingRef.current = false;
       }
     });
     PushNotifications.addListener('pushNotificationReceived', notification => {
@@ -519,7 +527,7 @@ export const RedAlertLiveManager: any = ({
             const nameParts = String(d.name ? d.name : "").split("/");
             const docId = fields.id && fields.id.stringValue ? fields.id.stringValue : nameParts[nameParts.length - 1];
             const alertCode = fields.alertCode && fields.alertCode.stringValue ? fields.alertCode.stringValue : "RED ALERT";
-            if (isAlertAlreadyStoppedOrDismissed(docId, alertCode)) continue;
+            if (isAlertAlreadyStoppedOrDismissed(docId, alertCode, createdMsField || nowMs)) continue;
             const repUid = fields.reportedByUserId && fields.reportedByUserId.stringValue ? fields.reportedByUserId.stringValue : "";
             const repPhone = fields.reportedByPhone && fields.reportedByPhone.stringValue ? fields.reportedByPhone.stringValue : "";
             const candidateAlert = {
@@ -528,6 +536,7 @@ export const RedAlertLiveManager: any = ({
               status: "active",
               reportedByUserId: repUid,
               reportedByPhone: repPhone,
+              createdAtMs: createdMsField || nowMs,
               disasterTitleSi: fields.disasterTitleSi && fields.disasterTitleSi.stringValue ? fields.disasterTitleSi.stringValue : fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
               title: fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
               locationName: fields.locationName && fields.locationName.stringValue ? fields.locationName.stringValue : "ශ්‍රී ලංකාව",
@@ -564,7 +573,7 @@ export const RedAlertLiveManager: any = ({
         if (!currentId) return;
         if (!shouldRingRef.current) return;
         try {
-          if (isAlertAlreadyStoppedOrDismissed(currentId, activeAlertRef.current?.alertCode)) {
+          if (isAlertAlreadyStoppedOrDismissed(currentId, activeAlertRef.current?.alertCode, activeAlertRef.current?.createdAtMs)) {
             shouldRingRef.current = false;
             stopAllAlertEffects(currentId, false);
             return;
@@ -583,7 +592,10 @@ export const RedAlertLiveManager: any = ({
         if (!a) return false;
         if (a.status !== 'active') return false;
         if (a.isFlaggedFake || a.isDeleted || a.isRemovedAsFake || a.confidenceStatus === 'removed') return false;
-        if (a.createdAtMs && (nowMs - Number(a.createdAtMs)) > 24 * 60 * 60 * 1000) return false;
+        const createdMs = a.createdAtMs ? Number(a.createdAtMs) : a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        if (createdMs > 0 && (nowMs - createdMs) > 24 * 60 * 60 * 1000) return false;
+        if (isAlertCreatedByMe(a)) return false;
+        if (isAlertAlreadyStoppedOrDismissed(a.id, (a as any).alertCode, createdMs || nowMs)) return false;
         const fakeCount = a.fakeReports?.length ? a.fakeReports.length : a.fakeReportsCount ? a.fakeReportsCount : 0;
         return Math.min(fakeCount, 3) === fakeCount;
       }).sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
@@ -603,8 +615,6 @@ export const RedAlertLiveManager: any = ({
       }
       const isBrandNewAlert = !prevAlertId ? true : currentActive.id !== prevAlertId;
       const alertAny = (currentActive as any);
-      const isAlreadyStoppedOrDismissed = isAlertAlreadyStoppedOrDismissed(currentActive.id, alertAny.alertCode);
-      const isReporter = isAlertCreatedByMe(currentActive);
       const userCoords = getUserCoordinates();
       const alertLat = typeof alertAny.latitude === 'number' ? alertAny.latitude : typeof currentActive.lat === 'number' ? currentActive.lat : 7.151;
       const alertLng = typeof alertAny.longitude === 'number' ? alertAny.longitude : typeof currentActive.lng === 'number' ? currentActive.lng : 79.885;
@@ -615,25 +625,14 @@ export const RedAlertLiveManager: any = ({
       activeAlertRef.current = currentActive;
       setActiveAlert(currentActive);
       prevAlertIdRef.current = currentActive.id;
-      if (isReporter) {
-        shouldRingRef.current = false;
-        return;
-      }
-      if (isAlreadyStoppedOrDismissed) {
-        shouldRingRef.current = false;
-        setIsDismissed(true);
-        setShowEmergencyModal(false);
-        stopAllAlertEffects(currentActive.id, false);
-        return;
-      }
       if (within15Km) {
-        setIsDismissed(false);
-        setShowEmergencyModal(true);
-        shouldRingRef.current = true;
-        setIsSirenActive(true);
-        setEmergencySirenLock(true);
-        startEmergencySiren();
         if (isBrandNewAlert) {
+          setIsDismissed(false);
+          setShowEmergencyModal(true);
+          shouldRingRef.current = true;
+          setIsSirenActive(true);
+          setEmergencySirenLock(true);
+          startEmergencySiren();
           triggerWakeScreenAndNotification(currentActive, distKm, within15Km);
           triggerPopup('🚨 සහය සේවා - රතු එළිය (15km කලාපය): ' + (alertAny.disasterTitleSi ? alertAny.disasterTitleSi : currentActive.title ? currentActive.title : 'හදිසි ආපදාවක්') + '!');
         }
@@ -652,6 +651,8 @@ export const RedAlertLiveManager: any = ({
           bgWorker.terminate();
         } catch (err) {}
       }
+      window.removeEventListener('sahaya_stop_all_red_alert_sirens', handleExternalSirenStop);
+      window.removeEventListener('sahaya_siren_force_stopped', handleExternalSirenStop);
       window.removeEventListener('sahaya_notification_clicked', handleNotificationClick);
       window.removeEventListener('sahaya_red_alert_received', handleCustomRedAlert);
       window.removeEventListener('sahaya:location_updated', syncServiceWorkerWatchConfig);
