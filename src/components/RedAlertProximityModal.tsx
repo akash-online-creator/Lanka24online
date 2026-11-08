@@ -83,11 +83,21 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
   // Handle siren auto-triggering on alert receipt
   useEffect(() => {
     if (isOpen && alert && !deviceMuted) {
-      // Capacitor Native පරිසරයේදී Android Channel එක මඟින් siren.mp3 නිකුත් වේ.
-      // Web / Browser පරිසරයේදී Web Audio API එක fallback එකක් ලෙස පණගන්වයි.
-      unlockAudio();
-      startEmergencySiren();
-      setIsPlayingSiren(true);
+      let alreadyStopped = false;
+      try {
+        const stoppedList = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+        const dismissedList = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+        const codeVal = (alert as any).alertCode;
+        alreadyStopped =
+          (Array.isArray(stoppedList) && (stoppedList.includes(alert.id) || (codeVal && stoppedList.includes(codeVal)))) ||
+          (Array.isArray(dismissedList) && (dismissedList.includes(alert.id) || (codeVal && dismissedList.includes(codeVal))));
+      } catch {}
+
+      if (!alreadyStopped) {
+        unlockAudio();
+        startEmergencySiren();
+        setIsPlayingSiren(true);
+      }
     }
 
     return () => {
@@ -133,10 +143,21 @@ export const RedAlertProximityModal: React.FC<RedAlertProximityModalProps> = ({
 
   // Browser Autoplay block වූ අවස්ථාවක තිරය මත click කළ විට Unlock වීම
   const handleModalBackdropClick = () => {
-    if (!isPlayingSiren && !userInteracted && !deviceMuted) {
-      unlockAudio();
-      startEmergencySiren();
-      setIsPlayingSiren(true);
+    if (!isPlayingSiren && !userInteracted && !deviceMuted && alert) {
+      let alreadyStopped = false;
+      try {
+        const stoppedList = JSON.parse(localStorage.getItem('sahaya_siren_stopped_alerts') || '[]');
+        const dismissedList = JSON.parse(localStorage.getItem('sahaya_dismissed_alerts') || '[]');
+        const codeVal = (alert as any).alertCode;
+        alreadyStopped =
+          (Array.isArray(stoppedList) && (stoppedList.includes(alert.id) || (codeVal && stoppedList.includes(codeVal)))) ||
+          (Array.isArray(dismissedList) && (dismissedList.includes(alert.id) || (codeVal && dismissedList.includes(codeVal))));
+      } catch {}
+      if (!alreadyStopped) {
+        unlockAudio();
+        startEmergencySiren();
+        setIsPlayingSiren(true);
+      }
       setUserInteracted(true);
     }
   };

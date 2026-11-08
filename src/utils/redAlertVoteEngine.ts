@@ -295,7 +295,7 @@ export function checkVoterGpsEligibility(
   alertLng?: number,
   userLat?: number | null,
   userLng?: number | null,
-  maxRadiusKm = 5.0
+  maxRadiusKm = 15.0
 ): {
   hasCoordinates: boolean;
   distanceKm: number | null;

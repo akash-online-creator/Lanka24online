@@ -39,6 +39,8 @@ export const RedAlertLiveManager: any = ({
   const activeAlertRef = useRef((null as any));
   const shouldRingRef = useRef(false);
   const popupTimeoutRef = useRef((null as any));
+  const triggeredAlertIdsRef = useRef<Set<string>>(new Set());
+  const allKnownAlertIdsRef = useRef<Set<string>>(new Set());
   const triggerPopup = (_msg: string) => {
     return; /* Live toasts removed */
   };
@@ -50,6 +52,11 @@ export const RedAlertLiveManager: any = ({
     if (prevAlertIdRef.current && !idsToSave.includes(prevAlertIdRef.current)) {
       idsToSave.push(String(prevAlertIdRef.current));
     }
+    allKnownAlertIdsRef.current.forEach((knownId) => {
+      if (knownId && !idsToSave.includes(knownId)) {
+        idsToSave.push(String(knownId));
+      }
+    });
     if (idsToSave.length === 0) return;
     const storageKeys = persistDismissed ? ['sahaya_siren_stopped_alerts', 'sahaya_dismissed_alerts', 'sahaya_dismissed_alerts_' + currentUserId] : ['sahaya_siren_stopped_alerts'];
     storageKeys.forEach(storageKey => {
@@ -77,7 +84,8 @@ export const RedAlertLiveManager: any = ({
             reg.active.postMessage({
               type: 'DISMISS_RED_ALERT',
               alertId: targetObj ? targetObj.id : prevAlertIdRef.current,
-              alertCode: targetObj ? targetObj.alertCode : ''
+              alertCode: targetObj ? targetObj.alertCode : '',
+              stopAll: true
             });
           }
         }).catch(() => {});
@@ -513,7 +521,14 @@ export const RedAlertLiveManager: any = ({
       bgWorker.onmessage = (ev: any) => {
         if (ev && ev.data && ev.data.type === "REST_DOCS" && Array.isArray(ev.data.documents)) {
           const nowMs = Date.now();
-          for (const d of ev.data.documents) {
+          const sortedDocs = [...ev.data.documents].sort((d1: any, d2: any) => {
+            const f1 = d1?.fields || {};
+            const f2 = d2?.fields || {};
+            const t1 = f1.createdAtMs ? Number(f1.createdAtMs.integerValue !== undefined ? f1.createdAtMs.integerValue : f1.createdAtMs.doubleValue) : 0;
+            const t2 = f2.createdAtMs ? Number(f2.createdAtMs.integerValue !== undefined ? f2.createdAtMs.integerValue : f2.createdAtMs.doubleValue) : 0;
+            return t2 - t1;
+          });
+          for (const d of sortedDocs) {
             if (!d) continue;
             const fields = d.fields ? d.fields : {};
             const status = fields.status && fields.status.stringValue ? fields.status.stringValue : "";
@@ -527,16 +542,20 @@ export const RedAlertLiveManager: any = ({
             const nameParts = String(d.name ? d.name : "").split("/");
             const docId = fields.id && fields.id.stringValue ? fields.id.stringValue : nameParts[nameParts.length - 1];
             const alertCode = fields.alertCode && fields.alertCode.stringValue ? fields.alertCode.stringValue : "RED ALERT";
-            if (isAlertAlreadyStoppedOrDismissed(docId, alertCode, createdMsField || nowMs)) continue;
+            if (docId) allKnownAlertIdsRef.current.add(String(docId));
+            if (alertCode) allKnownAlertIdsRef.current.add(String(alertCode));
+            if (isAlertAlreadyStoppedOrDismissed(docId, alertCode, createdMsField || 1)) continue;
             const repUid = fields.reportedByUserId && fields.reportedByUserId.stringValue ? fields.reportedByUserId.stringValue : "";
             const repPhone = fields.reportedByPhone && fields.reportedByPhone.stringValue ? fields.reportedByPhone.stringValue : "";
+            const existingSameAlert = activeAlertRef.current && activeAlertRef.current.id === docId ? activeAlertRef.current : null;
             const candidateAlert = {
+              ...(existingSameAlert || {}),
               id: docId,
               alertCode: alertCode,
               status: "active",
-              reportedByUserId: repUid,
-              reportedByPhone: repPhone,
-              createdAtMs: createdMsField || nowMs,
+              reportedByUserId: repUid || existingSameAlert?.reportedByUserId || "",
+              reportedByPhone: repPhone || existingSameAlert?.reportedByPhone || "",
+              createdAtMs: createdMsField || existingSameAlert?.createdAtMs || nowMs,
               disasterTitleSi: fields.disasterTitleSi && fields.disasterTitleSi.stringValue ? fields.disasterTitleSi.stringValue : fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
               title: fields.title && fields.title.stringValue ? fields.title.stringValue : "හදිසි ආපදා අනතුරු ඇඟවීමක්",
               locationName: fields.locationName && fields.locationName.stringValue ? fields.locationName.stringValue : "ශ්‍රී ලංකාව",
@@ -551,13 +570,16 @@ export const RedAlertLiveManager: any = ({
             const distKm = calculateDistanceKm(userCoords.lat, userCoords.lng, alertLat, alertLng);
             const within15Km = Boolean(Math.min(distKm, 15.0) === distKm ? true : userCoords.isFallback);
             if (!within15Km) continue;
-            const isNew = prevAlertIdRef.current !== docId;
+            const isNew = !triggeredAlertIdsRef.current.has(docId);
             prevAlertIdRef.current = docId;
-            activeAlertRef.current = candidateAlert;
-            setActiveAlert(candidateAlert);
+            if (!existingSameAlert) {
+              activeAlertRef.current = candidateAlert;
+              setActiveAlert(candidateAlert);
+            }
             setUserDistanceKm(distKm);
             setIsWithin15Km(true);
             if (isNew) {
+              triggeredAlertIdsRef.current.add(docId);
               setIsDismissed(false);
               setShowEmergencyModal(true);
               shouldRingRef.current = true;
@@ -573,7 +595,7 @@ export const RedAlertLiveManager: any = ({
         if (!currentId) return;
         if (!shouldRingRef.current) return;
         try {
-          if (isAlertAlreadyStoppedOrDismissed(currentId, activeAlertRef.current?.alertCode, activeAlertRef.current?.createdAtMs)) {
+          if (isAlertAlreadyStoppedOrDismissed(currentId, activeAlertRef.current?.alertCode, activeAlertRef.current?.createdAtMs || 1)) {
             shouldRingRef.current = false;
             stopAllAlertEffects(currentId, false);
             return;
@@ -592,10 +614,14 @@ export const RedAlertLiveManager: any = ({
         if (!a) return false;
         if (a.status !== 'active') return false;
         if (a.isFlaggedFake || a.isDeleted || a.isRemovedAsFake || a.confidenceStatus === 'removed') return false;
-        const createdMs = a.createdAtMs ? Number(a.createdAtMs) : a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        if (a.id) allKnownAlertIdsRef.current.add(String(a.id));
+        if ((a as any).alertCode) allKnownAlertIdsRef.current.add(String((a as any).alertCode));
+        const rawDateMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const serverMs = (a as any).createdAtServer?.toMillis ? (a as any).createdAtServer.toMillis() : (a as any).createdAtServer?.seconds ? (a as any).createdAtServer.seconds * 1000 : 0;
+        const createdMs = a.createdAtMs ? Number(a.createdAtMs) : (!isNaN(rawDateMs) && rawDateMs > 0 ? rawDateMs : serverMs);
         if (createdMs > 0 && (nowMs - createdMs) > 24 * 60 * 60 * 1000) return false;
         if (isAlertCreatedByMe(a)) return false;
-        if (isAlertAlreadyStoppedOrDismissed(a.id, (a as any).alertCode, createdMs || nowMs)) return false;
+        if (isAlertAlreadyStoppedOrDismissed(a.id, (a as any).alertCode, createdMs || 1)) return false;
         const fakeCount = a.fakeReports?.length ? a.fakeReports.length : a.fakeReportsCount ? a.fakeReportsCount : 0;
         return Math.min(fakeCount, 3) === fakeCount;
       }).sort((a, b) => (b.createdAtMs ? b.createdAtMs : 0) - (a.createdAtMs ? a.createdAtMs : 0));
@@ -613,7 +639,7 @@ export const RedAlertLiveManager: any = ({
         prevAlertIdRef.current = null;
         return;
       }
-      const isBrandNewAlert = !prevAlertId ? true : currentActive.id !== prevAlertId;
+      const isBrandNewAlert = !triggeredAlertIdsRef.current.has(currentActive.id);
       const alertAny = (currentActive as any);
       const userCoords = getUserCoordinates();
       const alertLat = typeof alertAny.latitude === 'number' ? alertAny.latitude : typeof currentActive.lat === 'number' ? currentActive.lat : 7.151;
@@ -627,6 +653,7 @@ export const RedAlertLiveManager: any = ({
       prevAlertIdRef.current = currentActive.id;
       if (within15Km) {
         if (isBrandNewAlert) {
+          triggeredAlertIdsRef.current.add(currentActive.id);
           setIsDismissed(false);
           setShowEmergencyModal(true);
           shouldRingRef.current = true;
@@ -639,6 +666,7 @@ export const RedAlertLiveManager: any = ({
       } else {
         shouldRingRef.current = false;
         if (isBrandNewAlert) {
+          triggeredAlertIdsRef.current.add(currentActive.id);
           triggerWakeScreenAndNotification(currentActive, distKm, false);
         }
       }

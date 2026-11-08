@@ -83,7 +83,7 @@ if (typeof window !== 'undefined' && appCheckSiteKey.length > 10) {
 export const db = firebaseConfigJson.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
   : getFirestore(app);
-export const fallbackDb = getFirestore(app);
+export const fallbackDb = db;
 export const auth = getAuth(app);
 
 // Direct Top-Level Firestore Collection & Document Access (No private subcollection trap)
@@ -1592,7 +1592,10 @@ export async function updateRedAlertStatus(id: string, status: string, reasonOrN
 }
 
 export async function deleteRedAlertInFirestore(id: string) {
-  await deleteDoc(doc(db, RED_ALERTS_COLLECTION, id));
+  await Promise.allSettled([
+    deleteDoc(doc(db, RED_ALERTS_COLLECTION, id)),
+    deleteDoc(doc(db, 'redAlerts', id)),
+  ]);
 }
 
 export async function markRedAlertAsResolved(id: string, reason?: string, _actor?: any) {

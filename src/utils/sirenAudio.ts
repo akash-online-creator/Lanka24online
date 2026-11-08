@@ -501,6 +501,7 @@ export async function preloadSirenBuffer() {
 }
 
 let isAudioUnlockedOnce = false;
+let sirenGeneration = 0;
 
 export function unlockAudio(): boolean {
 
@@ -508,6 +509,11 @@ export function unlockAudio(): boolean {
   if (isAudioUnlockedOnce) return true;
 
   try {
+    const muteUntil = Number(localStorage.getItem('sahaya_siren_global_mute_until_ms') || 0);
+    if (muteUntil > 0 && Date.now() < muteUntil) {
+      return false;
+    }
+
     isAudioUnlockedOnce = true;
 
     acquirePersistentWebLock();
@@ -1041,6 +1047,7 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
     }
 
+    const myGen = ++sirenGeneration;
     isSirenActive = true;
 
     acquirePersistentWebLock();
@@ -1081,7 +1088,7 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
           playPromise.then(() => {
 
-            if (!isSirenActive) {
+            if (!isSirenActive || myGen !== sirenGeneration) {
 
               stopAllPlaybackEnginesOnly();
 
@@ -1089,7 +1096,7 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
           }).catch(() => {
 
-            if (!isSirenActive) return;
+            if (!isSirenActive || myGen !== sirenGeneration) return;
 
             if (isWebAudioPlaying) return;
 
@@ -1097,7 +1104,7 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
               ctx.resume().then(() => {
 
-                if (isSirenActive && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
+                if (isSirenActive && myGen === sirenGeneration && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
 
                   const ok = startWebAudioPlayback();
 
@@ -1107,13 +1114,13 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
               }).catch(() => {
 
-                if (isSirenActive) startSynthEmergencyBackup();
+                if (isSirenActive && myGen === sirenGeneration) startSynthEmergencyBackup();
 
               });
 
             } else {
 
-              if (isSirenActive) startSynthEmergencyBackup();
+              if (isSirenActive && myGen === sirenGeneration) startSynthEmergencyBackup();
 
             }
 
@@ -1131,7 +1138,7 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
         ctx.resume().then(() => {
 
-          if (isSirenActive && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
+          if (isSirenActive && myGen === sirenGeneration && !isWebAudioPlaying && (!htmlAudioElement ? !htmlAudioElement : htmlAudioElement.paused)) {
 
             if (audioBuffer) {
 
@@ -1149,13 +1156,13 @@ export function startEmergencySiren(forceTest: boolean = false) {
 
         }).catch(() => {
 
-          if (isSirenActive) startSynthEmergencyBackup();
+          if (isSirenActive && myGen === sirenGeneration) startSynthEmergencyBackup();
 
         });
 
       } else {
 
-        if (isSirenActive) startSynthEmergencyBackup();
+        if (isSirenActive && myGen === sirenGeneration) startSynthEmergencyBackup();
 
       }
 
@@ -1193,6 +1200,8 @@ export function stopEmergencySiren(_force: boolean = true): void {
 
   try {
 
+    sirenGeneration += 1;
+
     isEmergencyLocked = false;
 
     isSirenActive = false;
@@ -1203,7 +1212,7 @@ export function stopEmergencySiren(_force: boolean = true): void {
 
         const nowMs = Date.now();
         localStorage.setItem('sahaya_last_siren_stopped_at_ms', String(nowMs));
-        localStorage.setItem('sahaya_siren_global_mute_until_ms', String(nowMs + 25000));
+        localStorage.setItem('sahaya_siren_global_mute_until_ms', String(nowMs + 60000));
 
       }
 

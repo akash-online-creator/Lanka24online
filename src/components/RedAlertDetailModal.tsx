@@ -836,7 +836,7 @@ export const RedAlertDetailModal: any = ({
     alertLng,
     currentLocation?.lat ?? null,
     currentLocation?.lng ?? null,
-    5.0
+    15.0
   );
 
   const handleCastWeightedVote = async (voteType: 'true' | 'false') => {
@@ -854,13 +854,13 @@ export const RedAlertDetailModal: any = ({
     }
 
     if (!gpsConfirmed5km) {
-      setVoteErrorMsg('කරුණාකර ඔබ මෙම ස්ථානයේ සිට කි.මී. 5ක් ඇතුළත සිටින බව තහවුරු කරන්න.');
+      setVoteErrorMsg('කරුණාකර ඔබ මෙම ස්ථානයේ සිට කි.මී. 15ක් ඇතුළත සිටින බව තහවුරු කරන්න.');
       return;
     }
 
     if (gpsEligibility.hasCoordinates && !gpsEligibility.isWithinRadius && !isAdmin) {
       setVoteErrorMsg(
-        `GPS පරීක්ෂාව: ඡන්දය ප්‍රකාශ කළ හැක්කේ සිදුවීම සිදුවූ ස්ථානයේ සිට කි.මී. 5ක් ඇතුළත සිටින අයට පමණි (ඔබ සිටින්නේ කි.මී. ${gpsEligibility.distanceKm} දුරිනි).`
+        `GPS පරීක්ෂාව: ඡන්දය ප්‍රකාශ කළ හැක්කේ සිදුවීම සිදුවූ ස්ථානයේ සිට කි.මී. 15ක් ඇතුළත සිටින අයට පමණි (ඔබ සිටින්නේ කි.මී. ${gpsEligibility.distanceKm} දුරිනි).`
       );
       return;
     }
@@ -1366,7 +1366,7 @@ export const RedAlertDetailModal: any = ({
                       sirenStoppedByMe ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'
                     }`
                   },
-                  sirenStoppedByMe ? '🔇 15km හදිසි සයිරන් නාදය අක්‍රියයි' : '🔊 15km හදිසි සයිරන් කලාපය'
+                  sirenStoppedByMe ? '✅ 🔇 15km හදිසි සයිරන් නාදය අක්‍රිය කර ඇත' : '🔊 15km හදිසි සයිරන් කලාපය'
                 ),
 
                 h(
@@ -1377,7 +1377,7 @@ export const RedAlertDetailModal: any = ({
 
                   sirenStoppedByMe
 
-                    ? 'ඔබ මෙම දැන්වීම සඳහා සයිරන් නාදය නවත්වා ඇත.'
+                    ? 'ඔබ මෙම දැන්වීම සඳහා සයිරන් නාදය සාර්ථකව නවත්වා ඇත.'
 
                     : 'ඔබගේ දුරකථනයේ සයිරන් නාදය ක්‍රියාත්මක නම් පහත බොත්තමෙන් නවත්වන්න.'
 
@@ -1385,29 +1385,19 @@ export const RedAlertDetailModal: any = ({
 
               ),
 
-              h(
-
-                'button',
-
-                {
-
-                  type: 'button',
-
-                  onClick: stopSirenForThisAlert,
-
-                  className: `w-full sm:w-auto px-5 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0 ${
-                    sirenStoppedByMe
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white'
-                  }`
-
-                },
-
-                h(sirenStoppedByMe ? CheckCircle2 : VolumeX, { className: 'w-4 h-4' }),
-
-                h('span', null, sirenStoppedByMe ? 'සයිරන් නාදය නවත්වා ඇත (Stopped)' : 'සයිරන් එක නවත්වන්න (Stop Siren)')
-
-              )
+              !sirenStoppedByMe
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: stopSirenForThisAlert,
+                      className:
+                        'w-full sm:w-auto px-5 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white'
+                    },
+                    h(VolumeX, { className: 'w-4 h-4' }),
+                    h('span', null, 'සයිරන් එක නවත්වන්න (Stop Siren)')
+                  )
+                : null
 
             )
 
@@ -1907,7 +1897,7 @@ export const RedAlertDetailModal: any = ({
                       h(
                         'span',
                         null,
-                        `📍 ඔබ මෙම ස්ථානයේ (කි.මී. 5ක් ඇතුළත) සිටීද? — මම මෙම ස්ථානය අවට සිටින බව තහවුරු කරමි ${
+                        `📍 ඔබ මෙම ස්ථානයේ (කි.මී. 15ක් ඇතුළත) සිටීද? — මම මෙම ස්ථානය අවට සිටින බව තහවුරු කරමි ${
                           gpsEligibility.distanceKm !== null ? `(GPS දුර: කි.මී. ${gpsEligibility.distanceKm})` : ''
                         }`
                       )
@@ -1978,7 +1968,7 @@ export const RedAlertDetailModal: any = ({
             : h(
                 'div',
                 { className: 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-bold' },
-                '🛡️ වාර්තාකරුගේ ආරක්ෂාව: ඔබ විසින් පළ කළ නිවේදනයට ඔබටම ඡන්දය දිය නොහැක. අවට කි.මී. 5 ඇතුළත සිටින සාමාජිකයින්ගේ ඡන්දයෙන් මෙය තහවුරු වේ.'
+                '🛡️ වාර්තාකරුගේ ආරක්ෂාව: ඔබ විසින් පළ කළ නිවේදනයට ඔබටම ඡන්දය දිය නොහැක. අවට කි.මී. 15 ඇතුළත සිටින සාමාජිකයින්ගේ ඡන්දයෙන් මෙය තහවුරු වේ.'
               ),
 
           // Official Sri Lanka Emergency Hotlines (119 / 110 / 117 / 1990) & Legal Disclaimer
